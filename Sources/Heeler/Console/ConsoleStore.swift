@@ -767,7 +767,10 @@ final class ConsoleStore {
                 address: agent.agent.paneID,
                 projection: { [weak self] in self?.projections[hostID] as? HerdrCoreConsoleProjection },
                 corePin: corePin,
-                clock: coreSendClock)
+                clock: coreSendClock,
+                isOnWindows: { [weak self] in
+                    self?.capabilities(for: hostID).startsInWindowsDirectories == true
+                })
             : nil
         let composer = AgentComposerStore(
             target: agent.agent.paneID,

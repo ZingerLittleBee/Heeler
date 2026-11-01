@@ -366,9 +366,9 @@ struct HerdrCoreComposerStopTests {
 
     // MARK: When it is offered
 
-    @Test func theCapabilityIsOnForACoreHostOnceItIsKnownNotToBeNativeWindows() {
+    @Test func theCapabilityIsOnForACoreHostOnceItsPlatformIsKnown() {
         #expect(HostCapabilities(serverKind: .herdrCore, platform: .posix).composerStop)
-        #expect(!HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows).composerStop)
+        #expect(HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows).composerStop)
         #expect(!HostCapabilities(serverKind: .herdrCore).composerStop)
         #expect(!HostCapabilities(serverKind: .unconfirmed, platform: .posix).composerStop)
         #expect(HostCapabilities(serverKind: .herdrTUI).composerStop)

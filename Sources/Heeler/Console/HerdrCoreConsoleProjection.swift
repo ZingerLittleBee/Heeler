@@ -962,10 +962,19 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     func readForeground(at address: String) async throws {
         let changes = foregroundChanges
         let record = try await inventoryTransport().terminalRecord(address)
-        guard !hasEnded, foregroundChanges == changes, let foreground = record.foreground else {
-            return
+        guard !hasEnded, foregroundChanges == changes else { return }
+        // On native Windows the foreground stays the same to the end, so only the
+        // state says the program went.
+        if record.hasFinished {
+            apply(
+                .finished(
+                    terminal: address,
+                    HerdrCoreTerminalEnd(
+                        reason: record.reason, exitCode: record.exitCode, signal: record.signal,
+                        finishedMilliseconds: record.finishedMilliseconds)))
+        } else if let foreground = record.foreground {
+            apply(.foreground(terminal: address, foreground))
         }
-        apply(.foreground(terminal: address, foreground))
     }
 
     // MARK: Worktrees

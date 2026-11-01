@@ -26,8 +26,7 @@ struct HostCapabilities: Equatable, Sendable {
     /// One client at a time holds a terminal, so another may take it over. A
     /// herdr-core Terminal has no such thing: every viewer may type (ADR 0031).
     var takeOver = true
-    /// The Composer's Stop, which shows in Send's place. A native Windows core
-    /// Host offers it with its own Composer.
+    /// The Composer's Stop, which shows in Send's place.
     var composerStop = true
     var desktopAppNaming: HerdrAppNaming?
     /// The programs Chat opens for; nil for every one it can read.
@@ -72,8 +71,9 @@ extension HostCapabilities {
     /// core Host offers uploads once it is known to take them: over SFTP on POSIX,
     /// through the core's `terminal.put` on native Windows (ADR 0032), which has no
     /// Rename or Worktrees until each passes a test there. It offers Send and Stop
-    /// once it is known to be POSIX, because the foreground that Send checks takes
-    /// another form on native Windows (ADRs 0032 and 0035). `coreKernel` is the core
+    /// once its platform is known, because the foreground that Send checks takes
+    /// another form on native Windows, where Send itself refuses a Terminal whose
+    /// shell can outlive its Agent (ADRs 0032 and 0035). `coreKernel` is the core
     /// Host's `uname -s`, known once its locator ran with or without a core: its Chat
     /// opens on Linux, whose process reads a check of an Agent's session uses, for
     /// `coreChatPrograms`. `isLocatingCore` is a connection on its way: nothing could
@@ -97,10 +97,10 @@ extension HostCapabilities {
             startsAgents: starts, startsTerminals: starts,
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered || coreOnPosix,
             uploads: offered || coreOnPosix || coreOnWindows,
-            composerSend: offered || coreOnPosix, chat: offered || coreChat,
+            composerSend: offered || coreOnPosix || coreOnWindows, chat: offered || coreChat,
             tabNames: offered, closeTab: true,
             syncLayoutFromPlugin: offered, takeOver: offered,
-            composerStop: offered || coreOnPosix,
+            composerStop: offered || coreOnPosix || coreOnWindows,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatPrograms: coreChat ? coreChatPrograms : nil,
             startsInWindowsDirectories: coreOnWindows)

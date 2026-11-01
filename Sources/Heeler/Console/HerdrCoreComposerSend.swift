@@ -107,15 +107,19 @@ final class HerdrCoreComposerSend {
     static let stepTimeout: Duration = .seconds(5)
     static let liveAttachTimeout: Duration = .seconds(5)
 
-    /// The shells observed to drop a pending paste on one Ctrl+C. zsh waits on
-    /// the owner's check, so it says what any other shell says.
-    private static let shellsDroppingPasteOnInterrupt: Set<String> = ["bash", "fish", "dash"]
+    /// The shells observed to drop a pending paste on one Ctrl+C: `powershell` is
+    /// Windows PowerShell 5.1 (herdr compatibility). zsh waits on the owner's check,
+    /// and nobody has tried `pwsh`, so they say what any other shell says.
+    private static let shellsDroppingPasteOnInterrupt: Set<String> = ["bash", "fish", "dash", "powershell"]
 
     private let address: String
     private let projection: @MainActor () -> HerdrCoreConsoleProjection?
     /// The core this Composer's Agent runs on: an address means another Agent on any other.
     private let corePin: TerminalCorePin
     private let clock: BlockedCardClock
+    /// Whether the Host is native Windows, whose foreground cannot show a shell
+    /// that outlived its program.
+    private let isOnWindows: @MainActor () -> Bool
     private var lastSend: Task<Outcome, Never>?
     /// A Send ended with bytes nobody answered for. They stay queued however long
     /// that takes, so another paste would line up behind them under one submit.
@@ -125,12 +129,14 @@ final class HerdrCoreComposerSend {
         address: String,
         projection: @escaping @MainActor () -> HerdrCoreConsoleProjection?,
         corePin: TerminalCorePin = TerminalCorePin(),
-        clock: BlockedCardClock = .live
+        clock: BlockedCardClock = .live,
+        isOnWindows: @escaping @MainActor () -> Bool = { false }
     ) {
         self.address = address
         self.projection = projection
         self.corePin = corePin
         self.clock = clock
+        self.isOnWindows = isOnWindows
     }
 
     /// `attach` is the one the user is viewing, in the window sending. Chat has none.
@@ -164,6 +170,10 @@ final class HerdrCoreComposerSend {
         switch await HerdrCoreAgentHolder.current(at: address, in: projection, clock: clock) {
         case .success(let holder): held = holder
         case .failure(let problem): return Self.outcome(of: problem)
+        }
+        // The check after the paste would pass with only a prompt left to take Enter.
+        if isOnWindows(), !HerdrCoreAgentRule.windowsTerminalEndsWithItsProgram(held.foreground) {
+            return .refused(.inputNotReady(Self.shellStaysOpen))
         }
         let isBlocked = held.agent.status == .blocked
 
@@ -458,6 +468,8 @@ final class HerdrCoreComposerSend {
     private static let holderChangedWhileOpening =
         "Another process took over the terminal as Heeler reached it, so nothing was sent."
     private static let notSampledYet = "The Agent is still starting, so nothing was sent. Try again in a moment."
+    private static let shellStaysOpen =
+        "This terminal keeps a shell open after the Agent exits, so Send can't tell which would get your message, and nothing was sent. Type it with Direct Input."
     private static let unknownSubmitKey = "This Terminal's Template names a submit key Heeler cannot press, so nothing was sent."
     private static let windowPassed =
         "The Host answered too slowly to submit safely, so the text stayed in the Agent's input unsubmitted. Finish it in the terminal, or clear it there before sending again."

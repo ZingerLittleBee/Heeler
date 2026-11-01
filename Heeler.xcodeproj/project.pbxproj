@@ -367,6 +367,7 @@
 		5F19761A75CECE4A6FC80543 /* NotificationKeyStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB05396E5E55060B5A23621C /* NotificationKeyStoreTests.swift */; };
 		5FCC5971328F9D7C5FB80DD5 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCDD3A343C4D08ED707188AF /* NotificationService.swift */; };
 		5FE887616FBCC1F8CEF312B8 /* HostServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28519EE07E39CB6F31419312 /* HostServices.swift */; };
+		5FF48C7B3F76F54F024C522B /* HerdrCoreWindowsComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED53C612897C7C3D60BF374B /* HerdrCoreWindowsComposerTests.swift */; };
 		600145C630EB5F0AC8F11CC2 /* SettingsViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F076778BEA3359D447E78D /* SettingsViewTests.swift */; };
 		601CFABF027EA7891E7B211F /* GrokInputBoxDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19BD559AF84107DD92237507 /* GrokInputBoxDetector.swift */; };
 		6076C42283AF8D8517F04459 /* CodexPaginatedReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3352349B5173FBF435E3CA /* CodexPaginatedReducer.swift */; };
@@ -1925,6 +1926,7 @@
 		EBE899695C640B1BE7C83265 /* NodeToolchainProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeToolchainProbe.swift; sourceTree = "<group>"; };
 		EBEE212006356E4EAA5D487E /* WorkflowJournalFollower.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowJournalFollower.swift; sourceTree = "<group>"; };
 		ECBBBD9807F151A2CE1A7EA9 /* InMemoryRecordSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemoryRecordSource.swift; sourceTree = "<group>"; };
+		ED53C612897C7C3D60BF374B /* HerdrCoreWindowsComposerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreWindowsComposerTests.swift; sourceTree = "<group>"; };
 		EDA9CD762AFC40D2119ADEBC /* GitProbe+CheckoutRoots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitProbe+CheckoutRoots.swift"; sourceTree = "<group>"; };
 		EDDCAF5C8BE2B552065BA67E /* CodexLegacyReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexLegacyReducer.swift; sourceTree = "<group>"; };
 		EE4509B0B4DC2E6075F734B8 /* HangulInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HangulInput.swift; sourceTree = "<group>"; };
@@ -2297,6 +2299,7 @@
 				74B121D75551BD14F5B79A06 /* HerdrCoreTransportE2ETests.swift */,
 				4877ACD3B274890E1B1430C0 /* HerdrCoreTurnEndTests.swift */,
 				3D25F5006320DED01BF2D463 /* HerdrCoreWindowsCaptureTests.swift */,
+				ED53C612897C7C3D60BF374B /* HerdrCoreWindowsComposerTests.swift */,
 				F7D4F3E5E8EE189EE116551F /* HerdrCoreWindowsConsoleTests.swift */,
 				2EBC87818FC1950E02FA3F9A /* HerdrCoreWindowsLaunchTests.swift */,
 				9F3D72EBEE2AA9F23F12A412 /* HerdrCoreWindowsLocatorTests.swift */,
@@ -4403,6 +4406,7 @@
 				76E539B2F1D69F169B81CAE5 /* HerdrCoreTurnEndTests.swift in Sources */,
 				EA145D626FACCBCCF2E94D67 /* HerdrCoreVectorFile.swift in Sources */,
 				1ED6AE1312402FBC3FFF828C /* HerdrCoreWindowsCaptureTests.swift in Sources */,
+				5FF48C7B3F76F54F024C522B /* HerdrCoreWindowsComposerTests.swift in Sources */,
 				766A815EDF6EBA2BCDCCF8EE /* HerdrCoreWindowsConsoleTests.swift in Sources */,
 				D45069F540925C9EEC9D01F2 /* HerdrCoreWindowsLaunchTests.swift in Sources */,
 				6B5CF453AA9EC65672CACF81 /* HerdrCoreWindowsLocatorTests.swift in Sources */,

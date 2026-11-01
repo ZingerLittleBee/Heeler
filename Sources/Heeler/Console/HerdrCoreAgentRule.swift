@@ -244,11 +244,29 @@ enum HerdrCoreAgentRule {
         }
         guard option + 1 < arguments.count else { return .shell }
         var line = arguments[option + 1]
-        let exit = "; exit $LASTEXITCODE"
-        if line.hasSuffix(exit) { line.removeLast(exit.count) }
+        if line.hasSuffix(powerShellExit) { line.removeLast(powerShellExit.count) }
         guard let words = powerShellWords(line) else { return .other(name) }
         return read(words, depth: depth + 1)
     }
+
+    /// Whether a Terminal holding this foreground on native Windows ends when its
+    /// program does. A pseudo console's foreground is the Terminal's first process
+    /// for its whole life, so a shell that outlives its program looks the same before
+    /// and after (ADR 0035). A first process that is the program itself ends with it,
+    /// as Heeler's form does, whose PowerShell has nothing left to run but its `exit`.
+    /// Any other shell's line or options could keep it at a prompt.
+    static func windowsTerminalEndsWithItsProgram(_ foreground: HerdrCoreForeground) -> Bool {
+        let arguments = foreground.argv.isEmpty ? [foreground.name] : foreground.argv
+        guard let executable = arguments.first else { return false }
+        let name = baseName(executable)
+        guard shells.contains(name) else { return true }
+        guard name == "powershell" || name == "pwsh", arguments.count == 3,
+            arguments[1].lowercased() == "-command", arguments[2].hasSuffix(powerShellExit)
+        else { return false }
+        return powerShellWords(String(arguments[2].dropLast(powerShellExit.count))) != nil
+    }
+
+    private static let powerShellExit = "; exit $LASTEXITCODE"
 
     private static let powerShellQuotes: Set<Character> = [
         "'", "\u{2018}", "\u{2019}", "\u{201A}", "\u{201B}",

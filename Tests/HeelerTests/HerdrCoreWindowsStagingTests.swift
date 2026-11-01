@@ -133,9 +133,8 @@ struct HerdrCoreWindowsStagingTests {
         #expect(Self.completedPath(session) == Self.filesFolder + "file.txt")
         #expect(session.composer.draft == Self.filesFolder + "file.txt ")
 
-        // No SFTP, and the path waits in the draft with Send hidden.
+        // No SFTP, and the path waits in the draft for Send.
         #expect(await fixture.scripted.stagedFiles.isEmpty)
-        #expect(!fixture.console.capabilities(for: fixture.host.id).composerSend)
         await fixture.finish()
     }
 
