@@ -69,8 +69,13 @@ struct ChatConversationEngineTests {
             await engine.poll(context: ChatProjectionContext(activity: .idle))
         }
 
+        /// One whole request for older history, page by page.
         func loadOlder(_ engine: ChatConversationEngine, automatic: Bool = false) async -> ChatConversationSnapshot {
-            await engine.loadOlder(context: ChatProjectionContext(activity: .idle), automatic: automatic)
+            var snapshot: ChatConversationSnapshot
+            repeat {
+                snapshot = await engine.loadOlder(context: ChatProjectionContext(activity: .idle), automatic: automatic)
+            } while snapshot.older == .loading
+            return snapshot
         }
 
         /// The bytes read from the Host since the records were cleared.
@@ -608,6 +613,28 @@ struct ChatConversationEngineTests {
         #expect(snapshot.older == .available)
     }
 
+    /// The Agent starting a turn while Chat looks for the prompt above the
+    /// window brings a turn opener, but not the one the search is after.
+    @Test func aTurnStartedDuringAnOlderSearchDoesNotEndIt() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(NumberedChatReducer.prompt("a") + Self.lines(0..<20), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        var snapshot = await fixture.open(engine)
+        try #require(snapshot.transcript.turns.isEmpty)
+
+        snapshot = await engine.loadOlder(context: ChatProjectionContext(activity: .idle))
+        #expect(snapshot.older == .loading)
+
+        await fixture.files.append(NumberedChatReducer.prompt("b") + Self.lines(20..<22), to: Self.claudePath)
+        snapshot = await fixture.poll(engine)
+        #expect(snapshot.transcript.turns.count == 1)
+        #expect(snapshot.older == .loading)
+
+        snapshot = await fixture.loadOlder(engine)
+        #expect(snapshot.transcript.turns.first?.firstEntryID.rawValue == "p-0")
+        #expect(snapshot.older == .reachedStart)
+    }
+
     /// Short turns bring an opener within what a bounded request Chat
     /// makes by itself may read, so it reads and shows what the user's
     /// would.
@@ -1076,8 +1103,13 @@ struct ChatConversationEngineTests {
             await engine.poll(context: ChatProjectionContext(activity: .idle))
         }
 
+        /// One whole request for older records, page by page.
         func loadOlder(_ engine: ChatConversationEngine) async -> ChatConversationSnapshot {
-            await engine.loadOlder(context: ChatProjectionContext(activity: .idle))
+            var snapshot: ChatConversationSnapshot
+            repeat {
+                snapshot = await engine.loadOlder(context: ChatProjectionContext(activity: .idle))
+            } while snapshot.older == .loading
+            return snapshot
         }
 
         func savedDocument() async -> ChatCacheDocument? {

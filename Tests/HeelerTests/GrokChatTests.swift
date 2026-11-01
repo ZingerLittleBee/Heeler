@@ -145,14 +145,22 @@ struct GrokChatTests {
     @MainActor
     private static func requestOlderAutomatically(_ store: AgentChatStore) async {
         store.loadOlder(automatic: true)
-        await store.step()
+        await finishOlderRequest(store)
     }
 
     /// A tap on Load Earlier Messages.
     @MainActor
     private static func tapLoadEarlierMessages(_ store: AgentChatStore) async {
         store.loadOlder()
-        await store.step()
+        await finishOlderRequest(store)
+    }
+
+    /// Runs the loop's turns until the request has read its last page.
+    @MainActor
+    private static func finishOlderRequest(_ store: AgentChatStore) async {
+        repeat {
+            await store.step()
+        } while store.conversation.older == .loading
     }
 
     /// A send from Chat as the Chat surface makes it: registered as its

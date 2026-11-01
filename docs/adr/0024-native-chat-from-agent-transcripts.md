@@ -229,8 +229,11 @@ needs anchoring in the same main-thread turn.
 Earlier history loads by itself as the reader nears the top of the list. Each
 request reads pages until it brings the start of a turn not shown before,
 since a page that ends inside a turn adds only steps its fold hides, or until
-it reaches the start of the file or has read 32 MiB. A request the list makes
-by itself reads as one from Load Earlier Messages does, except in Grok Build,
+it reaches the start of the file or has read 32 MiB. Each page shows as it
+comes, and Chat looks for what the Agent wrote between pages, because a search
+that long over a phone's connection otherwise leaves the list short and stale
+until it ends. Leaving Chat keeps the request, which goes on when Chat returns.
+A request the list makes by itself reads as one from Load Earlier Messages does, except in Grok Build,
 where it reads at most 4 MiB. Grok Build records each `read_file` result in
 full, so one turn can fill tens of MB: a turn that read 21 files of 99,000
 bytes and compacted automatically three times wrote result lines of about

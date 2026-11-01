@@ -63,6 +63,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Chat fills in earlier messages page by page and keeps up with the Agent while
+  it does, so returning to a long conversation no longer shows a few old rows
+  under a spinner and a blank screen until a whole turn has loaded.
 - Keep the Host connection row atop the Agents and Terminals lists one
   height while Hosts connect, so the list below no longer jumps. Statuses
   stay on one line; those that do not fit fold into a count, and the row's
