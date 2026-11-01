@@ -242,7 +242,11 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   typed `Transport.stageImage`/`stageFile` use SFTP. A core Host's stagers come
   from `HerdrCoreConsoleProjection` through `hostServices`, and it offers Add by
   the platform in `ConsoleStore.capabilities(for:)`, which it asks once an Agent
-  has a Composer; `HerdrCoreStagingTests` covers them.
+  has a Composer; `HerdrCoreStagingTests` covers them. On native Windows they go
+  through the core's `terminal.put` instead, by the Terminal's address and the
+  detail's core pin
+  ([HerdrCoreStaging](../../Sources/Heeler/Transport/HerdrCore/HerdrCoreStaging.swift),
+  `HerdrCoreSSHTransport.putFile`); `HerdrCoreWindowsStagingTests` covers them.
   Read [ADR 0005](../adr/0005-keep-staged-image-cleanup-outside-mobile.md) and
   [ADR 0006](../adr/0006-stage-images-over-sftp.md); start with
   [ComposerStagingStoreTests](../../Tests/HeelerTests/ComposerStagingStoreTests.swift)
