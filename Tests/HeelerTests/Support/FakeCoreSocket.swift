@@ -27,6 +27,8 @@ actor FakeCoreSocket: HeelerSSHAPIChannel, WindowsTerminalExecChannel {
     private(set) var writtenFrames: [HerdrCoreFrame] = []
     private(set) var writeFailure: HerdrCoreFrameError?
     private(set) var isClosed = false
+    /// The timeout each write was given, oldest first.
+    private(set) var writeTimeouts: [Duration] = []
     private var writesHeld = false
     private var writesReachedHold = 0
 
@@ -35,6 +37,7 @@ actor FakeCoreSocket: HeelerSSHAPIChannel, WindowsTerminalExecChannel {
     /// Yields mid-write, as a real channel does between packets, so two
     /// writers that overlap corrupt what the decoder here sees.
     func write(_ data: Data, timeout: Duration) async throws {
+        writeTimeouts.append(timeout)
         if writesHeld { writesReachedHold += 1 }
         signalChange()
         while writesHeld, !isClosed { await waitForChange() }

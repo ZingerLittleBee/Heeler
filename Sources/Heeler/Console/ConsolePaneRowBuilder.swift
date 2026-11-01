@@ -69,6 +69,7 @@ struct ConsolePaneRowBuilder {
                 paneLabel: paneByID[agent.paneID].flatMap {
                     $0.tabID == agent.tabID && $0.workspaceID == agent.workspaceID ? $0.label : nil
                 })
+            row.startsTerminalsInWindowsDirectories = host.serverKind == .herdrCore
             if let pane = paneByID[agent.paneID] {
                 row.updateDirectory(from: pane)
             }

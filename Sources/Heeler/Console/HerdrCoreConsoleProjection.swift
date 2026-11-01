@@ -1387,22 +1387,48 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         for waiter in waiters { waiter.resume() }
     }
 
-    func imageStager() -> ImageStager {
+    func imageStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> ImageStager {
         let session = session
         return { image, reporter in
-            try await session.withTransport { $0.hostServices }.stageImage(image) { progress in
-                await reporter.report(progress)
+            let transport = try await session.withTransport { $0 }
+            guard try await transport.stagesThroughCore() else {
+                return try await transport.hostServices.stageImage(image) { progress in
+                    await reporter.report(progress)
+                }
             }
+            let source = HerdrCoreStaging.Source(image)
+            return try StagedImage(path: try await self.put(source, beside: paneID, keepingTo: corePin, reporter))
         }
     }
 
-    func fileStager() -> FileStager {
+    func fileStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> FileStager {
         let session = session
         return { file, reporter in
-            try await session.withTransport { $0.hostServices }.stageFile(file) { progress in
-                await reporter.report(progress)
+            let transport = try await session.withTransport { $0 }
+            guard try await transport.stagesThroughCore() else {
+                return try await transport.hostServices.stageFile(file) { progress in
+                    await reporter.report(progress)
+                }
             }
+            let source = HerdrCoreStaging.Source(file)
+            return try StagedFile(path: try await self.put(source, beside: paneID, keepingTo: corePin, reporter))
         }
+    }
+
+    /// `terminal.put` goes by an address, which means another Terminal on any core
+    /// but the one `corePin` keeps to (ADR 0031). It is one call, so its progress is
+    /// nothing until the core has answered.
+    private func put(
+        _ source: HerdrCoreStaging.Source, beside paneID: String, keepingTo corePin: TerminalCorePin,
+        _ reporter: AttachmentStageProgressReporter
+    ) async throws -> String {
+        guard admits(corePin) else { throw TransportError.herdrCoreTerminalGone }
+        let core = inventoryCore
+        let transport = try await session.withTransport(servingCore: core) { $0 }
+        await reporter.report(AttachmentStageProgress(transferredBytes: 0, totalBytes: source.byteCount))
+        let path = try await transport.putFile(source, terminal: paneID, coreID: core)
+        await reporter.report(AttachmentStageProgress(transferredBytes: source.byteCount, totalBytes: source.byteCount))
+        return path
     }
 
     func sessionFileReader() -> SessionFileReader {
@@ -1503,8 +1529,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             })
     }
 
+    /// A native Windows Host's locator already said, and that read refuses it.
     func remoteHomeDirectory() async throws -> String {
-        try await session.withTransport { $0.hostServices }.hostHomeDirectory()
+        let transport = try await session.withTransport { $0 }
+        if let home = await transport.lastLocation()?.home { return home }
+        return try await transport.hostServices.hostHomeDirectory()
     }
 
     func listRemoteDirectories(at path: String) async throws -> RemoteDirectoryListing {

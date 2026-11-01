@@ -22,6 +22,8 @@ SOURCES = [
     ROOT / "Sources/Heeler/Hosts/ServerKindDetectionScript.swift",
     ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreLocator.swift",
     ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreSessionName.swift",
+    ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreWindowsLocator.swift",
+    ROOT / "scripts/fixtures/herdr-core-tool-stubs.swift",
 ]
 NONCE = "0123456789abcdef"
 # The shape of ServerKindDetection's read, with one directory the exec's PATH lacks.

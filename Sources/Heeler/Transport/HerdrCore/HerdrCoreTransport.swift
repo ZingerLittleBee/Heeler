@@ -26,6 +26,15 @@ protocol HerdrCoreTransport: Sendable {
     /// What this connection has learned of the Host's kernel, reading no Host.
     func lastKernel() async -> String?
 
+    /// Whether a Staged file goes through the core's `terminal.put` rather than
+    /// over SFTP: a native Windows Host's does (ADR 0032).
+    func stagesThroughCore() async throws -> Bool
+
+    /// Writes one file beside the Terminal at `address` on the core `coreID` names,
+    /// and returns the path the core gives it. Past the limit it throws before
+    /// anything is sent. See `HerdrCoreStaging`.
+    func putFile(_ source: HerdrCoreStaging.Source, terminal address: String, coreID: String?) async throws -> String
+
     /// One named variable of one process, in one bounded exec, for finding where
     /// that process's program keeps its configuration. Never says why it could not.
     func processVariable(_ name: String, pid: Int) async -> HostProcessReader.Variable
@@ -78,6 +87,7 @@ protocol HerdrCoreTransport: Sendable {
     /// The user's shell for a launch, which supplies the Agent's PATH and
     /// variables: the login shell the locator reports, else the `SHELL` the core
     /// process holds, read by name (ADR 0032). Throws when the Host says neither.
+    /// On native Windows it is PowerShell, with no read.
     func launchShell() async throws -> String
 
     /// Runs installed-agent discovery's script in one bounded exec.
@@ -232,6 +242,10 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     /// Runs a script that goes through the user's interactive shell, with room
     /// for its startup files, in one bounded exec.
     func runAgentDiscovery(_ script: Data) async throws -> GitExecResult
+
+    /// Runs a native Windows Host's agent discovery, a whole command line, in one
+    /// bounded exec with room for the user's PowerShell profile.
+    func runWindowsAgentDiscovery(_ command: String) async throws -> GitExecResult
 
     /// Runs a `HerdrAppControl` script in one bounded exec, with room for the
     /// five seconds the app's control socket gives its window to answer.
@@ -460,6 +474,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
 
     func launchShell() async throws -> String {
         let location = if let located { located } else { try await locate() }
+        if location.isNativeWindows { return HerdrCoreShellLaunch.windowsShell }
         if let shell = location.loginShell, !shell.isEmpty { return shell }
         let pid = String(try await serverStatus().pid)
         let request = HostProcessReader.Request(pids: [pid], valuesOf: ["SHELL"])
@@ -477,7 +492,25 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     }
 
     func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
-        try await connection.runAgentDiscovery(script)
+        if try await resolvedPlatform() == .nativeWindows {
+            return try await connection.runWindowsAgentDiscovery(String(decoding: script, as: UTF8.self))
+        }
+        return try await connection.runAgentDiscovery(script)
+    }
+
+    func stagesThroughCore() async throws -> Bool {
+        try await resolvedPlatform() == .nativeWindows
+    }
+
+    /// The call's deadline runs from when it queues, so it covers the whole write.
+    func putFile(_ source: HerdrCoreStaging.Source, terminal address: String, coreID: String?) async throws -> String {
+        let params = try HerdrCoreStaging.params(for: source, terminal: try HerdrCoreWire.address(address))
+        let deadline =
+            Self.runDeadline + HerdrCoreLink.writeTimeout(forBytes: HerdrCoreStaging.encodedBytes(source.byteCount))
+        let result = try await onInventoryLink(meaning: coreID) { link in
+            try await link.call("terminal.put", params: params, deadline: deadline, isMutation: true)
+        }
+        return try HerdrCoreStaging.path(in: result, for: source)
     }
 
     func runTerminal(params: JSONValue) async throws -> JSONValue {

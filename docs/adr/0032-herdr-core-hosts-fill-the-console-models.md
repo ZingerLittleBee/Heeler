@@ -92,18 +92,24 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
 - Native Windows herdr-core Hosts get the same Console, with these
   differences. Staged Images and Files are written by the core's
   `terminal.put` into its state directory beside the Terminal, which the core
-  removes with the Terminal; this amends ADR 0018's refusal of uploads for
-  herdr-core Hosts only, since no SFTP mode bits are involved. New Workspace
-  is offered. Rename and Worktrees stay off until each passes a test on a
-  Windows Host. A space nobody named still takes its Checkout's folder: one
+  removes with the Terminal's record (`terminal.rm`, not `terminal.kill`); this
+  amends ADR 0018's refusal of uploads for herdr-core Hosts only, since no SFTP
+  mode bits are involved. A file over the 8 MiB one put takes is refused before
+  anything is sent, and the put is an action on an address, so it keeps to a
+  detail's core (ADR 0031). A launch goes through `powershell.exe -Command`, and
+  discovery through one exec of the same program, with its profile, counting any
+  command type `&` can run. New Workspace is offered, with no name field. Rename
+  and Worktrees stay off until each passes a test on a Windows Host. A space nobody named still takes its Checkout's folder: one
   bounded PowerShell exec asks git only for the top level of each directory,
   from inside it, so no Worktree is known there, and without git on that exec's
   PATH the space takes its directory's name. Until a later ticket turns them on,
-  what a Windows core Host cannot start stays hidden whatever its connection
-  reads, stopped, update required, not installed or a refused session name
-  included. So a core Host offers no New while its first attempt runs with
-  nothing known of its platform, and this device remembers the kernel a locator
-  last found, so that a relaunch knows before the Host answers.
+  what a Windows core Host cannot do stays hidden whatever its connection reads,
+  stopped, update required, not installed or a refused session name included:
+  Send, Stop, Chat, Rename and Worktrees. New Agent, New Terminal and New Workspace
+  show there as on any other Host that is not connected, and read not connected
+  if tried. A core Host offers no New while its first attempt runs with nothing
+  known of its platform, and this device remembers the kernel a locator last
+  found, so that a relaunch knows before the Host answers.
 
 ## Why
 
@@ -211,7 +217,7 @@ with test clients, not the app.
   and the launch arguments, never the child
   ([observation](../agents/herdr-compatibility.md)). Recognizing a Windows
   Agent therefore reads the program out of PowerShell's `-Command` argument
-  (#588). Under Heeler's form the Terminal finished when its program ended, so
+  (`HerdrCoreAgentRule.readPowerShell`). Under Heeler's form the Terminal finished when its program ended, so
   its Pane closes as on Unix. `choice.exe` finished it with its own code, 2.
   Claude Code stopped by two Ctrl+C keys finished it with 1, not separated from
   PowerShell's own code, and no Agent has exited normally there. Under the
@@ -220,14 +226,17 @@ with test clients, not the app.
   reading such a Terminal as that Agent until its shell exits, and "a shell in
   the foreground ends the Agent" never fires. A read of PowerShell's children
   showed the exit, and the attach stream later carried PowerShell's prompt; the
-  screen and the other event types were not compared as signals. Until #588 or
-  #590 adds a check, that staleness stands.
+  screen and the other event types were not compared as signals. Heeler's launch
+  does not use `-NoExit`, so this reaches only a Terminal the desktop app started.
+  Until #590 adds a check, that staleness stands.
 - The same `choice.exe` runs through `connect` over one SSH exec gave the same
   foreground and finishes, 2 under Heeler's form and the shell's `exit 5` under
   `-NoExit`. On that machine the exec refused a program on a path through fnm's
   `fnm_multishells` junction (`ERROR_UNTRUSTED_MOUNT_POINT`), which a Terminal of
-  the core ran, so #588's discovery cannot read an exec's miss on such a path as
-  not installed ([observation](../agents/herdr-compatibility.md)).
+  the core ran, so discovery cannot read an exec's miss on such a path as
+  not installed ([observation](../agents/herdr-compatibility.md)). It lists a
+  program `Get-Command` finds even when that program's `--version` fails, and the
+  user guide says one may be missing.
 - Recognizing an Agent works on the foreground's arguments, not the launch
   arguments, and needs a table from reported `app` names (`claude-code`,
   `codex`, `opencode`, `pi`, `omp`, `grok-build`) to Heeler's agent kinds.

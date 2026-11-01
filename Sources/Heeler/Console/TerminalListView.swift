@@ -269,7 +269,7 @@ struct TerminalListView: View {
                 Section(
                     "\(terminal.displayTabTitle) · \(terminal.workspaceLabel ?? "Workspace") · \(terminal.hostName)"
                 ) {
-                    if terminal.cwd.hasPrefix("/") {
+                    if capabilities(of: terminal).startsIn(terminal.cwd) {
                         if capabilities(of: terminal).startsTerminals {
                             Button("New Terminal Here", systemImage: "plus.rectangle") {
                                 create(beside: terminal)

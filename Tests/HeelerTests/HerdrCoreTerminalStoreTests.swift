@@ -1685,9 +1685,8 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    /// Native Windows stages through the core and has its own Send ticket,
-    /// neither built yet.
-    @Test func aNativeWindowsCoreAgentsComposerOffersNoAddAndNoSend() async throws {
+    /// Native Windows stages through the core, and Send has its own ticket.
+    @Test func aNativeWindowsCoreAgentsComposerOffersAddAndNoSend() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         await fixture.scripted.helper.configure { $0.platform = .nativeWindows }
         let agent = try #require(fixture.console.agents.first)
@@ -1696,8 +1695,7 @@ struct HerdrCoreTerminalStoreTests {
 
         try await Self.until("the Composer") { detail.offers("Message the Agent") }
         try await Self.until("the platform") { fixture.console.hostPlatforms[hostID] == .nativeWindows }
-        await Task.yield()
-        #expect(!detail.offers("Add"))
+        try await Self.until("Add") { detail.offers("Add") }
         #expect(!detail.offers("Send"))
         await detail.close()
         await fixture.finish()

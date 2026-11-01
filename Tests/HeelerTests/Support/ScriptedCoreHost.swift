@@ -212,6 +212,11 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var changes: CheckoutChangesRead?
     private var skills: [AgentSkill] = []
     private var attachRefusals: [String] = []
+    /// Every `terminal.put` the core received, oldest first, with its decoded bytes.
+    private(set) var puts: [(terminal: String, name: String, contents: Data)] = []
+    private var putRefusals: [String] = []
+    private var isHoldingNextPutReply = false
+    private var nextPutByteCount: Int?
     private var attachPaint: Data?
     private var paintsViewers = true
     private var runReply: JSONValue?
@@ -240,6 +245,10 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var windowsCheckoutAnswer: GitExecResult?
     /// Every ask for the POSIX checkout script, which never reaches a Host here.
     private(set) var posixCheckoutAsks = 0
+    /// Every native Windows discovery's whole command line, oldest first.
+    private(set) var windowsDiscoveryCommands: [String] = []
+    private var windowsDiscovery: (programs: [String], version: String, banner: String) = ([], "", "")
+    private var windowsDiscoveryAnswer: GitExecResult?
 
     /// `shellBanner` is what the user's shell prints before it runs the script.
     init(
@@ -430,6 +439,41 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         }
     }
 
+    /// Prints what its script would: the asked-for programs this machine has, with
+    /// `version` the program's own words, or empty for one the exec could not run.
+    func runWindowsAgentDiscovery(_ command: String) async throws -> GitExecResult {
+        log.append("windows-agent-discovery")
+        windowsDiscoveryCommands.append(command)
+        if let windowsDiscoveryAnswer { return windowsDiscoveryAnswer }
+        let script = try Self.decodedDiscovery(command)
+        let marker = "__HEELER_AGENTS_BEGIN_"
+        let nonce = script.range(of: marker).map { script[$0.upperBound...].prefix { $0 != "'" } } ?? ""
+        let agents = windowsDiscovery.programs.filter { script.contains("'\($0)'") }.map { "agent \($0)" }
+        let lines =
+            ["", "\(marker)\(nonce)"] + agents
+            + ["version \(windowsDiscovery.version)", "", "__HEELER_AGENTS_END_\(nonce)"]
+        let output = windowsDiscovery.banner + lines.joined(separator: "\n") + "\n"
+        return GitExecResult(stdout: Data(output.utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    func setWindowsAgentDiscovery(programs: [String], version: String, banner: String = "") {
+        windowsDiscovery = (programs, version, banner)
+    }
+
+    func setWindowsDiscoveryAnswer(_ answer: GitExecResult?) {
+        windowsDiscoveryAnswer = answer
+    }
+
+    /// A discovery's script, which keeps the profile the locator's skips.
+    static func decodedDiscovery(_ command: String) throws -> String {
+        let prefix = "powershell.exe -NoLogo -NonInteractive -EncodedCommand "
+        guard command.hasPrefix(prefix),
+            let bytes = Data(base64Encoded: String(command.dropFirst(prefix.count))),
+            let script = String(data: bytes, encoding: .utf16LittleEndian)
+        else { throw TransportError.malformedResponse("Not a discovery command: \(command)") }
+        return script
+    }
+
     func setWindowsGitRoots(_ roots: [String: String]) {
         windowsGitRoots = roots
     }
@@ -550,6 +594,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
                 } else {
                     unansweredRuns.append((socket, request.id))
                 }
+            case "terminal.put":
+                answerPut(request, on: socket)
             case "templates.list":
                 if let templateList { try? await socket.reply(to: request.id, result: templateList) }
             case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
@@ -629,6 +675,54 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// The next `terminal.attach` answers with this error kind.
     func refuseNextAttach(kind: String) {
         attachRefusals.append(kind)
+    }
+
+    /// The next `terminal.put` answers with this error kind.
+    func refuseNextPut(kind: String) {
+        putRefusals.append(kind)
+    }
+
+    /// The next `terminal.put` is received and never answered.
+    func holdNextPutReply() {
+        isHoldingNextPutReply = true
+    }
+
+    func setNextPutByteCount(_ count: Int) {
+        nextPutByteCount = count
+    }
+
+    /// As herdr-core 0.1.16: past 8 MiB it refuses, a taken name gets `-2`, and the
+    /// file lands in the Terminal's own folder.
+    private func answerPut(
+        _ request: (id: String, method: String, params: JSONValue), on socket: FakeCoreSocket
+    ) {
+        let contents = Data(base64Encoded: request.params["data"]?.stringValue ?? "") ?? Data()
+        let terminal = request.params["terminal"]?.stringValue ?? ""
+        let name = request.params["name"]?.stringValue ?? ""
+        let earlier = puts.filter { $0.terminal == terminal && $0.name == name }.count
+        puts.append((terminal, name, contents))
+        if isHoldingNextPutReply {
+            isHoldingNextPutReply = false
+            return
+        }
+        let refusal = putRefusals.isEmpty ? nil : putRefusals.removeFirst()
+        let byteCount = nextPutByteCount ?? contents.count
+        nextPutByteCount = nil
+        let stem = (name as NSString).deletingPathExtension
+        let fileExtension = (name as NSString).pathExtension
+        let landed = earlier == 0 ? name : "\(stem)-\(earlier + 1).\(fileExtension)"
+        let path = #"C:\Users\me\AppData\Local\herdr-core\work\files\"# + terminal + #"\"# + landed
+        Task {
+            if let refusal {
+                try? await socket.replyError(to: request.id, kind: refusal)
+            } else if contents.count > 8 * 1024 * 1024 {
+                try? await socket.replyError(to: request.id, kind: "invalid_params")
+            } else {
+                try? await socket.reply(
+                    to: request.id,
+                    result: .object(["path": .string(path), "bytes": .number(Double(byteCount))]))
+            }
+        }
     }
 
     /// What an attach gets right after its answer from here on, as a real core
