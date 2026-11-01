@@ -218,18 +218,15 @@ confirm or refine these points with test clients, not the app.
   elevated SSH token. What a Terminal's program reads and prints still changes
   past the link (0x00 in, lone bytes of 0x80 or above, a bare LF), as it did
   locally.
-- **Unverified, and it blocks calling #587's link proven for the normal case:**
-  whether the pipe of a core started at medium integrity admits an elevated SSH
-  token. In that round the core's own token read elevated, so the only entry
-  observed is elevated client on elevated core, on a pipe labelled High. By
-  source (`pipe_security`, v0.1.16) a core that is not elevated labels its pipe
-  medium with the same account in the DACL, which should admit a High client of
-  that account, but no run shows it. Conversely, a core started elevated is
-  out of reach of a normal desktop client, by that source. Before #587 relies on
-  this, the owner starts the check's core from a window that is confirmed not
-  elevated and the connect is repeated. A stopped core was read through sshd,
-  and it left `core.lock` naming the pipe, with the pipe check reading absent
-  and no core process appearing.
+- An elevated SSH token enters a medium-integrity core's pipe, on that machine:
+  a core whose own token read medium, started from a window that was checked,
+  took `connect`, ran Terminals at medium integrity, passed a Terminal's input
+  and output and its exit code, and stopped on `server stop` over the same
+  exec. The frame byte checks above ran on an elevated core and were not
+  repeated on this one. Conversely, a core started elevated is out of reach of a
+  normal desktop client, by source (`pipe_security`, v0.1.16); that was not
+  tried. A stopped core was read through sshd, and it left `core.lock` naming
+  the pipe, with the pipe check reading absent and no core process appearing.
 - A viewer granting credit for every frame can still get a repaint instead of
   the bytes: a program writing about 6 MiB at once reached the Mac end as
   2,196,107 bytes with gaps, and a client on the pipe got all of it. #587's
