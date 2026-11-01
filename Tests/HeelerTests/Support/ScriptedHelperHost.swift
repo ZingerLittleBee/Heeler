@@ -3,10 +3,11 @@ import Foundation
 
 @testable import Heeler
 
-/// A Linux Host for the Host Helper, without SSH or a shell: an in-memory file
-/// tree and a scripted systemd. It acts on each script's step, as the real
-/// scripts do in `scripts/test-host-helper-scripts.py`, and keeps every script's
-/// text and every file write, in order, for tests to read.
+/// A Linux Host, or with `macOS` a Mac, for the Host Helper, without SSH or a
+/// shell: an in-memory file tree and a scripted systemd or launchd. It acts on
+/// each script's step, as the real scripts do in
+/// `scripts/test-host-helper-scripts.py`, and keeps every script's text and every
+/// file write, in order, for tests to read.
 actor ScriptedHelperHost: HostHelperHost {
     struct File: Equatable, Sendable {
         var contents: Data
@@ -20,6 +21,23 @@ actor ScriptedHelperHost: HostHelperHost {
     static let unit = "/home/me/.config/systemd/user/heeler-host-helper.service"
     static let unitLink = "/home/me/.config/systemd/user/default.target.wants/heeler-host-helper.service"
     static let node = "/home/me/.volta/tools/node/22.1.0/bin/node"
+
+    static let macHome = "/Users/me"
+    static let macHelperDirectory = "/Users/me/Library/Application Support/heeler/host-helper"
+    static let launchAgent = "/Users/me/Library/LaunchAgents/dev.bybee.heeler.host-helper.plist"
+    static let macDomain = "user/501"
+    static let macService = "user/501/dev.bybee.heeler.host-helper"
+
+    /// launchd holds the agent.
+    var agentLoaded = false
+    /// What the next reads of `launchctl print` answer, as real outputs. Past
+    /// these, a loaded agent reads as running under `agentPid`.
+    var launchctlPrints: [String] = []
+    var agentPid = 1116
+    /// `bootstrap` answers this, as launchd does for a copy another domain holds.
+    var bootstrapRefusal: (status: Int32, message: String)?
+    /// `bootout` answers this, whatever launchd holds.
+    var bootoutRefusal: (status: Int32, message: String)?
 
     var platform = HostPlatform.posix
     var kernel = "Linux"
@@ -65,6 +83,24 @@ actor ScriptedHelperHost: HostHelperHost {
     init() {
         for folder in ["/home", Self.home] { folders[folder] = 0o755 }
     }
+
+    /// A Mac with Application Support and no LaunchAgents folder yet.
+    static func macOS() async -> ScriptedHelperHost {
+        let host = ScriptedHelperHost()
+        await host.becomeMac()
+        return host
+    }
+
+    private func becomeMac() {
+        kernel = "Darwin"
+        node = .found(path: "/opt/homebrew/bin/node")
+        folders = [:]
+        seedFolder("\(Self.macHome)/Library/Application Support")
+    }
+
+    private var isMac: Bool { kernel == "Darwin" }
+    private var homeDirectory: String { isMac ? Self.macHome : Self.home }
+    private var helperDirectory: String { isMac ? Self.macHelperDirectory : Self.helperDirectory }
 
     func configure(_ change: @Sendable (isolated ScriptedHelperHost) -> Void) {
         change(self)
@@ -186,6 +222,11 @@ actor ScriptedHelperHost: HostHelperHost {
             } else {
                 applySystemctl(arguments)
             }
+        case .launchctl(let arguments):
+            let answer = applyLaunchctl(arguments)
+            lines = answer.lines
+            status = answer.status
+            stderr = answer.stderr
         case .enableLinger:
             if let lingerRefusal {
                 status = 1
@@ -209,7 +250,7 @@ actor ScriptedHelperHost: HostHelperHost {
     /// Acts as the Usage script does: it checks the Helper's files, makes the
     /// session's folder, and has no report without the record's Node.js path.
     private func usageBody(session: String) -> String {
-        let directory = Self.helperDirectory
+        let directory = helperDirectory
         guard files["\(directory)/app/main.js"] != nil else { return "helper-absent" }
         guard files["\(directory)/app/usage-query.js"] != nil else { return "helper-outdated" }
         folders["\(directory)/sessions"] = 0o700
@@ -255,6 +296,41 @@ actor ScriptedHelperHost: HostHelperHost {
         }
     }
 
+    /// launchd's answers, by the spike's records (`docs/agents/herdr-compatibility.md`).
+    private func applyLaunchctl(_ arguments: [String]) -> (lines: [String], status: Int32, stderr: String) {
+        let notFound = "Bad request.\nCould not find service"
+        switch arguments.first {
+        case "print":
+            let read = printAnswer()
+            return read.status == 0 ? (read.text.components(separatedBy: "\n"), 0, "") : ([], read.status, read.text)
+        case "bootstrap":
+            if let bootstrapRefusal { return ([], bootstrapRefusal.status, bootstrapRefusal.message) }
+            guard arguments.count == 3, arguments[1] == Self.macDomain, let list = files[arguments[2]]?.contents,
+                let agent = try? PropertyListSerialization.propertyList(from: list, format: nil) as? [String: Any],
+                agent["LimitLoadToSessionType"] as? String == "Background"
+            else { return ([], 5, "Bootstrap failed: 5: Input/output error") }
+            agentLoaded = true
+            return ([], 0, "")
+        case "bootout":
+            if let bootoutRefusal { return ([], bootoutRefusal.status, bootoutRefusal.message) }
+            guard agentLoaded, arguments.count == 2, arguments[1] == Self.macService else {
+                return ([], HostHelperHealth.launchctlNotLoadedStatus, notFound)
+            }
+            agentLoaded = false
+            return ([], 0, "")
+        default:
+            return ([], 64, "Unrecognized subcommand")
+        }
+    }
+
+    private func printAnswer() -> (text: String, status: Int32) {
+        if !launchctlPrints.isEmpty { return (launchctlPrints.removeFirst(), 0) }
+        guard agentLoaded else {
+            return ("Bad request.\nCould not find service", HostHelperHealth.launchctlNotLoadedStatus)
+        }
+        return ("\(Self.macService) = {\n\tstate = running\n\truns = 1\n\tpid = \(agentPid)\n\tlast exit code = (never exited)\n}", 0)
+    }
+
     /// What `extensions/extension-folders.js` prints, whose own tests are Node's.
     private func extensionFoldersLine(home: String) -> String {
         let profiles = "\(home)/.omp/profiles"
@@ -272,7 +348,8 @@ actor ScriptedHelperHost: HostHelperHost {
     }
 
     private func locationLines() -> [String] {
-        ["home \(Self.home)", "data \(Self.home)/.local/share", "config \(Self.home)/.config"]
+        let data = isMac ? "Library/Application Support" : ".local/share"
+        return ["home \(homeDirectory)", "data \(homeDirectory)/\(data)", "config \(homeDirectory)/.config"]
     }
 
     private func hashLines(root: String) -> [String] {
@@ -291,19 +368,25 @@ actor ScriptedHelperHost: HostHelperHost {
         case .tooOld(let version): lines.append("node-old \(version)")
         case .missing: lines.append("node-missing")
         }
-        lines.append("linger \(lingerOn ? "yes" : "no")")
-        if !hasSystemd {
-            lines.append("no-systemd")
+        if isMac {
+            lines.append("uid 501")
+            if files[Self.launchAgent] != nil { lines.append("launch-agent-file") }
+            let read = printAnswer()
+            lines.append("launchd-exit \(read.status)")
+            lines += read.text.components(separatedBy: "\n").map { "launchd \($0)" }
+        } else if !hasSystemd {
+            lines += ["linger \(lingerOn ? "yes" : "no")", "no-systemd"]
         } else if !userManagerReachable {
-            lines.append("unit-unreachable")
+            lines += ["linger \(lingerOn ? "yes" : "no")", "unit-unreachable"]
         } else {
             let loaded = files[Self.unit] != nil
             lines += [
+                "linger \(lingerOn ? "yes" : "no")",
                 "unit LoadState=\(loaded ? "loaded" : "not-found")", "unit ActiveState=\(activeState)",
                 "unit Result=\(result)", "unit NRestarts=\(restarts)",
             ]
         }
-        let directory = Self.helperDirectory
+        let directory = helperDirectory
         if let record = files["\(directory)/installed.json"] { lines.append("record \(Self.hex(record.contents))") }
         let app = "\(directory)/app"
         if folders[app] != nil {
@@ -328,6 +411,7 @@ actor ScriptedHelperHost: HostHelperHost {
         case .hashTree: "hashTree"
         case .promote: "promote"
         case .systemctl(let arguments): "systemctl \(arguments.joined(separator: " "))"
+        case .launchctl(let arguments): "launchctl \(arguments.joined(separator: " "))"
         case .enableLinger: "enableLinger"
         case .removeFiles(let paths): "removeFiles \(paths.joined(separator: " "))"
         case .removeEmptyFolders(let paths): "removeEmptyFolders \(paths.joined(separator: " "))"

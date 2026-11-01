@@ -24,6 +24,8 @@ struct HostHelperInstallPlan: Sendable, Equatable {
     let layout: HostHelperLayout
     let replacesHelper: Bool
     let nodePath: String
+    /// Names launchd's domain on a Mac.
+    let uid: String
 
     init(reading: HostHelperReading, bundle: HostHelperBundle) throws {
         if case .newer(let version) = reading.integrity {
@@ -36,6 +38,8 @@ struct HostHelperInstallPlan: Sendable, Equatable {
         guard let extensionFolders = reading.probe?.extensionFolders else {
             throw HostHelperError.extensionFoldersUnreadable
         }
+        uid = reading.probe?.uid ?? ""
+        if layout.manager == .launchd, uid.isEmpty { throw HostHelperError.unreadableHost }
         self.layout = layout
         self.nodePath = nodePath
         self.extensionFolders = extensionFolders.map(\.path)
@@ -53,29 +57,82 @@ struct HostHelperInstallPlan: Sendable, Equatable {
     }
 
     /// Files written outside the Helper directory, which the record lists.
-    var outsideFiles: [String] { [layout.unit, layout.unitWantsLink] + extensionFiles }
+    var outsideFiles: [String] { layout.serviceFiles + extensionFiles }
 
     /// Every folder the install needs, parents first.
     var folderChain: [String] { layout.folderChain(reaching: extensionFolders) }
 
     /// Every file the install leaves on the Host.
     var files: [String] {
-        (helperFiles.map { "\(layout.app)/\($0)" } + [layout.record] + outsideFiles).sorted()
+        let log = layout.manager == .launchd ? [layout.log] : []
+        return (helperFiles.map { "\(layout.app)/\($0)" } + [layout.record] + log + outsideFiles).sorted()
     }
 
     var unitText: String {
         HostHelperUnit.text(nodePath: nodePath, mainPath: layout.main)
     }
+
+    func launchAgentPropertyList() throws -> Data {
+        try HostHelperLaunchAgent.propertyList(nodePath: nodePath, mainPath: layout.main, logPath: layout.log)
+    }
 }
 
-/// Installs, reads and removes the Host Helper on a Linux Host (ADR 0033). Every
-/// step is one script or one SFTP write through `HostHelperHost`.
+/// Installs, reads and removes the Host Helper on a Linux or macOS Host (ADR
+/// 0033). Every step is one script or one SFTP write through `HostHelperHost`.
 struct HostHelperInstaller: Sendable {
     let host: any HostHelperHost
     var nonce: @Sendable () -> String = { UUID().uuidString }
     /// Holds the script a read runs to find the extension folders.
     var bundle: @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() }
+    /// The wait between two reads of a LaunchAgent's health.
+    var healthGap: @Sendable () async throws -> Void = { try await Task.sleep(for: HostHelperLaunchAgent.healthGap) }
 
+    /// What Host detail and the install sheet show: the Helper's health as far
+    /// as this Host can tell, which on a Mac takes reads over ten seconds apart.
+    func check() async throws -> HostHelperReading {
+        try await confirmingHealth(of: try await readLoadingAgent())
+    }
+
+    /// One read, after loading a LaunchAgent that a restart of the Mac left out.
+    /// A failure to load reads back as what it is, and nothing here asks twice.
+    func readLoadingAgent() async throws -> HostHelperReading {
+        let reading = try await read()
+        guard reading.agentNeedsLoading, let probe = reading.probe, let layout = reading.layout else { return reading }
+        _ = try? await run(.launchctl(["bootstrap", HostHelperLaunchAgent.domain(uid: probe.uid), layout.launchAgent]))
+        return try await read()
+    }
+
+    /// Two reads over ten seconds apart, both `running` with one pid, call a
+    /// LaunchAgent running (ADR 0033). A first read caught between two runs says
+    /// nothing against the two after it, so a run that has only just begun gets
+    /// one more. Anything that dies at start never gets that pair.
+    private func confirmingHealth(of reading: HostHelperReading) async throws -> HostHelperReading {
+        guard reading.awaitsSecondHealthRead, var probe = reading.probe, var health = probe.health else {
+            return reading
+        }
+        var staysRunning = false
+        for _ in 0..<2 {
+            try await healthGap()
+            let later = try await readLaunchdHealth(uid: probe.uid)
+            staysRunning = health.isSameRun(as: later)
+            health = later
+            if staysRunning || later.activeState != "running" { break }
+        }
+        if health.launchd != nil { health.launchd?.staysRunning = staysRunning }
+        probe.health = health
+        return HostHelperReading(probe: probe, bundled: reading.bundled)
+    }
+
+    private func readLaunchdHealth(uid: String) async throws -> HostHelperHealth {
+        let script = HostHelperScript(.launchctl(["print", HostHelperLaunchAgent.service(uid: uid)]), nonce: nonce())
+        let result = try await host.runHostHelperScript(script)
+        guard let lines = try? HostHelperProbe.framedLines(stdout: result.stdout, nonce: script.nonce) else {
+            throw HostHelperError.unreadableHost
+        }
+        return HostHelperHealth(launchctlPrint: lines.joined(separator: "\n"), exitStatus: result.exitStatus)
+    }
+
+    /// One read that changes nothing on the Host.
     func read() async throws -> HostHelperReading {
         if try await host.hostPlatform() == .nativeWindows {
             return HostHelperReading(probe: nil)
@@ -122,9 +179,10 @@ struct HostHelperInstaller: Sendable {
         let previous = reading.probe?.record.flatMap {
             try? JSONDecoder().decode(HostHelperInstallRecord.self, from: $0)
         }
-        let record = (previous ?? HostHelperInstallRecord(files: [], folders: []))
+        var record = (previous ?? HostHelperInstallRecord(files: [], folders: []))
             // The Helper directory goes as a whole, at the end of a removal.
             .merged(files: plan.outsideFiles, folders: created.filter { $0 != layout.directory })
+        if layout.manager == .launchd { record.launchAgentLabel = HostHelperLaunchAgent.label }
         do {
             try await write(
                 try Self.encoded(record), to: layout.record, in: layout.directory, step: "Writing the install record")
@@ -139,8 +197,13 @@ struct HostHelperInstaller: Sendable {
         for file in plan.extensionFiles {
             try await write(extensionText, to: file, in: nil, step: "Placing the Pi and Oh My Pi extensions")
         }
-        try await write(Data(plan.unitText.utf8), to: layout.unit, in: nil, step: "Writing the service unit")
-        try await startService()
+        switch layout.manager {
+        case .systemd:
+            try await write(Data(plan.unitText.utf8), to: layout.unit, in: nil, step: "Writing the service unit")
+            try await startService()
+        case .launchd:
+            try await startLaunchAgent(plan)
+        }
 
         let after = try await read()
         if plan.replacesHelper, after.probe.map({ bundle.manifest.matches($0.hashes) }) != true {
@@ -149,9 +212,9 @@ struct HostHelperInstaller: Sendable {
         return after
     }
 
-    /// Disables and stops the service, deletes the recorded files and then the
-    /// created folders that are now empty, and finally the Helper directory with
-    /// its registrations and seen marks. Linger stays as it is.
+    /// Stops the service, deletes the recorded files and then the created folders
+    /// that are now empty, and finally the Helper directory with its registrations
+    /// and seen marks. Linger stays as it is.
     func remove(over reading: HostHelperReading) async throws {
         guard reading.unsupportedPlatform == nil, let probe = reading.probe, let layout = reading.layout else {
             throw HostHelperError.unsupportedPlatform
@@ -159,18 +222,24 @@ struct HostHelperInstaller: Sendable {
         let record = probe.record.flatMap { try? JSONDecoder().decode(HostHelperInstallRecord.self, from: $0) }
             // With no record, only the files that are certainly Heeler's.
             ?? HostHelperInstallRecord(
-                files: [layout.unit, layout.unitWantsLink]
+                files: layout.serviceFiles
                     + (probe.extensionFolders ?? []).map { "\($0.path)/\(HostHelperScript.extensionFileName)" },
                 folders: [])
 
-        // No user manager means nothing runs, and nothing can be asked to stop.
-        if let health = probe.health, health.isLoaded {
-            try await systemctl(["disable", "--now", HostHelperScript.unitName], step: "Stopping the service")
-        }
-        try await check(.removeFiles(record.safeFiles), step: "Deleting the files")
-        if probe.health != nil {
-            _ = try await run(.systemctl(["daemon-reload"]))
-            _ = try await run(.systemctl(["reset-failed", HostHelperScript.unitName]))
+        switch layout.manager {
+        case .systemd:
+            // No user manager means nothing runs, and nothing can be asked to stop.
+            if let health = probe.health, health.isLoaded {
+                try await systemctl(["disable", "--now", HostHelperScript.unitName], step: "Stopping the service")
+            }
+            try await check(.removeFiles(record.safeFiles), step: "Deleting the files")
+            if probe.health != nil {
+                _ = try await run(.systemctl(["daemon-reload"]))
+                _ = try await run(.systemctl(["reset-failed", HostHelperScript.unitName]))
+            }
+        case .launchd:
+            try await bootOutLaunchAgent(label: record.launchAgentLabel, uid: probe.uid)
+            try await check(.removeFiles(record.safeFiles), step: "Deleting the files")
         }
         let folders = record.safeFolders.sorted(by: Self.deepestFirst)
         try await check(
@@ -184,7 +253,7 @@ struct HostHelperInstaller: Sendable {
     /// Asks once and never waits for a password: a Host that wants an
     /// administrator refuses here, and the user reads why.
     func turnOnLinger(over reading: HostHelperReading) async throws {
-        guard let probe = reading.probe else { throw HostHelperError.unsupportedPlatform }
+        guard let probe = reading.probe, probe.manager == .systemd else { throw HostHelperError.unsupportedPlatform }
         let result = try await run(.enableLinger(user: probe.user))
         guard result.exitStatus == 0 else {
             throw HostHelperError.lingerRefused(user: probe.user, detail: Self.detail(of: result))
@@ -257,6 +326,51 @@ struct HostHelperInstaller: Sendable {
         try await systemctl(["enable", HostHelperScript.unitName], step: "Enabling the service")
         try await systemctl(["restart", HostHelperScript.unitName], step: "Starting the service")
     }
+
+    /// The property list with the Node.js the Host has now, and an empty log
+    /// that is private from the start and stays so as launchd appends to it.
+    /// `bootout` then `bootstrap`, and never `kickstart`, which blocked for minutes
+    /// in the VM when the agent could not run (ADR 0033). The `bootout` has nothing
+    /// to stop on a first install, and whatever else keeps a copy loaded shows in
+    /// the `bootstrap`'s answer.
+    private func startLaunchAgent(_ plan: HostHelperInstallPlan) async throws {
+        let layout = plan.layout
+        try await write(Data(), to: layout.log, in: layout.directory, step: "Creating the log")
+        let list: Data
+        do {
+            list = try plan.launchAgentPropertyList()
+        } catch {
+            throw HostHelperError.stepFailed(step: "Writing the property list", detail: "\(error)")
+        }
+        try await write(list, to: layout.launchAgent, in: nil, step: "Writing the property list")
+        _ = try await run(.launchctl(["bootout", HostHelperLaunchAgent.service(uid: plan.uid)]))
+        let result = try await run(
+            .launchctl(["bootstrap", HostHelperLaunchAgent.domain(uid: plan.uid), layout.launchAgent]))
+        guard result.exitStatus == 0 else {
+            var detail = Self.detail(of: result)
+            if result.exitStatus == Self.bootstrapRefused {
+                detail += " launchd answers this for more than one cause, such as another copy already loaded."
+            }
+            throw HostHelperError.stepFailed(step: "Starting the service", detail: detail)
+        }
+    }
+
+    /// A LaunchAgent already gone is what this asked for. Other answers stop the
+    /// removal before it deletes anything, since launchd would go on restarting
+    /// an agent whose files have gone.
+    private func bootOutLaunchAgent(label: String?, uid: String) async throws {
+        guard !uid.isEmpty else { throw HostHelperError.unreadableHost }
+        let service = "\(HostHelperLaunchAgent.domain(uid: uid))/\(label ?? HostHelperLaunchAgent.label)"
+        let result = try await run(.launchctl(["bootout", service]))
+        guard Self.bootoutDone.contains(result.exitStatus) else {
+            throw HostHelperError.stepFailed(step: "Stopping the service", detail: Self.detail(of: result))
+        }
+    }
+
+    /// `launchctl bootstrap`'s "Input/output error", which has several causes.
+    private static let bootstrapRefused: Int32 = 5
+    /// Stopped now, or nothing to stop.
+    private static let bootoutDone: Set<Int32> = [0, 3, HostHelperHealth.launchctlNotLoadedStatus]
 
     private func systemctl(_ arguments: [String], step: String) async throws {
         try await check(.systemctl(arguments), step: step)

@@ -83,6 +83,9 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
             let retryAt: String?
             let plan: String?
             let windows: [Window]?
+
+            /// `keychainUnavailable` as read through the Host Helper.
+            static let keychainNeedsUserLogin = "keychainNeedsUserLogin"
         }
         let program: String
         let tokenUsage: TokenUsage
@@ -242,6 +245,30 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
     /// turned on failed; they read as failed, not as still being read.
     func failedClaudeLimits() -> Self {
         replacingClaudeLimits(state: "error", reason: "requestFailed")
+    }
+
+    /// The Helper's reading of a Mac's login keychain says the same as the
+    /// plugin's, but a core Host has no herdr to start from a terminal, and only
+    /// the user's own login reaches that keychain (ADR 0033).
+    func readThroughHostHelper() -> Self {
+        func named(_ limits: Program.UsageLimits) -> Program.UsageLimits {
+            guard limits.reason == "keychainUnavailable" else { return limits }
+            return Program.UsageLimits(
+                state: limits.state, reason: Program.UsageLimits.keychainNeedsUserLogin, source: limits.source,
+                observedAt: limits.observedAt, retryAt: limits.retryAt, plan: limits.plan, windows: limits.windows)
+        }
+        var report = self
+        report.programs = programs?.map { program in
+            var replaced = program
+            replaced.usageLimits = named(program.usageLimits)
+            replaced.accounts = program.accounts?.map { account in
+                var replaced = account
+                replaced.usageLimits = account.usageLimits.map(named)
+                return replaced
+            }
+            return replaced
+        }
+        return report
     }
 
     /// Every Account's limits follow the program's: the toggle covers them

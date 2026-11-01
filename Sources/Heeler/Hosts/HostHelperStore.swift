@@ -37,15 +37,20 @@ final class HostHelperStore {
     @ObservationIgnored private let connect: @Sendable () async throws -> any HerdrCoreTransport
     @ObservationIgnored private let bundle: @Sendable () throws -> HostHelperBundle
     @ObservationIgnored private let nonce: @Sendable () -> String
+    @ObservationIgnored private let healthGap: @Sendable () async throws -> Void
 
     init(
         connect: @escaping @Sendable () async throws -> any HerdrCoreTransport,
         bundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
-        nonce: @escaping @Sendable () -> String = { UUID().uuidString }
+        nonce: @escaping @Sendable () -> String = { UUID().uuidString },
+        healthGap: @escaping @Sendable () async throws -> Void = {
+            try await Task.sleep(for: HostHelperLaunchAgent.healthGap)
+        }
     ) {
         self.connect = connect
         self.bundle = bundle
         self.nonce = nonce
+        self.healthGap = healthGap
     }
 
     var status: HostHelperStatus? {
@@ -86,6 +91,14 @@ final class HostHelperStore {
 
     var offersLinger: Bool {
         if case .read(let reading) = reading { reading.offersLinger } else { false }
+    }
+
+    /// What the removal's confirmation says. A Mac has no linger to leave.
+    var removalMessage: String {
+        if case .read(let reading) = reading, reading.probe?.manager == .launchd {
+            return HostHelperSheet.macOSRemovalMessage
+        }
+        return HostHelperSheet.removalMessage
     }
 
     /// A preflight has begun. What the Host last said no longer answers for it,
@@ -162,7 +175,7 @@ final class HostHelperStore {
 
     private func read(over transport: any HerdrCoreTransport) async {
         do {
-            let read = try await installer(transport).read()
+            let read = try await installer(transport).check()
             if !Task.isCancelled { adopt(read) }
         } catch {
             if !Task.isCancelled { forgetReading(.unavailable(message: Self.message(for: error))) }
@@ -220,7 +233,7 @@ final class HostHelperStore {
     }
 
     private func installer(_ transport: any HerdrCoreTransport) -> HostHelperInstaller {
-        HostHelperInstaller(host: transport.hostHelperHost, nonce: nonce, bundle: bundle)
+        HostHelperInstaller(host: transport.hostHelperHost, nonce: nonce, bundle: bundle, healthGap: healthGap)
     }
 
     private static func message(for error: any Error) -> String {

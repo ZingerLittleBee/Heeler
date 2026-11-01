@@ -36,7 +36,8 @@ None came from a personal session.
 | `grok/failed-tools.jsonl` | Written for the test, not captured: one turn of failed calls, a `tool_execution_failed` error, the tagged failures `FileNotFound`, `FileTooLarge`, `NotADirectory`, `NotFound`, `NoMatchesFound`, `MultipleMatchesFound` and `InvalidInput`, and an MCP call that returned an error. The records take the shapes a census of real failures found; some carry no content |
 
 `host-evidence/` is a separate recording, for the herdr-core session binding of
-ADR 0034, and no test reads it yet. It came from a throwaway Linux VM on
+ADR 0034, and the Pi and Oh My Pi binder tests read its `pi` and `omp` folders
+through `PiHostEvidence`. It came from a throwaway Linux VM on
 2026-11-01 with herdr-core 0.1.13 and a local fake model behind a dummy key.
 Nothing was signed in and it is not from hc-lab, so an account could change
 what it shows; `docs/agents/herdr-compatibility.md` says how for each program.

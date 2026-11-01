@@ -256,6 +256,32 @@ the facts they took on trust, so correct
 | No polling | With the Host's sshd logging exec requests, keep Chat open on an idle Agent for five minutes | No exec during that time. One status change costs one exec and one read of `sessions/<pid>.json` |
 | Off elsewhere | A Codex Agent on this box, and a Claude Code Agent on a macOS core Host | Neither offers Chat |
 
+## Pi and Oh My Pi Chat
+
+Each program's Chat stays off until its check here passes: add it to
+`HostCapabilities.confirmedCoreChatPrograms` only then. Until then, use a debug build
+with that set widened for the run, and do not commit that edit. Sign Pi and Oh My Pi in
+on hc-lab, and install the Host Helper first unless a step says otherwise. Record each
+program's version and result as a versioned observation in
+[herdr compatibility](../agents/herdr-compatibility.md), keep what differs from the
+recordings beside `Tests/HeelerTests/ChatFixtures/host-evidence`, and update the
+Unverified list in [ADR 0034](../adr/0034-herdr-core-chat-binds-sessions-from-host-evidence.md).
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Started by Heeler | Start Pi, then Oh My Pi, from New Agent, send one message, open Chat | The conversation shows. The Terminal has the label `heeler.session` with `file`, `pid` and `start` |
+| `hc run` | Start each with `hc run`, send one message, open Chat | The same conversation binding, from the extension alone. No launch label |
+| Template | Start each from a Template, send one message, open Chat | The same |
+| `/new` | In an open Chat, run `/new` in the terminal and send one message | The new conversation shows by the next check |
+| Own folders | Start Pi with `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR` naming scratch folders, Oh My Pi with `OMP_PROFILE` and with `PI_CONFIG_DIR`, while the default folders hold other sessions | Chat reads from the Agent's folder, not the default one |
+| Pi without the extension | Remove the Helper, start Pi from New Agent, open Chat, then send one message from the terminal | Chat waits, then shows the conversation. Now run `/new`: it stays on the old conversation |
+| Pi by hand, no extension | With the Helper still removed, start `pi` from a shell and from a Template | **Can't Tell the Conversation**, and the message names the Host Helper. Nothing binds from the folder |
+| Oh My Pi without the extension | With the Helper still removed, start `omp` and open Chat before the first message | **Can't Tell the Conversation**. Send one message: it binds only once `/proc/<pid>/fd` holds the file `terminal-sessions/pts-<n>` names. Record how long that took |
+| Reused terminal name | Exit that `omp` and leave its breadcrumb. Start `omp` again on the same terminal name, before a message | Nothing binds to the earlier session |
+| Security scan | With an OAuth account, run Oh My Pi's security scan, then a check | Record whether the breadcrumb goes back to the session. Chat must not show the scan's file as the conversation |
+| Stale label | Set `heeler.session` with `terminal.label`, holding another pid, then open Chat | The label is gone and Chat does not show its session |
+| One read per check | With the Host's sshd logging exec requests, open Chat on an idle Agent | One exec and at most one read per check, and nothing while idle. No `HERDR_*` variable changes the result |
+
 ## Chat typing
 
 Use the same box and Claude Code as [Chat evidence](#chat-evidence). The tests read
@@ -474,6 +500,26 @@ besides the default (`omp --profile work` makes one).
 Every step must leave the core as it found it: the Helper only ever follows a core,
 and never starts one. The extensions only ever write the one label on their own
 Terminal.
+
+### The Helper on macOS
+
+This one needs a Mac, not hc-lab: the Mac Host you have named for the run, with
+Node.js and no earlier Helper. Before installing, save
+`cd ~; find Library/LaunchAgents "Library/Application Support/heeler" .pi .omp -print 2>/dev/null | sort`,
+and read the steps in `launchctl print user/$(id -u)/dev.bybee.heeler.host-helper`
+as the agent.
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| Install | Tap **Host Helper**, read the sheet, and tap **Install** | The sheet has no linger row, and it lists every file, the property list and `helper.log` included, and those are the files on the Host. `state = running` with the absolute Node.js path in `program`, `domain = user/<uid>` |
+| Privacy | `ls -la` the Helper directory, its `app` folder and the property list | Directories `0700`, files `0600`, the log still `0600` after the agent has written to it |
+| Log out | End every SSH session, and log out of the desktop if someone is logged in. Wait a minute, and SSH back | The same `pid`, and `runs` unchanged |
+| Kill | `kill -9` the agent's `pid` | A new `pid` and a higher `runs`, and the row still reads the version |
+| Node.js moved | Rename the Node.js executable the property list names, kill the agent, and check the Host | `state = spawn scheduled`, `last exit code = 78: EX_CONFIG`, and the row reads **Service Failed** or **Node.js Missing**. Restore Node.js and tap **Repair**: it runs again |
+| Restart | Restart the Mac, wait for sshd, and read the agent before opening Heeler | Write down whether anything loaded it (in a VM of macOS 26.5, nothing did). Open the Host's detail: the agent runs, without an install |
+| Background notice | Read the desktop's notifications and Login Items | Write down what it says, and what turning the entry off does (not tried yet) |
+| Usage Limits | With Claude Code signed in with an account of the Mac's own, turn on Usage Limits for the Host | They read that they need your own login on this Mac, with Token Usage still counting |
+| Remove | Tap **Remove** and confirm | `launchctl print` answers 113, no agent process is left, and the saved listing matches again |
 
 ### The Helper and the core
 

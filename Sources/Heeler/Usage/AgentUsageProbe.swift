@@ -91,7 +91,7 @@ enum AgentUsageProbe {
         switch String(decoding: body, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) {
         case "helper-absent": throw AgentUsageHostHelperNeed.notInstalled
         case "helper-outdated": throw AgentUsageHostHelperNeed.outdated
-        default: return try AgentUsageReport.decode(body)
+        default: return try AgentUsageReport.decode(body).readThroughHostHelper()
         }
     }
 

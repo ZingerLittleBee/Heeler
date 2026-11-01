@@ -12,11 +12,13 @@ enum PiTranscriptUnavailable: Error, Equatable, Sendable {
 /// Pi and OMP integrations normally report the exact session file. Older
 /// integrations may report its UUID instead: search only the program's own
 /// session root, validating the header rather than choosing the newest file.
+/// On herdr-core the Agent's own environment names that root (ADR 0034), and it
+/// is the one place searched, with no fallback to the Host's default.
 struct PiTranscriptLocator: Sendable {
     let files: ChatHostFiles
     var directoryBudget = 200
 
-    func locate(reference: ConversationReference, directories: [String]) async throws
+    func locate(reference: ConversationReference, directories: [String], sessionsRoot: String? = nil) async throws
         -> Result<String, PiTranscriptUnavailable>
     {
         guard reference.program == .pi || reference.program == .omp else { return .failure(.mismatched) }
@@ -28,10 +30,12 @@ struct PiTranscriptLocator: Sendable {
         }
         guard let id = ConversationReference.canonicalUUID(reference.sessionID) else { return .failure(.mismatched) }
         let home = try await files.home()
-        let root = RemoteFilePath.join(home, reference.program == .pi ? ".pi" : ".omp", "agent", "sessions")
+        let root = sessionsRoot ?? RemoteFilePath.join(home, reference.program == .pi ? ".pi" : ".omp", "agent", "sessions")
         var queue = directories.filter(RemoteFilePath.isAcceptable).map { directory in
             RemoteFilePath.join(root, Self.projectKey(directory))
         }
+        // A folder from `PI_CODING_AGENT_SESSION_DIR` holds its files directly.
+        if sessionsRoot != nil { queue.append(root) }
         // OMP also uses home-relative keys in recent releases.
         if reference.program == .omp {
             for directory in directories where directory.hasPrefix(home + "/") {
