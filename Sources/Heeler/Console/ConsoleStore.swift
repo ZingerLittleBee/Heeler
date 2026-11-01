@@ -74,6 +74,9 @@ final class ConsoleStore {
     private(set) var hostDesktopAppNaming: [Host.ID: HerdrAppNaming] = [:]
     /// Each core Host's `uname -s`, once a link has located its core.
     private(set) var hostCoreKernels: [Host.ID: String] = [:]
+    /// The core each core Host's inventory comes from. A detail reads it, so it
+    /// redraws once the Host no longer serves the core it opened on.
+    private(set) var hostCores: [Host.ID: String] = [:]
     /// The connection each Host's platform was last asked on.
     @ObservationIgnored private var hostPlatformGenerations: [Host.ID: UInt64] = [:]
 
@@ -413,8 +416,10 @@ final class ConsoleStore {
     /// runner captured by a long-lived Attach screen must follow it there
     /// instead of staying bound to the ended session. Its pipeline keeps to one
     /// core, for a Server Kind that has them, however many projections it sees.
-    func terminalRunner(for hostID: Host.ID) -> TerminalSessionRunner {
-        let pin = TerminalCorePin()
+    func terminalRunner(
+        for hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) -> TerminalSessionRunner {
+        let pin = corePin ?? TerminalCorePin()
         return { [weak self] request, handler in
             guard let runner = await self?.liveTerminalRunner(for: hostID) else {
                 throw TransportError.sshUnreachable(
@@ -422,6 +427,29 @@ final class ConsoleStore {
             }
             try await runner(request, handler.keeping(to: pin))
         }
+    }
+
+    /// A pin naming the core whose inventory this Host shows now, for a detail
+    /// opening on one of its rows. A Herdr TUI Host has no core to name.
+    func coreProjection(on hostID: Host.ID) -> HerdrCoreConsoleProjection? {
+        projections[hostID] as? HerdrCoreConsoleProjection
+    }
+
+    func corePin(on hostID: Host.ID) -> TerminalCorePin {
+        TerminalCorePin(joined: hostCores[hostID])
+    }
+
+    /// Whether this Host has moved on from the core `pin` keeps to. An address then
+    /// means another Terminal, so nothing a detail holding `pin` does may go by it.
+    func hasLeftCore(_ pin: TerminalCorePin?, on hostID: Host.ID) -> Bool {
+        guard let pin, let core = hostCores[hostID] else { return false }
+        return !pin.admits(core)
+    }
+
+    /// What an ended terminal says in a detail that keeps to `corePin`, or nil for
+    /// its own words.
+    func terminalEndedMessage(keepingTo corePin: TerminalCorePin?, on hostID: Host.ID) -> String? {
+        hasLeftCore(corePin, on: hostID) ? TerminalStatusPresentation.coreGoneMessage : nil
     }
 
     /// Late-bound for the same reason as `terminalRunner(for:)`: a retryable
@@ -667,13 +695,21 @@ final class ConsoleStore {
     /// The Agent's screen as herdr renders it now, colors kept
     /// (`agent.read`). Chat reads it around a send instead of the Attach
     /// PTY, which it never touches.
-    func readAgentScreen(_ paneID: String, on hostID: Host.ID) async throws -> ANSIScreen {
-        try await projection(for: hostID).readAgentScreen(paneID)
+    func readAgentScreen(
+        _ paneID: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) async throws -> ANSIScreen {
+        guard !hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+        return try await projection(for: hostID).readAgentScreen(paneID)
     }
 
     /// Presses keys in the Agent's program (`agent.send_keys`): a Blocked
     /// card's answers and the Agent controls, never through the Attach PTY.
-    func sendAgentKeys(_ keys: [String], to paneID: String, on hostID: Host.ID) async throws {
+    func sendAgentKeys(
+        _ keys: [String], to paneID: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) async throws {
+        guard !hasLeftCore(corePin, on: hostID) else {
+            throw HerdrCoreChatTyping.Refusal(message: TransportError.herdrCoreTerminalGone.presentation.message)
+        }
         try await projection(for: hostID).sendAgentKeys(keys, to: paneID)
     }
 
@@ -688,13 +724,20 @@ final class ConsoleStore {
     /// placeholder; retaining the session here keeps its entirely local draft
     /// intact.
     func composerSession(for agent: ConsoleAgent) -> AgentComposerSession {
-        if let existing = composerSessions[agent.id] { return existing }
         let hostID = agent.hostID
+        // Another core's Agent is another Agent. A detail still open on the old
+        // one keeps its own session, which keeps to the old core.
+        if let existing = composerSessions[agent.id] {
+            if !hasLeftCore(existing.corePin, on: hostID) { return existing }
+            existing.leaveStaging()
+        }
+        let corePin = self.corePin(on: hostID)
         let coreSend =
             projections[hostID] is HerdrCoreConsoleProjection
             ? HerdrCoreComposerSend(
                 address: agent.agent.paneID,
                 projection: { [weak self] in self?.projections[hostID] as? HerdrCoreConsoleProjection },
+                corePin: corePin,
                 clock: coreSendClock)
             : nil
         let composer = AgentComposerStore(
@@ -707,7 +750,8 @@ final class ConsoleStore {
             return try await self.promptAgent(params, on: hostID)
         }
         let session = AgentComposerSession(
-            composer: composer, stageImage: imageStager(for: hostID), stageFile: fileStager(for: hostID))
+            composer: composer, stageImage: imageStager(for: hostID), stageFile: fileStager(for: hostID),
+            corePin: corePin)
         composerSessions[agent.id] = session
         requestHostPlatforms(Array(projections.values))
         return session
@@ -719,6 +763,7 @@ final class ConsoleStore {
     /// the shell left behind must not get it. `pressEsc` is Stop on any other Host.
     func terminalInterrupt(
         for agent: ConsoleAgent,
+        keepingTo corePin: TerminalCorePin? = nil,
         pressEsc: @escaping @MainActor () async -> AgentInterruptOutcome
     ) -> AgentComposerInterrupt? {
         guard capabilities(for: agent.hostID).composerStop else { return nil }
@@ -730,6 +775,7 @@ final class ConsoleStore {
         let stop = HerdrCoreComposerStop(
             address: listed.agent.paneID,
             projection: { [weak self] in self?.projections[hostID] as? HerdrCoreConsoleProjection },
+            corePin: corePin ?? TerminalCorePin(),
             clock: coreStopClock)
         return .coreTerminal(forAgentKind: listed.agent.kind) { await stop.perform() }
     }
@@ -989,7 +1035,11 @@ final class ConsoleStore {
         }
     }
 
-    func closePane(_ paneID: String, on hostID: Host.ID) async throws {
+    /// `corePin` is a detail's: a row acts on the inventory it came from.
+    func closePane(
+        _ paneID: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) async throws {
+        guard !hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
         try await projection(for: hostID).closePane(paneID)
     }
 
@@ -1121,9 +1171,10 @@ final class ConsoleStore {
     }
 
     func removeWorktree(
-        _ request: WorktreeRemovalRequest, on hostID: Host.ID
+        _ request: WorktreeRemovalRequest, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws -> WorktreeRemovalReceipt {
-        try await projection(for: hostID).removeWorktree(request)
+        guard !hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+        return try await projection(for: hostID).removeWorktree(request)
     }
 
     /// Where a core Host's close or removal says how it ended once the screen that
@@ -1291,6 +1342,10 @@ final class ConsoleStore {
             uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
                 .compactMap { projection in projection.kernel.map { (projection.host.id, $0) } })
         if hostCoreKernels != nextCoreKernels { hostCoreKernels = nextCoreKernels }
+        let nextCores = Dictionary(
+            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
+                .compactMap { projection in projection.inventoryCore.map { (projection.host.id, $0) } })
+        if hostCores != nextCores { hostCores = nextCores }
         hostConnectionGenerations = Dictionary(
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.transportGeneration)
@@ -1728,7 +1783,10 @@ final class ConsoleStore {
         return GrokBuildProgramStatusEdit.edit(path: path)
     }
 
-    func chatProgram(for agent: ConsoleAgent) -> ChatProgram? {
+    func chatProgram(for agent: ConsoleAgent, keepingTo corePin: TerminalCorePin? = nil) -> ChatProgram? {
+        // Chat goes on to the address's new Agent. A detail stays with the old one,
+        // which has no Chat left to show.
+        guard !hasLeftCore(corePin, on: agent.hostID) else { return nil }
         let capabilities = capabilities(for: agent.hostID)
         guard capabilities.chat else { return nil }
         if let program = ChatProgram(rawValue: agent.agent.kind), !capabilities.offersChat(for: program) {

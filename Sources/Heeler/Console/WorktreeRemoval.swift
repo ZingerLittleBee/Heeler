@@ -219,6 +219,8 @@ struct WorktreeRemovalRefusal {
             self.init(message: "The Host did not answer in time.")
         case TransportError.cancelled:
             self.init(message: "Worktree removal was cancelled.")
+        case TransportError.herdrCoreTerminalGone:
+            self.init(message: TransportError.herdrCoreTerminalGone.presentation.message)
         default:
             self.init(message: "Removing the worktree failed: \(error)")
         }

@@ -17,6 +17,8 @@ struct WorkspaceTerminalDetailView: View {
     let onBack: () -> Void
 
     @State private var ownerID = UUID()
+    /// The core whose Terminal this screen opened on, taken as it first appears.
+    @State private var corePin: TerminalCorePin?
     @State private var entry: TerminalConnectionPool.Entry?
     @State private var failure: String?
     @State private var isClosing = false
@@ -89,6 +91,7 @@ struct WorkspaceTerminalDetailView: View {
                     isClosingTerminal: isClosing,
                     onCloseTerminal: console.capabilities(for: terminal.hostID).closeTab
                         ? { @MainActor @Sendable in closeTerminal() } : nil,
+                    finishedMessage: console.terminalEndedMessage(keepingTo: corePin, on: terminal.hostID),
                     managesLifecycle: false,
                     offersTakeOver: console.capabilities(for: terminal.hostID).takeOver,
                     surfaceRetention: entry.surfaceRetention,
@@ -134,7 +137,10 @@ struct WorkspaceTerminalDetailView: View {
         .navigationBarBackButtonHidden(true)
         // A terminal left for another tab or screen comes back pooled:
         // claimed before the first frame, it never shows Opening Terminal.
-        .onAppear { reclaimPooledEntry() }
+        .onAppear {
+            if corePin == nil { corePin = console.corePin(on: terminal.hostID) }
+            reclaimPooledEntry()
+        }
         .task(id: LoadIdentity(
             identity: identity,
             generation: console.hostConnectionGenerations[terminal.hostID],
@@ -251,7 +257,7 @@ struct WorkspaceTerminalDetailView: View {
                 sceneID: sceneRouting?.sceneID,
                 generation: console.hostConnectionGenerations[terminal.hostID],
                 isPresented: { isSelected() },
-                runTerminal: console.terminalRunner(for: terminal.hostID))
+                runTerminal: console.terminalRunner(for: terminal.hostID, keepingTo: corePin))
             guard !Task.isCancelled else {
                 retryAfterSpuriousDisappear()
                 return
@@ -298,7 +304,7 @@ struct WorkspaceTerminalDetailView: View {
         Task { @MainActor in
             defer { isClosing = false }
             do {
-                try await console.closePane(terminal.paneID, on: terminal.hostID)
+                try await console.closePane(terminal.paneID, on: terminal.hostID, keepingTo: corePin)
                 await console.terminalConnections.remove(hostID: terminal.hostID, identity: identity)
                 onBack()
             } catch {

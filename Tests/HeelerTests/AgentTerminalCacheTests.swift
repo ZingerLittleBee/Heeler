@@ -29,6 +29,29 @@ struct AgentTerminalCacheTests {
         #expect(host.id == agent.hostID)
     }
 
+    /// What the cache holds for another core is another Terminal at this address,
+    /// so a detail keeping to its own core never takes it over.
+    @Test func anEntryKeepingToAnotherCoreIsNotTheDetailsOwn() async throws {
+        let (_, _, console, agent) = try await connectedAgent()
+        let cache = AgentTerminalCache()
+        let owner = UUID()
+        let old = TerminalCorePin(joined: "c1")
+        let first = cache.acquire(agent: agent, console: console, ownerID: owner, corePin: old)
+        cache.release(first, ownerID: owner)
+
+        let same = cache.acquire(
+            agent: agent, console: console, ownerID: owner, corePin: TerminalCorePin(joined: "c1"))
+        #expect(same === first)
+        cache.release(same, ownerID: owner)
+
+        let other = cache.acquire(
+            agent: agent, console: console, ownerID: owner, corePin: TerminalCorePin(joined: "c2"))
+        #expect(other !== first)
+
+        await cache.suspend()
+        console.setHosts([])
+    }
+
     @Test func expiryStopsAnIdleAgentWithoutClosingItsRemotePane() async throws {
         let (_, transport, console, agent) = try await connectedAgent()
         let cache = AgentTerminalCache(idleTimeout: .milliseconds(20))

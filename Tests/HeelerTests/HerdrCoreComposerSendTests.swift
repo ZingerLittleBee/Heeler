@@ -40,6 +40,9 @@ struct HerdrCoreComposerSendTests {
         return .object(fields)
     }
 
+    private static let coreGone =
+        "This Terminal belongs to a core that is gone: Nothing was sent. Open it again from the list."
+
     private final class SessionBox: @unchecked Sendable {
         var session: HerdrCoreHostSession?
     }
@@ -188,6 +191,32 @@ struct HerdrCoreComposerSendTests {
             let events = try #require(await scripted.sockets.first)
             try await scripted.deliverEvent(line, on: events)
         }
+    }
+
+    // MARK: A detail whose core is gone
+
+    /// A Blocked Agent's answer goes by the same Send as any other message.
+    @Test(arguments: ["idle", "blocked"])
+    func aDetailsSendTypesNothingOnceAnotherCoreServesTheAddress(status: String) async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: status))
+        let attached = try await fixture.live()
+        let written = await attached.socket.dataWritten(channel: attached.channel).count
+
+        await fixture.scripted.setChannel(.core(.init(id: "c2", terminals: [Self.record(status: status)])))
+        await attached.socket.deliverEndOfFile()
+        try await Self.until("the new core's snapshot") { [console = fixture.console, host = fixture.host] in
+            console.hostCores[host.id] == "c2" && !console.agents.isEmpty
+        }
+        let attaches = await fixture.scripted.attaches.count
+
+        fixture.composer.replaceDraft(with: "hello")
+        let result = await fixture.composer.send(policy: fixture.policy)
+
+        #expect(result == .refused(.inputNotReady(Self.coreGone)))
+        #expect(fixture.composer.draft == "hello")
+        #expect(await fixture.scripted.attaches.count == attaches)
+        #expect(await attached.socket.dataWritten(channel: attached.channel).count == written)
+        await fixture.finish()
     }
 
     private static func until(

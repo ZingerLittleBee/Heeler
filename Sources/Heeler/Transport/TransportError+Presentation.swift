@@ -35,7 +35,8 @@ extension TransportError {
     static func herdrCoreLinkMessage(for error: any Error) -> String? {
         guard let transportError = error as? TransportError else { return nil }
         switch transportError {
-        case .herdrCoreNotRunning, .herdrCoreInventoryStale: return transportError.presentation.message
+        case .herdrCoreNotRunning, .herdrCoreInventoryStale, .herdrCoreTerminalGone:
+            return transportError.presentation.message
         default: return nil
         }
     }
@@ -154,6 +155,11 @@ extension TransportError {
                 summary: "The Host's Terminals are being read again",
                 detail: "Nothing was sent",
                 recoverySuggestion: "Try again once they are back.")
+        case .herdrCoreTerminalGone:
+            TransportErrorPresentation(
+                summary: "This Terminal belongs to a core that is gone",
+                detail: "Nothing was sent",
+                recoverySuggestion: "Open it again from the list.")
         case .herdrCoreNotInstalled:
             TransportErrorPresentation(
                 summary: "herdr-core is not installed",

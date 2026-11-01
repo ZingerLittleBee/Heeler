@@ -17,6 +17,7 @@ actor ScriptedProcessTable {
     private var processes: [Int: Process] = [:]
     private var failure: TransportError?
     private(set) var requests: [HostProcessReader.Request] = []
+    private var gate: ScriptedTransportCallGate?
 
     func add(_ process: Process) {
         processes[process.pid] = process
@@ -30,8 +31,14 @@ actor ScriptedProcessTable {
         self.failure = failure
     }
 
-    func read(_ request: HostProcessReader.Request) throws -> [String: HostProcessReader.Facts] {
+    /// Holds each read, once it is recorded, until `gate` opens.
+    func hold(using gate: ScriptedTransportCallGate?) {
+        self.gate = gate
+    }
+
+    func read(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
         requests.append(request)
+        if let gate { await gate.waitUntilOpen() }
         if let failure { throw failure }
         var facts: [String: HostProcessReader.Facts] = [:]
         for pid in request.pids {

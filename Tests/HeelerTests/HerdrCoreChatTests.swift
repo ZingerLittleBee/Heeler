@@ -1081,6 +1081,28 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
+    /// A check that began on one core read that core's hint.
+    @Test func aStaleHintIsNotClearedOnTheCoreThatCameDuringTheCheck() async throws {
+        let rig = Rig(
+            host: host,
+            record: Self.record(labels: ["heeler.chat": #"{"session":"\#(Self.first)","pid":9,"start":"1"}"#]))
+        try await rig.start()
+        let core = try #require(rig.store.coreProjection(on: host.id))
+        let gate = ScriptedTransportCallGate()
+        await rig.transport.processTable.hold(using: gate)
+
+        let check = Task { try await core.checkChatSession(paneID: "t1") }
+        await gate.waitForEntry()
+        await rig.transport.setCoreID("c2")
+        await rig.transport.endLink()
+        try await rig.waitUntil("the new core's snapshot") { rig.store.hostCores[host.id] == "c2" }
+        await gate.open()
+        _ = try? await check.value
+
+        #expect(await rig.transport.labelWrites.isEmpty)
+        rig.store.setHosts([])
+    }
+
     @Test func aMatchingHintBindsWithNoRegistryEntry() async throws {
         let rig = Rig(
             host: host,

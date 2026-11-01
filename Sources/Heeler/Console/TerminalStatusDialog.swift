@@ -62,6 +62,9 @@ struct TerminalStatusPresentation: Equatable {
         message: "Its program exited, so it will not come back.",
         dimsBackground: true)
 
+    /// Why a terminal ended when the Host moved on to another core.
+    static let coreGoneMessage = "This Terminal belongs to a core that is gone. Open it again from the list."
+
     static func ended(message: String) -> TerminalStatusPresentation {
         TerminalStatusPresentation(
             kind: .ended,

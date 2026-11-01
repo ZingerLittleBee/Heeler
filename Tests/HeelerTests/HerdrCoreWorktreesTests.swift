@@ -944,6 +944,34 @@ struct HerdrCoreWorktreesTests {
         #expect(await fixture.git("worktree").isEmpty)
     }
 
+    @Test func aDetailsRemovalEndsNothingOnceAnotherCoreServesTheAddress() async throws {
+        let fixture = try await Fixture(terminals: [Self.agent("t1", cwd: Self.main)])
+        defer { fixture.finish() }
+        try await fixture.until("the row's checkout") {
+            fixture.store.agents.first?.repositoryCheckout != nil
+        }
+        let row = try #require(fixture.store.agents.first)
+        let checkout = try #require(row.repositoryCheckout)
+        let request = WorktreeRemovalRequest(
+            identity: WorktreeIdentity(
+                hostID: fixture.host.id, workspaceID: row.agent.workspaceID, checkout: checkout))
+        let pin = fixture.store.composerSession(for: row).corePin
+
+        await fixture.transport.setCoreID("c2")
+        await fixture.transport.endLink()
+        try await fixture.until("the new core's snapshot") {
+            fixture.store.hostCores[fixture.host.id] == "c2"
+        }
+
+        await #expect(throws: TransportError.herdrCoreTerminalGone) {
+            _ = try await fixture.store.removeWorktree(request, on: fixture.host.id, keepingTo: pin)
+        }
+        #expect(await fixture.transport.kills.isEmpty)
+        #expect(
+            WorktreeRemovalRefusal(TransportError.herdrCoreTerminalGone, request: request, sessionName: "").message
+                == "This Terminal belongs to a core that is gone: Nothing was sent. Open it again from the list.")
+    }
+
     @Test func aMainCheckoutIsNeverRemoved() async throws {
         let fixture = try await Fixture(terminals: [Self.agent("t1", cwd: Self.main)])
         defer { fixture.finish() }

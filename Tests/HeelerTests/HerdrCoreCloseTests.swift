@@ -494,6 +494,103 @@ struct HerdrCoreCloseTests {
         #expect(store.state == .failed(Self.unconfirmed))
     }
 
+    // MARK: A detail whose core is gone
+
+    private static let coreGone =
+        "This Terminal belongs to a core that is gone: Nothing was sent. Open it again from the list."
+
+    /// The core wiped, or another one under another state directory, with a
+    /// Terminal of its own at every address the last one listed.
+    private func moveToAnotherCore(_ store: ConsoleStore, _ transport: ScriptedCoreTransport) async throws {
+        await transport.setCoreID("c2")
+        await transport.endLink()
+        try await waitUntil("the new core's snapshot") {
+            store.hostCores[host.id] == "c2" && !store.hostsAwaitingSnapshot.contains(host.id)
+        }
+    }
+
+    @Test func aDetailsCloseOfItsAgentSendsNothingOnceAnotherCoreServesTheAddress() async throws {
+        let (store, transport) = try await started([Self.agent("t1"), Self.shell("t2")])
+        defer { store.setHosts([]) }
+        let row = try #require(store.agents.first { $0.agent.paneID == "t1" })
+        let pin = store.composerSession(for: row).corePin
+        let hostID = host.id
+        let detail = ClosePaneStore(paneTitle: "Claude") {
+            try await store.closePane("t1", on: hostID, keepingTo: pin)
+        }
+
+        try await moveToAnotherCore(store, transport)
+        await detail.confirmClose()
+
+        #expect(detail.state == .failed(Self.coreGone))
+        #expect(await transport.kills.isEmpty)
+        #expect(await transport.mutations.isEmpty)
+    }
+
+    @Test func aShellDetailsCloseSendsNothingOnceAnotherCoreServesTheAddress() async throws {
+        let (store, transport) = try await started([Self.shell("t2")])
+        defer { store.setHosts([]) }
+        let pin = store.corePin(on: host.id)
+
+        try await moveToAnotherCore(store, transport)
+
+        await #expect(throws: TransportError.herdrCoreTerminalGone) {
+            try await store.closePane("t2", on: self.host.id, keepingTo: pin)
+        }
+        #expect(await transport.kills.isEmpty)
+        #expect(
+            ConsoleStore.tabCloseFailureMessage(for: TransportError.herdrCoreTerminalGone) == Self.coreGone)
+    }
+
+    /// The row and a detail opened on it now mean the new core's Terminal.
+    @Test func aRowAndAFreshDetailStillCloseTheNewCoresTerminal() async throws {
+        let (store, transport) = try await started([Self.agent("t1"), Self.agent("t2")])
+        defer { store.setHosts([]) }
+        let row = try #require(store.agents.first { $0.agent.paneID == "t1" })
+        let stale = store.composerSession(for: row)
+
+        try await moveToAnotherCore(store, transport)
+        let freshRow = try #require(store.agents.first { $0.agent.paneID == "t1" })
+        let fresh = store.composerSession(for: freshRow)
+        #expect(fresh !== stale)
+        #expect(store.composerSession(for: freshRow) === fresh)
+
+        try await store.closePane("t1", on: host.id, keepingTo: fresh.corePin)
+        let other = try #require(store.agents.first { $0.agent.paneID == "t2" })
+        try await store.closeAgent(other)
+
+        #expect(await transport.kills == ["t1", "t2"])
+    }
+
+    /// The same core back after a restart is the same Terminals.
+    @Test func aDetailKeepsActingAcrossARestartOfItsOwnCore() async throws {
+        let (store, transport) = try await started([Self.agent("t1")])
+        defer { store.setHosts([]) }
+        let row = try #require(store.agents.first)
+        let session = store.composerSession(for: row)
+
+        await transport.endLink()
+        await transport.waitForSubscribe(count: 2)
+        try await waitUntil("the snapshot") { !store.hostsAwaitingSnapshot.contains(host.id) }
+
+        #expect(store.composerSession(for: row) === session)
+        try await store.closePane("t1", on: host.id, keepingTo: session.corePin)
+        #expect(await transport.kills == ["t1"])
+    }
+
+    /// Its ended dialog says why, in place of a program's exit it never saw.
+    @Test func aDetailWhoseCoreIsGoneSaysSoWhenItsTerminalEnds() async throws {
+        let (store, transport) = try await started([Self.agent("t1")])
+        defer { store.setHosts([]) }
+        let pin = store.corePin(on: host.id)
+        #expect(store.terminalEndedMessage(keepingTo: pin, on: host.id) == nil)
+
+        try await moveToAnotherCore(store, transport)
+
+        #expect(store.terminalEndedMessage(keepingTo: pin, on: host.id) == TerminalStatusPresentation.coreGoneMessage)
+        #expect(store.terminalEndedMessage(keepingTo: store.corePin(on: host.id), on: host.id) == nil)
+    }
+
     // MARK: What a core Host offers
 
     @Test func aCoreHostOffersCloseOnItsRowsAndDetails() {

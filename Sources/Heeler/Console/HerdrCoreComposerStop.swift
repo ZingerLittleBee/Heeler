@@ -22,17 +22,22 @@ struct HerdrCoreComposerStop {
     static let notTakenInTime = "The Host did not take Stop in time, so it wasn't sent."
     static let outcomeUnknown =
         "The Host did not answer, so Stop may or may not have reached the Agent. Check the terminal."
+    static let coreGone = TransportError.herdrCoreTerminalGone.presentation.message
     static let readFailed =
         "Stop went, but the Host did not say whether the Agent still runs. Check the terminal."
 
     let address: String
     let projection: @MainActor () -> HerdrCoreConsoleProjection?
+    /// The core the detail's Agent runs on: an address means another Agent on any other.
+    let corePin: TerminalCorePin
     let clock: BlockedCardClock
 
     func perform() async -> AgentInterruptOutcome {
         guard let projection = projection() else { return .failed(Self.notSent) }
         let address = address
+        let corePin = corePin
         let call = Task {
+            guard projection.admits(corePin) else { throw TransportError.herdrCoreTerminalGone }
             try await projection.interruptTerminal(at: address, timeout: Self.interruptTimeout)
         }
         defer { call.cancel() }
@@ -79,6 +84,8 @@ struct HerdrCoreComposerStop {
         } catch TransportError.coreMutationOutcomeUnknown {
             // Inside the deadline only a link that ended says this.
             return .ended(.failed(Self.outcomeUnknown))
+        } catch TransportError.herdrCoreTerminalGone {
+            return .ended(.failed(Self.coreGone))
         } catch let refusal as HerdrAPIError {
             return .ended(.failed(Self.refused(refusal)))
         } catch {

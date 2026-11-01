@@ -10,6 +10,7 @@ final class AgentTerminalCache {
         let terminalID: String
         let attach: AgentAttachStore
         let surfaceRetention = TerminalSurfaceRetention()
+        fileprivate let corePin: TerminalCorePin
         fileprivate let lifetime: Lifetime
         fileprivate var expiry: Task<Void, Never>?
         fileprivate var presentationOwnerID: UUID
@@ -22,12 +23,13 @@ final class AgentTerminalCache {
 
         fileprivate init(
             agentID: ConsoleAgent.ID, terminalID: String,
-            attach: AgentAttachStore, lifetime: Lifetime, ownerID: UUID, sceneID: UUID?,
-            holder: AnyObject?
+            attach: AgentAttachStore, corePin: TerminalCorePin, lifetime: Lifetime, ownerID: UUID,
+            sceneID: UUID?, holder: AnyObject?
         ) {
             self.agentID = agentID
             self.terminalID = terminalID
             self.attach = attach
+            self.corePin = corePin
             self.lifetime = lifetime
             self.presentationOwnerID = ownerID
             self.presentationSceneID = sceneID
@@ -64,11 +66,16 @@ final class AgentTerminalCache {
     /// `sceneID` is passed for a core Terminal only, whose entry the detail's
     /// replacement takes over; see `isSameWindow`. A Herdr TUI Terminal has one
     /// owner at a time, so its replacement closes the entry and attaches anew.
+    ///
+    /// `corePin` is the detail's, for a core Terminal: an entry that keeps to another
+    /// core holds another Terminal at this address, however its id reads.
     func acquire(
         agent: ConsoleAgent, console: ConsoleStore, ownerID: UUID, sceneID: UUID? = nil,
-        holder: AnyObject? = nil, isPresented: @escaping @MainActor () -> Bool = { true }
+        holder: AnyObject? = nil, corePin: TerminalCorePin? = nil,
+        isPresented: @escaping @MainActor () -> Bool = { true }
     ) -> Entry {
         if let current = entries[agent.id], current.terminalID == agent.agent.terminalID,
+            corePin.map(current.corePin.keepsToSameCore) ?? true,
             !isOverAndLeft(current),
             !current.lifetime.visible || current.presentationOwnerID == ownerID
                 || isSameWindow(current, sceneID: sceneID)
@@ -81,7 +88,8 @@ final class AgentTerminalCache {
         }
         if let old = entries[agent.id] { evict(old) }
         let predecessor = teardowns[agent.id]
-        let runner = console.terminalRunner(for: agent.hostID)
+        let pin = corePin ?? TerminalCorePin()
+        let runner = console.terminalRunner(for: agent.hostID, keepingTo: pin)
         let lifetime = Lifetime()
         lifetime.isPresented = isPresented
         let attach = AgentAttachStore(
@@ -99,11 +107,11 @@ final class AgentTerminalCache {
             },
             closePane: { [weak console] in
                 guard let console else { throw CancellationError() }
-                try await console.closePane(agent.agent.paneID, on: agent.hostID)
+                try await console.closePane(agent.agent.paneID, on: agent.hostID, keepingTo: pin)
             })
         let entry = Entry(
             agentID: agent.id, terminalID: agent.agent.terminalID,
-            attach: attach, lifetime: lifetime, ownerID: ownerID, sceneID: sceneID, holder: holder)
+            attach: attach, corePin: pin, lifetime: lifetime, ownerID: ownerID, sceneID: sceneID, holder: holder)
         entries[agent.id] = entry
         return entry
     }

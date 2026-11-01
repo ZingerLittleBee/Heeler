@@ -111,6 +111,29 @@ struct HerdrCoreComposerStopTests {
         await transport.stopCalls.map(\.method)
     }
 
+    // MARK: A detail whose core is gone
+
+    @Test func aDetailsStopSendsNothingOnceAnotherCoreServesTheAddress() async throws {
+        let started = try await start()
+        defer { started.store.setHosts([]) }
+        let pin = started.store.composerSession(for: started.agent).corePin
+
+        await started.transport.setCoreID("c2")
+        await started.transport.endLink()
+        try await waitUntil("the new core's Agent") {
+            started.store.hostCores[host.id] == "c2" && !started.store.agents.isEmpty
+        }
+        let stop = try #require(
+            started.store.terminalInterrupt(for: started.agent, keepingTo: pin) {
+                Issue.record("A core Stop pressed Esc itself")
+                return .sent
+            })
+
+        #expect(await stop.perform() == .failed(HerdrCoreComposerStop.coreGone))
+        #expect(await methods(started.transport).isEmpty)
+        #expect(await started.transport.mutations.isEmpty)
+    }
+
     // MARK: The steps
 
     @Test func stopSendsOneInterruptWithTheShortTimeoutThenReadsTheForeground() async throws {

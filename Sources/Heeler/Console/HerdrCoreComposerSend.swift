@@ -113,6 +113,8 @@ final class HerdrCoreComposerSend {
 
     private let address: String
     private let projection: @MainActor () -> HerdrCoreConsoleProjection?
+    /// The core this Composer's Agent runs on: an address means another Agent on any other.
+    private let corePin: TerminalCorePin
     private let clock: BlockedCardClock
     private var lastSend: Task<Outcome, Never>?
     /// A Send ended with bytes nobody answered for. They stay queued however long
@@ -122,10 +124,12 @@ final class HerdrCoreComposerSend {
     init(
         address: String,
         projection: @escaping @MainActor () -> HerdrCoreConsoleProjection?,
+        corePin: TerminalCorePin = TerminalCorePin(),
         clock: BlockedCardClock = .live
     ) {
         self.address = address
         self.projection = projection
+        self.corePin = corePin
         self.clock = clock
     }
 
@@ -146,6 +150,7 @@ final class HerdrCoreComposerSend {
 
     private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?) async -> Outcome {
         guard let projection = projection() else { return .failed(Self.notConnected) }
+        guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.coreGone)) }
         if lastSendHasNoAnswer { return await settleLastSend(in: projection) }
 
         var viewed: ViewedAttachSeat?
@@ -188,6 +193,9 @@ final class HerdrCoreComposerSend {
         guard TerminalKeyEncoder.encode(submitKey, modes: modes) != nil else {
             return .refused(.inputNotReady(Self.unknownSubmitKey))
         }
+
+        // Waiting for the seat can take seconds.
+        guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.coreGone)) }
 
         // Watching from before the paste: a change while it is on its way counts.
         let (wakes, wake) = AsyncStream.makeStream(of: Wake.self)
@@ -437,6 +445,7 @@ final class HerdrCoreComposerSend {
 
     // MARK: What the Composer says
 
+    private static let coreGone = TransportError.herdrCoreTerminalGone.presentation.message
     private static let notConnected = "The message could not be sent. Check the connection and retry."
     private static let noLiveAttach = "The terminal did not connect in time, so nothing was sent. Retry when it shows."
     private static let noChatViewer = "Heeler couldn't reach the Agent's terminal in time, so nothing was sent. Retry."
