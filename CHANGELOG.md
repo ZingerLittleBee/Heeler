@@ -68,7 +68,9 @@ Entries reference the pull request that made the change.
 - Chat fills in earlier messages page by page and keeps up with the Agent while
   it does, so returning to a long conversation no longer shows a few old rows
   under a spinner and a blank screen until a whole turn has loaded. Messages
-  above a compaction show as they load rather than all at once at the end.
+  above a compaction show as they load rather than all at once at the end, and
+  one Load Earlier Messages is enough in a long conversation reopened from the
+  device.
 - An Agent's Changes totals end the line above when the card already shows the
   directory field beside them, instead of holding a line of their own.
 - Keep the Host connection row atop the Agents and Terminals lists one

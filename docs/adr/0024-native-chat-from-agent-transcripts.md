@@ -233,6 +233,9 @@ it reaches the start of the file or has read 32 MiB. Each page shows as it
 comes, and Chat looks for what the Agent wrote between pages, because a search
 that long over a phone's connection otherwise leaves the list short and stale
 until it ends. Leaving Chat keeps the request, which goes on when Chat returns.
+Reopened, the live window starts at the tail below rows the cache shows, and
+the reducer needs those records to walk further up, so a request reads them
+again. They spend none of its 32 MiB: it would otherwise end with nothing new.
 A request the list makes by itself reads as one from Load Earlier Messages does, except in Grok Build,
 where it reads at most 4 MiB. Grok Build records each `read_file` result in
 full, so one turn can fill tens of MB: a turn that read 21 files of 99,000

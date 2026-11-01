@@ -536,6 +536,11 @@ actor ChatConversationEngine {
         search.pageLength = min(search.pageLength * 2, source.olderPageLengths.maximum)
         olderSearch = search
         projectIfNeeded()
+        // Reopened, the window starts over at the tail below the saved rows
+        // it reads again. Those bring nothing new, so they spend no search.
+        if let current = self.source, joinedCache(windowStart: current.windowStart ?? current.readOffset) != nil {
+            self.source?.beginOlderSearch()
+        }
         if snapshot.transcript.turns.first?.firstEntryID != oldestOpener {
             update { $0.olderAwaitsUser = false }
             endOlderSearch()
