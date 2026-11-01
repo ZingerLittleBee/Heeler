@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import os
 
 @testable import Heeler
 
@@ -222,8 +223,10 @@ struct HostHelperNotificationsTests {
     // MARK: Banners
 
     /// A banner store fed from the Console as the app feeds it, on the rig's triggers.
-    private func bannerStore(_ rig: Rig) -> AgentNotificationBannerStore {
-        let preferences = rig.preferences
+    private func bannerStore(
+        _ rig: Rig, preferences: NotificationPreferencesStore? = nil
+    ) -> AgentNotificationBannerStore {
+        let preferences = preferences ?? rig.preferences
         let store = AgentNotificationBannerStore(
             holdDuration: .milliseconds(5), presentedAgent: { nil },
             triggers: { preferences.confirmedTriggers(for: $0) }, playSound: {})
@@ -351,11 +354,78 @@ struct HostHelperNotificationsTests {
         try await expectNoBanner(store)
     }
 
+    // MARK: A re-read of a registration
+
+    /// A preferences store whose reads and writes can be held at the door.
+    private func heldPreferences(
+        over provider: any NotificationTransportProvider, hold: FileAccessHold
+    ) -> NotificationPreferencesStore {
+        let token = token
+        return NotificationPreferencesStore(
+            transports: HeldNotificationFiles(provider: provider, hold: hold), deviceToken: { token },
+            relayBaseURL: { Self.relay }, ceremony: NotificationRegistrationCeremony(keys: keys))
+    }
+
+    // MARK: What can drive an activity
+
+    @Test func aNewerHelperThatFailedClosesBothGates() async throws {
+        let helper = try await installedHelper(version: "9.9.9")
+        let rig = try await rig(helper)
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        await rig.preferences.setNotificationsEnabled(true, for: host)
+        await rig.preferences.refresh()
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .open)
+
+        await helper.configure {
+            $0.activeState = "failed"
+            $0.result = "start-limit-hit"
+        }
+        await rig.preferences.refresh()
+
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .closed)
+        #expect(!rig.preferences.offersLiveActivity(for: host))
+    }
+
+    @Test func aNewerHelperThatFailedTakesNoNewRegistration() async throws {
+        let helper = try await installedHelper(version: "9.9.9")
+        await helper.configure {
+            $0.activeState = "failed"
+            $0.result = "start-limit-hit"
+        }
+        let rig = try await rig(helper)
+        defer { rig.console.setHosts([]) }
+
+        await rig.preferences.refresh()
+
+        #expect(try #require(unavailableMessage(rig)).hasPrefix("Host Helper: Service Failed."))
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .closed)
+    }
+
+    @Test func aUserManagerNobodyCanReachWithLingerOffClosesTheActivityGate() async throws {
+        let helper = try await installedHelper()
+        let rig = try await rig(helper)
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        await rig.preferences.setNotificationsEnabled(true, for: host)
+        await rig.preferences.refresh()
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .open)
+
+        await helper.configure {
+            $0.userManagerReachable = false
+            $0.lingerOn = false
+        }
+        await rig.preferences.refresh()
+
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .closed)
+    }
+
     // MARK: Live Activity
 
     /// A coordinator wired to the rig's stores as the app wires them, already started.
     private func coordinator(
-        _ rig: Rig, preferences: NotificationPreferencesStore? = nil, controller: FakeLiveActivityController
+        _ rig: Rig, preferences: NotificationPreferencesStore? = nil, controller: FakeLiveActivityController,
+        connectionStatus: (@MainActor (Host.ID) -> EventsSessionStatus?)? = nil
     ) throws -> HostLiveActivityCoordinator {
         let suite = "core-activity-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -374,7 +444,7 @@ struct HostHelperNotificationsTests {
             knownHostIDs: { [host.id] },
             hostDisplayName: { _ in "box" },
             isAwaitingSnapshot: { console.hostsAwaitingSnapshot.contains($0) },
-            connectionStatus: { console.hostStatuses[$0] },
+            connectionStatus: connectionStatus ?? { console.hostStatuses[$0] },
             registrationGate: { registrations.liveActivityGate(forCoreHost: $0) },
             settleDuration: .milliseconds(5))
         coordinator.setEnabled(true, for: host.id)
@@ -722,6 +792,34 @@ struct HostHelperNotificationsTests {
         #expect(await rig.helper.files[path] == nil)
     }
 
+    private nonisolated static let stoppedCore = TransportError.herdrCoreNotRunning(
+        socketPath: "/run/core.sock", socketFilePresent: false)
+
+    /// A Console whose session keeps retrying `failure`, while `connectCore` still
+    /// reaches the Host for one operation.
+    private func unconnectedConsole(_ helper: ScriptedHelperHost, failure: TransportError) async throws -> ConsoleStore {
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let console = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                    keepalive: nil)
+            },
+            connectCore: { _ in core.transport() },
+            makeCoreSession: { _ in HerdrCoreHostSession(connect: { throw failure }, keepalive: nil) })
+        console.setHosts([host])
+        await console.resume()
+        let host = host
+        try await waitUntil("the session to retry") {
+            if case .reconnecting = console.hostStatuses[host.id] { return true }
+            return false
+        }
+        return console
+    }
+
+    // MARK: What makes a registration read again
+
     @Test func aDeviceRegisteredOnAHelperThatStoppedWorkingCanStillLeave() async throws {
         let rig = try await registeredRig()
         defer { rig.console.setHosts([]) }
@@ -812,5 +910,43 @@ struct HostHelperNotificationsTests {
         #expect(message.contains("not available on native Windows yet because they come with the Host Helper"))
         #expect(await helper.reads.isEmpty)
         #expect(await helper.writes.isEmpty)
+    }
+}
+
+/// Keeps a store's file access waiting at the door until opened.
+private actor FileAccessHold {
+    private var isClosed = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func close() { isClosed = true }
+
+    func open() {
+        isClosed = false
+        for waiter in waiting { waiter.resume() }
+        waiting = []
+    }
+
+    func pass() async {
+        guard isClosed else { return }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+}
+
+private struct HeldNotificationFiles: NotificationTransportProvider {
+    let provider: any NotificationTransportProvider
+    let hold: FileAccessHold
+
+    func withNotificationTransport<Value: Sendable>(
+        for hostID: Host.ID, _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        await hold.pass()
+        return try await provider.withNotificationTransport(for: hostID, operation)
+    }
+
+    func withNotificationFiles<Value: Sendable>(
+        for hostID: Host.ID, _ operation: @escaping @Sendable (any HostNotificationFiles) async throws -> Value
+    ) async throws -> Value {
+        await hold.pass()
+        return try await provider.withNotificationFiles(for: hostID, operation)
     }
 }

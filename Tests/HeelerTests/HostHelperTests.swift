@@ -108,6 +108,20 @@ struct HostHelperInstallTests {
         #expect(await !host.journal.contains("promote"))
     }
 
+    private func uploadFailureMessage(_ error: any Error) async throws -> String {
+        await host.configure {
+            $0.failUploadsNamed = "version.json"
+            $0.uploadError = error
+        }
+        do {
+            _ = try await install()
+        } catch let failure as HostHelperError {
+            return failure.message
+        }
+        Issue.record("Expected the upload to fail")
+        return ""
+    }
+
     @Test func recordsFilesOutsideTheHelperDirectoryAndCreatedFolders() async throws {
         await host.seedFolder("/home/me/.config")
         _ = try await install()
@@ -376,7 +390,68 @@ struct HostHelperServiceTests {
         await host.configure { $0.userManagerReachable = false }
         #expect(try await installer.read().status == .serviceFailed(nil))
         await host.configure { $0.lingerOn = false }
-        #expect(try await installer.read().status == .lingerOff)
+        let reading = try await installer.read()
+        #expect(reading.status == .serviceFailed(nil))
+        // Linger may be the cure, and it is still on offer.
+        #expect(reading.offersLinger)
+        #expect(!reading.notificationStanding.canRegister)
+        #expect(!reading.notificationStanding.drivesLiveActivity)
+    }
+
+    private func installNewerHelper() async throws {
+        let newer = HostHelperFixture.bundle(version: "9.9.9")
+        let reading = HostHelperReading(probe: try await installer.read().probe, bundled: PluginVersion(9, 9, 9))
+        _ = try await installer.install(over: reading, bundle: newer)
+    }
+
+    @Test func aNewerHelperThatRunsStillReadsAsNewer() async throws {
+        try await installNewerHelper()
+        let reading = try await installer.read()
+        #expect(reading.status == .newer(version: PluginVersion(9, 9, 9)))
+        #expect(reading.notificationStanding.canRegister)
+        #expect(reading.notificationStanding.drivesLiveActivity)
+    }
+
+    @Test func aNewerHelperThatFailedSaysSoAndNamesTheUpdateNotARepair() async throws {
+        try await installNewerHelper()
+        await host.configure {
+            $0.activeState = "failed"
+            $0.result = "start-limit-hit"
+            $0.restarts = 5
+        }
+        let reading = try await installer.read()
+        #expect(reading.status == .serviceFailed(
+            HostHelperHealth(loadState: "loaded", activeState: "failed", result: "start-limit-hit", restarts: 5)))
+        #expect(reading.installAction == nil)
+        let detail = reading.presentation.detail
+        #expect(detail.contains("start-limit-hit"))
+        #expect(detail.contains("Update the app"))
+        #expect(!detail.contains("Repair"))
+        let standing = reading.notificationStanding
+        #expect(!standing.canRegister)
+        #expect(!standing.drivesLiveActivity)
+        #expect(standing.requirement?.contains("Update the app") == true)
+        // Still never replaced from here.
+        await #expect(throws: HostHelperError.newerInstalled(version: PluginVersion(9, 9, 9))) {
+            _ = try await installer.install(over: reading, bundle: bundle)
+        }
+    }
+
+    @Test func aNewerHelperNobodyCanAskAboutIsNotCalledRunning() async throws {
+        try await installNewerHelper()
+        await host.configure { $0.userManagerReachable = false }
+        let reading = try await installer.read()
+        #expect(reading.status == .serviceFailed(nil))
+        #expect(!reading.notificationStanding.drivesLiveActivity)
+    }
+
+    @Test func aNewerHelperThatStoppedWithNoNodeLeftSaysNodeIsMissing() async throws {
+        try await installNewerHelper()
+        await host.configure {
+            $0.activeState = "failed"
+            $0.node = .missing
+        }
+        #expect(try await installer.read().status == .nodeMissing(tooOld: nil))
     }
 
     @Test func aFailedServiceShowsItsResultAndRestarts() {
@@ -744,6 +819,21 @@ struct HostHelperExtensionTests {
 
     @Test func theRemovalConfirmationMentionsTheExtensions() {
         #expect(HostHelperSheet.removalMessage.contains("Pi and Oh My Pi extensions"))
+    }
+}
+
+@Suite("Host Helper probe of hex fields")
+struct HostHelperProbeHexTests {
+    private func probe(_ line: String) throws -> HostHelperProbe {
+        let lines = ["n begin", "home /h", "data /h/d", "config /h/c", line, "n end"]
+        return try HostHelperProbe(stdout: Data((lines.joined(separator: "\n") + "\n").utf8), nonce: "n")
+    }
+
+    /// `é` is two UTF-8 bytes and one Character, so its length alone passes as hex.
+    @Test(arguments: ["é", "00é", "é00", "zz", "+1", "0"])
+    func whatIsNotHexReadsAsNothing(_ hex: String) throws {
+        #expect(try probe("manifest \(hex)").manifest == nil)
+        #expect(try probe("record \(hex)").record == nil)
     }
 }
 

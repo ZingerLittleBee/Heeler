@@ -51,7 +51,7 @@ final class HostHelperStore {
         switch reading {
         case .checking: "Checking…"
         case .unavailable: "Unavailable"
-        case .read(let reading): HostHelperPresentation(reading.status).value
+        case .read(let reading): reading.presentation.value
         }
     }
 
@@ -59,14 +59,14 @@ final class HostHelperStore {
         switch reading {
         case .checking: nil
         case .unavailable(let message): message
-        case .read(let reading): HostHelperPresentation(reading.status).detail
+        case .read(let reading): reading.presentation.detail
         }
     }
 
     var needsAttention: Bool {
         switch reading {
         case .checking, .unavailable: false
-        case .read(let reading): HostHelperPresentation(reading.status).needsAttention
+        case .read(let reading): reading.presentation.needsAttention
         }
     }
 

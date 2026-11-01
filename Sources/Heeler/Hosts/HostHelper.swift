@@ -239,15 +239,17 @@ struct HostHelperReading: Sendable, Equatable {
         guard let probe else { return .unsupportedPlatform(.nativeWindows) }
         switch integrity {
         case .newer(let version):
+            // A newer Helper is left as it is, but that says nothing of whether it runs.
+            guard let health = probe.health, health.isLoaded, health.isUp else {
+                return nodeProblem ?? .serviceFailed(probe.health)
+            }
             return .newer(version: version)
         case .damaged:
             return .damaged
         case .absent:
             return nodeProblem ?? .notInstalled
         case .intact(let version):
-            guard let health = probe.health else {
-                return probe.lingerOn ? .serviceFailed(nil) : .lingerOff
-            }
+            guard let health = probe.health else { return nodeProblem ?? .serviceFailed(nil) }
             if !health.isLoaded { return .damaged }
             if !health.isUp { return nodeProblem ?? .serviceFailed(health) }
             if !probe.lingerOn { return .lingerOff }
@@ -314,6 +316,11 @@ struct HostHelperReading: Sendable, Equatable {
         return !probe.lingerOn
     }
 
+    /// How this reading's status shows on Host detail and in the install sheet.
+    var presentation: HostHelperPresentation {
+        HostHelperPresentation(status, canRepair: installAction != nil)
+    }
+
     var notificationStanding: HostHelperNotificationStanding {
         HostHelperNotificationStanding(self)
     }
@@ -332,7 +339,7 @@ struct HostHelperNotificationStanding: Sendable, Equatable {
 
     init(_ reading: HostHelperReading) {
         let status = reading.status
-        let presentation = HostHelperPresentation(status)
+        let presentation = reading.presentation
         let action = "See this Host's page in Hosts."
         let asRequirement = "Host Helper: \(presentation.value). \(presentation.detail) \(action)"
         var installedVersion: PluginVersion?
@@ -379,7 +386,9 @@ struct HostHelperPresentation: Sendable, Equatable {
     static let featuresSentence =
         "Agent Notifications, Live Activity and Usage on this Host come with the Host Helper."
 
-    init(_ status: HostHelperStatus) {
+    /// `canRepair` is false when this device offers no Repair for that status,
+    /// so the copy names what does change it.
+    init(_ status: HostHelperStatus, canRepair: Bool = true) {
         switch status {
         case .notInstalled:
             value = "Not Installed"
@@ -413,7 +422,7 @@ struct HostHelperPresentation: Sendable, Equatable {
             needsAttention = true
         case .serviceFailed(let health):
             value = "Service Failed"
-            detail = Self.failure(health)
+            detail = Self.failure(health, canRepair: canRepair)
             needsAttention = true
         case .unsupportedPlatform(.nativeWindows):
             value = "Not Available"
@@ -435,14 +444,16 @@ struct HostHelperPresentation: Sendable, Equatable {
         }
     }
 
-    private static func failure(_ health: HostHelperHealth?) -> String {
+    private static func failure(_ health: HostHelperHealth?, canRepair: Bool) -> String {
+        let remedy = canRepair
+            ? "Repair sets it up again with the Node.js this Host has now."
+            : "A newer version of Heeler installed this Host Helper. Update the app to change it."
         guard let health else {
-            return "Heeler could not reach this Host's systemd user manager to ask about the service."
+            return "Heeler could not reach this Host's systemd user manager to ask about the service. \(remedy)"
         }
         let restarts = health.restarts == 1 ? "1 restart" : "\(health.restarts) restarts"
         return "The service stopped and will not start again by itself "
-            + "(\(health.activeState), result \(health.result), \(restarts)). "
-            + "Repair sets it up again with the Node.js this Host has now."
+            + "(\(health.activeState), result \(health.result), \(restarts)). \(remedy)"
     }
 }
 
