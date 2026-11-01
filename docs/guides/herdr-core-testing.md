@@ -282,6 +282,26 @@ shows.
 | Home folders | Start Codex and Grok Build with `CODEX_HOME` and `GROK_HOME` naming scratch folders, with other sessions in `~/.codex` and `~/.grok` | Chat reads from the scratch folders |
 | Off until passed | Before adding a program to `HostCapabilities.confirmedCoreChatPrograms`, on this box and on a macOS core Host | It offers the terminal alone |
 
+### Choosing a conversation
+
+The owner's checks on hc-lab with a signed-in harness, in a debug build with the
+program's Chat turned on. Take zoomed Simulator screenshots of the list and of a
+conversation before choosing, in light and dark, and attach them to the run's notes.
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| OpenCode by hand | Start `opencode` by hand, send a prompt, open Chat, tap **Choose a Conversation** | The list holds the store's newest conversations in that directory, and any Status child. Nothing shows as bound and a Send from Chat sends nothing until you confirm. Record the process's open files |
+| Grok Build's `/new` | In an open Chat, run `/new`, then choose | The list holds the session the process holds open and the folder's newest, and `s0`-style Status keys are not listed. Record each row |
+| Read first | Open each kind of candidate | Its conversation shows, and **Use This Conversation** is only offered on one that reads |
+| One label | Confirm one, then read the Terminal's labels with `hc` on the box | `heeler.chat` holds the session, pid and process start, equal to field 22 of `/proc/<pid>/stat` |
+| Second device | Open the same Agent's Chat on a second Simulator | It shows the same conversation. With Chat open there, confirm on the first and clear on the box: it follows both, with no Retry |
+| Process change | Quit the program and start it again in that Terminal | Chat says it cannot tell and the label is gone |
+| Session switch | On a Pi with the extension, confirm from before it wrote, then run `/new` | The session label wins and `heeler.chat` is gone |
+| Send guard | Choose the conversation on screen and Send from Chat. Switch the program to another session inside it, Send from Chat again and let that turn end | After the first Send the pick stays. Within a few seconds of the second turn's end, Chat says it cannot tell and the label is gone |
+| The in-process limit | On a Pi without the extension, confirm, then run `/new` in the terminal | Chat keeps the old conversation until a Send from Chat fails the guard, as the guide says. Record that OpenCode's title refuses the Send instead |
+| Codex by default | Plain `codex` on the shared daemon | No list, only `codex resume --no-daemon` |
+| Herdr TUI | Any Chat on a Herdr TUI Host | No list, whatever it says |
+
 ## Pi and Oh My Pi Chat
 
 Each program's Chat stays off until its check here passes: add it to
