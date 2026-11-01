@@ -25,7 +25,7 @@ its contract.
   [HerdrCoreOrganization](../../Sources/Heeler/Console/HerdrCoreOrganization.swift),
   a pure builder over the Terminals, the desktop app's
   [document](../../Sources/Heeler/Transport/HerdrCore/HerdrCoreDesktopDocument.swift),
-  first-seen directories and `HostServices.checkoutRoots`
+  first-seen directories and `HostServices.checkouts`
   ([script](../../Sources/Heeler/Changes/GitProbe+CheckoutRoots.swift)).
   [HostConsoleProjection](../../Sources/Heeler/Console/HostConsoleProjection.swift)
   owns each Herdr TUI Host's snapshot/delta convergence; start there for missing,
