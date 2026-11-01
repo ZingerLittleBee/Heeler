@@ -409,6 +409,7 @@ HC_SESSION=<s> TMUX=/tmp/made-up,1,0 CLAUDE_CODE_CHILD_SESSION=made-up STY= \
 | Leaked variables | The core above, with the Host connected | **Core Environment** names `CLAUDE_CODE_CHILD_SESSION` and `TMUX`, each with what it breaks, and says restarting the core from your own terminal fixes it; blank `STY` is not named, no value appears, and nothing offers a restart |
 | Prefix | Add `HERDR_PANE_ID=made-up` when starting | `HERDR_PANE_ID` is named with the others |
 | Restarted cleanly | `server stop` by absolute path with the same environment, then start again from a clean login shell without those variables | The Host reconnects by itself and **Core Environment** is gone |
+| Link recovery | With an Agent detail open and a draft typed, block the route to the Host, then restore it | The screen and draft stay, the title reads **Reconnecting…**, Send and keys are refused, and input comes back once the Agent's row does |
 
 ## Desktop organization
 
@@ -549,6 +550,7 @@ Use a throwaway `CLAUDE_CONFIG_DIR`, for example `~/heeler-usage-lab`, that the 
 | Limits | With a throwaway sign-in, turn on **Claude Code limits** for this Host, then off | A read asks only while it is on, and the card follows. Skip this without such a sign-in |
 | Update | Install a Helper from before Usage, and open Usage | **Usage needs a newer Host Helper**, until you update it from the Host's detail |
 | Unreachable | Stop `sshd` or block the route, and open Usage | The Usage tab leaves the Host out as **Not connected** |
+| Usage off | Turn **Usage** off in **Settings**, then back on, with a Usage widget installed | While off the tab and the Host's section are gone, and the widget says Usage is off. Back on, the figures return. The Helper stays installed throughout |
 | Widget alone | Add a Usage widget. With the core stopped and no Helper, reopen Heeler and do not open Usage. Repeat on an unreachable Host, and on a native Windows Host if one is on hand | The widget says **Needs the Host Helper**, **Not connected**, and **Comes with the Host Helper, not available yet**, and keeps saying so after you force-quit Heeler and reopen it. None of them reads **Not read yet** |
 
 `/proc/<pid>/environ` holds the environment the core started with, so a variable it set for itself later does not appear. A Windows Host's line is covered by unit tests, not this checklist.

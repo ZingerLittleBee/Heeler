@@ -543,6 +543,8 @@ struct HerdrCoreTerminalStoreTests {
         #expect(second.params["resumed"] == .bool(true))
         #expect(second.params["history"] == nil)
         #expect(store.status == .restarting)
+        // The screen still shows the program that ended, so this key is not for the shell.
+        store.send(Data("y".utf8))
         try await fixture.deliverOutput("new shell", on: second)
         try await Self.until("the new shell") { store.status == .live }
         #expect(String(data: sink.received, encoding: .utf8) == "vim screennew shell")
@@ -1086,9 +1088,37 @@ struct HerdrCoreTerminalStoreTests {
 
     // MARK: A detail and the core it opened on, through the real Console
 
-    /// No saved Chat, so the reconnect's placeholder takes the detail down with all
-    /// it held. What comes back is still the detail opened on the old core.
-    @Test func aDetailTheReconnectRebuiltStaysOnTheCoreItOpenedOn() async throws {
+    /// As on a Herdr TUI Host: the detail stays up, input waits with nothing sent,
+    /// and a fresh snapshot decides whether the Agent is still there.
+    @Test func anAgentDetailStaysThroughRecoveryUntilAFreshSnapshotSays() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let hostID = fixture.host.id
+        #expect(fixture.console.isHostReadyForInput(hostID))
+
+        await fixture.console.suspend()
+        try await Self.until("suspended") { fixture.console.hostStatuses[hostID] == .suspended }
+        #expect(fixture.console.agents.isEmpty)
+        #expect(fixture.console.detailAgent(for: agent.id) == agent)
+        #expect(!fixture.console.isHostReadyForInput(hostID))
+        await #expect(throws: HerdrCoreChatTyping.Refusal.self) {
+            try await fixture.console.sendAgentKeys(["Enter"], to: agent.agent.paneID, on: hostID)
+        }
+
+        await fixture.scripted.setChannel(.core(.init(id: "c1", terminals: [])))
+        await fixture.console.resume()
+        try await Self.until("the fresh snapshot") {
+            fixture.console.hostStatuses[hostID] == .connected
+                && !fixture.console.hostsAwaitingSnapshot.contains(hostID)
+        }
+        #expect(fixture.console.detailAgent(for: agent.id) == nil)
+        #expect(fixture.console.isHostReadyForInput(hostID))
+        await fixture.finish()
+    }
+
+    /// Suspending takes down the terminal the detail held, not the detail. What it
+    /// acquires when the app returns is still the terminal of the old core.
+    @Test func aDetailBackFromSuspensionStaysOnTheCoreItOpenedOn() async throws {
         let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
         let agent = try #require(fixture.console.agents.first)
         let shown = try await fixture.showConsole()
@@ -1099,10 +1129,17 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("the detail's terminal") { shown.layOut(); return shown.surface != nil }
 
         await fixture.console.suspend()
-        try await Self.until("the placeholder") { shown.layOut(); return shown.surface == nil }
+        try await Self.until("the terminal let go") {
+            shown.layOut()
+            return fixture.console.agentTerminals.entries[agent.id] == nil
+        }
+        #expect(fixture.console.detailAgent(for: agent.id) == agent)
         await fixture.scripted.setChannel(.core(.init(id: "c2", terminals: [Self.keptAgentRecord])))
         await fixture.console.resume()
-        try await Self.until("the rebuilt detail") { shown.layOut(); return shown.surface != nil }
+        try await Self.until("the terminal back") {
+            shown.layOut()
+            return fixture.console.agentTerminals.entries[agent.id] != nil
+        }
         let entry = try #require(fixture.console.agentTerminals.entries[agent.id])
         try await Self.until("the terminal to end") {
             shown.layOut()
@@ -1641,7 +1678,7 @@ struct HerdrCoreTerminalStoreTests {
         }
         await detail.settle()
 
-        #expect(!detail.offers("Message the Agent"))
+        try await Self.until("the card in the Composer's place") { !detail.offers("Message the Agent") }
         #expect(detail.reads("Yes"), "the card's first option")
         #expect(detail.offers("Show Agent Terminal"))
         await detail.close()

@@ -649,12 +649,17 @@ actor SessionDriver {
     func writePTY(id: UInt64, data: Data, timeout: Duration) async throws {
         try await withDiagnosticPhase("PTY write channel \(id)", budget: timeout) {
             guard !data.isEmpty else { return }
-            let deadline = ContinuousClock.now.advanced(by: timeout)
+            var deadline = ContinuousClock.now.advanced(by: timeout)
             var offset = 0
             let owner = allocateTransportSendOwner()
 
             while offset < data.count {
+                // The budget measures this write's own progress. Queueing behind
+                // another operation, such as a health probe opening a channel on
+                // a stalled link, says nothing about this channel.
+                let queuedAt = ContinuousClock.now
                 await acquireOperation()
+                deadline = deadline.advanced(by: queuedAt.duration(to: ContinuousClock.now))
                 let progress: (written: Int, wait: SessionWaitPlan, parkedOutbound: Bool)
                 do {
                     try await holdOwnedLoopTopForTestingIfNeeded(owner: owner)
@@ -672,7 +677,7 @@ actor SessionDriver {
                         session: session)
                     applyTransportSendOwnerDisposition(disposition)
                     guard written >= 0 || written == Int(LIBSSH2_ERROR_EAGAIN) else {
-                        throw SSHError.channelFailed
+                        throw ptyFailure(written)
                     }
                     progress = (
                         written,
@@ -740,7 +745,8 @@ actor SessionDriver {
                         stream: 0,
                         buffer: &buffer,
                         owner: owner,
-                        session: session)
+                        session: session,
+                        failure: ptyFailure)
                     let eof = libssh2_channel_eof(channel) == 1
                     if eof { ptyChannels[id]?.reachedEOF = true }
                     progress = (data, eof, sessionWaitPlan(session))
@@ -954,7 +960,7 @@ actor SessionDriver {
             ) {
                 libssh2_channel_request_pty_size_ex($0, Int32(columns), Int32(rows), 0, 0)
             }
-            guard result == 0 else { throw SSHError.channelFailed }
+            guard result == 0 else { throw ptyFailure(Int(result)) }
         }
     }
 
@@ -2851,6 +2857,14 @@ actor SessionDriver {
         nextSessionWaitHoldForTesting = hold
     }
 
+    /// Occupies the operation mutex the way a pending channel open does, so
+    /// later operations queue behind it without any network impairment.
+    func holdOperationForTesting(_ hold: @Sendable () async -> Void) async {
+        await acquireOperation()
+        await hold()
+        releaseOperation()
+    }
+
     func failNextExecStderrReadForTesting(_ error: SSHError) {
         nextExecStderrReadErrorForTesting = error
     }
@@ -3718,6 +3732,9 @@ actor SessionDriver {
         deadline: ContinuousClock.Instant,
         cancellable: Bool
     ) async throws {
+        // Nothing has reached libssh2 yet, so a caller cancelled in the operation
+        // queue leaves no native state behind and must not cost the session.
+        if cancellable, Task.isCancelled { throw SSHError.cancelled }
         while channelOpenInProgress {
             if cancellable {
                 try checkProgress(deadline: deadline)
@@ -4598,7 +4615,8 @@ actor SessionDriver {
         stream: Int32,
         buffer: inout [UInt8],
         owner: UInt64,
-        session: OpaquePointer
+        session: OpaquePointer,
+        failure: (Int) -> SSHError = { _ in .channelFailed }
     ) throws -> Data {
         let count = rawChannelRead(channel: channel, stream: stream, buffer: &buffer)
         let disposition = notePacketProducingWrite(
@@ -4608,7 +4626,22 @@ actor SessionDriver {
         applyTransportSendOwnerDisposition(disposition)
         if count > 0 { return Data(buffer.prefix(count)) }
         if count == 0 || count == Int(LIBSSH2_ERROR_EAGAIN) { return Data() }
-        throw SSHError.channelFailed
+        throw failure(count)
+    }
+
+    /// A PTY read, write, or resize that lost the socket must not read as the terminal
+    /// ending: the store would show Session Ended over a connection it can
+    /// redial. `LIBSSH2_ERROR_SOCKET_NONE` stays a channel failure, because
+    /// libssh2 also uses that code as a generic error.
+    private func ptyFailure(_ result: Int) -> SSHError {
+        switch Int32(clamping: result) {
+        case LIBSSH2_ERROR_SOCKET_SEND, LIBSSH2_ERROR_SOCKET_RECV,
+            LIBSSH2_ERROR_SOCKET_DISCONNECT:
+            invalidateResources()
+            return .connectionInvalidated
+        default:
+            return .channelFailed
+        }
     }
 
     private func readOnce(

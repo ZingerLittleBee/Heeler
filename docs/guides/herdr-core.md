@@ -130,6 +130,8 @@ A Grok Build Agent's Composer keeps **Send** while it works, as on any other Hos
 
 The new shell is no Agent until you start one in it.
 
+A dropped connection is not an end. An open Agent detail keeps its screen and draft with **Reconnecting…** in its title, and takes no input until the Host answers again. Once the core answers, its list decides whether the Agent is still there.
+
 Another core at the same socket, such as one started under another state directory, has its own Terminals, even at the same address. A terminal you had open shows as ended, and says it belongs to a core that is gone. A Chat you had open gives way to that terminal. Anything you tap waits for the new core's list, and after that the screen you had open sends nothing: Close, Send, Stop and answers to the Agent all say the Terminal belongs to a core that is gone. This holds even if the screen was rebuilt while the Host was reconnecting. Open the Terminal again from that list, and what you open there, like the list's own rows, acts on the new core. On iPad the row is no longer marked as selected, and tapping it opens the new core's Terminal.
 
 ## Close
@@ -271,7 +273,7 @@ While Heeler is suspended the activity names each Agent's workspace by its folde
 
 ## Usage
 
-With the Helper installed, a core Host's Usage works as on any other Host, in the Usage tab, the Host's detail and the widgets: Token Usage for Claude Code and Codex, and Claude Code's Usage Limits when you turn them on for that Host.
+With the Helper installed, a core Host's Usage works as on any other Host, in the Usage tab, the Host's detail and the widgets: Token Usage for Claude Code and Codex, and Claude Code's Usage Limits when you turn them on for that Host. Turning **Usage** off in **Settings** covers core Hosts too: Heeler stops asking their Helpers, and the Helpers themselves stay installed.
 
 The **Default Account** follows the core, not your SSH login. A core usually starts from the desktop app or a login shell, with an environment SSH never sees, so the Helper reads the variables that locate Accounts, such as `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, from the core process. It reads those by name and nothing else, keeps them in a file only your account can read, and reads them again whenever the core restarts. Change `CLAUDE_CONFIG_DIR` and restart the core to move the Default Account.
 

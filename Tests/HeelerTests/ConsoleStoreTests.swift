@@ -1157,6 +1157,9 @@ struct ConsoleStoreTests {
         store.setHosts([host])
         await store.resume()
         try await waitUntil("the initial agent should arrive") { store.agents.count == 1 }
+        let agent = try #require(store.agents.first)
+        let composer = store.composerStore(for: agent)
+        composer.replaceDraft(with: "keep this unsent draft")
 
         // Publishing the snapshot precedes installing its pane subscription.
         // Inject the failure only after that replacement stream is live.
@@ -1170,6 +1173,19 @@ struct ConsoleStoreTests {
         }
 
         #expect(store.agents.isEmpty)
+        #expect(store.detailAgent(for: agent.id) == agent)
+        #expect(!composer.canSend)
+        #expect(await composer.send() == .ignored)
+        #expect(composer.draft == "keep this unsent draft")
+        #expect(await transport.agentPromptParams.isEmpty)
+
+        await transport.setSnapshot(.fixture(agents: []))
+        await store.retryHost(host.id)
+        try await waitUntil("a fresh empty inventory must retire the retained detail") {
+            store.hostStatuses[host.id] == .connected && !store.hostsAwaitingSnapshot.contains(host.id)
+        }
+        #expect(store.detailAgent(for: agent.id) == nil)
+        #expect(composer.draft == "keep this unsent draft")
 
         store.setHosts([])
     }
@@ -2027,6 +2043,100 @@ struct ConsoleStoreTests {
         #expect(store.pins.isPinned(hostID: host.id, paneID: "w2:p1"))
     }
 
+    @Test func aRemovalRequestedOfflineStaysARemovalWhenTheHostConnects() async throws {
+        let host = Host.fixture()
+        let session = AgentSessionInfo(
+            agent: "claude", kind: .id, source: "herdr:claude",
+            value: "e951205e-24af-4a5e-baa7-3ccbebd2de2c")
+        let info = AgentInfo(
+            agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1,
+            tabID: "t1", terminalID: "term-1", workspaceID: "w1", agent: "claude",
+            agentSession: session, cwd: "/home/dev/proj")
+        let saved = ConsoleAgent(
+            hostID: host.id, hostName: host.displayName, agent: Agent(info),
+            workspaceLabel: nil, repositoryCheckout: nil)
+        let cache = VolatileChatTranscriptCache()
+        await cache.saveAgentDirectory([ChatCachedAgent(saved)], for: host)
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [info]))
+        let reachability = HostReachability()
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10), chatCache: cache,
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { try await reachability.connect(transport) },
+                    reconnectPolicy: Self.fastPolicy, keepalive: nil)
+            })
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        await store.cachedChats.settled()
+        #expect(store.isSavedChat(saved.id))
+
+        var removed: Bool?
+        var closed = false
+        let confirmation = AgentCloseConfirmation(
+            title: "claude", isPresented: .constant(true),
+            request: store.closeRequest(for: saved.id),
+            removeSavedChat: { removed = store.removeSavedChat(saved) },
+            closeAgent: { closed = true })
+        #expect(confirmation.question == SavedChatRemovalCopy.question)
+        #expect(confirmation.confirmLabel == SavedChatRemovalCopy.confirm)
+
+        await reachability.comeOnline()
+        try await waitUntil("the Host should list the live Agent") {
+            store.agents.map(\.id) == [saved.id] && !store.isSavedChat(saved.id)
+        }
+        #expect(store.closeRequest(for: saved.id) == .closeAgent)
+
+        confirmation.confirm()
+
+        #expect(removed == false)
+        #expect(!closed)
+        #expect(store.agents.map(\.id) == [saved.id])
+        #expect(await transport.closedPanes.isEmpty)
+        #expect(await transport.closedTabs.isEmpty)
+    }
+
+    @Test func aCloseRequestConfirmsAndClosesTheAgent() {
+        var removed = false
+        var closed = false
+        let confirmation = AgentCloseConfirmation(
+            title: "claude", isPresented: .constant(true), request: .closeAgent,
+            removeSavedChat: { removed = true },
+            closeAgent: { closed = true })
+
+        #expect(confirmation.question == "Close claude?")
+        #expect(confirmation.confirmLabel == "Close Agent")
+        #expect(confirmation.message.contains("closes the pane on the Host"))
+        confirmation.confirm()
+        #expect(closed)
+        #expect(!removed)
+    }
+
+    @Test func aHostConnectingBehindARemovalNeverClosesTheLiveAgent() async throws {
+        // The confirmation promised a removal on this device. Once the Host
+        // lists the Agent, confirming it must neither close nor forget it.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the agent should arrive") { store.agents.count == 1 }
+        store.togglePin(hostID: host.id, paneID: "w1:p1")
+        let live = try #require(store.agents.first)
+
+        #expect(!store.isSavedChat(live.id))
+        #expect(!store.removeSavedChat(live))
+
+        #expect(await transport.closedTabs.isEmpty)
+        #expect(await transport.closedPanes.isEmpty)
+        #expect(store.agents.map(\.id) == [live.id])
+        #expect(store.pins.isPinned(hostID: host.id, paneID: "w1:p1"))
+    }
+
     @Test func aShellPaneBesideTheAgentKeepsItsTabOpen() async throws {
         // Shell panes are not Agents, so only the tab's reported pane count
         // shows the Agent is not alone in it.
@@ -2130,21 +2240,12 @@ struct ConsoleStoreTests {
         await #expect(throws: TransportError.timedOut) {
             try await store.focusAgent("pane", on: host.id)
         }
-        // The single retry rides the replacement, so the focus reaches the
-        // transport once per attempt.
-        #expect(await transport.agentFocuses == [
-            AgentTarget(target: "pane"), AgentTarget(target: "pane"),
-        ])
-        // The redial ends the stale events channel, and the fresh
-        // `.connected` that follows is the consumer's usual re-snapshot
-        // signal: exactly one resync beyond the pre-focus count. A FAILED
-        // focus must not add a success resync on top of it.
-        try await waitUntil("the reconnect resync should land") {
-            await transport.snapshotFetchCount == before + 1
-        }
+        // The Host still answers its health check, so an uncertain focus
+        // delivery is neither replayed nor treated as a new connection.
+        #expect(await transport.agentFocuses == [AgentTarget(target: "pane")])
         // Give an incorrectly scheduled success refresh time to reach the transport.
         try await Task.sleep(for: .milliseconds(25))
-        #expect(await transport.snapshotFetchCount == before + 1)
+        #expect(await transport.snapshotFetchCount == before)
         #expect(store.agents.map(\.agent.status) == [.done])
     }
 
@@ -2949,6 +3050,75 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    /// A lost link can be replaced behind a status that never leaves
+    /// `.connected`. The new `.connected` alone proves nothing about the Host.
+    @Test func aSilentReplacementKeepsInputPausedUntilItsSnapshotLands() async throws {
+        let host = Host.fixture()
+        let first = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let second = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let snapshotGate = ScriptedTransportCallGate()
+        await second.gateNextSnapshot(using: snapshotGate)
+        let store = makeStore(
+            transportQueues: [host.id: TransportQueue([first, second])])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the first snapshot should open input") {
+            store.isHostReadyForInput(host.id) && store.agents.count == 1
+        }
+        #expect(store.connectionRecoveryTitle(for: host.id) == nil)
+
+        await first.setAgentPromptFailure(TransportError.sshUnreachable(detail: "connection lost"))
+        await #expect(throws: TransportError.sshUnreachable(detail: "connection lost")) {
+            _ = try await store.promptAgent(
+                AgentPromptParams(target: "w1:p1", text: "once"), on: host.id)
+        }
+        await snapshotGate.waitForEntry()
+        try await waitUntil("the replacement should announce itself") {
+            store.hostConnectionGenerations[host.id] == 1
+                && store.hostStatuses[host.id] == .connected
+                && !store.hostsCheckingConnection.contains(host.id)
+        }
+        #expect(!store.isHostReadyForInput(host.id))
+        #expect(store.connectionRecoveryTitle(for: host.id) == "Updating session…")
+        #expect(store.agents.count == 1, "a silent replacement keeps its rows listed")
+        await #expect(throws: TransportError.self) {
+            try await store.sendAgentKeys(["enter"], to: "w1:p1", on: host.id)
+        }
+        await #expect(throws: TransportError.self) {
+            try await store.pasteIntoAgent("note", paneID: "w1:p1", on: host.id)
+        }
+
+        await snapshotGate.open()
+        try await waitUntil("the replacement's snapshot should reopen input") {
+            store.isHostReadyForInput(host.id)
+        }
+        #expect(store.connectionRecoveryTitle(for: host.id) == nil)
+        #expect(await second.agentPromptParams.isEmpty, "a lost send must not run again")
+    }
+
+    @Test func leavingPastTheGracePeriodKeepsTheDetailsAgent() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the Agent should arrive") { store.agents.count == 1 }
+        let agent = try #require(store.agents.first)
+
+        await store.suspend()
+        try await waitUntil("the Host should suspend") {
+            store.hostStatuses[host.id] == .suspended
+        }
+        #expect(store.agents.isEmpty)
+        #expect(store.detailAgent(for: agent.id) == agent)
+        #expect(!store.isHostReadyForInput(host.id))
+    }
+
     @Test func terminalRunnerAndImageStagerSurviveAHostEdit() async throws {
         // The Attach screen holds its runner and stager for its whole
         // lifetime. Editing the Host replaces the projection and ends its
@@ -2997,6 +3167,18 @@ struct ConsoleStoreTests {
 
 /// Hands out scripted transports in order, one per `connect`, so tests can
 /// drive SSH-level replacement deterministically.
+/// A Host that refuses every connection until the test brings it up.
+private actor HostReachability {
+    private var isOnline = false
+
+    func comeOnline() { isOnline = true }
+
+    func connect(_ transport: ScriptedTransport) throws -> ScriptedTransport {
+        guard isOnline else { throw TransportError.sshUnreachable(detail: "scripted offline") }
+        return transport
+    }
+}
+
 private actor TransportQueue {
     private var remaining: [ScriptedTransport]
 

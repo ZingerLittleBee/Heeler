@@ -752,6 +752,7 @@
 		C74D080F6FD77A529655A070 /* DialogRowScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD5AC7650CAC6F4DBDDABF8 /* DialogRowScanner.swift */; };
 		C74D34C256DB90B990C46139 /* GitProbe+CheckoutRoots.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDA9CD762AFC40D2119ADEBC /* GitProbe+CheckoutRoots.swift */; };
 		C783E750C9EBBD811D16D150 /* NotificationKeyMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91F0473741A92D7EFA40CBA /* NotificationKeyMirror.swift */; };
+		C873DEA2FF1FD67967F533B8 /* AgentUsageSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD05A999942E6271D9EA5F86 /* AgentUsageSettings.swift */; };
 		C87A7CFEA0CF7A6632F6018A /* ChatBackgroundWorkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFC5340F002BEC8FA2D363 /* ChatBackgroundWorkSheet.swift */; };
 		C895B6AEC9BC2E9F8626B04C /* ChatTextSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 866CBB6E58F431BF10EA101C /* ChatTextSettingsTests.swift */; };
 		C8EFC9461B6C274C1F4BD406 /* EdgeDockSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12FBBE02202C285590EC5736 /* EdgeDockSettings.swift */; };
@@ -1728,6 +1729,7 @@
 		BC019B4A164A7B01F1D46344 /* TerminalKeysKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeysKeyboard.swift; sourceTree = "<group>"; };
 		BCC2054BD2E630F945FF3954 /* HarnessConfigEditStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HarnessConfigEditStoreTests.swift; sourceTree = "<group>"; };
 		BCDD3A343C4D08ED707188AF /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		BD05A999942E6271D9EA5F86 /* AgentUsageSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsageSettings.swift; sourceTree = "<group>"; };
 		BDBC00F84EB3631E0B24DA71 /* HerdrCoreStagingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreStagingTests.swift; sourceTree = "<group>"; };
 		BE0D4897C97D900DE5E413FF /* HostOnboardingCoreStartTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostOnboardingCoreStartTests.swift; sourceTree = "<group>"; };
 		BE2692F332DFC55D9205782E /* AgentChatAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentChatAvailability.swift; sourceTree = "<group>"; };
@@ -3297,6 +3299,7 @@
 				A9B369B42301D8ACC286AC50 /* AgentListFieldsEditor.swift */,
 				775417BCAF4E4110FDEF5A75 /* AgentListFieldsPreview.swift */,
 				AAE86260EA6111621498F139 /* AgentListFieldsSettingsView.swift */,
+				BD05A999942E6271D9EA5F86 /* AgentUsageSettings.swift */,
 				DAEAF21DF91A1BCE4C9F79A3 /* AppAppearanceSettings.swift */,
 				710F0F2EAD8E14489F3454CA /* AppearanceSettingsView.swift */,
 				75AD4D2E9AF7A381719AB084 /* ChatCacheSettingsSection.swift */,
@@ -3634,6 +3637,7 @@
 				6A512419312DC382B336B105 /* AgentUsageReport.swift in Sources */,
 				14A1B1184BCC835C0DB2D6BC /* AgentUsageScope.swift in Sources */,
 				F847D64EBDEDC3BFD6661852 /* AgentUsageSection.swift in Sources */,
+				C873DEA2FF1FD67967F533B8 /* AgentUsageSettings.swift in Sources */,
 				F012CFD6F3169254F85CBB55 /* AgentUsageSheets.swift in Sources */,
 				F52B846B649FDE80D98868E6 /* AgentUsageStore.swift in Sources */,
 				F7BEF300908EDFA47E9540A7 /* AgentUsageStrip.swift in Sources */,
@@ -4581,7 +4585,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/HeelerWidgets/HeelerWidgets.entitlements;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 37;
 				INFOPLIST_FILE = Sources/HeelerWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -4602,7 +4606,7 @@
 				ASSETCATALOG_COMPILER_OPTIMIZATION = space;
 				CODE_SIGN_ENTITLEMENTS = Sources/Heeler/Heeler.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 37;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEELER_SOURCE_REVISION = "";
 				INFOPLIST_FILE = Sources/Heeler/Info.plist;
@@ -4630,7 +4634,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/HeelerWidgets/HeelerWidgets.entitlements;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 37;
 				INFOPLIST_FILE = Sources/HeelerWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -4648,7 +4652,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/HeelerNotificationService/HeelerNotificationService.entitlements;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 37;
 				INFOPLIST_FILE = Sources/HeelerNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -4769,7 +4773,7 @@
 				ASSETCATALOG_COMPILER_OPTIMIZATION = space;
 				CODE_SIGN_ENTITLEMENTS = Sources/Heeler/Heeler.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 37;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEELER_SOURCE_REVISION = "";
 				INFOPLIST_FILE = Sources/Heeler/Info.plist;
@@ -4798,7 +4802,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/HeelerNotificationService/HeelerNotificationService.entitlements;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 37;
 				INFOPLIST_FILE = Sources/HeelerNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

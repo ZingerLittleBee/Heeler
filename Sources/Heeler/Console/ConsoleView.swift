@@ -132,6 +132,9 @@ struct ConsoleView: View {
     /// The Agent whose tab the swipe action would close; non-nil shows the
     /// close confirmation.
     @State private var pendingTabClose: ConsoleAgent?
+    /// The saved Chat entry the swipe action would remove from this device;
+    /// separate from a close, which asks the Host and says so.
+    @State private var pendingSavedChatRemoval: ConsoleAgent?
     /// Owns presentation mode and Host/Workspace collapse state.
     @State private var listPresentation = ConsoleListPresentationStore()
     /// Outlives the detail column's rebuilds, which is the whole point: it
@@ -186,8 +189,10 @@ struct ConsoleView: View {
                 Label(ConsoleTab.terminals.title, systemImage: "terminal")
                     .environment(\.symbolVariants, .none)
             }
-            Tab(ConsoleTab.usage.title, systemImage: "chart.bar.xaxis", value: ConsoleTab.usage) {
-                usageTab()
+            if console.isUsageEnabled {
+                Tab(ConsoleTab.usage.title, systemImage: "chart.bar.xaxis", value: ConsoleTab.usage) {
+                    usageTab()
+                }
             }
             Tab(ConsoleTab.hosts.title, systemImage: "server.rack", value: ConsoleTab.hosts) {
                 hostList(
@@ -236,7 +241,12 @@ struct ConsoleView: View {
         } message: {
             Text(pendingTabClose.map(tabCloseMessage(for:)) ?? "")
         }
-        .modifier(ConsoleOutcomeNoticeAlert(console: console))
+        .modifier(ConsoleNoticesAndResets(
+            console: console,
+            pendingSavedChatRemoval: $pendingSavedChatRemoval,
+            savedChatRemovalMessage: savedChatRemovalMessage(for:),
+            removeSavedChat: removeSavedChat,
+            leaveUsage: leaveUsage))
         .alert("Could Not Close", isPresented: tabCloseErrorPresented) {
             Button("OK", role: .cancel) { tabCloseError = nil }
         } message: {
@@ -385,7 +395,9 @@ struct ConsoleView: View {
                 if isUsageTabSelected { return .usage }
                 return shownListTab
             },
-            set: { tab in
+            set: { requested in
+                // Usage turned off behind a screen that opened from it.
+                let tab = requested == .usage && !console.isUsageEnabled ? shownListTab : requested
                 let leavingList = shownListTab
                 // A search field keeping first responder through the switch
                 // can leave the arriving tab blank; its query stays.
@@ -433,7 +445,7 @@ struct ConsoleView: View {
         HostListView(
             store: hosts,
             initialHostID: hostsTabRequest?.hostID,
-            usageStore: { console.agentUsageStore(for: $0) },
+            usageStore: console.isUsageEnabled ? { console.agentUsageStore(for: $0) } : nil,
             openUsage: { openUsage(for: $0) },
             showsSetupGuide: hostsTabRequest?.showsSetupGuide ?? false,
             connectionStatuses: console.hostStatuses,
@@ -475,7 +487,9 @@ struct ConsoleView: View {
     }
 
     /// The lists an iPad sidebar's title menu switches between.
-    private static let sidebarLists: [ConsoleTab] = [.agents, .terminals, .usage]
+    private var shownSidebarLists: [ConsoleTab] {
+        console.isUsageEnabled ? [.agents, .terminals, .usage] : [.agents, .terminals]
+    }
 
     /// Every Host the Usage tab can read, in catalog order.
     private var usageEntries: [AgentUsageHostEntry] {
@@ -494,7 +508,7 @@ struct ConsoleView: View {
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             SidebarListMenu(
-                                shown: .usage, lists: Self.sidebarLists,
+                                shown: .usage, lists: shownSidebarLists,
                                 isPresented: $isShowingUsageListMenu, frame: $usageListMenuTitleFrame)
                         }
                         .toolbarItemBackground(.hidden)
@@ -510,7 +524,7 @@ struct ConsoleView: View {
                                 .frame(width: 1, height: 1)
                                 .popover(isPresented: $isShowingUsageListMenu, arrowEdge: .top) {
                                     SidebarListChoices(
-                                        shown: .usage, lists: Self.sidebarLists,
+                                        shown: .usage, lists: shownSidebarLists,
                                         isPresented: $isShowingUsageListMenu,
                                         select: { selectedTab.wrappedValue = $0 })
                                 }
@@ -565,12 +579,23 @@ struct ConsoleView: View {
     /// A Usage widget's tap: the tab on the widget's scope, and for Usage
     /// Limits, that Host's limits. A Host since removed opens All Hosts.
     private func openUsage(_ link: UsageWidgetLink.Target) {
+        guard console.isUsageEnabled else { return }
         let hostID = link.hostID.flatMap { id in hosts.consoleHosts.contains { $0.id == id } ? id : nil }
         usageScopeHostID = hostID
         isShowingHostsSheet = false
         isShowingSettingsSheet = false
         selectedTab.wrappedValue = .usage
         usageLimitsRequested = link.showsLimits && hostID != nil
+    }
+
+    /// Usage turned off, from this window or another: nothing of it stays
+    /// selected or asked for, so turning it back on opens where it first did.
+    private func leaveUsage() {
+        if isUsageTabSelected { selectedTab.wrappedValue = shownListTab }
+        usageScopeHostID = nil
+        usageShowsLimits = false
+        usageLimitsRequested = false
+        isShowingUsageListMenu = false
     }
 
     private func switchList(to tab: ConsoleTab) {
@@ -917,7 +942,7 @@ struct ConsoleView: View {
                         .frame(width: 1, height: 1)
                         .popover(isPresented: $isShowingListMenu, arrowEdge: .top) {
                             SidebarListChoices(
-                                shown: tab, lists: Self.sidebarLists,
+                                shown: tab, lists: shownSidebarLists,
                                 isPresented: $isShowingListMenu, select: switchList(to:))
                         }
                         .position(anchor)
@@ -1042,7 +1067,7 @@ struct ConsoleView: View {
         if usesSidebarNavigation {
             ToolbarItem(placement: .topBarLeading) {
                 SidebarListMenu(
-                    shown: tab, lists: Self.sidebarLists,
+                    shown: tab, lists: shownSidebarLists,
                     isPresented: $isShowingListMenu, frame: $listMenuTitleFrame)
             }
             .toolbarItemBackground(.hidden)
@@ -1399,9 +1424,8 @@ struct ConsoleView: View {
     }
 
     /// The detail column. Not keyed off the live Agent list alone: the
-    /// selection must survive the list emptying while an Agent is shown
-    /// (a reconnect empties it briefly), so a vanished Agent shows a
-    /// placeholder instead of clearing the selection.
+    /// selection and terminal remain mounted while recovery temporarily empties
+    /// the inventory. A fresh snapshot still decides whether the Agent exists.
     @ViewBuilder
     private func detail(in tab: ConsoleTab) -> some View {
         if let id = notificationRouter.path.last {
@@ -1698,6 +1722,7 @@ struct ConsoleView: View {
         case .agent(let agent, let section, let standsAlone):
             agentLink(
                 agent,
+                isSaved: saved[agent.id] != nil,
                 background: ConsoleWorkspaceCardRow(
                     placed: placed, indent: .icon,
                     top: standsAlone ? (placed.followsHeader ? 0 : 6) : 2, bottom: standsAlone ? 6 : 4,
@@ -1872,6 +1897,7 @@ struct ConsoleView: View {
     private func agentRow(_ agent: ConsoleAgent, qualifier: String?, saved: HostReadiness?) -> some View {
         agentLink(
             agent,
+            isSaved: saved != nil,
             background: ConsoleRowSelectionBackground(
                 isSelected: selectedItem.wrappedValue == .agent(agent.id))
         ) {
@@ -1900,7 +1926,7 @@ struct ConsoleView: View {
     /// and window actions. `background` draws the row's place in the list;
     /// `preview` is what a lifted card shows (see `ConsoleRowContextMenu`).
     private func agentLink<RowContent: View, Background: ViewModifier, Preview: View>(
-        _ agent: ConsoleAgent, background: Background,
+        _ agent: ConsoleAgent, isSaved: Bool, background: Background,
         @ViewBuilder label: () -> RowContent, @ViewBuilder preview: () -> Preview
     ) -> some View {
         let offers = ConsoleAgentRowOffers(
@@ -1938,7 +1964,12 @@ struct ConsoleView: View {
                 }
                 // Asks first, like the swipe. A menu item can be destructive:
                 // the row stays put until the close succeeds.
-                if offers.closes {
+                if isSaved {
+                    Divider()
+                    Button(SavedChatRemovalCopy.action, systemImage: "trash", role: .destructive) {
+                        pendingSavedChatRemoval = agent
+                    }
+                } else if offers.closes {
                     Divider()
                     Button(
                         "Close \(closeScope(for: agent))", systemImage: "trash",
@@ -1971,11 +2002,15 @@ struct ConsoleView: View {
         // first. No `.destructive` role: List would animate the row out
         // while the confirmation is still up, even if the user cancels.
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            if offers.closes {
+            if isSaved || offers.closes {
                 Button {
-                    pendingTabClose = agent
+                    if isSaved {
+                        pendingSavedChatRemoval = agent
+                    } else {
+                        pendingTabClose = agent
+                    }
                 } label: {
-                    Label("Close", systemImage: "trash")
+                    Label(isSaved ? SavedChatRemovalCopy.confirm : "Close", systemImage: "trash")
                 }
                 .tint(.red)
             }
@@ -2024,6 +2059,19 @@ struct ConsoleView: View {
         guard let agent = pendingTabClose else { return }
         pendingTabClose = nil
         closeTabNow(agent)
+    }
+
+    private func savedChatRemovalMessage(for agent: ConsoleAgent) -> String {
+        SavedChatRemovalCopy.message(
+            naming: AgentCardPresentation(
+                agent: agent, layout: console.rowLayout(for: agent.hostID)
+            ).switcherTitle)
+    }
+
+    /// An open detail goes with its entry, which it can no longer show.
+    private func removeSavedChat(_ agent: ConsoleAgent) {
+        let isSelected = notificationRouter.path.last == agent.id
+        if console.removeSavedChat(agent), isSelected { clearSelection() }
     }
 
     /// What closing this Agent takes down, widest first.
@@ -2714,6 +2762,60 @@ struct MissingAgentPresentation: Equatable {
             hosts: hosts.consoleHosts,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
             hostStandingFailures: console.hostStandingFailures)
+    }
+}
+
+/// One link of `ConsoleView.body`'s chain, which is at the type checker's limit.
+private struct ConsoleNoticesAndResets: ViewModifier {
+    let console: ConsoleStore
+    @Binding var pendingSavedChatRemoval: ConsoleAgent?
+    let savedChatRemovalMessage: (ConsoleAgent) -> String
+    let removeSavedChat: (ConsoleAgent) -> Void
+    let leaveUsage: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .modifier(ConsoleOutcomeNoticeAlert(console: console))
+            .modifier(SavedChatRemovalAlert(
+                pending: $pendingSavedChatRemoval,
+                message: savedChatRemovalMessage,
+                remove: removeSavedChat))
+            .modifier(UsageTurnedOffReset(isEnabled: console.isUsageEnabled, reset: leaveUsage))
+    }
+}
+
+private struct UsageTurnedOffReset: ViewModifier {
+    let isEnabled: Bool
+    let reset: () -> Void
+
+    func body(content: Content) -> some View {
+        content.onChange(of: isEnabled) { _, enabled in
+            if !enabled { reset() }
+        }
+    }
+}
+
+/// A saved Chat row's swipe or context menu asks here before removing it.
+private struct SavedChatRemovalAlert: ViewModifier {
+    @Binding var pending: ConsoleAgent?
+    let message: (ConsoleAgent) -> String
+    let remove: (ConsoleAgent) -> Void
+
+    func body(content: Content) -> some View {
+        content.alert(
+            SavedChatRemovalCopy.question,
+            isPresented: Binding(
+                get: { pending != nil },
+                set: { if !$0 { pending = nil } })
+        ) {
+            Button(SavedChatRemovalCopy.confirm, role: .destructive) {
+                if let pending { remove(pending) }
+                pending = nil
+            }
+            Button("Cancel", role: .cancel) { pending = nil }
+        } message: {
+            Text(pending.map(message) ?? "")
+        }
     }
 }
 

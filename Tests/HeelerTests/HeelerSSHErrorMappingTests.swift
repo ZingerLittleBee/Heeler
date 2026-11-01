@@ -77,6 +77,15 @@ struct HeelerSSHErrorMappingTests {
         #expect(HeelerSSHTransport.mapOperationForTesting(SSHError.cancelled) == .cancelled)
     }
 
+    @Test func incompleteRepliesCanRecoverWithoutTreatingInvalidRepliesAsRetryable() {
+        // A delayed channel-open acknowledgement can outlast herdr's idle
+        // request timeout. EOF before an NDJSON line is not a protocol verdict.
+        #expect(HeelerSSHTransport.mapOperationForTesting(SSHError.unexpectedEOF).isRetryable)
+        #expect(!HeelerSSHTransport.mapOperationForTesting(
+            SSHError.responseTooLarge(limit: 1_024)).isRetryable)
+        #expect(!TransportError.malformedResponse("invalid JSON line").isRetryable)
+    }
+
     /// Chat polls transcripts over weak links, so its own failures must not
     /// look like the link failures that make a Host redial.
     @Test func chatFileFailuresStayOffTheLinkFailurePath() {

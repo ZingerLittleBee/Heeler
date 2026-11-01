@@ -256,7 +256,8 @@ confirm or refine these points with test clients, not the app.
   Chat's Send, Stop, keys and Blocked answers. Chat, which goes on to the
   address's new Agent, gives way in that detail to its ended terminal, which says
   the core is gone. The pin belongs to the window's selection, not to the detail's
-  views (`ConsoleDetailCores`): a detail rebuilt by a reconnect's placeholder, a
-  list tab's return or a size-class change is still the one opened on the old core.
+  views (`ConsoleDetailCores`): a detail rebuilt by a failed Host's placeholder, a
+  list tab's return or a size-class change is still the one opened on the old core,
+  as is one that stayed up through a reconnect or a suspension.
   Leaving it, or picking the row at its address, opens the new core's Terminal. So
   that pick works beside the list, the list stops marking that row as selected.

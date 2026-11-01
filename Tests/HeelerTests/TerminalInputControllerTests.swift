@@ -7,6 +7,57 @@ import Testing
 @MainActor
 @Suite("Terminal input controller")
 struct TerminalInputControllerTests {
+    @Test func checkingTheConnectionBlocksInputWithoutReplayingItOnRecovery() {
+        var writes: [Data] = []
+        var scrolls = 0
+        let controller = TerminalInputController()
+        let generation = controller.beginSession(
+            writer: { writes.append($0) }, scroller: { _, _ in scrolls += 1 })
+        #expect(controller.requestPaste("one\ntwo").requiresReview)
+        controller.isEnabled = false
+
+        #expect(!controller.send(Data("ignored".utf8)))
+        #expect(!controller.sendEscapeKey())
+        #expect(!controller.insertComposerDraft("draft"))
+        #expect(!controller.insertSnippet("snippet", bracketedPaste: false))
+        #expect(!controller.insertReferenceWhenLive("path/to/file"))
+        #expect(controller.requestPaste("paste") == .blocked)
+        #expect(!controller.canConfirmPaste)
+        #expect(!controller.confirmPaste())
+        controller.scroll(Data([0x1B]), rows: 3)
+        #expect(scrolls == 0)
+
+        controller.isEnabled = true
+        controller.sessionDidBecomeLive(generation)
+        #expect(writes.isEmpty)
+        #expect(controller.confirmPaste())
+        #expect(writes == [Data("one\ntwo".utf8)])
+        #expect(controller.send(Data("new".utf8)))
+        #expect(writes.last == Data("new".utf8))
+    }
+
+    @Test func recoveryDiscardsQueuedScrollWithoutDroppingKeys() async {
+        let instant = ContinuousClock.now
+        let queue = TerminalAttachInputQueue(now: { instant })
+        defer { queue.finish() }
+        let controller = TerminalInputController()
+        let generation = controller.beginSession(
+            writer: { queue.send($0) },
+            scroller: { queue.scroll($0, rows: $1) },
+            discardPendingScroll: { queue.discardPendingScroll() })
+        defer { controller.endSession(generation) }
+        let key = Data("accepted key".utf8)
+        let wheel = Data("wheel".utf8)
+        #expect(controller.send(key))
+        controller.scroll(wheel, rows: 12)
+        controller.isEnabled = false
+        controller.scroll(wheel, rows: 12)
+        controller.isEnabled = true
+        controller.scroll(wheel, rows: 1)
+        #expect(await queue.next() == .keystrokes(key))
+        #expect(await queue.next() == .scroll(wheel))
+    }
+
     @Test func singleLinePasteInsertsImmediately() {
         var writes: [Data] = []
         let controller = TerminalInputController()
@@ -371,6 +422,11 @@ struct TerminalInputControllerTests {
         let generation = controller.beginSession { writes.append($0) }
         #expect(writes.isEmpty)
 
+        controller.isEnabled = false
+        controller.sessionDidBecomeLive(generation)
+        #expect(writes.isEmpty)
+        #expect(!controller.insertReferenceWhenLive("ignored.swift "))
+        controller.isEnabled = true
         controller.sessionDidBecomeLive(generation)
         controller.sessionDidBecomeLive(generation)
         #expect(writes == [Data("file.swift:2 ".utf8)])

@@ -19,6 +19,15 @@ versions. They are historical evidence, not fresh tests on the installed herdr.
   ([ADR 0031](../adr/0031-herdr-core-hosts-connect-without-starting-a-core.md)).
   Their Agents fill the Console's Herdr TUI-shaped models
   ([ADR 0032](../adr/0032-herdr-core-hosts-fill-the-console-models.md)).
+- Initial API request timeout, herdr 0.9.5 (`INITIAL_REQUEST_TIMEOUT` in
+  `src/api/server.rs`, source review): an accepted API socket closes after five
+  seconds without a request line. In a #523 Simulator/Instabox test against
+  herdr `2713feb56`, blocking SSH downlink for 18 seconds delayed the
+  channel-open acknowledgement past that timeout. Recovery produced EOF before
+  a response line, with `timed out reading api request` in the server log. This
+  is a retryable channel failure, not evidence of an incompatible response;
+  complete invalid JSON and oversized responses remain protocol errors. Recovery
+  must not replay an operation that changes Host state.
 - Start with [HeelerSSHTransport](../../Sources/Heeler/Transport/HeelerSSHTransport.swift)
   and [EventsSession](../../Sources/Heeler/Transport/EventsSession.swift) for
   current adapters and recovery. Older symbol names below belong to their

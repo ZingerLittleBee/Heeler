@@ -501,7 +501,7 @@ struct AgentUsageHostHelperTests {
         defer { widgets.remove() }
         let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         await AgentUsageBackgroundRefresh(read: { _, _ in .hostHelper(.notOnWindows) })
-            .run(hosts: [host], publisher: widgets.publisher())
+            .run(hosts: [host], publisher: widgets.publisher(), isUsageEnabled: { true })
         let reason = "Comes with the Host Helper, not available yet"
         #expect(widgets.reasons == [reason])
 

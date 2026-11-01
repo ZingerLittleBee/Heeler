@@ -29,10 +29,9 @@ struct ReconnectPolicy: Sendable, Equatable {
 /// Keepalive for the events session (#18). The Transport seam deliberately
 /// exposes no SSH-specific keepalive machinery, so the session pings herdr
 /// over the ordinary RPC path instead — which is also the stronger check: it
-/// generates SSH traffic that keeps NAT mappings alive, is bounded by the
-/// per-request deadline, and exercises the whole path (SSH + the forwarded
-/// socket + herdr), so a dead connection is detected within interval +
-/// request timeout.
+/// generates SSH traffic that keeps NAT mappings alive and exercises the
+/// whole path (SSH + the forwarded socket + herdr). Its soft deadline warns
+/// without cancelling the channel; the hard deadline bounds recovery.
 struct KeepalivePolicy: Sendable, Equatable {
     /// Idle time between pings while the events channel is live. Pings are
     /// skipped while real traffic within the interval — a successful RPC or
@@ -40,6 +39,16 @@ struct KeepalivePolicy: Sendable, Equatable {
     /// ping's jobs (liveness detection, NAT-mapping refresh) are done by
     /// that traffic.
     var interval: Duration
+
+    /// The first deadline only warns and blocks input; the same read-only
+    /// probe may still recover without cancelling its SSH channel. A request
+    /// that already ran out its own deadline has spent `warningDelay` in
+    /// silence, so its probe warns at once and gets what remains of `timeout`.
+    var warningDelay: Duration = .seconds(15)
+    var timeout: Duration = .seconds(30)
+    /// A forwarded channel can close while its SSH connection survives, so a
+    /// probe tries again on a fresh channel until its deadline.
+    var probeRetryDelay: Duration = .seconds(1)
 
     static let `default` = KeepalivePolicy(interval: .seconds(30))
 }
@@ -88,6 +97,9 @@ extension EventsSessionStatus {
 enum EventsSessionUpdate: Sendable, Equatable {
     case status(EventsSessionStatus)
     case event(HerdrEvent)
+    /// Read `isCheckingConnection` for the current connection's health.
+    /// This does not reinstall subscriptions or invalidate their snapshot.
+    case connectionHealthChanged
 }
 
 /// The self-healing events channel for one Host (#18): owns the Host's
@@ -158,6 +170,15 @@ actor EventsSession {
     /// whatever moment either stream is actually consumed.
     nonisolated var currentLatency: Duration? { latencyBox.withLock { $0 } }
     private nonisolated let latencyBox = Mutex<Duration?>(nil)
+    nonisolated var isCheckingConnection: Bool { checkingConnectionBox.withLock { $0 } }
+    private nonisolated let checkingConnectionBox = Mutex(false)
+    /// `transportGeneration`, ordered against status updates as
+    /// `currentLatency` is, so a consumer can tell a silent replacement from
+    /// a reinstalled subscription when the following `.connected` lands.
+    nonisolated var currentTransportGeneration: UInt64 {
+        transportGenerationBox.withLock { $0 }
+    }
+    private nonisolated let transportGenerationBox = Mutex<UInt64>(0)
     /// The catalog route the current connection reached (ADR 0022). Ordered
     /// against status updates exactly as `currentLatency` is.
     nonisolated var currentRouteID: UUID? { routeIDBox.withLock { $0 } }
@@ -205,6 +226,8 @@ actor EventsSession {
     private var activationGeneration: UInt64 = 0
     private var runTask: Task<Void, Never>?
     private var keepaliveTask: Task<Void, Never>?
+    /// Foreground checks and timed-out callers share one bounded probe.
+    private var connectionProbe: (id: UUID, task: Task<Bool, Never>)?
     private var backoffSleep: Task<Void, any Error>?
     private var backoffGeneration: UInt64?
     /// The most recently enqueued lifecycle transition; each new one chains
@@ -293,21 +316,20 @@ actor EventsSession {
     /// No-op unless a channel is actually live: a suspended session is
     /// `resume()`'s business, and one already reconnecting is visibly working
     /// on it.
-    func revalidate() async {
-        guard
-            phase == .active,
-            let stream = liveStream,
-            let transport = currentTransport
-        else { return }
-        do {
-            let latency = try await measureLatency(on: transport)
-            guard publishLatency(latency, measuredOn: stream) else { return }
-            noteConnectionActivity()
-        } catch is CancellationError {
-        } catch TransportError.cancelled {
-        } catch {
-            await keepaliveDidFail(Self.transportFailure(error), on: stream)
-        }
+    ///
+    /// Starts an owned probe without holding the app's lifecycle queue.
+    /// Suspension cancels it; a short foreground bounce joins it.
+    @discardableResult
+    func startRevalidation() -> Task<Bool, Never>? {
+        guard let transport = currentTransport, liveStream != nil else { return nil }
+        return checkConnection(transport)
+    }
+
+    /// Release a probe's SSH operation before terminal teardown needs the
+    /// same driver. The existing background grace period still owns timing.
+    func pauseHealthChecks() {
+        stopKeepalive()
+        cancelConnectionProbe()
     }
 
     /// Deliberate teardown for backgrounding: ends the events channel by
@@ -372,12 +394,33 @@ actor EventsSession {
     func withTransport<Value: Sendable>(
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value {
+        try await runOperation(replaysOnReplacement: true, operation)
+    }
+
+    /// `withTransport` for an operation that changes Host state. A lost reply
+    /// does not say whether it ran, so it never runs again on a replacement;
+    /// the caller surfaces the failure and the user decides.
+    func withTransportOnce<Value: Sendable>(
+        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        try await runOperation(replaysOnReplacement: false, operation)
+    }
+
+    private func runOperation<Value: Sendable>(
+        replaysOnReplacement: Bool,
+        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
         let transport = try await awaitUsableTransport()
         do {
             let value = try await operation(transport)
             noteConnectionActivity()
             return value
         } catch {
+            // The operation may have reached the Host before its reply
+            // stalled, so a surviving connection is never a reason to replay it.
+            if await connectionSurvives(error, on: transport) {
+                throw error
+            }
             // A degraded SSH link can sit installed-but-dead until the run
             // loop's own traffic notices. A caller that hit it first does
             // what the keepalive does — distrust the transport, let the run
@@ -396,6 +439,7 @@ actor EventsSession {
             // wait, and a failing redial releases the waiter through the
             // run loop's announce with its real cause.
             await distrust(transport)
+            guard replaysOnReplacement else { throw error }
             let replacement = try await awaitUsableTransport()
             do {
                 let value = try await operation(replacement)
@@ -405,6 +449,17 @@ actor EventsSession {
                 throw error
             }
         }
+    }
+
+    /// A deadline is not proof the connection died. A timeout the driver
+    /// survived gets one probe, and only a failed probe replaces the connection.
+    /// A channel-open timeout retires the session in the driver, so it skips the
+    /// probe: that session must not admit more work even if the socket lives.
+    private func connectionSurvives(_ error: any Error, on transport: any Transport) async -> Bool {
+        guard error as? TransportError == .timedOut, await transport.isConnected else {
+            return false
+        }
+        return await checkConnection(transport, warnImmediately: true)?.value == true
     }
 
     /// Link-level failures worth one redial-and-retry: the SSH connection
@@ -430,6 +485,8 @@ actor EventsSession {
     /// loop re-checks the mark once its subscribe returns.
     private func distrust(_ transport: any Transport) async {
         guard isSameTransport(currentTransport, transport) else { return }
+        cancelConnectionProbe()
+        setCheckingConnection(true)
         transportSuspect = true
         currentTransport = nil
         guard let liveStream else { return }
@@ -499,11 +556,14 @@ actor EventsSession {
             return value
         } catch {
             releaseTerminal(target: target)
-            // A live terminal is often the first to hit a dead link. Distrust
-            // the transport as `withTransport` does, so the run loop redials
-            // now instead of at the next keepalive and a reattach can ride
-            // the replacement (#523).
-            if let acquired, Self.isTransportLinkFailure(error) {
+            // A live terminal is often the first to hit a dead link. Unless it
+            // only ran out a deadline on a connection that still answers,
+            // distrust the transport as `withTransport` does, so the run loop
+            // redials now instead of at the next keepalive and a reattach can
+            // ride the replacement (#523).
+            if let acquired, Self.isTransportLinkFailure(error),
+                await !connectionSurvives(error, on: acquired)
+            {
                 await distrust(acquired)
             }
             throw error
@@ -572,6 +632,11 @@ actor EventsSession {
             latencyBox.withLock { $0 = nil }
             routeIDBox.withLock { $0 = nil }
         }
+        if case .status(let status) = update,
+            status != .connected || connectionProbe == nil
+        {
+            checkingConnectionBox.withLock { $0 = false }
+        }
         guard case .dropped = updatesContinuation.yield(update) else { return }
         droppedUpdateCount += 1
         if case .dropped = updatesContinuation.yield(.event(.eventsDropped)) {
@@ -608,9 +673,14 @@ actor EventsSession {
                 let transport = try await ensureTransport(for: generation)
                 guard activationIsCurrent(generation) else { break }
                 stream = try await transport.subscribeToEvents(subscriptions)
+                if transportSuspect, let failure = pendingKeepaliveFailure {
+                    await stream.end()
+                    throw failure
+                }
             } catch {
                 guard activationIsCurrent(generation) else { break }
-                let failure = Self.transportFailure(error)
+                let failure = pendingKeepaliveFailure ?? Self.transportFailure(error)
+                pendingKeepaliveFailure = nil
                 if failure == .timedOut {
                     // The connection swallowed a request whole; do not trust
                     // it for the retry even if it still looks alive.
@@ -624,7 +694,7 @@ actor EventsSession {
                     continue
                 }
                 guard failure.isRetryable else {
-                    recordTerminalTransportFailure(failure)
+                    terminalTransportFailure = failure
                     failTerminalTransportWaiters(failure, for: generation)
                     failTransportWaiters(failure)
                     yieldUpdate(.status(.failed(failure)))
@@ -689,14 +759,16 @@ actor EventsSession {
                 // stream happened to die on its own in the same instant —
                 // the subscribe path re-checks the connection anyway.
                 resubscribeRequested = false
-                continue
+                // A failed probe is stronger evidence than a requested
+                // reinstall. Classify it before replacing the Transport.
+                if pendingKeepaliveFailure == nil { continue }
             }
             let failure =
                 pendingKeepaliveFailure ?? streamFailure
                 ?? .channelFailed(detail: "events stream ended unexpectedly")
             pendingKeepaliveFailure = nil
             guard failure.isRetryable else {
-                recordTerminalTransportFailure(failure)
+                terminalTransportFailure = failure
                 failTerminalTransportWaiters(failure, for: generation)
                 failTransportWaiters(failure)
                 yieldUpdate(.status(.failed(failure)))
@@ -752,6 +824,7 @@ actor EventsSession {
             if !transportSuspect, await transport.isConnected {
                 return transport
             }
+            cancelConnectionProbe()
             currentTransport = nil
             try? await transport.close()
         }
@@ -779,6 +852,7 @@ actor EventsSession {
         } else {
             hasEstablishedTransport = true
         }
+        transportGenerationBox.withLock { $0 = transportGeneration }
         terminalTransportContinuation.yield(transportGeneration)
         resumeTerminalTransportWaiters(
             with: transport,
@@ -821,6 +895,7 @@ actor EventsSession {
         backoffSleep = nil
         backoffGeneration = nil
         stopKeepalive()
+        cancelConnectionProbe()
         let task = runTask
         runTask = nil
         task?.cancel()
@@ -855,21 +930,9 @@ actor EventsSession {
                 try? await Task.sleep(for: keepalive.interval)
                 if Task.isCancelled { break }
                 guard self.connectionIsIdle(within: keepalive.interval) else { continue }
-                do {
-                    let latency = try await self.measureLatency(on: transport)
-                    // A ping answered after this channel was replaced also
-                    // means this loop is keeping a connection alive that the
-                    // session no longer has.
-                    guard self.publishLatency(latency, measuredOn: stream) else { break }
-                    self.noteConnectionActivity()
-                } catch is CancellationError {
-                    break
-                } catch TransportError.cancelled {
-                    break
-                } catch {
-                    await self.keepaliveDidFail(Self.transportFailure(error), on: stream)
-                    break
-                }
+                guard self.liveStream === stream,
+                    await self.checkConnection(transport)?.value == true
+                else { break }
             }
         }
     }
@@ -879,31 +942,103 @@ actor EventsSession {
         keepaliveTask = nil
     }
 
-    private func noteConnectionActivity() {
-        lastConnectionActivity = .now
+    private func cancelConnectionProbe() {
+        connectionProbe?.task.cancel()
+        connectionProbe = nil
+        // Keep input paused through a silent Transport replacement. The next
+        // status (including a fresh .connected) clears the health warning.
     }
 
-    /// Publishes a measurement taken on `stream`, unless that channel is no
-    /// longer the session's live one — and reports which it was.
-    ///
-    /// Cancellation is a request, not a guarantee: `windDown` cancels the
-    /// keepalive task without awaiting it, and a Transport is free to answer a
-    /// ping that was already in flight when its connection was torn down. Such
-    /// an answer describes a connection this session no longer has, so
-    /// publishing it would resurrect the value the non-connected status
-    /// cleared on the way out — and, once a replacement has connected,
-    /// overwrite that connection's own proof with the dead one's.
-    ///
-    /// The connect path has no channel to name yet and does not need one: it
-    /// publishes with no suspension point between its activation check and the
-    /// write, and any teardown after that clears the value through the status
-    /// it publishes.
-    private func publishLatency(
-        _ latency: Duration, measuredOn stream: HerdrEventStream
-    ) -> Bool {
-        guard phase == .active, liveStream === stream else { return false }
-        publishLatency(latency)
-        return true
+    private func checkConnection(
+        _ transport: any Transport, warnImmediately: Bool = false
+    ) -> Task<Bool, Never>? {
+        guard phase == .active,
+            isSameTransport(currentTransport, transport)
+        else { return nil }
+        if warnImmediately { setCheckingConnection(true) }
+        if let probe = connectionProbe { return probe.task }
+        let id = UUID()
+        let generation = activationGeneration
+        let task = Task {
+            let recovered = await self.runConnectionProbe(
+                transport, generation: generation, id: id, afterRequestTimeout: warnImmediately)
+            if self.connectionProbe?.id == id {
+                self.connectionProbe = nil
+            }
+            return recovered
+        }
+        connectionProbe = (id, task)
+        return task
+    }
+
+    private func runConnectionProbe(
+        _ transport: any Transport, generation: UInt64, id: UUID,
+        afterRequestTimeout: Bool
+    ) async -> Bool {
+        let policy = keepalive ?? .default
+        let timeout = afterRequestTimeout ? policy.timeout - policy.warningDelay : policy.timeout
+        let warning = Task {
+            do { try await Task.sleep(for: policy.warningDelay) } catch { return }
+            guard connectionProbe?.id == id, activationIsCurrent(generation),
+                isSameTransport(currentTransport, transport)
+            else { return }
+            setCheckingConnection(true)
+        }
+        defer { warning.cancel() }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while true {
+            do {
+                let started = ContinuousClock.now
+                let remaining = started.duration(to: deadline)
+                _ = try await AsyncDeadline.run(for: remaining) {
+                    try await transport.ping(timeout: remaining)
+                }
+                // A same-Transport subscription reinstall must not cancel an SSH
+                // channel open. Only this activation and connection own the result.
+                guard connectionProbe?.id == id, activationIsCurrent(generation),
+                    isSameTransport(currentTransport, transport)
+                else { return false }
+                publishLatency(started.duration(to: .now))
+                noteConnectionActivity()
+                setCheckingConnection(false)
+                return true
+            } catch is CancellationError {
+                return false
+            } catch TransportError.cancelled {
+                return false
+            } catch {
+                guard connectionProbe?.id == id, activationIsCurrent(generation),
+                    isSameTransport(currentTransport, transport)
+                else { return false }
+                let failure: TransportError = error is AsyncDeadlineError
+                    ? .timedOut : Self.transportFailure(error)
+                if case .channelFailed = failure, await transport.isConnected,
+                    ContinuousClock.now.advanced(by: policy.probeRetryDelay) < deadline
+                {
+                    do { try await Task.sleep(for: policy.probeRetryDelay) } catch { return false }
+                    continue
+                }
+                guard connectionProbe?.id == id, activationIsCurrent(generation),
+                    isSameTransport(currentTransport, transport)
+                else { return false }
+                transportSuspect = true
+                pendingKeepaliveFailure = failure
+                if liveStream == nil { setCheckingConnection(true) }
+                await liveStream?.end()
+                return false
+            }
+        }
+    }
+
+    private func setCheckingConnection(_ checking: Bool) {
+        guard isCheckingConnection != checking else { return }
+        checkingConnectionBox.withLock { $0 = checking }
+        if checking { latencyBox.withLock { $0 = nil } }
+        yieldUpdate(.connectionHealthChanged)
+    }
+
+    private func noteConnectionActivity() {
+        lastConnectionActivity = .now
     }
 
     /// The single gate every measurement leaves through: the connection-scoped
@@ -928,16 +1063,6 @@ actor EventsSession {
     private func connectionIsIdle(within interval: Duration) -> Bool {
         guard let last = lastConnectionActivity else { return true }
         return ContinuousClock.now - last >= interval
-    }
-
-    /// A keepalive ping failed: the connection cannot be trusted. Tears the
-    /// stream down by explicit close; the run loop then reconnects with a
-    /// fresh transport and surfaces this failure in `.reconnecting`.
-    private func keepaliveDidFail(_ failure: TransportError, on stream: HerdrEventStream) async {
-        guard phase == .active, liveStream === stream else { return }
-        transportSuspect = true
-        pendingKeepaliveFailure = failure
-        await stream.end()
     }
 
     private static func transportFailure(_ error: any Error) -> TransportError {
@@ -1116,11 +1241,6 @@ actor EventsSession {
             }
         }
         terminalTransportWaiters = retained
-    }
-
-    private func recordTerminalTransportFailure(_ failure: TransportError) {
-        guard currentTransport == nil else { return }
-        terminalTransportFailure = failure
     }
 
     private func cancelTerminalTransportWaiter(id: UUID) {

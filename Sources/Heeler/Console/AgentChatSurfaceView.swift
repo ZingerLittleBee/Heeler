@@ -46,7 +46,7 @@ struct AgentChatSurfaceView: View {
     @State private var bannerHeight: CGFloat = 0
     /// Where the Composer and what sits on it begin, in the global space,
     /// and how far it is from there to the screen's bottom.
-    @State private var conversationBottom: CGFloat?
+    @State private var bottomEdge = ChatTimelineBottomEdge()
     @State private var bottomChromeHeight: CGFloat = 0
     @State private var surfaceHeight: CGFloat = 0
     @State private var jumpRequest = 0
@@ -56,6 +56,7 @@ struct AgentChatSurfaceView: View {
     @State private var collapseControlHeight: CGFloat = 0
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     @State private var isConfirmingClose = false
+    @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
     @State private var selectedPhoto: PhotosPickerItem?
@@ -382,9 +383,21 @@ struct AgentChatSurfaceView: View {
                 .frame(maxWidth: .infinity)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
+            // On the chrome alone: the list keeps its frame and follows through
+            // its bottom inset, as resizing it each frame is slow and leaves it
+            // out of step with the edge it measures against. The tools dock is
+            // not a keyboard that moves.
             composerChrome
+                .keyboardLiftPadding(
+                    keyboardInset, restingInset: composerKeyboardLayout.contentInset,
+                    isEnabled: composerKeyboardPresentation != .tools)
         }
-        .padding(.bottom, composerKeyboardLayout.contentInset)
+        // The Composer's fold and the condensed background work change the
+        // chrome's height with the keyboard. Out here, so the conversation
+        // above them eases along instead of jumping to the final layout.
+        .animation(
+            reduceMotion ? nil : .spring(response: 0.266, dampingFraction: 1),
+            value: condensesBackgroundWork)
         // In place at the system keyboard's last height, as on the terminal,
         // and shown only while the Composer has switched to it.
         .overlay(alignment: .bottom) {
@@ -411,6 +424,7 @@ struct AgentChatSurfaceView: View {
                 actions: backHeaderActions,
                 surfaceSwitch: terminalSurfaceSwitch,
                 title: AgentDetailHeaderTitle(agent),
+                statusTitle: console.connectionRecoveryTitle(for: agent.hostID),
                 trailingInBar: headerSharesBar)
             .padding(.horizontal, 12)
             .padding(.top, backHeaderTop)
@@ -487,7 +501,7 @@ struct AgentChatSurfaceView: View {
                 state: timeline.state, jumpRequest: jumpRequest, followRequest: followRequest,
                 collapseRequest: collapseRequest,
                 topObstruction: topInset + headerObstruction + bannerHeight,
-                bottomEdge: conversationBottom,
+                bottomEdge: bottomEdge,
                 collapseControlClearance: collapseControlHeight,
                 textSize: ChatTextSettings.size(system: dynamicTypeSize, offset: textSizeOffset),
                 font: chatFont,
@@ -524,8 +538,17 @@ struct AgentChatSurfaceView: View {
                 solid: bottomChromeHeight - Self.bottomEdgeFadeLength)
                 .alignmentGuide(.bottom) { $0[.top] }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { conversationBottom = $0 }
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomChromeHeight = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { edge in
+            bottomEdge.update(
+                edge: edge, keyboardLift: keyboardLift,
+                keyboardIsFalling: keyboardInset.keyboardRideTarget == 0)
+        }
+        // Without the keyboard's part, which is under the keyboard, so this
+        // does not re-evaluate the surface on each frame of its motion.
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { height in
+            let chrome = height - keyboardLift
+            if abs(chrome - bottomChromeHeight) > 0.5 { bottomChromeHeight = chrome }
+        }
     }
 
     /// Whether the reason Chat shows takes the place of rows it keeps, such
@@ -842,6 +865,7 @@ struct AgentChatSurfaceView: View {
             inputReplacement: blockedCard,
             focusRequest: chat?.blocked.composerFocusRequest ?? 0,
             collapsesWithoutKeyboard: true,
+            keyboardIsLeaving: keyboardIsLeaving,
             interrupt: stopInterrupt)
         .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
         .frame(maxWidth: .infinity)
@@ -906,7 +930,18 @@ struct AgentChatSurfaceView: View {
             isInputFocused: false,
             keyboardPresentation: composerKeyboardPresentation,
             inheritsKeyboard: keyboardHandoff.mode(for: agent.id) != nil,
-            hasInputReplacement: chat.map { $0.blocked.content != .none } ?? false)
+            hasInputReplacement: chat.map { $0.blocked.content != .none } ?? false,
+            keyboardIsLeaving: keyboardIsLeaving)
+    }
+
+    private var keyboardLift: CGFloat {
+        keyboardInset.keyboardLift(
+            restingInset: composerKeyboardLayout.contentInset,
+            isEnabled: composerKeyboardPresentation != .tools)
+    }
+
+    private var keyboardIsLeaving: Bool {
+        composerKeyboardPresentation == .hidden && keyboardInset.keyboardRideTarget > 0
     }
 
     private var isHostConnected: Bool {
@@ -935,13 +970,19 @@ struct AgentChatSurfaceView: View {
             renameAgent: capabilities.renameAgent ? { isRenamingAgent = true } : nil,
             renameWorkspace: capabilities.renameWorkspace(id: agent.agent.workspaceID)
                 ? { isRenamingWorkspace = true } : nil,
-            closeAgent: { isConfirmingClose = true },
+            closeAgent: {
+                closeRequest = console.closeRequest(for: agent.id)
+                isConfirmingClose = true
+            },
             backToConsole: { backToConsole() },
             showAgentTerminal: { showAgentTerminal() },
             closeConfirmation: AgentCloseConfirmation(
                 title: title,
                 isPresented: $isConfirmingClose,
-                close: { Task { await performClose() } }))
+                request: closeRequest,
+                removeSavedChat: { if console.removeSavedChat(agent) { onClosed() } },
+                closeAgent: { Task { await performClose() } }),
+            removesSavedChat: console.isSavedChat(agent.id))
     }
 
     /// The More menu's Back to Console: the sidebar beside a detail that
@@ -983,6 +1024,9 @@ struct AgentChatSurfaceView: View {
         case .system:
             keyboardInset.resumeHeightCapture()
             keyboardInset.expectSoftwareKeyboard()
+        }
+        if composerKeyboardPresentation == .tools, presentation != .tools {
+            keyboardInset.skipKeyboardRideLeavingToolsDock()
         }
     }
 

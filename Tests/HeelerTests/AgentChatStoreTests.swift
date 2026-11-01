@@ -577,6 +577,8 @@ struct AgentChatStoreTests {
         await fixture.server.fail(with: .channelFailed(detail: "agent.get failed"))
 
         await fixture.store.step()
+        fixture.advance(5)
+        await fixture.store.step()
 
         #expect(fixture.store.conversation.readFailure == .channelFailed(detail: "agent.get failed"))
         #expect(fixture.store.conversation.phase == .unavailable(.noSession(.claude)))
@@ -587,7 +589,7 @@ struct AgentChatStoreTests {
         await fixture.store.step()
 
         #expect(fixture.store.conversation.readFailure == nil)
-        #expect(await fixture.server.reads == 2)
+        #expect(await fixture.server.reads == 3)
         #expect(await fixture.files.reads.isEmpty)
     }
 
@@ -599,17 +601,18 @@ struct AgentChatStoreTests {
         fixture.store.retry()
 
         await fixture.store.step()
+        fixture.advance(5)
         await fixture.store.step()
 
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
         #expect(fixture.store.conversation.readFailure == .channelFailed(detail: "agent.get failed"))
-        #expect(await fixture.server.reads == 2)
+        #expect(await fixture.server.reads == 3)
 
         await fixture.server.fail(with: nil)
         fixture.advance(5)
         await fixture.store.step()
 
-        #expect(await fixture.server.reads == 3)
+        #expect(await fixture.server.reads == 4)
         #expect(fixture.store.conversation.readFailure == nil)
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
     }
@@ -628,6 +631,8 @@ struct AgentChatStoreTests {
         await fixture.cache.save(document)
         await fixture.server.fail(with: .channelFailed(detail: "agent.get failed"))
 
+        await fixture.store.step()
+        fixture.advance(5)
         await fixture.store.step()
 
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
@@ -861,6 +866,9 @@ struct AgentChatStoreTests {
         await fixture.server.fail(with: .channelFailed(detail: "agent.get failed"))
         fixture.store.retry()
         await fixture.store.step()
+        fixture.advance(5)
+        await fixture.store.step()
+        #expect(fixture.store.conversation.readFailure == .channelFailed(detail: "agent.get failed"))
         await fixture.server.fail(with: nil)
         await fixture.files.failNext(.status, with: TransportError.hostFileTimedOut)
         fixture.store.retry()
@@ -869,6 +877,81 @@ struct AgentChatStoreTests {
 
         #expect(fixture.store.conversation.readFailure == .hostFileTimedOut)
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+    }
+
+    /// A stall can cost one Agent query while the connection recovers, and the
+    /// Host status already says so. Only a second loss in a row is shown (#523).
+    @Test(arguments: [
+        TransportError.timedOut,
+        .sshUnreachable(detail: "offline"),
+        .channelFailed(detail: "agent.get failed"),
+    ])
+    func oneSessionQueryLostToTheLinkStaysQuietUntilTheNextIsLostToo(
+        failure: TransportError
+    ) async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.store.step()
+        await fixture.server.fail(with: failure)
+        fixture.store.retry()
+
+        await fixture.store.step()
+        #expect(fixture.store.conversation.readFailure == nil)
+        #expect(await fixture.server.reads == 2)
+
+        fixture.advance(5)
+        await fixture.store.step()
+        #expect(await fixture.server.reads == 3)
+        #expect(fixture.store.conversation.readFailure == failure)
+
+        await fixture.server.fail(with: nil)
+        fixture.advance(5)
+        await fixture.store.step()
+        #expect(fixture.store.conversation.readFailure == nil)
+
+        // Recovery starts the count over.
+        await fixture.server.fail(with: failure)
+        fixture.store.retry()
+        await fixture.store.step()
+        #expect(fixture.store.conversation.readFailure == nil)
+    }
+
+    @Test func aQuietLostQueryDoesNotCountAgainstTheNextTimeChatOpens() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.store.step()
+        await fixture.server.fail(with: .timedOut)
+        fixture.store.retry()
+        await fixture.store.step()
+
+        fixture.store.suspend()
+        fixture.store.resume()
+        await fixture.store.step()
+
+        #expect(await fixture.server.reads == 3)
+        #expect(fixture.store.conversation.readFailure == nil)
+    }
+
+    @Test func aRouteFailureFromARedialCountsAsLostToTheLink() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.store.step()
+        await fixture.server.fail(with: .jumpHostFailed(.sshUnreachable(detail: "offline")))
+        fixture.store.retry()
+
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.readFailure == nil)
+    }
+
+    @Test func aSessionQueryRefusedByTheHostIsShownAtOnce() async throws {
+        let refused = TransportError.apiRejected(code: "not_found", message: "no such pane")
+        let fixture = Fixture(session: nil)
+        await fixture.server.fail(with: refused)
+
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.readFailure == refused)
     }
 
     @Test func aCancelledSessionQueryDoesNotShowAReadFailure() async throws {
@@ -1332,6 +1415,66 @@ struct AgentChatStoreTests {
 
         #expect(Self.ids(fixture.store).count > shown)
         #expect(Self.ids(fixture.store).last == "n-29")
+    }
+
+    /// Small limits, so a few hundred bytes make a search of many pages.
+    private static let searchLimits = TranscriptFollower.Limits(
+        tailWindow: 64, readChunk: 16, pollBudget: 1_024, olderPage: 32, maximumOlderPage: 128,
+        olderSearchPage: 32, lineStartSearch: 1_024, anchorLength: 8, headLength: 32, lineCap: 4_096, prefixCap: 16)
+
+    /// Looking for the prompt of a long turn can read tens of MiB. The list
+    /// shows each page as it comes, and what the Agent writes meanwhile,
+    /// rather than a spinner over the same rows until the prompt arrives.
+    @Test func aLongOlderSearchShowsEachPageAndKeepsFollowing() async throws {
+        let fixture = Fixture(session: Self.first, limits: Self.searchLimits)
+        let path = Self.path(Self.first)
+        await fixture.files.write(NumberedChatReducer.prompt("start") + NumberedChatReducer.lines(0..<40), at: path)
+        await fixture.store.step()
+        let opened = Self.ids(fixture.store).count
+
+        fixture.store.loadOlder(automatic: true)
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store).count > opened)
+        #expect(fixture.store.conversation.older == .loading)
+
+        await fixture.files.append(NumberedChatReducer.lines(40..<42), to: path)
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store).last == "n-41")
+        #expect(fixture.store.conversation.older == .loading)
+
+        var steps = 0
+        while fixture.store.conversation.older == .loading, steps < 100 {
+            await fixture.store.step()
+            steps += 1
+        }
+        #expect(Self.ids(fixture.store).first == "p-0")
+        #expect(Self.ids(fixture.store).last == "n-41")
+        #expect(fixture.store.conversation.older == .reachedStart)
+    }
+
+    /// Going to the background cancels the read a search is waiting on. That
+    /// is no failure: the search goes on from there, with no Retry to tap.
+    @Test func anOlderSearchCutShortByCancellationGoesOn() async throws {
+        let fixture = Fixture(session: Self.first, limits: Self.searchLimits)
+        let path = Self.path(Self.first)
+        await fixture.files.write(NumberedChatReducer.prompt("start") + NumberedChatReducer.lines(0..<40), at: path)
+        await fixture.store.step()
+
+        fixture.store.loadOlder(automatic: true)
+        await fixture.files.failNext(.read, path: path, with: TransportError.cancelled)
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.older == .loading)
+
+        var steps = 0
+        while fixture.store.conversation.older == .loading, steps < 100 {
+            await fixture.store.step()
+            steps += 1
+        }
+        #expect(Self.ids(fixture.store).first == "p-0")
+        #expect(fixture.store.conversation.older == .reachedStart)
     }
 
     /// The list's own request reads a failed page again, as Retry does,

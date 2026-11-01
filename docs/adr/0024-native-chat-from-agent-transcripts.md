@@ -229,8 +229,14 @@ needs anchoring in the same main-thread turn.
 Earlier history loads by itself as the reader nears the top of the list. Each
 request reads pages until it brings the start of a turn not shown before,
 since a page that ends inside a turn adds only steps its fold hides, or until
-it reaches the start of the file or has read 32 MiB. A request the list makes
-by itself reads as one from Load Earlier Messages does, except in Grok Build,
+it reaches the start of the file or has read 32 MiB. Each page shows as it
+comes, and Chat looks for what the Agent wrote between pages, because a search
+that long over a phone's connection otherwise leaves the list short and stale
+until it ends. Leaving Chat keeps the request, which goes on when Chat returns.
+Reopened, the live window starts at the tail below rows the cache shows, and
+the reducer needs those records to walk further up, so a request reads them
+again. They spend none of its 32 MiB: it would otherwise end with nothing new.
+A request the list makes by itself reads as one from Load Earlier Messages does, except in Grok Build,
 where it reads at most 4 MiB. Grok Build records each `read_file` result in
 full, so one turn can fill tens of MB: a turn that read 21 files of 99,000
 bytes and compacted automatically three times wrote result lines of about
@@ -282,8 +288,10 @@ once, stays readable offline, and survives the remote file's removal.
 
 Each Host also keeps its Chat entry points: the Agents last seen and the
 conversation each was bound to, so an offline Console still lists them and a
-live Agent that has not reported its session reopens the right one. Those
-bindings belong to one machine and herdr session. The machine is the host
+live Agent that has not reported its session reopens the right one. An entry
+listed while its Host is unproven is removed on the device, with its cached
+conversation and pin, never through a close request; a later snapshot lists
+the Agent again if it still runs. Those bindings belong to one machine and herdr session. The machine is the host
 key the device trusts for the Host (ADR 0022), not a route: routes may be
 added, reordered, or edited freely, but a replaced key, a changed account, or
 another herdr session drops them. So does another Herdr Endpoint socket,

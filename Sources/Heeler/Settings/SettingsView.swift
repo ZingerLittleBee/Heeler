@@ -85,6 +85,7 @@ struct SettingsView: View {
     static let overlayNetworksDestination = SettingsOverlayNetworksDestination.networks
 
     static let repositoryURL = URL(string: "https://github.com/ZingerLittleBee/Heeler")
+    static let documentationURL = URL(string: "https://docs.heeler.bybee.dev")
 
     /// Semantic identity of the About → Acknowledgements route.
     ///
@@ -96,8 +97,14 @@ struct SettingsView: View {
     /// Rows in the About section, in display order. The body iterates this
     /// list; the Acknowledgements entry is a navigation destination, not a
     /// static label, and its id is `acknowledgementsRouteID`.
+    static let usageFooter =
+        "Turn off to hide the Usage tab and stop reading usage from your Hosts. Usage widgets clear their figures."
+
     static var aboutRows: [AboutRow] {
         var rows: [AboutRow] = [.version, .setupGuide]
+        if documentationURL != nil {
+            rows.append(.documentation)
+        }
         if repositoryURL != nil {
             rows.append(.starOnGitHub)
         }
@@ -113,6 +120,7 @@ struct SettingsView: View {
     enum AboutRow: Equatable, Identifiable {
         case version
         case setupGuide
+        case documentation
         case starOnGitHub
         case acknowledgements
         case privacyPolicy
@@ -122,6 +130,7 @@ struct SettingsView: View {
             case .version: "settings.about.version"
             case .setupGuide: SettingsAboutDestination.setupGuide.rawValue
             case .acknowledgements: SettingsView.acknowledgementsRouteID
+            case .documentation: "settings.about.documentation"
             case .starOnGitHub: "settings.about.starOnGitHub"
             case .privacyPolicy: "settings.about.privacyPolicy"
             }
@@ -137,7 +146,7 @@ struct SettingsView: View {
             .setupGuide
         case .acknowledgements:
             .acknowledgements
-        case .version, .starOnGitHub, .privacyPolicy:
+        case .version, .documentation, .starOnGitHub, .privacyPolicy:
             nil
         }
     }
@@ -170,6 +179,18 @@ struct SettingsView: View {
                     } label: {
                         Label("Appearance", systemImage: "paintpalette")
                     }
+                }
+
+                Section {
+                    Toggle(isOn: Binding(
+                        get: { console.isUsageEnabled },
+                        set: { console.setUsageEnabled($0) }
+                    )) {
+                        Label(ConsoleTab.usage.title, systemImage: "chart.bar.xaxis")
+                    }
+                    .accessibilityIdentifier("settings.usage")
+                } footer: {
+                    Text(Self.usageFooter)
                 }
 
                 if let overlayNetworks {
@@ -231,6 +252,10 @@ struct SettingsView: View {
                     Label("Setup Guide", systemImage: "book")
                 }
                 .accessibilityIdentifier(destination.rawValue)
+            }
+        case .documentation:
+            if let documentationURL = Self.documentationURL {
+                ExternalLinkRow("Documentation", systemImage: "text.book.closed", destination: documentationURL)
             }
         case .starOnGitHub:
             if let repositoryURL = Self.repositoryURL {

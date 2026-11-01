@@ -717,6 +717,13 @@ actor HeelerSSHTransport: Transport {
         return try Self.serverInfo(from: pong)
     }
 
+    func ping(timeout: Duration) async throws -> ServerInfo {
+        let pong = try await request(
+            method: "ping", params: HerdrWire.EmptyParams(),
+            decoding: PongResponse.self, timeout: timeout)
+        return try Self.serverInfo(from: pong)
+    }
+
     static func serverInfo(from pong: PongResponse) throws -> ServerInfo {
         guard pong.protocolVersion >= Self.minimumProtocolVersion else {
             throw TransportError.protocolVersionMismatch(
@@ -2409,7 +2416,8 @@ actor HeelerSSHTransport: Transport {
         params: P,
         decoding type: R.Type,
         beforeDispatch: (@Sendable () async throws -> Void)? = nil,
-        onDispatched: (@Sendable () async -> Void)? = nil
+        onDispatched: (@Sendable () async -> Void)? = nil,
+        timeout: Duration? = nil
     ) async throws -> R {
         try await withColdStartWake {
             try await self.performRequest(
@@ -2417,7 +2425,8 @@ actor HeelerSSHTransport: Transport {
                 params: params,
                 decoding: type,
                 beforeDispatch: beforeDispatch,
-                onDispatched: onDispatched)
+                onDispatched: onDispatched,
+                timeout: timeout)
         }
     }
 
@@ -2426,18 +2435,20 @@ actor HeelerSSHTransport: Transport {
         params: P,
         decoding type: R.Type,
         beforeDispatch: (@Sendable () async throws -> Void)? = nil,
-        onDispatched: (@Sendable () async -> Void)? = nil
+        onDispatched: (@Sendable () async -> Void)? = nil,
+        timeout: Duration? = nil
     ) async throws -> R {
         guard connected else {
             throw TransportError.sshUnreachable(
                 detail: "The SSH connection is closed.")
         }
+        let timeout = timeout ?? requestTimeout
         let requestID = UUID().uuidString
         let line = try HerdrWire.requestLine(
             id: requestID,
             method: method,
             params: params)
-        let responseLine = try await withRequestDeadline {
+        let responseLine = try await withRequestDeadline(timeout: timeout) {
             let environment = try await self.apiEnvironment()
             let socketPath = try await self.resolvedSocketPath()
             if environment.isWindows {
@@ -2448,16 +2459,16 @@ actor HeelerSSHTransport: Transport {
                         exec = try await self.connection.openExec(
                             command: PowerShellCommand.herdr(
                                 arguments: ["remote-api-bridge"], socketPath: socketPath,
-                                location: self.socketLocation, streaming: true), timeout: self.requestTimeout)
+                                location: self.socketLocation, streaming: true), timeout: timeout)
                     } catch { throw await self.mapOperationError(error) }
                     let channel = BootstrappedExecChannel(channel: exec)
                     do {
                         try await beforeDispatch?()
-                        try await channel.write(Data(line.utf8), timeout: self.requestTimeout)
+                        try await channel.write(Data(line.utf8), timeout: timeout)
                         await onDispatched?()
                         var response = Data()
                         while let chunk = try await channel.read(
-                            maximumBytes: 16 * 1024, timeout: self.requestTimeout)
+                            maximumBytes: 16 * 1024, timeout: timeout)
                         {
                             response.append(chunk)
                             if let newline = response.firstIndex(of: 0x0A) {
@@ -2487,7 +2498,7 @@ actor HeelerSSHTransport: Transport {
                         socketPath: socketPath,
                         request: Data(line.utf8),
                         maximumResponseBytes: Self.maximumResponseBytes,
-                        timeout: self.requestTimeout,
+                        timeout: timeout,
                         beforeRequestWrite: beforeDispatch,
                         onRequestWritten: onDispatched)
                 } catch SSHError.streamLocalOpenFailed {
@@ -2922,11 +2933,12 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func withRequestDeadline<T: Sendable>(
+        timeout: Duration? = nil,
         _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         do {
             return try await AsyncDeadline.run(
-                for: requestTimeout,
+                for: timeout ?? requestTimeout,
                 operation: operation)
         } catch AsyncDeadlineError.timedOut {
             throw TransportError.timedOut
@@ -2974,7 +2986,10 @@ actor HeelerSSHTransport: Transport {
         }
         switch error {
         case .unexpectedEOF:
-            return .malformedResponse("stream-local channel closed before a response line")
+            // A delayed channel-open acknowledgement can outlast the server's
+            // request timeout. Without a complete line, this is a channel loss,
+            // not evidence of an incompatible protocol.
+            return .channelFailed(detail: "stream-local channel closed before a response line")
         case .responseTooLarge(let limit):
             return .malformedResponse("response line exceeds \(limit) bytes")
         case .connectionInvalidated:

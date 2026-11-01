@@ -860,6 +860,103 @@ struct TerminalAttachTests {
     }
 
     @MainActor
+    @Test func aFreshScrollCannotReviveExpiredMomentum() async throws {
+        let input = TerminalAttachInputQueue()
+        defer { input.finish() }
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onScroll: { input.scroll($0, rows: $1) })
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        #expect(terminal.scrollTouch(translationY: 960) == 60)
+
+        // No writer can drain while the connection is stalled. A new gesture
+        // after recovery must not give these old rows a fresh lifetime.
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(terminal.scrollTouch(translationY: 32) == 2)
+        let wheel = Data("\u{1B}[<64;40;12M".utf8)
+        #expect(await input.next() == .scroll(wheel + wheel))
+    }
+
+    @Test func coalescedScrollKeepsItsOriginalExpiry() async {
+        let clock = Mutex(ContinuousClock.now)
+        let input = TerminalAttachInputQueue(now: { clock.withLock { $0 } })
+        defer { input.finish() }
+        let wheel = Data("wheel".utf8)
+        input.scroll(wheel, rows: 5)
+        clock.withLock { $0 += .milliseconds(199) }
+        input.scroll(wheel, rows: 2)
+        #expect(await input.next() == .scroll(wheel + wheel + wheel))
+
+        // Neither coalescing nor sending a batch may renew the remaining rows.
+        clock.withLock { $0 += .milliseconds(1) }
+        input.scroll(wheel, rows: 2)
+        #expect(await input.next() == .scroll(wheel + wheel))
+    }
+
+    @MainActor
+    @Test func stalledWriterDropsOldScrollButAcceptsFreshInput() async throws {
+        let input = TerminalAttachInputQueue()
+        let stalledWrite = ScriptedTransportCallGate()
+        let writes = Mutex<[Data]>([])
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onScroll: { input.scroll($0, rows: $1) })
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        input.resize(cols: 80, rows: 24)
+        let writer = Task.detached {
+            try await input.pump(
+                write: { data in writes.withLock { $0.append(data) } },
+                resize: { _, _ in await stalledWrite.waitUntilOpen() })
+        }
+        await stalledWrite.waitForEntry()
+        #expect(terminal.scrollTouch(translationY: 960) == 60)
+        try await Task.sleep(for: .milliseconds(350))
+        await stalledWrite.open()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(writes.withLock { $0.isEmpty }, "recovery must not replay old scroll rows")
+
+        let key = Data("new input".utf8)
+        let wheelDown = Data("\u{1B}[<65;40;12M".utf8)
+        input.send(key)
+        #expect(terminal.scrollTouch(translationY: -32) == -2)
+        let deadline = ContinuousClock.now + .seconds(3)
+        while writes.withLock({ $0.count }) < 2, ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+        input.finish()
+        try await writer.value
+        #expect(writes.withLock { $0 } == [key, wheelDown + wheelDown])
+    }
+
+    @MainActor
+    @Test func recoveryStopsRemoteMomentumButKeepsLocalScrollback() {
+        var remoteRows = 0
+        var localActions: [String] = []
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onScroll: { _, rows in remoteRows += rows })
+        terminal.didPerformBindingAction = { localActions.append($0) }
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        terminal.startTouchScrollMomentum(velocityY: 2_000)
+        #expect(terminal.isTouchScrollMomentumRunning)
+        terminal.setRemoteScrollEnabled(false)
+        #expect(!terminal.isTouchScrollMomentumRunning)
+        #expect(terminal.scrollTouch(translationY: 960) == 0)
+        terminal.scrollRows(towardOlderContent: true, rows: 60)
+        terminal.startTouchScrollMomentum(velocityY: 2_000)
+        #expect(!terminal.isTouchScrollMomentumRunning)
+        #expect(remoteRows == 0)
+
+        terminal.setRemoteScrollEnabled(true)
+        #expect(!terminal.isTouchScrollMomentumRunning)
+        #expect(terminal.scrollTouch(translationY: -32) == -2)
+        #expect(remoteRows == 2)
+
+        terminal.receive(Data("\u{1B}[?1049l\u{1B}[?1000;1006l".utf8))
+        terminal.setRemoteScrollEnabled(false)
+        #expect(terminal.scrollTouch(translationY: 32) == 2)
+        #expect(localActions == ["scroll_page_lines:-2"])
+        #expect(remoteRows == 2)
+    }
+
+    @MainActor
     @Test func attachStartsWithTheIOSInputMethodAndKeyboardSwitcher() {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
         #expect(terminal.keyboardMode == .text)

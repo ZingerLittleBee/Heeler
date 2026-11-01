@@ -19,6 +19,11 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     var leakedEnvironmentNames: Set<String> { get }
     var transportGeneration: UInt64 { get }
     var isAwaitingSnapshot: Bool { get }
+    /// Whether input must wait: unlike `isAwaitingSnapshot`, this also covers a
+    /// connection replaced without any non-connected status.
+    var isAwaitingFreshSnapshot: Bool { get }
+    /// A slow connection is being probed, so input pauses.
+    var isCheckingConnection: Bool { get }
     var workspaces: [ConsoleWorkspace] { get }
     var removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] { get }
     var terminalsByPane: [String: ConsoleTerminal] { get }
@@ -26,6 +31,9 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// Agents off the list whose program was lost or ended, for a detail open
     /// on one to say so (ADR 0032).
     var departedAgentsByPane: [String: ConsoleAgent] { get }
+    /// Display-only metadata for a selected detail during recovery. Never used
+    /// as live inventory, and replaced even by an empty fresh snapshot.
+    var lastKnownAgentsByPane: [String: ConsoleAgent] { get }
     var sidebarRevision: UInt64 { get }
     var terminalLabelKeys: [String] { get }
 
@@ -35,6 +43,7 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func resume() async
     func revalidate() async
     func suspend() async
+    func pauseHealthChecks() async
     func retry() async
     func cancelConnecting() async
     func end()
@@ -119,6 +128,19 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
 
 extension ConsoleHostProjection {
     var departedAgentsByPane: [String: ConsoleAgent] { [:] }
+
+    /// Until a snapshot proves what the Host runs, its Console rows may be saved
+    /// Chat entries, on a Host that offers Chat at all.
+    var showsSavedChats: Bool {
+        host.capabilities.chat && (status != .connected || isAwaitingSnapshot)
+    }
+
+    /// A Host without a health probe has a link that goes with its inventory.
+    var isAwaitingFreshSnapshot: Bool { isAwaitingSnapshot }
+
+    var isCheckingConnection: Bool { false }
+
+    func pauseHealthChecks() async {}
 
     func availableTemplates() async throws -> [AgentTemplate] { [] }
 

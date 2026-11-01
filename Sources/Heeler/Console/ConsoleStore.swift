@@ -38,6 +38,7 @@ final class ConsoleStore {
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
     private(set) var hostStandingFailures: [Host.ID: TransportError] = [:]
     private(set) var hostLatencies: [Host.ID: Duration] = [:]
+    private(set) var hostsCheckingConnection: Set<Host.ID> = []
     /// The route each connected Host's current connection reached.
     private(set) var hostRouteIDs: [Host.ID: HostRoute.ID] = [:]
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
@@ -52,6 +53,9 @@ final class ConsoleStore {
     /// Their empty Agent projection is loading state, not proof that a pane
     /// disappeared.
     private(set) var hostsAwaitingSnapshot: Set<Host.ID> = []
+    /// Hosts whose inventory predates their current connection, including one
+    /// replaced silently. Their rows stay listed, but input waits.
+    private(set) var hostsAwaitingFreshSnapshot: Set<Host.ID> = []
     /// Latest snapshot workspaces by Host. This is observable state rather
     /// than a projection lookup so an open New Agent picker refreshes when a
     /// snapshot arrives or a workspace membership event resyncs the Host.
@@ -155,6 +159,7 @@ final class ConsoleStore {
     /// Writes the widgets' snapshot of those readings. Only the app passes
     /// one: demo mode and tests must not replace the real widgets' figures.
     @ObservationIgnored let usageWidgets: AgentUsageWidgetPublisher?
+    @ObservationIgnored private let usageSettings: AgentUsageSettings
     /// Reads made only because a widget's figures went stale, per Host.
     @ObservationIgnored private var widgetUsageRefreshes: [Host.ID: (id: UUID, task: Task<Void, Never>)] = [:]
     /// The catalog in its order, which the widgets' snapshot keeps.
@@ -192,6 +197,7 @@ final class ConsoleStore {
         rowLayouts: AgentRowLayoutStore = AgentRowLayoutStore(),
         chatCache: any ChatTranscriptCache = VolatileChatTranscriptCache(),
         usageWidgets: AgentUsageWidgetPublisher? = nil,
+        usageSettings: AgentUsageSettings = AgentUsageSettings(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory(),
         connectCore: @escaping @Sendable (Host) async throws -> any HerdrCoreTransport =
@@ -216,6 +222,7 @@ final class ConsoleStore {
         self.chatCache = chatCache
         cachedChats = ConsoleChatCache(cache: chatCache)
         self.usageWidgets = usageWidgets
+        self.usageSettings = usageSettings
         self.chatAdapter = chatAdapter
         let terminalBudget = TerminalRetentionBudget()
         terminalConnections = TerminalConnectionPool(budget: terminalBudget)
@@ -339,13 +346,10 @@ final class ConsoleStore {
             // The population this costs anything for is the Hosts currently
             // *failed*, which is normally none (#147).
             //
-            // All at once: re-proving is one bounded round trip per Host, but
-            // its only bound is the Transport's request timeout, and a Host
-            // frozen with the app is exactly the case that runs it out.
-            // Serially that is N timeouts holding the lifecycle chain, and
-            // behind that chain sits any suspend() the user triggers by
-            // leaving again — including the didFinishSuspending() that
-            // releases the background assertion.
+            // Revalidation schedules connection-owned probes without waiting
+            // for their replies. Leaving again must still reach suspend() at
+            // the existing grace deadline. Failed Hosts enqueue their restart
+            // here, before a later lifecycle transition can overtake it.
             await withTaskGroup(of: Void.self) { group in
                 for projection in projections {
                     group.addTask { await projection.revalidate() }
@@ -366,6 +370,9 @@ final class ConsoleStore {
             // Before the terminals go: an upload ends interrupted, with
             // Retry, rather than cancelled by the teardown.
             for session in composerSessions.values { session.didSuspend() }
+            for projection in projections.values {
+                await projection.pauseHealthChecks()
+            }
             await terminalConnections.suspend()
             await agentTerminals.suspend()
             sidebarSnapshots.invalidateAll()
@@ -720,13 +727,26 @@ final class ConsoleStore {
         guard !hasLeftCore(corePin, on: hostID) else {
             throw HerdrCoreChatTyping.Refusal(message: TransportError.herdrCoreTerminalGone.presentation.message)
         }
+        try requireReadyForInput(hostID)
         try await projection(for: hostID).sendAgentKeys(keys, to: paneID)
     }
 
     /// Types one line of text into the Agent's pane (`pane.send_input`): a
     /// Blocked card's note or typed answer.
     func pasteIntoAgent(_ text: String, paneID: String, on hostID: Host.ID) async throws {
+        try requireReadyForInput(hostID)
         try await projection(for: hostID).pasteIntoAgent(text, paneID: paneID)
+    }
+
+    /// Recovery rejects new input rather than holding it for the replacement.
+    /// Nothing left Heeler, which a core Host's Chat tells from a key that may have gone.
+    private func requireReadyForInput(_ hostID: Host.ID) throws {
+        guard isHostReadyForInput(hostID) else {
+            if coreProjection(on: hostID) != nil {
+                throw HerdrCoreChatTyping.Refusal(message: "The Host is not ready.")
+            }
+            throw TransportError.sshUnreachable(detail: "The Host is not ready.")
+        }
     }
 
     /// One Composer and staging per selected Agent for the lifetime of its
@@ -759,6 +779,7 @@ final class ConsoleStore {
             guard let self else { throw TransportError.cancelled }
             return try await self.promptAgent(params, on: hostID)
         }
+        composer.isConnectionAvailable = isHostReadyForInput(hostID)
         let session = AgentComposerSession(
             composer: composer, stageImage: imageStager(for: hostID), stageFile: fileStager(for: hostID),
             corePin: corePin)
@@ -1093,6 +1114,25 @@ final class ConsoleStore {
         rebuild()
     }
 
+    /// What a Close Agent dialog opened now asks for.
+    func closeRequest(for id: ConsoleAgent.ID) -> AgentCloseRequest {
+        isSavedChat(id) ? .removeSavedChat : .closeAgent
+    }
+
+    /// Removes a saved Chat entry from this device, which needs no Host and
+    /// never asks one to close anything. False, with nothing changed, once
+    /// the entry is no longer saved: a Host that connected behind the
+    /// confirmation lists the live Agent, which only `closeAgent` closes.
+    @discardableResult
+    func removeSavedChat(_ agent: ConsoleAgent) -> Bool {
+        guard isSavedChat(agent.id), let host = projections[agent.hostID]?.host else { return false }
+        chatStores.removeValue(forKey: agent.id)?.end()
+        cachedChats.remove(paneID: agent.agent.paneID, on: host)
+        pins.removePin(hostID: agent.hostID, paneID: agent.agent.paneID)
+        rebuild()
+        return true
+    }
+
     /// Whether a Terminals row's close takes the shell's whole tab: only when
     /// no other pane, Agent or shell, shares it.
     func closesTab(of terminal: ConsoleTerminal) -> Bool {
@@ -1320,6 +1360,7 @@ final class ConsoleStore {
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.latency.map { (projection.host.id, $0) }
             })
+        hostsCheckingConnection = Set(current.filter(\.isCheckingConnection).map(\.host.id))
         hostRouteIDs = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.routeID.map { (projection.host.id, $0) }
@@ -1362,6 +1403,14 @@ final class ConsoleStore {
             })
         hostsAwaitingSnapshot = Set(
             current.lazy.filter(\.isAwaitingSnapshot).map(\.host.id))
+        hostsAwaitingFreshSnapshot = Set(
+            current.lazy.filter(\.isAwaitingFreshSnapshot).map(\.host.id))
+        for (id, session) in composerSessions {
+            session.composer.isConnectionAvailable = isHostReadyForInput(id.hostID)
+        }
+        for entry in agentTerminals.entries.values {
+            entry.attach.input.isEnabled = isHostReadyForInput(entry.agentID.hostID)
+        }
         let nextWorkspacesByHost = Dictionary(
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.workspaces)
@@ -1573,9 +1622,32 @@ final class ConsoleStore {
         return host.serverKind == .herdrCore && !state.couldNotReachHost
     }
 
+    /// Whether Usage is on: its tab, its Host section, and its reads.
+    var isUsageEnabled: Bool { usageSettings.isEnabled }
+
+    /// Turning Usage off ends its reads and forgets its figures, here and in
+    /// the widgets. Each Host's Claude Code limits consent stays for when it
+    /// returns, and the widgets read again then if any is installed.
+    func setUsageEnabled(_ enabled: Bool) {
+        guard enabled != isUsageEnabled else { return }
+        usageSettings.setEnabled(enabled)
+        if !enabled {
+            for refresh in widgetUsageRefreshes.values { refresh.task.cancel() }
+            widgetUsageRefreshes.removeAll()
+            for store in agentUsageStores.values { store.invalidate() }
+            agentUsageStores.removeAll()
+        }
+        publishUsageWidgets()
+        refreshStaleWidgetUsage()
+    }
+
     /// Hands every catalog Host's current Usage reading to the widgets.
     private func publishUsageWidgets() {
         guard let usageWidgets else { return }
+        guard isUsageEnabled else {
+            usageWidgets.publishUsageOff(hosts: catalog)
+            return
+        }
         usageWidgets.publish(catalog.map { host in
             let store = agentUsageStores[host.id]
             let state = store?.state ?? .idle
@@ -1597,7 +1669,7 @@ final class ConsoleStore {
     /// went stale, so returning to the app updates the widgets without opening
     /// Usage. Nothing is read while no Usage widget is installed.
     private func refreshStaleWidgetUsage() {
-        guard let usageWidgets, isActive else { return }
+        guard let usageWidgets, isActive, isUsageEnabled else { return }
         let hostIDs = catalog.map(\.id).filter { id in
             canReadUsageForWidgets(id) && widgetUsageRefreshes[id] == nil
                 && agentUsageStores[id]?.isLoading != true
@@ -1648,10 +1720,30 @@ final class ConsoleStore {
         agents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
     }
 
-    /// What a detail column shows for this selection: an Agent on the list or
-    /// a saved Chat, or a departed Agent, which no list shows.
+    /// What a detail column shows for this selection: an Agent on the list, the
+    /// Agent as last listed while its Host recovers, a saved Chat, or a departed
+    /// Agent, which no list shows. A selected terminal stays mounted through
+    /// automatic recovery, without stale metadata reading as live inventory on
+    /// other surfaces.
     func detailAgent(for id: ConsoleAgent.ID) -> ConsoleAgent? {
-        chatDisplayAgents.first { $0.id == id } ?? departedAgents.first { $0.id == id }
+        if let live = agents.first(where: { $0.id == id }) { return live }
+        if let projection = projections[id.hostID] {
+            let isRecovering: Bool
+            switch hostStatuses[id.hostID] {
+            // Leaving past the grace period tears the terminal down, not the
+            // screen: the detail acquires a new one when the app is active.
+            case .connecting, .reconnecting, .suspended:
+                isRecovering = true
+            case .connected:
+                isRecovering = hostsAwaitingSnapshot.contains(id.hostID)
+            default:
+                isRecovering = false
+            }
+            if isRecovering, let previous = projection.lastKnownAgentsByPane[id.paneID] {
+                return previous
+            }
+        }
+        return chatDisplayAgents.first { $0.id == id } ?? departedAgents.first { $0.id == id }
     }
 
     /// What became of an Agent a detail stays open on, for its Chat to say. Nil
@@ -1673,6 +1765,24 @@ final class ConsoleStore {
         }
     }
 
+    func isHostReadyForInput(_ hostID: Host.ID) -> Bool {
+        hostStatuses[hostID] == .connected && !hostsCheckingConnection.contains(hostID)
+            && !hostsAwaitingFreshSnapshot.contains(hostID)
+    }
+
+    /// Replaces a detail's title while its Host is not ready for input.
+    func connectionRecoveryTitle(for hostID: Host.ID) -> String? {
+        if hostsCheckingConnection.contains(hostID) { return "Connection slow…" }
+        switch hostStatuses[hostID] {
+        case .connecting, .reconnecting:
+            return "Reconnecting…"
+        case .connected where hostsAwaitingFreshSnapshot.contains(hostID):
+            return "Updating session…"
+        default:
+            return nil
+        }
+    }
+
     /// The saved entries among `chatDisplayAgents`, each with its Host's
     /// readiness, so its row reads as saved rather than as an Agent that is
     /// running. Live Agents have no entry.
@@ -1680,11 +1790,19 @@ final class ConsoleStore {
         Dictionary(savedChatAgents.map { ($0.agent.id, $0.readiness) }) { first, _ in first }
     }
 
+    /// One row's answer to `savedChatEntries`, cheap enough for a detail
+    /// screen to ask on every render.
+    func isSavedChat(_ id: ConsoleAgent.ID) -> Bool {
+        guard let projection = projections[id.hostID], projection.showsSavedChats,
+            !agents.contains(where: { $0.id == id })
+        else { return false }
+        return cachedChats.agents(on: projection.host).contains { $0.id == id }
+    }
+
     private var savedChatAgents: [(agent: ConsoleAgent, readiness: HostReadiness)] {
         let live = Set(agents.map(\.id))
         return projections.values.flatMap { projection -> [(agent: ConsoleAgent, readiness: HostReadiness)] in
-            guard projection.host.capabilities.chat,
-                projection.status != .connected || projection.isAwaitingSnapshot else { return [] }
+            guard projection.showsSavedChats else { return [] }
             let saved = cachedChats.agents(on: projection.host).filter { !live.contains($0.id) }
             guard !saved.isEmpty else { return [] }
             let hostReadiness = readiness(of: projection.host)

@@ -1,0 +1,118 @@
+[
+  {
+    "slug": "product-page-header",
+    "export": "exports/product-page-header-3840x1646.png",
+    "pixels": [
+      3840,
+      1646
+    ],
+    "color_mode": "RGB",
+    "has_alpha": false,
+    "safe_area": [
+      1097,
+      493,
+      1646,
+      661
+    ],
+    "layout_area": [
+      1097,
+      493,
+      1646,
+      661
+    ],
+    "boxes": {
+      "headline-1": [
+        1271,
+        520,
+        1298,
+        196
+      ],
+      "headline-2": [
+        1381,
+        764,
+        1078,
+        194
+      ],
+      "device-left": [
+        674,
+        1202,
+        862,
+        1521
+      ],
+      "device-right": [
+        2334,
+        1202,
+        862,
+        1521
+      ],
+      "device-center": [
+        1560,
+        1090,
+        752,
+        1597
+      ]
+    },
+    "export_sha256": "0a58eed9896834584159c63097a09f17bb8429753c42b3503bfd5d133983d387"
+  },
+  {
+    "slug": "search-results",
+    "export": "exports/search-results-3840x2560.png",
+    "pixels": [
+      3840,
+      2560
+    ],
+    "color_mode": "RGB",
+    "has_alpha": false,
+    "safe_area": [
+      836,
+      765,
+      2168,
+      1030
+    ],
+    "layout_area": [
+      260,
+      220,
+      3320,
+      2120
+    ],
+    "boxes": {
+      "headline-1": [
+        300,
+        822,
+        1616,
+        249
+      ],
+      "headline-2": [
+        300,
+        1128,
+        1700,
+        205
+      ],
+      "subhead-1": [
+        300,
+        1511,
+        1186,
+        97
+      ],
+      "subhead-2": [
+        300,
+        1667,
+        1437,
+        102
+      ],
+      "device-back": [
+        2063,
+        522,
+        1174,
+        2073
+      ],
+      "device-front": [
+        2627,
+        298,
+        1168,
+        2150
+      ]
+    },
+    "export_sha256": "fadf6e3f7bdffbda2784157e71c62bfff4c8c8b7d64cddf95909a2b8a33a983b"
+  }
+]

@@ -34,6 +34,10 @@ The estimated cost is not a bill. It prices the tokens this Host's Transcripts s
 
 Claude Code limits are off until you turn them on for each Host. Tap **Details** beside **Usage Limits**, then turn on **Claude Code limits**. The plugin asks Claude Code on that computer for your plan limits; Heeler never handles your sign-in.
 
+## Turn Usage off
+
+If you don't need Usage, turn off **Usage** in **Settings**. The tab and each Host's Usage section go away, Heeler stops reading usage from your Hosts, and Usage widgets clear their figures. Turn it back on at any time.
+
 ## Add Claude Code Accounts
 
 If a Host runs more than one Claude Code subscription, each signed in from its own config directory (for example, Agents started with `CLAUDE_CONFIG_DIR=~/.claude-2`), add each directory as an Account so Usage keeps them apart. Accounts need the Heeler plugin 0.8.0 or newer on that Host; the install command above also updates it.

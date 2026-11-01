@@ -2,11 +2,11 @@ import Foundation
 
 /// The core each detail in one window keeps to, past the views that show it.
 ///
-/// A reconnect's placeholder, a tab swap and a size-class change all take a detail
-/// down with what it held, and by the time it comes back the Host may serve another
-/// core with a Terminal of its own at the same address. What comes back is still the
-/// detail opened on the old core. Only a pick from the list opens the address anew
-/// (ADR 0031).
+/// A failed Host's placeholder, a tab swap and a size-class change all take a detail
+/// down with what it held, and a suspension takes its terminal. By the time it comes
+/// back the Host may serve another core with a Terminal of its own at the same
+/// address. What comes back is still the detail opened on the old core. Only a pick
+/// from the list opens the address anew (ADR 0031).
 @MainActor
 final class ConsoleDetailCores {
     private var sessions: [ConsoleAgent.ID: AgentComposerSession] = [:]

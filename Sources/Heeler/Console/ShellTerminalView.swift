@@ -90,6 +90,7 @@ struct ShellTerminalView: View {
         }
         screen.keyboardControl = keyboardControl
         screen.isLocalInputEnabled = true
+        screen.isRemoteScrollEnabled = store.input.isEnabled && store.terminalStatus == .live
         // The first surface of this screen takes the keyboard only if the
         // screen it came from left it up. A later surface on the same screen
         // (a recovered pipeline) is a replacement, not an arrival: it keeps

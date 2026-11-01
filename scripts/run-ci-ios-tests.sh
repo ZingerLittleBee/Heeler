@@ -61,7 +61,7 @@ configure_diagnostic_lane() {
                 diagnostic_selector='AgentSurfaceReplacementTests/aPossibleSuspensionRebuildsTheTerminalAndPreservesAttachState()'
             fi
             diagnostic_iteration_variable=HEELER_STAGING_RECOVERY_ITERATIONS
-            diagnostic_expected_tests=9
+            diagnostic_expected_tests=10
             [[ "$ci_diagnostic_target" != staging-method ]] || diagnostic_expected_tests=1
             ci_diagnostic_iterations="${ci_diagnostic_iterations:-20}"
             ;;
@@ -2726,7 +2726,7 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 82 tests in 5 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 85 tests in 5 suites passed' "$package_e2e_log" \
     || ! grep -q \
         'Test "one-shot exec resumes owned reads before other exchange operations" with 2 test cases passed' \
         "$package_e2e_log" \
@@ -2850,7 +2850,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all 82 tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all 85 tests" >&2
     exit 1
 fi
 exit 0

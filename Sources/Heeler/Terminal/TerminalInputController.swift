@@ -31,6 +31,14 @@ final class TerminalInputController {
     private(set) var liveGeneration: SessionGeneration?
     private(set) var pendingPaste: PasteReview?
     private(set) var pasteErrorMessage: String?
+    /// A retained terminal remains readable while its Host is unproven.
+    /// Input during that interval is rejected, never held for reconnection.
+    var isEnabled = true {
+        didSet {
+            if !isEnabled { discardPendingScroll?() }
+            if isEnabled, let readyGeneration { sessionDidBecomeLive(readyGeneration) }
+        }
+    }
 
     /// Submitted messages for this Attach session. Reset whenever the live
     /// writer is replaced, so entries cannot outlive the session they describe.
@@ -40,6 +48,7 @@ final class TerminalInputController {
     private var writer: ((Data) -> Void)?
     private var acknowledgedWriter: (@Sendable (Data) async throws -> Void)?
     private var scroller: ((Data, Int) -> Void)?
+    private var discardPendingScroll: (() -> Void)?
     private var pendingPasteText: String?
     /// Captured when the paste is requested rather than read again at confirm
     /// time: the review sheet is what the user is looking at, so the framing
@@ -58,7 +67,7 @@ final class TerminalInputController {
         [UUID: (milestone: SessionMilestone, continuation: CheckedContinuation<Void, Never>)] = [:]
 
     var canConfirmPaste: Bool {
-        writer != nil && pendingPasteText != nil
+        isEnabled && writer != nil && pendingPasteText != nil
     }
 
     /// The session, once its Attach has produced output and can take input.
@@ -76,8 +85,10 @@ final class TerminalInputController {
     func beginSession(
         writer: @escaping (Data) -> Void,
         scroller: ((Data, Int) -> Void)? = nil,
+        discardPendingScroll: (() -> Void)? = nil,
         acknowledgedWriter: (@Sendable (Data) async throws -> Void)? = nil
     ) -> SessionGeneration {
+        self.discardPendingScroll?()
         nextGeneration &+= 1
         let generation = SessionGeneration(value: nextGeneration)
         liveGeneration = generation
@@ -87,11 +98,14 @@ final class TerminalInputController {
         self.writer = writer
         self.acknowledgedWriter = acknowledgedWriter
         self.scroller = scroller
+        self.discardPendingScroll = discardPendingScroll
         return generation
     }
 
     func endSession(_ generation: SessionGeneration, preservingPendingPaste: Bool = false) {
         guard generation == liveGeneration else { return }
+        discardPendingScroll?()
+        discardPendingScroll = nil
         liveGeneration = nil
         readyGeneration = nil
         paintedGeneration = nil
@@ -108,6 +122,8 @@ final class TerminalInputController {
     /// replacement is scheduled. A reviewed Paste belongs to the surrounding
     /// interaction, so it remains pending for the replacement session.
     func detachSessionForReplacement() {
+        discardPendingScroll?()
+        discardPendingScroll = nil
         liveGeneration = nil
         readyGeneration = nil
         paintedGeneration = nil
@@ -172,7 +188,7 @@ final class TerminalInputController {
     /// missing session are no-ops and return false.
     @discardableResult
     func send(_ data: Data) -> Bool {
-        guard let writer, !data.isEmpty else { return false }
+        guard isEnabled, let writer, !data.isEmpty else { return false }
         write(data, using: writer, source: .keystroke)
         return true
     }
@@ -182,7 +198,7 @@ final class TerminalInputController {
     /// later Escape key cancels this pending line.
     @discardableResult
     func insertComposerDraft(_ text: String) -> Bool {
-        guard let writer, !text.isEmpty else { return false }
+        guard isEnabled, let writer, !text.isEmpty else { return false }
         write(Data(text.utf8), using: writer, source: .composerInsert)
         return true
     }
@@ -190,7 +206,7 @@ final class TerminalInputController {
     /// The Esc quick key. Distinct from a raw `0x1B` that may start CSI/SS3.
     @discardableResult
     func sendEscapeKey() -> Bool {
-        guard let writer else { return false }
+        guard isEnabled, let writer else { return false }
         write(Data([0x1B]), using: writer, source: .escapeKey)
         return true
     }
@@ -199,7 +215,7 @@ final class TerminalInputController {
     /// The live session can coalesce and shed stale momentum without changing
     /// keyboard, Paste, or Snippet delivery semantics.
     func scroll(_ sequence: Data, rows: Int) {
-        guard !sequence.isEmpty, rows > 0 else { return }
+        guard isEnabled, !sequence.isEmpty, rows > 0 else { return }
         scroller?(sequence, rows)
     }
 
@@ -212,7 +228,7 @@ final class TerminalInputController {
     /// it, and can see it on the button they just tapped.
     @discardableResult
     func insertSnippet(_ text: String, bracketedPaste: Bool) -> Bool {
-        guard let writer, !text.isEmpty,
+        guard isEnabled, let writer, !text.isEmpty,
             TerminalTextSafety.containsOnlySafeScalars(text)
         else { return false }
         write(
@@ -228,7 +244,7 @@ final class TerminalInputController {
     /// Ordinary Snippets still require a writer and never enter this holding path.
     @discardableResult
     func insertReferenceWhenLive(_ text: String) -> Bool {
-        guard !text.isEmpty,
+        guard isEnabled, !text.isEmpty,
             text.unicodeScalars.allSatisfy({
                 !CharacterSet.controlCharacters.contains($0)
                     && !CharacterSet.newlines.contains($0)
@@ -244,6 +260,7 @@ final class TerminalInputController {
     func sessionDidBecomeLive(_ generation: SessionGeneration) {
         guard generation == liveGeneration else { return }
         readyGeneration = generation
+        guard isEnabled else { return }
         let text = heldInsertion
         heldInsertion = ""
         if !text.isEmpty { insertSnippet(text, bracketedPaste: false) }
@@ -264,7 +281,7 @@ final class TerminalInputController {
     @discardableResult
     func requestPaste(_ text: String, bracketedPaste: Bool = false) -> PasteRequestResult {
         pasteErrorMessage = nil
-        guard writer != nil else { return .blocked }
+        guard isEnabled, writer != nil else { return .blocked }
         guard TerminalTextSafety.containsOnlySafeScalars(text) else {
             cancelPaste()
             pasteErrorMessage = "The clipboard contains unsafe terminal control characters."

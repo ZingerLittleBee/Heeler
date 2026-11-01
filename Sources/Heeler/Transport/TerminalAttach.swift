@@ -516,17 +516,19 @@ enum TerminalAttachInputError: Error, Equatable {
 /// Keystrokes and resizes are reliable and ordered. Touch scrolling is an
 /// ephemeral viewport intent: keeping every momentum row under backpressure
 /// only makes stale scrolling delay later keyboard input. Scroll rows are
-/// therefore coalesced, bounded, and discarded as soon as a reliable key
-/// arrives. The writer asks for one item only after the previous SSH write
-/// completes, so priority is decided at the last useful moment.
+/// therefore coalesced, bounded, expired after 200 ms, and discarded as soon
+/// as a reliable key arrives. The writer takes an item only after the previous
+/// SSH write completes, so freshness is checked at the last useful moment.
 final class TerminalAttachInputQueue: Sendable {
     static let maximumPendingScrollRows = 12
     static let maximumScrollRowsPerWrite = 3
     static let scrollPacingInterval = Duration.milliseconds(33)
+    static let scrollLifetime = Duration.milliseconds(200)
 
     private struct PendingScroll: Sendable {
         let sequence: Data
         var rows: Int
+        let expiresAt: ContinuousClock.Instant
     }
 
     private typealias Acknowledgement = CheckedContinuation<Void, any Error>
@@ -539,7 +541,7 @@ final class TerminalAttachInputQueue: Sendable {
     private struct State: ~Copyable {
         var reliable: [ReliableItem] = []
         var pendingScroll: PendingScroll?
-        var waiter: CheckedContinuation<TerminalAttachInput?, Never>?
+        var waiter: CheckedContinuation<Void, Never>?
         var isFinished = false
         /// The item the writer is working on, when someone waits to hear of it.
         var inFlightAcknowledgement: Acknowledgement?
@@ -553,6 +555,11 @@ final class TerminalAttachInputQueue: Sendable {
     }
 
     private let state = Mutex(State())
+    private let now: @Sendable () -> ContinuousClock.Instant
+
+    init(now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }) {
+        self.now = now
+    }
 
     func send(_ keystrokes: Data) {
         guard !keystrokes.isEmpty else { return }
@@ -579,40 +586,33 @@ final class TerminalAttachInputQueue: Sendable {
     func scroll(_ sequence: Data, rows: Int) {
         guard !sequence.isEmpty, rows > 0 else { return }
 
-        var resumed: (CheckedContinuation<TerminalAttachInput?, Never>, TerminalAttachInput)?
+        var waiter: CheckedContinuation<Void, Never>?
         state.withLock { state in
             guard !state.isFinished else { return }
-
-            if let waiter = state.waiter {
-                state.waiter = nil
-                let deliveredRows = min(rows, Self.maximumScrollRowsPerWrite)
-                let remainingRows = min(
-                    rows - deliveredRows,
-                    Self.maximumPendingScrollRows - deliveredRows)
-                if remainingRows > 0 {
-                    state.pendingScroll = PendingScroll(
-                        sequence: sequence,
-                        rows: remainingRows)
-                }
-                resumed = (waiter, .scroll(Self.repeated(sequence, count: deliveredRows)))
-                return
-            }
-
-            if var pending = state.pendingScroll, pending.sequence == sequence {
+            let instant = now()
+            if var pending = state.pendingScroll,
+                pending.expiresAt > instant, pending.sequence == sequence
+            {
                 pending.rows = min(
                     Self.maximumPendingScrollRows,
                     pending.rows + rows)
+                // New rows must never extend the lifetime of old momentum.
                 state.pendingScroll = pending
             } else {
-                // A direction change makes the previous momentum stale.
+                // Expiry or a direction change replaces the previous intent.
                 state.pendingScroll = PendingScroll(
                     sequence: sequence,
-                    rows: min(rows, Self.maximumPendingScrollRows))
+                    rows: min(rows, Self.maximumPendingScrollRows),
+                    expiresAt: instant + Self.scrollLifetime)
             }
+            waiter = state.waiter
+            state.waiter = nil
         }
-        if let resumed {
-            resumed.0.resume(returning: resumed.1)
-        }
+        waiter?.resume()
+    }
+
+    func discardPendingScroll() {
+        state.withLock { $0.pendingScroll = nil }
     }
 
     func resize(cols: Int, rows: Int) {
@@ -620,19 +620,23 @@ final class TerminalAttachInputQueue: Sendable {
     }
 
     func next() async -> TerminalAttachInput? {
-        await withCheckedContinuation { continuation in
+        while true {
             let decision = state.withLock { state -> NextDecision in
                 if !state.reliable.isEmpty {
                     let item = state.reliable.removeFirst()
                     state.inFlightAcknowledgement = item.acknowledgement
                     return .resume(item.input)
                 }
+                if let scroll = state.pendingScroll, scroll.expiresAt <= now() {
+                    state.pendingScroll = nil
+                }
                 if let scroll = state.pendingScroll {
                     let deliveredRows = min(scroll.rows, Self.maximumScrollRowsPerWrite)
                     let remainingRows = scroll.rows - deliveredRows
                     state.pendingScroll =
                         remainingRows > 0
-                        ? PendingScroll(sequence: scroll.sequence, rows: remainingRows)
+                        ? PendingScroll(
+                            sequence: scroll.sequence, rows: remainingRows, expiresAt: scroll.expiresAt)
                         : nil
                     return .resume(
                         .scroll(Self.repeated(scroll.sequence, count: deliveredRows)))
@@ -640,19 +644,27 @@ final class TerminalAttachInputQueue: Sendable {
                 if state.isFinished {
                     return .resume(nil)
                 }
-                precondition(state.waiter == nil, "Attach input has more than one consumer")
-                state.waiter = continuation
                 return .wait
             }
 
-            if case .resume(let input) = decision {
-                continuation.resume(returning: input)
+            if case .resume(let input) = decision { return input }
+            // Wake the writer, rather than handing it bytes here. A suspended
+            // writer must recheck expiry and recovery cancellation when it runs.
+            await withCheckedContinuation { continuation in
+                let waiting = state.withLock { state in
+                    guard state.reliable.isEmpty, state.pendingScroll == nil, !state.isFinished
+                    else { return false }
+                    precondition(state.waiter == nil, "Attach input has more than one consumer")
+                    state.waiter = continuation
+                    return true
+                }
+                if !waiting { continuation.resume() }
             }
         }
     }
 
     func finish() {
-        var waiter: CheckedContinuation<TerminalAttachInput?, Never>?
+        var waiter: CheckedContinuation<Void, Never>?
         state.withLock { state in
             guard !state.isFinished else { return }
             state.isFinished = true
@@ -662,14 +674,14 @@ final class TerminalAttachInputQueue: Sendable {
             waiter = state.waiter
             state.waiter = nil
         }
-        waiter?.resume(returning: nil)
+        waiter?.resume()
     }
 
     private func enqueueReliable(
         _ item: ReliableItem,
         discardingPendingScroll: Bool
     ) {
-        var waiter: CheckedContinuation<TerminalAttachInput?, Never>?
+        var waiter: CheckedContinuation<Void, Never>?
         var refused: Acknowledgement?
         state.withLock { state in
             guard !state.isFinished, !state.hasStoppedPumping else {
@@ -679,16 +691,12 @@ final class TerminalAttachInputQueue: Sendable {
             if discardingPendingScroll {
                 state.pendingScroll = nil
             }
-            if state.reliable.isEmpty, let waiting = state.waiter {
-                state.waiter = nil
-                state.inFlightAcknowledgement = item.acknowledgement
-                waiter = waiting
-            } else {
-                state.reliable.append(item)
-            }
+            state.reliable.append(item)
+            waiter = state.waiter
+            state.waiter = nil
         }
         refused?.resume(throwing: TerminalAttachInputError.sessionEnded)
-        waiter?.resume(returning: item.input)
+        waiter?.resume()
     }
 
     private func finishInFlight(_ result: Result<Void, any Error>) {
@@ -828,6 +836,11 @@ final class TerminalAttachSession: Sendable {
     /// momentum after the user's intent has changed.
     func scroll(_ sequence: Data, rows: Int) {
         input.scroll(sequence, rows: rows)
+    }
+
+    /// Cancels unsent viewport intent without discarding reliable input.
+    func discardPendingScroll() {
+        input.discardPendingScroll()
     }
 
     /// Propagates a terminal geometry change (rotation, split view) to the

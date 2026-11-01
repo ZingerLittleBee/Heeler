@@ -107,7 +107,7 @@ def records(layout: str = "sharded", package: bool = False) -> list[dict]:
                   phase("full-lane", "ordinary", ordinary + skipped, set())]
     if package:
         tests = [method(suite, 0, target="HeelerSSHTests") for suite in sorted(evidence.PACKAGE_SUITES)]
-        tests += [method("SessionDriverE2ETests", index, target="HeelerSSHTests") for index in range(1, 75)]
+        tests += [method("SessionDriverE2ETests", index, target="HeelerSSHTests") for index in range(1, 78)]
         # SSHExternalStreamTests are free @Test functions, outside any suite.
         tests += [{"identity": f"HeelerSSHTests/externalStream{index}()", "result": "Passed",
                    "cases": [{"identity": f"HeelerSSHTests/externalStream{index}()", "result": "Passed"}]}
@@ -163,7 +163,7 @@ class AggregateTests(unittest.TestCase):
         self.values[-1]["tests"][0] = copy.deepcopy(parameterized)
         previous[-1]["tests"][0] = copy.deepcopy(parameterized)
         write_records(self.baseline, previous)
-        self.assertEqual(self.check(baseline=True, package=True)["passed_cases"], 1017)
+        self.assertEqual(self.check(baseline=True, package=True)["passed_cases"], 1020)
         self.values[-1]["tests"][0]["cases"].pop()
         with self.assertRaisesRegex(ValueError, "parameterized-case union differs"):
             self.check(baseline=True, package=True)
@@ -287,7 +287,7 @@ class AggregateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Missing worker"):
             self.check(package=True)
         self.values = records(package=True)
-        self.assertEqual(self.check(package=True)["passed_methods"], 1015)
+        self.assertEqual(self.check(package=True)["passed_methods"], 1018)
 
     def test_package_cannot_drop_back_to_the_old_seventy_method_count(self):
         self.values = records(package=True)

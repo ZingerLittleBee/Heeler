@@ -307,6 +307,13 @@ final class AttachTerminalStore {
     /// What the current attach attempt acquired, nil until its runner hands
     /// it a Transport. Only a loss after acquisition is reattached.
     private var attemptTransportGeneration: UInt64?
+    /// A reattach still waiting for a Transport, after a lost connection or a
+    /// kept restart, takes the Host's next one by itself. One that already holds
+    /// an older Transport never will, so its owner must replace it when the
+    /// generation moves on.
+    var isAwaitingReattachTransport: Bool {
+        (status == .reconnecting || status == .restarting) && attemptTransportGeneration == nil
+    }
     private var stopRequested = false
     private var preservesPendingPasteOnStop = false
     private var session: TerminalAttachSession?
@@ -593,13 +600,23 @@ final class AttachTerminalStore {
         self.session = session
         // A new attach sets its own modes; the old attach's are not its.
         feed.modes.reset()
-        let inputGeneration = input.beginSession(
-            writer: { data in session.send(data) },
-            scroller: { sequence, rows in
-                session.scroll(sequence, rows: rows)
-            },
-            acknowledgedWriter: { data in try await session.sendAcknowledged(data) })
-        self.inputGeneration = inputGeneration
+        func beginInput() -> TerminalInputController.SessionGeneration {
+            let generation = input.beginSession(
+                writer: { data in session.send(data) },
+                scroller: { sequence, rows in
+                    session.scroll(sequence, rows: rows)
+                },
+                discardPendingScroll: { session.discardPendingScroll() },
+                acknowledgedWriter: { data in try await session.sendAcknowledged(data) })
+            self.inputGeneration = generation
+            return generation
+        }
+        // A reattach opens its channel while the screen still shows the lost
+        // session, and a kept restart shows the program that ended. A key typed
+        // at that screen would answer whatever the pane has moved on to, so its
+        // input begins with the new output.
+        var inputGeneration =
+            status == .reconnecting || status == .restarting ? nil : beginInput()
         if let latestCols = cols, let latestRows = rows,
             latestCols != initialCols || latestRows != initialRows
         {
@@ -619,8 +636,10 @@ final class AttachTerminalStore {
                 // connecting. This does not prove that a renderer presented
                 // the bytes on screen.
                 if status == .connecting || status == .reconnecting || status == .restarting {
+                    let liveGeneration = inputGeneration ?? beginInput()
+                    inputGeneration = liveGeneration
                     status = .live
-                    input.sessionDidBecomeLive(inputGeneration)
+                    input.sessionDidBecomeLive(liveGeneration)
                 }
                 #if DEBUG
                 restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)
@@ -628,7 +647,9 @@ final class AttachTerminalStore {
                 observeOutput(bytes)
                 hasTakenOutput = true
                 feed.write(bytes, consumed: { session.outputConsumed($0) })
-                if modes.hasNamedWin32InputMode { input.sessionDidPaint(inputGeneration) }
+                if let inputGeneration, modes.hasNamedWin32InputMode {
+                    input.sessionDidPaint(inputGeneration)
+                }
             }
         } catch {
             finishSession(inputGeneration)
@@ -637,8 +658,9 @@ final class AttachTerminalStore {
         finishSession(inputGeneration)
     }
 
-    private func finishSession(_ inputGeneration: TerminalInputController.SessionGeneration) {
+    private func finishSession(_ inputGeneration: TerminalInputController.SessionGeneration?) {
         self.session = nil
+        guard let inputGeneration else { return }
         input.endSession(
             inputGeneration,
             preservingPendingPaste: preservesPendingPasteOnStop)

@@ -96,9 +96,11 @@ enum AgentComposerCollapse {
         isInputFocused: Bool,
         keyboardPresentation: AgentComposerKeyboardPresentation,
         inheritsKeyboard: Bool,
-        hasInputReplacement: Bool
+        hasInputReplacement: Bool,
+        keyboardIsLeaving: Bool = false
     ) -> Bool {
         isEnabled
+            && !keyboardIsLeaving
             && !isInputFocused
             && keyboardPresentation == .hidden
             && !inheritsKeyboard

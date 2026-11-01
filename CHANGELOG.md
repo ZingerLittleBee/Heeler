@@ -27,7 +27,11 @@ Entries reference the pull request that made the change.
 - Get Agent Notifications from a herdr-core Host through its Host Helper, with Heeler killed. Turn them on per Host in Settings, as on any Host: Blocked, Error and Done reach each device registered for the Host's core session, encrypted with that device's key, and a tap opens the Agent. A device that has already seen a turn, because it had the Agent open or opened it since, gets no Done for it, and your other devices still do. A send the Push Relay did not take is tried again by itself a limited number of times, for the devices that missed it and only while it still holds. Settings shows what the Host Helper still needs when it is missing, failed or has no Node.js, and a native Windows Host says these come with the Helper and are not available there yet. Removing a Host whose core has stopped still removes this device's entry there. (#572; PR #538)
 - See a herdr-core Host's Agents in the in-app banners and the Live Activity once this device is registered with its Host Helper, on the same switches as any Host. Banners cover Blocked, Error and this device's Done. After Heeler suspends, the Helper keeps the Live Activity current and ends it through the Push Relay, counting Done for this device; Error counts under Blocked there. A Host without the Helper, or without this device's registration, gets neither, and removing the Helper from the Host's page stops both. Terminal labels chosen as Agent List Fields show in the Live Activity too. (#573; PR #538)
 - Tap **Unknown** on a herdr-core Agent to see why it has no status: the first release of each program that reports one, or that it has not reported a state yet. On a Grok Build Agent, the sheet offers the one edit that turns its status on, `program_status = "on"` under `[ui.notifications]`. It shows the exact change first, writes nothing if the file changed after Heeler read it, and can be undone there or from the Host's detail. (#535; PR #538)
-
+- Turn Usage off in Settings to hide its tab and each Host's Usage section and
+  stop reading usage from your Hosts. Usage widgets clear their figures and say
+  so until you turn it back on. (#597)
+- Pull the grabber on the Composer's top edge down to hide the keyboard.
+  (#594)
 - Pair a herdr that runs with its own config home, such as a per-project
   instance or a profile started by a wrapper script. Its pairing popup now
   shows a Pairing Code v2 that names its socket and a launcher the plugin
@@ -51,9 +55,17 @@ Entries reference the pull request that made the change.
   environment sets `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward
   it until you add it as an Account. Update the Heeler plugin to 0.8.0 on
   the Host. (#529; PR #533)
+- Open the documentation from About in Settings. (#594)
 
 ### Changed
 
+- Give an Agent's title on a By Workspace card one size and color, whether
+  the Agent shares its checkout or stands alone under the checkout's title,
+  and set a repository's checkout titles apart from it in a quieter color.
+  (#598)
+- Raise and lower the Composer with the keyboard, in step with it, and move
+  Chat's conversation and fold along instead of jumping ahead of it. (#594)
+- Run animation at up to 120Hz on iPhones with ProMotion. (#594)
 - Lead each Agents list row with its program's mark, such as Claude Code's
   or Codex's, inside a ring that shows its status, the Working ring turning,
   in place of the status capsule; add `status_badge` to a row's right side
@@ -76,10 +88,38 @@ Entries reference the pull request that made the change.
 - Herdr TUI terminals no longer lose bracketed paste, cursor keys, mouse
   tracking or the alternate screen when a program queries, saves or restores
   a mode. (#545; PR #538)
+- Chat fills in earlier messages page by page and keeps up with the Agent while
+  it does, so returning to a long conversation no longer shows a few old rows
+  under a spinner and a blank screen until a whole turn has loaded. Messages
+  above a compaction show as they load rather than all at once at the end, and
+  one Load Earlier Messages is enough in a long conversation reopened from the
+  device. (#598)
+- An Agent's Changes totals end the line above when the card already shows the
+  directory field beside them, instead of holding a line of their own. (#598)
+- Keep the Host connection row atop the Agents and Terminals lists one
+  height while Hosts connect, so the list below no longer jumps. Statuses
+  stay on one line; those that do not fit fold into a count, and the row's
+  sheet lists every Host. (#594)
+- Keep an Agent's terminal and draft on screen while its connection recovers,
+  with the status and a loading indicator in the title, even when the title is
+  folded. New input waits until the Host is ready, and the keyboard stays up.
+  A stall no longer replaces a connection that still answers, unless a request
+  timed out opening a channel on it, and a send whose reply was lost is never
+  sent twice. Scrolling still queued on the phone after 200 ms is dropped;
+  rows already sent can arrive when the connection comes back. Typing or
+  scrolling through a stall no longer reattaches the terminal when the link
+  returns. A cut connection on a Unix Host now shows Reconnecting… on a Shell
+  instead of flashing Session Ended, and a terminal that is reattaching ignores
+  input until the new session paints. Chat shows a query lost to the link only
+  when the next one is lost too. (#523; PR #595)
 - Bring out the Agents list when swiping in from the left edge of an
   Agent or Shell Terminal beside a hidden sidebar, such as on an iPhone
   Duo's inner display or a Pro Max in landscape, instead of closing it to
   No Agent Selected. The sidebar now follows the finger, on iPad too. (#592)
+- Remove a Saved Chat while its Host is not connected. Closing one always
+  failed with "The Host is not connected"; its row and More menu now offer
+  Remove, which takes it and its saved messages off this device and leaves
+  the Host alone. (#594)
 - Keep each row's fields in Agent List Fields on their own line. The last
   one, often the add button, could drop below the row onto the next.
   (#591)

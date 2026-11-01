@@ -104,8 +104,14 @@ struct ChatStandardAdapterTests {
         await automaticFiles.clearRecords()
         await userFiles.clearRecords()
 
-        let automatic = await byItself.loadOlder(context: context, automatic: true)
-        let user = await asked.loadOlder(context: context)
+        var automatic = await byItself.loadOlder(context: context, automatic: true)
+        while automatic.older == .loading {
+            automatic = await byItself.loadOlder(context: context, automatic: true)
+        }
+        var user = await asked.loadOlder(context: context)
+        while user.older == .loading {
+            user = await asked.loadOlder(context: context)
+        }
 
         #expect(automatic.transcript.turns.map(\.firstEntryID).contains(LongClaudeTurn.prompt))
         #expect(automatic.transcript.turns == user.transcript.turns)

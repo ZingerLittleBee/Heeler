@@ -77,6 +77,9 @@ targets:
         # Acknowledgements (BuildSourceRevision). `make archive` and
         # release.yml set it; other builds leave it empty.
         HeelerSourceRevision: $(HEELER_SOURCE_REVISION)
+        # Without this an iPhone holds app-driven animation to 60Hz, while the
+        # system keyboard next to it runs at 120Hz.
+        CADisableMinimumFrameDurationOnPhone: true
         # A dragged Console row carries this activity; iPadOS creates a new
         # window from it only for a declared type. The generated scene
         # manifest already declares multiple-scene support.
@@ -111,7 +114,7 @@ targets:
         # Home-screen name; the App Store listing is "Heeler for herdr".
         INFOPLIST_KEY_CFBundleDisplayName: Heeler
         MARKETING_VERSION: "0.1.16"
-        CURRENT_PROJECT_VERSION: "34"
+        CURRENT_PROJECT_VERSION: "37"
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
         # Only exempt encryption is used: standard, published algorithms in
@@ -193,7 +196,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.NotificationService
         MARKETING_VERSION: "0.1.16"
-        CURRENT_PROJECT_VERSION: "34"
+        CURRENT_PROJECT_VERSION: "37"
         # Match the containing app's iPhone and iPad device family.
         TARGETED_DEVICE_FAMILY: "1,2"
 
@@ -243,7 +246,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.Widgets
         MARKETING_VERSION: "0.1.16"
-        CURRENT_PROJECT_VERSION: "34"
+        CURRENT_PROJECT_VERSION: "37"
         # Match the containing app's iPhone and iPad device family.
         TARGETED_DEVICE_FAMILY: "1,2"
 

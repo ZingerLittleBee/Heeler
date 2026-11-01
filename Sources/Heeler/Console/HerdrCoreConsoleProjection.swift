@@ -25,6 +25,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
     private(set) var departedAgentsByPane: [String: ConsoleAgent] = [:]
+    /// Stays through `invalidateInventory`, for a detail open while the link
+    /// recovers. A snapshot replaces it, from whichever core answers.
+    private(set) var lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var status: EventsSessionStatus?
     /// See Standing Failure in `CONTEXT.md`.
@@ -654,6 +657,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     private func publish() {
         wakeProgramWaiters()
+        if !isAwaitingSnapshot { lastKnownAgentsByPane = agentsByPane }
         onChange()
     }
 
