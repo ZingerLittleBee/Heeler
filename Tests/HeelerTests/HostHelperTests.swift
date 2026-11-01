@@ -882,6 +882,11 @@ struct HostHelperProbeHexTests {
         return try HostHelperProbe(stdout: Data((lines.joined(separator: "\n") + "\n").utf8), nonce: "n")
     }
 
+    @Test func hexReadsAsItsBytes() throws {
+        #expect(try probe("manifest 00fFa5").manifest == Data([0x00, 0xFF, 0xA5]))
+        #expect(try probe("record 7b7d").record == Data([0x7B, 0x7D]))
+    }
+
     /// `é` is two UTF-8 bytes and one Character, so its length alone passes as hex.
     @Test(arguments: ["é", "00é", "é00", "zz", "+1", "0"])
     func whatIsNotHexReadsAsNothing(_ hex: String) throws {
