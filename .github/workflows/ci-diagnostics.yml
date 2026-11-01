@@ -15,7 +15,7 @@ on:
       target:
         description: Isolated flaky-test feedback; never a full coverage gate
         type: choice
-        options: [all, ssh-jump, staging, staging-method, weak, layout, changes-field, git-startup]
+        options: [all, ssh-jump, staging, staging-method, weak, layout, changes-field, git-startup, git-startup-ssh]
         default: all
       iterations:
         description: Optional 1-100 repetitions; defaults to SSH 50, weak 10, others 20
@@ -31,8 +31,8 @@ concurrency:
 
 jobs:
   git-startup:
-    if: ${{ inputs.target == 'git-startup' }}
-    name: Git launcher comparison (${{ matrix.first }} first, no App build)
+    if: ${{ inputs.target == 'git-startup' || inputs.target == 'git-startup-ssh' }}
+    name: Git launcher comparison (${{ inputs.target }}, ${{ matrix.first }} first, no App build)
     runs-on: macos-26
     timeout-minutes: 15
     strategy:
@@ -43,7 +43,8 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       GIT_STARTUP_FIRST: ${{ matrix.first }}
       GIT_STARTUP_ITERATIONS: ${{ inputs.iterations || '20' }}
-      GIT_STARTUP_OUTPUT: .ci/git-startup-${{ matrix.first }}
+      GIT_STARTUP_TRANSPORT: ${{ inputs.target == 'git-startup-ssh' && 'ssh' || 'local' }}
+      GIT_STARTUP_OUTPUT: .ci/${{ inputs.target }}-${{ matrix.first }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -55,13 +56,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-diagnostic-git-startup-${{ matrix.first }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ios-diagnostic-${{ inputs.target }}-${{ matrix.first }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.GIT_STARTUP_OUTPUT }}
           if-no-files-found: error
           retention-days: 7
 
   diagnose:
-    if: ${{ inputs.target != 'git-startup' }}
+    if: ${{ inputs.target != 'git-startup' && inputs.target != 'git-startup-ssh' }}
     name: Diagnose ${{ matrix.target }}
     runs-on: macos-26
     timeout-minutes: 70

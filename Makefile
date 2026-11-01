@@ -88,6 +88,7 @@ profile-ci-build: ## Compare compilation caching (PROFILE_PHASE=seed or restored
 .PHONY: profile-git-startup
 profile-git-startup: ## Compare Git launchers with fresh HOME directories (no App build)
 	python3 scripts/profile-git-startup.py \
+		--transport '$(or $(GIT_STARTUP_TRANSPORT),local)' \
 		--iterations '$(or $(GIT_STARTUP_ITERATIONS),20)' \
 		--first-path '$(or $(GIT_STARTUP_FIRST),system)' \
 		--output '$(or $(GIT_STARTUP_OUTPUT),.ci/git-startup)'
