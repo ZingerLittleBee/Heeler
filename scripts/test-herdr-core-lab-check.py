@@ -8,7 +8,9 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -39,6 +41,9 @@ class ScriptedBox:
         self.fail_on = fail_on
         self.terminated = False
         self.sessions = set()
+        # Sessions someone else starts on the box while the end-to-end methods run.
+        self.appearing = set()
+        self.test_session = None
 
     def run(self, command):
         self.commands.append(command)
@@ -66,8 +71,13 @@ class ScriptedBox:
             path = Path(command[command.index("-f") + 1])
             path.write_text("private")
             path.with_name("key.pub").write_text("ssh-ed25519 AAAA heeler-lab\n")
-        if command[:2] == ["make", "test-app"] and self.fail_on == "make":
-            return 65
+        if "setenv" in command:
+            config = json.loads(base64.b64decode(command[-1]))
+            self.test_session = config["sessionPrefix"] + "abcd"
+        if command[:2] == ["make", "test-app"]:
+            self.sessions |= self.appearing | {self.test_session}
+            if self.fail_on == "make":
+                return 65
         return 0
 
     def spawn(self, command):
@@ -129,6 +139,19 @@ class LabCheckTests(unittest.TestCase):
         self.assertNotIn("HC_SESSION=users-own", everything)
         self.assertNotIn("herdr-core/default", everything)
 
+    def test_a_session_someone_else_starts_during_the_run_stays_theirs(self):
+        box = ScriptedBox()
+        # The last two have the shapes this script and the suite use, as another run's would.
+        box.appearing = {"default", "users-own", "h1234abcd", "hl1234abcd"}
+        lab, _, _ = self.perform(box)
+        everything = "\n".join(box.commands)
+        for session in sorted(box.appearing):
+            self.assertNotIn(f"HC_SESSION={session}", everything)
+            self.assertNotIn(f"herdr-core/{session}", everything)
+        for session in (lab.session, box.test_session):
+            self.assertIn(f"HC_SESSION={session}", everything)
+            self.assertIn(f"rm -rf /home/lab/.local/state/herdr-core/{session}", everything)
+
     def test_failures_still_clean_up_and_fail_the_check(self):
         for fail_on in ("make", "list-units", "--version"):
             with self.subTest(fail_on=fail_on):
@@ -158,6 +181,7 @@ class LabCheckTests(unittest.TestCase):
         self.assertTrue(config["coreFixture"])
         self.assertEqual(config["launchHome"], f"/home/lab/.cache/{lab.marker}/launch-home")
         self.assertRegex(lab.session, r"^hl[0-9a-f]{8}$")
+        self.assertRegex(config["sessionPrefix"], r"^h[0-9a-f]{4}$")
 
     def test_the_launch_methods_startup_files_stay_in_its_own_directory(self):
         box = ScriptedBox()
