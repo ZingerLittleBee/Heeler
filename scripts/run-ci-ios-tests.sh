@@ -54,6 +54,13 @@ configure_diagnostic_lane() {
             diagnostic_expected_tests=1
             ci_diagnostic_iterations="${ci_diagnostic_iterations:-50}"
             ;;
+        changes-field)
+            ci_app_shard=transport
+            diagnostic_selector='ChangesFieldHostE2ETests/everyFieldHostReadsChanges()'
+            diagnostic_iteration_variable=HEELER_CHANGES_FIELD_ITERATIONS
+            diagnostic_expected_tests=1
+            ci_diagnostic_iterations="${ci_diagnostic_iterations:-20}"
+            ;;
         staging | staging-method)
             ci_app_shard=ordinary
             diagnostic_selector=AgentSurfaceReplacementTests
@@ -87,6 +94,7 @@ configure_diagnostic_lane() {
     fi
     case "$ci_diagnostic_target" in
         ssh-jump) diagnostic_completion_marker="[jump-tofu] iteration=$ci_diagnostic_iterations/$ci_diagnostic_iterations step=complete" ;;
+        changes-field) diagnostic_completion_marker="[changes-field-test] completed $ci_diagnostic_iterations iterations" ;;
         staging | staging-method) diagnostic_completion_marker="[attach-staging-test] completed $ci_diagnostic_iterations iterations" ;;
         weak) diagnostic_completion_marker="[weak-changes-test] completed $ci_diagnostic_iterations iterations" ;;
         layout) diagnostic_completion_marker="[diff-layout-test] completed $ci_diagnostic_iterations iterations" ;;
@@ -179,6 +187,7 @@ source_packages_dir="${HEELER_CI_SOURCE_PACKAGES_DIR:-$repo_root/.ci/source-pack
 diagnostic_run_id="${GITHUB_RUN_ID:-local-$$}"
 diagnostic_attempt="${GITHUB_RUN_ATTEMPT:-1}"
 diagnostic_root="${RUNNER_TEMP:-/tmp}/heeler-ci-diagnostics-$diagnostic_run_id-$diagnostic_attempt"
+diagnostic_sampler_pid=""
 xcodebuild_build_timeout_seconds="${HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS:-900}"
 xcodebuild_test_timeout_seconds="${HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS:-600}"
 fixture_username="$(id -un)"
@@ -656,6 +665,10 @@ cleanup() {
     set +e
 
     cancel_background_build
+    if [[ -n "$diagnostic_sampler_pid" ]]; then
+        kill "$diagnostic_sampler_pid" 2>/dev/null
+        wait "$diagnostic_sampler_pid" 2>/dev/null
+    fi
     clear_simulator_environment || { [[ "$status" != 0 ]] || status=1; }
     if [[ -n "$stall_pid" ]]; then
         kill "$stall_pid" >/dev/null 2>&1
@@ -716,6 +729,14 @@ cleanup() {
                 echo "Failed to delete password account $password_username." >&2
             fi
         fi
+    fi
+    # Seed traces are outside the Checkout removed by the test's cleanup.
+    # Copy only these diagnostic files, never fixture keys or environment data.
+    if [[ "${ci_diagnostic_target:-}" == changes-field ]]; then
+        local field_trace
+        for field_trace in "$fixture_home"/changes-field-*.log; do
+            [[ ! -f "$field_trace" ]] || cp "$field_trace" "$fixture_dir/" || status=1
+        done
     fi
     preserve_failure_diagnostics "$status"
     if [[ -n "${ci_diagnostic_target:-}" && -n "${evidence_dir:-}" ]]; then
@@ -795,7 +816,8 @@ clear_simulator_environment() {
         HEELER_SSH_JUMP_TOFU_ITERATIONS \
         HEELER_STAGING_RECOVERY_ITERATIONS \
         HEELER_WEAK_CHANGES_ITERATIONS \
-        HEELER_DIFF_LAYOUT_ITERATIONS; do
+        HEELER_DIFF_LAYOUT_ITERATIONS \
+        HEELER_CHANGES_FIELD_ITERATIONS; do
         # launchctl takes one variable per call and each `simctl spawn` costs
         # seconds; run the round trips concurrently and collect them below.
         if [[ -n "$simulator_udid" ]]; then
@@ -2193,6 +2215,7 @@ run_suite() {
 run_ci_diagnostic() {
     local log="$fixture_dir/diagnostic-$ci_diagnostic_target.log"
     local test_noun=tests
+    local native_status=0
     [[ "$diagnostic_expected_tests" != 1 ]] || test_noun='test'
     export "$diagnostic_iteration_variable=$ci_diagnostic_iterations"
     # Retain fixture values when destination recovery creates a new device.
@@ -2205,12 +2228,31 @@ run_ci_diagnostic() {
     diagnostic_environment+=("$diagnostic_iteration_variable")
     push_simulator_environment "${diagnostic_environment[@]}"
     echo "==> Diagnostic only: $ci_diagnostic_target, $ci_diagnostic_iterations iterations"
+    if [[ "$ci_diagnostic_target" == changes-field ]]; then
+        # Command names and process relationships only: no argv or environment
+        # that could contain credentials. Sampling runs outside the SSH exec,
+        # so it can see a shell stuck before the seed script starts.
+        (
+            while true; do
+                date -u '+[DEBUG-changes-field] %Y-%m-%dT%H:%M:%SZ'
+                ps -axo pid,ppid,pgid,stat,etime,comm
+                sleep 1
+            done
+        ) > "$fixture_dir/changes-field-processes.log" 2>&1 &
+        diagnostic_sampler_pid=$!
+    fi
     HEELER_CI_TEST_PHASE="diagnostic-$ci_diagnostic_target" \
         run_xcodebuild "Diagnostic-$ci_diagnostic_target" "$xcodebuild_test_timeout_seconds" "$log" \
         test-without-building -project Heeler.xcodeproj -scheme Heeler \
         -derivedDataPath "$app_derived_data_path" -destination "$simulator_destination" \
         -collect-test-diagnostics never -parallel-testing-enabled NO \
-        "-only-testing:HeelerTests/$diagnostic_selector" || return $?
+        "-only-testing:HeelerTests/$diagnostic_selector" || native_status=$?
+    if [[ -n "${diagnostic_sampler_pid:-}" ]]; then
+        kill "$diagnostic_sampler_pid" 2>/dev/null || true
+        wait "$diagnostic_sampler_pid" 2>/dev/null || true
+        diagnostic_sampler_pid=""
+    fi
+    [[ "$native_status" == 0 ]] || return "$native_status"
     if ! grep -qF "Test run with $diagnostic_expected_tests $test_noun in 1 suite passed" "$log" \
         || grep -qE '(Test|Suite) .* skipped' "$log" \
         || ! grep -qF "$diagnostic_completion_marker" "$log"; then

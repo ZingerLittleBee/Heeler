@@ -35,7 +35,7 @@ require_line(release_test, "uses: ./.github/workflows/ci.yml")
 require_line(release_test, "contents: read")
 require_line(release_test, "actions: read")
 require_line(workflow, "diagnostic_target:")
-require_line(workflow, "options: [none, all, ssh-jump, staging, staging-method, weak, layout]")
+require_line(workflow, "options: [none, all, ssh-jump, staging, staging-method, weak, layout, changes-field]")
 require_line(workflow, "default: none")
 require_line(workflow, "pull_request:")
 diagnostics = job("diagnostics")
@@ -60,7 +60,7 @@ require_line(job("build-test"), "needs: [app-tests, heelerssh-package-e2e]")
 
 require_line(reusable, "workflow_call:")
 require_line(reusable, "workflow_dispatch:")
-require_line(reusable, "options: [all, ssh-jump, staging, staging-method, weak, layout]")
+require_line(reusable, "options: [all, ssh-jump, staging, staging-method, weak, layout, changes-field]")
 require_line(reusable, "default: all")
 require_line(reusable, "target: ${{ fromJSON(inputs.target == 'all' && '[\"ssh-jump\",\"staging\",\"weak\"]' || format('[\"{0}\"]', inputs.target)) }}")
 require_line(reusable, "HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '1800'")
@@ -156,7 +156,7 @@ done
 
 # A literal command substitution must be rejected, never evaluated.
 # shellcheck disable=SC2016
-for target in ssh-jump staging staging-method weak layout; do
+for target in ssh-jump staging staging-method weak layout changes-field; do
     for value in 0 101 -1 '1;false' '$(false)' ' 2' 01; do
         if (ci_lane=app; ci_app_shard=all; ci_diagnostic_target=$target;
             ci_diagnostic_iterations=$value; configure_diagnostic_lane) >/dev/null 2>&1; then
@@ -201,6 +201,7 @@ check_configuration staging ordinary AgentSurfaceReplacementTests HEELER_STAGING
 check_configuration staging-method ordinary 'AgentSurfaceReplacementTests/aPossibleSuspensionRebuildsTheTerminalAndPreservesAttachState()' HEELER_STAGING_RECOVERY_ITERATIONS 1 20
 check_configuration weak session-weak 'WeakNetworkE2ETests/largeChangesReadsFitTheGitDeadlineOverACellularLink()' HEELER_WEAK_CHANGES_ITERATIONS 1 10
 check_configuration layout ordinary FileDiffLayoutViewTests HEELER_DIFF_LAYOUT_ITERATIONS 8 20
+check_configuration changes-field transport 'ChangesFieldHostE2ETests/everyFieldHostReadsChanges()' HEELER_CHANGES_FIELD_ITERATIONS 1 20
 
 run_case() (
     local target=$1 scenario=$2 expected=$3 fixture_mode=$4 status=0 test_noun=tests variable
@@ -215,7 +216,7 @@ run_case() (
     simulator_destination='platform=iOS Simulator,id=fake'
     simulator_udid=original-device
     simulator_environment_variables=()
-    local iteration_variables=(HEELER_SSH_JUMP_TOFU_ITERATIONS HEELER_STAGING_RECOVERY_ITERATIONS HEELER_WEAK_CHANGES_ITERATIONS HEELER_DIFF_LAYOUT_ITERATIONS)
+    local iteration_variables=(HEELER_SSH_JUMP_TOFU_ITERATIONS HEELER_STAGING_RECOVERY_ITERATIONS HEELER_WEAK_CHANGES_ITERATIONS HEELER_DIFF_LAYOUT_ITERATIONS HEELER_CHANGES_FIELD_ITERATIONS)
     for variable in "${iteration_variables[@]}"; do
         export "$variable=inherited-value"
     done
@@ -275,7 +276,7 @@ run_case() (
         grep -qxF "replacement-device $variable" "$fixture_dir/cleared-environment"
     done
 )
-for target in ssh-jump staging staging-method weak layout; do
+for target in ssh-jump staging staging-method weak layout changes-field; do
     for fixture_mode in empty configured; do
         run_case "$target" passed 0 "$fixture_mode"
         run_case "$target" missing-completion 1 "$fixture_mode"
@@ -285,4 +286,4 @@ for target in ssh-jump staging staging-method weak layout; do
         run_case "$target" native-failure 65 "$fixture_mode"
     done
 done
-echo 'Passed diagnostic isolation, input rejection and 60 native-boundary/replacement/cleanup scenarios.'
+echo 'Passed diagnostic isolation, input rejection and 72 native-boundary/replacement/cleanup scenarios.'
