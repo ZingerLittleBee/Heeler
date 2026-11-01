@@ -708,28 +708,36 @@ struct HostOnboardingStoreTests {
         #expect(await connector.transports.count == 1)
     }
 
-    /// Native Windows has no core path yet, and a confirmed Server Kind is final,
-    /// so herdr-core would be a choice that can only ever fail its checks.
-    @Test func aHostWithNoProbeOffersOnlyHerdrTUI() async throws {
+    /// The probe found the core stopped: starting it there is the user's to do.
+    @Test func aWindowsTargetsDetectionComesFromItsProbeAndItsStartIsInstructions() async throws {
         let core = ScriptedCoreHost(
-            detectionFailure: .hostFeatureUnavailable(
-                feature: "Server Kind detection is not yet supported on native Windows"),
-            channel: .refused)
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .core(.init()))
+        await core.helper.configure { $0.platform = .nativeWindows }
         let (store, _, catalog) = try unconfirmedStore(core)
 
         await store.runChecks()
 
-        #expect(store.offeredKinds == [.herdrTUI])
-        #expect(store.confirmationNote?.contains("the choice is yours") == false)
-        #expect(store.confirmationNote?.contains("native Windows") == true)
+        #expect(store.offeredKinds == [.herdrCore])
+        #expect(store.detection?.herdrCore == .notRunning(
+            version: "0.1.16", socketPath: ScriptedCoreHost.windowsPipe))
+        #expect(await core.log == ["windows-detection", "close"])
 
         await store.confirmServerKind(.herdrCore, in: catalog)
-        #expect(store.host.serverKind == .unconfirmed)
-        #expect(catalog.hosts.first?.serverKind == .unconfirmed)
 
-        await store.confirmServerKind(.herdrTUI, in: catalog)
-        #expect(store.host.serverKind == .herdrTUI)
-        #expect(store.report?.isFullyPassed == true)
+        #expect(store.host.serverKind == .herdrCore)
+        #expect(
+            store.report == .failure(
+                TransportError.herdrCoreNotRunning(
+                    socketPath: ScriptedCoreHost.windowsPipe, socketFilePresent: false),
+                authMethod: store.host.authMethod))
+        #expect(
+            store.coreStartOffer == .windowsInstructions(
+                command: "$env:HC_SESSION='work'; \(ScriptedCoreHost.windowsExecutable) server start"))
+        let log = await core.log
+        #expect(!log.contains("connect"))
+        #expect(!log.contains("start"))
+        #expect(!log.contains("detection"))
+        #expect(!log.contains { $0.hasPrefix("open") })
     }
 
     @Test func confirmingHerdrCoreWithASocketPathOverTheLimitSaysWhy() async throws {

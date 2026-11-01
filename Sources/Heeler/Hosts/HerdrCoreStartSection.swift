@@ -6,6 +6,8 @@ enum CoreStartOffer: Equatable, Sendable {
     case start
     /// Any other Host: `command` is what to run in a terminal on that machine.
     case instructions(command: String)
+    /// A native Windows Host: `command` is PowerShell, for its desktop session.
+    case windowsInstructions(command: String)
 
     var explanation: String? {
         switch self {
@@ -14,6 +16,9 @@ enum CoreStartOffer: Equatable, Sendable {
         case .instructions:
             "A core started over SSH would run outside the desktop login session, so Heeler "
                 + "does not start one here. In a terminal on that machine, run:"
+        case .windowsInstructions:
+            "A core started over SSH would run outside your desktop session, so Heeler does not "
+                + "start one here. In a PowerShell window on that machine, not run as administrator, run:"
         }
     }
 }
@@ -64,7 +69,7 @@ struct HerdrCoreStartSection: View {
                 switch store.coreStartOffer {
                 case .start:
                     startButton
-                case .instructions(let command):
+                case .instructions(let command), .windowsInstructions(let command):
                     instructions(command)
                 case nil:
                     EmptyView()

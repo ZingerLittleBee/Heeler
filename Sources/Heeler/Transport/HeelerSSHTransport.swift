@@ -3701,12 +3701,16 @@ actor HeelerSSHTransport: Transport {
 
 // MARK: - What Server Kind detection uses of this connection
 extension HeelerSSHTransport: ServerKindDetectionConnection {
-    /// One bounded exec, cut off on the Host if a read hangs. Native Windows has
-    /// no probe yet, so the POSIX script does not go there.
+    /// One bounded exec, cut off on the Host if a read hangs. The POSIX script does
+    /// not go to native Windows, which runs `runWindowsServerKindDetection` instead.
     func runServerKindDetection(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
             script, feature: "Server Kind detection", deadline: .seconds(16), remoteSeconds: 12,
             timeoutMarkerPrefix: "__HEELER_KIND_DETECTION_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    func runWindowsServerKindDetection(_ command: String) async throws -> GitExecResult {
+        try await runWindowsProbe(command)
     }
 }
 
@@ -3756,6 +3760,46 @@ extension HeelerSSHTransport: HostHelperHost {
 
 // MARK: - What the framed herdr-core transport uses of this connection
 extension HeelerSSHTransport: HerdrCoreHostConnection {
+    /// The same answer the Herdr TUI path acts on (ADR 0018), and reading it turns on
+    /// the Windows session budget. A Unix Host whose home cannot be read still has
+    /// its locator to run, which needs none.
+    func corePlatform() async throws -> HostPlatform {
+        do {
+            return try await hostPlatform()
+        } catch TransportError.homeDirectoryUnresolvable {
+            return .posix
+        } catch TransportError.hostFileTimedOut {
+            throw TransportError.timedOut
+        }
+    }
+
+    /// One bounded exec. PowerShell's own start takes a few seconds on a slow
+    /// machine, and SSH reaps the channel if a `--version` hangs.
+    func runWindowsCoreProbe(_ command: String) async throws -> GitExecResult {
+        try await runWindowsProbe(command)
+    }
+
+    private func runWindowsProbe(_ command: String) async throws -> GitExecResult {
+        let bound = Duration.seconds(20)
+        let result = try await withRequestDeadline(timeout: bound) {
+            try await self.runExec(command, timeout: bound)
+        }
+        return GitExecResult(stdout: result.stdout, stderr: result.stderr, exitStatus: result.exitStatus)
+    }
+
+    func openCoreLinkExec(command: String) async throws -> any WindowsTerminalExecChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+        }
+        return try await channelAdmission.admitCoreExec {
+            do {
+                return try await self.connection.openExec(command: command, timeout: self.requestTimeout)
+            } catch {
+                throw await self.mapOperationError(error)
+            }
+        }
+    }
+
     /// One bounded exec, cut off on the Host if a `--version` hangs.
     func runCoreLocator(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(

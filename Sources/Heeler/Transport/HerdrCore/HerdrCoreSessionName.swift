@@ -15,4 +15,19 @@ enum HerdrCoreSessionName {
                 $0.properties.generalCategory == .control || #"/\:*?"<>|"#.unicodeScalars.contains($0)
             }
     }
+
+    /// Why a native Windows Host cannot carry this name, which the core may accept.
+    /// `connect --session` goes through `cmd`, then maybe PowerShell before it, and
+    /// no quoting survives both, so only hc's own advice for a name does: letters,
+    /// digits, `-`, `_` and `.`. Nil for a name it can carry.
+    static func windowsRefusal(_ value: String) -> String? {
+        let name = normalized(value)
+        let plain = name.unicodeScalars.allSatisfy { scalar in
+            scalar.isASCII
+                && (CharacterSet.alphanumerics.contains(scalar) || "-_.".unicodeScalars.contains(scalar))
+        }
+        guard !plain || name.hasPrefix("-") || !isValid(name) else { return nil }
+        return "Heeler cannot use the session name \"\(name)\" on native Windows. A name there uses "
+            + "letters, digits, \"-\", \"_\" and \".\", and does not start with \"-\"."
+    }
 }

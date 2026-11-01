@@ -163,8 +163,15 @@ extension TransportError {
         case .herdrCoreNotInstalled:
             TransportErrorPresentation(
                 summary: "herdr-core is not installed",
-                detail: "It is not on the SSH PATH or at ~/.local/bin/herdr-core",
+                detail: "It is not where this Host's installer puts it, or on the SSH PATH of a Unix Host",
                 recoverySuggestion: "Install herdr-core on the Host, then check again.")
+        case .herdrCoreNotRunning(let socketPath, _) where HerdrCoreLocator.isWindowsPipe(socketPath):
+            TransportErrorPresentation(
+                summary: "herdr-core is not running",
+                detail: "The named pipe \(socketPath) does not exist",
+                recoverySuggestion:
+                    "Start the core on that machine in your desktop session, in a PowerShell window "
+                    + "not run as administrator. Heeler keeps checking, and starts nothing itself.")
         case .herdrCoreNotRunning(let socketPath, let socketFilePresent):
             socketFilePresent
                 ? TransportErrorPresentation(

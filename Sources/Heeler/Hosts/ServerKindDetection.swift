@@ -2,7 +2,13 @@ import Foundation
 
 /// The SSH connection a detection runs over: one bounded exec, then close.
 protocol ServerKindDetectionConnection: Sendable {
+    /// Which of the two execs below this Host takes.
+    func corePlatform() async throws -> HostPlatform
+
     func runServerKindDetection(_ script: Data) async throws -> GitExecResult
+
+    /// A native Windows Host's, a whole command line.
+    func runWindowsServerKindDetection(_ command: String) async throws -> GitExecResult
 
     func close() async throws
 }
@@ -43,14 +49,20 @@ struct ServerKindDetection: Equatable, Sendable {
         over connection: any ServerKindDetectionConnection, session: String,
         nonce: String = UUID().uuidString
     ) async throws -> ServerKindDetection {
-        let result = try await connection.runServerKindDetection(script(session: session, nonce: nonce))
+        let platform = try await connection.corePlatform()
+        let result =
+            platform == .nativeWindows
+            ? try await connection.runWindowsServerKindDetection(
+                ServerKindDetectionScript.windowsCommand(session: session, nonce: nonce))
+            : try await connection.runServerKindDetection(script(session: session, nonce: nonce))
         guard result.exitStatus == 0 else {
             throw TransportError.malformedResponse(
                 "Server Kind detection exited with status \(result.exitStatus).")
         }
         do {
             return ServerKindDetection(
-                try ServerKindDetectionScript.parse(stdout: result.stdout, session: session, nonce: nonce),
+                try ServerKindDetectionScript.parse(
+                    stdout: result.stdout, session: session, nonce: nonce, platform: platform),
                 session: session)
         } catch {
             throw TransportError.malformedResponse("Server Kind detection's output is unreadable.")
@@ -75,7 +87,9 @@ struct ServerKindDetection: Equatable, Sendable {
 
     private static func herdrCore(_ location: HerdrCoreLocator.Location?, session: String) -> CoreFinding {
         guard let location else {
-            return .sessionRefused(reason: ServerKind.herdrCore.sessionNameRefusal(session) ?? "")
+            return .sessionRefused(
+                reason: ServerKind.herdrCore.sessionNameRefusal(session)
+                    ?? HerdrCoreSessionName.windowsRefusal(session) ?? "")
         }
         guard let version = location.version, location.executablePath != nil else { return .notInstalled }
         if !location.fitsSocketPathLimit {
@@ -107,9 +121,7 @@ struct ServerKindDetection: Equatable, Sendable {
         return foundKinds.isEmpty ? Self.offeredWithoutFindings : foundKinds
     }
 
-    /// What is on offer when a reached Host could not be read because the exec
-    /// failed. A platform with no probe has no core path either, so it offers
-    /// Herdr TUI alone (`HostOnboardingStore.offeredKinds`).
+    /// What is on offer when a reached Host could not be read because the exec failed.
     static let offeredWithoutFindings: [ServerKind] = [.herdrTUI, .herdrCore]
 }
 
@@ -128,7 +140,8 @@ extension ServerKindDetection.CoreFinding {
         case .sessionRefused: "Session name refused"
         case .notInstalled: "Not installed"
         case .notRunning(let version, _): "\(version), not running"
-        case .socketFilePresent(let version, _): "\(version), socket found"
+        case .socketFilePresent(let version, let path):
+            "\(version), \(HerdrCoreLocator.isWindowsPipe(path) ? "running" : "socket found")"
         case .socketPathTooLong(let version, _, _): "\(version), socket path too long"
         }
     }

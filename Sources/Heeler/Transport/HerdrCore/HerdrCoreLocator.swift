@@ -40,8 +40,12 @@ enum HerdrCoreLocator {
         let socketPathLimit: Int
         /// The user's login shell from the account database, when it was readable.
         let loginShell: String?
+        /// The user's home folder. Only native Windows reports it here, where
+        /// `HostServices.hostHomeDirectory` refuses to answer.
+        var home: String?
 
         var fitsSocketPathLimit: Bool { socketPath.utf8.count <= socketPathLimit }
+        var isNativeWindows: Bool { kernel == windowsKernel }
         var isStaleLock: Bool { socketSource == .lock && !socketFilePresent }
         /// Only on Linux can the app start a core: elsewhere one started over
         /// SSH would run outside the user's desktop login session.
@@ -49,9 +53,13 @@ enum HerdrCoreLocator {
     }
 
     /// `sun_path` less its NUL: 107 bytes on Linux, 103 on macOS. A kernel the
-    /// app has no record of gets the shorter limit.
+    /// app has no record of gets the shorter limit. A Windows pipe name may run to 256.
     static func socketPathLimit(kernel: String) -> Int {
-        kernel == "Linux" ? 107 : 103
+        switch kernel {
+        case "Linux": 107
+        case windowsKernel: 256
+        default: 103
+        }
     }
 
     /// Everything from the Host is a quoted word or a variable, so a session
@@ -126,7 +134,7 @@ enum HerdrCoreLocator {
         for line in lines {
             let parts = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false)
             let key = String(parts[0])
-            guard ["kernel", "executable", "version", "default", "lock", "socket-file", "shell"].contains(key),
+            guard ["kernel", "executable", "version", "default", "lock", "socket-file", "shell", "home"].contains(key),
                 fields[key] == nil
             else { throw MalformedOutput() }
             fields[key] = parts.count == 2 ? String(parts[1]) : ""
@@ -136,7 +144,11 @@ enum HerdrCoreLocator {
             let socketFile = fields["socket-file"], ["0", "1"].contains(socketFile)
         else { throw MalformedOutput() }
         let executable = fields["executable"]
-        guard executable?.hasPrefix("/") ?? true, (executable == nil) == (fields["version"] == nil) else {
+        let isAbsolute =
+            executable.map {
+                kernel == windowsKernel ? RemoteHostPath.isWindowsAbsolute($0) : $0.hasPrefix("/")
+            } ?? true
+        guard isAbsolute, (executable == nil) == (fields["version"] == nil) else {
             throw MalformedOutput()
         }
         return Location(
@@ -147,7 +159,8 @@ enum HerdrCoreLocator {
             socketSource: fields["lock"] == nil ? .sessionDefault : .lock,
             socketFilePresent: socketFile == "1",
             socketPathLimit: socketPathLimit(kernel: kernel),
-            loginShell: fields["shell"])
+            loginShell: fields["shell"],
+            home: fields["home"])
     }
 
     /// An exec the Host's shutdown or session cleanup ended partway: killed by a

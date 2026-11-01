@@ -134,6 +134,22 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         ]))
     }
 
+    static let windowsExecutable = #"C:\Users\me\AppData\Local\Programs\herdr-core\herdr-core.exe"#
+    static let windowsPipe = #"\\.\pipe\herdr-core-me-work.sock"#
+
+    /// What the probe prints for a native Windows Host.
+    static func windowsLocatorLines(
+        executable: String? = windowsExecutable, version: String = "0.1.16", lock: String? = nil,
+        pipe: Bool = true
+    ) -> [String] {
+        var lines = ["kernel Windows", #"home C:\Users\me"#]
+        if let executable { lines += ["executable \(executable)", "version \(version)"] }
+        lines.append("default \(windowsPipe)")
+        if let lock { lines.append("lock \(lock)") }
+        lines.append("socket-file \(pipe ? 1 : 0)")
+        return lines
+    }
+
     /// What the locator prints for a typical Linux Host.
     static func locatorLines(
         executable: String? = installedPath, version: String = "0.1.13", lock: String? = nil,
@@ -212,8 +228,17 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// The params of every `terminal.interrupt`, oldest first.
     private(set) var interrupts: [JSONValue] = []
 
+    /// What each native Windows probe prints; nil is a Unix Host.
+    private var windowsLocator: [String]?
+    /// What a `connect` exec's account shell prints before the marker.
+    private var connectBanner = Data()
+    /// Every `connect` exec's whole command line, oldest first.
+    private(set) var connectCommands: [String] = []
+    private var corePlatformFailure: TransportError?
+
     /// `shellBanner` is what the user's shell prints before it runs the script.
     init(
+        windowsLocator: [String]? = nil,
         locator: [String] = locatorLines(), locatorStatus: Int32 = 0, shellBanner: Data = Data(),
         herdrRead: HerdrRead = .notInstalled, detectionFailure: TransportError? = nil,
         helper: ScriptedHelperHost = ScriptedHelperHost(),
@@ -221,6 +246,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         processRead: ProcessRead = .names([]),
         channel: Channel
     ) {
+        self.windowsLocator = windowsLocator
         self.processRead = processRead
         self.helper = helper
         self.start = start
@@ -258,7 +284,15 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         }
     }
 
+    /// `runBoundedScript` refuses native Windows before anything runs.
+    private func refuseOnWindows(_ feature: String) throws {
+        guard windowsLocator == nil else {
+            throw TransportError.hostFeatureUnavailable(feature: "\(feature) is not yet supported on native Windows")
+        }
+    }
+
     func runHostProcessRead(_ script: Data) async throws -> GitExecResult {
+        try refuseOnWindows("herdr-core Hosts")
         log.append("process-read")
         let body = String(decoding: script, as: UTF8.self)
         scripts.append(body)
@@ -292,12 +326,14 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
+        try refuseOnWindows("herdr-core Hosts")
         log.append("agent-discovery")
         scripts.append(String(decoding: script, as: UTF8.self))
         return agentDiscovery
     }
 
     func runHerdrAppControl(_ script: Data) async throws -> GitExecResult {
+        try refuseOnWindows("herdr-core Hosts")
         log.append("herdr-app")
         scripts.append(String(decoding: script, as: UTF8.self))
         return try herdrAppAnswer.get()
@@ -340,9 +376,77 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
 
     func openCoreLinkChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {
         log.append("open \(socketPath)")
+        return try linkChannel(onPath: socketPath)
+    }
+
+    func openCoreLinkExec(command: String) async throws -> any WindowsTerminalExecChannel {
+        log.append("connect")
+        connectCommands.append(command)
+        let channel = try linkChannel(onPath: command)
+        // What a real exec's `echo` prints before the core has said anything.
+        await channel.deliver(connectBanner + Data("\(PowerShellCommand.streamMarker)\r\n".utf8))
+        return channel
+    }
+
+    func corePlatform() async throws -> HostPlatform {
+        if let corePlatformFailure { throw corePlatformFailure }
+        return windowsLocator == nil ? .posix : .nativeWindows
+    }
+
+    func runWindowsCoreProbe(_ command: String) async throws -> GitExecResult {
+        log.append("windows-probe")
+        scripts.append(try HerdrCoreWindowsLocatorTests.decoded(command))
+        let lines = windowsLocator ?? []
+        let output = (["\(Self.nonce) begin"] + lines + ["\(Self.nonce) end"]).joined(separator: "\n") + "\n"
+        return GitExecResult(stdout: shellBanner + Data(output.utf8), stderr: Data(), exitStatus: locatorStatus)
+    }
+
+    func runWindowsServerKindDetection(_ command: String) async throws -> GitExecResult {
+        log.append("windows-detection")
+        let body = try HerdrCoreWindowsLocatorTests.decoded(command)
+        scripts.append(body)
+        if let detectionFailure { throw detectionFailure }
+        let (status, output): (Int32, String) =
+            switch herdrRead {
+            case .notInstalled: (127, "")
+            case .answers(let output): (0, output)
+            case .fails(let status, let output): (status, output)
+            }
+        let nonce = Self.windowsNonce(in: body)
+        var printed = "\n\(nonce) herdr-tui begin\n\(output)\n\(nonce) herdr-tui status \(status)\n"
+        if body.contains("$s = ") {
+            let lines = windowsLocator ?? []
+            printed += (["\(nonce) begin"] + lines + ["\(nonce) end"]).joined(separator: "\n") + "\n"
+        }
+        return GitExecResult(stdout: shellBanner + Data(printed.utf8), stderr: Data(), exitStatus: locatorStatus)
+    }
+
+    private static func windowsNonce(in script: String) -> String {
+        let marker = " herdr-tui begin'"
+        guard let end = script.range(of: marker)?.lowerBound,
+            let start = script[..<end].lastIndex(of: "'")
+        else { return "" }
+        return String(script[script.index(after: start)..<end])
+    }
+
+    /// What every later probe prints.
+    func setWindowsLocator(_ lines: [String]) {
+        windowsLocator = lines
+    }
+
+    func setConnectBanner(_ banner: Data) {
+        connectBanner = banner
+    }
+
+    /// Every ask for the path fails with this until it is nil.
+    func setCorePlatformFailure(_ failure: TransportError?) {
+        corePlatformFailure = failure
+    }
+
+    private func linkChannel(onPath path: String) throws -> FakeCoreSocket {
         switch channel {
         case .refused:
-            throw TransportError.streamLocalOpenFailed(path: socketPath)
+            throw TransportError.streamLocalOpenFailed(path: path)
         case .answersHello(let reply):
             let socket = FakeCoreSocket()
             self.socket = socket
@@ -672,7 +776,13 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         try await helper.replaceHostHelperFile(contents, at: path, privateDirectory: privateDirectory)
     }
 
-    func hostHomeDirectory() async throws -> String { ScriptedHelperHost.home }
+    /// Refuses native Windows, as the real read does.
+    func hostHomeDirectory() async throws -> String {
+        guard windowsLocator == nil else {
+            throw TransportError.hostFeatureUnavailable(feature: "Chat is not yet supported on native Windows")
+        }
+        return ScriptedHelperHost.home
+    }
 
     /// The transport the app gets for this Host, with a nonce the script knows.
     nonisolated func transport(

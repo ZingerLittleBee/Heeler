@@ -33,17 +33,43 @@ enum ServerKindDetectionScript {
         return script
     }
 
+    /// The same two parts for a native Windows Host, in one PowerShell, printing the
+    /// same lines. `herdr session list` only looks there too.
+    static func windowsCommand(session: String, nonce: String) -> String {
+        var script = HerdrCoreLocator.windowsPrelude + "\n" + """
+            say ''
+            say \(PowerShellCommand.literal("\(nonce) herdr-tui begin"))
+            $c = 127
+            if (Get-Command herdr.exe -ErrorAction SilentlyContinue) {
+                $o = & herdr.exe session list --json 2>$null
+                $c = $LASTEXITCODE
+                if ($o) { say ($o -join "`n") }
+            }
+            say ''
+            say (\(PowerShellCommand.literal("\(nonce) herdr-tui status ")) + $c)
+            """
+        if let locator = try? HerdrCoreLocator.windowsLocatorBody(session: session, nonce: nonce) {
+            script += "\n" + locator
+        }
+        return PowerShellCommand.encoded(script + "\nexit 0")
+    }
+
     /// A read that lacks either part was cut short. Whatever the user's shell
     /// printed around the markers is ignored, in any encoding.
-    static func parse(stdout: Data, session: String, nonce: String) throws -> Output {
+    static func parse(
+        stdout: Data, session: String, nonce: String, platform: HostPlatform = .posix
+    ) throws -> Output {
         let lines = stdout.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: false)
         let statusPrefix = Data("\(nonce) herdr-tui status ".utf8)
         guard let begin = lines.firstIndex(where: { $0.elementsEqual("\(nonce) herdr-tui begin".utf8) }),
             let statusLine = lines.lastIndex(where: { $0.starts(with: statusPrefix) }), begin < statusLine,
             let status = Int32(String(decoding: lines[statusLine].dropFirst(statusPrefix.count), as: UTF8.self))
         else { throw HerdrCoreLocator.MalformedOutput() }
+        let ranLocator =
+            platform == .nativeWindows
+            ? HerdrCoreSessionName.windowsRefusal(session) == nil : HerdrCoreSessionName.isValid(session)
         let location =
-            HerdrCoreSessionName.isValid(session)
+            ranLocator
             ? try HerdrCoreLocator.parse(stdout: stdout, nonce: nonce) : nil
         return Output(
             herdrStatus: status,
