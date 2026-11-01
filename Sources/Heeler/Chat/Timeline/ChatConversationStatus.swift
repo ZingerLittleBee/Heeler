@@ -15,6 +15,7 @@ extension ChatUnavailableReason {
         case .startScreen: "Not in This Conversation"
         case .cannotTellSession: "Can't Tell the Conversation"
         case .transcriptOff: "Transcript Saving Is Off"
+        case .codexSharedDaemon: "Codex Started Without \(ChatLaunchNotice.unbrokenNoDaemon)"
         }
     }
 
@@ -64,9 +65,11 @@ extension ChatUnavailableReason {
         case .startScreen(let program):
             "\(program.chatName) is on its home screen, so the conversation herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once herdr reports it."
         case .cannotTellSession(let program):
-            "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal. Chat checks again when the Agent's status changes."
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes."
         case .transcriptOff(let variable, let coreCarriesIt):
             variable.explanation(coreCarriesIt: coreCarriesIt)
+        case .codexSharedDaemon:
+            "Codex runs on its shared background server here, where one terminal's conversation looks like another's. Exit Codex, run codex resume \(ChatLaunchNotice.unbrokenNoDaemon), and pick the conversation in Codex's list."
         }
     }
 
@@ -125,13 +128,17 @@ extension ChatUnavailableReason {
             "Chat can't tell which conversation this Agent is in now.\(saved)"
         case .transcriptOff:
             "This Agent isn't saving a transcript.\(saved)"
+        case .codexSharedDaemon:
+            "Codex runs on its shared background server, so Chat can't tell this conversation.\(saved)"
         }
     }
 
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
-        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .transcriptOff: true
+        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .transcriptOff,
+            .codexSharedDaemon:
+            true
         case .sessionStore(_, let problem): problem.isRetryable
         default: false
         }
@@ -401,6 +408,21 @@ extension ChatProgram {
 
     /// When the program first saves a new conversation, after "saves this
     /// conversation".
+    /// What Chat's "can't tell" says about this program on herdr-core, where the
+    /// evidence is what the Host shows of its process (ADR 0034).
+    fileprivate var sessionEvidenceHelp: String {
+        switch self {
+        case .codex:
+            "Codex shows its conversation with the first message, so send one in the terminal. After /new it holds both conversations open, so exit Codex, run codex resume \(ChatLaunchNotice.unbrokenNoDaemon), and pick one."
+        case .grok:
+            "Grok Build lists its conversation while it runs. After /new it lists both, so Chat can't tell until you start Grok Build again."
+        case .opencode:
+            "OpenCode shows its conversation only when Heeler starts OpenCode 2.1 or later from New Agent."
+        case .claude, .pi, .omp:
+            "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal."
+        }
+    }
+
     fileprivate var firstSave: String {
         writesNewConversationWithFirstReply ? "after its first reply" : "once it has a first message"
     }

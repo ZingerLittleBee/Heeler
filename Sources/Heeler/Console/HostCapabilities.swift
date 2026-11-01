@@ -59,6 +59,14 @@ struct HostCapabilities: Equatable, Sendable {
     }
 }
 
+/// Which programs' Chat is on for a Linux herdr-core Host. A program joins only
+/// once its check with a harness the owner signs in to passes, and one that
+/// fails stays off with its observation saying why (ADR 0034). The binder reads
+/// Codex, Grok Build and OpenCode already; their evidence came from a fake model.
+enum HerdrCoreChatRollout {
+    static let confirmed: Set<ChatProgram> = [.claude]
+}
+
 extension HostCapabilities {
     /// `platform` is what the Host's connection reported, nil until it has. A
     /// core Host offers uploads once it is known to take them over SFTP: native
@@ -67,10 +75,11 @@ extension HostCapabilities {
     /// and Stop once it is known to be POSIX too, because the foreground that Send
     /// checks takes another form on native Windows (ADRs 0032 and 0035). `coreKernel`
     /// is the core Host's `uname -s`: its Chat opens on Linux, whose process reads a
-    /// check of an Agent's session uses, for the one program built so far.
+    /// check of an Agent's session uses, for `coreChatPrograms`.
     init(
         serverKind: ServerKind, platform: HostPlatform? = nil,
-        desktopAppNaming: HerdrAppNaming? = nil, coreKernel: String? = nil
+        desktopAppNaming: HerdrAppNaming? = nil, coreKernel: String? = nil,
+        coreChatPrograms: Set<ChatProgram> = HerdrCoreChatRollout.confirmed
     ) {
         let offered = serverKind == .herdrTUI
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
@@ -84,7 +93,7 @@ extension HostCapabilities {
             syncLayoutFromPlugin: offered, takeOver: offered,
             composerStop: offered || coreOnPosix,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
-            chatPrograms: coreChat ? [.claude] : nil)
+            chatPrograms: coreChat ? coreChatPrograms : nil)
     }
 }
 

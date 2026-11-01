@@ -38,6 +38,9 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// The Agent's process carries a variable that stops the program keeping
     /// a Transcript, so there is no file to wait for (ADR 0034).
     case transcriptOff(ChatTranscriptOffVariable, coreCarriesIt: Bool)
+    /// A herdr-core Codex on the shared daemon, whose windows' sessions look alike
+    /// from outside. Only reopening it with `--no-daemon` offers Chat (ADR 0034).
+    case codexSharedDaemon
 
     /// Whether Chat shows the explanation in the conversation's place even
     /// over saved messages, which stay in memory until the program shows
@@ -328,9 +331,11 @@ actor ChatConversationEngine {
     /// lists.
     private var journals: [String: FollowedJournal] = [:]
     private var journalCalls = 0
-    /// The Agent's own Claude Code config dir, from a check of its process
-    /// (ADR 0034). Nil looks in the Host's default place.
-    private let claudeConfigRoot: String?
+    /// The Agent's own config root, which its Transcript is under, from a check
+    /// of its process (ADR 0034). Nil looks in the Host's default place.
+    private let transcriptRoot: String?
+    /// Heeler can name an id before the program has written it (ADR 0034).
+    private let sessionMayPrecedeItsStore: Bool
 
     init(
         reference: ConversationReference,
@@ -340,10 +345,12 @@ actor ChatConversationEngine {
         adapter: ChatTranscriptAdapter,
         saveInterval: TimeInterval = 10,
         workflowLimits: WorkflowLimits = WorkflowLimits(),
-        claudeConfigRoot: String? = nil,
+        transcriptRoot: String? = nil,
+        sessionMayPrecedeItsStore: Bool = false,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
-        self.claudeConfigRoot = claudeConfigRoot
+        self.transcriptRoot = transcriptRoot
+        self.sessionMayPrecedeItsStore = sessionMayPrecedeItsStore
         self.reference = reference
         self.cacheKey = cacheKey
         self.files = files
@@ -405,7 +412,7 @@ actor ChatConversationEngine {
                 }
             }
         } catch let unavailable as ChatSourceUnavailable {
-            stop(unavailable.reason)
+            stop(isConversationStillToStart(unavailable.reason) ? .awaitingFirstMessage(reference.program) : unavailable.reason)
         } catch {
             recordFailure(error)
         }
@@ -749,6 +756,14 @@ actor ChatConversationEngine {
         }
     }
 
+    /// On herdr-core Heeler can know an OpenCode session's id before its first
+    /// prompt makes the row, so a store without it has a conversation to start, not
+    /// one that went missing (ADR 0034). Herdr TUI reports only ids that exist.
+    private func isConversationStillToStart(_ reason: ChatUnavailableReason) -> Bool {
+        sessionMayPrecedeItsStore && !hasFollowed && cached == nil
+            && reason == .sessionStore(.opencode, .sessionMissing(otherStores: []))
+    }
+
     // MARK: Locating
 
     private enum Location {
@@ -771,7 +786,7 @@ actor ChatConversationEngine {
             if isNew, searchesEveryProject { newConversationActivity = context.activity }
             switch try await ClaudeTranscriptLocator(files: files).locate(
                 sessionID: reference.sessionID, directories: candidates, searchesEveryProject: searchesEveryProject,
-                configRoot: claudeConfigRoot)
+                configRoot: transcriptRoot)
             {
             case .success(let location): return .found(location.transcriptPath)
             case .failure(.notFound) where !searchesEveryProject:
@@ -790,7 +805,7 @@ actor ChatConversationEngine {
             }
         case .codex:
             switch try await CodexTranscriptLocator(files: files, now: now).locate(
-                threadID: reference.sessionID)
+                threadID: reference.sessionID, configRoot: transcriptRoot)
             {
             case .success(let location):
                 guard let live = location.live else { return .unavailable(.notFound(searchedAll: true)) }
@@ -818,7 +833,7 @@ actor ChatConversationEngine {
             }
         case .grok:
             switch try await GrokTranscriptLocator(files: files).locate(
-                sessionID: reference.sessionID, directories: directories)
+                sessionID: reference.sessionID, directories: directories, configRoot: transcriptRoot)
             {
             case .success(let path): return .found(path)
             case .failure(.notFound(let searchedAll)):

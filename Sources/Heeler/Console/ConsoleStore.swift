@@ -78,6 +78,9 @@ final class ConsoleStore {
     private(set) var hostDesktopAppNaming: [Host.ID: HerdrAppNaming] = [:]
     /// Each core Host's `uname -s`, once a link has located its core.
     private(set) var hostCoreKernels: [Host.ID: String] = [:]
+    /// The programs Chat opens for on a Linux core Host. Only a test turns on
+    /// another before its owner check passes.
+    @ObservationIgnored var coreChatPrograms = HerdrCoreChatRollout.confirmed
     /// The core each core Host's inventory comes from. A detail reads it, so it
     /// redraws once the Host no longer serves the core it opened on.
     private(set) var hostCores: [Host.ID: String] = [:]
@@ -865,7 +868,7 @@ final class ConsoleStore {
             source.coreScope = core.chatCacheScope
             source.sessionEvidence = { [weak self] in
                 guard let self else { throw TransportError.cancelled }
-                return try await self.checkChatSession(paneID: paneID, on: hostID)
+                return try await self.checkChatSession(paneID: paneID, program: program, on: hostID)
             }
             // Only events after this store exists are news to it.
             chatSessionEventRevisions[agent.id] = core.sessionEventRevision(of: paneID)
@@ -886,9 +889,11 @@ final class ConsoleStore {
         return plan.pressing(templateStopKey: stopKey)
     }
 
-    private func checkChatSession(paneID: String, on hostID: Host.ID) async throws -> ChatSessionEvidence {
+    private func checkChatSession(
+        paneID: String, program: ChatProgram, on hostID: Host.ID
+    ) async throws -> ChatSessionEvidence {
         guard let core = projections[hostID] as? HerdrCoreConsoleProjection else { throw TransportError.cancelled }
-        return try await core.checkChatSession(paneID: paneID)
+        return try await core.checkChatSession(paneID: paneID, program: program)
     }
 
     /// Chat's transcript reads and store queries on the Host's live
@@ -1857,7 +1862,8 @@ final class ConsoleStore {
             serverKind: catalog.first(where: { $0.id == hostID })?.serverKind ?? .herdrTUI,
             platform: hostPlatforms[hostID],
             desktopAppNaming: hostDesktopAppNaming[hostID],
-            coreKernel: hostCoreKernels[hostID])
+            coreKernel: hostCoreKernels[hostID],
+            coreChatPrograms: coreChatPrograms)
     }
 
     // MARK: Harness configuration edits

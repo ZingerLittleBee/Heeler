@@ -1423,7 +1423,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     /// One check of the Agent's process: one exec and at most one SFTP read.
-    func checkChatSession(paneID: String) async throws -> ChatSessionEvidence {
+    func checkChatSession(paneID: String, program: ChatProgram) async throws -> ChatSessionEvidence {
         // No inventory is no evidence either way: a Chat keeps what it shows and
         // the snapshot's fresh inventory asks again. A Send here says it couldn't
         // check.
@@ -1432,11 +1432,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         // which conversation it was in. Its Chat says what became of it.
         guard departedAgentsByPane[paneID] == nil else { throw TransportError.cancelled }
         guard let record = terminalRecord(at: paneID) else {
-            return .unavailable(.cannotTellSession(.claude))
+            return .unavailable(.cannotTellSession(program))
         }
         let session = session
         let core = inventoryCore
         let binder = HerdrCoreSessionBinder(
+            program: program,
             processes: { request in
                 try await session.withTransport { try await $0.readProcesses(request) }
             },
@@ -1469,7 +1470,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             home: {
                 try await session.withTransport { $0.hostServices }.hostHomeDirectory()
             },
-            queryOpenCode: nil)
+            queryOpenCode: { query in
+                try await session.withTransport { $0.hostServices }.queryOpenCode(query)
+            })
     }
 
     func remoteHomeDirectory() async throws -> String {

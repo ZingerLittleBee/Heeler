@@ -488,6 +488,7 @@ struct HerdrCoreChatTests {
     ) throws -> AgentChatStore {
         let record = try HerdrCoreSessionBinderTests.record(pid: Self.pid, foreground: Self.pid)
         let binder = HerdrCoreSessionBinder(
+            program: .claude,
             processes: { try await table.read($0) }, files: files.hostFiles(), clearLabels: { _ in })
         let agent = Agent(
             terminalID: "t1", kind: "claude", title: "", status: .idle, workspaceID: "w1", tabID: "t1",
@@ -1091,7 +1092,7 @@ struct HerdrCoreChatTests {
         let gate = ScriptedTransportCallGate()
         await rig.transport.processTable.hold(using: gate)
 
-        let check = Task { try await core.checkChatSession(paneID: "t1") }
+        let check = Task { try await core.checkChatSession(paneID: "t1", program: .claude) }
         await gate.waitForEntry()
         await rig.transport.setCoreID("c2")
         await rig.transport.endLink()

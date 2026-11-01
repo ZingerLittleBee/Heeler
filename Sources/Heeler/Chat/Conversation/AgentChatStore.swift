@@ -1141,7 +1141,7 @@ final class AgentChatStore {
     private var showsAwaitingReason: Bool {
         switch conversation.phase {
         case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
-            .unavailable(.transcriptOff):
+            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
             true
         default: false
         }
@@ -1240,7 +1240,8 @@ final class AgentChatStore {
                 hostID: source.hostID, socketLocation: source.socketLocation, reference: reference,
                 coreScope: source.coreScope),
             files: source.files, cache: source.cache, adapter: source.adapter,
-            claudeConfigRoot: source.sessionEvidence == nil ? nil : evidenceRoot, now: now)
+            transcriptRoot: source.sessionEvidence == nil ? nil : evidenceRoot,
+            sessionMayPrecedeItsStore: source.sessionEvidence != nil, now: now)
     }
 
     // MARK: Start screen
