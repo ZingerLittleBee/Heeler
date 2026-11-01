@@ -176,8 +176,22 @@ that Heeler can read from outside the process.
     bound. OpenCode loads a TUI plugin only from its plugin list, so Heeler
     copies its OpenCode plugin into a folder of its own under OpenCode's
     config directory and adds that folder to the list (`plugin` in
-    `tui.json(c)`, or `plugins` in `cli.json`, by OpenCode's release). Undoing
-    removes the entry, then the folder; removing the Helper undoes it.
+    `tui.json(c)`, or `plugins` in `cli.json`, by OpenCode's release, and
+    refused for a version it can't place). Undoing removes the entry, then the
+    folder; removing the Helper undoes it. The entry is one line, first in the
+    list, relative to the file: `./heeler-opencode`. The folder holds the
+    plugin's three files, and goes in before the entry so the file never names
+    a folder that isn't there. If the user changed the file since, undo takes
+    out only the entry, against what it read then. The plugin ships in the
+    Helper's bundle and manifest, so publishing the Heeler plugin never ships
+    it, and an app update doesn't refresh a copy already placed.
+
+    Removal undoes it after the listed files and created folders and before
+    the Helper's directory. A record of the edit lives on the device that made
+    it, so a removal from another device leaves it, harmless without a core. A
+    file that refuses the undo doesn't keep the Helper: the Helper goes, and
+    the edit stays listed with its Undo. A failed connection stops the removal
+    as any step's does.
   - Grok Build, offered where a Grok Build Agent shows no status because its
     automatic check left Program Status off: `[ui.notifications]
     program_status = "on"` in its configuration. The value is a quoted string:

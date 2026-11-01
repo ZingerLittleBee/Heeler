@@ -13,6 +13,12 @@ actor InMemoryHostFiles: HostServices {
 
     private(set) var files: [String: Data]
     private(set) var writes: [Write] = []
+    /// The folders a folder step made and hasn't removed.
+    private(set) var folders: Set<String> = []
+    /// Everything that changed the Host, in order.
+    private(set) var journal: [String] = []
+    private var beforeReplaceOf: [String: @Sendable (InMemoryHostFiles) async -> Void] = [:]
+    private var folderFailure: (any Error)?
     private(set) var replaceCalls = 0
     private var beforeNextReplace: (@Sendable (InMemoryHostFiles) async -> Void)?
     private var failure: (any Error)?
@@ -28,6 +34,35 @@ actor InMemoryHostFiles: HostServices {
 
     func set(_ path: String, _ contents: Data?) {
         files[path] = contents
+    }
+
+    func clearJournal() {
+        journal = []
+    }
+
+    /// Runs once, before the next replace of this path compares.
+    func onReplace(of path: String, _ change: @escaping @Sendable (InMemoryHostFiles) async -> Void) {
+        beforeReplaceOf[path] = change
+    }
+
+    /// Every folder step fails with this before it does anything.
+    func setFolderFailure(_ failure: (any Error)?) {
+        folderFailure = failure
+    }
+
+    func createHostFolder(path: String) async throws {
+        if let folderFailure { throw folderFailure }
+        guard !folders.contains(path) else { return }
+        folders.insert(path)
+        journal.append("mkdir \(path)")
+    }
+
+    /// One that holds anything stays, as `rmdir` leaves it.
+    func removeEmptyHostFolder(path: String) async throws {
+        if let folderFailure { throw folderFailure }
+        guard folders.contains(path), !files.keys.contains(where: { $0.hasPrefix("\(path)/") }) else { return }
+        folders.remove(path)
+        journal.append("rmdir \(path)")
     }
 
     /// Runs once, after a read and before the next replace compares.
@@ -68,11 +103,13 @@ actor InMemoryHostFiles: HostServices {
             beforeNextReplace = nil
             await change(self)
         }
+        if let change = beforeReplaceOf.removeValue(forKey: path) { await change(self) }
         if let failure { throw failure }
         if let replaceFailure { throw replaceFailure }
         guard files[path] == expected else { throw HostTextFileError.changedSinceRead }
         files[path] = contents
         writes.append(Write(path: path, contents: contents))
+        journal.append("\(contents == nil ? "remove" : "write") \(path)")
         if let lost = lostReplaceAnswer {
             lostReplaceAnswer = nil
             if losesConnectionWithAnswer { failure = lost }

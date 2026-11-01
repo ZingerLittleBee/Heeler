@@ -13,7 +13,9 @@ never show or send into a conversation it has guessed.
 ## Decision
 
 - The app binds a herdr-core Agent's session itself, lazily: when Chat opens,
-  before each Send, and on the Terminal's status, turn and foreground events.
+  before each Send, and on the Terminal's status, turn and foreground events,
+  and a change of its `heeler.*` session label: OpenCode 1.x reports no status,
+  so its plugin's label is the only thing that says the conversation moved.
   Each check is at most one SFTP read and one exec on the Host, except that a
   Codex holding several rollouts costs one read of each one's first line, up to
   eight, since whether there is one root takes all of them. The Host Helper takes

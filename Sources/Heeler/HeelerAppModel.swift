@@ -97,9 +97,11 @@ final class HeelerAppModel {
         notificationPreferences.followSeenMarks(of: console)
         // Installing or removing a Helper changes what the banner and Live
         // Activity gates may say, with the Console's connection unchanged.
-        hostOnboarding = HostOnboardingDependencies(hostHelperDidChange: { [weak notificationPreferences] in
-            Task { await notificationPreferences?.refresh() }
-        })
+        hostOnboarding = HostOnboardingDependencies(
+            hostHelperDidChange: { [weak notificationPreferences] in
+                Task { await notificationPreferences?.refresh() }
+            },
+            harnessEdits: console.harnessEdits)
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on

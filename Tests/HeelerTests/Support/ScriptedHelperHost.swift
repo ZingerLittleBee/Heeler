@@ -148,6 +148,32 @@ actor ScriptedHelperHost: HostHelperHost {
 
     func hostPlatform() async throws -> HostPlatform { platform }
 
+    // MARK: What a harness edit asks of the same files
+
+    func readHostFile(_ range: RemoteFileRange) -> RemoteFileSlice {
+        guard let file = files[range.path]?.contents else { return RemoteFileSlice(data: Data(), length: nil) }
+        let start = min(Int(range.offset), file.count)
+        return RemoteFileSlice(
+            data: file[start..<min(start + range.maxBytes, file.count)], length: UInt64(file.count))
+    }
+
+    func replaceHostText(path: String, expected: Data?, contents: Data?) throws {
+        guard files[path]?.contents == expected else { throw HostTextFileError.changedSinceRead }
+        journal.append("\(contents == nil ? "removeText" : "writeText") \(path)")
+        files[path] = contents.map { File(contents: $0, mode: files[path]?.mode ?? 0o600) }
+    }
+
+    func createFolder(_ path: String) {
+        journal.append("makeFolder \(path)")
+        seedFolder(path)
+    }
+
+    func removeFolderIfEmpty(_ path: String) {
+        journal.append("removeFolder \(path)")
+        guard !files.keys.contains(where: { $0.hasPrefix("\(path)/") }) else { return }
+        folders[path] = nil
+    }
+
     func readHostHelperFile(at path: String, privateDirectory: String) async throws -> Data? {
         reads.append(path)
         journal.append("read \(path)")
@@ -423,15 +449,17 @@ actor ScriptedHelperHost: HostHelperHost {
 
 /// A small Helper for install tests, with real hashes in its manifest.
 enum HostHelperFixture {
-    static func bundle(version: String = "\(HostHelperCompatibility.bundled)") -> HostHelperBundle {
-        let files = [
+    static func bundle(
+        version: String = "\(HostHelperCompatibility.bundled)", extraFiles: [String: Data] = [:]
+    ) -> HostHelperBundle {
+        let files = extraFiles.merging([
             "main.js": Data("console.log('main')\n".utf8),
             "package.json": Data("{\"type\":\"module\"}\n".utf8),
             HostHelperScript.extensionPath: Data("export default function () {}\n".utf8),
             HostHelperScript.extensionFoldersPath: Data("console.log('{}')\n".utf8),
             "shared/delivery/push.js": Data("export const push = 1;\n".utf8),
             "version.json": Data("{\"version\":\"\(version)\"}\n".utf8),
-        ]
+        ]) { $1 }
         let manifest = HostHelperManifest(
             version: version,
             files: files.keys.sorted().map { path in

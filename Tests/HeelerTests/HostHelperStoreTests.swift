@@ -23,6 +23,53 @@ struct HostHelperStoreTests {
         return store
     }
 
+    /// The removal's own connection does the undoing, and what it had to leave the
+    /// user is told once the Helper is gone.
+    @Test func removalUndoesAnEditOverItsConnectionAndSaysWhatItLeft() async throws {
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let bundle = bundle
+        let edits = HarnessConfigEditStore()
+        let hostID = Host.ID()
+        let config = "/home/me/.config/opencode/tui.json"
+        let original = Data("{}\n".utf8)
+        let store = HostHelperStore(
+            connect: { core.transport() }, bundle: { bundle },
+            undoEdits: { try await edits.undoEditsGoingWithTheHelper(on: hostID, over: $0) })
+        await store.refresh()
+        await store.install()
+
+        func apply() async throws {
+            let edit = OpenCodePluginEdit.edit(
+                configDirectory: "/home/me/.config/opencode", fileName: "tui.json", form: .tuiConfig,
+                files: OpenCodePluginEdit.fileNames.map { .init(name: $0, contents: Data($0.utf8)) })
+            let editor = HarnessConfigEditor(files: core)
+            guard case .change(let change) = try await editor.propose(edit) else {
+                Issue.record("expected a change")
+                return
+            }
+            edits.note(try await editor.apply(change), on: hostID)
+        }
+
+        await helper.seedFile(config, original)
+        try await apply()
+        await store.remove()
+
+        #expect(store.failure == nil)
+        #expect(await helper.files[config]?.contents == original)
+        #expect(await helper.folders["/home/me/.config/opencode/heeler-opencode"] == nil)
+        #expect(await helper.folders[ScriptedHelperHost.helperDirectory] == nil)
+        #expect(edits.edits(on: hostID).isEmpty)
+
+        await store.install()
+        try await apply()
+        await helper.seedFile(config, Data("broken {".utf8))
+        await store.remove()
+
+        #expect(store.failure?.contains(config) == true)
+        #expect(await helper.folders[ScriptedHelperHost.helperDirectory] == nil)
+        #expect(edits.edits(on: hostID).count == 1)
+    }
+
     @Test func readsAHostWithNoCoreRunning() async {
         let store = await refreshed()
         #expect(store.status == .notInstalled)

@@ -693,6 +693,46 @@ struct HerdrCoreProgramBinderTests {
         #expect(await rig.cleared == [["heeler.session"], ["heeler.session"]])
     }
 
+    /// What the plugin writes: the hint names a process, and each new conversation
+    /// is a new hint. An OpenCode started with no id has nothing else (ADR 0033).
+    @Test(arguments: ["opencode/ses-flag-2.2.5", "opencode/ses-flag-2.0.32"])
+    func thePluginsLabelBindsAndANewOneRebinds(_ fixture: String) async throws {
+        let (rig, row) = try await Self.openCodeRig(fixture)
+        func label(_ session: String) -> [String: String] {
+            ["heeler.session": #"{"session":"\#(session)","pid":\#(row.pid),"start":"\#(row.start)"}"#]
+        }
+        let argv = ["opencode"]
+
+        let first = try await rig.binder.check(try Self.record(pid: row.pid, argv: argv, labels: label(Self.launchID)))
+        #expect(first == .bound(sessionID: Self.launchID, transcriptRoot: nil, directory: nil))
+
+        let afterNew = try await rig.binder.check(try Self.record(pid: row.pid, argv: argv, labels: label(Self.otherID)))
+        #expect(afterNew == .bound(sessionID: Self.otherID, transcriptRoot: nil, directory: nil))
+        #expect(await rig.cleared.isEmpty)
+    }
+
+    /// Its label outranks the id a launch gave, which `/new` leaves behind in the argv.
+    @Test func thePluginsLabelOutranksTheLaunchID() async throws {
+        let (rig, row) = try await Self.openCodeRig()
+        let hint = #"{"session":"\#(Self.otherID)","pid":\#(row.pid),"start":"\#(row.start)"}"#
+
+        let evidence = try await rig.binder.check(
+            try Self.record(
+                pid: row.pid, argv: ["opencode", "-s", Self.launchID],
+                labels: [Self.openCodeLabel: Self.launchID, "heeler.session": hint]))
+
+        #expect(evidence == .bound(sessionID: Self.otherID, transcriptRoot: nil, directory: nil))
+    }
+
+    @Test func aLabelThatNamesNoOpenCodeSessionBindsNothing() async throws {
+        let (rig, row) = try await Self.openCodeRig()
+        let hint = #"{"session":"not-a-session","pid":\#(row.pid),"start":"\#(row.start)"}"#
+
+        let evidence = try await rig.binder.check(try Self.record(for: row, labels: ["heeler.session": hint]))
+
+        #expect(evidence == .unavailable(.cannotTellSession(.opencode)))
+    }
+
     /// The service OpenCode starts carries the Terminal's scope and holds the
     /// database. Nothing of it is the Agent.
     @Test func theServiceIsNotTheAgent() async throws {

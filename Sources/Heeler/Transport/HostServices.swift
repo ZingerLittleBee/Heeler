@@ -112,6 +112,14 @@ protocol HostServices: Sendable {
     /// removes the file. A file keeps its permissions, and a symbolic link stays
     /// one, with its target replaced. Only a harness configuration edit calls this.
     func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws
+
+    /// Makes one folder, private to the user, under a parent that exists. A folder
+    /// already there stays, and only a harness configuration edit calls this.
+    func createHostFolder(path: String) async throws
+
+    /// Removes one folder if it is empty. One that holds anything, or isn't there,
+    /// stays as it is with no error, and only a harness configuration edit calls this.
+    func removeEmptyHostFolder(path: String) async throws
 }
 
 /// Why `replaceHostTextFile` wrote nothing.
@@ -211,6 +219,14 @@ extension HostServices {
 
     /// A transport without Host files writes nothing, and says so.
     func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
+    }
+
+    func createHostFolder(path: String) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
+    }
+
+    func removeEmptyHostFolder(path: String) async throws {
         throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
     }
 }

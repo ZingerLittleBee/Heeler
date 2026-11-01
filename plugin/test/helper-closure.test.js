@@ -16,6 +16,8 @@ const SRC = fileURLToPath(new URL("../src", import.meta.url));
 const EXTENSIONS = join(HELPER, "extensions");
 /** Runs inside Pi and Oh My Pi, not the Helper's process, and reads its own start on macOS (ADR 0033). */
 const SESSION_EXTENSION = join(EXTENSIONS, "heeler-session.js");
+/** Runs inside OpenCode, and reads its own start the same way (ADR 0033). */
+const OPENCODE_PLUGIN = join(EXTENSIONS, "opencode", "tui.js");
 const MANIFEST = "manifest.json";
 const GENERATOR = "scripts/generate-host-helper-manifest.mjs";
 
@@ -119,16 +121,18 @@ suite("Host Helper closure", () => {
     }
   });
 
-  test("the session extension starts only /bin/ps, for its own process start", () => {
-    const source = readFileSync(SESSION_EXTENSION, "utf8");
-    // The lookbehind leaves RegExp's own `.exec` out.
-    const named = [...source.matchAll(/(?<![.\w$])(?:exec|execSync|execFile|execFileSync|fork|spawn|spawnSync)\b/g)];
-    assert.deepEqual(named.map((match) => match[0]), ["execFile", "execFile"], "one import and one call");
-    const imports = specifiersIn(source).filter((name) => name.replace(/^node:/, "") === "child_process");
-    assert.equal(imports.length, 1);
-    assert.match(source, /^import \{ execFile \} from "node:child_process";$/m);
-    assert.match(source, /\bexecFile\(\s*"\/bin\/ps",\s*\["-o", "lstart=", "-p", String\(pid\)\],/);
-  });
+  for (const [name, path] of [["session extension", SESSION_EXTENSION], ["OpenCode plugin", OPENCODE_PLUGIN]]) {
+    test(`the ${name} starts only /bin/ps, for its own process start`, () => {
+      const source = readFileSync(path, "utf8");
+      // The lookbehind leaves RegExp's own `.exec` out.
+      const named = [...source.matchAll(/(?<![.\w$])(?:exec|execSync|execFile|execFileSync|fork|spawn|spawnSync)\b/g)];
+      assert.deepEqual(named.map((match) => match[0]), ["execFile", "execFile"], "one import and one call");
+      const imports = specifiersIn(source).filter((name) => name.replace(/^node:/, "") === "child_process");
+      assert.equal(imports.length, 1);
+      assert.match(source, /^import \{ execFile \} from "node:child_process";$/m);
+      assert.match(source, /\bexecFile\(\s*"\/bin\/ps",\s*\["-o", "lstart=", "-p", String\(pid\)\],/);
+    });
+  }
 
   test("a shared module is the plugin's own source, byte for byte", () => {
     for (const path of filesUnder(HELPER).filter((name) => name.startsWith("shared/"))) {
@@ -159,6 +163,13 @@ suite("Host Helper manifest", () => {
     const listed = manifest().files.map((file) => file.path);
     assert.ok(listed.includes("extensions/heeler-session.js"));
     assert.ok(listed.includes("extensions/extension-folders.js"));
+  });
+
+  test("covers every file of the OpenCode plugin", () => {
+    const listed = manifest().files.map((file) => file.path);
+    for (const name of ["package.json", "index.js", "tui.js"]) {
+      assert.ok(listed.includes(`extensions/opencode/${name}`), name);
+    }
   });
 
   test("the shared version vector pins the Helper's version", () => {

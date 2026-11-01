@@ -1,4 +1,4 @@
 {
   "description": "Shared Host Helper version v1 test vector. Single source of truth for the Helper the app bundles: the Node tests assert plugin/helper/version.json and manifest.json carry `version`, and the Swift app tests assert HostHelperCompatibility.bundled and the bundled manifest equal it. Any change to the Helper's files bumps all of them together, so the app replaces older Helpers and never a newer one (ADR 0033).",
-  "version": "0.5.1"
+  "version": "0.5.2"
 }
