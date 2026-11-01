@@ -122,6 +122,34 @@ struct HostHelperInstallTests {
         return ""
     }
 
+    @Test func aFolderThatCannotBeMadeTakesBackTheOnesMadeBeforeIt() async throws {
+        await host.seedFolder("/home/me/.config")
+        let before = await host.folders
+        await host.configure { $0.folderRefusal = ("/home/me/.pi/agent", "mkdir: File exists") }
+        await #expect(throws: HostHelperError.stepFailed(step: "Creating the folders", detail: "mkdir: File exists")) {
+            _ = try await install()
+        }
+        #expect(await host.folders == before)
+        #expect(await host.writes.isEmpty)
+    }
+
+    @Test func aRecordThatCannotBeWrittenTakesBackTheFoldersItWouldHaveNamed() async throws {
+        await host.seedFolder("/home/me/.config")
+        let before = await host.folders
+        await host.configure { $0.failUploadsNamed = HostHelperLayout.recordFileName }
+        await #expect(throws: HostHelperError.self) { _ = try await install() }
+        #expect(await host.folders == before)
+    }
+
+    @Test func takingFoldersBackLeavesOneSomethingElseFilled() async throws {
+        let mine = "/home/me/.pi/agent/mine.js"
+        await host.configure { $0.folderRefusal = ("/home/me/.omp", "mkdir: Permission denied") }
+        await host.seedFolder("/home/me/.local/share/heeler")
+        await host.seedFile(mine, Data("mine".utf8))
+        await #expect(throws: HostHelperError.self) { _ = try await install() }
+        #expect(await host.files[mine] != nil)
+    }
+
     @Test func recordsFilesOutsideTheHelperDirectoryAndCreatedFolders() async throws {
         await host.seedFolder("/home/me/.config")
         _ = try await install()

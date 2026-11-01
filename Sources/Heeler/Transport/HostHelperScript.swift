@@ -81,14 +81,16 @@ struct HostHelperScript: Sendable, Equatable {
             // The script itself is this shell's stdin, so Node must not read it.
             lines = ["\(quote(node)) --input-type=module -e \(quote(lister)) \(quote(home)) </dev/null"]
         case .makeFolders(let folders, let privateFolder):
-            lines = ["umask 077"]
+            // A function, so a failure still ends the frame and the app learns
+            // which folders it would otherwise leave behind.
+            lines = ["umask 077", "__h_make() {"]
                 + folders.map { folder in
                     let path = quote(folder)
-                    return "if [ ! -d \(path) ]; then mkdir -- \(path) || exit 1; "
+                    return "if [ ! -d \(path) ]; then mkdir -- \(path) || return 1; "
                         + "printf 'created %s\\n' \(path); fi"
                 }
                 // Paths are absolute, and BSD chmod takes no `--`.
-                + ["chmod 700 \(quote(privateFolder)) || exit 1"]
+                + ["chmod 700 \(quote(privateFolder)) || return 1", "}", "__h_make"]
         case .prepareStaging(let directory, let staging, let folders):
             let dir = quote(directory)
             lines = [
