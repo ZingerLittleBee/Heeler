@@ -140,14 +140,15 @@ struct AgentChatSurfaceView: View {
             })
         let paneID = agent.agent.paneID
         let hostID = agent.hostID
+        let corePin = session.corePin
         _agentKeys = State(
             initialValue: ChatAgentKeysStore { [console] keys in
-                try await console.sendAgentKeys(keys, to: paneID, on: hostID)
+                try await console.sendAgentKeys(keys, to: paneID, on: hostID, keepingTo: corePin)
             })
         _closer = State(
             initialValue: ClosePaneStore(paneTitle: AgentTerminalView.displayTitle(for: agent)) {
                 [console] in
-                try await console.closePane(paneID, on: hostID)
+                try await console.closePane(paneID, on: hostID, keepingTo: corePin)
             })
     }
 
@@ -806,8 +807,9 @@ struct AgentChatSurfaceView: View {
         let paneID = agent.agent.paneID
         let hostID = agent.hostID
         let chat = chat
+        let corePin = session.corePin
         return { [console] in
-            let screen = try await console.readAgentScreen(paneID, on: hostID)
+            let screen = try await console.readAgentScreen(paneID, on: hostID, keepingTo: corePin)
             // A steer shown as returned may since have left the box.
             chat?.inputBoxWasRead(screen)
             return screen

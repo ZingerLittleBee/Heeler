@@ -126,11 +126,11 @@ A Grok Build Agent's Composer keeps **Send** while it works, as on any other Hos
 | What happened | Heeler shows |
 | --- | --- |
 | A kept Terminal lost its program, for example to a crash or a signal | **Restarting…** The core brings the Terminal back as a new shell at the same address, and an open terminal reattaches by itself, with no error and nothing to tap. An Agent detail stays open over the new shell |
-| A program exited, including your own `exit` | **Agent Ended** in an Agent detail, or **Terminal Closed** on a Terminal's own screen. The Terminal has ended for good, so nothing reattaches |
+| A program exited, including your own `exit` | **Agent Ended** in an Agent detail, with its exit code when the core reports one, or **Terminal Closed** on a Terminal's own screen. The Terminal has ended for good, so nothing reattaches |
 
 The new shell is no Agent until you start one in it.
 
-Another core at the same socket, such as one started under another state directory, has its own Terminals, even at the same address. A terminal you had open shows as ended, and anything you tap waits for the new core's list. Open the Terminal again from that list.
+Another core at the same socket, such as one started under another state directory, has its own Terminals, even at the same address. A terminal you had open shows as ended, and says it belongs to a core that is gone. A Chat you had open gives way to that terminal. Anything you tap waits for the new core's list, and after that the screen you had open sends nothing: Close, Send, Stop and answers to the Agent all say the Terminal belongs to a core that is gone. This holds even if the screen was rebuilt while the Host was reconnecting. Open the Terminal again from that list, and what you open there, like the list's own rows, acts on the new core. On iPad the row is no longer marked as selected, and tapping it opens the new core's Terminal.
 
 ## Close
 
@@ -147,6 +147,8 @@ A core started from inside another program can inherit variables that change how
 ## New Agent and New Terminal
 
 **New Agent** lists the agents your own shell can run, and starts the one you pick through that shell, so it has the `PATH` and variables your startup files set. An alias or a shell function does not count, since a start runs a program on that `PATH`. That shell is your login shell on the Host, bash, zsh and fish alike. Arguments you type stay whole, however many spaces, quotes or `$` they hold.
+
+If the program has already ended when the Host answers the start, the form stays open and says so, with its exit code. Exit code 127 means your shell could not find the command. Otherwise New Agent closes and opens the Agent, and a program that ends then reads **Agent Ended** with its exit code.
 
 Pick where it starts, for an Agent and for **New Terminal** alike:
 
@@ -252,6 +254,7 @@ With the Host Helper running, a herdr-core Host notifies you as any other Host d
 - **Done** has its own switch, and is per device. A device gets no Done for a turn it has seen: it had the Agent open as the turn ended, or opened the Agent before the notification was due. To know that, Heeler writes a small file for this device in the Helper's directory, holding only Terminal addresses and turn counts, whenever you open an Agent or a turn ends while it is open. Your other devices still get theirs.
 - A Terminal that has no Agent, or whose Agent has given way to a shell, sends nothing. A status that lasts under about five seconds sends nothing either.
 - What a core had already reported when the Helper first saw it is not announced.
+- If the Helper cannot reach the Push Relay, it tries again by itself for about twelve minutes, for the devices that missed it and only while what it says still holds. After that, the Terminal's next change tries again.
 
 Turning notifications off, or removing the Host while Heeler can reach it, with its core stopped too, removes this device's entry and its file from the Host. If you remove a Host Heeler cannot reach, the entry stays and Heeler says so: reconnect first to stop them.
 

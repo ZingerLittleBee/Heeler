@@ -1012,6 +1012,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// now reaches another, or none yet. Addresses are only unique within a core,
     /// so it waits for that link's snapshot instead (ADR 0031).
     case herdrCoreInventoryStale
+    /// Nothing was sent: the action came from a detail opened on one core's
+    /// Terminal and the Host now serves another, whose Terminal has that address.
+    /// Unlike `.herdrCoreInventoryStale` no snapshot mends it (ADR 0031).
+    case herdrCoreTerminalGone
     /// A Chat transcript operation exceeded its own deadline. Like
     /// `.gitTimedOut` this says nothing about link health: a slow file read
     /// over a weak link must not redial the Host and rebuild its terminals.
@@ -1064,7 +1068,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .streamLocalOpenFailed, .gitTimedOut, .hostFileTimedOut, .hostFileUnreadable,
             .hostStoreUnreadable, .hostFeatureUnavailable, .coreMutationOutcomeUnknown,
             .herdrCoreNotInstalled, .herdrCoreUpdateRequired, .herdrCoreSocketPathTooLong,
-            .herdrCoreForwardingRefused,
+            .herdrCoreForwardingRefused, .herdrCoreTerminalGone,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

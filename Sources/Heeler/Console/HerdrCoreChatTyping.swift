@@ -110,6 +110,8 @@ final class HerdrCoreChatTyping {
     private let address: String
     private weak var projection: HerdrCoreConsoleProjection?
     private let clock: BlockedCardClock
+    /// The core this Terminal is on: its address means another on any other.
+    private let corePin: TerminalCorePin
     /// What held the foreground as the last screen read began.
     private var screenHolder: Holder?
     /// That read saw another process than the read before it, so a dialog it found
@@ -120,6 +122,7 @@ final class HerdrCoreChatTyping {
         self.address = address
         self.projection = projection
         self.clock = clock
+        corePin = TerminalCorePin(joined: projection.inventoryCore)
     }
 
     /// A Blocked Card's way to the Agent: its keys must reach the process whose
@@ -248,6 +251,7 @@ final class HerdrCoreChatTyping {
 
     private func liveProjection() throws -> HerdrCoreConsoleProjection {
         guard let projection else { throw TransportError.cancelled }
+        guard projection.admits(corePin) else { throw Refusal(message: Self.coreGone) }
         return projection
     }
 
@@ -287,6 +291,7 @@ final class HerdrCoreChatTyping {
 
     // MARK: What Chat says
 
+    private static let coreGone = TransportError.herdrCoreTerminalGone.presentation.message
     private static let agentLeft = "The Agent no longer holds this terminal, so Heeler pressed nothing."
     private static let holderChanged =
         "Another process took over the terminal after Heeler read the screen, so Heeler pressed nothing."

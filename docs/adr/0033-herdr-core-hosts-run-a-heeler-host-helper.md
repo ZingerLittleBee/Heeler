@@ -59,7 +59,14 @@ that Heeler can read from outside the process.
 - The Helper decides what to send from each Terminal's state after a debounce,
   not from the event at hand, and keeps what it last notified in
   `state/notify/<session>.json`, so a restart or a dropped connection loses
-  nothing and a failed send is tried at the next decision. A core seen for the
+  nothing and a failed send is tried at the next decision. A quiet Terminal has
+  no event to bring that decision, so a send that leaves devices unsent arms one
+  by itself, for those devices alone and from the state then: five waits in
+  memory from 30 seconds, doubling to a ceiling of five minutes, kept apart from
+  the debounce. A send that reaches everyone or a state change starts them over,
+  and a connection's end clears them. After the fifth, only the next decision
+  tries again, so a relay that stays down costs a bounded number of sends and a
+  notification can still be lost. A core seen for the
   first time sets that memory without sending, so an install or a new core id
   announces nothing that already happened. The memory goes when a session's
   connection ends with no registration naming it. Error is sent under the

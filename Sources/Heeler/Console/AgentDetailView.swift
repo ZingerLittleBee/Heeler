@@ -122,7 +122,9 @@ struct AgentDetailView: View {
         self.onShowsChat = onShowsChat
         self.repeatLandings = repeatLandings
         heldShellRoute = shellRoute
-        _session = State(initialValue: composerSession ?? console.composerSession(for: agent))
+        let session = composerSession ?? console.composerSession(for: agent)
+        _session = State(initialValue: session)
+        let corePin = session.corePin
         let ownerID = UUID()
         _retentionOwnerID = State(initialValue: ownerID)
         permitsRetention = attachStore == nil && openTerminalStore == nil
@@ -134,9 +136,9 @@ struct AgentDetailView: View {
                 paneTitle: AgentTerminalView.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
                 isOnStage: { !retainsSessions && isOnStage() },
-                runTerminal: console.terminalRunner(for: agent.hostID)
+                runTerminal: console.terminalRunner(for: agent.hostID, keepingTo: corePin)
             ) {
-                try await console.closePane(agent.agent.paneID, on: agent.hostID)
+                try await console.closePane(agent.agent.paneID, on: agent.hostID, keepingTo: corePin)
             }
         _attach = State(initialValue: attach)
         let reference = AgentDetailAttachReference(attach)
@@ -157,7 +159,7 @@ struct AgentDetailView: View {
                     createTerminal: { [console] request in
                         try await console.createShellTerminal(request, on: hostID)
                     },
-                    runTerminal: console.terminalRunner(for: agent.hostID),
+                    runTerminal: console.terminalRunner(for: agent.hostID, keepingTo: corePin),
                     leaveAgent: { reference.store.leaveForTerminalHandoff() },
                     // Back to Chat, nothing shows the Agent's terminal; it
                     // rejoins when the terminal does.
@@ -181,7 +183,7 @@ struct AgentDetailView: View {
                         try await console.shellTerminalStillExists(identity, on: hostID)
                     },
                     closeRemoteTerminal: { [console] identity in
-                        try await console.closePane(identity.paneID, on: hostID)
+                        try await console.closePane(identity.paneID, on: hostID, keepingTo: corePin)
                     }))
     }
 
@@ -234,7 +236,7 @@ struct AgentDetailView: View {
     /// The program whose transcript Chat would read; nil while this Agent
     /// cannot show Chat, which hides every way to it.
     private var chatProgram: ChatProgram? {
-        console.chatProgram(for: agent)
+        console.chatProgram(for: agent, keepingTo: session.corePin)
     }
 
     /// The chosen surface, or the terminal while Chat is unavailable. The
@@ -322,7 +324,7 @@ struct AgentDetailView: View {
         if retainedAgent == nil { attach.leaveForTerminalHandoff() }
         let entry = console.agentTerminals.acquire(
             agent: agent, console: console, ownerID: retentionOwnerID, sceneID: sceneID,
-            holder: retentionHolder, isPresented: { isOnStage() })
+            holder: retentionHolder, corePin: session.corePin, isPresented: { isOnStage() })
         retainedAgent = entry
         isOwnViewer = false
         attach = entry.attach
@@ -335,15 +337,16 @@ struct AgentDetailView: View {
         let paneID = agent.agent.paneID
         let sceneID = sceneRouting?.sceneID
         let isOnStage = isOnStage
+        let corePin = session.corePin
         return AgentAttachStore(
             target: agent.agent.paneID,
             paneTitle: AgentTerminalView.displayTitle(for: agent),
             transportGeneration: console.hostConnectionGenerations[agent.hostID],
             isOnStage: { isOnStage() && !console.hasSceneEnded(sceneID, on: hostID) },
-            runTerminal: console.terminalRunner(for: agent.hostID),
+            runTerminal: console.terminalRunner(for: agent.hostID, keepingTo: corePin),
             closePane: { [weak console] in
                 guard let console else { throw CancellationError() }
-                try await console.closePane(paneID, on: hostID)
+                try await console.closePane(paneID, on: hostID, keepingTo: corePin)
             })
     }
 
@@ -385,6 +388,7 @@ struct AgentDetailView: View {
                     isReturning: openTerminal.isReturning,
                     isClosingTerminal: openTerminal.isClosingTerminal,
                     onCloseTerminal: { openTerminal.closeTerminal() },
+                    finishedMessage: console.terminalEndedMessage(keepingTo: session.corePin, on: agent.hostID),
                     workspaceDrawer: workspaceDrawer,
                     keyboardHandoff: keyboardHandoff
                 ) {
@@ -665,6 +669,7 @@ struct AgentDetailView: View {
             terminal: console.terminals.first(where: { $0.id == route.terminal.id })
                 ?? route.terminal,
             console: console,
+            corePin: session.corePin,
             settings: terminal,
             activity: activity,
             onSelectAgent: { id in

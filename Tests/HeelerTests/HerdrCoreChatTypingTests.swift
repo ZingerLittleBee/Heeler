@@ -281,6 +281,152 @@ struct HerdrCoreChatTypingTests {
         return !methods.contains("terminal.send") && !methods.contains("terminal.keys")
     }
 
+    // MARK: A detail whose core is gone
+
+    private static let coreGone =
+        "This Terminal belongs to a core that is gone: Nothing was sent. Open it again from the list."
+
+    /// The core wiped, or another one under another state directory, with an Agent
+    /// of its own at t1, under a detail opened on the last one.
+    private func moveToAnotherCore(_ fixture: Fixture) async throws -> Int {
+        await fixture.scripted.setChannel(.core(.init(id: "c2", terminals: [Self.record()])))
+        let events = try #require(await fixture.scripted.sockets.first)
+        await events.deliverEndOfFile()
+        try await Self.until("the new core's snapshot") { [console = fixture.console, host = fixture.host] in
+            console.hostCores[host.id] == "c2" && !console.agents.isEmpty
+        }
+        return await fixture.scripted.attaches.count
+    }
+
+    /// The surface's own read refuses first. Its Send refuses by itself as well, for
+    /// a read that went by another way.
+    @Test func aChatsSendTypesNothingOnceAnotherCoreServesTheAddress() async throws {
+        let fixture = try await Fixture()
+        let console = fixture.console
+        let hostID = fixture.host.id
+        let pin = console.composerSession(for: fixture.agent).corePin
+        let attaches = try await moveToAnotherCore(fixture)
+        let surfacePolicy = ComposerDeliveryPolicy.chat(
+            rules: ChatSendRules(
+                program: .claude,
+                commands: ChatCommandMenu.commands(skills: [], agentIsIdle: true, program: .claude)),
+            activity: { .idle },
+            readScreen: { try await console.readAgentScreen("t1", on: hostID, keepingTo: pin) },
+            pause: { _ in })
+
+        fixture.composer.replaceDraft(with: "hello")
+        let refused = await fixture.composer.send(policy: surfacePolicy)
+
+        #expect(
+            refused
+                == .refused(
+                    .inputNotReady(
+                        "Heeler couldn't check the Agent's input box. This Terminal belongs to a core that is gone: Nothing was sent."
+                    )))
+        #expect(fixture.composer.draft == "hello")
+        #expect(await fixture.scripted.attaches.count == attaches)
+
+        let readAnotherWay = await fixture.composer.send(policy: fixture.policy)
+
+        #expect(readAnotherWay == .refused(.inputNotReady(Self.coreGone)))
+        #expect(fixture.composer.draft == "hello")
+        #expect(await fixture.viewers.isEmpty)
+        fixture.finish()
+    }
+
+    @Test func aChatsStopAndKeysPressNothingOnceAnotherCoreServesTheAddress() async throws {
+        let fixture = try await Fixture()
+        let console = fixture.console
+        let hostID = fixture.host.id
+        let pin = console.composerSession(for: fixture.agent).corePin
+        let keys = ChatAgentKeysStore { try await console.sendAgentKeys($0, to: "t1", on: hostID, keepingTo: pin) }
+        let attaches = try await moveToAnotherCore(fixture)
+
+        #expect(await keys.deliver(["esc"]) == .withheld(Self.coreGone))
+        await #expect(throws: TransportError.herdrCoreTerminalGone) {
+            _ = try await console.readAgentScreen("t1", on: hostID, keepingTo: pin)
+        }
+        let stop = console.chatStopPlan(for: fixture.agent, program: .claude).composerInterrupt(
+            context: {
+                ChatStopContext(
+                    screen: try await console.readAgentScreen("t1", on: hostID, keepingTo: pin), activity: .working)
+            },
+            agentKeys: keys)
+        guard case .failed = await stop.perform() else {
+            Issue.record("A Stop went out from a detail whose core is gone")
+            return
+        }
+
+        #expect(await fixture.scripted.attaches.count == attaches)
+        fixture.finish()
+    }
+
+    /// The old core's Chat ended, so its card takes no answer. One already on its
+    /// way by then has only the old store's way to the Agent left, which ends with
+    /// that core, whatever now answers at the address.
+    @Test func aBlockedAnswerTypesNothingOnceAnotherCoreServesTheAddress() async throws {
+        let fixture = try await Fixture(screen: Self.dialogScreen)
+        let card = try await fixture.blockedCard()
+        let projection = try #require(fixture.console.coreProjection(on: fixture.host.id))
+        let typing = projection.chatTyping(at: "t1")
+        let screen = typing.blockedScreen
+        let attaches = try await moveToAnotherCore(fixture)
+
+        await card.perform(.choose(ordinal: 1))
+        let refusal = HerdrCoreChatTyping.Refusal(message: Self.coreGone)
+        await #expect(throws: refusal) { _ = try await screen.readScreen() }
+        await #expect(throws: refusal) { try await screen.type(.keys(["1"]), whileShowing: { _ in true }) }
+        await #expect(throws: refusal) { try await screen.type(.paste("note"), whileShowing: { _ in true }) }
+
+        #expect(await fixture.scripted.attaches.count == attaches)
+        #expect(await fixture.viewers.isEmpty)
+        #expect(projection.chatTyping(at: "t1") !== typing)
+        fixture.finish()
+    }
+
+    /// Chat goes on to the address's new Agent, and a detail stays with its own: it
+    /// falls back to its terminal, which says the core is gone.
+    @Test func aDetailOffersNoChatOnceAnotherCoreServesTheAddress() async throws {
+        let fixture = try await Fixture()
+        let console = fixture.console
+        try await Self.until("Chat") { [agent = fixture.agent] in console.chatProgram(for: agent) != nil }
+        let pin = console.composerSession(for: fixture.agent).corePin
+        #expect(console.chatProgram(for: fixture.agent, keepingTo: pin) == .claude)
+
+        _ = try await moveToAnotherCore(fixture)
+        let row = try #require(console.agents.first)
+
+        #expect(console.chatProgram(for: row, keepingTo: pin) == nil)
+        #expect(console.chatProgram(for: row, keepingTo: console.corePin(on: fixture.host.id)) != nil)
+        fixture.finish()
+    }
+
+    /// A Chat opened on the new core's row answers that core's dialog.
+    @Test func theNewCoresChatStillTypes() async throws {
+        let fixture = try await Fixture(screen: Self.dialogScreen)
+        _ = try await fixture.blockedCard()
+        _ = try await moveToAnotherCore(fixture)
+        let row = try #require(fixture.console.agents.first)
+        try await Self.until("the new core's Chat") { [console = fixture.console] in
+            console.chatStore(for: row, program: .claude)?.coreScope
+                == ChatCacheKey.coreScope(session: "", coreID: "c2")
+        }
+        let next = try #require(fixture.console.chatStore(for: row, program: .claude))
+        next.blocked.update(activity: .blocked)
+        await next.blocked.refresh()
+        guard case .card = next.blocked.content else {
+            Issue.record("Expected a card, got \(next.blocked.content)")
+            return
+        }
+
+        let answering = Task { await next.blocked.perform(.choose(ordinal: 1)) }
+
+        let viewer = try await fixture.viewer()
+        await viewer.socket.waitForData(channel: viewer.channel, count: 1)
+        answering.cancel()
+        fixture.finish()
+    }
+
     // MARK: Chat's attach
 
     @Test func chatsAttachIsAResumedViewerOnTheHostsLinkThatReportsNoFacts() async throws {

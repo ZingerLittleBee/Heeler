@@ -12,6 +12,8 @@ final class AgentComposerSession {
     let composer: AgentComposerStore
     /// Holds the Composer strongly; the Composer holds it weakly.
     let staging: ComposerStagingStore
+    /// The core this Composer's Agent runs on, which the details showing it keep to.
+    let corePin: TerminalCorePin
     /// The details showing this Agent, one key per window.
     private var presence: Set<UUID> = []
     private var leaveTask: Task<Void, Never>?
@@ -20,9 +22,11 @@ final class AgentComposerSession {
     init(
         composer: AgentComposerStore,
         stageImage: @escaping ImageStager,
-        stageFile: @escaping FileStager
+        stageFile: @escaping FileStager,
+        corePin: TerminalCorePin = TerminalCorePin()
     ) {
         self.composer = composer
+        self.corePin = corePin
         staging = ComposerStagingStore(
             stageImage: stageImage, stageFile: stageFile, composer: composer)
         composer.bindStaging(staging)

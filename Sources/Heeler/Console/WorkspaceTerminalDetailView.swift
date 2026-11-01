@@ -4,6 +4,9 @@ import SwiftUI
 struct WorkspaceTerminalDetailView: View {
     let terminal: ConsoleTerminal
     let console: ConsoleStore
+    /// The core whose Terminal this screen opened on. It outlives the screen: a
+    /// remount at this address is still that Terminal.
+    let corePin: TerminalCorePin
     let settings: TerminalSettings
     let activity: AppActivityCoordinator
     let onSelectAgent: (ConsoleAgent.ID) -> Void
@@ -71,7 +74,8 @@ struct WorkspaceTerminalDetailView: View {
                     TerminalStatusDialog(
                         glyph: .symbol("terminal"),
                         title: "Terminal Closed",
-                        message: "This pane is no longer available on the Host.",
+                        message: console.terminalEndedMessage(keepingTo: corePin, on: terminal.hostID)
+                            ?? "This pane is no longer available on the Host.",
                         palette: themePalette,
                         dimsBackground: false
                     ) {
@@ -89,6 +93,7 @@ struct WorkspaceTerminalDetailView: View {
                     isClosingTerminal: isClosing,
                     onCloseTerminal: console.capabilities(for: terminal.hostID).closeTab
                         ? { @MainActor @Sendable in closeTerminal() } : nil,
+                    finishedMessage: console.terminalEndedMessage(keepingTo: corePin, on: terminal.hostID),
                     managesLifecycle: false,
                     offersTakeOver: console.capabilities(for: terminal.hostID).takeOver,
                     surfaceRetention: entry.surfaceRetention,
@@ -134,7 +139,9 @@ struct WorkspaceTerminalDetailView: View {
         .navigationBarBackButtonHidden(true)
         // A terminal left for another tab or screen comes back pooled:
         // claimed before the first frame, it never shows Opening Terminal.
-        .onAppear { reclaimPooledEntry() }
+        .onAppear {
+            reclaimPooledEntry()
+        }
         .task(id: LoadIdentity(
             identity: identity,
             generation: console.hostConnectionGenerations[terminal.hostID],
@@ -159,8 +166,9 @@ struct WorkspaceTerminalDetailView: View {
                 }
             }
         }
+        // Another core's Agent at this address is no Agent of this Terminal's.
         .onChange(of: terminal.agentID, initial: true) { _, agentID in
-            if let agentID { onSelectAgent(agentID) }
+            if let agentID, !console.hasLeftCore(corePin, on: terminal.hostID) { onSelectAgent(agentID) }
         }
         .alert("Couldn't Close Terminal", isPresented: Binding(
             get: { closeFailure != nil }, set: { if !$0 { closeFailure = nil } })
@@ -234,6 +242,7 @@ struct WorkspaceTerminalDetailView: View {
             hostID: terminal.hostID, identity: identity, ownerID: ownerID,
             sceneID: sceneRouting?.sceneID,
             generation: console.hostConnectionGenerations[terminal.hostID],
+            corePin: corePin,
             isPresented: { isSelected() })
     }
 
@@ -250,8 +259,9 @@ struct WorkspaceTerminalDetailView: View {
                 hostID: terminal.hostID, identity: identity, ownerID: ownerID,
                 sceneID: sceneRouting?.sceneID,
                 generation: console.hostConnectionGenerations[terminal.hostID],
+                corePin: corePin,
                 isPresented: { isSelected() },
-                runTerminal: console.terminalRunner(for: terminal.hostID))
+                runTerminal: console.terminalRunner(for: terminal.hostID, keepingTo: corePin))
             guard !Task.isCancelled else {
                 retryAfterSpuriousDisappear()
                 return
@@ -298,7 +308,7 @@ struct WorkspaceTerminalDetailView: View {
         Task { @MainActor in
             defer { isClosing = false }
             do {
-                try await console.closePane(terminal.paneID, on: terminal.hostID)
+                try await console.closePane(terminal.paneID, on: terminal.hostID, keepingTo: corePin)
                 await console.terminalConnections.remove(hostID: terminal.hostID, identity: identity)
                 onBack()
             } catch {

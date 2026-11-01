@@ -203,3 +203,15 @@ confirm or refine these points with test clients, not the app.
   reopens onto another id refuses anything an older inventory addressed, with
   nothing sent, until that core's snapshot arrives. An open terminal stays on the
   core it first joined and ends there, and opening the address again starts fresh.
+  That snapshot only mends what acts on fresh inventory, as a Console row does. A
+  detail keeps to the core whose row it opened on, by a `TerminalCorePin` its
+  Composer session holds, so once the Host serves another core everything the
+  detail sends by address is refused with nothing sent, for good: Close of an
+  Agent or a Shell Terminal, a Worktree's removal, Composer Send and Stop, and
+  Chat's Send, Stop, keys and Blocked answers. Chat, which goes on to the
+  address's new Agent, gives way in that detail to its ended terminal, which says
+  the core is gone. The pin belongs to the window's selection, not to the detail's
+  views (`ConsoleDetailCores`): a detail rebuilt by a reconnect's placeholder, a
+  list tab's return or a size-class change is still the one opened on the old core.
+  Leaving it, or picking the row at its address, opens the new core's Terminal. So
+  that pick works beside the list, the list stops marking that row as selected.

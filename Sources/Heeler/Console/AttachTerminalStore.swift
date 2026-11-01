@@ -16,10 +16,16 @@ enum TerminalProgramEnd: Error, Equatable {
 }
 
 /// The core a terminal pipeline first joined, across every attach and store it
-/// takes. Its screen and any input on it belong to that core's Terminal.
+/// takes. Its screen and any input on it belong to that core's Terminal. A detail
+/// holds one from the moment it opens, naming the core whose row it opened on, and
+/// every address-keyed action it takes keeps to it (ADR 0031).
 @MainActor
 final class TerminalCorePin {
     private var joined: String?
+
+    init(joined: String? = nil) {
+        self.joined = joined
+    }
 
     func admits(_ coreID: String) -> Bool {
         guard let joined else {
@@ -27,6 +33,10 @@ final class TerminalCorePin {
             return true
         }
         return joined == coreID
+    }
+
+    func keepsToSameCore(as other: TerminalCorePin) -> Bool {
+        joined == other.joined
     }
 }
 

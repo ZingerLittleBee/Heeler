@@ -237,6 +237,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             // Pins go first: a crash in between still finds another core next time.
             if let known = memory.coreID(for: host.id), known != coreID {
                 pins.removePins(hostID: host.id)
+                chatTypings = [:]
             }
             memory.noteCore(coreID, for: host.id)
             readKernelOnce()
@@ -1227,7 +1228,17 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// For anything sent to an address this inventory lists, which means another
     /// Terminal on any other core.
     private func inventoryTransport() async throws -> any HerdrCoreTransport {
-        try await session.withTransport(servingCore: memory.coreID(for: host.id)) { $0 }
+        try await session.withTransport(servingCore: inventoryCore) { $0 }
+    }
+
+    /// The core this inventory's addresses mean.
+    var inventoryCore: String? {
+        memory.coreID(for: host.id)
+    }
+
+    /// Whether what keeps to `pin` still means this inventory's Terminals.
+    func admits(_ pin: TerminalCorePin) -> Bool {
+        inventoryCore.map(pin.admits) ?? true
     }
 
     /// Calls `onChange` with what the events say of `address`'s program until
@@ -1420,6 +1431,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             return .unavailable(.cannotTellSession(.claude))
         }
         let session = session
+        let core = inventoryCore
         let binder = HerdrCoreSessionBinder(
             processes: { request in
                 try await session.withTransport { try await $0.readProcesses(request) }
@@ -1431,7 +1443,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                     "terminal": .string(paneID),
                     "labels": .object(Dictionary(uniqueKeysWithValues: labels)),
                 ])
-                _ = try await self.inventoryTransport().call("terminal.label", params: params, isMutation: true)
+                // The check takes a while, and this record is the core's it began on.
+                let transport = try await session.withTransport(servingCore: core) { $0 }
+                _ = try await transport.call("terminal.label", params: params, isMutation: true)
             })
         return try await binder.check(record, coreCarries: leakedEnvironmentNames)
     }

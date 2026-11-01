@@ -804,6 +804,29 @@ struct ShellTerminalStoreTests {
         #expect(!store.isClosingTerminal)
     }
 
+    /// Nothing went: this shell's core is gone, whose tab is no longer there to
+    /// be still open.
+    @Test func closeTerminalSaysSoWhenItsCoreIsGone() async throws {
+        let transport = ScriptedTransport()
+        var forgets = 0
+        let store = makeOpenStore(
+            agent: makeAgent(),
+            transport: transport,
+            forgetTerminal: { forgets += 1 },
+            closeRemoteTerminal: { _ in throw TransportError.herdrCoreTerminalGone })
+        store.open()
+        _ = try await shell(in: store)
+
+        store.closeTerminal()
+
+        try #require(await eventually { store.closeFailureMessage != nil })
+        #expect(
+            store.closeFailureMessage
+                == "This Terminal belongs to a core that is gone: Nothing was sent. Open it again from the list.")
+        #expect(store.shell != nil)
+        #expect(forgets == 0)
+    }
+
     /// A close nobody answered may have happened, so it does not say the tab
     /// is still open, and sends nothing more.
     @Test func closeTerminalSaysSoWhenTheHostDidNotConfirm() async throws {

@@ -25,6 +25,8 @@ struct ShellTerminalView: View {
     /// Nil hides the Close Terminal action entirely (previews, tests).
     var isClosingTerminal: Bool = false
     var onCloseTerminal: (@MainActor () -> Void)? = nil
+    /// What Terminal Ended says instead of its own words.
+    var finishedMessage: String? = nil
     var managesLifecycle = true
     /// False on a Host whose terminals have no Take Over: any viewer may type.
     var offersTakeOver = true
@@ -559,7 +561,7 @@ struct ShellTerminalView: View {
                 TerminalStatusDialog(
                     glyph: .symbol("stop.circle"),
                     title: presentation.title,
-                    message: presentation.message,
+                    message: finishedMessage ?? presentation.message,
                     palette: themePalette,
                     dimsBackground: presentation.dimsBackground)
             }

@@ -154,11 +154,13 @@ struct HerdrCoreTerminalStoreTests {
             let console = console
             let activity = AppActivityCoordinator()
             let routing = AgentSceneRouting(directory: directory, sceneID: sceneID)
+            let corePin = console.corePin(on: terminal.hostID)
             let controller = UIHostingController(
                 rootView: NavigationStack {
                     WorkspaceTerminalDetailView(
                         terminal: terminal,
                         console: console,
+                        corePin: corePin,
                         settings: settings,
                         activity: activity,
                         onSelectAgent: { _ in },
@@ -204,12 +206,73 @@ struct HerdrCoreTerminalStoreTests {
             return directory.terminalAccess(sceneID: other, hostID: agent.hostID)
         }
 
+        /// The real Console in a window of its own, under a scene root as the app
+        /// mounts it. `regularWidth` stands it beside its list, as on an iPad.
+        func showConsole(regularWidth: Bool = false, tab: String = "agents") async throws -> CoreConsoleWindow {
+            let composition = DemoScreenshotComposition.make()
+            let router = AgentNotificationRouter()
+            let sceneID = UUID()
+            directory.register(sceneID: sceneID, router: router, window: FakeSceneWindow()) {}
+            directory.sceneDidBecomeActive(sceneID: sceneID)
+            // The Console reopens its last tab.
+            let lastTab = UserDefaults.standard.object(forKey: "console.last-list-tab")
+            UserDefaults.standard.set(tab, forKey: "console.last-list-tab")
+            defer { UserDefaults.standard.set(lastTab, forKey: "console.last-list-tab") }
+            let view = ConsoleView(
+                hosts: HostStore(volatileHosts: [host]), console: console,
+                terminal: TerminalSettings(
+                    themes: composition.terminalThemes, zoom: composition.terminalZoom,
+                    fonts: composition.terminalFonts, snippets: composition.snippets),
+                inputMode: composition.inputMode, detailSurface: composition.detailSurface,
+                appearance: composition.appearance,
+                pushRegistration: composition.pushRegistration,
+                notificationPreferences: composition.notificationPreferences,
+                relaySettings: composition.relaySettings,
+                notificationRouter: router,
+                bannerStore: composition.bannerStore, liveActivities: composition.liveActivities,
+                activity: composition.activity)
+            let controller = UIHostingController(
+                rootView: view.environment(
+                    \.agentSceneRouting, AgentSceneRouting(directory: directory, sceneID: sceneID)))
+            if regularWidth { controller.traitOverrides.horizontalSizeClass = .regular }
+            let window = try await makeTestWindow(
+                frame: CGRect(x: 0, y: 0, width: regularWidth ? 1180 : 402, height: regularWidth ? 820 : 874),
+                rootViewController: controller)
+            // Nothing else runs on the main actor until the tab is read.
+            window.layoutIfNeeded()
+            return CoreConsoleWindow(router: router, window: window)
+        }
+
+        /// The link drops and another core answers at once, with a Terminal of its
+        /// own at `record`'s address. The Host never reads as disconnected.
+        func moveToAnotherCore(
+            _ record: JSONValue, from attach: (channel: UInt32, params: JSONValue, socket: FakeCoreSocket),
+            drawing shown: CoreConsoleWindow
+        ) async throws {
+            await scripted.setChannel(.core(.init(id: "c2", terminals: [record])))
+            await attach.socket.deliverEndOfFile()
+            try await HerdrCoreTerminalStoreTests.until("the new core's snapshot") { [console, host] in
+                shown.layOut()
+                return console.hostCores[host.id] == "c2" && !console.hostsAwaitingSnapshot.contains(host.id)
+            }
+        }
+
         /// The `count`th attach on the Host, once `detail` has asked for it.
         func waitForAttach(_ count: Int, laying detail: CoreDetailWindow) async throws
             -> (channel: UInt32, params: JSONValue, socket: FakeCoreSocket)
         {
             try await HerdrCoreTerminalStoreTests.until("attach \(count)") {
                 detail.layOut()
+                return await scripted.attaches.count >= count
+            }
+            return try #require(await scripted.attaches.dropFirst(count - 1).first)
+        }
+
+        func waitForAttach(_ count: Int, laying shown: CoreConsoleWindow) async throws
+            -> (channel: UInt32, params: JSONValue, socket: FakeCoreSocket)
+        {
+            try await HerdrCoreTerminalStoreTests.until("attach \(count)") {
+                shown.layOut()
                 return await scripted.attaches.count >= count
             }
             return try #require(await scripted.attaches.dropFirst(count - 1).first)
@@ -222,7 +285,14 @@ struct HerdrCoreTerminalStoreTests {
         }
     }
 
-    private static func until(
+    fileprivate static func waitForRow(in shown: CoreConsoleWindow) async throws {
+        try await until("a row") {
+            shown.layOut()
+            return CoreConsoleWindow.selectableRow(in: shown.window) != nil
+        }
+    }
+
+    fileprivate static func until(
         _ what: String, _ condition: @MainActor () async -> Bool,
         sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
@@ -697,6 +767,61 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    private static let exitedWithThree: JSONValue = .object([
+        "reason": .string("exited"), "exit_code": .number(3),
+    ])
+
+    @Test func anAgentDetailSaysHowItsProgramEnded() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let first = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("agent screen", on: first)
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("finished", data: Self.exitedWithThree))
+        try await Self.deliverClose(on: first, end: Self.exitedWithThree)
+
+        try await Self.until("the ended state") { detail.reads("Agent Ended") }
+        #expect(detail.reads("Its program exited with code 3, so it will not come back."))
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// The detail waits on the event a close comes before.
+    @Test func anAgentDetailWhoseCloseCameBeforeTheEventShowsTheCode() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let first = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("agent screen", on: first)
+
+        try await Self.deliverClose(on: first, end: Self.exitedWithThree)
+        try await fixture.scripted.deliverEvent(Self.eventLine("finished", data: Self.exitedWithThree))
+
+        try await Self.until("the code") {
+            detail.reads("Its program exited with code 3, so it will not come back.")
+        }
+        await detail.close()
+        await fixture.finish()
+    }
+
+    @Test func anAgentDetailWithNoExitCodeKeepsThePlainWords() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let first = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("agent screen", on: first)
+        let killed: JSONValue = .object(["reason": .string("killed"), "signal": .number(9)])
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("finished", data: killed))
+        try await Self.deliverClose(on: first, end: killed)
+
+        try await Self.until("the ended state") { detail.reads("Agent Ended") }
+        #expect(detail.reads("Its program exited, so it will not come back."))
+        await detail.close()
+        await fixture.finish()
+    }
+
     @Test func anAgentDetailSaysItEndedAndMakesNoReattachAttempt() async throws {
         let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
         let agent = try #require(fixture.console.agents.first)
@@ -956,6 +1081,178 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.scripted.waitForMethod("terminal.attach", count: 2)
         let second = try #require(await fixture.scripted.attaches.last)
         #expect(second.socket !== first.socket)
+        await fixture.finish()
+    }
+
+    // MARK: A detail and the core it opened on, through the real Console
+
+    /// No saved Chat, so the reconnect's placeholder takes the detail down with all
+    /// it held. What comes back is still the detail opened on the old core.
+    @Test func aDetailTheReconnectRebuiltStaysOnTheCoreItOpenedOn() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let shown = try await fixture.showConsole()
+        defer { shown.window.isHidden = true }
+        shown.router.path = [agent.id]
+        let first = try await fixture.waitForAttach(1, laying: shown)
+        try await fixture.deliverOutput("the old program", on: first)
+        try await Self.until("the detail's terminal") { shown.layOut(); return shown.surface != nil }
+
+        await fixture.console.suspend()
+        try await Self.until("the placeholder") { shown.layOut(); return shown.surface == nil }
+        await fixture.scripted.setChannel(.core(.init(id: "c2", terminals: [Self.keptAgentRecord])))
+        await fixture.console.resume()
+        try await Self.until("the rebuilt detail") { shown.layOut(); return shown.surface != nil }
+        let entry = try #require(fixture.console.agentTerminals.entries[agent.id])
+        try await Self.until("the terminal to end") {
+            shown.layOut()
+            return entry.attach.terminalStatus == .finished
+        }
+
+        #expect(await fixture.scripted.attaches.count == 1)
+        #expect(fixture.console.hostCores[fixture.host.id] == "c2")
+        #expect(await entry.attach.confirmClose() == false)
+        try await fixture.settle()
+        #expect(await !fixture.scripted.methods.contains("terminal.kill"))
+        await fixture.finish()
+    }
+
+    /// Back to the list and in again is opening it anew.
+    @Test func aDetailLeftAndOpenedAgainJoinsTheNewCore() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let shown = try await fixture.showConsole()
+        defer { shown.window.isHidden = true }
+        shown.router.path = [agent.id]
+        let first = try await fixture.waitForAttach(1, laying: shown)
+        try await fixture.deliverOutput("the old program", on: first)
+
+        try await fixture.moveToAnotherCore(Self.keptAgentRecord, from: first, drawing: shown)
+        shown.router.path = []
+        try await Self.until("the list") { shown.layOut(); return shown.surface == nil }
+        shown.router.path = [agent.id]
+
+        let second = try await fixture.waitForAttach(2, laying: shown)
+        #expect(second.socket !== first.socket)
+        await fixture.finish()
+    }
+
+    /// Beside its list the detail stays up, and the row at its address is another
+    /// core's Terminal: tapping it opens that one, as the words on screen say.
+    @Test func aRowBesideADetailOnAGoneCoreOpensTheNewCoresAgent() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let shown = try await fixture.showConsole(regularWidth: true)
+        defer { shown.window.isHidden = true }
+        shown.router.path = [agent.id]
+        let first = try await fixture.waitForAttach(1, laying: shown)
+        try await fixture.deliverOutput("the old program", on: first)
+        try await Self.until("the row marked") { shown.layOut(); return shown.isRowMarked }
+
+        try await fixture.moveToAnotherCore(Self.keptAgentRecord, from: first, drawing: shown)
+        try await Self.until("the old terminal to end") {
+            shown.layOut()
+            return fixture.console.agentTerminals.entries[agent.id]?.attach.terminalStatus == .finished
+        }
+        #expect(await fixture.scripted.attaches.count == 1)
+        // Another Terminal's row, so a tap on it is a pick the list has to report.
+        try await Self.until("the row unmarked") { shown.layOut(); return !shown.isRowMarked }
+
+        try await shown.tapRow()
+        let second = try await fixture.waitForAttach(2, laying: shown)
+        #expect(second.socket !== first.socket)
+        let entry = try #require(fixture.console.agentTerminals.entries[agent.id])
+        #expect(entry.attach.terminalStatus != .finished)
+        try await Self.until("the row marked again") { shown.layOut(); return shown.isRowMarked }
+        await fixture.finish()
+    }
+
+    /// The same row, on the same core, leaves the detail as it is.
+    @Test func aRowBesideADetailOnItsOwnCoreKeepsIt() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let shown = try await fixture.showConsole(regularWidth: true)
+        defer { shown.window.isHidden = true }
+        shown.router.path = [agent.id]
+        _ = try await fixture.waitForAttach(1, laying: shown)
+        let entry = try #require(fixture.console.agentTerminals.entries[agent.id])
+
+        try await shown.tapRow()
+        try await fixture.settle()
+        shown.layOut()
+
+        #expect(fixture.console.agentTerminals.entries[agent.id] === entry)
+        #expect(await fixture.scripted.attaches.count == 1)
+        await fixture.finish()
+    }
+
+    /// What the Terminals list shows: a Workspace's shell.
+    private static let listedShellRecord: JSONValue = .object([
+        "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("live"),
+        "argv": .array([.string("/bin/zsh")]), "keep": .bool(false), "title": .string(""),
+        "cols": .number(80), "rows": .number(24), "pid": .number(7),
+        "labels": .object(["herdr.space": .string("s1"), "herdr.tab": .string("a")]),
+    ])
+
+    /// A shell's detail is not unmounted by a reconnect, and the Terminals list's row
+    /// at its address opens the new core's shell the same way.
+    @Test func aRowBesideAShellOnAGoneCoreOpensTheNewCoresShell() async throws {
+        let fixture = try await Fixture(terminals: [Self.listedShellRecord])
+        let shown = try await fixture.showConsole(regularWidth: true, tab: "terminals")
+        defer { shown.window.isHidden = true }
+        try await shown.tapRow()
+        let first = try await fixture.waitForAttach(1, laying: shown)
+        try await fixture.deliverOutput("x", on: first)
+
+        try await fixture.moveToAnotherCore(Self.listedShellRecord, from: first, drawing: shown)
+        let pool = fixture.console.terminalConnections
+        try await Self.until("the old terminal to end") {
+            shown.layOut()
+            return pool.entries.values.first?.store.terminalStatus == .finished
+        }
+        #expect(await fixture.scripted.attaches.count == 1)
+
+        try await shown.tapRow()
+        let second = try await fixture.waitForAttach(2, laying: shown)
+        #expect(second.socket !== first.socket)
+        await fixture.finish()
+    }
+
+    /// A new screen in the window takes what its predecessor left, but not another
+    /// core's pipeline; another window's stays with that window.
+    @Test func aPipelineOnAnotherCoreMakesWayInItsOwnWindowOnly() async throws {
+        let fixture = try await Fixture(terminals: [Self.shellRecord])
+        let terminal = try #require(fixture.console.terminals.first)
+        let identity = ShellTerminalIdentity(
+            paneID: terminal.paneID, tabID: terminal.tabID, terminalID: terminal.terminalID)
+        let pool = fixture.console.terminalConnections
+        let hostID = fixture.host.id
+        let window = UUID()
+        let old = TerminalCorePin(joined: "c1")
+        let new = TerminalCorePin(joined: "c2")
+        let held = try await pool.select(
+            hostID: hostID, identity: identity, ownerID: UUID(), sceneID: window, generation: nil,
+            corePin: old, runTerminal: fixture.runner)
+
+        let sameCore = pool.reclaim(
+            hostID: hostID, identity: identity, ownerID: UUID(), sceneID: window, generation: nil,
+            corePin: TerminalCorePin(joined: "c1"))
+        #expect(sameCore === held)
+        #expect(
+            pool.reclaim(
+                hostID: hostID, identity: identity, ownerID: UUID(), sceneID: window, generation: nil,
+                corePin: new) == nil)
+        await #expect(throws: TerminalConnectionPool.Failure.alreadyVisible) {
+            _ = try await pool.select(
+                hostID: hostID, identity: identity, ownerID: UUID(), sceneID: UUID(), generation: nil,
+                corePin: new, runTerminal: fixture.runner)
+        }
+        #expect(pool.entries[.init(hostID: hostID, identity: identity)] === held)
+
+        let replaced = try await pool.select(
+            hostID: hostID, identity: identity, ownerID: UUID(), sceneID: window, generation: nil,
+            corePin: new, runTerminal: fixture.runner)
+        #expect(replaced !== held)
         await fixture.finish()
     }
 
@@ -2354,6 +2651,55 @@ private struct HostedCoreDetail: View {
 }
 
 /// One iPad window showing a core Agent's detail.
+/// The real Console, for a test that goes through what it decides itself.
+@MainActor
+private final class CoreConsoleWindow {
+    let router: AgentNotificationRouter
+    let window: UIWindow
+
+    init(router: AgentNotificationRouter, window: UIWindow) {
+        self.router = router
+        self.window = window
+    }
+
+    func layOut() { window.layoutIfNeeded() }
+
+    /// The terminal the detail shows, while one is in its hierarchy.
+    var surface: HeelerTerminalView? {
+        AgentSurfaceReplacementTests.terminals(in: window).first
+    }
+
+    /// Whether the list marks its one row as the selection.
+    var isRowMarked: Bool {
+        guard let (list, row) = Self.selectableRow(in: window) else { return false }
+        return list.indexPathsForSelectedItems?.contains(row) == true
+    }
+
+    /// Picks the list's one row as a finger does, through its collection view.
+    func tapRow() async throws {
+        try await HerdrCoreTerminalStoreTests.waitForRow(in: self)
+        let (list, row) = try #require(Self.selectableRow(in: window))
+        list.selectItem(at: row, animated: false, scrollPosition: [])
+        list.delegate?.collectionView?(list, didSelectItemAt: row)
+        layOut()
+    }
+
+    static func selectableRow(in root: UIView) -> (UICollectionView, IndexPath)? {
+        if let list = root as? UICollectionView, let delegate = list.delegate {
+            for section in 0..<list.numberOfSections {
+                for item in 0..<list.numberOfItems(inSection: section) {
+                    let row = IndexPath(item: item, section: section)
+                    if delegate.collectionView?(list, shouldSelectItemAt: row) ?? true { return (list, row) }
+                }
+            }
+        }
+        for subview in root.subviews {
+            if let found = selectableRow(in: subview) { return found }
+        }
+        return nil
+    }
+}
+
 @MainActor
 private final class CoreDetailWindow {
     let selection: HostedDetailSelection

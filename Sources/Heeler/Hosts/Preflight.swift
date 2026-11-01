@@ -165,7 +165,7 @@ struct PreflightReport: Equatable, Sendable {
         case .coreMutationOutcomeUnknown:
             check = .connection
             hint = "The Host did not confirm the action. Check its state before trying again."
-        case .herdrCoreInventoryStale:
+        case .herdrCoreInventoryStale, .herdrCoreTerminalGone:
             // Preflight has no inventory; keep the closed taxonomy total.
             check = .connection
             hint = error.presentation.message

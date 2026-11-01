@@ -370,9 +370,9 @@ struct AgentTerminalView: View {
                 paneTitle: Self.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
                 isOnStage: isOnStage,
-                runTerminal: console.terminalRunner(for: agent.hostID)
+                runTerminal: console.terminalRunner(for: agent.hostID, keepingTo: session.corePin)
             ) {
-                try await console.closePane(agent.agent.paneID, on: agent.hostID)
+                try await console.closePane(agent.agent.paneID, on: agent.hostID, keepingTo: session.corePin)
             })
         _skills = State(initialValue: Self.makeSkillsStore(for: agent, console: console))
         _messageJump = State(
@@ -1022,8 +1022,8 @@ struct AgentTerminalView: View {
                 try await console.listWorktrees(
                     forWorkspaceID: workspaceID, on: hostID)
             },
-            remove: { [console] request in
-                try await console.removeWorktree(request, on: hostID)
+            remove: { [console, corePin = session.corePin] request in
+                try await console.removeWorktree(request, on: hostID, keepingTo: corePin)
             },
             hasWorkingAgent: { [console] in
                 console.agents.contains {
@@ -1335,7 +1335,7 @@ struct AgentTerminalView: View {
     /// The Composer's Stop: one Esc over the Attach PTY, or on a core Host the
     /// core's own interrupt, or nil to keep Send (`ConsoleStore.terminalInterrupt`).
     private var stopInterrupt: AgentComposerInterrupt? {
-        console.terminalInterrupt(for: agent) { interruptAgent() }
+        console.terminalInterrupt(for: agent, keepingTo: session.corePin) { interruptAgent() }
     }
 
     /// The interaction probe's Stop, as the Composer's button runs it: the
@@ -1908,7 +1908,8 @@ struct AgentTerminalView: View {
                 TerminalStatusDialog(
                     glyph: .symbol("stop.circle"),
                     title: "Agent Ended",
-                    message: presentation.message,
+                    message: console.agentEndedMessage(of: agent.id, keepingTo: session.corePin)
+                        ?? presentation.message,
                     palette: themePalette,
                     dimsBackground: presentation.dimsBackground)
             }

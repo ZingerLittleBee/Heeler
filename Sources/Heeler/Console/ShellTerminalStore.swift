@@ -200,6 +200,9 @@ final class AgentOpenTerminalStore {
             } catch TransportError.coreMutationOutcomeUnknown {
                 self.closeFailureMessage = ConsoleStore.closeUnconfirmedMessage
                 return
+            } catch TransportError.herdrCoreTerminalGone {
+                self.closeFailureMessage = TransportError.herdrCoreTerminalGone.presentation.message
+                return
             } catch {
                 self.closeFailureMessage =
                     "The Host couldn't be reached. The tab is still open there."

@@ -1095,6 +1095,65 @@ struct HerdrCoreLaunchTests {
                     "reviewer ended right after it started, with exit code 2, so no Agent is running."))
     }
 
+    // MARK: A kind's program ending
+
+    /// The core's event for a program that went before the launch's reply.
+    private func endBeforeTheReply(_ fixture: Fixture, reason: String = "exited", exitCode: Int?) async throws {
+        await fixture.transport.deliver(
+            Self.event(sequence: 2, type: "created", terminal: "t101", data: Self.record("t101", keep: true)))
+        try await fixture.until("the Terminal") {
+            fixture.store.terminals.contains { $0.paneID == "t101" }
+        }
+        await fixture.transport.deliver(Self.finished(sequence: 3, reason: reason, exitCode: exitCode))
+        try await fixture.until("its end") {
+            !fixture.store.terminals.contains { $0.paneID == "t101" }
+        }
+    }
+
+    @Test(arguments: [
+        (
+            "exited", 127 as Int?,
+            "Claude Code ended right after it started, with exit code 127, so no Agent is running. "
+                + "That code means the Host's shell could not find its command."
+        ),
+        (
+            "exited", 1,
+            "Claude Code ended right after it started, with exit code 1, so no Agent is running."
+        ),
+        ("exited", 0, "Claude Code finished right after it started, so no Agent is running."),
+        ("killed", nil, "Claude Code ended right after it started, so no Agent is running."),
+    ])
+    func aKindThatEndedBeforeItsAnswerReadsAsEnded(
+        reason: String, exitCode: Int?, message: String
+    ) async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setDiscovery(programs: ["claude"])
+        let form = fixture.startAgentForm(agentWait: .seconds(40))
+        await form.discoverAgents()
+        form.selectExistingWorkspace(fixture.derived)
+        try await endBeforeTheReply(fixture, reason: reason, exitCode: exitCode)
+
+        await form.submit()
+
+        #expect(form.state == .failed(message))
+        #expect(form.canSubmit)
+    }
+
+    /// New Agent still closes on its row, and does not stay to watch it.
+    @Test func aKindThatIsListedClosesTheFormAtOnce() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setDiscovery(programs: ["claude"])
+        let form = fixture.startAgentForm(agentWait: .seconds(40))
+        await form.discoverAgents()
+        form.selectExistingWorkspace(fixture.derived)
+
+        await form.submit()
+
+        #expect(form.state == .started(ConsoleAgent.ID(hostID: host.id, paneID: "t101")))
+    }
+
     // MARK: Names live Terminals hold
 
     @Test func startingATemplateThatIsNoAgentYetAgainTakesTheNextName() async throws {
