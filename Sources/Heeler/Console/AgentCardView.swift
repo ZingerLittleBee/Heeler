@@ -125,7 +125,7 @@ struct AgentCardView: View {
         // type with padding, so baseline alignment drops it below Row 1.
         HStack(alignment: .center) {
             if let heading {
-                ConsoleCheckoutTitleText(title: heading.title, font: heading.font)
+                ConsoleCheckoutTitleText(title: heading.title, font: heading.font, isQuiet: !heading.isProminent)
             } else {
                 AgentCardTitle(
                     tokens: presentation.rows.first ?? [], qualifier: qualifier, isSaved: saved != nil,
@@ -326,7 +326,7 @@ struct AgentRowText: View {
 struct AgentCardHeading {
     let title: ConsoleCheckoutTitle
     /// A card of its own reads as an Agent's title; a checkout inside a
-    /// repository's card, a size down.
+    /// repository's card, a size down and in the secondary color.
     var isProminent = false
     /// The checkout's symbol, in the card's icon column beside the title.
     let systemImage: String

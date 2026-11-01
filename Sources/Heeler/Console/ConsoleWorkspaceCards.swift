@@ -178,17 +178,24 @@ struct ConsoleWorkspaceCardIcon: View {
 }
 
 /// A checkout's title, then its branch or state in a quieter face; the
-/// branch truncates first. VoiceOver hears what the icon shows.
+/// branch truncates first. VoiceOver hears what the icon shows. `isQuiet`
+/// beside Agent titles, which keep the primary color.
 struct ConsoleCheckoutTitleText: View {
     let title: ConsoleCheckoutTitle
     let font: Font
     var detailFont: Font = .footnote
+    var isQuiet = false
+
+    private var titleStyle: AnyShapeStyle {
+        if title.isPending { return AnyShapeStyle(.tertiary) }
+        return isQuiet ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary)
+    }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(verbatim: title.title)
                 .font(font)
-                .foregroundStyle(title.isPending ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                .foregroundStyle(titleStyle)
                 .layoutPriority(1)
             if let detail = title.detail {
                 Text(verbatim: detail)
@@ -361,7 +368,7 @@ struct ConsoleCheckoutHeader: View {
     private var label: some View {
         HStack(alignment: .firstTextBaseline, spacing: iconColumn.spacing) {
             ConsoleWorkspaceCardIcon(checkout: section.checkout)
-            ConsoleCheckoutTitleText(title: title, font: .subheadline.weight(.semibold))
+            ConsoleCheckoutTitleText(title: title, font: .subheadline.weight(.semibold), isQuiet: true)
             Spacer(minLength: 8)
             if section.isCollapsed {
                 ConsoleAgentStatusDots(statuses: section.agents.map(\.agent.status))
