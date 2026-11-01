@@ -134,17 +134,20 @@ enum ClaudeChainResolver {
                 guard let position = rank[uuid], position < limit else { return nil }
                 return records[uuid]
             }
-            if let logicalParent = boundary.system?.logicalParentUUID {
-                if let record = beforeBoundary(logicalParent) { return record }
-                if records[logicalParent] == nil {
-                    if chain.missingParent == nil { chain.missingParent = logicalParent }
-                    guard bridgesMissingParents else { return nil }
-                }
-            }
             let compaction = boundary.system?.compaction
             let preserved =
                 (compaction?.preservedMessages?.uuids ?? []).reversed().lazy.compactMap(beforeBoundary).first
                 ?? compaction?.preservedSegment.flatMap { beforeBoundary($0.headUUID) }
+            if let logicalParent = boundary.system?.logicalParentUUID {
+                if let record = beforeBoundary(logicalParent) { return record }
+                if records[logicalParent] == nil {
+                    if chain.missingParent == nil { chain.missingParent = logicalParent }
+                    // 2.1.296 and later can name a record the file never
+                    // holds, so a preserved message goes on without waiting
+                    // for it. Anything less is a guess, left for the head.
+                    guard bridgesMissingParents || preserved != nil else { return nil }
+                }
+            }
             return preserved ?? segmentTerminal(before: boundary)
         }
         // The first segment follows relinked parents, so it runs through the

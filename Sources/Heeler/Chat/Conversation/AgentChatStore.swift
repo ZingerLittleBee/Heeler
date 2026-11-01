@@ -210,6 +210,9 @@ final class AgentChatStore {
     /// A page above the oldest message shown that waits for the loop, by
     /// who asked for it.
     @ObservationIgnored private var olderRequest: OlderRequest?
+    /// A long request for older history takes turns with looking for what
+    /// the Agent writes, so the newest rows never wait for the oldest.
+    @ObservationIgnored private var pollsBeforeNextOlderPage = false
     /// Look for the transcript's file again before the next read: Codex
     /// continues an undone thread in a new file and leaves the old one
     /// unchanged, so following it alone never shows the new turns.
@@ -441,6 +444,8 @@ final class AgentChatStore {
             await previous?.value
             guard let self else { return }
             if !Task.isCancelled {
+                // Warming is for the newest rows.
+                self.pollsBeforeNextOlderPage = true
                 await self.step()
                 await self.engine?.save(force: true)
             }
@@ -465,8 +470,9 @@ final class AgentChatStore {
         try await ChatImagePreviewReader.read(path: path, files: source.files)
     }
 
-    /// Reads one page above the oldest message shown, for the user or,
-    /// `automatic`, for a timeline whose rows do not fill the screen.
+    /// Reads above the oldest message shown, a page per turn of the loop, for
+    /// the user or, `automatic`, for a timeline whose rows do not fill the
+    /// screen. Leaving Chat keeps the request; it goes on when Chat returns.
     func loadOlder(automatic: Bool = false) {
         // The timeline asks as the user does, unless the program bounds
         // what it loads by itself: then it never retries a failure, and
@@ -726,9 +732,13 @@ final class AgentChatStore {
         var polled = false
         var opened = false
         var didRead = true
-        if let request = olderRequest {
-            olderRequest = nil
+        var readOlder = false
+        let pollsFirst = pollsBeforeNextOlderPage
+        pollsBeforeNextOlderPage = false
+        if let request = olderRequest, !pollsFirst {
             snapshot = await engine.loadOlder(context: context, automatic: request == .automatic)
+            readOlder = true
+            pollsBeforeNextOlderPage = true
         } else if case .following = conversation.phase {
             if needsRelocate {
                 needsRelocate = false
@@ -749,6 +759,13 @@ final class AgentChatStore {
         }
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         if didRead { countTimeout(snapshot.readFailure) }
+        // The request is done, even with nothing new to read: the row shows
+        // what the engine says now rather than the request.
+        if readOlder, snapshot.older != .loading {
+            olderRequest = nil
+            pollsBeforeNextOlderPage = false
+            appliedRevision = nil
+        }
         apply(snapshot, from: engine)
         if polled || opened, case .following = snapshot.phase, snapshot.readFailure == nil {
             lastReadStartedAt = readStart
@@ -814,6 +831,8 @@ final class AgentChatStore {
                 guard let self else { return }
                 await self.step()
                 guard !Task.isCancelled else { return }
+                // The next page of a request doesn't wait for the pace.
+                if self.olderRequest != nil, self.engine != nil, !self.isAwaitingSession { continue }
                 await self.pause(self.interval)
             }
         }
@@ -1102,6 +1121,7 @@ final class AgentChatStore {
         restored = false
         appliedRevision = nil
         olderRequest = nil
+        pollsBeforeNextOlderPage = false
         needsRelocate = false
         nextOpen = nil
         failedOpens = 0

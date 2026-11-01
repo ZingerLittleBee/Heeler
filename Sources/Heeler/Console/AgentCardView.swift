@@ -5,8 +5,11 @@ import UIKit
 /// mark inside a ring that shows its status; Heeler Pin follows Row 1, and
 /// each row's right side ends its line (`AgentCardLines`): by default the
 /// Host name ends the first additional row and the Checkout's Changes
-/// totals the last. Fields retain their emphasis using accessible semantic
-/// colors; plugin colors and weights do not replace app typography.
+/// totals the last. On a Workspace card Row 1 reads one way whether the Agent
+/// shares its checkout's or stands under the title alone: a size under a
+/// list row's, in the regular weight beside the card's semibold titles.
+/// Fields retain their emphasis using accessible semantic colors; plugin
+/// colors and weights do not replace app typography.
 struct AgentCardView: View {
     let agent: ConsoleAgent
     var layout: AgentRowLayout = .heelerDefault
@@ -37,6 +40,8 @@ struct AgentCardView: View {
     /// A list row's avatar and the gap after it.
     private static let rowAvatarDiameter: CGFloat = 34
     private static let rowLeadSpacing: CGFloat = 12
+    /// Row 1 on a Workspace card.
+    fileprivate static let cardTitleFont = Font.subheadline
 
     private var totalsSource: ChangesRowTotals.Source? {
         if let changes { .store(changes) } else { sampleChanges.map { .sample($0) } }
@@ -72,7 +77,9 @@ struct AgentCardView: View {
                     HStack(alignment: .center, spacing: cardColumn.spacing) {
                         markView(side: cardColumn.value, speaksStatus: speaksStatus)
                         VStack(alignment: .leading, spacing: 6) {
-                            detailLineViews(lines.details)
+                            detailLineViews(
+                                lines.details,
+                                titleLine: lines.details.firstIndex { !$0.leading.isEmpty })
                         }
                     }
                 }
@@ -118,10 +125,11 @@ struct AgentCardView: View {
         // type with padding, so baseline alignment drops it below Row 1.
         HStack(alignment: .center) {
             if let heading {
-                ConsoleCheckoutTitleText(title: heading.title, font: heading.font)
+                ConsoleCheckoutTitleText(title: heading.title, font: heading.font, isQuiet: !heading.isProminent)
             } else {
                 AgentCardTitle(
-                    tokens: presentation.rows.first ?? [], qualifier: qualifier, isSaved: saved != nil)
+                    tokens: presentation.rows.first ?? [], qualifier: qualifier, isSaved: saved != nil,
+                    isOnCard: lead == .card)
             }
             if isPinned {
                 Image(systemName: "pin.fill")
@@ -146,20 +154,22 @@ struct AgentCardView: View {
         totalsSource.map { ChangesRowTotals(source: $0).hasTotals } ?? false
     }
 
-    /// The lines under the title.
+    /// The lines under the title. `titleLine` is the one holding Row 1 under
+    /// a card's heading, which reads as Row 1 does on the card's other rows.
     ///
     /// SwiftUI can build these lines on its async render thread, as it built
     /// the file counts in `ChangesRowTotals.fileCounts(_:style:)` (#471), so
     /// the content is `@Sendable` and builds each line in `MainActorContent`.
     func detailLineViews(
-        _ lines: [AgentCardLines.Line]
+        _ lines: [AgentCardLines.Line], titleLine: Int? = nil
     ) -> ForEach<[(offset: Int, element: AgentCardLines.Line)], Int, some View> {
-        ForEach(Array(lines.enumerated()), id: \.offset) { @Sendable _, line in
+        ForEach(Array(lines.enumerated()), id: \.offset) { @Sendable index, line in
+            let isTitle = index == titleLine
             MainActorContent {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     if !line.leading.isEmpty {
-                        AgentRowText(tokens: line.leading, isSecondary: true)
-                            .font(.caption)
+                        AgentRowText(tokens: line.leading, isSecondary: !isTitle || saved != nil)
+                            .font(isTitle ? Self.cardTitleFont : .caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -263,6 +273,12 @@ private struct AgentCardTitle: View {
     let qualifier: String?
     /// A saved entry's title recedes, so it never reads as a running Agent.
     var isSaved = false
+    var isOnCard = false
+
+    private var font: Font {
+        if isOnCard { return AgentCardView.cardTitleFont }
+        return isSaved ? .body.weight(.medium) : .headline
+    }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -276,7 +292,7 @@ private struct AgentCardTitle: View {
                     .accessibilityLabel(Text(verbatim: qualifier))
             }
         }
-        .font(isSaved ? .body.weight(.medium) : .headline)
+        .font(font)
     }
 }
 
@@ -310,7 +326,7 @@ struct AgentRowText: View {
 struct AgentCardHeading {
     let title: ConsoleCheckoutTitle
     /// A card of its own reads as an Agent's title; a checkout inside a
-    /// repository's card, a size down.
+    /// repository's card, a size down and in the secondary color.
     var isProminent = false
     /// The checkout's symbol, in the card's icon column beside the title.
     let systemImage: String
@@ -331,6 +347,9 @@ struct AgentCardPresentation: Equatable, Sendable {
     let rows: [[RenderedToken]]
     /// The row slot each of `rows` came from.
     let slots: [Int]
+    /// The row slots with fields that all show nothing here: a field the
+    /// surrounding list already shows, or one with no value.
+    let emptiedSlots: Set<Int>
     /// Each row slot's right side, or nil where the list places the Host
     /// and the totals (`AgentCardLines`).
     let trailing: [[AgentCardTrailing]]?
@@ -369,6 +388,8 @@ struct AgentCardPresentation: Equatable, Sendable {
             rows = rendered.map(\.tokens)
             slots = rendered.map(\.slot)
         }
+        let configured = layout.rows(forAgentKind: agent.agent.kind).enumerated().filter { !$0.element.isEmpty }
+        emptiedSlots = Set(configured.map(\.offset)).subtracting(slots)
         trailing = AgentRowRenderer.renderTrailing(
             layout: layout, agent: agent, hiding: hiding, omittingMarkedKind: omitsMarkedKind)
     }
@@ -427,7 +448,9 @@ enum AgentCardTrailing: Equatable, Sendable {
 
 /// A card's lines: the title's, which ends with any right side of the row
 /// slots up to the one it shows, then one line per later slot that shows
-/// anything, on either side. Under a heading, Row 1's status badge ends the
+/// anything, on either side. A row whose fields all show nothing gives way:
+/// its right side ends the line above, while a row configured empty keeps
+/// its line for its right side. Under a heading, Row 1's status badge ends the
 /// heading's line, which names the Agent as Row 1 would. A layout that
 /// leaves its right side to the list gets today's places: the Host ends the
 /// first line under the title, the totals the last, and the Host and the
@@ -470,11 +493,20 @@ struct AgentCardLines: Equatable, Sendable {
                 trailing[0] = row.filter { $0 != .statusBadge }
             }
             title += trailing.prefix(titleSlot + 1).flatMap(shown)
-            details = (titleSlot + 1..<max(titleSlot + 1, slotCount)).compactMap { slot in
+            for slot in titleSlot + 1..<max(titleSlot + 1, slotCount) {
                 let line = Line(
                     leading: leading[slot] ?? [],
                     trailing: trailing.indices.contains(slot) ? shown(trailing[slot]) : [])
-                return line.leading.isEmpty && line.trailing.isEmpty ? nil : line
+                if line.leading.isEmpty, line.trailing.isEmpty { continue }
+                guard line.leading.isEmpty, presentation.emptiedSlots.contains(slot) else {
+                    details.append(line)
+                    continue
+                }
+                if details.isEmpty {
+                    title += line.trailing
+                } else {
+                    details[details.count - 1].trailing += line.trailing
+                }
             }
         } else {
             details = (headingTakesTitle ? presentation.rows : Array(presentation.rows.dropFirst()))

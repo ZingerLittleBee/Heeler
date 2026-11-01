@@ -41,6 +41,10 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Give an Agent's title on a By Workspace card one size and color, whether
+  the Agent shares its checkout or stands alone under the checkout's title,
+  and set a repository's checkout titles apart from it in a quieter color.
+  (#598)
 - Raise and lower the Composer with the keyboard, in step with it, and move
   Chat's conversation and fold along instead of jumping ahead of it. (#594)
 - Run animation at up to 120Hz on iPhones with ProMotion. (#594)
@@ -63,6 +67,14 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Chat fills in earlier messages page by page and keeps up with the Agent while
+  it does, so returning to a long conversation no longer shows a few old rows
+  under a spinner and a blank screen until a whole turn has loaded. Messages
+  above a compaction show as they load rather than all at once at the end, and
+  one Load Earlier Messages is enough in a long conversation reopened from the
+  device. (#598)
+- An Agent's Changes totals end the line above when the card already shows the
+  directory field beside them, instead of holding a line of their own. (#598)
 - Keep the Host connection row atop the Agents and Terminals lists one
   height while Hosts connect, so the list below no longer jumps. Statuses
   stay on one line; those that do not fit fold into a count, and the row's

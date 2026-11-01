@@ -1417,6 +1417,66 @@ struct AgentChatStoreTests {
         #expect(Self.ids(fixture.store).last == "n-29")
     }
 
+    /// Small limits, so a few hundred bytes make a search of many pages.
+    private static let searchLimits = TranscriptFollower.Limits(
+        tailWindow: 64, readChunk: 16, pollBudget: 1_024, olderPage: 32, maximumOlderPage: 128,
+        olderSearchPage: 32, lineStartSearch: 1_024, anchorLength: 8, headLength: 32, lineCap: 4_096, prefixCap: 16)
+
+    /// Looking for the prompt of a long turn can read tens of MiB. The list
+    /// shows each page as it comes, and what the Agent writes meanwhile,
+    /// rather than a spinner over the same rows until the prompt arrives.
+    @Test func aLongOlderSearchShowsEachPageAndKeepsFollowing() async throws {
+        let fixture = Fixture(session: Self.first, limits: Self.searchLimits)
+        let path = Self.path(Self.first)
+        await fixture.files.write(NumberedChatReducer.prompt("start") + NumberedChatReducer.lines(0..<40), at: path)
+        await fixture.store.step()
+        let opened = Self.ids(fixture.store).count
+
+        fixture.store.loadOlder(automatic: true)
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store).count > opened)
+        #expect(fixture.store.conversation.older == .loading)
+
+        await fixture.files.append(NumberedChatReducer.lines(40..<42), to: path)
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store).last == "n-41")
+        #expect(fixture.store.conversation.older == .loading)
+
+        var steps = 0
+        while fixture.store.conversation.older == .loading, steps < 100 {
+            await fixture.store.step()
+            steps += 1
+        }
+        #expect(Self.ids(fixture.store).first == "p-0")
+        #expect(Self.ids(fixture.store).last == "n-41")
+        #expect(fixture.store.conversation.older == .reachedStart)
+    }
+
+    /// Going to the background cancels the read a search is waiting on. That
+    /// is no failure: the search goes on from there, with no Retry to tap.
+    @Test func anOlderSearchCutShortByCancellationGoesOn() async throws {
+        let fixture = Fixture(session: Self.first, limits: Self.searchLimits)
+        let path = Self.path(Self.first)
+        await fixture.files.write(NumberedChatReducer.prompt("start") + NumberedChatReducer.lines(0..<40), at: path)
+        await fixture.store.step()
+
+        fixture.store.loadOlder(automatic: true)
+        await fixture.files.failNext(.read, path: path, with: TransportError.cancelled)
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.older == .loading)
+
+        var steps = 0
+        while fixture.store.conversation.older == .loading, steps < 100 {
+            await fixture.store.step()
+            steps += 1
+        }
+        #expect(Self.ids(fixture.store).first == "p-0")
+        #expect(fixture.store.conversation.older == .reachedStart)
+    }
+
     /// The list's own request reads a failed page again, as Retry does,
     /// unless the program bounds what the list loads by itself, as Grok
     /// Build's does: then only Retry reads it again.

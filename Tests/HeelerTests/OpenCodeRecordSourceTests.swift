@@ -479,12 +479,18 @@ struct OpenCodeRecordSourceTests {
         #expect(opened.phase == .following(path: "opencode:\(Self.session)"))
         #expect(opened.older == .available)
 
-        let failed = await engine.loadOlder(context: context)
+        var failed = await engine.loadOlder(context: context)
+        while failed.older == .loading {
+            failed = await engine.loadOlder(context: context)
+        }
 
         #expect(failed.readFailure == .hostFileTimedOut)
         #expect(failed.older == .failed("Reading the conversation timed out"))
 
-        let paged = await engine.loadOlder(context: context)
+        var paged = await engine.loadOlder(context: context)
+        while paged.older == .loading {
+            paged = await engine.loadOlder(context: context)
+        }
 
         #expect(paged.readFailure == nil)
         #expect(paged.older == .reachedStart)
