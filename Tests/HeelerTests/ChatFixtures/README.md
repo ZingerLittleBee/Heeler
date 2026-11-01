@@ -36,8 +36,10 @@ None came from a personal session.
 | `grok/failed-tools.jsonl` | Written for the test, not captured: one turn of failed calls, a `tool_execution_failed` error, the tagged failures `FileNotFound`, `FileTooLarge`, `NotADirectory`, `NotFound`, `NoMatchesFound`, `MultipleMatchesFound` and `InvalidInput`, and an MCP call that returned an error. The records take the shapes a census of real failures found; some carry no content |
 
 `host-evidence/` is a separate recording, for the herdr-core session binding of
-ADR 0034, and the Pi and Oh My Pi binder tests read its `pi` and `omp` folders
-through `PiHostEvidence`. It came from a throwaway Linux VM on
+ADR 0034. `HerdrCoreProgramBinderTests` reads `codex/`, `grok/` and `opencode/`,
+`OpenCodeStoreQueryTests` the schemas, and the Pi and Oh My Pi binder tests its `pi`
+and `omp` folders through `PiHostEvidence`. No test reads `reply-held.json` or the core
+event streams yet. It came from a throwaway Linux VM on
 2026-11-01 with herdr-core 0.1.13 and a local fake model behind a dummy key.
 Nothing was signed in and it is not from hc-lab, so an account could change
 what it shows; `docs/agents/herdr-compatibility.md` says how for each program.
@@ -47,7 +49,7 @@ process rows shaped for `ScriptedProcessTable.Process`, plus the files as read.
 | Path | Source |
 | --- | --- |
 | `host-evidence/codex/no-daemon.json` | Codex CLI 0.165.0 `--no-daemon`: the process tree and held files at the prompt and after the first reply, and the rollout's `session_meta` |
-| `host-evidence/codex/no-daemon-after-new.json` | The same, before `/new` and after a prompt in the new thread: two held root rollouts |
+| `host-evidence/codex/no-daemon-after-new.json` | The same, before `/new` and after a prompt in the new thread: two held root rollouts. Its `observed` text alone says what the first prompt after `/new` leaves, the new thread's lock with no rollout, and the test that uses this says it edits the recording |
 | `host-evidence/codex/no-daemon-subagent.json` | The same, with a root and a subagent the fake model spawned |
 | `host-evidence/codex/default-daemon.json` | Plain `codex` in two Terminals on one `CODEX_HOME`: the shared daemon, the `HC_SCOPE` it carries and the rollouts it holds |
 | `host-evidence/grok/s-flag.json` | Grok Build 1.0.70 `-s`: `active_sessions.json` with one Terminal, with two, and after `/new`, `pid_start` against field 22 of `/proc/<pid>/stat`, and leader mode |

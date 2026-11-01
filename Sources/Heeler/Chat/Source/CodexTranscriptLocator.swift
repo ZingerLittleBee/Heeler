@@ -34,6 +34,9 @@ enum CodexTranscriptUnavailable: Error, Hashable, Sendable {
 /// happened, so today's neighbourhood is searched too; archiving moves files
 /// unchanged into the flat `archived_sessions/`. Directory listings are
 /// filtered on the Host by the thread id, so a busy day costs only matches.
+///
+/// `configRoot` is the Agent's own `CODEX_HOME` on herdr-core (ADR 0034). Without
+/// one it looks where Herdr TUI's Codex keeps them.
 struct CodexTranscriptLocator: Sendable {
     let files: ChatHostFiles
     let now: @Sendable () -> Date
@@ -43,9 +46,15 @@ struct CodexTranscriptLocator: Sendable {
         self.now = now
     }
 
-    func locate(threadID: String) async throws -> Result<CodexTranscriptLocation, CodexTranscriptUnavailable> {
-        let home = try await files.home()
-        let root = RemoteFilePath.join(home, ".codex")
+    func locate(
+        threadID: String, configRoot: String? = nil
+    ) async throws -> Result<CodexTranscriptLocation, CodexTranscriptUnavailable> {
+        let root: String
+        if let configRoot {
+            root = configRoot
+        } else {
+            root = RemoteFilePath.join(try await files.home(), ".codex")
+        }
         var segments: [CodexRolloutSegment] = []
         for date in Self.dateDirectories(threadID: threadID, now: now()) {
             segments += try await matches(

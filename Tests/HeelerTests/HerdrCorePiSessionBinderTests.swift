@@ -23,10 +23,10 @@ struct HerdrCorePiSessionBinderTests {
             let table = table
             let labels = labels
             return HerdrCoreSessionBinder(
+                program: program,
                 processes: { try await table.read($0) },
                 files: files.hostFiles(),
-                clearLabels: { await labels.clear($0.keys.sorted()) },
-                program: program)
+                clearLabels: { await labels.clear($0.keys.sorted()) })
         }
 
         /// The processes of one recorded scene. A name holding anything else reads

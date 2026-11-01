@@ -12,6 +12,7 @@ actor ScriptedProcessTable {
         var name: String
         var start: String
         var environment: [String: String]
+        var argv: [String] = []
         var openFiles: [String] = []
     }
 
@@ -76,6 +77,9 @@ actor ScriptedProcessTable {
                 Set(request.namesOf.filter { process.environment[$0]?.isEmpty == false }))
         }
         if request.readsOpenFiles { fact.openFiles = .value(process.openFiles) }
+        if request.readsArguments {
+            fact.arguments = .value(Set(request.argumentsAmong).intersection(process.argv))
+        }
         return fact
     }
 }
@@ -154,6 +158,7 @@ struct HerdrCoreSessionBinderTests {
             let table = table
             let labels = labels
             return HerdrCoreSessionBinder(
+                program: .claude,
                 processes: { try await table.read($0) },
                 files: files.hostFiles(),
                 clearLabels: { try await labels.clear($0.keys.sorted()) })
@@ -330,6 +335,7 @@ struct HerdrCoreSessionBinderTests {
         await rig.files.write(Self.registryEntry(), at: Self.registryPath())
         let table = rig.table
         let binder = HerdrCoreSessionBinder(
+            program: .claude,
             processes: { request in
                 var facts = try await table.read(request)
                 facts["4242"]?.descendants = .unavailable

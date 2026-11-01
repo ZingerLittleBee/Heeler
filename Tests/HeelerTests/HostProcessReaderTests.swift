@@ -340,6 +340,47 @@ struct HostProcessReaderTests {
         }
     }
 
+    // MARK: Named arguments
+
+    private static let argumentRequest = HostProcessReader.Request(
+        pids: ["13"], argumentsAmong: ["--managed-daemon", "app-server"])
+
+    @Test func onlyTheArgumentsAskedForAreReported() throws {
+        // "--managed-daemon", hex.
+        let facts = try Self.parse(
+            Self.framed("A 13 2d2d6d616e616765642d6461656d6f6e", "B 13 ok"), request: Self.argumentRequest)
+        #expect(facts["13"]?.arguments == .value(["--managed-daemon"]))
+    }
+
+    @Test func anArgvHoldingNoneReadsEmptyAndAnUnreadOneUnavailable() throws {
+        let none = try Self.parse(Self.framed("B 13 ok"), request: Self.argumentRequest)
+        #expect(none["13"]?.arguments == .value([]))
+        let unread = try Self.parse(Self.framed("B 13 -"), request: Self.argumentRequest)
+        #expect(unread["13"]?.arguments == .unavailable)
+    }
+
+    @Test(arguments: [
+        // A word that was not asked for: "--token".
+        framed("A 13 2d2d746f6b656e", "B 13 ok"),
+        // An answer with no end, and a form this script never prints.
+        framed("A 13 2d2d6d616e616765642d6461656d6f6e"),
+        framed("B 13 maybe"),
+        framed("A 13 zz", "B 13 ok"),
+    ])
+    func malformedArgumentsFailTheRead(output: String) {
+        #expect(throws: HostProcessReader.MalformedOutput.self) {
+            _ = try Self.parse(output, request: Self.argumentRequest)
+        }
+    }
+
+    @Test(arguments: ["", "a b", "a'b", "$(id)", "a;b", "a\nb", "路径", "a=b"])
+    func anArgumentThatIsNotAPlainWordIsRefused(word: String) {
+        #expect(throws: HostProcessReader.Refusal.argument(word)) {
+            _ = try HostProcessReader.script(
+                HostProcessReader.Request(pids: ["13"], argumentsAmong: [word]), nonce: Self.nonce)
+        }
+    }
+
     @Test func bytesThatAreNotTextFailTheReadWithoutCrashing() {
         #expect(throws: HostProcessReader.MalformedOutput.self) {
             _ = try HostProcessReader.parse(

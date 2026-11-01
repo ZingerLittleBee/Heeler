@@ -54,6 +54,28 @@ enum CodexLaunch {
         RemoteFilePath.join(home, ".codex", "app-server-control", "app-server-control.sock")
     }
 
+    /// The control socket under the `CODEX_HOME` of a Codex whose environment
+    /// Heeler has read (ADR 0034).
+    static func controlSocketPath(codexHome: String) -> String {
+        RemoteFilePath.join(codexHome, "app-server-control", "app-server-control.sock")
+    }
+
+    /// `launchesOnSharedServer(_:)` for a herdr-core Terminal's foreground, whose
+    /// argv may start with the Node that runs npm's launcher.
+    static func launchesOnSharedServer(foreground: HerdrCoreForeground?) -> Bool? {
+        guard let foreground else { return nil }
+        var argv = foreground.argv
+        if argv.first.map(lastComponent) != "codex", argv.dropFirst().first.map(lastComponent) == "codex" {
+            argv.removeFirst()
+        }
+        return launchesOnSharedServer(
+            PaneProcessInfo(
+                paneID: "",
+                foregroundProcesses: [
+                    PaneProcessInfoProcess(name: foreground.name, pid: foreground.pid ?? 0, argv: argv)
+                ]))
+    }
+
     /// True when the pane's foreground job runs Codex's terminal UI and no
     /// Codex process in it was launched with an option that keeps it off the
     /// shared server; nil when no process there is Codex with known

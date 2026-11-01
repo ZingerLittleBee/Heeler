@@ -1446,6 +1446,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let session = session
         let core = inventoryCore
         let binder = HerdrCoreSessionBinder(
+            program: program,
             processes: { request in
                 try await session.withTransport { try await $0.readProcesses(request) }
             },
@@ -1455,8 +1456,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             },
             currentLabels: {
                 await self.terminalLabels(at: paneID, on: core)
-            },
-            program: program)
+            })
         return try await binder.check(record, coreCarries: leakedEnvironmentNames)
     }
 
@@ -1498,7 +1498,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             home: {
                 try await session.withTransport { $0.hostServices }.hostHomeDirectory()
             },
-            queryOpenCode: nil)
+            queryOpenCode: { query in
+                try await session.withTransport { $0.hostServices }.queryOpenCode(query)
+            })
     }
 
     func remoteHomeDirectory() async throws -> String {
