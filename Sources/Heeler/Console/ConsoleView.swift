@@ -92,6 +92,11 @@ struct ConsoleView: View {
     /// beside their own detail, so a list tab comes back to what it showed
     /// rather than to the other list's pick.
     @State private var rememberedSelections: [ConsoleTab: ParkedSelection] = [:]
+    /// The core each detail in this window keeps to, past its views.
+    @State private var detailCores = ConsoleDetailCores()
+    /// Bumped by each pick that replaces a detail left on a gone core, at an address
+    /// a new detail would otherwise reuse the old one's state for.
+    @State private var detailOpening = 0
     /// A request to open Hosts, as a tab or a sheet, on one Host's detail.
     /// Each request rebuilds the list so it lands there even when that Host
     /// is already on its stack.
@@ -156,6 +161,10 @@ struct ConsoleView: View {
     @Environment(\.agentSceneRouting) private var sceneRouting
 
     var body: some View {
+        tabs.modifier(ConsoleDetailCoresRetention(cores: detailCores, held: heldDetails))
+    }
+
+    private var tabs: some View {
         TabView(selection: tabViewSelection) {
             Tab(ConsoleTab.agents.title, systemImage: "sparkles", value: ConsoleTab.agents) {
                 splitView(for: usesSidebarNavigation ? shownListTab : .agents)
@@ -212,6 +221,7 @@ struct ConsoleView: View {
                     // A fresh launch lands in its own terminal, exactly
                     // as tapping the new row would, on the list that has it.
                     if currentTab != .agents { selectedTab.wrappedValue = .agents }
+                    openAnew(.agent(id))
                     notificationRouter.path = [id]
                     detailDidOpenFromSidebar()
                 }
@@ -637,6 +647,24 @@ struct ConsoleView: View {
         isShowingHostsSheet = false
         pendingSettingsHostID = nil
         isShowingSettingsSheet = false
+    }
+
+    /// What the detail column shows, whatever the list marks.
+    private var detailOnStage: ConsoleSelection? {
+        if let id = notificationRouter.path.last { return .agent(id) }
+        return selectedTerminal.map { .terminal($0.id) }
+    }
+
+    /// The details this window may come back to as they were.
+    private var heldDetails: Set<ConsoleSelection> {
+        var held = Set(rememberedSelections.values.map(\.selection))
+        if let detailOnStage { held.insert(detailOnStage) }
+        return held
+    }
+
+    /// Replaces a detail left on a gone core, if `selection` names one.
+    private func openAnew(_ selection: ConsoleSelection) {
+        if detailCores.openAnew(selection, console: console) { detailOpening += 1 }
     }
 
     /// What the detail shows, as a list tab parks it.
@@ -1201,8 +1229,10 @@ struct ConsoleView: View {
     private var selectedItem: Binding<ConsoleSelection?> {
         Binding(
             get: {
-                if let id = notificationRouter.path.last { return .agent(id) }
-                return selectedTerminal.map { .terminal($0.id) }
+                guard let shown = detailOnStage else { return nil }
+                // Beside the list only: pushed over it, the row is out of reach.
+                return horizontalSizeClass == .regular
+                    ? detailCores.listSelection(for: shown, console: console) : shown
             },
             set: { selection in
                 switch selection {
@@ -1211,6 +1241,7 @@ struct ConsoleView: View {
                     if let terminal = console.terminals.first(where: { $0.id == id }) {
                         selectTerminal(terminal)
                     }
+                case .leftBehind: break
                 case nil: clearSelection()
                 }
                 if selection != nil { detailDidOpenFromSidebar() }
@@ -1272,6 +1303,7 @@ struct ConsoleView: View {
 
     private func selectAgent(_ id: ConsoleAgent.ID) {
         changeSelection {
+            openAnew(.agent(id))
             showAgentsList(parking: parkedSelection)
             selectedTerminal = nil
             notificationRouter.path = [id]
@@ -1283,6 +1315,7 @@ struct ConsoleView: View {
             selectAgent(agentID)
         } else {
             changeSelection {
+                openAnew(.terminal(terminal.id))
                 notificationRouter.path = []
                 selectedTerminal = terminal
             }
@@ -1415,12 +1448,13 @@ struct ConsoleView: View {
                         }
                     },
                     repeatLandings: notificationRouter.repeatLandings,
-                    shellRoute: shellRoute(over: id)
+                    shellRoute: shellRoute(over: id),
+                    composerSession: detailCores.session(for: agent, console: console)
                 )
                 // Selecting another Agent must tear down the previous terminal
                 // pipeline; without the explicit identity the detail column
                 // would reuse the old view's state.
-                .id(id)
+                .id(ConsoleDetailIdentity(shown: .agent(id), opening: detailOpening))
             } else {
                 // The Agent is gone from the list, but not necessarily
                 // because its pane went: a failed Host empties the list the
@@ -1438,6 +1472,7 @@ struct ConsoleView: View {
                 terminal: console.terminals.first(where: { $0.id == selectedTerminal.id })
                     ?? selectedTerminal,
                 console: console,
+                corePin: detailCores.pin(for: selectedTerminal, console: console),
                 settings: terminal,
                 activity: activity,
                 onSelectAgent: { selectAgent($0) },
@@ -1451,7 +1486,7 @@ struct ConsoleView: View {
                 },
                 keyboardHandoff: keyboardHandoff,
                 onBack: { clearSelection() })
-                .id(selectedTerminal.id)
+                .id(ConsoleDetailIdentity(shown: .terminal(selectedTerminal.id), opening: detailOpening))
         } else {
             ConsoleEmptyDetailView(
                 presentation: ConsoleEmptyDetailPresentation(
@@ -1838,7 +1873,7 @@ struct ConsoleView: View {
         agentLink(
             agent,
             background: ConsoleRowSelectionBackground(
-                isSelected: notificationRouter.path.last == agent.id)
+                isSelected: selectedItem.wrappedValue == .agent(agent.id))
         ) {
             AgentCardView(
                 agent: agent,
@@ -2830,6 +2865,25 @@ private struct ConsoleAgentListStyle: ViewModifier {
 enum ConsoleSelection: Hashable {
     case agent(ConsoleAgent.ID)
     case terminal(ConsoleTerminal.ID)
+    /// A detail left on a core its Host no longer serves. No row carries this: the
+    /// row at its address is another Terminal (see `ConsoleDetailCores`).
+    indirect case leftBehind(ConsoleSelection)
+}
+
+/// Lets the details this window can no longer come back to go.
+private struct ConsoleDetailCoresRetention: ViewModifier {
+    let cores: ConsoleDetailCores
+    let held: Set<ConsoleSelection>
+
+    func body(content: Content) -> some View {
+        content.onChange(of: held) { _, held in cores.keep(only: held) }
+    }
+}
+
+/// A detail's identity in the detail column.
+private struct ConsoleDetailIdentity: Hashable {
+    let shown: ConsoleSelection
+    let opening: Int
 }
 
 /// What a list tab showed when the other list took the stage.
@@ -2838,6 +2892,13 @@ private enum ParkedSelection {
     /// The terminal itself, not its id: a reconnecting Host lists none of
     /// its terminals, and the tab still comes back to this one.
     case terminal(ConsoleTerminal)
+
+    var selection: ConsoleSelection {
+        switch self {
+        case .agent(let id): .agent(id)
+        case .terminal(let terminal): .terminal(terminal.id)
+        }
+    }
 }
 
 extension EnvironmentValues {

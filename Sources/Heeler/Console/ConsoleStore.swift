@@ -736,7 +736,7 @@ final class ConsoleStore {
     func composerSession(for agent: ConsoleAgent) -> AgentComposerSession {
         let hostID = agent.hostID
         // Another core's Agent is another Agent. A detail still open on the old
-        // one keeps its own session, which keeps to the old core.
+        // one keeps its own session, which keeps to the old core (`ConsoleDetailCores`).
         if let existing = composerSessions[agent.id] {
             if !hasLeftCore(existing.corePin, on: hostID) { return existing }
             existing.leaveStaging()

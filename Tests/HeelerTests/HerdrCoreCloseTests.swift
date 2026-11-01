@@ -564,6 +564,93 @@ struct HerdrCoreCloseTests {
         #expect(await transport.kills == ["t1", "t2"])
     }
 
+    // MARK: What a window's details keep to
+
+    /// Rebuilt after the move, a detail gets what it held, not the new core's.
+    @Test func aDetailRebuiltAfterTheMoveKeepsItsCoreAndSendsNothing() async throws {
+        let (store, transport) = try await started([Self.agent("t1")])
+        defer { store.setHosts([]) }
+        let cores = ConsoleDetailCores()
+        let session = cores.session(for: try #require(store.agents.first), console: store)
+
+        try await moveToAnotherCore(store, transport)
+        let rebuilt = cores.session(for: try #require(store.agents.first), console: store)
+
+        #expect(rebuilt === session)
+        await #expect(throws: TransportError.herdrCoreTerminalGone) {
+            try await store.closePane("t1", on: self.host.id, keepingTo: rebuilt.corePin)
+        }
+        #expect(await transport.kills.isEmpty)
+        #expect(await transport.mutations.isEmpty)
+    }
+
+    @Test func onlyAPickFromTheListOpensTheNewCoresTerminal() async throws {
+        let (store, transport) = try await started([Self.agent("t1")])
+        defer { store.setHosts([]) }
+        let cores = ConsoleDetailCores()
+        let id = try #require(store.agents.first).id
+        let session = cores.session(for: try #require(store.agents.first), console: store)
+        #expect(cores.listSelection(for: .agent(id), console: store) == .agent(id))
+        #expect(!cores.openAnew(.agent(id), console: store))
+
+        try await moveToAnotherCore(store, transport)
+        #expect(cores.listSelection(for: .agent(id), console: store) == .leftBehind(.agent(id)))
+        #expect(cores.openAnew(.agent(id), console: store))
+        let reopened = cores.session(for: try #require(store.agents.first), console: store)
+
+        #expect(reopened !== session)
+        #expect(cores.listSelection(for: .agent(id), console: store) == .agent(id))
+        #expect(!cores.openAnew(.agent(id), console: store))
+        try await store.closePane("t1", on: host.id, keepingTo: reopened.corePin)
+        #expect(await transport.kills == ["t1"])
+    }
+
+    @Test func aShellDetailKeepsItsCoreUntilItsRowIsPicked() async throws {
+        let (store, transport) = try await started([Self.shell("t2", labels: Self.tab("a"))])
+        defer { store.setHosts([]) }
+        let cores = ConsoleDetailCores()
+        let terminal = try #require(store.terminals.first)
+        let pin = cores.pin(for: terminal, console: store)
+
+        try await moveToAnotherCore(store, transport)
+        let newTerminal = try #require(store.terminals.first)
+        #expect(cores.pin(for: newTerminal, console: store) === pin)
+        await #expect(throws: TransportError.herdrCoreTerminalGone) {
+            try await store.closePane("t2", on: self.host.id, keepingTo: pin)
+        }
+        #expect(await transport.kills.isEmpty)
+        #expect(cores.listSelection(for: .terminal(terminal.id), console: store) == .leftBehind(.terminal(terminal.id)))
+
+        #expect(cores.openAnew(.terminal(terminal.id), console: store))
+        let reopened = cores.pin(for: newTerminal, console: store)
+        #expect(reopened !== pin)
+        try await store.closePane("t2", on: host.id, keepingTo: reopened)
+        #expect(await transport.kills == ["t2"])
+    }
+
+    /// A detail parked under a tab comes back as it was; one the window left is
+    /// opened anew.
+    @Test func aWindowKeepsOnlyTheDetailsItMayComeBackTo() async throws {
+        let (store, transport) = try await started([Self.agent("t1"), Self.agent("t2")])
+        defer { store.setHosts([]) }
+        let cores = ConsoleDetailCores()
+        let parked = try #require(store.agents.first { $0.agent.paneID == "t1" })
+        let left = try #require(store.agents.first { $0.agent.paneID == "t2" })
+        let parkedSession = cores.session(for: parked, console: store)
+        let leftSession = cores.session(for: left, console: store)
+
+        cores.keep(only: [.agent(parked.id)])
+        try await moveToAnotherCore(store, transport)
+
+        let parkedRow = try #require(store.agents.first { $0.agent.paneID == "t1" })
+        let leftRow = try #require(store.agents.first { $0.agent.paneID == "t2" })
+        #expect(cores.session(for: parkedRow, console: store) === parkedSession)
+        let reopened = cores.session(for: leftRow, console: store)
+        #expect(reopened !== leftSession)
+        try await store.closePane("t2", on: host.id, keepingTo: reopened.corePin)
+        #expect(await transport.kills == ["t2"])
+    }
+
     /// The same core back after a restart is the same Terminals.
     @Test func aDetailKeepsActingAcrossARestartOfItsOwnCore() async throws {
         let (store, transport) = try await started([Self.agent("t1")])

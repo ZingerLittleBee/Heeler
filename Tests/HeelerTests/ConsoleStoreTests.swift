@@ -225,6 +225,27 @@ struct ConsoleStoreTests {
         #expect(TerminalStatusPresentation.finished.message == "Its program exited, so it will not come back.")
     }
 
+    /// A Herdr TUI Host has no core, so a window holds nothing for its details: the
+    /// store's session is theirs, and a pick from the list replaces none of them.
+    @Test func aHerdrTUIDetailHasNoCoreToKeepTo() {
+        let tui = Host.fixture()
+        let store = makeStore(transports: [tui.id: ScriptedTransport()])
+        defer { store.setHosts([]) }
+        store.setHosts([tui])
+        let agent = ConsoleAgent(
+            hostID: tui.id, hostName: tui.displayName,
+            agent: Agent(
+                terminalID: "t", kind: "claude", title: "", status: .idle,
+                workspaceID: "w", tabID: "t", paneID: "w1-1", cwd: "", revision: 1),
+            workspaceLabel: nil, repositoryCheckout: nil, snapshotOrder: 0)
+        let cores = ConsoleDetailCores()
+
+        #expect(cores.session(for: agent, console: store) === store.composerSession(for: agent))
+        #expect(cores.listSelection(for: .agent(agent.id), console: store) == .agent(agent.id))
+        #expect(!cores.openAnew(.agent(agent.id), console: store))
+        #expect(cores.session(for: agent, console: store) === store.composerSession(for: agent))
+    }
+
     /// Actions only Herdr TUI can serve are offered by Server Kind, not
     /// attempted and failed (ADR 0032). Later tickets turn on each core action
     /// as they build it.

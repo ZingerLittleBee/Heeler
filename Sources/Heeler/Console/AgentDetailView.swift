@@ -669,6 +669,7 @@ struct AgentDetailView: View {
             terminal: console.terminals.first(where: { $0.id == route.terminal.id })
                 ?? route.terminal,
             console: console,
+            corePin: session.corePin,
             settings: terminal,
             activity: activity,
             onSelectAgent: { id in
