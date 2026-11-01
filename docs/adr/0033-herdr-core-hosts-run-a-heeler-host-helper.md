@@ -194,7 +194,7 @@ Hosts are unchanged.
   show in every client's terminal list.
 - `gui/<uid>` for the LaunchAgent. It reaches the login Keychain and loads at
   each desktop login, but it cannot be installed while nobody is logged in and
-  the Helper would stop at logout, which is when notifications matter most.
+  the Helper would stop at logout.
 - Asking for each extension separately. The two folders load files without
   configuration or trust prompts and are cleaned by deleting the files, so
   one listed install is enough.
@@ -215,11 +215,11 @@ Hosts are unchanged.
   check reads the unit's state, result and restart count, because a Helper
   that keeps failing at start, for example after Node.js moved, ends up
   failed for good.
-- A restart of the Mac loads nothing into `user/<uid>`, whatever folder holds
-  the property list: not at boot, not at the first SSH login, not at a desktop
-  login. So there, unlike under linger, the Helper is down until the app next
-  connects, finds the agent missing and bootstraps it again, and no notification
-  goes out in between.
+- A restart of the Mac loads nothing into `user/<uid>`, even with the property
+  list in `~/Library/LaunchAgents`: not at boot, not at the first SSH login, not
+  at a desktop login. So there, unlike under linger, the Helper is down until
+  the app next connects, finds the agent missing and bootstraps it again, and no
+  notification goes out in between.
 - launchd never settles on failed. A Helper that keeps failing reads
   `spawn scheduled` with a last exit that is not zero, so the health check reads
   those two together. A move of Node.js shows exit 78 and stops the run count;
