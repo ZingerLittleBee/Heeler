@@ -197,7 +197,9 @@ struct TerminalListView: View {
         } description: {
             Text("Shell panes on your Hosts appear here, grouped by Workspace.")
         } actions: {
-            if !hosts.offeringNewItem(listsTerminals: true).isEmpty {
+            if !hosts.offeringNewItem(
+                listsTerminals: true, capabilities: { console.capabilities(for: $0.id) }
+            ).isEmpty {
                 Button("New Terminal", action: onNewTerminal)
                     .buttonStyle(.borderedProminent)
                     .hoverEffect(.highlight)

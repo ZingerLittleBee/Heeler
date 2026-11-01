@@ -97,6 +97,83 @@ import Testing
         }
     }
 
+    // MARK: The same wire as a Unix core's
+
+    /// The frames only a client writes: what Windows received is what this app
+    /// encodes, and CLOSE is the Unix capture's byte for byte.
+    @Test func whatTheCaptureSawFromAClientIsWhatTheAppEncodes() throws {
+        let resize = try #require(vectors.frames.first { $0.name == "resize-from-client" })
+        #expect(
+            try HerdrCoreFrame.resize(channel: 2, columns: 90, rows: 25).encoded()
+                == HerdrCoreVectorFile.bytes(hex: resize.bytes))
+        let credit = try #require(vectors.frames.first { $0.name == "credit-from-client" })
+        #expect(
+            try HerdrCoreFrame.credit(channel: 2, bytes: 277).encoded()
+                == HerdrCoreVectorFile.bytes(hex: credit.bytes))
+    }
+
+    @Test func aWindowsResizeAndCreditHaveTheUnixFramesShape() throws {
+        func frame(_ file: HerdrCoreVectorFile, _ name: String) throws -> HerdrCoreFrame {
+            try oneFrame(hex: try #require(file.frames.first { $0.name == name }).bytes).frame
+        }
+        let unix = HerdrCoreVectorFile.shared
+        let resize = (try frame(vectors, "resize-from-client"), try frame(unix, "resize-80x24"))
+        #expect(resize.0.kind == resize.1.kind)
+        #expect(resize.0.payload.count == resize.1.payload.count)
+        let credit = (try frame(vectors, "credit-from-client"), try frame(unix, "credit-256-kib"))
+        #expect(credit.0.kind == credit.1.kind)
+        #expect(credit.0.payload.count == credit.1.payload.count)
+    }
+
+    @Test func aCoreEndingATerminalWritesTheSameCloseKeysAsOnUnix() throws {
+        func keys(_ hex: String) throws -> Set<String> {
+            let frame = try oneFrame(hex: hex).frame
+            #expect(frame.kind == .close)
+            guard case .object(let fields) = try JSONDecoder().decode(JSONValue.self, from: frame.payload) else {
+                Issue.record("a CLOSE's payload is an object")
+                return []
+            }
+            return Set(fields.keys)
+        }
+        let windows = try #require(vectors.frames.first { $0.name == "close-terminal-killed" })
+        let unix = try #require(HerdrCoreVectorFile.shared.frames.first { $0.name == "close-program-ended" })
+        #expect(try keys(windows.bytes) == (try keys(unix.bytes)))
+    }
+
+    @Test func helloAndTheFirstAnswersHaveTheUnixFields() throws {
+        func hello(_ file: HerdrCoreVectorFile) throws -> JSONValue {
+            let reply = try JSONDecoder().decode(JSONValue.self, from: Data(file.hello.reply.utf8))
+            return try #require(reply["result"])
+        }
+        func keys(_ value: JSONValue?) -> Set<String> {
+            guard case .object(let fields)? = value else { return [] }
+            return Set(fields.keys)
+        }
+        let unix = HerdrCoreVectorFile.shared
+        #expect(keys(try hello(vectors)) == keys(try hello(unix)))
+        #expect(try hello(vectors)["features"] == (try hello(unix)["features"]))
+        #expect(try hello(vectors)["framed"] == .bool(true))
+        for name in ["server-status", "events-subscribe"] {
+            #expect(keys(try vectors.exchange(name).result) == keys(try unix.exchange(name).result), "\(name)")
+        }
+    }
+
+    /// The same names decode to the same event, whichever core wrote them.
+    @Test func everyEventBothCapturesNameDecodesToTheSameEvent() throws {
+        func decoded(_ line: String) throws -> String? {
+            var cursor = HerdrCoreTypedEventCursor(sequence: 0)
+            guard let event = try cursor.decode(line: Data(line.utf8)) else { return nil }
+            return Mirror(reflecting: event).children.first?.label ?? "\(event)"
+        }
+        let unix = HerdrCoreVectorFile.shared
+        let shared = ["created", "title", "foreground", "labels", "size", "finished", "removed", "heartbeat"]
+        for name in shared {
+            let windowsLine = try #require(vectors.events.first { $0.name == name }, "\(name)").line
+            let unixLine = try #require(unix.events.first { $0.name == name }, "\(name)").line
+            #expect(try decoded(windowsLine) == (try decoded(unixLine)), "\(name)")
+        }
+    }
+
     @Test func eventLinesDecodeWithPowerShellAsTheForeground() throws {
         var cursor = HerdrCoreTypedEventCursor(sequence: 0)
         for name in ["foreground-heeler-form", "foreground-desktop-form"] {

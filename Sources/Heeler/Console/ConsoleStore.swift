@@ -1863,7 +1863,8 @@ final class ConsoleStore {
             platform: hostPlatforms[hostID],
             desktopAppNaming: hostDesktopAppNaming[hostID],
             coreKernel: hostCoreKernels[hostID],
-            coreChatPrograms: coreChatPrograms)
+            coreChatPrograms: coreChatPrograms,
+            isLocatingCore: hostStatuses[hostID] == .connecting)
     }
 
     // MARK: Harness configuration edits

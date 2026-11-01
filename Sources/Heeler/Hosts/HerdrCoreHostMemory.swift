@@ -1,7 +1,7 @@
 import Foundation
 
 /// What this device remembers of each herdr-core Host: the core it last spoke
-/// to, the directory it first saw each Terminal launched in, which decides that
+/// to, the kernel a locator last found, the directory it first saw each Terminal launched in, which decides that
 /// Terminal's derived Workspace (ADR 0032), and each Terminal's turns and seen
 /// mark, which decide Done on this device (ADR 0033). None of it is a secret or
 /// shared with the Host. It goes with the Host, and starts over when the Host's
@@ -10,6 +10,8 @@ import Foundation
 final class HerdrCoreHostMemory {
     private struct Entry: Codable, Equatable {
         var coreID: String?
+        /// As `uname -s` prints it, for a Host whose connection has yet to say.
+        var kernel: String?
         var directories: [String: String] = [:]
         var turns: [String: HerdrCoreTurnState] = [:]
 
@@ -21,6 +23,7 @@ final class HerdrCoreHostMemory {
         init(from decoder: any Decoder) throws {
             let fields = try decoder.container(keyedBy: CodingKeys.self)
             coreID = try fields.decodeIfPresent(String.self, forKey: .coreID)
+            kernel = try fields.decodeIfPresent(String.self, forKey: .kernel)
             directories = try fields.decodeIfPresent([String: String].self, forKey: .directories) ?? [:]
             turns = try fields.decodeIfPresent([String: HerdrCoreTurnState].self, forKey: .turns) ?? [:]
         }
@@ -43,6 +46,19 @@ final class HerdrCoreHostMemory {
 
     func coreID(for hostID: Host.ID) -> String? {
         entries[hostID]?.coreID
+    }
+
+    func kernel(for hostID: Host.ID) -> String? {
+        entries[hostID]?.kernel
+    }
+
+    /// What a locator last found, which outlives the core it found.
+    func noteKernel(_ kernel: String, for hostID: Host.ID) {
+        var entry = entries[hostID] ?? Entry()
+        guard entry.kernel != kernel else { return }
+        entry.kernel = kernel
+        entries[hostID] = entry
+        save()
     }
 
     func firstSeenDirectories(for hostID: Host.ID) -> [String: String] {
@@ -68,7 +84,9 @@ final class HerdrCoreHostMemory {
     /// The core a `hello` reported. Another core forgets the old one's Terminals.
     func noteCore(_ coreID: String, for hostID: Host.ID) {
         guard entries[hostID]?.coreID != coreID else { return }
-        entries[hostID] = Entry(coreID: coreID)
+        var entry = Entry(coreID: coreID)
+        entry.kernel = entries[hostID]?.kernel
+        entries[hostID] = entry
         save()
     }
 

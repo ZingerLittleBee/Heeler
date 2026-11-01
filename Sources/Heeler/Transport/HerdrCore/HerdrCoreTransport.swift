@@ -23,6 +23,9 @@ protocol HerdrCoreTransport: Sendable {
     /// What the last locator run found, for a caller that reads why `hello` failed.
     func lastLocation() async -> HerdrCoreLocator.Location?
 
+    /// What this connection has learned of the Host's kernel, reading no Host.
+    func lastKernel() async -> String?
+
     /// One named variable of one process, in one bounded exec, for finding where
     /// that process's program keeps its configuration. Never says why it could not.
     func processVariable(_ name: String, pid: Int) async -> HostProcessReader.Variable
@@ -97,11 +100,20 @@ protocol HerdrCoreTransport: Sendable {
     /// `.coreMutationOutcomeUnknown`. Nothing here sends it again.
     func renameDesktopSpace(_ space: String, name: String) async throws
 
+    /// The Checkout of each directory, for naming a space and knowing a Worktree,
+    /// by the Host's platform. As `HostServices.checkouts`, a directory in no
+    /// checkout has no entry. On native Windows it knows only the top level.
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout]
+
     /// Closes the link, then the connection.
     func close() async throws
 }
 
 extension HerdrCoreTransport {
+    func lastKernel() async -> String? {
+        await lastLocation()?.kernel
+    }
+
     /// The core's `hello`. A channel refused with the socket file present may be
     /// a core its holder is about to restart, so it is polled before the failure
     /// is believed, without running the locator again. A missing socket file
@@ -196,8 +208,20 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
 
     var isConnected: Bool { get async }
 
+    /// Which path this Host takes. A platform branch, known before any channel
+    /// opens, so a Unix Host's refused channel can never lead to the Windows path.
+    /// Unlike `hostPlatform`, a Host whose home could not be read answers POSIX.
+    func corePlatform() async throws -> HostPlatform
+
     /// Runs the locator's script in one bounded exec.
     func runCoreLocator(_ script: Data) async throws -> GitExecResult
+
+    /// Runs a native Windows Host's locator, a whole command line, in one bounded exec.
+    func runWindowsCoreProbe(_ command: String) async throws -> GitExecResult
+
+    /// Runs a native Windows Host's checkout read, a whole command line, in one
+    /// bounded exec.
+    func runWindowsCheckoutRead(_ command: String) async throws -> GitExecResult
 
     /// Runs the confirmed Start's script in one bounded exec.
     func runCoreStart(_ script: Data) async throws -> GitExecResult
@@ -217,11 +241,16 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     /// A channel nobody answers throws `TransportError.streamLocalOpenFailed`.
     func openCoreLinkChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel
 
+    /// Opens a native Windows Host's link as one exec under that same slot, since a
+    /// pipe cannot be forwarded. The caller owes it the pipe check first (ADR 0031).
+    func openCoreLinkExec(command: String) async throws -> any WindowsTerminalExecChannel
+
     func close() async throws
 }
 
-/// The framed Unix transport: one locator exec, then one link over a forwarded
-/// channel to the socket it found.
+/// The framed transport: one locator exec, then one link to the core it found,
+/// over a forwarded channel on Unix and one exec of `connect` on native Windows.
+/// That choice is the Host's platform, never a fallback (ADR 0031).
 actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private static let callDeadline: Duration = .seconds(10)
     /// The core itself gives a program 10 seconds to spawn, after starting a
@@ -243,6 +272,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     /// next call looks at the Host again.
     private var opening: Task<Opened, any Error>?
     private var located: HerdrCoreLocator.Location?
+    /// Answered once per connection. A failure is not kept.
+    private var platform: HostPlatform?
     private var environmentCheck: (link: HerdrCoreLink, answer: Task<Set<String>, Never>)?
     /// The core of the last subscribe. Nil before one, as on a preflight.
     private var inventoryCoreID: String?
@@ -268,14 +299,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
 
     func locate() async throws -> HerdrCoreLocator.Location {
         let nonce = nonce()
-        let script: Data
-        do {
-            script = try HerdrCoreLocator.script(session: session, nonce: nonce)
-        } catch is HerdrCoreLocator.SessionRefused {
-            throw TransportError.hostFeatureUnavailable(
-                feature: "herdr-core refuses the session name \"\(session)\"")
-        }
-        let result = try await connection.runCoreLocator(script)
+        let result = try await runLocator(nonce: nonce)
         if HerdrCoreLocator.wasCutShort(stdout: result.stdout, exitStatus: result.exitStatus, nonce: nonce) {
             throw TransportError.channelFailed(detail: "herdr-core: The locator was cut short.")
         }
@@ -292,12 +316,44 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         }
     }
 
+    private func runLocator(nonce: String) async throws -> GitExecResult {
+        if try await resolvedPlatform() == .nativeWindows {
+            do {
+                return try await connection.runWindowsCoreProbe(
+                    try HerdrCoreLocator.windowsProbe(session: session, nonce: nonce))
+            } catch is HerdrCoreLocator.SessionRefused {
+                throw TransportError.hostFeatureUnavailable(
+                    feature: HerdrCoreSessionName.windowsRefusal(session) ?? "")
+            }
+        }
+        do {
+            return try await connection.runCoreLocator(
+                try HerdrCoreLocator.script(session: session, nonce: nonce))
+        } catch is HerdrCoreLocator.SessionRefused {
+            throw TransportError.hostFeatureUnavailable(
+                feature: "herdr-core refuses the session name \"\(session)\"")
+        }
+    }
+
+    private func resolvedPlatform() async throws -> HostPlatform {
+        if let platform { return platform }
+        let answer = try await connection.corePlatform()
+        platform = answer
+        return answer
+    }
+
     var isConnected: Bool {
         get async { await connection.isConnected }
     }
 
     func lastLocation() async -> HerdrCoreLocator.Location? {
         located
+    }
+
+    /// A session name Windows refuses stops at the platform branch, before any
+    /// locator, and a Host that can never connect still has to say what it offers.
+    func lastKernel() async -> String? {
+        located?.kernel ?? (platform == .nativeWindows ? HerdrCoreLocator.windowsKernel : nil)
     }
 
     /// The core's own clock says how long it has been up, so the elapsed time is
@@ -465,6 +521,22 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         }
     }
 
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
+        guard try await resolvedPlatform() == .nativeWindows else {
+            return try await connection.checkouts(for: directories)
+        }
+        let nonce = nonce()
+        var checkouts: [String: HostCheckout] = [:]
+        for batch in GitProbe.windowsCheckoutRootBatches(directories, nonce: nonce) {
+            let result = try await connection.runWindowsCheckoutRead(
+                GitProbe.windowsCheckoutRootsCommand(directories: batch, nonce: nonce))
+            checkouts.merge(
+                try GitProbe.parseWindowsCheckoutRoots(stdout: result.stdout, nonce: nonce, directories: batch)
+            ) { _, answer in answer }
+        }
+        return checkouts
+    }
+
     func close() async throws {
         let opening = opening
         self.opening = nil
@@ -524,7 +596,9 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
 
     private func establish(reusingLocation: Bool) async throws -> Opened {
         let location: HerdrCoreLocator.Location
-        if reusingLocation, let located {
+        // A pipe is checked before every `connect`, since nothing else stands
+        // between a stopped core and that exec starting one.
+        if reusingLocation, let located, !located.isNativeWindows {
             location = located
         } else {
             location = try await locate()
@@ -536,13 +610,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             throw TransportError.herdrCoreSocketPathTooLong(
                 path: location.socketPath, limit: location.socketPathLimit)
         }
-        let channel: any HeelerSSHAPIChannel
-        do {
-            channel = try await connection.openCoreLinkChannel(socketPath: location.socketPath)
-        } catch TransportError.streamLocalOpenFailed {
-            throw TransportError.herdrCoreNotRunning(
-                socketPath: location.socketPath, socketFilePresent: location.socketFilePresent)
-        }
+        let channel = try await openChannel(to: location)
         do {
             let (link, info) = try await HerdrCoreLink.connect(
                 over: channel, helloDeadline: Self.callDeadline, sleep: sleep)
@@ -552,7 +620,28 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         }
     }
 
+    private func openChannel(to location: HerdrCoreLocator.Location) async throws -> any HeelerSSHAPIChannel {
+        if location.isNativeWindows {
+            guard location.socketFilePresent else {
+                throw TransportError.herdrCoreNotRunning(
+                    socketPath: location.socketPath, socketFilePresent: false)
+            }
+            let exec = try await connection.openCoreLinkExec(
+                command: try HerdrCoreLocator.windowsConnectCommand(session: session))
+            return BootstrappedExecChannel(
+                channel: exec, startupFailure: "herdr-core connect exited before its stream started.")
+        }
+        do {
+            return try await connection.openCoreLinkChannel(socketPath: location.socketPath)
+        } catch TransportError.streamLocalOpenFailed {
+            throw TransportError.herdrCoreNotRunning(
+                socketPath: location.socketPath, socketFilePresent: location.socketFilePresent)
+        }
+    }
+
     private static func updateCommand(_ executablePath: String) -> String {
-        "\(executablePath) update"
+        RemoteHostPath.isWindowsAbsolute(executablePath)
+            ? HerdrCoreStart.windowsUpdateCommand(executablePath: executablePath)
+            : "\(executablePath) update"
     }
 }

@@ -96,9 +96,9 @@ protocol HostServices: Sendable {
     /// The Checkout of each directory, in one git script over one exec. Asks
     /// about at most `GitProbe.checkoutRootsPerCall` of them, the first ones; a
     /// directory it asked about and that is in no checkout has no entry. Only a
-    /// herdr-core projection asks, to name a desktop space nobody named and to
-    /// know a Worktree. A caller goes through the Host's `GitExecGate`, as
-    /// Changes does.
+    /// herdr-core projection and Worktree ask, a projection through
+    /// `HerdrCoreTransport.checkouts`, which picks the read for the Host's platform.
+    /// A caller goes through the Host's `GitExecGate`, as Changes does.
     func checkouts(for directories: [String]) async throws -> [String: HostCheckout]
 
     /// One git command in one exec, the same way. A refusal comes back as its

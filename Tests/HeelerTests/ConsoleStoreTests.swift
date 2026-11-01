@@ -261,8 +261,9 @@ struct ConsoleStoreTests {
             composerSend: true, chat: true, tabNames: true, closeTab: true,
             syncLayoutFromPlugin: true))
         #expect(store.capabilities(for: tui.id).renameWorkspace(id: "w1"))
+        // Nothing is known of this core Host's platform before its first attempt.
         #expect(store.capabilities(for: core.id) == HostCapabilities(
-            startsAgents: true, startsTerminals: true, renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
+            startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
             composerSend: false, chat: false, tabNames: false, closeTab: true,
             syncLayoutFromPlugin: false, takeOver: false, composerStop: false))
         #expect(!store.capabilities(for: core.id).renameWorkspace(id: "w1"))
