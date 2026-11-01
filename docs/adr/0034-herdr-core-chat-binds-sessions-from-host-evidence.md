@@ -149,8 +149,10 @@ herdr-core Hosts only.
   since the scan needs a stored OAuth account; whether a signed-in account
   changes any of the evidence below, which never saw one; whether Claude Code's
   `procStart` on macOS equals the start `ps -o lstart=` prints;
-  `HC_TERMINAL_SOCKET`'s form on Windows; and whether Windows Transcripts are
-  read over SFTP or the core's `file.read`. Owner confirmation with a signed-in
+  `HC_TERMINAL_SOCKET`'s form on Windows; whether Windows Transcripts are
+  read over SFTP or the core's `file.read`; and whether a Host can work out an
+  Oh My Pi lock's name without running its code, since the hash is not
+  identified. Owner confirmation with a signed-in
   harness on hc-lab remains available, and is listed in #578's Owner acceptance.
 - Settled with a local fake model and no sign-in, in a throwaway Linux VM and
   not on hc-lab ([herdr compatibility](../agents/herdr-compatibility.md), which
@@ -158,10 +160,13 @@ herdr-core Hosts only.
   `Tests/HeelerTests/ChatFixtures/host-evidence`): Codex's embedded native
   process holds the rollout open from the first prompt, and its `session_meta`
   tells a root from a subagent; after `/new` it holds two roots, so one root
-  thread binds nothing. Pi's file appears at the first prompt, and no process
-  holds it. Oh My Pi's file appears with the first reply, its lock's name holds
-  no session id, and the process opens the file only after that reply, when the
-  title landed here.
+  thread binds nothing. Pi 1.4.0's file appears at the first prompt, before the
+  reply, Pi 0.85.1's only with the reply, and no process holds either. Oh My
+  Pi's file and session lock appear together with the first reply, and the
+  process opens the file later, as the title slot fills. The lock is one per
+  session, and the owners directory and session id decide its name, so it
+  covers the time the file is not open, though only the program's own code has
+  checked a name so far.
   Grok Build's row appears at startup, its `pid_start` is `/proc/<pid>/stat`'s
   start in clock ticks, `/new` adds a second matching row, and in leader mode
   the row still names the Terminal's process. OpenCode 2.0.32 and 2.2.5 create
