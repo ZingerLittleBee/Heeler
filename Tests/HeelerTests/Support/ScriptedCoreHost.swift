@@ -235,6 +235,11 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// Every `connect` exec's whole command line, oldest first.
     private(set) var connectCommands: [String] = []
     private var corePlatformFailure: TransportError?
+    /// What git prints as each directory's top level on a native Windows Host.
+    private var windowsGitRoots: [String: String] = [:]
+    private var windowsCheckoutAnswer: GitExecResult?
+    /// Every ask for the POSIX checkout script, which never reaches a Host here.
+    private(set) var posixCheckoutAsks = 0
 
     /// `shellBanner` is what the user's shell prints before it runs the script.
     init(
@@ -399,6 +404,46 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         let lines = windowsLocator ?? []
         let output = (["\(Self.nonce) begin"] + lines + ["\(Self.nonce) end"]).joined(separator: "\n") + "\n"
         return GitExecResult(stdout: shellBanner + Data(output.utf8), stderr: Data(), exitStatus: locatorStatus)
+    }
+
+    /// Prints what its script would: one line for each directory git answers for.
+    func runWindowsCheckoutRead(_ command: String) async throws -> GitExecResult {
+        log.append("windows-checkouts")
+        let body = try HerdrCoreWindowsLocatorTests.decoded(command)
+        scripts.append(body)
+        if let windowsCheckoutAnswer { return windowsCheckoutAnswer }
+        let lines = Self.windowsCheckoutDirectories(in: body).enumerated().compactMap { index, directory in
+            windowsGitRoots[directory].map { "root \(index) \($0)" }
+        }
+        let output = (["", "\(Self.nonce) begin"] + lines + ["\(Self.nonce) end"]).joined(separator: "\n") + "\n"
+        return GitExecResult(stdout: shellBanner + Data(output.utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    /// The literals of the script's directory list, as PowerShell reads them.
+    static func windowsCheckoutDirectories(in script: String) -> [String] {
+        let lines = script.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let start = lines.firstIndex(of: "$dirs = @("),
+            let end = lines[start...].firstIndex(of: ")")
+        else { return [] }
+        return lines[(start + 1)..<end].map {
+            String($0.dropFirst().dropLast()).replacingOccurrences(of: "''", with: "'")
+        }
+    }
+
+    func setWindowsGitRoots(_ roots: [String: String]) {
+        windowsGitRoots = roots
+    }
+
+    /// What every later checkout read gets instead of its script's output.
+    func setWindowsCheckoutAnswer(_ answer: GitExecResult?) {
+        windowsCheckoutAnswer = answer
+    }
+
+    /// `runGitScript` refuses native Windows before anything runs.
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
+        posixCheckoutAsks += 1
+        try refuseOnWindows("Changes")
+        throw ChangesReadError.unavailable
     }
 
     func runWindowsServerKindDetection(_ command: String) async throws -> GitExecResult {

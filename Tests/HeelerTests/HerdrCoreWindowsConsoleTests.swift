@@ -71,11 +71,11 @@ struct HerdrCoreWindowsConsoleTests {
     }
 
     private func waitUntil(
-        _ what: String, _ condition: @MainActor () -> Bool,
+        _ what: String, _ condition: @MainActor () async -> Bool,
         sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
         for _ in 0..<500 {
-            if condition() { return }
+            if await condition() { return }
             try await Task.sleep(for: .milliseconds(10))
         }
         Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
@@ -107,27 +107,80 @@ struct HerdrCoreWindowsConsoleTests {
         await finish(store)
     }
 
+    private func labelOnlySpace(
+        at directory: String, gitRoots: [String: String]
+    ) async throws -> (store: ConsoleStore, scripted: ScriptedCoreHost) {
+        let scripted = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(),
+            channel: .core(.init(terminals: [
+                Self.record("t1", cwd: directory, labels: ["herdr.space": "lonely"])
+            ])))
+        await scripted.setWindowsGitRoots(gitRoots)
+        let store = storeOnScripted(scripted)
+        store.setHosts([host])
+        await store.resume()
+        return (store, scripted)
+    }
+
+    /// From a subfolder of a repository, the space is named for the repository,
+    /// through the real transport's Windows path. Git for Windows prints `/`.
     @Test func aLabelOnlySpaceIsNamedForItsCheckoutFolder() async throws {
         let directory = #"C:\Users\me\src\api\pkg"#
-        let services = ScriptedCoreServices(
-            roots: [directory: #"C:\Users\me\src\api"#], platform: .nativeWindows)
-        let store = try await started(
-            [Self.record("t1", cwd: directory, labels: ["herdr.space": "lonely"])], services: services)
+        let (store, scripted) = try await labelOnlySpace(
+            at: directory, gitRoots: [directory: "C:/Users/me/src/api"])
 
         try await waitUntil("the checkout's name") {
             store.workspaces(for: host.id).first?.label == "api"
         }
+        #expect(await scripted.log.contains("windows-checkouts"))
+        #expect(await scripted.posixCheckoutAsks == 0)
+        // Worktrees stay off: a root says nothing of which repository it is.
+        #expect(store.workspaces(for: host.id).first?.checkoutPath == nil)
         await finish(store)
     }
 
     @Test func aLabelOnlySpaceOutsideGitIsNamedForItsFolder() async throws {
-        let store = try await started(
-            [Self.record("t1", cwd: #"C:\Users\me\notes\"#, labels: ["herdr.space": "lonely"])],
-            services: ScriptedCoreServices(platform: .nativeWindows))
+        let (store, scripted) = try await labelOnlySpace(at: #"C:\Users\me\notes\"#, gitRoots: [:])
 
+        try await waitUntil("the read") { await scripted.log.contains("windows-checkouts") }
         try await waitUntil("the folder's name") {
             store.workspaces(for: host.id).first?.label == "notes"
         }
+        await finish(store)
+    }
+
+    /// A checkout at the home folder reads `~`, however git spells its path.
+    @Test func aCheckoutAtTheHomeFolderReadsTilde() async throws {
+        let directory = #"C:\Users\me\dotfiles"#
+        let (store, _) = try await labelOnlySpace(at: directory, gitRoots: [directory: "C:/Users/me"])
+
+        try await waitUntil("the home folder's name") {
+            store.workspaces(for: host.id).first?.label == "~"
+        }
+        await finish(store)
+    }
+
+    /// Asks again on the next link, as a Unix read that failed does.
+    @Test func aCheckoutReadThatWasCutShortDoesNotNameTheSpace() async throws {
+        let directory = #"C:\Users\me\src\api\pkg"#
+        let scripted = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(),
+            channel: .core(.init(terminals: [
+                Self.record("t1", cwd: directory, labels: ["herdr.space": "lonely"])
+            ])))
+        await scripted.setWindowsGitRoots([directory: "C:/Users/me/src/api"])
+        await scripted.setWindowsCheckoutAnswer(
+            GitExecResult(stdout: Data("\(ScriptedCoreHost.nonce) begin\n".utf8), stderr: Data(), exitStatus: 0))
+        let store = storeOnScripted(scripted)
+        store.setHosts([host])
+        await store.resume()
+
+        try await waitUntil("the first read") { await scripted.log.contains("windows-checkouts") }
+        try await waitUntil("the directory's name") { store.workspaces(for: host.id).first?.label == "pkg" }
+
+        await scripted.setWindowsCheckoutAnswer(nil)
+        await store.retryHost(host.id)
+        try await waitUntil("the checkout's name") { store.workspaces(for: host.id).first?.label == "api" }
         await finish(store)
     }
 

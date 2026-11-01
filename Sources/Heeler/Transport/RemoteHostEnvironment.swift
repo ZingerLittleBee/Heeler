@@ -77,9 +77,19 @@ enum PowerShellCommand {
             + Data(bytes).base64EncodedString()
     }
 
+    /// Doubles every character PowerShell closes a single-quoted string on, which
+    /// includes three typographic quotes a folder can be named with. Each doubled
+    /// character reads back as itself.
     static func literal(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+        var quoted = "'"
+        for character in value.unicodeScalars {
+            if singleQuotes.contains(character) { quoted.unicodeScalars.append(character) }
+            quoted.unicodeScalars.append(character)
+        }
+        return quoted + "'"
     }
+
+    private static let singleQuotes: Set<Unicode.Scalar> = ["'", "\u{2018}", "\u{2019}", "\u{201A}", "\u{201B}"]
 
     static let preamble = """
         $ErrorActionPreference = 'Stop'

@@ -3779,6 +3779,11 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
         try await runWindowsProbe(command)
     }
 
+    /// One bounded exec, for one or a few `git rev-parse` calls.
+    func runWindowsCheckoutRead(_ command: String) async throws -> GitExecResult {
+        try await runWindowsProbe(command)
+    }
+
     private func runWindowsProbe(_ command: String) async throws -> GitExecResult {
         let bound = Duration.seconds(20)
         let result = try await withRequestDeadline(timeout: bound) {

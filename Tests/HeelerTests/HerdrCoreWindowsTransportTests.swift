@@ -83,6 +83,47 @@ struct HerdrCoreWindowsTransportTests {
         try await transport.close()
     }
 
+    // MARK: Checkouts
+
+    @Test func aWindowsHostsCheckoutsComeFromItsOwnReadNotTheGitScript() async throws {
+        let host = Self.runningHost()
+        await host.setWindowsGitRoots([#"C:\repo\pkg"#: "C:/repo"])
+        let transport = host.transport()
+
+        let checkouts = try await transport.checkouts(for: [#"C:\repo\pkg"#, #"C:\notes"#])
+
+        #expect(checkouts == [#"C:\repo\pkg"#: HostCheckout(root: #"C:\repo"#)])
+        #expect(await host.log == ["windows-checkouts"])
+        #expect(await host.posixCheckoutAsks == 0)
+    }
+
+    @Test func directoriesOneCommandCannotCarryTakeAnotherExec() async throws {
+        let host = Self.runningHost()
+        let directories = (0..<16).map { #"C:\deep\"# + String(repeating: "x", count: 240) + "\($0)" }
+        await host.setWindowsGitRoots(
+            Dictionary(uniqueKeysWithValues: directories.map { ($0, "C:/repo") }))
+        let transport = host.transport()
+
+        let checkouts = try await transport.checkouts(for: directories)
+
+        #expect(Set(checkouts.keys) == Set(directories))
+        let log = await host.log
+        #expect(log.count > 1)
+        #expect(log.allSatisfy { $0 == "windows-checkouts" })
+    }
+
+    @Test func aUnixHostsCheckoutsStayWithItsGitScript() async throws {
+        let host = ScriptedCoreHost(channel: .refused)
+        let transport = host.transport()
+
+        await #expect(throws: ChangesReadError.unavailable) {
+            _ = try await transport.checkouts(for: ["/work"])
+        }
+
+        #expect(await host.posixCheckoutAsks == 1)
+        #expect(await host.log.isEmpty)
+    }
+
     @Test func aHostWhosePlatformCannotBeReadRunsNothingAndRetries() async throws {
         let host = Self.runningHost()
         await host.setCorePlatformFailure(.timedOut)

@@ -121,6 +121,10 @@ actor ScriptedCoreServices: HostServices {
         checkoutCalls.append(directories)
         if let gate { await gate.waitUntilOpen() }
         if let failure { throw failure }
+        // `runGitScript` refuses native Windows. Its own read is the core transport's.
+        if platform == .nativeWindows {
+            throw TransportError.hostFeatureUnavailable(feature: "Changes is not yet supported on native Windows")
+        }
         let named = roots.filter { directories.contains($0.key) }.mapValues { HostCheckout(root: $0) }
         return named.merging(checkouts.filter { directories.contains($0.key) }) { _, full in full }
     }
@@ -368,6 +372,10 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
 
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
         throw TransportError.hostFeatureUnavailable(feature: "terminal.attach")
+    }
+
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
+        try await services.checkouts(for: directories)
     }
 
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {

@@ -100,6 +100,11 @@ protocol HerdrCoreTransport: Sendable {
     /// `.coreMutationOutcomeUnknown`. Nothing here sends it again.
     func renameDesktopSpace(_ space: String, name: String) async throws
 
+    /// The Checkout of each directory, for naming a space and knowing a Worktree,
+    /// by the Host's platform. As `HostServices.checkouts`, a directory in no
+    /// checkout has no entry. On native Windows it knows only the top level.
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout]
+
     /// Closes the link, then the connection.
     func close() async throws
 }
@@ -213,6 +218,10 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
 
     /// Runs a native Windows Host's locator, a whole command line, in one bounded exec.
     func runWindowsCoreProbe(_ command: String) async throws -> GitExecResult
+
+    /// Runs a native Windows Host's checkout read, a whole command line, in one
+    /// bounded exec.
+    func runWindowsCheckoutRead(_ command: String) async throws -> GitExecResult
 
     /// Runs the confirmed Start's script in one bounded exec.
     func runCoreStart(_ script: Data) async throws -> GitExecResult
@@ -510,6 +519,22 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         case .unknown:
             throw TransportError.coreMutationOutcomeUnknown
         }
+    }
+
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
+        guard try await resolvedPlatform() == .nativeWindows else {
+            return try await connection.checkouts(for: directories)
+        }
+        let nonce = nonce()
+        var checkouts: [String: HostCheckout] = [:]
+        for batch in GitProbe.windowsCheckoutRootBatches(directories, nonce: nonce) {
+            let result = try await connection.runWindowsCheckoutRead(
+                GitProbe.windowsCheckoutRootsCommand(directories: batch, nonce: nonce))
+            checkouts.merge(
+                try GitProbe.parseWindowsCheckoutRoots(stdout: result.stdout, nonce: nonce, directories: batch)
+            ) { _, answer in answer }
+        }
+        return checkouts
     }
 
     func close() async throws {

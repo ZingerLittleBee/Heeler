@@ -629,12 +629,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     private func resolveCheckouts() async {
         let session = session
-        let services = try? await session.withTransport { $0.hostServices }
+        let transport = try? await session.withTransport { $0 }
         guard !Task.isCancelled else { return }
-        guard let services else {
+        guard let transport else {
             checkoutTask = nil
             return
         }
+        let services = transport.hostServices
         if !hasAskedHome {
             hasAskedHome = true
             home = try? await services.hostHomeDirectory()
@@ -647,7 +648,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         while !queuedCheckouts.isEmpty {
             let batch = Array(queuedCheckouts.prefix(GitProbe.checkoutRootsPerCall))
             queuedCheckouts.removeFirst(batch.count)
-            let answers = try? await gitGate.run { try await services.checkouts(for: batch) }
+            let answers = try? await gitGate.run { try await transport.checkouts(for: batch) }
             guard !Task.isCancelled else { return }
             if let answers {
                 for directory in batch {
