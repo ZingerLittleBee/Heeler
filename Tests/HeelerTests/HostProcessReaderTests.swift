@@ -174,7 +174,9 @@ struct HostProcessReaderTests {
             decoding: try HostProcessReader.script(
                 Self.everything, nonce: Self.nonce, platform: .macOS),
             as: UTF8.self)
-        #expect(script.contains("/bin/ps -o lstart= -p"))
+        #expect(script.contains("TZ=UTC /bin/ps -o lstart= -p"))
+        #expect(script.contains("/bin/ps -ax -o pid=,ppid="))
+        #expect(script.contains("/bin/ps -ww -o comm= -p"))
         #expect(script.contains("/usr/bin/perl -e"))
         #expect(script.contains("/usr/sbin/lsof -nP -a -d 0-65535 -Fn -p"))
         #expect(!script.contains("ps -E"))
