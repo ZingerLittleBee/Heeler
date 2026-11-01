@@ -50,7 +50,7 @@ on:
         options: [sharded, serial]
         default: sharded
       cache_mode:
-        description: Restore dependency sources, or measure a first cold run
+        description: Restore dependency sources and compiler CAS, or skip both caches
         type: choice
         options: [cold, warm]
         default: cold
@@ -131,7 +131,10 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/test-evidence/app-${{ matrix.shard }}
       HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
-      HEELER_CI_DISABLE_COMPILATION_CACHE: '1'
+      # Each matrix job owns a separate runner, but compiler command paths must
+      # match across jobs/runs. Never restore DerivedData or test results.
+      HEELER_CI_APP_DERIVED_DATA_PATH: ${{ github.workspace }}/.ci/app-derived
+      HEELER_CI_COMPILATION_CACHE_DIR: ${{ github.workspace }}/.ci/app-compilation-cache
       HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
       # Hosted compilation can exceed 20 minutes even with restored sources.
       # Leave room for runner variance without treating this safety deadline
@@ -176,16 +179,41 @@ jobs:
       # (~12–29s on hosted macOS-26); the gate's own simctl boot overlaps
       # that work with the build instead.
       - name: Show Xcode version
-        run: xcodebuild -version
+        id: toolchain
+        env:
+          BUILD_INPUT_HASH: ${{ hashFiles('project.yml', 'Heeler.xcodeproj/project.pbxproj', 'Heeler.xcodeproj/xcshareddata/xcschemes/Heeler.xcscheme', 'Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'Packages/**/Package.swift') }}
+        run: |
+          xcodebuild -version
+          identity=$({
+            xcodebuild -version
+            xcrun --sdk iphonesimulator --show-sdk-version
+            uname -m
+            printf '%s\n' "$BUILD_INPUT_HASH" 'Debug-no-symbols-no-index-v1'
+          } | shasum -a 256 | cut -d ' ' -f 1)
+          echo "cache-prefix=ios-app-cas-v1-${RUNNER_OS}-${RUNNER_ARCH}-${identity}-" >> "$GITHUB_OUTPUT"
+
+      # Only content-addressed compiler objects cross runs. Source changes
+      # remain eligible for reuse; the compiler validates their dependencies.
+      - name: Restore app compilation cache
+        id: compilation-cache
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.HEELER_CI_COMPILATION_CACHE_DIR }}
+          key: ${{ steps.toolchain.outputs.cache-prefix }}${{ github.sha }}
+          restore-keys: |
+            ${{ steps.toolchain.outputs.cache-prefix }}
 
       - name: Record cache and checkout identity
         env:
           CACHE_MODE: ${{ inputs.cache_mode || 'warm' }}
           APP_SHARD: ${{ matrix.shard }}
+          COMPILATION_CACHE_KEY: ${{ steps.compilation-cache.outputs.cache-matched-key }}
+          COMPILATION_CACHE_HIT: ${{ steps.compilation-cache.outputs.cache-hit }}
         run: |
           mkdir -p "$HEELER_CI_EVIDENCE_DIR"
-          if [[ "$CACHE_MODE" == cold && -e .ci/source-packages ]]; then
-            echo 'Cold run unexpectedly contains restored dependency sources.' >&2
+          if [[ "$CACHE_MODE" == cold && ( -e .ci/source-packages || -e "$HEELER_CI_COMPILATION_CACHE_DIR" ) ]]; then
+            echo 'Cold run unexpectedly contains restored dependency sources or compiler CAS.' >&2
             exit 1
           fi
           {
@@ -194,6 +222,8 @@ jobs:
             printf 'image_version=%s\n' "${ImageVersion:-unknown}"
             printf 'build_deadline_seconds=%s\n' "$HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS"
             printf 'debug_symbols=disabled\n'
+            printf 'compilation_cache=enabled\ncompilation_cache_key=%s\ncompilation_cache_exact_hit=%s\n' "$COMPILATION_CACHE_KEY" "$COMPILATION_CACHE_HIT"
+            printf 'app_derived_data=%s\n' "$HEELER_CI_APP_DERIVED_DATA_PATH"
           } > "$HEELER_CI_EVIDENCE_DIR/run-settings.txt"
 
       # The script selects one available iPhone 17 UDID, boots it, injects the
@@ -220,6 +250,16 @@ jobs:
           python3 scripts/verify-ci-ios-evidence.py complete \
             --evidence-dir "$HEELER_CI_EVIDENCE_DIR" \
             --lane app --shard "$APP_SHARD" --sha "$GITHUB_SHA"
+
+      # All shards compile the same target. One writer avoids redundant uploads.
+      # A test failure does not invalidate compiler objects, and must not keep
+      # later attempts cold. Coverage evidence is never saved in this cache.
+      - name: Save app compilation cache
+        if: ${{ !cancelled() && steps.compilation-cache.outcome == 'success' && steps.compilation-cache.outputs.cache-hit != 'true' && (matrix.shard == 'ordinary' || matrix.shard == 'all') }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.HEELER_CI_COMPILATION_CACHE_DIR }}
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
 
       - name: Upload app test evidence
         if: always()

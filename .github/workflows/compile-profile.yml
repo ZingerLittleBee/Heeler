@@ -1,9 +1,8 @@
 name: Compilation cache sample
 
-# One sampling branch only. This is not a test or release gate.
+# Explicit experiments only. This is not a test or release gate.
 on:
-  push:
-    branches: [ci/compile-profile-20261101]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,7 +10,7 @@ permissions:
 env:
   DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
   HEELER_SSH_E2E_REQUIRED: '0'
-  PROFILE_SOURCE_SHA: a789fd5d5791a5d4096eff0f419ffcb4a637f58d
+  PROFILE_SOURCE_SHA: ${{ github.sha }}
 
 jobs:
   seed:
