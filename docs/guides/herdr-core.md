@@ -1,6 +1,6 @@
 # Connect herdr-core
 
-Agents started by the desktop herdr-app belong to herdr-core, a server of their own. They do not appear in the Herdr TUI server, even when both run under the same SSH account, so each one is a Host of its own in Heeler. Heeler reads herdr-core 0.1.13. The app and the core have separate version numbers.
+Agents started by the Herdr desktop app belong to herdr-core, a server of their own. They do not appear in the Herdr TUI server, even when both run under the same SSH account, so each one is a Host of its own in Heeler. Heeler reads herdr-core 0.1.13. The app and the core have separate version numbers.
 
 ## Add a Host
 
@@ -35,10 +35,10 @@ Heeler never starts a core by connecting or checking, so a mistyped session name
 
 ## Console
 
-A core Host's Terminals follow the Herdr desktop's organization when the core has one. Heeler reads it and never changes it.
+A core Host's Terminals follow the Herdr desktop app's organization when the core has one. Heeler reads it and never changes it.
 
-- Each desktop space is a card under its own name, in the desktop's order. A row reads **Tab “name”**, or **Tab N** for a tab with no name.
-- A space that only a Terminal's label names follows the desktop's spaces, named for the folder of its git checkout, or for its directory outside one.
+- Each desktop space is a card under its own name, in the desktop app's order. A row reads **Tab “name”**, or **Tab N** for a tab with no name.
+- A space that only a Terminal's label names follows the desktop app's spaces, named for the folder of its git checkout, or for its directory outside one.
 - A Terminal started from another Terminal joins its parent's card, unless its own labels place it elsewhere.
 - Every other Terminal goes in a card named for its launch directory.
 
@@ -73,7 +73,7 @@ A row opens the Agent's detail. Its menu has Open in New Window where the device
 
 ## Terminal
 
-Every terminal is a channel on the Host's one connection, so opening more costs no new SSH session. It is one of any number of viewers: the desktop can stay attached, typing takes the size, and no Take Over appears. Scrollback comes with it. Up to five terminals stay ready for five minutes after you leave them, and come back at once.
+Every terminal is a channel on the Host's one connection, so opening more costs no new SSH session. It is one of any number of viewers: the desktop app can stay attached, typing takes the size, and no Take Over appears. Scrollback comes with it. Up to five terminals stay ready for five minutes after you leave them, and come back at once.
 
 Every key reaches the program, Ctrl+\ included. Heeler reserves no detach key.
 
@@ -206,7 +206,7 @@ Heeler finds the conversation from the Agent's own process on the Host, with not
 
 ## Known limits
 
-- Heeler has no Rename on a core Host yet. Use the Host or the desktop.
+- Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.
 - Chat opens only for Claude Code on Linux. Other programs and macOS core Hosts offer the terminal alone.
 - Heeler cannot connect to a native Windows core Host yet: its checks read **herdr-core Hosts is not yet supported on native Windows**.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
@@ -268,7 +268,7 @@ While Heeler is suspended the activity names each Agent's workspace by its folde
 
 With the Helper installed, a core Host's Usage works as on any other Host, in the Usage tab, the Host's detail and the widgets: Token Usage for Claude Code and Codex, and Claude Code's Usage Limits when you turn them on for that Host.
 
-The **Default Account** follows the core, not your SSH login. A core usually starts from the desktop or a login shell, with an environment SSH never sees, so the Helper reads the variables that locate Accounts, such as `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, from the core process. It reads those by name and nothing else, keeps them in a file only your account can read, and reads them again whenever the core restarts. Change `CLAUDE_CONFIG_DIR` and restart the core to move the Default Account.
+The **Default Account** follows the core, not your SSH login. A core usually starts from the desktop app or a login shell, with an environment SSH never sees, so the Helper reads the variables that locate Accounts, such as `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, from the core process. It reads those by name and nothing else, keeps them in a file only your account can read, and reads them again whenever the core restarts. Change `CLAUDE_CONFIG_DIR` and restart the core to move the Default Account.
 
 To count more Claude Code sign-ins, open **Claude Code Accounts**. Heeler suggests the directories of the Claude Code Agents running in the core and those it finds in your home folder. Your choices stay in the Helper's directory, so **Remove** deletes them with it.
 
