@@ -245,12 +245,12 @@ struct HostHelperReading: Sendable, Equatable {
             }
             return .newer(version: version)
         case .damaged:
-            return .damaged
+            return nodeProblem ?? .damaged
         case .absent:
             return nodeProblem ?? .notInstalled
         case .intact(let version):
             guard let health = probe.health else { return nodeProblem ?? .serviceFailed(nil) }
-            if !health.isLoaded { return .damaged }
+            if !health.isLoaded { return nodeProblem ?? .damaged }
             if !health.isUp { return nodeProblem ?? .serviceFailed(health) }
             if !probe.lingerOn { return .lingerOff }
             return .installed(version: version, updateAvailable: version < bundled)

@@ -270,6 +270,22 @@ struct HostHelperInstallTests {
         #expect(await host.filePaths().contains(registrations))
     }
 
+    @Test func changedFilesOnAHostWithNoNodeSayNodeIsMissing() async throws {
+        try await installed()
+        await host.seedFile("\(app)/main.js", Data("changed".utf8))
+        await host.configure { $0.node = .missing }
+        let reading = try await installer.read()
+        #expect(reading.status == .nodeMissing(tooOld: nil))
+        #expect(reading.installAction == nil)
+        #expect(!reading.notificationStanding.canRegister)
+
+        // Repair comes back with Node.js.
+        await host.configure { $0.node = .found(path: ScriptedHelperHost.node) }
+        let again = try await installer.read()
+        #expect(again.status == .damaged)
+        #expect(again.installAction == .repair)
+    }
+
     @Test func aHostWithoutNodeCannotInstall() async throws {
         await host.configure { $0.node = .missing }
         let reading = try await installer.read()
@@ -396,6 +412,15 @@ struct HostHelperServiceTests {
         #expect(reading.offersLinger)
         #expect(!reading.notificationStanding.canRegister)
         #expect(!reading.notificationStanding.drivesLiveActivity)
+    }
+
+    @Test func aUnitThatWentAwayOnAHostWithNoNodeSaysNodeIsMissing() async throws {
+        _ = try await install()
+        await host.removeFile(ScriptedHelperHost.unit)
+        await host.configure { $0.node = .tooOld(version: "18.19.0") }
+        let reading = try await installer.read()
+        #expect(reading.status == .nodeMissing(tooOld: "18.19.0"))
+        #expect(reading.installAction == nil)
     }
 
     private func installNewerHelper() async throws {
