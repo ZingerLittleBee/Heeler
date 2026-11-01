@@ -31,7 +31,7 @@ async function processStart(pid) {
       const child = execFile(
         "/bin/ps",
         ["-o", "lstart=", "-p", String(pid)],
-        { timeout: PS_TIMEOUT_MS, env: { LC_ALL: "C" } },
+        { timeout: PS_TIMEOUT_MS, env: { LC_ALL: "C", TZ: "UTC" } },
         (error, stdout) => (error ? fail(error) : done(stdout)),
       );
       child.unref();

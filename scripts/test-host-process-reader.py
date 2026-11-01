@@ -17,7 +17,7 @@ import sys
 import tempfile
 import time
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -676,14 +676,6 @@ class ArgumentTests(ReaderTestCase):
         result = subprocess.run([str(self.binary), "script", json.dumps(request)], capture_output=True)
         self.assertEqual(result.returncode, 65)
 
-    def test_macos_has_no_recorded_method_for_arguments(self) -> None:
-        request = {"pids": ["1"], "macOS": True, "arguments": self.ASKED}
-        script = subprocess.run(
-            [str(self.binary), "script", json.dumps(request)], check=True, capture_output=True
-        ).stdout
-        result = subprocess.run(["/bin/sh"], input=script, capture_output=True, timeout=60)
-        self.assertIn("B 1 -", result.stdout.decode())
-
 
 class UnknownKernelTests(ReaderTestCase):
     def test_every_read_is_unavailable_on_a_kernel_with_no_recorded_method(self) -> None:
@@ -780,17 +772,38 @@ class MacOSReadTests(ReaderTestCase):
             self.assertEqual(facts[pid]["variables"], {"NAMED": {"value": self.ENV["NAMED"]}})
         self.for_each_shell(check)
 
-    def test_process_start_is_the_second_it_started(self) -> None:
+    def test_process_start_is_the_second_it_started_in_utc(self) -> None:
         before = time.time()
         pid = self.start()
         after = time.time()
 
         def check(shell: list[str]) -> None:
             start = self.read(shell, pids=[pid], start=True, macOS=True)[pid]["start"]
-            stamp = datetime.strptime(start, "%a %b %d %H:%M:%S %Y").timestamp()
+            stamp = datetime.strptime(start, "%a %b %d %H:%M:%S %Y").replace(tzinfo=timezone.utc).timestamp()
             self.assertGreaterEqual(stamp, int(before))
             self.assertLessEqual(stamp, after)
         self.for_each_shell(check)
+
+    def test_process_start_does_not_follow_the_execs_zone(self) -> None:
+        # Claude Code writes `LC_ALL=C TZ=UTC ps -o lstart=`, and a label outlives
+        # the exec that compared it, whose startup files may set a zone.
+        pid = self.start()
+        request = {"pids": [pid], "start": True, "macOS": True}
+        script = subprocess.run(
+            [str(self.binary), "script", json.dumps(request)], check=True, capture_output=True
+        ).stdout
+        starts = []
+        for zone in ("Asia/Tokyo", "America/New_York"):
+            result = subprocess.run(
+                ["/bin/sh"], input=script, capture_output=True, timeout=60,
+                env={"PATH": "/usr/bin:/bin", "TZ": zone},
+            )
+            starts.append(self.parse(result.stdout.decode(), **request)[pid]["start"])
+        expected = subprocess.run(
+            ["/bin/ps", "-o", "lstart=", "-p", pid], capture_output=True, text=True,
+            env={"LC_ALL": "C", "TZ": "UTC"},
+        ).stdout.strip()
+        self.assertEqual(starts, [expected, expected])
 
     def test_named_values_are_exact_and_told_apart_from_unset(self) -> None:
         pid = self.start()
@@ -828,6 +841,21 @@ class MacOSReadTests(ReaderTestCase):
             facts = self.read(shell, pids=[pid], values=["NAMED"], names=["TMUX"], macOS=True)
             self.assertEqual(facts[pid]["variables"], {"NAMED": "unavailable"})
             self.assertEqual(facts[pid]["names"], "unavailable")
+        self.for_each_shell(check)
+
+    def test_the_shell_a_terminal_runs_withholds_its_environment_too(self) -> None:
+        # The fact a check's fallback to the foreground's HC_SCOPE rests on.
+        process = subprocess.Popen(
+            ["/bin/zsh", "-f", "-c", "/bin/sleep 300; :"], env=self.ENV,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.running.append(process)
+        time.sleep(0.3)
+        pid = str(process.pid)
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=[pid], start=True, values=["HC_SCOPE", "NAMED"], macOS=True)
+            self.assertEqual(facts[pid]["variables"], {"HC_SCOPE": "unavailable", "NAMED": "unavailable"})
+            self.assertNotEqual(facts[pid]["start"], "unavailable")
         self.for_each_shell(check)
 
     def test_a_title_that_fills_argv_never_reads_a_set_variable_as_unset(self) -> None:
@@ -972,6 +1000,223 @@ class MacOSReadTests(ReaderTestCase):
                 "names": "unavailable",
                 "files": "unavailable",
             })
+        self.for_each_shell(check)
+
+    # The tree
+
+    def tree(self, *children: str) -> tuple[str, list[str]]:
+        """A shell that holds `children` under it, and their pids once all are up."""
+        body = " ".join(f"{child} &" for child in children) + " wait"
+        process = subprocess.Popen(
+            ["/bin/sh", "-c", body], env=self.ENV,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.running.append(process)
+        pids: list[str] = []
+        for _ in range(100):
+            listed = subprocess.run(
+                ["/bin/ps", "-ax", "-o", "pid=,ppid="], capture_output=True, text=True).stdout
+            pids = [row.split()[0] for row in listed.splitlines() if row.split()[1] == str(process.pid)]
+            if len(pids) == len(children):
+                break
+            time.sleep(0.05)
+        self.assertEqual(len(pids), len(children))
+        self.addCleanup(self.stop_all, pids)
+        time.sleep(0.2)
+        return str(process.pid), pids
+
+    @staticmethod
+    def stop_all(pids: list[str]) -> None:
+        for pid in pids:
+            try:
+                os.kill(int(pid), 9)
+            except ProcessLookupError:
+                pass
+
+    def test_a_walk_answers_with_the_tree_and_each_process_read_the_same_way(self) -> None:
+        root, children = self.tree(f"{self.sleep} 300", f"{self.sleep} 301")
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=[root], start=True, values=["NAMED"], descendants=root, macOS=True)
+            self.assertEqual(sorted(facts[root]["descendants"]), sorted(children))
+            for child in children:
+                self.assertEqual(facts[child]["parent"], root)
+                self.assertEqual(facts[child]["name"], "sleep-copy")
+                self.assertEqual(facts[child]["variables"], {"NAMED": {"value": self.ENV["NAMED"]}})
+                self.assertNotEqual(facts[child]["start"], "unavailable")
+        self.for_each_shell(check)
+
+    def test_a_check_of_a_tree_carries_only_the_named_variables(self) -> None:
+        # What a check of an Agent asks: the Terminal, the walk and every process
+        # under it. Its environment holds HERDR_* and what nothing asked for.
+        root, children = self.tree(f"{self.sleep} 300")
+
+        def check(shell: list[str]) -> None:
+            request = {
+                "pids": [root], "start": True, "values": ["HC_SCOPE", "NAMED"], "names": ["TMUX"],
+                "files": True, "arguments": ["--managed-daemon"], "descendants": root, "macOS": True,
+            }
+            raw = self.run_script(shell, **request)
+            facts = self.parse(raw, **request)
+            self.assertEqual(facts[children[0]]["variables"], {
+                "HC_SCOPE": "unset", "NAMED": {"value": self.ENV["NAMED"]}})
+            self.assertEqual(facts[children[0]]["names"], ["TMUX"])
+            printed = {line.split(" ")[2] for line in raw.splitlines() if line.startswith("V ")}
+            self.assertEqual(printed, {"NAMED"})
+            for word in (b"sekrit", b"NOT_ASKED", b"HERDR_", b"/run/herdr.sock", b"/tmp/tmux-sock", b"/usr/bin:/bin"):
+                self.assertNotIn(word, raw.encode())
+                self.assertNotIn(word.hex().encode(), raw.encode())
+        self.for_each_shell(check)
+
+    def test_a_walk_with_no_children_answers_an_empty_tree(self) -> None:
+        pid = self.start()
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=[pid], start=True, descendants=pid, macOS=True)
+            self.assertEqual(facts[pid]["descendants"], [])
+            self.assertEqual(facts[pid]["name"], "sleep-copy")
+        self.for_each_shell(check)
+
+    def test_a_walk_of_a_gone_root_answers_with_nothing_under_it(self) -> None:
+        pid = self.start()
+        process = self.running.pop()
+        process.kill()
+        process.wait()
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=[pid], start=True, descendants=pid, macOS=True)
+            self.assertEqual(facts[pid]["descendants"], [])
+            self.assertEqual(facts[pid]["start"], "unavailable")
+            self.assertNotIn("name", facts[pid])
+        self.for_each_shell(check)
+
+    def test_a_title_is_the_name_a_process_goes_by(self) -> None:
+        title = self.rewritten("claude", "a-long-argument", "another-long-argument")
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=[title], descendants=title, macOS=True)
+            self.assertEqual(facts[title]["name"], "claude")
+        self.for_each_shell(check)
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_node_goes_by_the_title_it_took(self) -> None:
+        pid = self.start_ready(
+            shutil.which("node"), "-e", 'process.title="pi";console.log("ready");setInterval(()=>{},60000)')
+
+        def check(shell: list[str]) -> None:
+            self.assertEqual(self.read(shell, pids=[pid], descendants=pid, macOS=True)[pid]["name"], "pi")
+        self.for_each_shell(check)
+
+    def test_a_name_is_the_last_part_of_a_path_and_nothing_else_of_an_argv(self) -> None:
+        root, children = self.tree(f"{self.rewriter} keep --token do-not-print")
+
+        def check(shell: list[str]) -> None:
+            request = {"pids": [root], "descendants": root, "macOS": True}
+            raw = self.run_script(shell, **request)
+            self.assertNotIn("do-not-print", raw)
+            self.assertNotIn(str(self.build), raw)
+            self.assertIn(f"T {children[0]} {root} rewriter\n", raw)
+        self.for_each_shell(check)
+
+    def test_a_title_that_could_be_taken_for_anything_else_has_no_name(self) -> None:
+        spaced = self.rewritten("a title with spaces", "a-long-argument", "another-long-argument")
+        forging = self.rewritten("x\n999 1 claude", "a-long-argument", "another-long-argument")
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=[spaced], descendants=spaced, macOS=True)
+            self.assertEqual(facts[spaced]["name"], "-")
+            request = {"pids": [forging], "descendants": forging, "macOS": True}
+            raw = self.run_script(shell, **request)
+            self.assertNotIn("999", raw)
+            self.assertEqual(self.parse(raw, **request)[forging]["descendants"], [])
+        self.for_each_shell(check)
+
+    def test_a_walk_past_its_cap_says_so_and_names_nobody(self) -> None:
+        root, _ = self.tree(*[f"{self.sleep} 300"] * 65)
+
+        def check(shell: list[str]) -> None:
+            request = {"pids": [root], "descendants": root, "macOS": True}
+            raw = self.run_script(shell, **request)
+            self.assertIn(f"W {root} -\n", raw)
+            self.assertNotIn("T ", raw)
+            self.assertEqual(self.parse(raw, **request)[root]["descendants"], "unavailable")
+        self.for_each_shell(check)
+
+    def test_a_walk_says_it_did_not_answer_when_the_listing_fails(self) -> None:
+        pid = self.start()
+        request = {"pids": [pid], "descendants": pid, "macOS": True}
+        script = subprocess.run(
+            [str(self.binary), "script", json.dumps(request)], check=True, capture_output=True
+        ).stdout
+        # The listing goes by full path, so a test breaks it in the script itself.
+        broken = script.replace(b"/bin/ps -ax", b"/usr/bin/false -ax")
+        self.assertNotEqual(broken, script)
+        result = subprocess.run(["/bin/sh"], input=broken, capture_output=True, timeout=60)
+        self.assertEqual(self.parse(result.stdout.decode(), **request)[pid]["descendants"], "unavailable")
+
+    # Arguments
+
+    ASKED_ARGUMENTS = ["--managed-daemon", "app-server", "pid-update-loop"]
+
+    def test_arguments_report_only_the_asked_words(self) -> None:
+        daemon = self.rewritten("keep", "app-server", "--listen", "unix://do-not-print", "--managed-daemon")
+        loop = self.rewritten("keep", "app-server", "daemon", "pid-update-loop")
+        plain = self.rewritten("keep", "--no-daemon", "--token", "do-not-print")
+
+        def check(shell: list[str]) -> None:
+            request = {"pids": [daemon, loop, plain], "arguments": self.ASKED_ARGUMENTS, "macOS": True}
+            raw = self.run_script(shell, **request)
+            self.assertNotIn("do-not-print", raw)
+            self.assertNotIn(b"do-not-print".hex(), raw)
+            self.assertNotIn(b"--no-daemon".hex(), raw)
+            facts = self.parse(raw, **request)
+            self.assertEqual(facts[daemon]["arguments"], ["--managed-daemon", "app-server"])
+            self.assertEqual(facts[loop]["arguments"], ["app-server", "pid-update-loop"])
+            self.assertEqual(facts[plain]["arguments"], [])
+        self.for_each_shell(check)
+
+    def test_an_argument_merely_holding_an_asked_word_does_not_count(self) -> None:
+        pid = self.rewritten("keep", "fix app-server", "--managed-daemon=no")
+
+        def check(shell: list[str]) -> None:
+            request = {"pids": [pid], "arguments": self.ASKED_ARGUMENTS, "macOS": True}
+            self.assertEqual(self.read(shell, **request)[pid]["arguments"], [])
+        self.for_each_shell(check)
+
+    def test_an_environment_entry_is_no_argument(self) -> None:
+        pid = self.rewritten("keep", "a", env={"app-server": "", "--managed-daemon": "x"})
+
+        def check(shell: list[str]) -> None:
+            request = {"pids": [pid], "arguments": self.ASKED_ARGUMENTS, "macOS": True}
+            self.assertEqual(self.read(shell, **request)[pid]["arguments"], [])
+        self.for_each_shell(check)
+
+    def test_a_platform_binarys_arguments_read_though_its_environment_does_not(self) -> None:
+        pid = self.start("/bin/sleep")
+
+        def check(shell: list[str]) -> None:
+            request = {"pids": [pid], "arguments": self.ASKED_ARGUMENTS, "values": ["NAMED"], "macOS": True}
+            facts = self.read(shell, **request)[pid]
+            self.assertEqual(facts["arguments"], [])
+            self.assertEqual(facts["variables"], {"NAMED": "unavailable"})
+        self.for_each_shell(check)
+
+    def test_arguments_of_a_gone_process_read_unavailable(self) -> None:
+        pid = self.start()
+        process = self.running.pop()
+        process.kill()
+        process.wait()
+
+        def check(shell: list[str]) -> None:
+            request = {"pids": [pid], "arguments": self.ASKED_ARGUMENTS, "macOS": True}
+            self.assertEqual(self.read(shell, **request)[pid]["arguments"], "unavailable")
+        self.for_each_shell(check)
+
+    def test_each_descendant_has_its_arguments_read(self) -> None:
+        root, children = self.tree(f"{self.rewriter} keep app-server")
+
+        def check(shell: list[str]) -> None:
+            request = {"pids": [root], "arguments": self.ASKED_ARGUMENTS, "descendants": root, "macOS": True}
+            self.assertEqual(self.read(shell, **request)[children[0]]["arguments"], ["app-server"])
         self.for_each_shell(check)
 
 

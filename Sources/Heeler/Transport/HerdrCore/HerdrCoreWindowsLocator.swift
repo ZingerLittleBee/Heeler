@@ -11,6 +11,8 @@ import Foundation
 extension HerdrCoreLocator {
     /// What the probe prints as `kernel`, where a Unix Host prints its `uname -s`.
     static let windowsKernel = "Windows"
+    /// A macOS Host's `uname -s`.
+    static let macOSKernel = "Darwin"
 
     /// Where `install.ps1` puts the core, from the home folder an SSH exec starts
     /// in, as hc's own machine dialer finds it. Not PATH: a session riding an older

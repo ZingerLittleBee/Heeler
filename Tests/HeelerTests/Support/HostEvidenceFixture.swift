@@ -24,6 +24,8 @@ struct HostEvidenceFixture: Decodable, Sendable {
 
     struct Scene: Decodable, Sendable {
         var name: String
+        /// The core's record of the Terminal, in the recordings that keep it.
+        var record: JSONValue?
         var processes: [Row]?
         var secondTerminal: [Row]?
         var files: [String: String]?

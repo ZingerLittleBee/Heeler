@@ -231,26 +231,88 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
-    @Test(arguments: [ChatProgram.codex, .grok, .opencode])
-    func chatStaysOffOnAMacOSCoreHost(_ program: ChatProgram) async throws {
-        let (rig, rows) = try offerRig(program)
-        try await rig.start(rows, kernel: "Darwin")
+    // MARK: macOS
+
+    /// What the macOS VM's core reported of each program (`host-evidence/macos`), whose
+    /// foreground goes by `2.1.316`, `node` or `grok-1.0.70-macos-aarch64` there.
+    private nonisolated static let macOSScenes: [(scene: String, program: ChatProgram)] = [
+        ("claude-direct", .claude), ("claude-under-zsh", .claude), ("codex-after-reply", .codex),
+        ("codex-shared-daemon", .codex), ("grok", .grok), ("opencode", .opencode), ("pi-extension", .pi),
+        ("omp-extension", .omp), ("omp-breadcrumb", .omp),
+    ]
+
+    private func macOSRig(
+        _ scene: String, offering programs: Set<ChatProgram> = Set(ChatProgram.allCases)
+    ) throws -> (Rig, HostEvidenceFixture.Scene) {
+        let scene = try HostEvidenceFixture.named("macos/vm-26.5").scene(scene)
+        let rig = Rig(host: host, record: try #require(scene.record), offering: programs)
+        return (rig, scene)
+    }
+
+    @Test(arguments: macOSScenes)
+    func chatIsOfferedOnAMacOSCoreHost(_ entry: (scene: String, program: ChatProgram)) async throws {
+        let (rig, scene) = try macOSRig(entry.scene)
+        try await rig.start((scene.processes ?? []).map(\.process), kernel: "Darwin")
 
         let agent = try #require(rig.agent)
-        #expect(rig.store.chatProgram(for: agent) == nil)
-        #expect(rig.store.chatStore(for: agent, program: program) == nil)
+        #expect(rig.store.chatProgram(for: agent) == entry.program)
+        #expect(rig.store.chatStore(for: agent, program: entry.program) != nil)
+        rig.store.setHosts([])
+    }
+
+    /// One list says what a core Host's Chat offers: a program waiting on its owner
+    /// check waits on macOS too.
+    @Test func aMacOSHostOffersTheSameProgramsAsLinux() async throws {
+        let (rig, scene) = try macOSRig("grok", offering: [.claude])
+        try await rig.start((scene.processes ?? []).map(\.process), kernel: "Darwin")
+
+        #expect(rig.store.chatProgram(for: try #require(rig.agent)) == nil)
+        rig.store.setHosts([])
+    }
+
+    /// The store hands the check to the macOS forms: this row binds on nothing else.
+    @Test func aMacOSHostChecksInTheMacOSForms() async throws {
+        let (rig, scene) = try macOSRig("grok")
+        for (path, text) in scene.files ?? [:] { await rig.files.write(text, at: path) }
+        let session = "c3b87b14-d6bf-41ed-b273-5594972f9bbf"
+        let path = "/Users/admin/lab/iso/grok/grok-home/sessions/%2FUsers%2Fadmin%2Flab%2Fiso%2Fprojects%2Fgrok/\(session)/updates.jsonl"
+        let text = try ChatFixture.text("grok/core-turns.jsonl")
+        let original = try #require(GrokTranscriptLocator.sessionID(inHead: Data(text.utf8)))
+        await rig.files.write(text.replacingOccurrences(of: original, with: session), at: path)
+        try await rig.start((scene.processes ?? []).map(\.process), kernel: "Darwin")
+        let chat = try rig.chat(.grok)
+
+        chat.show()
+
+        try await rig.waitUntil("Chat to follow it") { chat.conversation.phase == .following(path: path) }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    @Test func aCodexOnTheSharedDaemonGetsOnlyTheReopenMessageOnMacOS() async throws {
+        let (rig, scene) = try macOSRig("codex-shared-daemon")
+        for (path, text) in scene.files ?? [:] { await rig.files.write(text, at: path) }
+        try await rig.start((scene.processes ?? []).map(\.process), kernel: "Darwin")
+        let chat = try rig.chat(.codex)
+
+        chat.show()
+
+        try await rig.waitUntil("the message") { chat.conversation.phase == .unavailable(.codexSharedDaemon) }
+        #expect(await chat.confirmSessionBeforeSend() != nil)
+        #expect(await rig.files.reads.isEmpty)
+        chat.end()
         rig.store.setHosts([])
     }
 
     @Test func capabilitiesFollowTheProgramsTurnedOn() {
-        let on = HostCapabilities(
-            serverKind: .herdrCore, platform: .posix, coreKernel: "Linux", coreChatPrograms: [.claude, .grok])
-        for program in ChatProgram.allCases {
-            #expect(on.offersChat(for: program) == [.claude, .grok].contains(program))
+        for kernel in ["Linux", "Darwin"] {
+            let on = HostCapabilities(
+                serverKind: .herdrCore, platform: .posix, coreKernel: kernel, coreChatPrograms: [.claude, .grok])
+            #expect(on.chat)
+            for program in ChatProgram.allCases {
+                #expect(on.offersChat(for: program) == [.claude, .grok].contains(program))
+            }
         }
-        let mac = HostCapabilities(
-            serverKind: .herdrCore, platform: .posix, coreKernel: "Darwin", coreChatPrograms: [.claude, .grok])
-        #expect(!mac.chat)
         // Herdr TUI has no such list.
         #expect(HostCapabilities(serverKind: .herdrTUI, coreChatPrograms: []).chatPrograms == nil)
     }

@@ -80,8 +80,9 @@ enum HostProcessReader {
         var parent: String?
         var name: String?
         /// On the walk's root: everything under it, each with its own facts.
-        /// Unavailable on a platform with no recorded method, or past the cap,
-        /// where part of a tree could hide the process a caller looks for.
+        /// Unavailable on a platform with no recorded method, past the cap, where
+        /// part of a tree could hide the process a caller looks for, or when nothing
+        /// could be listed. So a process it leaves out is not there.
         var descendants: Reading<[String]> = .unavailable
     }
 
@@ -287,10 +288,11 @@ enum HostProcessReader {
         ]
     }
 
-    /// Only the methods the macOS spike confirmed; herdr compatibility records
+    /// Only the methods the macOS recordings confirmed; herdr compatibility records
     /// each one with its macOS version. `ps -o lstart=` for the start,
     /// `KERN_PROCARGS2` through `/usr/bin/perl` for variables (`ps -E` cannot
-    /// frame a value holding a space), `lsof -F` for descriptors. macOS
+    /// frame a value holding a space) and arguments, `lsof -F` for descriptors,
+    /// `ps -ax` for the walk, whose `W ok` says the tree is whole. macOS
     /// withholds a platform binary's environment and ends the buffer there, so
     /// no entries read as unavailable, as an empty read does on Linux. Anywhere
     /// else dyld's own `apple` strings follow the environment, so an empty
@@ -305,8 +307,10 @@ enum HostProcessReader {
     /// unavailable, and neither `unset` nor the wrong value can come of it.
     private static func macOSReads(_ request: Request) -> [String] {
         [
+            // In UTC, as Claude Code writes it, and so that a label compared later
+            // does not depend on the zone an exec's startup files set.
             "s() {",
-            "  t=$(/bin/ps -o lstart= -p \"$1\" </dev/null) || t=",
+            "  t=$(TZ=UTC /bin/ps -o lstart= -p \"$1\" </dev/null) || t=",
             "  printf 'S %s %s\\n' \"$1\" \"${t:--}\"",
             "}",
             "e() {",
@@ -338,9 +342,49 @@ enum HostProcessReader {
                 + "else print \"O\",p,\"-\"}",
             "'",
             "}",
-            // No method confirmed yet, so a walk reads as unavailable (ADR 0034).
-            "w() { printf 'W %s -\\n' \"$1\"; }",
-            "a() { printf 'B %s -\\n' \"$1\"; }",
+            // The listing holds only numbers, so nothing a process wrote over its
+            // argv can pass for a row, and a process's name is one read of its own.
+            // `comm` is argv[0], which holds a title (Node's `process.title`) where
+            // the kernel's name would still say `node`. Only its last path part is
+            // printed, and only when it cannot be taken for anything else: another
+            // user's reads `(name)`. An empty listing did not answer: `ps` lists itself.
+            "w() {",
+            "  /bin/ps -ax -o pid=,ppid= </dev/null | awk -v r=\"$1\" -v m=\(processCap) '",
+            "{P[$1]=$2;K[$2]=K[$2] \" \" $1}",
+            "END{if(!NR){print \"W\",r,\"-\";exit}",
+            "Q[1]=r;h=1;e=1;",
+            "while(h<=e){x=Q[h++];u=split(K[x],A,\" \");",
+            "for(i=1;i<=u;i++)if(!(A[i] in S)&&A[i]!=r){S[A[i]]=1;Q[++e]=A[i]}}",
+            "if(e-1>m){print \"W\",r,\"-\";exit}",
+            "if(r in P)print \"T\",r,P[r];",
+            "for(i=2;i<=e;i++){y=Q[i];print \"T\",y,P[y]}",
+            "print \"W\",r,\"ok\"}",
+            "' | while read -r k c p; do",
+            "  case $k in",
+            "  T)",
+            "    n=$(/bin/ps -ww -o comm= -p \"$c\" </dev/null | { read -r n; printf '%s' \"$n\"; })",
+            "    n=${n##*/}",
+            "    case $n in ''|*[!A-Za-z0-9._-]*) n=- ;; esac",
+            "    printf 'T %s %s %s\\n' \"$c\" \"$p\" \"$n\"",
+            "    ;;",
+            "  *) printf '%s %s %s\\n' \"$k\" \"$c\" \"$p\" ;;",
+            "  esac",
+            "done",
+            "}",
+            // The strings before `argc` runs out, hex, compared whole. Nothing else
+            // of an argv leaves. An entry past them holds `=`, which no asked word does.
+            "a() {",
+            "  /usr/bin/perl -e '",
+            "use strict;my $p=shift;my %W=map{($_,1)}qw(\(request.argumentsAmong.joined(separator: " ")));",
+            "my $m=pack(\"i3\",1,49,$p);my $b=\"\\0\"x1048576;my $l=pack(\"Q\",1048576);",
+            "syscall(202,$m,3,$b,$l,0,0)==0 or exit 1;",
+            "my $d=substr($b,0,unpack(\"Q\",$l));my $c=unpack(\"i\",$d);",
+            "my $r=substr($d,4);$r=~s/^[^\\0]*\\0+//;",
+            "my @a=split(/\\0/,$r,-1);my %G;my $o=\"\";",
+            "for my $x(splice(@a,0,$c)){$o.=\"A $p \".unpack(\"H*\",$x).\"\\n\" if $W{$x}&&!$G{$x}++;}",
+            "print $o,\"B $p ok\\n\";",
+            "' \"$1\" </dev/null || printf 'B %s -\\n' \"$1\"",
+            "}",
         ]
     }
 
@@ -538,6 +582,25 @@ enum HostProcessReader {
         case UInt8(ascii: "a")...UInt8(ascii: "f"): byte - UInt8(ascii: "a") + 10
         default: nil
         }
+    }
+
+    /// The whole seconds since the epoch of a macOS start, which the script reads in
+    /// UTC. `Sun Nov  1 22:42:20 2026` is 1793572940. Nil for any other form, such as
+    /// Linux's clock ticks.
+    static func macOSStartSeconds(_ start: String) -> Int64? {
+        let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        let parts = start.split(separator: " ")
+        guard parts.count == 5, let month = months.firstIndex(of: String(parts[1])), let day = Int(parts[2]),
+            let year = Int(parts[4])
+        else { return nil }
+        let time = parts[3].split(separator: ":").compactMap { Int($0) }
+        guard time.count == 3 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        let components = DateComponents(
+            year: year, month: month + 1, day: day, hour: time[0], minute: time[1], second: time[2])
+        guard components.isValidDate(in: calendar), let date = calendar.date(from: components) else { return nil }
+        return Int64(date.timeIntervalSince1970)
     }
 
     /// Clock ticks from Linux's stat, or `ps -o lstart=` from macOS with the

@@ -1,0 +1,800 @@
+{
+  "version": "herdr-core 0.1.13, macOS 26.5 25F71 arm64 Tart VM with SIP disabled, zone UTC, no sign-in, fake model; Claude Code 2.1.316 native, Codex CLI 0.165.0, Grok Build 1.0.70, OpenCode 2.0.32, Pi 0.85.1, Oh My Pi 18.13.3",
+  "scenes": [
+    {
+      "name": "claude-direct",
+      "record": {
+        "address": "t1",
+        "argv": [
+          "/Users/admin/lab/bin/claude"
+        ],
+        "cols": 200,
+        "cwd": "/Users/admin/lab/iso/projects/claude",
+        "foreground": {
+          "argv": [
+            "/Users/admin/lab/bin/claude"
+          ],
+          "cwd": "/Users/admin/lab/iso/projects/claude",
+          "name": "2.1.316",
+          "pid": 997
+        },
+        "keep": true,
+        "labels": {},
+        "name": "cc-direct",
+        "pid": 997,
+        "reason": null,
+        "rows": 120,
+        "state": "live",
+        "status": {
+          "app": "claude-code",
+          "state": "idle"
+        },
+        "title": "Claude Code"
+      },
+      "processes": [
+        {
+          "pid": 997,
+          "parent": 996,
+          "name": "claude",
+          "start": "Sun Nov  1 22:39:55 2026",
+          "argv": [],
+          "environment": {
+            "CLAUDE_CONFIG_DIR": "/Users/admin/lab/iso/claude/config",
+            "HC_SCOPE": "8829246337-6bbcf9d4165faa96c833bcf3687d781d",
+            "HOME": "/Users/admin/lab/iso/claude/home"
+          },
+          "files": [
+            "/dev/ttys000"
+          ]
+        }
+      ],
+      "agentProcess": 997,
+      "files": {
+        "/Users/admin/lab/iso/claude/config/sessions/997.json": "{\"pid\":997,\"sessionId\":\"0d8ecfef-5bc7-4f7d-af22-2c185d16d85c\",\"cwd\":\"/Users/admin/lab/iso/projects/claude\",\"startedAt\":1793572826000,\"procStart\":\"Sun Nov  1 22:39:55 2026\",\"version\":\"2.1.316\",\"peerProtocol\":1,\"peerFeatures\":[\"notify_idle\",\"reply_across_default_dirs\",\"artifact_yield\"],\"kind\":\"interactive\",\"entrypoint\":\"cli\",\"pidDomain\":\"darwin\",\"asksForConvertedSkills\":null,\"messagingSocketPath\":\"/tmp/cc-socks/997.sock\",\"name\":\"claude-be\",\"nameSource\":\"derived\",\"nameSince\":1793572826000,\"status\":\"idle\",\"updatedAt\":1793572826056,\"statusUpdatedAt\":1793572826056}"
+      }
+    },
+    {
+      "name": "claude-under-zsh",
+      "record": {
+        "address": "t2",
+        "argv": [
+          "/bin/zsh",
+          "-f"
+        ],
+        "cols": 200,
+        "cwd": "/Users/admin/lab/iso/projects/claude",
+        "foreground": {
+          "argv": [
+            "claude"
+          ],
+          "cwd": "/Users/admin/lab/iso/projects/claude",
+          "name": "2.1.316",
+          "pid": 1066
+        },
+        "keep": true,
+        "labels": {},
+        "name": "cc-zsh",
+        "pid": 1059,
+        "reason": null,
+        "rows": 120,
+        "state": "live",
+        "status": {
+          "app": "claude-code",
+          "state": "idle"
+        },
+        "title": "Claude Code"
+      },
+      "processes": [
+        {
+          "pid": 1059,
+          "parent": 996,
+          "name": "zsh",
+          "start": "Sun Nov  1 22:40:02 2026",
+          "argv": [],
+          "environment": {
+            "CLAUDE_CONFIG_DIR": "/Users/admin/lab/iso/claude/config",
+            "HC_SCOPE": "9002309189-4a6f02884d97ee81bcf12690c3cae188",
+            "HOME": "/Users/admin/lab/iso/claude/home"
+          },
+          "files": [
+            "/dev/ttys001"
+          ]
+        },
+        {
+          "pid": 1066,
+          "parent": 1059,
+          "name": "claude",
+          "start": "Sun Nov  1 22:40:03 2026",
+          "argv": [],
+          "environment": {
+            "CLAUDE_CONFIG_DIR": "/Users/admin/lab/iso/claude/config",
+            "HC_SCOPE": "9002309189-4a6f02884d97ee81bcf12690c3cae188",
+            "HOME": "/Users/admin/lab/iso/claude/home"
+          },
+          "files": [
+            "/dev/ttys001"
+          ]
+        }
+      ],
+      "agentProcess": 1066,
+      "files": {
+        "/Users/admin/lab/iso/claude/config/sessions/1066.json": "{\"pid\":1066,\"sessionId\":\"fa8a82d1-1c60-47cf-ae42-ca8457940ef0\",\"cwd\":\"/Users/admin/lab/iso/projects/claude\",\"startedAt\":1793572826628,\"procStart\":\"Sun Nov  1 22:40:03 2026\",\"version\":\"2.1.316\",\"peerProtocol\":1,\"peerFeatures\":[\"notify_idle\",\"reply_across_default_dirs\",\"artifact_yield\"],\"kind\":\"interactive\",\"entrypoint\":\"cli\",\"pidDomain\":\"darwin\",\"asksForConvertedSkills\":null,\"messagingSocketPath\":\"/tmp/cc-socks/1066.sock\",\"name\":\"claude-ce\",\"nameSource\":\"derived\",\"nameSince\":1793572826628,\"status\":\"idle\",\"updatedAt\":1793572826662,\"statusUpdatedAt\":1793572826662}"
+      }
+    },
+    {
+      "name": "codex-before-prompt",
+      "record": {
+        "address": "t9",
+        "argv": [
+          "/Users/admin/lab/bin/codex",
+          "--no-daemon"
+        ],
+        "cols": 200,
+        "cwd": "/Users/admin/lab/iso/projects/codex",
+        "keep": true,
+        "labels": {},
+        "name": null,
+        "pid": 1301,
+        "reason": null,
+        "rows": 120,
+        "state": "live",
+        "title": "codex",
+        "status": {
+          "app": "codex",
+          "state": "idle"
+        },
+        "foreground": {
+          "argv": [
+            "/Users/admin/lab/bin/codex",
+            "--no-daemon"
+          ],
+          "cwd": "/Users/admin/lab/iso/projects/codex",
+          "name": "codex",
+          "pid": 1301
+        }
+      },
+      "processes": [
+        {
+          "pid": 1301,
+          "parent": 996,
+          "name": "codex",
+          "start": "Sun Nov  1 22:41:21 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codex/codex-home",
+            "HC_SCOPE": "10910022585-de3e05b7fa5e404f012eff29712b71a3",
+            "HOME": "/Users/admin/lab/iso/codex/home"
+          },
+          "files": [
+            "/dev/ttys002",
+            "/Users/admin/lab/iso/codex/codex-home/thread-writer-locks/01a19946-4788-7402-b7ad-a538689feda9.lock"
+          ]
+        },
+        {
+          "pid": 1307,
+          "parent": 1301,
+          "name": "git",
+          "start": "Sun Nov  1 22:41:22 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codex/codex-home",
+            "HC_SCOPE": "10910022585-de3e05b7fa5e404f012eff29712b71a3",
+            "HOME": "/Users/admin/lab/iso/codex/home"
+          },
+          "files": [
+            "/dev/ttys002"
+          ]
+        },
+        {
+          "pid": 1308,
+          "parent": 1307,
+          "name": "git",
+          "start": "Sun Nov  1 22:41:22 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codex/codex-home",
+            "HC_SCOPE": "10910022585-de3e05b7fa5e404f012eff29712b71a3",
+            "HOME": "/Users/admin/lab/iso/codex/home"
+          },
+          "files": [
+            "/dev/ttys002"
+          ]
+        },
+        {
+          "pid": 1309,
+          "parent": 1308,
+          "name": "git-remote-https",
+          "start": "Sun Nov  1 22:41:22 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codex/codex-home",
+            "HC_SCOPE": "10910022585-de3e05b7fa5e404f012eff29712b71a3",
+            "HOME": "/Users/admin/lab/iso/codex/home"
+          },
+          "files": [
+            "/dev/ttys002"
+          ]
+        }
+      ],
+      "agentProcess": 1301
+    },
+    {
+      "name": "codex-after-reply",
+      "record": {
+        "address": "t9",
+        "argv": [
+          "/Users/admin/lab/bin/codex",
+          "--no-daemon"
+        ],
+        "cols": 200,
+        "cwd": "/Users/admin/lab/iso/projects/codex",
+        "keep": true,
+        "labels": {},
+        "name": null,
+        "pid": 1301,
+        "reason": null,
+        "rows": 120,
+        "state": "live",
+        "title": "codex",
+        "status": {
+          "app": "codex",
+          "state": "idle"
+        },
+        "foreground": {
+          "argv": [
+            "/Users/admin/lab/bin/codex",
+            "--no-daemon"
+          ],
+          "cwd": "/Users/admin/lab/iso/projects/codex",
+          "name": "codex",
+          "pid": 1301
+        }
+      },
+      "processes": [
+        {
+          "pid": 1301,
+          "parent": 996,
+          "name": "codex",
+          "start": "Sun Nov  1 22:41:21 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codex/codex-home",
+            "HC_SCOPE": "10910022585-de3e05b7fa5e404f012eff29712b71a3",
+            "HOME": "/Users/admin/lab/iso/codex/home"
+          },
+          "files": [
+            "/dev/ttys002",
+            "/Users/admin/lab/iso/codex/codex-home/thread-writer-locks/01a19946-4788-7402-b7ad-a538689feda9.lock",
+            "/Users/admin/lab/iso/codex/codex-home/sessions/2026/11/01/rollout-2026-11-01T22-41-22-01a19946-4788-7402-b7ad-a538689feda9.jsonl"
+          ]
+        },
+        {
+          "pid": 1307,
+          "parent": 1301,
+          "name": "git",
+          "start": "Sun Nov  1 22:41:22 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codex/codex-home",
+            "HC_SCOPE": "10910022585-de3e05b7fa5e404f012eff29712b71a3",
+            "HOME": "/Users/admin/lab/iso/codex/home"
+          },
+          "files": [
+            "/dev/ttys002"
+          ]
+        },
+        {
+          "pid": 1308,
+          "parent": 1307,
+          "name": "git",
+          "start": "Sun Nov  1 22:41:22 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codex/codex-home",
+            "HC_SCOPE": "10910022585-de3e05b7fa5e404f012eff29712b71a3",
+            "HOME": "/Users/admin/lab/iso/codex/home"
+          },
+          "files": [
+            "/dev/ttys002"
+          ]
+        },
+        {
+          "pid": 1309,
+          "parent": 1308,
+          "name": "git-remote-https",
+          "start": "Sun Nov  1 22:41:22 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codex/codex-home",
+            "HC_SCOPE": "10910022585-de3e05b7fa5e404f012eff29712b71a3",
+            "HOME": "/Users/admin/lab/iso/codex/home"
+          },
+          "files": [
+            "/dev/ttys002"
+          ]
+        }
+      ],
+      "agentProcess": 1301,
+      "files": {
+        "/Users/admin/lab/iso/codex/codex-home/sessions/2026/11/01/rollout-2026-11-01T22-41-22-01a19946-4788-7402-b7ad-a538689feda9.jsonl": "{\"type\": \"session_meta\", \"payload\": {\"id\": \"01a19946-4788-7402-b7ad-a538689feda9\", \"session_id\": \"01a19946-4788-7402-b7ad-a538689feda9\", \"source\": \"cli\", \"thread_source\": \"user\", \"parent_thread_id\": null, \"cwd\": \"/Users/admin/lab/iso/projects/codex\", \"cli_version\": \"0.165.0\", \"originator\": \"codex-tui\"}}\n"
+      }
+    },
+    {
+      "name": "codex-shared-daemon",
+      "record": {
+        "address": "t11",
+        "argv": [
+          "/Users/admin/lab/codexpkg/bin/codex"
+        ],
+        "cols": 200,
+        "cwd": "/Users/admin/lab/iso/projects/codexd",
+        "foreground": {
+          "argv": [
+            "/Users/admin/lab/codexpkg/bin/codex"
+          ],
+          "cwd": "/Users/admin/lab/iso/projects/codexd",
+          "name": "codex",
+          "pid": 2843
+        },
+        "keep": true,
+        "labels": {},
+        "name": "codexd-a",
+        "pid": 2843,
+        "reason": null,
+        "rows": 120,
+        "state": "live",
+        "status": {
+          "app": "codex",
+          "state": "done"
+        },
+        "title": "codexd"
+      },
+      "processes": [
+        {
+          "pid": 2843,
+          "parent": 996,
+          "name": "codex",
+          "start": "Sun Nov  1 22:46:56 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codexd/codex-home",
+            "HC_SCOPE": "18950791217-e185deff1f5d1efd9cf210ce5c416fcb",
+            "HOME": "/Users/admin/lab/iso/codexd/home"
+          },
+          "files": [
+            "/dev/ttys002"
+          ]
+        },
+        {
+          "pid": 2852,
+          "parent": 2843,
+          "name": "codex",
+          "start": "Sun Nov  1 22:46:57 2026",
+          "argv": [
+            "app-server",
+            "--managed-daemon"
+          ],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codexd/codex-home",
+            "HC_SCOPE": "18950791217-e185deff1f5d1efd9cf210ce5c416fcb",
+            "HOME": "/Users/admin/lab/iso/codexd/home"
+          },
+          "files": [
+            "/dev/ttys002",
+            "/Users/admin/lab/iso/codexd/codex-home/thread-writer-locks/01a1994b-6756-71c1-92e2-b959abebca50.lock",
+            "/Users/admin/lab/iso/codexd/codex-home/sessions/2026/11/01/rollout-2026-11-01T22-46-58-01a1994b-6756-71c1-92e2-b959abebca50.jsonl"
+          ]
+        },
+        {
+          "pid": 2863,
+          "parent": 2843,
+          "name": "codex",
+          "start": "Sun Nov  1 22:46:58 2026",
+          "argv": [
+            "app-server",
+            "pid-update-loop"
+          ],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codexd/codex-home",
+            "HC_SCOPE": "18950791217-e185deff1f5d1efd9cf210ce5c416fcb",
+            "HOME": "/Users/admin/lab/iso/codexd/home"
+          },
+          "files": [
+            "/dev/ttys002"
+          ]
+        },
+        {
+          "pid": 2859,
+          "parent": 2852,
+          "name": "git",
+          "start": "Sun Nov  1 22:46:58 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codexd/codex-home",
+            "HC_SCOPE": "18950791217-e185deff1f5d1efd9cf210ce5c416fcb",
+            "HOME": "/Users/admin/lab/iso/codexd/home"
+          },
+          "files": [
+            "/dev/ttys002"
+          ]
+        },
+        {
+          "pid": 2860,
+          "parent": 2859,
+          "name": "git",
+          "start": "Sun Nov  1 22:46:58 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codexd/codex-home",
+            "HC_SCOPE": "18950791217-e185deff1f5d1efd9cf210ce5c416fcb",
+            "HOME": "/Users/admin/lab/iso/codexd/home"
+          },
+          "files": [
+            "/dev/ttys002"
+          ]
+        },
+        {
+          "pid": 2861,
+          "parent": 2860,
+          "name": "git-remote-https",
+          "start": "Sun Nov  1 22:46:58 2026",
+          "argv": [],
+          "environment": {
+            "CODEX_HOME": "/Users/admin/lab/iso/codexd/codex-home",
+            "HC_SCOPE": "18950791217-e185deff1f5d1efd9cf210ce5c416fcb",
+            "HOME": "/Users/admin/lab/iso/codexd/home"
+          },
+          "files": [
+            "/dev/ttys002"
+          ]
+        }
+      ],
+      "agentProcess": 2843,
+      "files": {
+        "/Users/admin/lab/iso/codexd/codex-home/sessions/2026/11/01/rollout-2026-11-01T22-46-58-01a1994b-6756-71c1-92e2-b959abebca50.jsonl": "{\"type\": \"session_meta\", \"payload\": {\"id\": \"01a1994b-6756-71c1-92e2-b959abebca50\", \"session_id\": \"01a1994b-6756-71c1-92e2-b959abebca50\", \"source\": \"vscode\", \"thread_source\": \"user\", \"parent_thread_id\": null, \"cwd\": \"/Users/admin/lab/iso/projects/codexd\", \"cli_version\": \"0.165.0\", \"originator\": \"codex-tui\"}}\n"
+      }
+    },
+    {
+      "name": "grok",
+      "record": {
+        "address": "t5",
+        "argv": [
+          "/Users/admin/.grok/bin/grok",
+          "-s",
+          "c3b87b14-d6bf-41ed-b273-5594972f9bbf"
+        ],
+        "cols": 200,
+        "cwd": "/Users/admin/lab/iso/projects/grok",
+        "foreground": {
+          "argv": [
+            "/Users/admin/.grok/bin/grok",
+            "-s",
+            "c3b87b14-d6bf-41ed-b273-5594972f9bbf"
+          ],
+          "cwd": "/Users/admin/lab/iso/projects/grok",
+          "name": "grok-1.0.70-macos-aarch64",
+          "pid": 1857
+        },
+        "keep": true,
+        "labels": {},
+        "name": "grok-s",
+        "pid": 1857,
+        "reason": null,
+        "rows": 120,
+        "state": "live",
+        "status": {
+          "app": "grok-build",
+          "state": "idle"
+        },
+        "title": "grok"
+      },
+      "processes": [
+        {
+          "pid": 1857,
+          "parent": 996,
+          "name": "grok",
+          "start": "Sun Nov  1 22:42:20 2026",
+          "argv": [],
+          "environment": {
+            "GROK_HOME": "/Users/admin/lab/iso/grok/grok-home",
+            "HC_SCOPE": "12306847442-cab0bc25d14028c21e8f9fa8035a089b",
+            "HOME": "/Users/admin/lab/iso/grok/home"
+          },
+          "files": [
+            "/dev/ttys003",
+            "/Users/admin/lab/iso/grok/grok-home/sessions/%2FUsers%2Fadmin%2Flab%2Fiso%2Fprojects%2Fgrok/c3b87b14-d6bf-41ed-b273-5594972f9bbf/events.jsonl"
+          ]
+        }
+      ],
+      "agentProcess": 1857,
+      "files": {
+        "/Users/admin/lab/iso/grok/grok-home/active_sessions.json": "[\n  {\n    \"session_id\": \"c3b87b14-d6bf-41ed-b273-5594972f9bbf\",\n    \"pid\": 1857,\n    \"pid_start\": 1793572940135416,\n    \"cwd\": \"/Users/admin/lab/iso/projects/grok\",\n    \"opened_at\": \"2026-11-01T22:42:25.687253Z\"\n  }\n]"
+      }
+    },
+    {
+      "name": "opencode",
+      "record": {
+        "address": "t6",
+        "argv": [
+          "/Users/admin/lab/bin/opencode",
+          "-s",
+          "ses_e66b88ba5ffeAbCdEfGhIjKlMn"
+        ],
+        "cols": 200,
+        "cwd": "/Users/admin/lab/iso/projects/opencode",
+        "foreground": {
+          "argv": [
+            "/Users/admin/lab/bin/opencode",
+            "-s",
+            "ses_e66b88ba5ffeAbCdEfGhIjKlMn"
+          ],
+          "cwd": "/Users/admin/lab/iso/projects/opencode",
+          "name": "opencode",
+          "pid": 1924
+        },
+        "keep": true,
+        "labels": {},
+        "name": "oc-a",
+        "pid": 1924,
+        "reason": null,
+        "rows": 120,
+        "state": "live",
+        "status": null,
+        "title": "OpenCode"
+      },
+      "processes": [
+        {
+          "pid": 1924,
+          "parent": 996,
+          "name": "opencode",
+          "start": "Sun Nov  1 22:42:39 2026",
+          "argv": [],
+          "environment": {
+            "HC_SCOPE": "12772890912-51ea890fa036de360b36a3ddc5c65ee2",
+            "HOME": "/Users/admin/lab/iso/opencode/home"
+          },
+          "files": [
+            "/dev/ttys004"
+          ]
+        },
+        {
+          "pid": 1930,
+          "parent": 1924,
+          "name": "opencode",
+          "start": "Sun Nov  1 22:42:39 2026",
+          "argv": [],
+          "environment": {
+            "HC_SCOPE": "12772890912-51ea890fa036de360b36a3ddc5c65ee2",
+            "HOME": "/Users/admin/lab/iso/opencode/home"
+          },
+          "files": [
+            "/Users/admin/lab/iso/projects/opencode",
+            "/Users/admin/lab/iso/projects/opencode/.git"
+          ]
+        }
+      ],
+      "agentProcess": 1924
+    },
+    {
+      "name": "pi-extension",
+      "record": {
+        "address": "t7",
+        "argv": [
+          "/Users/admin/lab/bin/pi",
+          "--session-id",
+          "ccfe7187-4ea6-468d-9555-83c3827f9cd0"
+        ],
+        "cols": 200,
+        "cwd": "/Users/admin/lab/iso/projects/pi",
+        "foreground": {
+          "argv": [
+            "pi",
+            "",
+            "",
+            ""
+          ],
+          "cwd": "/Users/admin/lab/iso/projects/pi",
+          "name": "node",
+          "pid": 2009
+        },
+        "keep": true,
+        "labels": {
+          "heeler.session": "{\"session\":\"ccfe7187-4ea6-468d-9555-83c3827f9cd0\",\"file\":\"/Users/admin/lab/iso/pi085/agent/sessions/--Users-admin-lab-iso-projects-pi--/2026-11-01T22-42-44-916Z_ccfe7187-4ea6-468d-9555-83c3827f9cd0.jsonl\",\"pid\":2009,\"start\":\"Sun Nov  1 22:42:44 2026\"}"
+        },
+        "name": "pi-a",
+        "pid": 2009,
+        "reason": null,
+        "rows": 120,
+        "state": "live",
+        "status": {
+          "app": "pi",
+          "state": "idle"
+        },
+        "title": "\u03c0 - pi"
+      },
+      "processes": [
+        {
+          "pid": 2009,
+          "parent": 996,
+          "name": "pi",
+          "start": "Sun Nov  1 22:42:44 2026",
+          "argv": [],
+          "environment": {
+            "HC_SCOPE": "12897460811-dfc38a00bf39001ae60b9eaeb1af873a",
+            "HOME": "/Users/admin/lab/iso/pi085/home",
+            "PI_CODING_AGENT_DIR": "/Users/admin/lab/iso/pi085/agent"
+          },
+          "files": [
+            "/dev/ttys005"
+          ]
+        }
+      ],
+      "agentProcess": 2009
+    },
+    {
+      "name": "omp-extension",
+      "record": {
+        "address": "t9",
+        "argv": [
+          "/Users/admin/lab/bin/omp",
+          "--model",
+          "fake/fake-model"
+        ],
+        "cols": 200,
+        "cwd": "/Users/admin/lab/iso/projects/omp",
+        "keep": true,
+        "labels": {
+          "heeler.session": "{\"session\":\"01a19949-05b1-77c6-ad62-e18bcc1b60f9\",\"file\":\"/Users/admin/lab/iso/omp/home/.omp/agent/sessions/--Users-admin-lab-iso-projects-omp--/2026-11-01T22-44-22-065Z_01a19949-05b1-77c6-ad62-e18bcc1b60f9.jsonl\",\"pid\":2564,\"start\":\"Sun Nov  1 22:44:21 2026\"}"
+        },
+        "name": null,
+        "pid": 2564,
+        "reason": null,
+        "rows": 120,
+        "state": "live",
+        "title": "omp",
+        "status": {
+          "app": "omp",
+          "state": "idle"
+        },
+        "foreground": {
+          "argv": [
+            "/Users/admin/lab/bin/omp",
+            "--model",
+            "fake/fake-model"
+          ],
+          "cwd": "/Users/admin/lab/iso/projects/omp",
+          "name": "omp",
+          "pid": 2564
+        }
+      },
+      "processes": [
+        {
+          "pid": 2564,
+          "parent": 996,
+          "name": "omp",
+          "start": "Sun Nov  1 22:44:21 2026",
+          "argv": [],
+          "environment": {
+            "HC_SCOPE": "15226747341-b7b0d7d440ff674bf76c7b34fbe926ad",
+            "HOME": "/Users/admin/lab/iso/omp/home"
+          },
+          "files": [
+            "/dev/ttys006"
+          ]
+        }
+      ],
+      "agentProcess": 2564
+    },
+    {
+      "name": "omp-before-prompt",
+      "record": {
+        "address": "t12",
+        "argv": [
+          "/Users/admin/lab/bin/omp",
+          "--model",
+          "fake/fake-model"
+        ],
+        "cols": 200,
+        "cwd": "/Users/admin/lab/iso/projects/omp",
+        "foreground": {
+          "argv": [
+            "/Users/admin/lab/bin/omp",
+            "--model",
+            "fake/fake-model"
+          ],
+          "cwd": "/Users/admin/lab/iso/projects/omp",
+          "name": "omp",
+          "pid": 3198
+        },
+        "keep": true,
+        "labels": {},
+        "name": "omp-d",
+        "pid": 3198,
+        "reason": null,
+        "rows": 120,
+        "state": "live",
+        "status": {
+          "app": "omp",
+          "state": "idle"
+        },
+        "title": "\u03c0 > omp"
+      },
+      "processes": [
+        {
+          "pid": 3198,
+          "parent": 996,
+          "name": "omp",
+          "start": "Sun Nov  1 22:56:05 2026",
+          "argv": [],
+          "environment": {
+            "HC_SCOPE": "32111515139-50e37749734f45c477a50d31538c8cb8",
+            "HOME": "/Users/admin/lab/iso/omp/home"
+          },
+          "files": [
+            "/dev/ttys007"
+          ]
+        }
+      ],
+      "files": {
+        "/Users/admin/lab/iso/omp/home/.omp/agent/terminal-sessions/ttys007": "/Users/admin/lab/iso/projects/omp\n/Users/admin/lab/iso/omp/home/.omp/agent/sessions/--Users-admin-lab-iso-projects-omp--/2026-11-01T22-56-05-567Z_01a19953-c1bf-741a-97e8-76d1d62f471e.jsonl\nfresh\ncwdstat 16777228 508503\n"
+      }
+    },
+    {
+      "name": "omp-breadcrumb",
+      "record": {
+        "address": "t10",
+        "argv": [
+          "/Users/admin/lab/bin/omp",
+          "--model",
+          "fake/fake-model"
+        ],
+        "cols": 200,
+        "cwd": "/Users/admin/lab/iso/projects/omp",
+        "foreground": {
+          "argv": [
+            "/Users/admin/lab/bin/omp",
+            "--model",
+            "fake/fake-model"
+          ],
+          "cwd": "/Users/admin/lab/iso/projects/omp",
+          "name": "omp",
+          "pid": 2651
+        },
+        "keep": true,
+        "labels": {},
+        "name": "omp-c",
+        "pid": 2651,
+        "reason": null,
+        "rows": 120,
+        "state": "live",
+        "status": {
+          "app": "omp",
+          "state": "done"
+        },
+        "title": "\u03c0 > canned reply"
+      },
+      "processes": [
+        {
+          "pid": 2651,
+          "parent": 996,
+          "name": "omp",
+          "start": "Sun Nov  1 22:45:39 2026",
+          "argv": [],
+          "environment": {
+            "HC_SCOPE": "17084462226-ad3eaa712a991e9f8ae7e76367ca9785",
+            "HOME": "/Users/admin/lab/iso/omp/home"
+          },
+          "files": [
+            "/dev/ttys006",
+            "/Users/admin/lab/iso/omp/home/.omp/run/session-owners/01a1994a-33e4-7580-a399-bc030b312a13.lock",
+            "/Users/admin/lab/iso/omp/home/.omp/agent/sessions/--Users-admin-lab-iso-projects-omp--/2026-11-01T22-45-39-428Z_01a1994a-33e4-7580-a399-bc030b312a13.jsonl"
+          ]
+        }
+      ],
+      "agentProcess": 2651,
+      "files": {
+        "/Users/admin/lab/iso/omp/home/.omp/agent/terminal-sessions/ttys006": "/Users/admin/lab/iso/projects/omp\n/Users/admin/lab/iso/omp/home/.omp/agent/sessions/--Users-admin-lab-iso-projects-omp--/2026-11-01T22-45-39-428Z_01a1994a-33e4-7580-a399-bc030b312a13.jsonl\ncwdstat 16777228 508503\n"
+      }
+    }
+  ]
+}

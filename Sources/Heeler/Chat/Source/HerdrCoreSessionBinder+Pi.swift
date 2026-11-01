@@ -53,12 +53,9 @@ extension HerdrCoreSessionBinder {
         if isOnWindows {
             return tree.agentOnWindows(isAgent: { $0?.name == program.rawValue }, runtimes: Self.windowsRuntimes)
         }
-        func sharesScope(_ pid: String) -> Bool {
-            tree.facts[pid]?.variables[Self.scopeVariable] == .value(tree.scope)
-        }
-        guard sharesScope(tree.root) else { return nil }
+        guard tree.sharesScope(tree.root) else { return nil }
         var children: [String: [String]] = [:]
-        for pid in tree.descendants where sharesScope(pid) {
+        for pid in tree.descendants where tree.sharesScope(pid) {
             if let parent = tree.facts[pid]?.parent { children[parent, default: []].append(pid) }
         }
         var level = [tree.root]
@@ -80,7 +77,7 @@ extension HerdrCoreSessionBinder {
     private func confirmedBreadcrumbFile(
         of process: HostProcessReader.Facts, agentDirectory: String
     ) async throws -> String? {
-        guard case .value(let openFiles) = process.openFiles, let terminal = Self.terminalName(in: openFiles)
+        guard case .value(let openFiles) = process.openFiles, let terminal = terminalName(in: openFiles)
         else { return nil }
         let path = RemoteFilePath.join(agentDirectory, "terminal-sessions", terminal)
         let slice = try await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: Self.breadcrumbLimit))
@@ -92,11 +89,17 @@ extension HerdrCoreSessionBinder {
         return file
     }
 
-    /// The name Oh My Pi files a breadcrumb under: `/dev/pts/3` is `pts-3`. Its stdin
-    /// is the Terminal, but the read does not say which descriptor is which, so more
-    /// than one terminal names none.
-    private static func terminalName(in openFiles: [String]) -> String? {
-        let terminals = Set(openFiles.filter { $0.wholeMatch(of: /\/dev\/pts\/[0-9]+/) != nil })
+    /// The name Oh My Pi files a breadcrumb under: `/dev/pts/3` is `pts-3`, and on macOS
+    /// `/dev/ttys006` is `ttys006`. Its stdin is the Terminal, but the read does not say
+    /// which descriptor is which, so more than one terminal names none. On Linux a
+    /// `/dev/ttyS0` is a serial port, so macOS's form counts only there.
+    private func terminalName(in openFiles: [String]) -> String? {
+        let terminals = Set(
+            openFiles.filter { path in
+                isOnMacOS
+                    ? path.wholeMatch(of: /\/dev\/ttys[0-9]+/) != nil
+                    : path.wholeMatch(of: /\/dev\/pts\/[0-9]+/) != nil
+            })
         guard terminals.count == 1, let terminal = terminals.first else { return nil }
         return String(terminal.dropFirst("/dev/".count)).replacingOccurrences(of: "/", with: "-")
     }

@@ -255,7 +255,9 @@ herdr-core Hosts only.
 - Unverified: whether Oh My Pi's security scan leaves the breadcrumb rewritten,
   since the scan needs a stored OAuth account; whether a signed-in account
   changes any of the evidence below, which never saw one; whether Claude Code's
-  `procStart` on macOS equals the start `ps -o lstart=` prints; whether a Host
+  `procStart` on a real Mac equals the start `ps -o lstart=` prints in UTC, which
+  it did for native 2.1.316 in a macOS 26.5 VM with SIP off, the owner's check of
+  it being still to run; whether a Host
   can work out an Oh My Pi lock's name without running its code, since the hash is not
   identified; and whether Heeler's OpenCode store query reads what OpenCode 2.2.5
   really writes. It runs against both recorded schemas, on rows of 2.0.32's shape
@@ -325,3 +327,18 @@ herdr-core Hosts only.
   (Node's `process.title`) leaves indistinguishable from an argument; a title
   shorter than argv still reads. Any of these that fails leaves the program to
   its candidate list and the leak notice to show nothing.
+- Chat on a macOS core Host binds as on Linux, through the macOS forms of the same
+  reads, for the same `confirmedCoreChatPrograms`: a program waiting on its owner
+  check waits on both. Each of the six was seen through those reads in a macOS 26.5
+  VM with SIP off and no sign-in (`host-evidence/macos`,
+  [herdr compatibility](../agents/herdr-compatibility.md)). A program taken out of
+  `macOSExactCoreChatPrograms` reads as cannot tell there and goes through its
+  candidate list with one confirmation, and binds as before on Linux. Three things
+  differ. The walk's `W ok` says the tree is whole, so a pick's process it no longer
+  lists has left. Grok Build's `pid_start` is microseconds, compared to the second
+  the start read gives. Oh My Pi's breadcrumb goes by `ttys006`. A Mac with SIP on
+  withholds `/bin/zsh`'s environment, which is usually the Terminal's own process,
+  so there alone the foreground's `HC_SCOPE` stands in for the Terminal's. With both
+  withheld no process is the Agent, and a walk still drops a pick whose process left.
+  An Apple binary between the foreground and the Agent therefore reads as cannot
+  tell with no list.

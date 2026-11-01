@@ -191,11 +191,17 @@ extension HerdrCoreSessionBinder {
         guard slice.length != nil, slice.data.count < Self.activeSessionsLimit,
             let rows = try? JSONDecoder().decode([ActiveSession].self, from: slice.data)
         else { return cannotTell }
-        let matching = rows.filter { String($0.pid) == pid && String($0.pidStart) == start }
+        let matching = rows.filter { String($0.pid) == pid && matchesGrokStart($0.pidStart, start: start) }
         guard matching.count == 1, let row = matching.first,
             let session = ConversationReference.lowercaseUUID(row.sessionID)
         else { return cannotTell }
         return .bound(sessionID: session, transcriptRoot: grokHome, directory: startDirectory(row.cwd))
+    }
+
+    /// macOS's read says the second, and the row its microseconds.
+    private func matchesGrokStart(_ pidStart: Int64, start: String) -> Bool {
+        guard isOnMacOS else { return String(pidStart) == start }
+        return HostProcessReader.macOSStartSeconds(start) == pidStart / 1_000_000
     }
 
     var grokProcessAsk: ProcessAsk {
@@ -207,7 +213,8 @@ extension HerdrCoreSessionBinder {
     }
 
     /// One row of `active_sessions.json`. `pid_start` is a JSON number, field 22
-    /// of `/proc/<pid>/stat` (Grok Build 1.0.70, `host-evidence/grok/s-flag.json`).
+    /// of `/proc/<pid>/stat` (Grok Build 1.0.70, `host-evidence/grok/s-flag.json`), and
+    /// microseconds since the epoch on macOS (the same, `host-evidence/macos`).
     /// On Windows it is taken to be the creation FILETIME, which no row has shown yet
     /// (herdr compatibility): any other number binds nothing.
     private struct ActiveSession: Decodable {
