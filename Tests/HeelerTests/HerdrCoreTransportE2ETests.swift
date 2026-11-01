@@ -81,10 +81,10 @@ struct HerdrCoreTransportE2ETests {
         }
     }
 
-    @Test("no outcome falls back to the legacy herdr on the same machine")
+    @Test("no outcome falls back to the Herdr TUI server on the same machine")
     func noLegacyFallback() async throws {
         try await CoreSSHFixture.with { fixture in
-            // The session name hc refuses goes nowhere, not to another backend.
+            // The session name hc refuses goes nowhere, not to the other Server Kind.
             let refused = try await SSHTransportConnector().connectCore(
                 settings: fixture.settings(session: "../invalid-session"))
             do {
