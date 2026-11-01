@@ -148,10 +148,8 @@ herdr-core Hosts only.
 - Unverified: whether Oh My Pi's security scan leaves the breadcrumb rewritten,
   since the scan needs a stored OAuth account; whether a signed-in account
   changes any of the evidence below, which never saw one; whether Claude Code's
-  `procStart` on macOS equals the start `ps -o lstart=` prints;
-  `HC_TERMINAL_SOCKET`'s form on Windows; whether Windows Transcripts are
-  read over SFTP or the core's `file.read`; and whether a Host can work out an
-  Oh My Pi lock's name without running its code, since the hash is not
+  `procStart` on macOS equals the start `ps -o lstart=` prints; whether a Host
+  can work out an Oh My Pi lock's name without running its code, since the hash is not
   identified; and whether Heeler's OpenCode store query runs against either
   schema, since only its table and column names were checked. Owner
   confirmation with a signed-in
@@ -177,6 +175,22 @@ herdr-core Hosts only.
   sent before the box appeared left no row. For the scan, only its one
   `SessionManager.create` call ran, on its own, and it did rewrite the
   breadcrumb.
+- On native Windows `HC_TERMINAL_SOCKET` holds the pipe path,
+  `\\.\pipe\herdr-core-<user>-<session>.sock`, and Node's `net.connect` reaches
+  it and gets a plain JSON-RPC reply
+  ([observation](../agents/herdr-compatibility.md)), so the extensions connect
+  by that value as they do to a Unix socket (#590). Pi and Oh My Pi themselves
+  have not run there.
+- Windows Transcripts are read over SFTP, the reader Unix already uses, to avoid
+  `file.read`'s 8 MiB per read, 64 MiB per file and UTF-8 limits, which were
+  read from source and not tried over SFTP. On a growing file, `file.read`'s
+  line count and last line matched a direct read, and SFTP's byte count equaled
+  the file's current size, but SFTP's content was not compared. This is
+  provisional until that comparison runs through sshd: `sftp-server.exe` ran
+  locally, on made-up files. A writer that shares nothing fails both.
+- Under PowerShell the foreground's pid is never the Agent's, so #590 binds
+  through PowerShell's children, not through the foreground's pid. A session
+  registry entry on Windows has not been read.
 - Confirmed on macOS 27.0.1, against processes the spike started
   ([herdr compatibility](../agents/herdr-compatibility.md)): process start from
   `ps -o lstart=`, named variables from `KERN_PROCARGS2`, open files from

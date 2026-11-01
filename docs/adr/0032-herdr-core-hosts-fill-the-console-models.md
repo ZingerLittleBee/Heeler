@@ -197,8 +197,23 @@ with test clients, not the app.
   alike.
 - When an Agent Heeler started exits, its Pane closes, where a Herdr TUI Pane
   returns to the shell. Its foreground is the agent itself from the moment the
-  shell replaces itself. Which process the core reports as the foreground
-  under PowerShell, which does not replace itself, is unverified.
+  shell replaces itself.
+- Under PowerShell, which does not replace itself, the foreground is
+  PowerShell for the Terminal's whole life: one event, with PowerShell's pid
+  and the launch arguments, never the child
+  ([observation](../agents/herdr-compatibility.md)). Recognizing a Windows
+  Agent therefore reads the program out of PowerShell's `-Command` argument
+  (#588). Under Heeler's form the Terminal finished when its program ended, so
+  its Pane closes as on Unix. `choice.exe` finished it with its own code, 2.
+  Claude Code stopped by two Ctrl+C keys finished it with 1, not separated from
+  PowerShell's own code, and no Agent has exited normally there. Under the
+  desktop's `-NoExit` form an Agent's exit leaves the foreground's pid, name and
+  arguments unchanged and sends no new foreground event, so recognition from the foreground keeps
+  reading such a Terminal as that Agent until its shell exits, and "a shell in
+  the foreground ends the Agent" never fires. A read of PowerShell's children
+  showed the exit, and the attach stream later carried PowerShell's prompt; the
+  screen and the other event types were not compared as signals. Until #588 or
+  #590 adds a check, that staleness stands.
 - Recognizing an Agent works on the foreground's arguments, not the launch
   arguments, and needs a table from reported `app` names (`claude-code`,
   `codex`, `opencode`, `pi`, `omp`, `grok-build`) to Heeler's agent kinds.
@@ -252,5 +267,9 @@ with test clients, not the app.
   therefore ship off, behind `HerdrAppControl.isRenameConfirmed`, until the
   owner's check on a desktop Mac passes; New Workspace does not depend on it.
 - On Windows a Staged Image or File larger than 8 MiB is refused before it is
-  sent. The files sit under the user's profile with whatever access it grants;
-  the core does not narrow it (unverified).
+  sent, as the core refuses it (`invalid_params`); exactly 8 MiB is accepted.
+  The files sit at `<state>\files\<address>\<cleaned name>` under the user's
+  profile, with the inherited access of SYSTEM, Administrators and the account
+  ([observation](../agents/herdr-compatibility.md)). A program in the Terminal
+  reads them by that path. The folder outlives `terminal.kill` and goes with
+  `terminal.rm`, so a kept Terminal's files stay until it is removed.

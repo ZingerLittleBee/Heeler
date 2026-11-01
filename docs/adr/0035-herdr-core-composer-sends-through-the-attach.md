@@ -148,7 +148,8 @@ confirm or refine these points with test clients, not the app.
 
 - Send needs a live Attach to the Agent; Composer opens one before sending.
 - Send is offered once the connection reports a POSIX Host. Native Windows
-  turns it on separately, after its foreground form is settled (ADR 0032).
+  turns it on separately (#589), under the limits its foreground form sets
+  below.
 - Send takes at least 550 ms and one read between paste and submit, even when a
   foreground event showing the same program comes sooner. On a link slow enough
   that the check passes two seconds, counted from when the paste was handed to
@@ -178,8 +179,31 @@ confirm or refine these points with test clients, not the app.
 - Under bash, bracketed paste is on only at the prompt, so the mode gate never
   stops a paste into the shell an Agent left behind; the foreground check
   keeps it from being submitted there, and Send's Ctrl+C drops it.
-- On Windows, which process the foreground names under PowerShell, and so
-  what the same-pid check compares, is unverified (ADR 0032).
+- On Windows the same-pid check compares PowerShell's pid and the program in its
+  arguments, which stay the same for the Terminal's life (ADR 0032). Under
+  Heeler's launch form that is enough: in the runs observed, the program's end
+  also ended PowerShell and the Terminal, so the read after the paste finds it
+  finished, nothing is submitted and no shell is left to hold the text. No Agent
+  has exited normally there; Claude Code was stopped with Ctrl+C.
+- Under the desktop's `-NoExit` form the check passes after the Agent has left,
+  so Enter would reach PowerShell's prompt and run the draft as a command. The
+  foreground cannot show that a PowerShell took over, so "when a shell holds
+  the foreground" never fires there. #589 therefore offers Send only under
+  Heeler's form until it has another check before submitting, such as a read of
+  PowerShell's children. This narrows that ticket's Ctrl+C on the `-NoExit`
+  wrapper, and it needs the owner's decision if that wrapper must have Send.
+- At PowerShell 5.1's prompt the attach showed no `CSI ?2004h` in the 6 seconds
+  or so from the end of the first paint to a paste. That first paint was not
+  kept and the bytes after the paste were not searched, so the mode being off
+  there is not settled. If it stays off, the mode gate refuses a paste there
+  unless a dead Agent's flag stayed set, which was not tried on Windows. When a
+  paste does reach the prompt, one 0x03 drops it unrun
+  ([observation](../agents/herdr-compatibility.md)).
+- On Windows an attach delivered input to a raw-mode program at about 80 KB/s,
+  so a very long draft can still be arriving when Enter is queued behind it. Valid
+  UTF-8, the paste envelope, 0x03 and `CSI 13 u` reached a raw-mode program
+  unchanged, but 0x00 did not arrive and a lone byte of 0x80 or above became
+  U+FFFD. None of this has crossed SSH exec.
 - A Terminal that has ever reported keeps Esc as its interrupt key after its
   Agent exits, so Stop is offered only while the Agent holds the foreground.
 - Stop is also offered only while Agent Status is Working, and only a report
