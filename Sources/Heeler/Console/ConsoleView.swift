@@ -1271,7 +1271,6 @@ struct ConsoleView: View {
     }
 
     private func selectAgent(_ id: ConsoleAgent.ID) {
-        guard console.capabilities(for: id.hostID).opensDetail else { return }
         changeSelection {
             showAgentsList(parking: parkedSelection)
             selectedTerminal = nil
@@ -1280,7 +1279,6 @@ struct ConsoleView: View {
     }
 
     private func selectTerminal(_ terminal: ConsoleTerminal) {
-        guard console.capabilities(for: terminal.hostID).opensDetail else { return }
         if let agentID = terminal.agentID {
             selectAgent(agentID)
         } else {
@@ -1884,17 +1882,9 @@ struct ConsoleView: View {
         let offers = ConsoleAgentRowOffers(
             capabilities: console.capabilities(for: agent.hostID),
             supportsMultipleWindows: supportsMultipleWindows)
-        return Group {
-            if offers.opensDetail {
-                NavigationLink(value: ConsoleSelection.agent(agent.id)) {
-                    label()
-                        .modifier(ConsoleRowSelectionContent())
-                }
-            } else {
-                label()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .selectionDisabled()
-            }
+        return NavigationLink(value: ConsoleSelection.agent(agent.id)) {
+            label()
+                .modifier(ConsoleRowSelectionContent())
         }
         // The list reads what it shows: a row on screen reads its Agent's
         // Checkout, and an exit from Working while none does waits for one.
@@ -2086,15 +2076,13 @@ struct ConsoleView: View {
                 filteredHostID: hostFilter, searchQuery: agentSearchText))
     }
 
-    /// Where previous and next can land, so an Agent with no detail is skipped.
+    /// Where previous and next can land.
     private var visibleAgentIDs: [ConsoleAgent.ID] {
-        let visible: [ConsoleAgent.ID] =
-            switch listPresentation.mode {
-            case .flat: filteredAgents.map(\.id)
-            case .grouped: hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) }
-            case .byWorkspace: workspaceCards.flatMap(\.visibleAgentIDs)
-            }
-        return visible.filter { console.capabilities(for: $0.hostID).opensDetail }
+        switch listPresentation.mode {
+        case .flat: filteredAgents.map(\.id)
+        case .grouped: hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) }
+        case .byWorkspace: workspaceCards.flatMap(\.visibleAgentIDs)
+        }
     }
 
     private var presentationModeBinding: Binding<ConsoleListPresentationMode> {

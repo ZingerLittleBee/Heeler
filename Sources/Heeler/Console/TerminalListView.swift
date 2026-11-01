@@ -300,19 +300,14 @@ struct TerminalListView: View {
         }
     }
 
-    /// A link to the Terminal's detail, on a Host that can open one.
-    @ViewBuilder
+    /// A link to the Terminal's detail.
     private func terminalRowContent(_ terminal: ConsoleTerminal, showsTab: Bool) -> some View {
-        let row = TerminalRowView(terminal: terminal, showsTab: showsTab)
-            // Across the row, as an Agent's card is: the context menu
-            // lifts a card as wide as the row it measures.
-            .frame(maxWidth: .infinity, alignment: .leading)
-        if capabilities(of: terminal).opensDetail {
-            NavigationLink(value: ConsoleSelection.terminal(terminal.id)) {
-                row.modifier(ConsoleRowSelectionContent())
-            }
-        } else {
-            row.selectionDisabled()
+        NavigationLink(value: ConsoleSelection.terminal(terminal.id)) {
+            TerminalRowView(terminal: terminal, showsTab: showsTab)
+                // Across the row, as an Agent's card is: the context menu
+                // lifts a card as wide as the row it measures.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .modifier(ConsoleRowSelectionContent())
         }
     }
 

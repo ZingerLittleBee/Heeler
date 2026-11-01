@@ -498,10 +498,9 @@ struct HerdrCoreAgentsTests {
         defer { store.setHosts([]) }
         let row = try #require(agent(store, "t1"))
 
-        #expect(store.capabilities(for: host.id).opensDetail)
         let offers = ConsoleAgentRowOffers(
             capabilities: store.capabilities(for: host.id), supportsMultipleWindows: true)
-        #expect(offers == ConsoleAgentRowOffers(opensDetail: true, opensInNewWindow: true, closes: true))
+        #expect(offers == ConsoleAgentRowOffers(opensInNewWindow: true, closes: true))
 
         try await waitUntil("the Workspace's checkout") { transport.hostServicesBorrows == 1 }
         store.rowChanges.rowAppeared(row)
@@ -535,10 +534,10 @@ struct HerdrCoreAgentsTests {
         let capabilities = HostCapabilities(serverKind: .herdrTUI)
         #expect(
             ConsoleAgentRowOffers(capabilities: capabilities, supportsMultipleWindows: true)
-                == ConsoleAgentRowOffers(opensDetail: true, opensInNewWindow: true, closes: true))
+                == ConsoleAgentRowOffers(opensInNewWindow: true, closes: true))
         #expect(
             ConsoleAgentRowOffers(capabilities: capabilities, supportsMultipleWindows: false)
-                == ConsoleAgentRowOffers(opensDetail: true, opensInNewWindow: false, closes: true))
+                == ConsoleAgentRowOffers(opensInNewWindow: false, closes: true))
     }
 
     // MARK: Agent Row Layout
