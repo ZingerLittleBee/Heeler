@@ -193,6 +193,37 @@ struct HostHelperStoreTests {
         #expect(await helper.writes.isEmpty)
     }
 
+    /// The Node.js listing failed on the read behind the sheet, and works now.
+    @Test func anInstallWithNoListShownListsFirstAndWritesNothing() async throws {
+        await helper.configure { $0.extensionFoldersFailure = "node: bad option" }
+        let store = await refreshed()
+        #expect(store.plan == nil)
+        #expect(store.installAction == .install)
+        await helper.configure { $0.extensionFoldersFailure = nil }
+
+        await store.install()
+
+        #expect(await helper.writes.isEmpty)
+        #expect(store.failure == nil)
+        let listed = try #require(store.plan?.files)
+
+        await store.install()
+
+        #expect(store.failure == nil)
+        #expect(await helper.filePaths().isSuperset(of: Set(listed)))
+    }
+
+    @Test func anInstallWhoseListStaysUnreadableSaysWhyAndWritesNothing() async throws {
+        await helper.configure { $0.extensionFoldersFailure = "node: bad option" }
+        let store = await refreshed()
+
+        await store.install()
+
+        #expect(await helper.writes.isEmpty)
+        #expect(store.plan == nil)
+        #expect(store.failure == HostHelperError.extensionFoldersUnreadable.message)
+    }
+
     @Test func eachActionSaysItMayHaveChangedTheHelperOnceItHasReadTheHostBack() async throws {
         let core = ScriptedCoreHost(helper: helper, channel: .refused)
         let bundle = bundle

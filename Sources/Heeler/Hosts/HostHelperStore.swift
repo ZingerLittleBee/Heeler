@@ -28,6 +28,8 @@ final class HostHelperStore {
     /// Why the last action failed, in words the user can act on.
     private(set) var failure: String?
 
+    /// Why the reading offers an install it cannot list.
+    @ObservationIgnored private var planFailure: String?
     /// An action has run and the Host has been read back: what else follows the
     /// Helper should look again.
     @ObservationIgnored var onChanged: (@MainActor () -> Void)?
@@ -119,7 +121,13 @@ final class HostHelperStore {
         }
     }
 
+    /// Writes nothing until the sheet has listed what it will write. With no list
+    /// showing, this only tries again to make one.
     func install() async {
+        guard plan != nil else {
+            await listInstall()
+            return
+        }
         await perform(.install) { installer, reading, bundle in
             _ = try await installer.install(over: reading, bundle: try bundle())
         }
@@ -137,6 +145,21 @@ final class HostHelperStore {
         }
     }
 
+    private func listInstall() async {
+        guard running == nil else { return }
+        running = .install
+        failure = nil
+        defer { running = nil }
+        do {
+            let transport = try await connect()
+            await read(over: transport)
+            try? await transport.close()
+            failure = planFailure
+        } catch {
+            failure = "Heeler could not connect to the Host, so nothing changed. " + Self.message(for: error)
+        }
+    }
+
     private func read(over transport: any HerdrCoreTransport) async {
         do {
             let read = try await installer(transport).read()
@@ -148,14 +171,21 @@ final class HostHelperStore {
 
     private func adopt(_ read: HostHelperReading) {
         reading = .read(read)
-        plan = read.installAction == nil
-            ? nil : (try? bundle()).flatMap { try? HostHelperInstallPlan(reading: read, bundle: $0) }
+        plan = nil
+        planFailure = nil
+        guard read.installAction != nil else { return }
+        do {
+            plan = try HostHelperInstallPlan(reading: read, bundle: try bundle())
+        } catch {
+            planFailure = Self.message(for: error)
+        }
     }
 
     /// The file list came from the reading, so it goes with it.
     private func forgetReading(_ replacement: Reading) {
         reading = replacement
         plan = nil
+        planFailure = nil
     }
 
     /// Works from what the Host says now, not what the sheet last read: another
