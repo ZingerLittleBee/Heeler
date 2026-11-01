@@ -47,6 +47,12 @@ that Heeler can read from outside the process.
   `user/<uid>` the agent outlives the SSH session and a desktop logout, and
   restarts when killed. The evidence comes from a throwaway Tart VM of macOS
   26.5, not a Mac anyone uses (herdr compatibility, launchd bootstrap domains).
+  The list is `~/Library/LaunchAgents/dev.bybee.heeler.host-helper.plist`, its
+  label is in the install record, the Helper directory is
+  `~/Library/Application Support/heeler/host-helper`, whatever `XDG_DATA_HOME` an
+  SSH login has, and the agent logs to `helper.log` there. An install writes that
+  log empty, so it starts private and grows until the next install or removal,
+  since nothing on a Mac rotates it as the journal does on Linux.
 - The login Keychain is out of reach from that domain, with the desktop logged
   in and unlocked or with nobody logged in, as it is from a plain SSH exec. A
   read of Claude Code's Usage Limits there answers `keychainUnavailable`, so
@@ -227,7 +233,11 @@ Hosts are unchanged.
   list in `~/Library/LaunchAgents`: not at boot, not at the first SSH login, not
   after a desktop login. If a Mac does the same, then unlike under linger the
   Helper is down until the app next connects, finds the agent missing and
-  bootstraps it again, and no notification goes out in between.
+  bootstraps it again, and no notification goes out in between. The app does so
+  without asking, as nothing new is written, where it reads the Helper: Host
+  detail, and the registration read that runs as each Host's connection comes
+  up, on a device with a push token. Only with the record, the property list and
+  a Node.js all in place, so it never restarts a removed or broken Helper.
 - launchd reported no failed state in the longest watch, about five minutes, and
   no single read decides health. A Helper that dies at start can read
   `state = running` for a moment. One killed by a signal, as a V8 heap limit or a
@@ -236,7 +246,11 @@ Hosts are unchanged.
   twice, more than ten seconds apart, and calls the Helper running only when
   both say `state = running` with the same pid. That caught every loop tried
   that dies at start, and can miss a Helper that stays up longer than the gap
-  before each death, which only growing counters show. A move of Node.js
+  before each death, which only growing counters show. A first read that finds
+  no such run gets one more read, so a Helper that has just restarted is not
+  called failed. Host detail takes these reads, about eleven seconds beside the
+  core's own checks. The notification switch and its gates read once, and so can
+  be wrong about a Helper between runs or caught mid-loop. A move of Node.js
   shows exit 78 and stops the run count; with someone logged in the agent came
   back alone once the path did, but with nobody logged in it was still down
   after almost five minutes, and `launchctl kickstart` blocked until the service

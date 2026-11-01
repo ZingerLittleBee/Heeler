@@ -28,15 +28,16 @@ struct HostHelperSheet: View {
             ) {
                 Button("Remove", role: .destructive) { Task { await store.remove() } }
             } message: {
-                Text(Self.removalMessage)
+                Text(store.removalMessage)
             }
         }
     }
 
-    static let removalMessage =
+    private static let removalDeletes =
         "This stops its service and deletes its files, its Pi and Oh My Pi extensions "
         + "and this Host's notification registrations. "
-        + "Systemd linger and the Grok Build setting stay as they are."
+    static let removalMessage = removalDeletes + "Systemd linger and the Grok Build setting stay as they are."
+    static let macOSRemovalMessage = removalDeletes + "The Grok Build setting stays as it is."
 
     private var statusSection: some View {
         Section {

@@ -470,6 +470,7 @@
 		7D010AC2E1E179A2590E861F /* HangulInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE4509B0B4DC2E6075F734B8 /* HangulInput.swift */; };
 		7DE1449E409F7F06C64E5089 /* RealSSHFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B3368D352EFC805C2534F9 /* RealSSHFixture.swift */; };
 		7E3EF48C4CC3265A1F22A046 /* CodexMessageDisplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDB786729255B1DA09A0E320 /* CodexMessageDisplayTests.swift */; };
+		7E40B2787367925C11F2E1D5 /* HostHelperLaunchAgentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C97BC65904F5A9519409FBED /* HostHelperLaunchAgentTests.swift */; };
 		7E549F9B3878DF6CCFD49045 /* HerdrCoreDesktopDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD1751278834EEA810074A18 /* HerdrCoreDesktopDocument.swift */; };
 		7F2BD871C9B388E58F8698A9 /* RemoteDirectoryBrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6BD88F9C7CE1520C4D961C /* RemoteDirectoryBrowserTests.swift */; };
 		7F8EA3E191EEC97479E3DC04 /* HerdrEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A6D0F6E54809BDE46AC1AE /* HerdrEventsTests.swift */; };
@@ -1790,6 +1791,7 @@
 		C90B11BF4D2B2C45635B5EFE /* TerminalThemeSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemeSettings.swift; sourceTree = "<group>"; };
 		C91F0473741A92D7EFA40CBA /* NotificationKeyMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationKeyMirror.swift; sourceTree = "<group>"; };
 		C95D54E57FAA5D28C8899229 /* ChangesGitExecGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesGitExecGateTests.swift; sourceTree = "<group>"; };
+		C97BC65904F5A9519409FBED /* HostHelperLaunchAgentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostHelperLaunchAgentTests.swift; sourceTree = "<group>"; };
 		C9D4CCEAF1FC716A80E4454B /* PiFileChanges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiFileChanges.swift; sourceTree = "<group>"; };
 		C9EB2611D8BDD16A3B20ADCF /* AgentUsageSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsageSheets.swift; sourceTree = "<group>"; };
 		CA62F28156A8CA87234C33BE /* ChangesUntrackedDirectoryRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesUntrackedDirectoryRows.swift; sourceTree = "<group>"; };
@@ -2281,6 +2283,7 @@
 				A30FA0CFA49274EB428AD3E0 /* HerdrWireTests.swift */,
 				A278A1017B291546679391DE /* HomeCommandTests.swift */,
 				F9D664871CA1A56418C106BC /* HostDraftTests.swift */,
+				C97BC65904F5A9519409FBED /* HostHelperLaunchAgentTests.swift */,
 				571CB5240AB300D135A35EB2 /* HostHelperNotificationsTests.swift */,
 				A6F76BD3446176C286DADD49 /* HostHelperStoreTests.swift */,
 				0B3A2EDF5103476B694BBA2C /* HostHelperTests.swift */,
@@ -4373,6 +4376,7 @@
 				8639BE997E0C8356AA43573B /* HomeCommandTests.swift in Sources */,
 				9583D6804B8922588AD7F154 /* HostDraftTests.swift in Sources */,
 				21BC0743118D932D27804BB6 /* HostEvidenceFixture.swift in Sources */,
+				7E40B2787367925C11F2E1D5 /* HostHelperLaunchAgentTests.swift in Sources */,
 				24402713220DD25CBF0C02AE /* HostHelperNotificationsTests.swift in Sources */,
 				EE7B32B6B28FC299AF4E6780 /* HostHelperStoreTests.swift in Sources */,
 				388FF444CBEFA9A99598D2DA /* HostHelperTests.swift in Sources */,

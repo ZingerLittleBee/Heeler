@@ -85,17 +85,21 @@ struct HostHelperBundle: Sendable, Equatable {
     }
 }
 
-/// Where everything of the Helper's sits on a Linux Host. Notification and
-/// Usage files live in `directory`, whose `app` folder alone gets replaced.
+/// Where everything of the Helper's sits on a Host. Notification and Usage files
+/// live in `directory`, whose `app` folder alone gets replaced.
 struct HostHelperLayout: Sendable, Equatable {
     static let recordFileName = "installed.json"
 
     let directory: String
+    let manager: HostHelperServiceManager
     let unitDirectory: String
+    let launchAgentDirectory: String
 
-    init(locations: HostHelperProbe.Locations) {
+    init(locations: HostHelperProbe.Locations, manager: HostHelperServiceManager = .systemd) {
         directory = "\(locations.dataHome)/\(HostHelperScript.helperDirectorySuffix)"
+        self.manager = manager
         unitDirectory = "\(locations.configHome)/systemd/user"
+        launchAgentDirectory = "\(locations.home)/Library/LaunchAgents"
     }
 
     var app: String { "\(directory)/\(HostHelperScript.appFolderName)" }
@@ -105,13 +109,25 @@ struct HostHelperLayout: Sendable, Equatable {
     var unitWantsDirectory: String { "\(unitDirectory)/default.target.wants" }
     /// The link `systemctl enable` makes.
     var unitWantsLink: String { "\(unitWantsDirectory)/\(HostHelperScript.unitName)" }
+    var launchAgent: String { "\(launchAgentDirectory)/\(HostHelperLaunchAgent.fileName)" }
+    /// launchd keeps no journal, so the agent logs here. It goes with the directory.
+    var log: String { file(named: HostHelperLaunchAgent.logFileName) }
+
+    /// What registers the service, outside the Helper directory.
+    var serviceFiles: [String] {
+        switch manager {
+        case .systemd: [unit, unitWantsLink]
+        case .launchd: [launchAgent]
+        }
+    }
 
     func file(named name: String) -> String { "\(directory)/\(name)" }
 
     /// Every folder down to the deepest ones the install needs, parents first.
     func folderChain(reaching extensionFolders: [String]) -> [String] {
+        let serviceFolder = manager == .systemd ? unitWantsDirectory : launchAgentDirectory
         var chain: [String] = []
-        for deepest in [directory, unitWantsDirectory] + extensionFolders {
+        for deepest in [directory, serviceFolder] + extensionFolders {
             var path = ""
             for component in deepest.split(separator: "/") {
                 path += "/\(component)"
@@ -129,15 +145,18 @@ struct HostHelperLayout: Sendable, Equatable {
 }
 
 /// `installed.json`: what removal may delete. It lists every file written
-/// outside the Helper directory and every folder the install created.
+/// outside the Helper directory and every folder the install created, and on a
+/// Mac the label of the LaunchAgent to boot out first.
 struct HostHelperInstallRecord: Codable, Sendable, Equatable {
     var version = 1
     var files: [String]
     var folders: [String]
+    var launchAgentLabel: String?
 
-    init(files: [String], folders: [String]) {
+    init(files: [String], folders: [String], launchAgentLabel: String? = nil) {
         self.files = files
         self.folders = folders
+        self.launchAgentLabel = launchAgentLabel
     }
 
     /// Paths this record may name for deletion.
@@ -152,15 +171,15 @@ struct HostHelperInstallRecord: Codable, Sendable, Equatable {
     func merged(files newFiles: [String], folders newFolders: [String]) -> HostHelperInstallRecord {
         HostHelperInstallRecord(
             files: Array(Set(files).union(newFiles)).sorted(),
-            folders: Array(Set(folders).union(newFolders)).sorted())
+            folders: Array(Set(folders).union(newFolders)).sorted(),
+            launchAgentLabel: launchAgentLabel)
     }
 }
 
 /// Why a Host cannot run the Helper.
 enum HostHelperUnsupportedPlatform: Sendable, Equatable {
     case nativeWindows
-    case macOS
-    /// A Unix other than Linux, by its kernel's name.
+    /// A Unix other than Linux and macOS, by its kernel's name.
     case other(String)
     /// Linux without systemd, which registers the service.
     case noSystemd
@@ -175,7 +194,8 @@ enum HostHelperStatus: Sendable, Equatable {
     /// `tooOld` is the version the Host has, when it has one.
     case nodeMissing(tooOld: String?)
     case lingerOff
-    /// `health` is nil when systemd's user manager could not be reached.
+    /// `health` is nil when systemd's user manager could not be reached. On a
+    /// Mac it also stands for an agent that is not staying up, or not loaded.
     case serviceFailed(HostHelperHealth?)
     case unsupportedPlatform(HostHelperUnsupportedPlatform)
 }
@@ -212,14 +232,36 @@ struct HostHelperReading: Sendable, Equatable {
         self.bundled = bundled
     }
 
-    var layout: HostHelperLayout? { probe.map { HostHelperLayout(locations: $0.locations) } }
+    var layout: HostHelperLayout? {
+        probe.map { HostHelperLayout(locations: $0.locations, manager: $0.manager) }
+    }
 
     var unsupportedPlatform: HostHelperUnsupportedPlatform? {
         guard let probe else { return .nativeWindows }
         switch probe.kernel {
         case "Linux": return probe.hasSystemd ? nil : .noSystemd
-        case "Darwin": return .macOS
+        case "Darwin": return nil
         default: return .other(probe.kernel)
+        }
+    }
+
+    /// One read cannot say a LaunchAgent stays up (ADR 0033): this one has to be
+    /// followed by another.
+    var awaitsSecondHealthRead: Bool {
+        guard let health = probe?.health, let launchd = health.launchd else { return false }
+        return health.isLoaded && launchd.staysRunning == nil
+    }
+
+    /// Nothing loads the property list back after a restart of the Mac, as far as
+    /// a VM of macOS 26.5 showed (ADR 0033). The install is all still there and
+    /// launchd simply does not hold it, so no one has to be asked to load it again.
+    var agentNeedsLoading: Bool {
+        guard let probe, unsupportedPlatform == nil, probe.manager == .launchd, probe.launchAgentFilePresent,
+            probe.record != nil, probe.health?.loadState == HostHelperHealth.launchdNotFound, nodeProblem == nil
+        else { return false }
+        switch integrity {
+        case .intact, .newer: return true
+        case .absent, .damaged: return false
         }
     }
 
@@ -252,9 +294,13 @@ struct HostHelperReading: Sendable, Equatable {
             return nodeProblem ?? .notInstalled
         case .intact(let version):
             guard let health = probe.health else { return nodeProblem ?? .serviceFailed(nil) }
-            if !health.isLoaded { return nodeProblem ?? .damaged }
+            if !health.isLoaded {
+                // Files all there and launchd not holding them is launchd's side.
+                let filesInPlace = probe.manager == .launchd && probe.launchAgentFilePresent
+                return nodeProblem ?? (filesInPlace ? .serviceFailed(health) : .damaged)
+            }
             if !health.isUp { return nodeProblem ?? .serviceFailed(health) }
-            if !probe.lingerOn { return .lingerOff }
+            if probe.manager == .systemd, !probe.lingerOn { return .lingerOff }
             return .installed(version: version, updateAvailable: version < bundled)
         }
     }
@@ -314,7 +360,7 @@ struct HostHelperReading: Sendable, Equatable {
     /// Whether to offer turning linger on, which the Helper needs to run while
     /// nobody is logged in.
     var offersLinger: Bool {
-        guard unsupportedPlatform == nil, let probe else { return false }
+        guard unsupportedPlatform == nil, let probe, probe.manager == .systemd else { return false }
         return !probe.lingerOn
     }
 
@@ -431,10 +477,6 @@ struct HostHelperPresentation: Sendable, Equatable {
             detail = "Agent Notifications (in-app banners included), Live Activity and Usage are not "
                 + "available on native Windows yet because they come with the Host Helper."
             needsAttention = false
-        case .unsupportedPlatform(.macOS):
-            value = "Not Available"
-            detail = "The Host Helper cannot be installed on macOS yet."
-            needsAttention = false
         case .unsupportedPlatform(.other(let kernel)):
             value = "Not Available"
             detail = "The Host Helper does not run on \(kernel)."
@@ -454,8 +496,18 @@ struct HostHelperPresentation: Sendable, Equatable {
             return "Heeler could not reach this Host's systemd user manager to ask about the service. \(remedy)"
         }
         let restarts = health.restarts == 1 ? "1 restart" : "\(health.restarts) restarts"
-        return "The service stopped and will not start again by itself "
-            + "(\(health.activeState), result \(health.result), \(restarts)). \(remedy)"
+        guard health.launchd != nil else {
+            return "The service stopped and will not start again by itself "
+                + "(\(health.activeState), result \(health.result), \(restarts)). \(remedy)"
+        }
+        if health.loadState == HostHelperHealth.launchdNotFound {
+            return "launchd does not have the service loaded. \(remedy)"
+        }
+        if !health.isLoaded {
+            return "launchd did not say how the service is (\(health.result)). \(remedy)"
+        }
+        let facts = [health.activeState, health.result, restarts].filter { !$0.isEmpty }
+        return "The service is not staying up (\(facts.joined(separator: ", "))). \(remedy)"
     }
 }
 
