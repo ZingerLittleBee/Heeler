@@ -13,8 +13,19 @@ enum OpenCodePluginEdit {
     static let bundleFolder = "extensions/opencode"
     static let fileNames = ["package.json", "index.js", "tui.js"]
 
-    static func manualInstruction(listKey: String = "plugin") -> String {
-        "Add \"\(entryValue)\" to \(listKey) in OpenCode's configuration, beside a copy of Heeler's plugin."
+    private static let pluginCopy = "with a copy of Heeler's plugin in a folder of that name beside the file"
+
+    /// The list and the file are the release's own: under the wrong key the entry
+    /// does nothing, and looks as if it did.
+    static func manualInstruction(fileName: String, form: ConfigForm) -> String {
+        "Add \"\(entryValue)\" to \(form.listKey) in \(fileName), \(pluginCopy)."
+    }
+
+    /// For a Host whose release Heeler can't read.
+    static var manualInstructionForEitherRelease: String {
+        let (tui, cli) = (ConfigForm.tuiConfig, ConfigForm.cliConfig)
+        return "Add \"\(entryValue)\" to \(tui.listKey) in \(tui.fileNames[0]) on OpenCode 1.x, "
+            + "or to \(cli.listKey) in \(cli.fileNames[0]) on 2.x, \(pluginCopy)."
     }
 
     /// Where a release of OpenCode lists its TUI plugins (herdr compatibility,
@@ -89,7 +100,8 @@ enum OpenCodePluginEdit {
             id: id, harness: harness, path: RemoteFilePath.join(configDirectory, fileName),
             transform: transform(form: form, folderPath: folderPath),
             folder: HarnessConfigFolder(path: folderPath, files: files),
-            listEntry: HarnessConfigListEntry(key: form.listKey, value: entryValue))
+            listEntry: HarnessConfigListEntry(key: form.listKey, value: entryValue),
+            manualInstruction: manualInstruction(fileName: fileName, form: form))
     }
 
     private static let unreadableReason =

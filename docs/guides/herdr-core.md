@@ -258,7 +258,7 @@ When Chat can't tell an OpenCode Agent's conversation, it offers **Let Chat Foll
 
 The sheet shows the exact change: the folder `heeler-opencode` with Heeler's plugin files, under `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`, and the one entry `"./heeler-opencode"` in the file your release reads. That is `plugin` in `tui.json` or `tui.jsonc` on OpenCode 1.x, and `plugins` in `cli.json` on 2.x. Tap **Apply This Change**, then start OpenCode again. Chat then follows its conversation, through `/new` and picks in its list too.
 
-If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler can't read the file with certainty, or can't read which OpenCode the Host runs, it writes nothing and says what to add by hand.
+If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler can't read the file with certainty, or can't read which OpenCode the Host runs, it writes nothing and says what to add by hand. The plugin's files for that are in `plugin/helper/extensions/opencode` in Heeler's repository.
 
 The plugin does nothing outside a herdr-core Terminal. It only tells the core which conversation OpenCode shows, as a Terminal label.
 

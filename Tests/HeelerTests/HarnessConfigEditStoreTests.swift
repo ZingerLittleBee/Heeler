@@ -343,11 +343,12 @@ import UIKit
         let flow = grokFlow(store, host)
 
         await flow.review()
-        guard case .refused(let path, _) = flow.phase else {
+        guard case .refused(let path, _, let manualInstruction) = flow.phase else {
             Issue.record("expected a refusal, got \(flow.phase)")
             return
         }
         #expect(path == Self.config)
+        #expect(manualInstruction == #"Add program_status = "on" under [ui.notifications] in Grok Build's config.toml."#)
         #expect(await files.replaceCalls == 0)
     }
 

@@ -302,6 +302,58 @@ struct HerdrCoreOpenCodeEditTests {
         #expect(await files.journal.isEmpty)
     }
 
+    // MARK: What to do by hand
+
+    /// A list in the wrong file or under the wrong key does nothing and looks as if
+    /// it did, so what the sheet says follows the release, as the edit itself does.
+    @Test(arguments: [
+        (
+            "1.19.5", "/home/dev/.config/opencode/tui.json", #"{"plugin": "a"}"#,
+            #"Add "./heeler-opencode" to plugin in tui.json, with a copy of Heeler's plugin in a folder of that name beside the file."#
+        ),
+        (
+            "1.19.5", "/home/dev/.config/opencode/tui.jsonc", "not json",
+            #"Add "./heeler-opencode" to plugin in tui.jsonc, with a copy of Heeler's plugin in a folder of that name beside the file."#
+        ),
+        (
+            "opencode v2.2.5", "/home/dev/.config/opencode/cli.json", #"{"plugins": "a"}"#,
+            #"Add "./heeler-opencode" to plugins in cli.json, with a copy of Heeler's plugin in a folder of that name beside the file."#
+        ),
+        (
+            "opencode v2.0.32", "/home/dev/.config/opencode/cli.json", "not json",
+            #"Add "./heeler-opencode" to plugins in cli.json, with a copy of Heeler's plugin in a folder of that name beside the file."#
+        ),
+    ])
+    func aRefusalSaysWhatToAddForThatRelease(
+        _ version: String, _ path: String, _ file: String, _ instruction: String
+    ) async throws {
+        let files = InMemoryHostFiles(files: [path: Data(file.utf8)])
+        let (store, _, host) = try await started(version: version, files: files)
+        defer { store.setHosts([]) }
+        let flow = flow(store, host)
+
+        await flow.review()
+
+        let shown = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: instruction)
+        #expect(shown.contains { $0.contains(path) }, "\(shown)")
+        #expect(shown.contains { $0.contains(instruction) }, "\(shown)")
+        #expect(await files.journal.isEmpty)
+    }
+
+    /// With no release to go on, both forms are what's left to say.
+    @Test func aVersionItCantReadSaysWhatToAddOnEachRelease() async throws {
+        let (store, _, host) = try await started(version: nil)
+        defer { store.setHosts([]) }
+        let flow = flow(store, host)
+        let instruction =
+            #"Add "./heeler-opencode" to plugin in tui.json on OpenCode 1.x, or to plugins in cli.json on 2.x, with a copy of Heeler's plugin in a folder of that name beside the file."#
+
+        await flow.review()
+
+        let shown = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: instruction)
+        #expect(shown.contains { $0.contains(instruction) }, "\(shown)")
+    }
+
     // MARK: A detail keeps to its own core
 
     /// ADR 0031: past its core, a detail's Agent isn't there to do this for.

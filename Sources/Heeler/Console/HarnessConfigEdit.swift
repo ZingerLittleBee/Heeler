@@ -24,6 +24,9 @@ struct HarnessConfigEdit: Sendable {
     /// The list entry the change is, so undoing can take it out of a file the user
     /// has changed since. Without one, undoing needs the file as Heeler left it.
     var listEntry: HarnessConfigListEntry? = nil
+    /// What to do by hand where Heeler won't change this file. It says what this
+    /// edit would have written, so it goes with the edit.
+    var manualInstruction: String? = nil
 }
 
 /// A folder of Heeler's own beside a harness's configuration, with what goes in it.
@@ -187,7 +190,7 @@ enum HarnessConfigProposal: Equatable, Sendable {
     case change(HarnessConfigPendingChange)
     /// The file already says this, so nothing is left to write.
     case alreadyApplied(path: String)
-    case refused(path: String, reason: String)
+    case refused(path: String, reason: String, manualInstruction: String?)
 }
 
 /// A refusal the user is told about, with nothing written.
@@ -215,7 +218,7 @@ enum HarnessConfigEditError: Error, Equatable, LocalizedError {
         case .agentEnvironmentUnavailable:
             "Heeler couldn't read this Agent's environment, so it can't tell which file to change. Nothing was written."
         case .openCodeVersionUnknown:
-            "Heeler couldn't read which OpenCode this Host runs, so it can't tell which file to change. Nothing was written."
+            "Heeler couldn't read which OpenCode this Host runs, so it can't tell which file to change. Nothing was written. \(OpenCodePluginEdit.manualInstructionForEitherRelease)"
         }
     }
 }
@@ -236,7 +239,7 @@ struct HarnessConfigEditor: Sendable {
         case .alreadyApplied:
             return .alreadyApplied(path: edit.path)
         case .refused(let reason):
-            return .refused(path: edit.path, reason: reason)
+            return .refused(path: edit.path, reason: reason, manualInstruction: edit.manualInstruction)
         case .change(let after):
             return .change(
                 HarnessConfigPendingChange(

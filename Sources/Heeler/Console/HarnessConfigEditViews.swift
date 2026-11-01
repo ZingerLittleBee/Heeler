@@ -67,8 +67,6 @@ struct HarnessConfigEditOffer: View {
     let offer: String
     let actionTitle: String
     let afterApplying: String
-    /// What to do by hand where Heeler won't change the file.
-    let manualInstruction: String
 
     var body: some View {
         switch flow.phase {
@@ -116,11 +114,13 @@ struct HarnessConfigEditOffer: View {
                 Text(verbatim: path).font(.footnote.monospaced()).foregroundStyle(.secondary)
                 Text("This file already has the setting. \(afterApplying)")
             }
-        case .refused(let path, let reason):
+        case .refused(let path, let reason, let manualInstruction):
             Section {
                 Text(verbatim: path).font(.footnote.monospaced()).foregroundStyle(.secondary)
                 Text(reason)
-                Text(manualInstruction).font(.footnote).foregroundStyle(.secondary)
+                if let manualInstruction {
+                    Text(manualInstruction).font(.footnote).foregroundStyle(.secondary)
+                }
             }
         case .failed(let message):
             Section {
@@ -163,8 +163,7 @@ struct HerdrCoreStatusExplanationSheet: View {
                         flow: flow,
                         offer: "Grok Build's automatic check left its status off. One change to its configuration turns it on, and you see the change first.",
                         actionTitle: "Turn On Grok Build's Status",
-                        afterApplying: "Start Grok Build again to see its status.",
-                        manualInstruction: GrokBuildProgramStatusEdit.manualInstruction)
+                        afterApplying: "Start Grok Build again to see its status.")
                 }
             }
             .task { await flow?.locate() }
@@ -200,8 +199,7 @@ struct OpenCodePluginEditSheet: View {
                     flow: flow,
                     offer: "OpenCode says which conversation it shows through Heeler's plugin. Loading the plugin takes one change to OpenCode's configuration and a folder beside it. You see both first, and you can undo them.",
                     actionTitle: "Review the Change",
-                    afterApplying: "Start OpenCode again to load the plugin. Chat then follows its conversation.",
-                    manualInstruction: OpenCodePluginEdit.manualInstruction())
+                    afterApplying: "Start OpenCode again to load the plugin. Chat then follows its conversation.")
             }
             .task { await flow.locate() }
             .navigationTitle("Follow OpenCode")

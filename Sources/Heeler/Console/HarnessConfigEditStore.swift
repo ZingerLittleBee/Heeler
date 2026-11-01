@@ -94,7 +94,7 @@ final class HarnessConfigEditFlow: Identifiable {
         case reading
         case review(HarnessConfigPendingChange)
         case alreadyApplied(path: String)
-        case refused(path: String, reason: String)
+        case refused(path: String, reason: String, manualInstruction: String?)
         case writing
         case failed(String)
     }
@@ -181,7 +181,8 @@ final class HarnessConfigEditFlow: Identifiable {
             switch try await HarnessConfigEditor(files: try await services()).propose(edit) {
             case .change(let change): phase = .review(change)
             case .alreadyApplied(let path): phase = .alreadyApplied(path: path)
-            case .refused(let path, let reason): phase = .refused(path: path, reason: reason)
+            case .refused(let path, let reason, let manualInstruction):
+                phase = .refused(path: path, reason: reason, manualInstruction: manualInstruction)
             }
         } catch {
             phase = .failed(HarnessConfigEditMessage.text(for: error))
