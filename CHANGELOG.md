@@ -9,6 +9,11 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Chat shows the images Agents read or make as thumbnails under their rows;
+  tap one to open it with zoom. Claude Code, Codex, Grok Build, Pi, Oh My Pi
+  and OpenCode are covered, and image rows no longer fold into tool groups.
+  Images over 8 MB load on a tap, and a deleted image or an offline Host says
+  so in the thumbnail's place. (#537)
 - Turn Usage off in Settings to hide its tab and each Host's Usage section and
   stop reading usage from your Hosts. Usage widgets clear their figures and say
   so until you turn it back on. (#597)
