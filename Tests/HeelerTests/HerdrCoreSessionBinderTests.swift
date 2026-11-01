@@ -12,6 +12,7 @@ actor ScriptedProcessTable {
         var name: String
         var start: String
         var environment: [String: String]
+        var openFiles: [String] = []
     }
 
     private var processes: [Int: Process] = [:]
@@ -74,6 +75,7 @@ actor ScriptedProcessTable {
             fact.nonEmptyNames = .value(
                 Set(request.namesOf.filter { process.environment[$0]?.isEmpty == false }))
         }
+        if request.readsOpenFiles { fact.openFiles = .value(process.openFiles) }
         return fact
     }
 }

@@ -18,6 +18,8 @@ struct HerdrCoreSessionHint: Equatable, Sendable {
     static let labels = ["heeler.session", "heeler.chat"]
 
     let session: String
+    /// The session's file, in the label the Pi and Oh My Pi extension writes.
+    let file: String?
     let pid: Int
     let start: String
 
@@ -25,12 +27,14 @@ struct HerdrCoreSessionHint: Equatable, Sendable {
         guard let fields = try? JSONDecoder().decode(Fields.self, from: Data(label.utf8)), let start = fields.start
         else { return nil }
         session = fields.session
+        file = fields.file
         pid = fields.pid
         self.start = start
     }
 
     private struct Fields: Decodable {
         let session: String
+        let file: String?
         let pid: Int
         let start: String?
     }
@@ -56,9 +60,11 @@ struct HerdrCoreSessionBinder: Sendable {
     var files: ChatHostFiles
     /// Removes labels from the Terminal.
     var clearLabels: @Sendable ([String]) async throws -> Void
+    /// Whose evidence this looks for, which is the Agent's own program.
+    var program: ChatProgram = .claude
 
-    private static let scopeVariable = "HC_SCOPE"
-    private static let homeVariable = "HOME"
+    static let scopeVariable = "HC_SCOPE"
+    static let homeVariable = "HOME"
     private static let configVariable = "CLAUDE_CONFIG_DIR"
     /// Past this no registry entry was ever this long, so it is not one.
     private static let entryLimit = 64 * 1024
@@ -66,6 +72,7 @@ struct HerdrCoreSessionBinder: Sendable {
     /// `coreCarries` is what the core's own environment holds, from the Host's
     /// leak check, so a reason can point at the Host notice.
     func check(_ record: HerdrCoreTerminalRecord, coreCarries: Set<String> = []) async throws -> ChatSessionEvidence {
+        if program == .pi || program == .omp { return try await checkPiFamily(record) }
         let cannotTell = ChatSessionEvidence.unavailable(.cannotTellSession(.claude))
         guard let terminalPid = record.pid, let foreground = record.foreground?.pid else { return cannotTell }
         let root = String(foreground)
@@ -198,7 +205,7 @@ struct HerdrCoreSessionBinder: Sendable {
 
     /// The hints for this process, after clearing those for another. A failure
     /// to clear leaves it for the next check.
-    private func readHints(
+    func readHints(
         in record: HerdrCoreTerminalRecord, pid: String, start: String
     ) async -> [HerdrCoreSessionHint] {
         var matching: [HerdrCoreSessionHint] = []
