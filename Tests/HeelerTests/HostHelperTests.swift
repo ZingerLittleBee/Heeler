@@ -270,6 +270,34 @@ struct HostHelperInstallTests {
         #expect(await host.filePaths().contains(registrations))
     }
 
+    @Test func aHelperThatCannotBeHashedIsNotCalledDamaged() async throws {
+        try await installed()
+        await host.configure { $0.hashToolMissing = true }
+        let reading = try await installer.read()
+        #expect(reading.status == .installed(version: HostHelperCompatibility.bundled, updateAvailable: false))
+        #expect(reading.installAction == nil)
+        #expect(reading.notificationStanding.canRegister)
+    }
+
+    @Test func anUpdateWithNoHashToolStopsAndSaysWhy() async throws {
+        let older = HostHelperFixture.bundle(version: "0.0.1")
+        let first = HostHelperReading(probe: try await installer.read().probe, bundled: PluginVersion(0, 0, 1))
+        _ = try await installer.install(over: first, bundle: older)
+        await host.configure { $0.hashToolMissing = true }
+        let reading = try await installer.read()
+        #expect(reading.installAction == .update)
+        await #expect(throws: HostHelperError.noHashTool) {
+            _ = try await installer.install(over: reading, bundle: bundle)
+        }
+    }
+
+    @Test func aManifestThatCannotBeReadIsDamagedEvenWithNoHashTool() async throws {
+        try await installed()
+        await host.configure { $0.hashToolMissing = true }
+        await host.removeFile("\(app)/manifest.json")
+        #expect(try await installer.read().status == .damaged)
+    }
+
     @Test func changedFilesOnAHostWithNoNodeSayNodeIsMissing() async throws {
         try await installed()
         await host.seedFile("\(app)/main.js", Data("changed".utf8))

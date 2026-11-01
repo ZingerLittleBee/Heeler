@@ -38,6 +38,12 @@ actor ScriptedHelperHost: HostHelperHost {
     /// Corrupts this file of an upload as it lands, as a bad link might.
     var corruptUploadNamed: String?
     var failUploadsNamed: String?
+    /// What a failed upload throws.
+    var uploadError: any Error = Failure()
+    /// The folder `mkdir` refuses, and what it says, as when a file has its name.
+    var folderRefusal: (folder: String, message: String)?
+    /// A Host with neither `sha256sum` nor `shasum`.
+    var hashToolMissing = false
     /// Fails the Node.js run that finds the extension folders, with this message.
     var extensionFoldersFailure: String?
 
@@ -117,7 +123,7 @@ actor ScriptedHelperHost: HostHelperHost {
         writes.append((path, privateDirectory))
         journal.append("write \(path)")
         let name = (path as NSString).lastPathComponent
-        if name == failUploadsNamed { throw Failure() }
+        if name == failUploadsNamed { throw uploadError }
         guard folders[(path as NSString).deletingLastPathComponent] != nil else { throw Failure() }
         if let privateDirectory { folders[privateDirectory] = 0o700 }
         files[path] = File(
@@ -145,10 +151,15 @@ actor ScriptedHelperHost: HostHelperHost {
             }
         case .makeFolders(let chain, let privateFolder):
             for folder in chain where folders[folder] == nil {
+                if let folderRefusal, folderRefusal.folder == folder {
+                    status = 1
+                    stderr = folderRefusal.message
+                    break
+                }
                 folders[folder] = 0o700
                 lines.append("created \(folder)")
             }
-            folders[privateFolder] = 0o700
+            if status == 0 { folders[privateFolder] = 0o700 }
         case .prepareStaging(let directory, let staging, let subfolders):
             for path in Array(files.keys) + Array(folders.keys)
             where path.hasPrefix("\(directory)/staging-") || path.hasPrefix("\(directory)/app.old-") {
@@ -265,7 +276,8 @@ actor ScriptedHelperHost: HostHelperHost {
     }
 
     private func hashLines(root: String) -> [String] {
-        files.keys.filter { $0.hasPrefix(root + "/") && $0 != "\(root)/manifest.json" }.sorted().compactMap { path in
+        if hashToolMissing { return ["hash-tool-missing"] }
+        return files.keys.filter { $0.hasPrefix(root + "/") && $0 != "\(root)/manifest.json" }.sorted().compactMap { path in
             guard let file = files[path] else { return nil }
             let sum = SHA256.hash(data: file.contents).map { String(format: "%02x", $0) }.joined()
             return "hash \(sum) \(path.dropFirst(root.count + 1))"

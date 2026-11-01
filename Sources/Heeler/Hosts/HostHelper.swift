@@ -231,6 +231,8 @@ struct HostHelperReading: Sendable, Equatable {
         else { return .damaged }
         // Never replaced from here, whatever state its files are in.
         if version > bundled { return .newer(version: version) }
+        // Nothing here could hash the files, which says nothing against them.
+        if probe.hashToolMissing { return .intact(version: version) }
         return manifest.matches(probe.hashes) ? .intact(version: version) : .damaged
     }
 
