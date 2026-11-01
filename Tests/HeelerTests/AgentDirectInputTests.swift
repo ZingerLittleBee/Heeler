@@ -247,6 +247,12 @@ struct AgentDirectInputTests {
             #expect(AgentActionMenuPolicy.isEnabled(item, actions: actions) == enabled)
         }
 
+        #expect(AgentActionMenuPolicy.title(of: .closeAgent, actions: ready) == "Close Agent")
+        var saved = ready
+        saved.removesSavedChat = true
+        #expect(AgentActionMenuPolicy.title(of: .closeAgent, actions: saved) == "Remove Saved Chat")
+        #expect(AgentActionMenuPolicy.title(of: .renameAgent, actions: saved) == "Rename Agent")
+
         for item in AgentActionMenuItem.allCases {
             AgentActionMenuPolicy.perform(item, actions: ready)
         }

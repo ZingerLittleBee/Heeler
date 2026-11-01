@@ -189,3 +189,85 @@ struct TerminalKeysKeyboardTests {
         return condition()
     }
 }
+
+@MainActor
+@Suite("Keyboard ride", .serialized)
+struct KeyboardRideTests {
+    private static func post(
+        _ name: Notification.Name, on center: NotificationCenter, duration: TimeInterval = 0.25
+    ) {
+        center.post(
+            name: name, object: nil,
+            userInfo: [
+                UIResponder.keyboardFrameEndUserInfoKey: CGRect(x: 0, y: 500, width: 402, height: 336),
+                UIResponder.keyboardAnimationDurationUserInfoKey: duration,
+            ])
+    }
+
+    @Test func theRideStartsWithThePresentationWhileTheLayoutCoalesces() {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center, measure: { _ in 336 })
+        Self.post(UIResponder.keyboardWillShowNotification, on: center)
+        #expect(inset.keyboardRideTarget == 336)
+        #expect(inset.height == 0, "the layout folds in the presentation's follow-up frame")
+    }
+
+    @Test func theRideFallsWithTheDismissal() {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center, measure: { _ in 336 })
+        Self.post(UIResponder.keyboardWillShowNotification, on: center)
+        Self.post(UIResponder.keyboardWillHideNotification, on: center)
+        #expect(inset.keyboardRideTarget == 0)
+        #expect(inset.height == 0)
+    }
+
+    @Test func aHandoffFreezesTheRide() {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center, measure: { _ in 336 })
+        let id = inset.beginResponderHandoff()
+        Self.post(UIResponder.keyboardWillShowNotification, on: center)
+        #expect(inset.keyboardRideTarget == 0)
+        inset.cancelResponderHandoff(id)
+    }
+
+    @Test func aKeyboardThatDoesNotAnimateMovesTheRideAtOnce() {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center, measure: { _ in 336 })
+        Self.post(UIResponder.keyboardWillShowNotification, on: center, duration: 0)
+        #expect(inset.keyboardRideCoverage == 336)
+    }
+
+    @Test func theRideReachesTheKeyboardFrameByFrame() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center, measure: { _ in 336 })
+        Self.post(UIResponder.keyboardWillShowNotification, on: center)
+        #expect(inset.keyboardRideCoverage == 0)
+        try await Task.sleep(for: .seconds(1))
+        #expect(inset.keyboardRideCoverage == 336)
+    }
+
+    @Test func theMotionRunsOnTheNotificationsClock() {
+        let motion = KeyboardRideMotion(from: 0, target: 335, start: 100, initialVelocity: 0)
+        let expected = KeyboardRideMotion.spring.value(target: 335.0, initialVelocity: 0.0, time: 0.1)
+        #expect(abs(motion.coverage(at: 100.1) - expected) < 0.01)
+        #expect(motion.coverage(at: 100) == 0)
+        #expect(motion.isSettled(at: 100 + KeyboardRideMotion.spring.settlingDuration))
+    }
+
+    /// `KeyboardRideMotion.spring` is fitted to these numbers. If this fails
+    /// the keyboard moves differently now, and the spring needs fitting again.
+    @Test func theKeyboardCurveIsTheOneTheSpringIsFittedTo() throws {
+        let view = UIView()
+        UIView.animate(
+            withDuration: 0.25, delay: 0,
+            options: [
+                .overrideInheritedCurve, .overrideInheritedDuration,
+                UIView.AnimationOptions(rawValue: 7 << 16),
+            ]
+        ) { view.alpha = 0 }
+        let curve = try #require(view.layer.animation(forKey: "opacity") as? CASpringAnimation)
+        #expect(curve.mass == 3)
+        #expect(curve.stiffness == 1000)
+        #expect(curve.damping == 500)
+    }
+}

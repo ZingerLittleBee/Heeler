@@ -35,6 +35,9 @@ final class HostConsoleProjection {
     /// snapshot. `.connected` arrives before that request completes, so an
     /// empty projection in this window means "unknown", not "no Agents".
     private(set) var isAwaitingSnapshot = true
+    /// Until a snapshot proves what the Host runs, its Console rows may be
+    /// saved Chat entries.
+    var showsSavedChats: Bool { status != .connected || isAwaitingSnapshot }
     /// The Transport the applied snapshot was requested on. A silent
     /// replacement keeps the inventory, which stays presentable but is no
     /// longer proof of the Host's state.

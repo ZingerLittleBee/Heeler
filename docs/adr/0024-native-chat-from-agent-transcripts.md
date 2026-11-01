@@ -282,8 +282,10 @@ once, stays readable offline, and survives the remote file's removal.
 
 Each Host also keeps its Chat entry points: the Agents last seen and the
 conversation each was bound to, so an offline Console still lists them and a
-live Agent that has not reported its session reopens the right one. Those
-bindings belong to one machine and herdr session. The machine is the host
+live Agent that has not reported its session reopens the right one. An entry
+listed while its Host is unproven is removed on the device, with its cached
+conversation and pin, never through a close request; a later snapshot lists
+the Agent again if it still runs. Those bindings belong to one machine and herdr session. The machine is the host
 key the device trusts for the Host (ADR 0022), not a route: routes may be
 added, reordered, or edited freely, but a replaced key, a changed account, or
 another herdr session drops them. So does another Herdr Endpoint socket,

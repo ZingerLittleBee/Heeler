@@ -887,6 +887,53 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    @Test func theFoldIsSpreadOverTheKeyboardsFallSoRowsNeverReverse() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.entries(0..<40)))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let view = controller.timeline
+            let bottom = Self.frame.maxY
+            controller.setBottomEdge(bottom - 500, keyboardLift: 300)
+            await Self.settle(controller)
+            let raised = view.contentInset.bottom
+
+            // The chrome grows by 80 at the start of the fall: nothing moves yet.
+            controller.setBottomEdge(bottom - 580, keyboardLift: 300, keyboardIsFalling: true)
+            #expect(view.contentInset.bottom == raised)
+
+            var previous = raised
+            for lift: CGFloat in [240, 150, 60, 10, 0] {
+                let chrome: CGFloat = 280
+                controller.setBottomEdge(
+                    bottom - (chrome + lift), keyboardLift: lift, keyboardIsFalling: true)
+                #expect(view.contentInset.bottom < previous)
+                previous = view.contentInset.bottom
+            }
+            // At the end it is the grown chrome's, without the keyboard.
+            #expect(abs(raised - previous - (300 - 80)) <= 0.5)
+        }
+    }
+
+    @Test func aChromeChangeOverARestingKeyboardAppliesAtOnce() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.entries(0..<40)))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let view = controller.timeline
+            let bottom = Self.frame.maxY
+            controller.setBottomEdge(bottom - 500, keyboardLift: 300)
+            await Self.settle(controller)
+            let before = view.contentInset.bottom
+
+            // A longer draft, with no fall to spread it over.
+            controller.setBottomEdge(bottom - 540, keyboardLift: 300)
+            #expect(abs(view.contentInset.bottom - before - 40) <= 0.5)
+        }
+    }
+
     // MARK: Folds
 
     @Test func openingAFinishedTurnKeepsItsHeaderWhereItWas() async throws {

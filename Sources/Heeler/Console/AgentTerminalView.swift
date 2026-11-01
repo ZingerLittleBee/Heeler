@@ -259,6 +259,7 @@ struct AgentTerminalView: View {
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
     @State private var isConfirmingClose = false
+    @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
@@ -960,7 +961,10 @@ struct AgentTerminalView: View {
                 } : nil,
             renameAgent: { isRenamingAgent = true },
             renameWorkspace: { isRenamingWorkspace = true },
-            closeAgent: { isConfirmingClose = true },
+            closeAgent: {
+                closeRequest = console.closeRequest(for: agent.id)
+                isConfirmingClose = true
+            },
             backToConsole: { backToConsole() },
             showChat: showChat.map { showChat in
                 {
@@ -974,8 +978,11 @@ struct AgentTerminalView: View {
                 ? AgentCloseConfirmation(
                     title: title,
                     isPresented: $isConfirmingClose,
-                    close: { Task { await performClose() } })
-                : nil)
+                    request: closeRequest,
+                    removeSavedChat: { if console.removeSavedChat(agent) { onClosed() } },
+                    closeAgent: { Task { await performClose() } })
+                : nil,
+            removesSavedChat: console.isSavedChat(agent.id))
     }
 
     /// The More menu's Back to Console: the sidebar beside a detail that
@@ -1049,6 +1056,9 @@ struct AgentTerminalView: View {
         .overlay { statusOverlay }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerStagingStatusBar(staging: session.staging)
+                .ridesKeyboard(
+                    keyboardInset, layoutInset: composerKeyboardLayout.contentInset,
+                    isEnabled: composerRidesKeyboard)
         }
         // Below the keyboard's own inset, so the strip rides above the
         // keyboard while it is up and rests on the screen's edge once it is
@@ -1056,6 +1066,9 @@ struct AgentTerminalView: View {
         // switching to whether or not the user is typing.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             inputChrome
+                .ridesKeyboard(
+                    keyboardInset, layoutInset: composerKeyboardLayout.contentInset,
+                    isEnabled: composerRidesKeyboard)
         }
         // Not SwiftUI's keyboard avoidance: it retracts in two stages and the
         // terminal would resize twice per dismissal. See TerminalKeyboardInset.
@@ -1195,6 +1208,12 @@ struct AgentTerminalView: View {
         return actions
     }
 
+    /// Direct Input keeps its own keyboard handling, and the tools dock is
+    /// not a keyboard that moves.
+    private var composerRidesKeyboard: Bool {
+        !isDirectInput && directToComposerHandoffID == nil && composerKeyboardPresentation != .tools
+    }
+
     private func prepareComposerKeyboardPresentation(
         _ presentation: AgentComposerKeyboardPresentation
     ) {
@@ -1206,6 +1225,9 @@ struct AgentTerminalView: View {
         case .system:
             keyboardInset.resumeHeightCapture()
             keyboardInset.expectSoftwareKeyboard()
+        }
+        if composerKeyboardPresentation == .tools, presentation != .tools {
+            keyboardInset.skipKeyboardRideLeavingToolsDock()
         }
     }
 
