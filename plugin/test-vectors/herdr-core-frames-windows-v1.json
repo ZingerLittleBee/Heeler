@@ -1,5 +1,5 @@
 {
-  "description": "Native Windows herdr-core frames, captured through a local `herdr-core connect` child on the Windows machine and scrubbed. Provisional: the same bytes have not yet crossed an SSH exec channel to that machine (#586). Hex strings hold exact bytes; a frame is channel (u32 LE), kind (u8) and length (u32 LE) before its payload.",
+  "description": "Native Windows herdr-core frames, captured on the Windows machine and scrubbed. Each case's source names its route: most came through a local `herdr-core connect` child, and foreground-*-form, finished-*-form and put-over-8-mib came over the named pipe directly. Provisional: the same bytes have not yet crossed an SSH exec channel to that machine (#586). Hex strings hold exact bytes; a frame is channel (u32 LE), kind (u8) and length (u32 LE) before its payload.",
   "provisional": true,
   "coreVersion": "0.1.16",
   "coreCommit": "e07c2a1",
@@ -65,7 +65,7 @@
     },
     {
       "name": "data-attach-cr-lf-crlf-ctrl-z",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: a program writing CR, LF, CRLF and Ctrl+Z; the console turned its bare LF into CRLF before the core saw it",
+      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: a program writing CR, LF, CRLF and Ctrl+Z; its bare LF arrived as CRLF",
       "bytes": "02000000001a00000063726c660d0a6c660d0a63720d746162097375621a7375620d0a"
     },
     {
@@ -103,7 +103,7 @@
     },
     {
       "name": "put-over-8-mib",
-      "source": "captured from herdr-core 0.1.16 on native Windows over the named pipe, scrubbed with the capture script: terminal.put of 8 MiB and one byte",
+      "source": "captured from herdr-core 0.1.16 on native Windows over the named pipe directly, not through herdr-core connect: terminal.put of 8 MiB and one byte; the client kept only the error object, which holds no user data, so the id and jsonrpc around it are rebuilt",
       "kind": "invalid_params",
       "line": "{\"error\":{\"code\":-32602,\"data\":{\"hint\":\"see `hc schema`\",\"kind\":\"invalid_params\"},\"message\":\"at most 8 MB per put\"},\"id\":\"1\",\"jsonrpc\":\"2.0\"}"
     }
@@ -136,22 +136,22 @@
     },
     {
       "name": "foreground-heeler-form",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the only foreground event of a Terminal running choice.exe under PowerShell, heeler form; it names PowerShell while choice.exe runs and after it exits",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"seq\":2,\"terminal\":\"t1g\",\"type\":\"foreground\",\"data\":{\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"name\":\"powershell.exe\",\"pid\":15344,\"argv\":[\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\"-Command\",\"& 'C:\\\\Windows\\\\System32\\\\choice.exe' '/c' 'yn' '/t' '10' '/d' 'n'; exit $LASTEXITCODE\"]}}}\n"
+      "source": "captured from herdr-core 0.1.16 on native Windows over the named pipe directly, not through herdr-core connect: the only foreground event of a Terminal running choice.exe under PowerShell, heeler form; terminal.get showed the same fields while choice.exe ran and, in the desktop form, after it exited. The cwd is scrubbed and the argv is kept whole, unlike the other event lines",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"argv\":[\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\"-Command\",\"& 'C:\\\\Windows\\\\System32\\\\choice.exe' '/c' 'yn' '/t' '10' '/d' 'n'; exit $LASTEXITCODE\"],\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"name\":\"powershell.exe\",\"pid\":15344},\"seq\":2,\"terminal\":\"t1g\",\"type\":\"foreground\"}}\n"
     },
     {
       "name": "finished-heeler-form",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the finish of that Terminal, heeler form",
+      "source": "captured from herdr-core 0.1.16 on native Windows over the named pipe directly, not through herdr-core connect: the finish of that Terminal, heeler form; it holds no user data",
       "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"exit_code\":2,\"finished_ms\":1793524014156,\"reason\":\"exited\",\"signal\":null},\"seq\":4,\"terminal\":\"t1g\",\"type\":\"finished\"}}\n"
     },
     {
       "name": "foreground-desktop-form",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the only foreground event of a Terminal running choice.exe under PowerShell, desktop form; it names PowerShell while choice.exe runs and after it exits",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"seq\":7,\"terminal\":\"t1h\",\"type\":\"foreground\",\"data\":{\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"name\":\"powershell.exe\",\"pid\":26092,\"argv\":[\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\"-NoExit\",\"-Command\",\"& 'C:\\\\Windows\\\\System32\\\\choice.exe' '/c' 'yn' '/t' '10' '/d' 'n'\"]}}}\n"
+      "source": "captured from herdr-core 0.1.16 on native Windows over the named pipe directly, not through herdr-core connect: the only foreground event of a Terminal running choice.exe under PowerShell, desktop form; terminal.get showed the same fields while choice.exe ran and, in the desktop form, after it exited. The cwd is scrubbed and the argv is kept whole, unlike the other event lines",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"argv\":[\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\"-NoExit\",\"-Command\",\"& 'C:\\\\Windows\\\\System32\\\\choice.exe' '/c' 'yn' '/t' '10' '/d' 'n'\"],\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"name\":\"powershell.exe\",\"pid\":26092},\"seq\":7,\"terminal\":\"t1h\",\"type\":\"foreground\"}}\n"
     },
     {
       "name": "finished-desktop-form",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the finish of that Terminal, desktop form",
+      "source": "captured from herdr-core 0.1.16 on native Windows over the named pipe directly, not through herdr-core connect: the finish of that Terminal, desktop form; it holds no user data",
       "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"exit_code\":5,\"finished_ms\":1793524034625,\"reason\":\"exited\",\"signal\":null},\"seq\":9,\"terminal\":\"t1h\",\"type\":\"finished\"}}\n"
     }
   ],

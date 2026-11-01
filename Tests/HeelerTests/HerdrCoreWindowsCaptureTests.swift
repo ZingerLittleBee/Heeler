@@ -3,9 +3,10 @@ import Testing
 
 @testable import Heeler
 
-/// Replays the scrubbed capture from a native Windows core. It came through a
-/// local `herdr-core connect`, so it proves the codec reads what that core sends,
-/// not that an SSH exec leaves the bytes alone (see the compatibility notes).
+/// Replays the scrubbed capture from a native Windows core. Each case came through a
+/// local `herdr-core connect` or directly over the pipe, as its source says, so it
+/// proves the codec reads what that core sends, not that an SSH exec leaves the
+/// bytes alone (see the compatibility notes).
 @Suite struct HerdrCoreWindowsCaptureTests {
     private let vectors = HerdrCoreVectorFile.windows
 
@@ -103,7 +104,14 @@ import Testing
             Issue.record("the Heeler form's finish did not decode")
             return
         }
-        // choice.exe answered 2; a shell left at its prompt would have finished later with its own.
+        // choice.exe answered 2.
         #expect(end.exitCode == 2)
+        // Under -NoExit the finish carries the shell's own `exit 5`, not the program's code.
+        let desktop = try #require(vectors.events.first { $0.name == "finished-desktop-form" }).line
+        guard case .finished(_, let desktopEnd) = try #require(try cursor.decode(line: Data(desktop.utf8))) else {
+            Issue.record("the desktop form's finish did not decode")
+            return
+        }
+        #expect(desktopEnd.exitCode == 5)
     }
 }
