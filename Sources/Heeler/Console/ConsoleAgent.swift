@@ -120,20 +120,6 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         paneDirectory = nonempty(pane.foregroundCwd) ?? nonempty(pane.cwd)
     }
 
-    /// Updates only the presentation fields carried by a title delta. The
-    /// program, directory, status, transcript and ordering remain unchanged.
-    mutating func updateTerminalTitle(_ title: String) {
-        agent = Agent(
-            terminalID: agent.terminalID, kind: agent.kind,
-            title: TerminalTitleGlyphs.strip(title), status: agent.status,
-            workspaceID: agent.workspaceID, tabID: agent.tabID, paneID: agent.paneID,
-            cwd: agent.cwd, revision: agent.revision, name: agent.name,
-            terminalTitle: title, paneTitle: agent.paneTitle,
-            agentSession: agent.agentSession, tokens: agent.tokens,
-            stateLabels: agent.stateLabels, stateChangeSeq: agent.stateChangeSeq,
-            foregroundCwd: agent.foregroundCwd)
-    }
-
     private func nonempty(_ value: String?) -> String? {
         value.flatMap { $0.isEmpty ? nil : $0 }
     }
@@ -287,8 +273,8 @@ extension AgentStatus {
 }
 
 extension [ConsoleAgent] {
-    /// Pins always lead by recency. Snapshot policy controls each Host's
-    /// remaining Agents; absent snapshots retain the legacy priority order.
+    /// Pins always lead by recency. `sortByHost` controls each Host's remaining
+    /// Agents; a Host absent from it retains the legacy priority order.
     /// Space order uses stable Host blocks even in the flat presentation.
     func consoleSorted(
         sortByHost: [Host.ID: AgentPanelSort] = [:],

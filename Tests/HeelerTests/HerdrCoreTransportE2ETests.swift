@@ -81,10 +81,10 @@ struct HerdrCoreTransportE2ETests {
         }
     }
 
-    @Test("no outcome falls back to the legacy herdr on the same machine")
+    @Test("no outcome falls back to the Herdr TUI server on the same machine")
     func noLegacyFallback() async throws {
         try await CoreSSHFixture.with { fixture in
-            // The session name hc refuses goes nowhere, not to another backend.
+            // The session name hc refuses goes nowhere, not to the other Server Kind.
             let refused = try await SSHTransportConnector().connectCore(
                 settings: fixture.settings(session: "../invalid-session"))
             do {
@@ -782,6 +782,9 @@ private struct CoreSSHFixture: Sendable {
         let legacyLog: String
         /// Whose startup files a launch reads, where that is not `homePath`.
         let launchHome: String?
+        /// What a session's name starts with, so a lab run can tell its own
+        /// sessions from anyone else's on that box. A lone "h" otherwise.
+        let sessionPrefix: String?
     }
 
     static var isConfigured: Bool {
@@ -795,7 +798,14 @@ private struct CoreSSHFixture: Sendable {
     let configuration: Configuration
     let connection: SSHConnection
     /// Nine characters: the fixture root's path budget counts on it.
-    let session = "h" + UUID().uuidString.prefix(8).lowercased()
+    let session: String
+
+    init(configuration: Configuration, connection: SSHConnection) {
+        self.configuration = configuration
+        self.connection = connection
+        let prefix = configuration.sessionPrefix ?? "h"
+        session = prefix + UUID().uuidString.lowercased().prefix(9 - prefix.count)
+    }
 
     var lockPath: String { "\(configuration.homePath)/.local/state/herdr-core/\(session)/core.lock" }
 

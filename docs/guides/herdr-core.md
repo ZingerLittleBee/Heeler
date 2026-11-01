@@ -1,6 +1,6 @@
 # Connect herdr-core
 
-Agents started by the desktop herdr-app belong to herdr-core, a server of their own. They do not appear in the Herdr TUI server, even when both run under the same SSH account, so each one is a Host of its own in Heeler. Heeler reads herdr-core 0.1.13. The app and the core have separate version numbers.
+Agents started by the Herdr desktop app belong to herdr-core, a server of their own. They do not appear in the Herdr TUI server, even when both run under the same SSH account, so each one is a Host of its own in Heeler. Heeler reads herdr-core 0.1.13. The app and the core have separate version numbers.
 
 ## Add a Host
 
@@ -31,14 +31,14 @@ Heeler never starts a core by connecting or checking, so a mistyped session name
 | **herdr-core needs an update** | Run the update command it shows, then check again |
 | **The herdr-core socket path is too long** | Use a shorter session name, or set a shorter socket in the core's config |
 
-**Start herdr-core** appears under the checks on a Linux Host whose core is not running. It asks first, naming the session, the interactive login shell it starts through, and systemd linger, which it tries to turn on when it is off. The core then has the environment your own terminal has. If a core was already running by then, Heeler says so and that Start changed nothing. On macOS and Windows, Heeler says how to start the core yourself.
+**Start herdr-core** appears under the checks on a Linux Host whose core is not running. It asks first, naming the session, the interactive login shell it starts through, and systemd linger, which it tries to turn on when it is off. The core then has the environment your own terminal has. If a core was already running by then, Heeler says so and that Start changed nothing. On macOS, Heeler says how to start the core yourself.
 
 ## Console
 
-A core Host's Terminals follow the Herdr desktop's organization when the core has one. Heeler reads it and never changes it.
+A core Host's Terminals follow the Herdr desktop app's organization when the core has one. Heeler reads it and never changes it.
 
-- Each desktop space is a card under its own name, in the desktop's order. A row reads **Tab “name”**, or **Tab N** for a tab with no name.
-- A space that only a Terminal's label names follows the desktop's spaces, named for the folder of its git checkout, or for its directory outside one.
+- Each desktop space is a card under its own name, in the desktop app's order. A row reads **Tab “name”**, or **Tab N** for a tab with no name.
+- A space that only a Terminal's label names follows the desktop app's spaces, named for the folder of its git checkout, or for its directory outside one.
 - A Terminal started from another Terminal joins its parent's card, unless its own labels place it elsewhere.
 - Every other Terminal goes in a card named for its launch directory.
 
@@ -55,13 +55,15 @@ A Terminal is an Agent while its foreground program is a known coding program, o
 | **Blocked** | It waits for you |
 | **Error** | It reports an error, and sorts with **Blocked** |
 
+The Agents tab sorts by status, with those waiting for you first, and within a status in the desktop app's order of spaces, tabs and panes. By Workspace takes its cards from the same order.
+
 Done is per device. An Agent shows Done when it finished a turn this device was not showing and still reports idle or done. Opening the Agent clears it here, and so does having it open when the turn ends; your other devices keep showing it until you open it there. It leaves on its own when the Agent starts working again. A turn finishes when a program goes from Working to Done. A program not known to report done also finishes one by going from Working to Idle, while Claude Code, Codex, Pi and Oh My Pi do not, so a Codex release too old to report done never shows Done. Removing the Host, or the Host getting a different core, starts over.
 
 Tap **Unknown** on an Agent's status line to see why it reads that way. Each program reports its status from a release on: Claude Code 2.1.295, Codex 0.163, OpenCode 2.1, Pi 1.1.0 (earlier releases report through the [Host Helper](#host-helper)) and Oh My Pi 18.8.7, so an older one stays Unknown. No such release is known for Grok Build or for a program Heeler does not recognize. A Terminal that has reported but holds no state reads as not having reported a state yet. Heeler never works out a status from the screen.
 
 **Grok Build's status.** Grok Build's automatic check leaves its status off where its query cannot run, such as under a core started with `TMUX` set. On a Grok Build Agent with no status, that same sheet offers **Turn On Grok Build's Status**. It shows the file and the exact lines, `program_status = "on"` under `[ui.notifications]` in `$GROK_HOME/config.toml` or `~/.grok/config.toml`, and writes nothing until you tap **Apply This Change**. Start Grok Build again to see its status. A managed configuration or a `GROK_CONFIG` overlay can still override this file.
 
-If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler cannot read the Agent's environment, it cannot tell which file that Agent uses, so it writes nothing and says so. If Heeler cannot be sure how to change a file, it writes nothing and tells you what to add by hand. A native Windows Host takes this change by hand too.
+If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler cannot read the Agent's environment, it cannot tell which file that Agent uses, so it writes nothing and says so. If Heeler cannot be sure how to change a file, it writes nothing and tells you what to add by hand.
 
 **Undo** in the same sheet, or under **Harness Edits** in the Host's detail, puts the file back exactly as it was. It writes nothing if the file has changed since the edit. In that case undo the edit by hand, and **Stop Listing** drops it from the list. Each sheet speaks for the file its Agent reads, so Agents with different `GROK_HOME` values each get their own change and **Undo**, and each row under **Harness Edits** undoes the file it shows. The list belongs to the device that made the edit. Heeler never edits Claude Code's settings, Codex's hooks or trusted hashes, or Grok Build's global hooks.
 
@@ -73,7 +75,7 @@ A row opens the Agent's detail. Its menu has Open in New Window where the device
 
 ## Terminal
 
-Every terminal is a channel on the Host's one connection, so opening more costs no new SSH session. It is one of any number of viewers: the desktop can stay attached, typing takes the size, and no Take Over appears. Scrollback comes with it. Up to five terminals stay ready for five minutes after you leave them, and come back at once.
+Every terminal is a channel on the Host's one connection, so opening more costs no new SSH session. It is one of any number of viewers: the desktop app can stay attached, typing takes the size, and no Take Over appears. Scrollback comes with it. Up to five terminals stay ready for five minutes after you leave them, and come back at once.
 
 Every key reaches the program, Ctrl+\ included. Heeler reserves no detach key.
 
@@ -96,13 +98,13 @@ While the Agent is **Blocked**, Send only pastes. Use the tools keyboard to subm
 
 If the Host does not answer a step, Send cannot tell what reached the program. The Composer says so, offers **Edit Draft** instead of Retry, and never sends the message again, because a paste or an Enter the core was holding can still arrive. Look at the terminal first. The next Send pastes nothing until the Host answers, then says the last message **may still be in the Agent's input**. Check the terminal and send again.
 
-Send appears once the connection has told Heeler the Host's platform, a moment after the detail opens. Native Windows core Hosts do not offer it yet.
+Send appears once the connection has told Heeler the Host's platform, a moment after the detail opens.
 
 ## Images and files
 
-On a macOS or Linux Host, **Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stages an image or file as on any other Host. Heeler uploads it over SFTP, puts its path on the Host in your draft, and copies the path. Nothing reaches the Agent yet: the draft waits, and since a core Host has no Send yet, paste the path into the terminal to use it.
+On a macOS or Linux Host, **Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stages an image or file as on any other Host. Heeler uploads it over SFTP, puts its path on the Host in your draft, and copies the path. Nothing reaches the Agent until you send: the draft waits, and [Send](#send) delivers it with the path in it.
 
-Add appears once the connection has told Heeler the Host's platform, a moment after the detail opens. Native Windows core Hosts do not offer it yet.
+Add appears once the connection has told Heeler the Host's platform, a moment after the detail opens.
 
 ## Stop
 
@@ -111,8 +113,6 @@ While an Agent is **Working** and the draft is empty, **Stop** takes Send's plac
 Stop shows only while the Agent holds the terminal, never for the shell it left behind. A program that has not reported a status reads **Unknown** and has no Stop. Use the tools keyboard or Direct Input there.
 
 A Grok Build Agent's Composer keeps **Send** while it works, as on any other Host, because Esc does not stop its turns. Use the tools keyboard or Direct Input to press Ctrl+C.
-
-On a native Windows Host, Stop is not available yet.
 
 | Notice | What it means | What to do |
 | --- | --- | --- |
@@ -188,8 +188,6 @@ If a Terminal cannot be confirmed ended, Heeler says so and leaves the checkout 
 
 If the connection drops with **Worktree Details** open, the sheet goes with the Agent's screen. Whatever stopped the removal, or the Host not confirming it, then shows as an alert over the Console, and so does a Close that ends the same way from an Agent's screen. Check the Host before trying again.
 
-Native Windows core Hosts do not offer Worktrees yet.
-
 ## Chat
 
 Chat opens for a Claude Code Agent on a Linux core Host, where you can read its conversation, send to it, stop it and answer its questions.
@@ -210,9 +208,9 @@ Heeler finds the conversation from the Agent's own process on the Host, with not
 
 ## Known limits
 
-- Heeler has no Rename on a core Host yet. Use the Host or the desktop.
-- Chat opens only for Claude Code on Linux. Other programs, macOS and native Windows core Hosts offer the terminal alone.
-- Native Windows core Hosts offer no Send or Stop yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
+- Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.
+- Chat opens only for Claude Code on Linux. Other programs and macOS core Hosts offer the terminal alone.
+- Heeler cannot connect to a native Windows core Host yet: its checks read **herdr-core Hosts is not yet supported on native Windows**.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
 - If Heeler cannot read its saved herdr-core Hosts, the Hosts tab says so. Herdr TUI Hosts keep working and the saved data stays as it was, but no herdr-core Host can be added until it reads again.
@@ -244,6 +242,8 @@ Without systemd linger, the Helper stops about ten seconds after your last login
 
 Native Windows Hosts read **Not Available**, so Agent Notifications (in-app banners included), Live Activity and Usage are not available there yet. macOS Hosts also read **Not Available** in this version, with no install offered.
 
+**Remove.** In the sheet, tap **Remove**. Heeler disables and stops the service, deletes the files the install recorded, the Pi and Oh My Pi extensions among them, then the folders it created that are now empty, and finally the Helper's directory with its notification registrations and seen marks. The Host's banners and Live Activity stop with it. Removal leaves systemd linger and the Grok Build edit (`program_status` in its configuration) as they are: change those yourself if you no longer want them.
+
 ## Agent Notifications
 
 With the Host Helper running, a herdr-core Host notifies you as any other Host does, with Heeler killed too. Turn notifications on for the Host in **Settings > Notifications**. Heeler writes this device's entry for the Host's session into the Helper's directory, never into a plugin's file, and each device's notifications are encrypted with its own key.
@@ -255,14 +255,14 @@ With the Host Helper running, a herdr-core Host notifies you as any other Host d
 
 Turning notifications off, or removing the Host while Heeler can reach it, with its core stopped too, removes this device's entry and its file from the Host. If you remove a Host Heeler cannot reach, the entry stays and Heeler says so: reconnect first to stop them.
 
-The switches need the Helper, so **Settings > Notifications** says what the Host's Helper needs, such as **Not Installed**, **Service Failed** or **Node.js Missing**. Fix that from the Host's page in **Hosts**. A device already registered keeps its switches there, so it can still leave. With **Linger Off**, the switches work and a note says the Helper stops about ten seconds after your last login ends, so notifications stop too. Notifications need Host Helper 0.4.0 or newer.
+The switches need the Helper, so **Settings > Notifications** says what the Host's Helper needs, such as **Not Installed**, **Service Failed** or **Node.js Missing**. Fix that from the Host's page in **Hosts**. A device already registered keeps its switches there, so it can still leave. With **Linger Off**, the switches work and a note says the Helper stops about ten seconds after your last login ends, so notifications stop too.
 
 ### Banners and Live Activity
 
 Once this device is registered with a Host's Helper, that Host's Agents join the in-app banners and the Live Activity alongside your other Hosts. A Host without the Helper, or without this device's registration, gets neither.
 
 - **Banners** come while Heeler is open, under the same switches: Blocked and Error under the Blocked switch, Error reading as Error, and Done under its own switch. Done is this device's, so an Agent you have open makes no Done banner.
-- **Live Activity** has its own switch for the Host, and needs Host Helper 0.5.0 or newer. Heeler starts the activity and writes its push token into the Helper's directory. After Heeler suspends, the Helper updates and ends it through the Push Relay. Done counts for this device only, and an Error Agent counts under Blocked, as the Live Activity has no count of its own for it.
+- **Live Activity** has its own switch for the Host. Heeler starts the activity and writes its push token into the Helper's directory. After Heeler suspends, the Helper updates and ends it through the Push Relay. Done counts for this device only, and an Error Agent counts under Blocked, as the Live Activity has no count of its own for it.
 
 While Heeler is suspended the activity names each Agent's workspace by its folder, not a desktop app's space name, and a row field for the Tab or Pane stays empty. Opening Heeler brings those back.
 
@@ -270,7 +270,7 @@ While Heeler is suspended the activity names each Agent's workspace by its folde
 
 With the Helper installed, a core Host's Usage works as on any other Host, in the Usage tab, the Host's detail and the widgets: Token Usage for Claude Code and Codex, and Claude Code's Usage Limits when you turn them on for that Host.
 
-The **Default Account** follows the core, not your SSH login. A core usually starts from the desktop or a login shell, with an environment SSH never sees, so the Helper reads the variables that locate Accounts, such as `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, from the core process. It reads those by name and nothing else, keeps them in a file only your account can read, and reads them again whenever the core restarts. Change `CLAUDE_CONFIG_DIR` and restart the core to move the Default Account.
+The **Default Account** follows the core, not your SSH login. A core usually starts from the desktop app or a login shell, with an environment SSH never sees, so the Helper reads the variables that locate Accounts, such as `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, from the core process. It reads those by name and nothing else, keeps them in a file only your account can read, and reads them again whenever the core restarts. Change `CLAUDE_CONFIG_DIR` and restart the core to move the Default Account.
 
 To count more Claude Code sign-ins, open **Claude Code Accounts**. Heeler suggests the directories of the Claude Code Agents running in the core and those it finds in your home folder. Your choices stay in the Helper's directory, so **Remove** deletes them with it.
 
@@ -284,5 +284,3 @@ To count more Claude Code sign-ins, open **Claude Code Accounts**. Heeler sugges
 Usage reaches the Helper over its own SSH connection when the Host's session has none, so these read the same whether the core is running or not. **Not connected** in the Usage tab and the widgets means SSH itself could not reach the Host.
 
 The Usage widgets say the same in a shorter form, such as **Needs the Host Helper**. With a widget installed, Heeler checks each core Host when you open the app, so you do not have to open Usage for the widget to catch up.
-
-**Remove.** In the sheet, tap **Remove**. Heeler disables and stops the service, deletes the files the install recorded, the Pi and Oh My Pi extensions among them, then the folders it created that are now empty, and finally the Helper's directory with its notification registrations and seen marks. The Host's banners and Live Activity stop with it. Removal leaves systemd linger and the Grok Build edit (`program_status` in its configuration) as they are: change those yourself if you no longer want them.

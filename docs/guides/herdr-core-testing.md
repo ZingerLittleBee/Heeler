@@ -31,7 +31,7 @@ covers the fixture and CI.
 ## Scripted check
 
 ```bash
-make verify-core-linux-host SIM_UDID=<udid> LAB=hc-lab
+make verify-core-linux-host SIMULATOR_UDID=<udid> LAB=hc-lab
 ```
 
 It authorizes a throwaway key through `instabox port-forward`, writes the fixture's
@@ -119,7 +119,7 @@ many are open.
 | Modes after a repaint | In `vim`, paste multi-line text after the burst above | The paste arrives bracketed, as one insert |
 | Every key | `stty -isig; cat -v`, then Ctrl+\ | `cat` prints `^\`; nothing in Heeler intercepts it |
 | Display facts | In a core Terminal, `stty raw -echo min 0 time 20; printf '\033]11;?\033\\\033[16t'; dd bs=256 count=1 2>/dev/null \| tr '\033' '^'; stty sane; echo`, then pick another theme in Settings and run it again | It prints the theme's background as `]11;rgb:…` and the cell in pixels as `[6;<height>;<width>t`; the second run shows the new background |
-| Second viewer | `hc attach <terminal>` on the box at another size, then type in Heeler | The program takes Heeler's size when you type; no Take Over appears anywhere on the Host |
+| Second viewer | `HC_SESSION=<s> ~/.local/bin/herdr-core attach <terminal>` on the box at another size, for the Host's running session, then type in Heeler | The program takes Heeler's size when you type; no Take Over appears anywhere on the Host |
 | Retained terminals | Open six Terminals in turn and go back | Five stay retained for five minutes and come back at once; the sixth detaches the least recently viewed idle one, which attaches afresh when you return to it |
 | End of a program | `exit` in a Terminal, kept or not | **Terminal Closed** with **Back to Console**, and no error or **Reattach** |
 | Agent detail | Open a core Agent | Live terminal, Changes and Skills work; Send and Stop work, and Add stages an image and a file, on macOS and Linux, and all three are hidden on native Windows; Direct Input types into the terminal |
@@ -474,15 +474,16 @@ Terminal.
 
 ### The Helper and the core
 
-With no device registered from the app, name the session by hand, in the Helper
-directory: `printf '{"v":1,"devices":[{"session":"default"}]}' >
+Use a unique non-default session `<s>` of your own, and start and stop nothing else.
+With no device registered from the app, name it by hand, in the Helper directory:
+`printf '{"v":1,"devices":[{"session":"<s>"}]}' >
 ~/.local/share/heeler/host-helper/notifications.json`. Remove the file when done.
 
 | Step | What to do | What must happen |
 | --- | --- | --- |
-| No core | Stop the session's core with `herdr-core server stop` by absolute path, then `systemctl --user restart heeler-host-helper` | `systemctl --user list-units 'hc-serve-*'` shows no new unit, however long you wait. `journalctl --user -u heeler-host-helper` reads `core session "default": waiting for a core at <socket>` once |
-| Core starts | Start the core from the user's login shell, and do not touch the Helper | Within seconds the journal reads `connected to core pid <pid>`, the pid `server.status` reports. The unit's main PID has not changed |
-| Core restarts | `kill -9` the core at that pid, then start it again from the login shell | The journal reads `connection to core pid <pid> ended`, then `connected` with the new pid |
+| No core | `HC_SESSION=<s> ~/.local/bin/herdr-core server stop` if it runs, then `systemctl --user restart heeler-host-helper` | `systemctl --user list-units 'hc-serve-*'` shows no new unit, however long you wait. `journalctl --user -u heeler-host-helper` reads `core session "<s>": waiting for a core at <socket>` once |
+| Core starts | From the user's login shell, `HC_SESSION=<s> ~/.local/bin/herdr-core server start`, and do not touch the Helper | Within seconds the journal reads `connected to core pid <pid>`, the pid `<s>`'s `server.status` reports. The unit's main PID has not changed |
+| Core restarts | `kill -9` that pid from `<s>`'s `server.status`, then start `<s>` again the same way | The journal reads `connection to core pid <pid> ended`, then `connected` with the new pid |
 | Other sessions | Start a core for a session the file does not name, and no Host's Usage asked about | The journal never mentions it, and `ss -xp` shows the Helper connected only to the named session's socket |
 
 ### Agent Notifications

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The generation-1 herdr-core API is JSON-RPC, not the legacy herdr wire
+/// The generation-1 herdr-core API is JSON-RPC, not the Herdr TUI wire
 /// protocol. These are its envelope, for the link and the typed records.
 enum HerdrCoreWire {
     static let generation = 1

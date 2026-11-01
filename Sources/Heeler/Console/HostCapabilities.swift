@@ -11,8 +11,6 @@ struct HerdrAppNaming: Equatable, Sendable {
 /// as it is built (ADR 0032). An action's own conditions, such as a Chat's
 /// platform or an Agent's linked Worktree, still apply on top.
 struct HostCapabilities: Equatable, Sendable {
-    /// A Terminal's or Agent's row opens its detail.
-    let opensDetail: Bool
     let startsAgents: Bool
     let startsTerminals: Bool
     let renameAgent: Bool
@@ -78,7 +76,7 @@ extension HostCapabilities {
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
         let coreChat = coreOnPosix && coreKernel == "Linux"
         self.init(
-            opensDetail: true, startsAgents: true, startsTerminals: true,
+            startsAgents: true, startsTerminals: true,
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered || coreOnPosix,
             uploads: offered || coreOnPosix,
             composerSend: offered || coreOnPosix, chat: offered || coreChat,
@@ -96,21 +94,16 @@ extension Host {
 
 /// What an Agent's row offers besides its pin, by what its Host can do.
 struct ConsoleAgentRowOffers: Equatable {
-    let opensDetail: Bool
     let opensInNewWindow: Bool
     let closes: Bool
 
-    init(opensDetail: Bool, opensInNewWindow: Bool, closes: Bool) {
-        self.opensDetail = opensDetail
+    init(opensInNewWindow: Bool, closes: Bool) {
         self.opensInNewWindow = opensInNewWindow
         self.closes = closes
     }
 
     init(capabilities: HostCapabilities, supportsMultipleWindows: Bool) {
-        self.init(
-            opensDetail: capabilities.opensDetail,
-            opensInNewWindow: capabilities.opensDetail && supportsMultipleWindows,
-            closes: capabilities.closeTab)
+        self.init(opensInNewWindow: supportsMultipleWindows, closes: capabilities.closeTab)
     }
 }
 

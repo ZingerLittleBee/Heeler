@@ -224,12 +224,12 @@ struct ConsoleStoreTests {
         store.setHosts([tui, core])
 
         #expect(store.capabilities(for: tui.id) == HostCapabilities(
-            opensDetail: true, startsAgents: true, startsTerminals: true, renameAgent: true, renamesWorkspaces: true, worktrees: true, uploads: true,
+            startsAgents: true, startsTerminals: true, renameAgent: true, renamesWorkspaces: true, worktrees: true, uploads: true,
             composerSend: true, chat: true, tabNames: true, closeTab: true,
             syncLayoutFromPlugin: true))
         #expect(store.capabilities(for: tui.id).renameWorkspace(id: "w1"))
         #expect(store.capabilities(for: core.id) == HostCapabilities(
-            opensDetail: true, startsAgents: true, startsTerminals: true, renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
+            startsAgents: true, startsTerminals: true, renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
             composerSend: false, chat: false, tabNames: false, closeTab: true,
             syncLayoutFromPlugin: false, takeOver: false, composerStop: false))
         #expect(!store.capabilities(for: core.id).renameWorkspace(id: "w1"))

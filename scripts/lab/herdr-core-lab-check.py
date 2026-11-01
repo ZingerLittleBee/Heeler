@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the herdr-core end-to-end methods and the Linux checks on a lab machine.
 
-    make verify-core-linux-host [LAB=hc-lab] [LAB_PORT=47430] SIM_UDID=<udid>
+    make verify-core-linux-host [LAB=hc-lab] [LAB_PORT=47430] SIMULATOR_UDID=<udid>
 
 An owner's check, for a box the instabox CLI is signed in to. What it does there,
 all of it undone at the end, also after a failure: authorizes a throwaway key
@@ -12,7 +12,8 @@ scrubbed frames and replays them through a decoder, then stops those cores by
 absolute path and removes the key and every file it wrote.
 
 Safety: it runs no `hc` and no `pkill` over SSH, and stops only sessions it
-started. See docs/guides/herdr-core-testing.md.
+started: its own, and those of the suite it runs, which it tells to name them
+with a prefix of this run's. See docs/guides/herdr-core-testing.md.
 """
 
 from __future__ import annotations
@@ -88,6 +89,7 @@ class Lab:
         self.wait_for_port = wait_for_port or self._wait_for_port
         self.out = out or (ROOT / ".local/lab-capture")
         self.session = unique_session()
+        self.test_session_prefix = "h" + secrets.token_hex(2)
         self.marker = f"heeler-lab-{self.session}"
         self.failures = []
         self.undo = []
@@ -140,7 +142,7 @@ class Lab:
         self.undo.append(lambda: self.remote(f"rm -rf {shlex.quote(self.directory)}"))
         self.remote(f"mkdir -p {shlex.quote(self.directory)}")
         self.sessions_before = set(self.remote(f"ls {shlex.quote(self.state_root)} 2>/dev/null || true").split())
-        self.undo.append(self.stop_every_new_session)
+        self.undo.append(self.stop_sessions_it_started)
 
     def upload(self, source, name):
         path = f"{self.directory}/{name}"
@@ -181,6 +183,7 @@ class Lab:
             "coreFixture": True, "host": "127.0.0.1", "port": self.port, "username": self.user,
             "homePath": self.home, "deviceKeySeed": seed, "coreExecutable": self.executable,
             "startEnvironment": self.environment, "rpcHelper": helper, "launchHome": launch_home,
+            "sessionPrefix": self.test_session_prefix,
             # The box has a real hc, which this check leaves alone: only the fixture
             # can trip on it, so these logs stay empty here by construction.
             "tripwireLog": f"{self.directory}/hc-called.log", "legacyLog": f"{self.directory}/legacy-called",
@@ -221,10 +224,12 @@ class Lab:
         frames = replay(json.loads(captured))
         self.check("captured frames replay unchanged", frames > 0, f"{frames} frames; read {path} before keeping it")
 
-    def stop_every_new_session(self):
-        """Only sessions that were not on the box when this began."""
+    def stop_sessions_it_started(self):
+        """Being new is not enough: anyone can start a session while the suite runs."""
         now = set(self.remote(f"ls {shlex.quote(self.state_root)} 2>/dev/null || true").split())
-        for session in sorted(now - self.sessions_before):
+        started = {session for session in now - self.sessions_before
+                   if session == self.session or session.startswith(self.test_session_prefix)}
+        for session in sorted(started):
             self.remote(self.core_command(session, ["server", "stop"]))
             self.remote(f"rm -rf {shlex.quote(self.state_root + '/' + session)}")
 

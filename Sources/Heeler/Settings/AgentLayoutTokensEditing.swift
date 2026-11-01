@@ -95,9 +95,8 @@ enum AgentLayoutTokensEditing {
     }
 
     /// Footer of the Add Field sheet.
-    static func addFieldFooter(rowIndex: Int, followsPlugin: Bool = true) -> String {
-        guard followsPlugin else { return "" }
-        return switch AgentRowSlot.forRow(rowIndex) {
+    static func addFieldFooter(rowIndex: Int) -> String {
+        switch AgentRowSlot.forRow(rowIndex) {
         case .herdr?:
             "This row starts from herdr's sidebar fields; Sync from plugin refills it. Heeler fields are welcome here too."
         case .heeler?:
@@ -105,10 +104,6 @@ enum AgentLayoutTokensEditing {
         case nil:
             ""
         }
-    }
-
-    static func availableHeelerFields(in row: AgentRow) -> [AgentRowToken] {
-        availableBuiltins(in: row, from: AgentRowToken.heelerBuiltins)
     }
 
     static func description(for token: AgentRowToken) -> String {
