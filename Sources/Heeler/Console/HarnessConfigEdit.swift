@@ -18,6 +18,34 @@ struct HarnessConfigEdit: Sendable {
     let harness: String
     let path: String
     let transform: @Sendable (Data?) -> Transform
+    /// A folder of Heeler's own that the change names, placed before the file
+    /// says so and removed after it no longer does.
+    var folder: HarnessConfigFolder? = nil
+    /// The list entry the change is, so undoing can take it out of a file the user
+    /// has changed since. Without one, undoing needs the file as Heeler left it.
+    var listEntry: HarnessConfigListEntry? = nil
+}
+
+/// A folder of Heeler's own beside a harness's configuration, with what goes in it.
+struct HarnessConfigFolder: Equatable, Sendable {
+    struct File: Equatable, Sendable {
+        let name: String
+        let contents: Data
+    }
+
+    let path: String
+    let files: [File]
+
+    func filePath(_ name: String) -> String { RemoteFilePath.join(path, name) }
+    var filePaths: [String] { files.map { filePath($0.name) } }
+}
+
+/// What this device remembers of such a folder, to remove it again.
+struct HarnessConfigAppliedFolder: Codable, Equatable, Sendable {
+    let path: String
+    let fileNames: [String]
+
+    var filePaths: [String] { fileNames.map { RemoteFilePath.join(path, $0) } }
 }
 
 /// One contiguous run of bytes that differs, cut at whole lines. Holds only what
@@ -129,6 +157,8 @@ struct HarnessConfigPendingChange: Equatable, Sendable {
     /// Nil when there is no file yet.
     let before: Data?
     let after: Data
+    var folder: HarnessConfigFolder? = nil
+    var listEntry: HarnessConfigListEntry? = nil
 
     var hunk: HarnessConfigHunk { HarnessConfigHunk(before: before ?? Data(), after: after) }
     var shownLines: [HarnessConfigShownLine] { HarnessConfigShownLine.lines(of: hunk) }
@@ -147,6 +177,8 @@ struct HarnessConfigAppliedEdit: Codable, Equatable, Identifiable, Sendable {
     /// What Heeler wrote. Undo touches a file only while it still holds this.
     let writtenDigest: Data
     let appliedAt: Date
+    var folder: HarnessConfigAppliedFolder? = nil
+    var listEntry: HarnessConfigListEntry? = nil
 
     var shownLines: [HarnessConfigShownLine] { HarnessConfigShownLine.lines(of: hunk) }
 }
@@ -166,6 +198,7 @@ enum HarnessConfigEditError: Error, Equatable, LocalizedError {
     case unreadable
     case unresolvedPath
     case agentEnvironmentUnavailable
+    case openCodeVersionUnknown
 
     var errorDescription: String? {
         switch self {
@@ -181,6 +214,8 @@ enum HarnessConfigEditError: Error, Equatable, LocalizedError {
             "This Agent's configuration folder isn't an absolute path, so Heeler can't tell which file to change."
         case .agentEnvironmentUnavailable:
             "Heeler couldn't read this Agent's environment, so it can't tell which file to change. Nothing was written."
+        case .openCodeVersionUnknown:
+            "Heeler couldn't read which OpenCode this Host runs, so it can't tell which file to change. Nothing was written."
         }
     }
 }
@@ -206,25 +241,68 @@ struct HarnessConfigEditor: Sendable {
             return .change(
                 HarnessConfigPendingChange(
                     editID: edit.id, harness: edit.harness, path: edit.path, before: before,
-                    after: after))
+                    after: after, folder: edit.folder, listEntry: edit.listEntry))
         }
     }
 
-    /// Writes exactly what was shown, if the file still holds what was read.
+    /// Writes exactly what was shown, if the file still holds what was read. A
+    /// folder goes first, so the file never names one that isn't there, and comes
+    /// away again if the file turns out to have changed.
     func apply(_ change: HarnessConfigPendingChange) async throws -> HarnessConfigAppliedEdit {
+        if let folder = change.folder {
+            guard try await read(change.path) == change.before else {
+                throw HarnessConfigEditError.changedSinceRead
+            }
+            do {
+                try await place(folder)
+            } catch {
+                await takeBack(folder)
+                throw error
+            }
+        }
         do {
             try await files.replaceHostTextFile(
                 path: change.path, expected: change.before, contents: change.after)
         } catch HostTextFileError.changedSinceRead {
+            if let folder = change.folder { await takeBack(folder) }
             throw HarnessConfigEditError.changedSinceRead
         }
         return record(of: change)
     }
 
+    /// What a leftover from an earlier attempt holds gets replaced, against what was read.
+    private func place(_ folder: HarnessConfigFolder) async throws {
+        try await files.createHostFolder(path: folder.path)
+        for file in folder.files {
+            let path = folder.filePath(file.name)
+            let existing = try await read(path)
+            guard existing != file.contents else { continue }
+            try await files.replaceHostTextFile(path: path, expected: existing, contents: file.contents)
+        }
+    }
+
+    /// Only for a folder this attempt placed and the file doesn't name. Whatever
+    /// this can't remove stays, unnamed and doing nothing.
+    private func takeBack(_ folder: HarnessConfigFolder) async {
+        try? await remove(HarnessConfigAppliedFolder(path: folder.path, fileNames: folder.files.map(\.name)))
+    }
+
+    /// Its listed files, and then the folder if nothing else has come to be in it.
+    private func remove(_ folder: HarnessConfigAppliedFolder) async throws {
+        for path in folder.filePaths {
+            guard let existing = try await read(path) else { continue }
+            try await files.replaceHostTextFile(path: path, expected: existing, contents: nil)
+        }
+        try await files.removeEmptyHostFolder(path: folder.path)
+    }
+
     /// What a write whose answer never came would have been, if the file now
     /// holds it. Nil if it holds anything else.
     func record(ofWritten change: HarnessConfigPendingChange) async throws -> HarnessConfigAppliedEdit? {
-        guard try await read(change.path) == change.after else { return nil }
+        guard try await read(change.path) == change.after else {
+            if let folder = change.folder { await takeBack(folder) }
+            return nil
+        }
         return record(of: change)
     }
 
@@ -232,19 +310,42 @@ struct HarnessConfigEditor: Sendable {
         HarnessConfigAppliedEdit(
             id: makeID(), editID: change.editID, harness: change.harness, path: change.path,
             hunk: change.hunk.remembered, createdFile: change.createsFile,
-            writtenDigest: Self.digest(change.after), appliedAt: now())
+            writtenDigest: Self.digest(change.after), appliedAt: now(),
+            folder: change.folder.map { folder in
+                HarnessConfigAppliedFolder(path: folder.path, fileNames: folder.files.map(\.name))
+            },
+            listEntry: change.listEntry)
     }
 
     /// Puts the file back exactly as it was, if it still holds what Heeler wrote.
+    /// An edit that is one list entry can also take that entry out of a file changed
+    /// since, against what it read now. Its folder goes after the entry, so a failure
+    /// in between leaves a folder nothing names, and undoing again finishes the job.
     func undo(_ applied: HarnessConfigAppliedEdit) async throws {
-        guard let current = try await read(applied.path),
-            Self.digest(current) == applied.writtenDigest
-        else { throw HarnessConfigEditError.changedSinceWritten }
+        let current = try await read(applied.path)
         do {
-            try await files.replaceHostTextFile(
-                path: applied.path, expected: current,
-                contents: applied.createdFile ? nil : applied.hunk.reverted(from: current))
+            if let current, Self.digest(current) == applied.writtenDigest {
+                try await files.replaceHostTextFile(
+                    path: applied.path, expected: current,
+                    contents: applied.createdFile ? nil : applied.hunk.reverted(from: current))
+            } else if let entry = applied.listEntry {
+                if let current { try await removeEntry(entry, of: applied.path, holding: current) }
+            } else {
+                throw HarnessConfigEditError.changedSinceWritten
+            }
         } catch HostTextFileError.changedSinceRead {
+            throw HarnessConfigEditError.changedSinceWritten
+        }
+        if let folder = applied.folder { try await remove(folder) }
+    }
+
+    private func removeEntry(_ entry: HarnessConfigListEntry, of path: String, holding current: Data) async throws {
+        switch HarnessConfigJSONCList.removing(entry, from: current) {
+        case .changed(let after):
+            try await files.replaceHostTextFile(path: path, expected: current, contents: after)
+        case .notThere:
+            break
+        case .unreadable, .notAList:
             throw HarnessConfigEditError.changedSinceWritten
         }
     }

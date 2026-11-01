@@ -137,6 +137,12 @@ extension ChatUnavailableReason {
         }
     }
 
+    /// A core's OpenCode with no id of Heeler's: the plugin is what names its session
+    /// (ADR 0033). Nothing on Herdr TUI reads this reason, where herdr reports it.
+    var offersOpenCodePluginEdit: Bool {
+        self == .cannotTellSession(.opencode)
+    }
+
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
@@ -421,7 +427,7 @@ extension ChatProgram {
         case .grok:
             "Grok Build lists its conversation while it runs. After /new it lists both, so Chat can't tell until you start Grok Build again."
         case .opencode:
-            "OpenCode shows its conversation only when Heeler starts OpenCode 2.1 or later from New Agent."
+            "OpenCode shows its conversation when Heeler starts OpenCode 2.1 or later from New Agent, or through Heeler's plugin, which takes one change to its configuration."
         case .claude, .pi, .omp:
             "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal."
         }
@@ -438,6 +444,8 @@ struct ChatUnavailableView: View {
     var launchNotice: ChatLaunchNotice?
     let retry: () -> Void
     let showAgentTerminal: () -> Void
+    /// Opens the one configuration edit that can settle this reason.
+    var reviewEdit: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
@@ -445,6 +453,11 @@ struct ChatUnavailableView: View {
         } description: {
             Text(reason.explanation(launchNotice: launchNotice))
         } actions: {
+            if let reviewEdit, reason.offersOpenCodePluginEdit {
+                Button("Let Chat Follow OpenCode…", action: reviewEdit)
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("chat.unavailable.openCodeEdit")
+            }
             Button(AgentDetailSurface.terminal.showTitle, action: showAgentTerminal)
                 .buttonStyle(.bordered)
             if reason.offersRetry {

@@ -1582,6 +1582,27 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    /// Over one bounded exec, the Helper's own tested steps. SFTP's mkdir and rmdir
+    /// can't tell a folder that is there, or holds something, from any other refusal.
+    func createHostFolder(path: String) async throws {
+        try await runHostFolderStep(.makeFolders([path], privateFolder: path), path: path)
+    }
+
+    func removeEmptyHostFolder(path: String) async throws {
+        try await runHostFolderStep(.removeEmptyFolders([path]), path: path)
+    }
+
+    private func runHostFolderStep(_ step: HostHelperScript.Step, path: String) async throws {
+        guard RemoteFilePath.isAcceptable(path) else {
+            throw TransportError.invalidDirectoryPath(path: path)
+        }
+        try await requirePOSIXHost(feature: "Editing Host files")
+        let result = try await runHostHelperScript(HostHelperScript(step, nonce: HostProcessReader.makeNonce()))
+        guard result.exitStatus == 0 else {
+            throw TransportError.malformedResponse("The Host refused to change the folder \(path).")
+        }
+    }
+
     private func performHostTextFileReplace(
         path: String, expected: Data?, contents: Data?, operationID: UUID
     ) async throws {

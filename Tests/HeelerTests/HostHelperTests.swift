@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import Testing
+import os
 
 @testable import Heeler
 
@@ -630,6 +631,143 @@ struct HostHelperRemovalTests {
         #expect(files < folders)
         #expect(folders < tree)
         #expect(await host.activeState == "inactive")
+    }
+
+    // MARK: The OpenCode edit
+
+    private static let openCodeConfig = "/home/me/.config/opencode/tui.json"
+    private static let openCodeFolder = "/home/me/.config/opencode/heeler-opencode"
+    private static let openCodeOriginal = Data("{\n  \"theme\": \"dark\"\n}\n".utf8)
+
+    /// An installed Helper on a Host where this device applied the OpenCode edit.
+    @MainActor
+    private func appliedEdit(
+        on hostID: Host.ID, core: ScriptedCoreHost, in edits: HarnessConfigEditStore
+    ) async throws {
+        await host.seedFile(Self.openCodeConfig, Self.openCodeOriginal)
+        let edit = OpenCodePluginEdit.edit(
+            configDirectory: "/home/me/.config/opencode", fileName: "tui.json", form: .tuiConfig,
+            files: OpenCodePluginEdit.fileNames.map { .init(name: $0, contents: Data($0.utf8)) })
+        let editor = HarnessConfigEditor(files: core)
+        guard case .change(let change) = try await editor.propose(edit) else {
+            Issue.record("expected a change")
+            return
+        }
+        edits.note(try await editor.apply(change), on: hostID)
+        await host.configure { $0.clearLog() }
+    }
+
+    @MainActor
+    @Test func anAppliedEditIsUndoneAfterTheFilesAndFoldersAndBeforeTheDirectory() async throws {
+        let core = ScriptedCoreHost(helper: host, channel: .refused)
+        let hostID = Host.ID()
+        let edits = HarnessConfigEditStore()
+        _ = try await installer.install(over: try await installer.read(), bundle: bundle)
+        try await appliedEdit(on: hostID, core: core, in: edits)
+
+        try await installer.remove(over: try await installer.read()) {
+            _ = try await edits.undoEditsGoingWithTheHelper(on: hostID, over: core)
+        }
+
+        let steps = await host.journal
+        let disable = try #require(steps.firstIndex(of: "systemctl disable --now heeler-host-helper.service"))
+        let files = try #require(steps.firstIndex { $0.hasPrefix("removeFiles") })
+        let folders = try #require(steps.firstIndex { $0.hasPrefix("removeEmptyFolders") })
+        let entry = try #require(steps.firstIndex(of: "writeText \(Self.openCodeConfig)"))
+        let pluginFile = try #require(steps.firstIndex(of: "removeText \(Self.openCodeFolder)/tui.js"))
+        let pluginFolder = try #require(steps.firstIndex(of: "removeFolder \(Self.openCodeFolder)"))
+        let tree = try #require(steps.firstIndex { $0.hasPrefix("removeTree") })
+        #expect(disable < files)
+        #expect(files < folders)
+        #expect(folders < entry)
+        #expect(entry < pluginFile)
+        #expect(pluginFile < pluginFolder)
+        #expect(pluginFolder < tree)
+
+        #expect(await host.files[Self.openCodeConfig]?.contents == Self.openCodeOriginal)
+        #expect(await host.folders[Self.openCodeFolder] == nil)
+        #expect(await host.folders[directory] == nil)
+        #expect(edits.edits(on: hostID).isEmpty)
+    }
+
+    @MainActor
+    @Test func withNoAppliedEditRemovalSkipsTheUndo() async throws {
+        let core = ScriptedCoreHost(helper: host, channel: .refused)
+        let edits = HarnessConfigEditStore()
+        _ = try await installer.install(over: try await installer.read(), bundle: bundle)
+        await host.seedFile(Self.openCodeConfig, Self.openCodeOriginal)
+        await host.configure { $0.clearLog() }
+
+        try await installer.remove(over: try await installer.read()) {
+            _ = try await edits.undoEditsGoingWithTheHelper(on: Host.ID(), over: core)
+        }
+
+        let steps = await host.journal
+        #expect(!steps.contains { $0.contains("Text") || $0.hasPrefix("removeFolder") }, "\(steps)")
+        #expect(steps.contains { $0.hasPrefix("removeTree") })
+        #expect(await host.files[Self.openCodeConfig]?.contents == Self.openCodeOriginal)
+    }
+
+    /// Grok Build's edit keeps its own offer and undo.
+    @MainActor
+    @Test func anotherEditStaysThrough() async throws {
+        let core = ScriptedCoreHost(helper: host, channel: .refused)
+        let hostID = Host.ID()
+        let edits = HarnessConfigEditStore()
+        let grok = "/home/me/.grok/config.toml"
+        await host.seedFile(grok, Data("[agent]\n".utf8))
+        let editor = HarnessConfigEditor(files: core)
+        guard case .change(let change) = try await editor.propose(GrokBuildProgramStatusEdit.edit(path: grok)) else {
+            Issue.record("expected a change")
+            return
+        }
+        edits.note(try await editor.apply(change), on: hostID)
+        let after = await host.files[grok]?.contents
+        await host.configure { $0.clearLog() }
+
+        let refusal = try await edits.undoEditsGoingWithTheHelper(on: hostID, over: core)
+
+        #expect(refusal == nil)
+        #expect(edits.edits(on: hostID).count == 1)
+        #expect(await host.files[grok]?.contents == after)
+        #expect(await host.journal.isEmpty)
+    }
+
+    /// A file that refuses is no reason to keep a Helper the user wants gone. The
+    /// edit stays listed, with its own Undo, and the user is told.
+    @MainActor
+    @Test func anEditTheFileRefusesStaysListedAndTheHelperStillGoes() async throws {
+        let core = ScriptedCoreHost(helper: host, channel: .refused)
+        let hostID = Host.ID()
+        let edits = HarnessConfigEditStore()
+        _ = try await installer.install(over: try await installer.read(), bundle: bundle)
+        try await appliedEdit(on: hostID, core: core, in: edits)
+        await host.seedFile(Self.openCodeConfig, Data("broken {".utf8))
+        let left = OSAllocatedUnfairLock<String?>(initialState: nil)
+
+        try await installer.remove(over: try await installer.read()) {
+            let refusal = try await edits.undoEditsGoingWithTheHelper(on: hostID, over: core)
+            left.withLock { $0 = refusal }
+        }
+
+        #expect(left.withLock { $0 }?.contains(Self.openCodeConfig) == true)
+        #expect(edits.edits(on: hostID).count == 1)
+        #expect(await host.files[Self.openCodeConfig]?.contents == Data("broken {".utf8))
+        #expect(await host.folders[Self.openCodeFolder] != nil)
+        #expect(await host.folders[directory] == nil)
+    }
+
+    /// A step that fails stops the removal, as any step's does, with the directory there.
+    @Test func aFailedUndoStopsBeforeTheDirectory() async throws {
+        _ = try await installer.install(over: try await installer.read(), bundle: bundle)
+        await host.configure { $0.clearLog() }
+
+        await #expect(throws: TransportError.hostFileTimedOut) {
+            try await installer.remove(over: try await installer.read()) { throw TransportError.hostFileTimedOut }
+        }
+
+        #expect(await !host.journal.contains { $0.hasPrefix("removeTree") })
+        #expect(await host.folders[directory] != nil)
     }
 
     @Test func leavesNothingBehindOnAHostItFoundEmpty() async throws {

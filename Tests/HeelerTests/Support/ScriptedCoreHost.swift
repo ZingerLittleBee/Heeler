@@ -821,6 +821,22 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         try await helper.replaceHostHelperFile(contents, at: path, privateDirectory: privateDirectory)
     }
 
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        await helper.readHostFile(range)
+    }
+
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+        try await helper.replaceHostText(path: path, expected: expected, contents: contents)
+    }
+
+    func createHostFolder(path: String) async throws {
+        await helper.createFolder(path)
+    }
+
+    func removeEmptyHostFolder(path: String) async throws {
+        await helper.removeFolderIfEmpty(path)
+    }
+
     /// Refuses native Windows, as the real read does.
     func hostHomeDirectory() async throws -> String {
         guard windowsLocator == nil else {

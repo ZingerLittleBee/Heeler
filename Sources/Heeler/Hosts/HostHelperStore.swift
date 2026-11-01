@@ -28,6 +28,8 @@ final class HostHelperStore {
     /// Why the last action failed, in words the user can act on.
     private(set) var failure: String?
 
+    /// What a removal had to leave of the edits that go with the Helper.
+    @ObservationIgnored private var editsLeft: String?
     /// Why the reading offers an install it cannot list.
     @ObservationIgnored private var planFailure: String?
     /// An action has run and the Host has been read back: what else follows the
@@ -38,6 +40,9 @@ final class HostHelperStore {
     @ObservationIgnored private let bundle: @Sendable () throws -> HostHelperBundle
     @ObservationIgnored private let nonce: @Sendable () -> String
     @ObservationIgnored private let healthGap: @Sendable () async throws -> Void
+    /// Undoes what goes with the Helper over the removal's own connection, and says
+    /// what it had to leave.
+    @ObservationIgnored private let undoEdits: @MainActor @Sendable (any HostServices) async throws -> String?
 
     init(
         connect: @escaping @Sendable () async throws -> any HerdrCoreTransport,
@@ -45,12 +50,14 @@ final class HostHelperStore {
         nonce: @escaping @Sendable () -> String = { UUID().uuidString },
         healthGap: @escaping @Sendable () async throws -> Void = {
             try await Task.sleep(for: HostHelperLaunchAgent.healthGap)
-        }
+        },
+        undoEdits: @escaping @MainActor @Sendable (any HostServices) async throws -> String? = { _ in nil }
     ) {
         self.connect = connect
         self.bundle = bundle
         self.nonce = nonce
         self.healthGap = healthGap
+        self.undoEdits = undoEdits
     }
 
     var status: HostHelperStatus? {
@@ -141,19 +148,27 @@ final class HostHelperStore {
             await listInstall()
             return
         }
-        await perform(.install) { installer, reading, bundle in
+        await perform(.install) { installer, reading, bundle, _ in
             _ = try await installer.install(over: reading, bundle: try bundle())
         }
     }
 
     func remove() async {
-        await perform(.remove) { installer, reading, _ in
-            try await installer.remove(over: reading)
+        editsLeft = nil
+        await perform(.remove) { [self] installer, reading, _, services in
+            try await installer.remove(over: reading) {
+                try await self.undoEditsGoingWithTheHelper(over: services)
+            }
         }
+        if failure == nil { failure = editsLeft }
+    }
+
+    private func undoEditsGoingWithTheHelper(over services: any HostServices) async throws {
+        editsLeft = try await undoEdits(services)
     }
 
     func turnOnLinger() async {
-        await perform(.turnOnLinger) { installer, reading, _ in
+        await perform(.turnOnLinger) { installer, reading, _, _ in
             try await installer.turnOnLinger(over: reading)
         }
     }
@@ -207,7 +222,7 @@ final class HostHelperStore {
     private func perform(
         _ action: Action,
         _ work: @escaping @Sendable (
-            HostHelperInstaller, HostHelperReading, @Sendable () throws -> HostHelperBundle
+            HostHelperInstaller, HostHelperReading, @Sendable () throws -> HostHelperBundle, any HostServices
         ) async throws -> Void
     ) async {
         guard running == nil else { return }
@@ -223,7 +238,7 @@ final class HostHelperStore {
         }
         let installer = installer(transport)
         do {
-            try await work(installer, try await installer.read(), bundle)
+            try await work(installer, try await installer.read(), bundle, transport.hostServices)
         } catch {
             failure = Self.message(for: error)
         }

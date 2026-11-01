@@ -213,9 +213,12 @@ struct HostHelperInstaller: Sendable {
     }
 
     /// Stops the service, deletes the recorded files and then the created folders
-    /// that are now empty, and finally the Helper directory with its registrations
-    /// and seen marks. Linger stays as it is.
-    func remove(over reading: HostHelperReading) async throws {
+    /// that are now empty, undoes the harness edits that go with the Helper, and
+    /// finally deletes the Helper directory with its registrations and seen marks.
+    /// Linger stays as it is.
+    func remove(
+        over reading: HostHelperReading, undoingEdits: @Sendable () async throws -> Void = {}
+    ) async throws {
         guard reading.unsupportedPlatform == nil, let probe = reading.probe, let layout = reading.layout else {
             throw HostHelperError.unsupportedPlatform
         }
@@ -244,6 +247,7 @@ struct HostHelperInstaller: Sendable {
         let folders = record.safeFolders.sorted(by: Self.deepestFirst)
         try await check(
             .removeEmptyFolders(folders.filter { !layout.holdsDirectory($0) }), step: "Deleting the folders")
+        try await undoingEdits()
         try await check(.removeTree(layout.directory), step: "Deleting the Host Helper directory")
         // Those above the Helper directory only empty once it has gone.
         try await check(
