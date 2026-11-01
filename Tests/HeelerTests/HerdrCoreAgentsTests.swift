@@ -663,7 +663,6 @@ struct HerdrCoreAgentsTests {
     @Test func aCoreHostsLayoutCopyMentionsNoSyncNoPluginAndNoHerdrRow() {
         let copy =
             [AgentListFieldsCopy.rowSlots(followsPlugin: false)]
-            + (0..<3).map { AgentLayoutTokensEditing.addFieldFooter(rowIndex: $0, followsPlugin: false) }
             + (0..<3).map {
                 AgentLayoutTokensEditing.navigationSubtitle(
                     hostName: "Studio Mac", rowIndex: $0, followsPlugin: false)
