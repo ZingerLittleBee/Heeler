@@ -56,6 +56,7 @@ struct AgentChatSurfaceView: View {
     @State private var collapseControlHeight: CGFloat = 0
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     @State private var isConfirmingClose = false
+    @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
     @State private var selectedPhoto: PhotosPickerItem?
@@ -921,8 +922,7 @@ struct AgentChatSurfaceView: View {
     }
 
     private var composerActions: AgentComposerActions {
-        let removesSavedChat = console.isSavedChat(agent.id)
-        return AgentComposerActions(
+        AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
             addImage: { isSelectingPhoto = true },
@@ -941,21 +941,19 @@ struct AgentChatSurfaceView: View {
             showWorktreeDetails: nil,
             renameAgent: { isRenamingAgent = true },
             renameWorkspace: { isRenamingWorkspace = true },
-            closeAgent: { isConfirmingClose = true },
+            closeAgent: {
+                closeRequest = console.closeRequest(for: agent.id)
+                isConfirmingClose = true
+            },
             backToConsole: { backToConsole() },
             showAgentTerminal: { showAgentTerminal() },
             closeConfirmation: AgentCloseConfirmation(
                 title: title,
                 isPresented: $isConfirmingClose,
-                removesSavedChat: removesSavedChat,
-                close: {
-                    if removesSavedChat {
-                        if console.removeSavedChat(agent) { onClosed() }
-                    } else {
-                        Task { await performClose() }
-                    }
-                }),
-            removesSavedChat: removesSavedChat)
+                request: closeRequest,
+                removeSavedChat: { if console.removeSavedChat(agent) { onClosed() } },
+                closeAgent: { Task { await performClose() } }),
+            removesSavedChat: console.isSavedChat(agent.id))
     }
 
     /// The More menu's Back to Console: the sidebar beside a detail that

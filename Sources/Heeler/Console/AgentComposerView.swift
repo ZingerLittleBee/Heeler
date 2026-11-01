@@ -140,44 +140,69 @@ enum SavedChatRemovalCopy {
     }
 }
 
+/// What Close Agent's dialog asks for, fixed when it opens. A Host that
+/// connects behind the dialog must not turn the removal it promised into a
+/// remote close, so the dialog never rereads whether the Chat is still saved.
+enum AgentCloseRequest: Equatable {
+    case closeAgent
+    case removeSavedChat
+}
+
 /// Close Agent's confirmation, hung off the More button that asked for it:
 /// on iOS 26 the dialog is a popover, and anchored to the whole Agent screen
 /// its arrow pointed at nothing in the middle of the terminal.
 struct AgentCloseConfirmation {
     let title: String
     let isPresented: Binding<Bool>
-    /// Decided when the dialog renders, with the words it shows: a Host that
-    /// connects behind it must not turn this removal into a remote close.
-    var removesSavedChat = false
-    let close: () -> Void
+    let request: AgentCloseRequest
+    let removeSavedChat: () -> Void
+    let closeAgent: () -> Void
+
+    var question: String {
+        switch request {
+        case .closeAgent: "Close \(title)?"
+        case .removeSavedChat: SavedChatRemovalCopy.question
+        }
+    }
+
+    var confirmLabel: String {
+        switch request {
+        case .closeAgent: "Close Agent"
+        case .removeSavedChat: SavedChatRemovalCopy.confirm
+        }
+    }
+
+    var message: String {
+        switch request {
+        case .closeAgent:
+            "This closes the pane on the Host and removes the agent everywhere. "
+                + "This can't be undone."
+        case .removeSavedChat:
+            SavedChatRemovalCopy.message(naming: title)
+        }
+    }
+
+    func confirm() {
+        switch request {
+        case .closeAgent: closeAgent()
+        case .removeSavedChat: removeSavedChat()
+        }
+    }
 }
 
 extension View {
     @ViewBuilder
     func agentCloseConfirmation(_ confirmation: AgentCloseConfirmation?) -> some View {
-        if let confirmation, confirmation.removesSavedChat {
+        if let confirmation {
             confirmationDialog(
-                SavedChatRemovalCopy.question,
+                confirmation.question,
                 isPresented: confirmation.isPresented,
                 titleVisibility: .visible
             ) {
-                Button(SavedChatRemovalCopy.confirm, role: .destructive) { confirmation.close() }
+                Button(confirmation.confirmLabel, role: .destructive) { confirmation.confirm() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text(SavedChatRemovalCopy.message(naming: confirmation.title))
-            }
-        } else if let confirmation {
-            confirmationDialog(
-                "Close \(confirmation.title)?",
-                isPresented: confirmation.isPresented,
-                titleVisibility: .visible
-            ) {
-                Button("Close Agent", role: .destructive) { confirmation.close() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(
-                    "This closes the pane on the Host and removes the agent everywhere. "
-                        + "This can't be undone.")
+                Text(confirmation.message)
             }
         } else {
             self

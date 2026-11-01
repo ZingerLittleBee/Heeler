@@ -259,6 +259,7 @@ struct AgentTerminalView: View {
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
     @State private var isConfirmingClose = false
+    @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
@@ -932,8 +933,7 @@ struct AgentTerminalView: View {
     /// `anchorsClose` is true for the one input chrome on screen; during the
     /// Direct-to-Composer handoff both are mounted and Direct Input shows.
     private func composerActions(anchorsClose: Bool) -> AgentComposerActions {
-        let removesSavedChat = console.isSavedChat(agent.id)
-        return AgentComposerActions(
+        AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
             addImage: { isSelectingPhoto = true },
@@ -958,7 +958,10 @@ struct AgentTerminalView: View {
                 } : nil,
             renameAgent: { isRenamingAgent = true },
             renameWorkspace: { isRenamingWorkspace = true },
-            closeAgent: { isConfirmingClose = true },
+            closeAgent: {
+                closeRequest = console.closeRequest(for: agent.id)
+                isConfirmingClose = true
+            },
             backToConsole: { backToConsole() },
             showChat: showChat.map { showChat in
                 {
@@ -972,16 +975,11 @@ struct AgentTerminalView: View {
                 ? AgentCloseConfirmation(
                     title: title,
                     isPresented: $isConfirmingClose,
-                    removesSavedChat: removesSavedChat,
-                    close: {
-                        if removesSavedChat {
-                            if console.removeSavedChat(agent) { onClosed() }
-                        } else {
-                            Task { await performClose() }
-                        }
-                    })
+                    request: closeRequest,
+                    removeSavedChat: { if console.removeSavedChat(agent) { onClosed() } },
+                    closeAgent: { Task { await performClose() } })
                 : nil,
-            removesSavedChat: removesSavedChat)
+            removesSavedChat: console.isSavedChat(agent.id))
     }
 
     /// The More menu's Back to Console: the sidebar beside a detail that

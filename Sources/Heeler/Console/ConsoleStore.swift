@@ -890,6 +890,11 @@ final class ConsoleStore {
         rebuild()
     }
 
+    /// What a Close Agent dialog opened now asks for.
+    func closeRequest(for id: ConsoleAgent.ID) -> AgentCloseRequest {
+        isSavedChat(id) ? .removeSavedChat : .closeAgent
+    }
+
     /// Removes a saved Chat entry from this device, which needs no Host and
     /// never asks one to close anything. False, with nothing changed, once
     /// the entry is no longer saved: a Host that connected behind the

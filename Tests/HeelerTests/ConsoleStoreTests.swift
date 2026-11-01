@@ -1791,6 +1791,77 @@ struct ConsoleStoreTests {
         #expect(store.pins.isPinned(hostID: host.id, paneID: "w2:p1"))
     }
 
+    @Test func aRemovalRequestedOfflineStaysARemovalWhenTheHostConnects() async throws {
+        let host = Host.fixture()
+        let session = AgentSessionInfo(
+            agent: "claude", kind: .id, source: "herdr:claude",
+            value: "e951205e-24af-4a5e-baa7-3ccbebd2de2c")
+        let info = AgentInfo(
+            agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1,
+            tabID: "t1", terminalID: "term-1", workspaceID: "w1", agent: "claude",
+            agentSession: session, cwd: "/home/dev/proj")
+        let saved = ConsoleAgent(
+            hostID: host.id, hostName: host.displayName, agent: Agent(info),
+            workspaceLabel: nil, repositoryCheckout: nil)
+        let cache = VolatileChatTranscriptCache()
+        await cache.saveAgentDirectory([ChatCachedAgent(saved)], for: host)
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [info]))
+        let reachability = HostReachability()
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10), chatCache: cache,
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { try await reachability.connect(transport) },
+                    reconnectPolicy: Self.fastPolicy, keepalive: nil)
+            })
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        await store.cachedChats.settled()
+        #expect(store.isSavedChat(saved.id))
+
+        var removed: Bool?
+        var closed = false
+        let confirmation = AgentCloseConfirmation(
+            title: "claude", isPresented: .constant(true),
+            request: store.closeRequest(for: saved.id),
+            removeSavedChat: { removed = store.removeSavedChat(saved) },
+            closeAgent: { closed = true })
+        #expect(confirmation.question == SavedChatRemovalCopy.question)
+        #expect(confirmation.confirmLabel == SavedChatRemovalCopy.confirm)
+
+        await reachability.comeOnline()
+        try await waitUntil("the Host should list the live Agent") {
+            store.agents.map(\.id) == [saved.id] && !store.isSavedChat(saved.id)
+        }
+        #expect(store.closeRequest(for: saved.id) == .closeAgent)
+
+        confirmation.confirm()
+
+        #expect(removed == false)
+        #expect(!closed)
+        #expect(store.agents.map(\.id) == [saved.id])
+        #expect(await transport.closedPanes.isEmpty)
+        #expect(await transport.closedTabs.isEmpty)
+    }
+
+    @Test func aCloseRequestConfirmsAndClosesTheAgent() {
+        var removed = false
+        var closed = false
+        let confirmation = AgentCloseConfirmation(
+            title: "claude", isPresented: .constant(true), request: .closeAgent,
+            removeSavedChat: { removed = true },
+            closeAgent: { closed = true })
+
+        #expect(confirmation.question == "Close claude?")
+        #expect(confirmation.confirmLabel == "Close Agent")
+        #expect(confirmation.message.contains("closes the pane on the Host"))
+        confirmation.confirm()
+        #expect(closed)
+        #expect(!removed)
+    }
+
     @Test func aHostConnectingBehindARemovalNeverClosesTheLiveAgent() async throws {
         // The confirmation promised a removal on this device. Once the Host
         // lists the Agent, confirming it must neither close nor forget it.
@@ -2784,6 +2855,18 @@ struct ConsoleStoreTests {
 
 /// Hands out scripted transports in order, one per `connect`, so tests can
 /// drive SSH-level replacement deterministically.
+/// A Host that refuses every connection until the test brings it up.
+private actor HostReachability {
+    private var isOnline = false
+
+    func comeOnline() { isOnline = true }
+
+    func connect(_ transport: ScriptedTransport) throws -> ScriptedTransport {
+        guard isOnline else { throw TransportError.sshUnreachable(detail: "scripted offline") }
+        return transport
+    }
+}
+
 private actor TransportQueue {
     private var remaining: [ScriptedTransport]
 
