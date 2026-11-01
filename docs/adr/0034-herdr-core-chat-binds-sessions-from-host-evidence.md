@@ -145,14 +145,29 @@ herdr-core Hosts only.
   environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and the like),
   not from the Host's Default Account, which follows the core's environment.
   The two differ when the user's shell rc sets the variable.
-- Unverified: the rollout Codex holds open in embedded mode, Pi's and Oh My
-  Pi's session files and Grok Build's `active_sessions.json` rows, all of which
-  need a signed-in model; Grok Build's `pid_start` encoding and its leader
-  mode; whether Oh My Pi's security scan rewrites the breadcrumb; OpenCode
-  2.x at runtime, read only from source; whether Claude Code's `procStart` on
-  macOS equals the start `ps -o lstart=` prints; `HC_TERMINAL_SOCKET`'s form on
-  Windows; and whether Windows Transcripts are read over SFTP or the core's
-  `file.read`.
+- Unverified: whether Oh My Pi's security scan leaves the breadcrumb rewritten,
+  since the scan needs a stored OAuth account; whether a signed-in account
+  changes any of the evidence below, which never saw one; whether Claude Code's
+  `procStart` on macOS equals the start `ps -o lstart=` prints;
+  `HC_TERMINAL_SOCKET`'s form on Windows; and whether Windows Transcripts are
+  read over SFTP or the core's `file.read`. Owner confirmation with a signed-in
+  harness on hc-lab remains available, and is listed in #578's Owner acceptance.
+- Settled with a local fake model and no sign-in, in a throwaway Linux VM and
+  not on hc-lab ([herdr compatibility](../agents/herdr-compatibility.md), which
+  says what could differ for each program;
+  `Tests/HeelerTests/ChatFixtures/host-evidence`): Codex's embedded native
+  process holds the rollout open from the first prompt, and its `session_meta`
+  tells a root from a subagent; after `/new` it holds two roots, so one root
+  thread binds nothing. Pi's file appears at the first prompt, and no process
+  holds it. Oh My Pi's file appears with the first reply, its lock's name holds
+  no session id, and the process opens the file only after that reply, when the
+  title landed here.
+  Grok Build's row appears at startup, its `pid_start` is `/proc/<pid>/stat`'s
+  start in clock ticks, `/new` adds a second matching row, and in leader mode
+  the row still names the Terminal's process. OpenCode 2.0.32 and 2.2.5 create
+  the given `ses` id's row at the first prompt. For the scan, only its one
+  `SessionManager.create` call ran, on its own, and it did rewrite the
+  breadcrumb.
 - Confirmed on macOS 27.0.1, against processes the spike started
   ([herdr compatibility](../agents/herdr-compatibility.md)): process start from
   `ps -o lstart=`, named variables from `KERN_PROCARGS2`, open files from
