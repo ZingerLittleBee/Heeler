@@ -233,6 +233,10 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     /// bounded exec.
     func runWindowsCheckoutRead(_ command: String) async throws -> GitExecResult
 
+    /// Runs a native Windows Host's process read, a whole command line, in one
+    /// bounded exec.
+    func runWindowsProcessRead(_ command: String) async throws -> GitExecResult
+
     /// Runs the confirmed Start's script in one bounded exec.
     func runCoreStart(_ script: Data) async throws -> GitExecResult
 
@@ -448,6 +452,12 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         _ request: HostProcessReader.Request
     ) async throws -> [String: HostProcessReader.Facts] {
         let nonce = nonce()
+        if try await resolvedPlatform() == .nativeWindows {
+            let result = try await connection.runWindowsProcessRead(
+                try HostProcessReader.windowsCommand(request, nonce: nonce))
+            guard result.exitStatus == 0 else { return [:] }
+            return (try? HostProcessReader.parseWindows(stdout: result.stdout, nonce: nonce, request: request)) ?? [:]
+        }
         let script = try HostProcessReader.script(request, nonce: nonce)
         let result = try await connection.runHostProcessRead(script)
         guard result.exitStatus == 0 else { return [:] }

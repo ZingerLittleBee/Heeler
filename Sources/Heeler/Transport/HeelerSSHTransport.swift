@@ -3805,6 +3805,11 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
         try await runWindowsProbe(command)
     }
 
+    /// One bounded exec, for one process read.
+    func runWindowsProcessRead(_ command: String) async throws -> GitExecResult {
+        try await runWindowsProbe(command)
+    }
+
     /// With a profile to load, as `runAgentDiscovery` has startup files.
     func runWindowsAgentDiscovery(_ command: String) async throws -> GitExecResult {
         try await runWindowsProbe(command, bound: .seconds(25))

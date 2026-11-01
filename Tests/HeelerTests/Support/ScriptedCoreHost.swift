@@ -243,6 +243,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// What git prints as each directory's top level on a native Windows Host.
     private var windowsGitRoots: [String: String] = [:]
     private var windowsCheckoutAnswer: GitExecResult?
+    private var windowsProcesses = WindowsProcessTable()
+    private var windowsProcessAnswer: GitExecResult?
     /// Every ask for the POSIX checkout script, which never reaches a Host here.
     private(set) var posixCheckoutAsks = 0
     /// Every native Windows discovery's whole command line, oldest first.
@@ -426,6 +428,25 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         }
         let output = (["", "\(Self.nonce) begin"] + lines + ["\(Self.nonce) end"]).joined(separator: "\n") + "\n"
         return GitExecResult(stdout: shellBanner + Data(output.utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    /// Prints what its script would for the processes set on this Host.
+    func runWindowsProcessRead(_ command: String) async throws -> GitExecResult {
+        log.append("windows-process-read")
+        let body = try HerdrCoreWindowsLocatorTests.decoded(command)
+        scripts.append(body)
+        if let windowsProcessAnswer { return windowsProcessAnswer }
+        return GitExecResult(
+            stdout: shellBanner + Data(windowsProcesses.output(forScript: body).utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    func setWindowsProcesses(_ processes: [WindowsProcessTable.Process]) {
+        windowsProcesses = WindowsProcessTable()
+        for process in processes { windowsProcesses.add(process) }
+    }
+
+    func setWindowsProcessAnswer(_ answer: GitExecResult?) {
+        windowsProcessAnswer = answer
     }
 
     /// The literals of the script's directory list, as PowerShell reads them.
