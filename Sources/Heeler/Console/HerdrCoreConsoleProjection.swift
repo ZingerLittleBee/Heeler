@@ -1218,7 +1218,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         records.first { $0.address == address }
     }
 
-    /// The Terminal's record as the core knows it now. Waits for a link.
+    /// The Terminal's record as the core knows it now. Waits for a link, and
+    /// refuses one whose core is not the one these records came from.
     func readTerminalRecord(at address: String) async throws -> HerdrCoreTerminalRecord {
         try await inventoryTransport().terminalRecord(address)
     }
