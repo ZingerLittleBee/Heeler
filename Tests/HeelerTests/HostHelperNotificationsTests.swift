@@ -840,6 +840,78 @@ struct HostHelperNotificationsTests {
         return console
     }
 
+    @Test func removingAHostWhoseCoreIsStoppedRemovesThisDevicesEntryAndItsMarkFile() async throws {
+        let helper = try await installedHelper()
+        let console = try await unconnectedConsole(helper, failure: Self.stoppedCore)
+        defer { console.setHosts([]) }
+        let token = token
+        let preferences = NotificationPreferencesStore(
+            transports: console, deviceToken: { token }, relayBaseURL: { Self.relay },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        preferences.setHosts([host])
+        await preferences.refresh()
+        await preferences.setNotificationsEnabled(true, for: host)
+        #expect(preferences.confirmedTriggers(for: host.id) != nil)
+        let path = try markPath()
+        await helper.seedFile(path, Data("{}".utf8))
+
+        let suite = "core-removal-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let hostStore = HostStore(volatileHosts: [host])
+        let host = host
+        let liveActivities = HostLiveActivityCoordinator(
+            controller: FakeLiveActivityController(),
+            preferences: LiveActivityPreferences(defaults: defaults),
+            transports: console,
+            keys: keys,
+            deviceToken: { token },
+            knownHostIDs: { Set(hostStore.hosts.map(\.id)) },
+            hostDisplayName: { _ in host.displayName },
+            isAwaitingSnapshot: { _ in false },
+            connectionStatus: { console.hostStatuses[$0] })
+        let dependencies = HostRemovalDependencies.app(
+            console: console, notificationPreferences: preferences, liveActivities: liveActivities)
+        let removal = HostRemovalStore(store: hostStore)
+
+        removal.requestRemoval([host.id], dependencies: dependencies)
+        let request = try #require(removal.pendingRequest)
+        #expect(!request.leavesNotificationsBehind)
+        await removal.confirmRemoval(request, dependencies: dependencies)
+
+        #expect(try await entries(helper).isEmpty)
+        #expect(await helper.files[path] == nil)
+    }
+
+    /// Anything else short of connected says nothing about the Host being reachable.
+    @Test func onlyAStoppedCoreCountsAsAReachableHostShortOfConnected() async throws {
+        let unreachable = try await unconnectedConsole(
+            ScriptedHelperHost(), failure: .sshUnreachable(detail: "no route"))
+        defer { unreachable.setHosts([]) }
+        #expect(!unreachable.canReachNotificationFiles(host.id))
+
+        let stopped = try await unconnectedConsole(ScriptedHelperHost(), failure: Self.stoppedCore)
+        defer { stopped.setHosts([]) }
+        #expect(stopped.canReachNotificationFiles(host.id))
+    }
+
+    @Test func aHerdrTUIHostMustBeConnectedForItsFilesToBeReachable() async throws {
+        let host = Host.fixture()
+        let console = ConsoleStore(makeSession: { _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { throw Self.stoppedCore },
+                keepalive: nil)
+        })
+        defer { console.setHosts([]) }
+        console.setHosts([host])
+        await console.resume()
+        try await waitUntil("the session to settle") {
+            console.hostStatuses[host.id] != .connecting
+        }
+        #expect(!console.canReachNotificationFiles(host.id))
+    }
+
     // MARK: What makes a registration read again
 
     @Test func aDeviceRegisteredOnAHelperThatStoppedWorkingCanStillLeave() async throws {

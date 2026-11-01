@@ -208,8 +208,8 @@ final class NotificationPreferencesStore {
     /// pushing here, with its seen marks on a Host Helper, keeping the
     /// Notification Key (`forgetNotificationKey` deletes it).
     /// Entries are matched by the key alone, so no device token is needed.
-    /// Only a connected Host with a stored key is asked; anything else
-    /// touches no network. The whole revoke, gate wait included, is
+    /// Only a Host that can be reached (`isConnected`) with a stored key is
+    /// asked; anything else touches no network. The whole revoke, gate wait included, is
     /// abandoned after `timeout`: a dead link waits out its own request
     /// deadline and redial, and removal must not. Failures are swallowed;
     /// the removal goes ahead either way. A revoke the Host confirmed reads

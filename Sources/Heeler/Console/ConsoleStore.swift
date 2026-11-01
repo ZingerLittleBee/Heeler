@@ -1931,6 +1931,17 @@ extension ConsoleStore: NotificationTransportProvider {
         }
     }
 
+    /// Whether this Host's notification files can be asked for now. A stopped
+    /// core leaves a core Host's SSH up and its Helper's files in reach, and it
+    /// reads as reconnecting for as long as it stays stopped.
+    func canReachNotificationFiles(_ hostID: Host.ID) -> Bool {
+        switch hostStatuses[hostID] {
+        case .connected: true
+        case .reconnecting(_, _, .herdrCoreNotRunning): coreHost(hostID) != nil
+        default: false
+        }
+    }
+
     fileprivate func coreHost(_ hostID: Host.ID) -> Host? {
         catalog.first { $0.id == hostID && $0.serverKind == .herdrCore }
     }
