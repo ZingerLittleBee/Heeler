@@ -361,6 +361,50 @@ struct HerdrCoreProgramBinderTests {
         #expect(evidence == .unavailable(.codexSharedDaemon))
     }
 
+    /// The recording's daemon sits under the native Codex, nearer ones winning the
+    /// walk anyway. This edit moves it beside the native Codex, where only the skip
+    /// keeps it from reading as a second Agent as near, which would tell nothing.
+    @Test func aDaemonBesideTheAgentIsNoSecondAgent() async throws {
+        let scene = try HostEvidenceFixture.named("codex/default-daemon").scene("first-terminal")
+        let rows = try #require(scene.processes).map { row -> HostEvidenceFixture.Row in
+            var row = row
+            if row.pid == 4397 || row.pid == 4465 { row.parent = 4357 }
+            return row
+        }
+        let rig = Rig(program: .codex)
+        await rig.add(rows, environment: ["CODEX_HOME": "/home/user/lab/iso/codexd/codex-home"])
+
+        let evidence = try await rig.binder.check(try Self.record(for: try #require(rows.first)))
+
+        #expect(evidence == .unavailable(.codexSharedDaemon))
+        #expect(await rig.reads.isEmpty)
+    }
+
+    /// The daemon's update loop has no `--managed-daemon` and holds nothing. Beside
+    /// a Codex with its own rollout (an edit of the recording) it does not stop the
+    /// bind.
+    @Test func theUpdateLoopBesideACodexHoldingItsRolloutDoesNotStopTheBind() async throws {
+        let loop = try #require(
+            try HostEvidenceFixture.named("codex/default-daemon").scene("first-terminal").processes?
+                .first { $0.argv.contains("pid-update-loop") })
+        let scene = try HostEvidenceFixture.named("codex/no-daemon").scene("after-first-reply")
+        let rows = try #require(scene.processes)
+        var besideNative = loop
+        besideNative.pid = 900_001
+        besideNative.parent = try Self.firstRow(scene).pid
+        besideNative.environment["HC_SCOPE"] = try Self.firstRow(scene).environment["HC_SCOPE"]
+        let rig = Rig(program: .codex)
+        await rig.add(rows + [besideNative], environment: ["CODEX_HOME": Self.codexHome])
+        await rig.write(scene.files)
+
+        let evidence = try await rig.binder.check(try Self.record(for: try Self.firstRow(scene)))
+
+        #expect(
+            evidence == .bound(
+                sessionID: Self.firstThread, transcriptRoot: Self.codexHome,
+                directory: "/home/user/lab/iso/projects/codex"))
+    }
+
     @Test func theCheckAsksOnlyWhatItNames() async throws {
         let scene = try HostEvidenceFixture.named("codex/no-daemon").scene("at-prompt")
         let rig = Rig(program: .codex)

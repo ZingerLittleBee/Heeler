@@ -412,7 +412,9 @@ actor ChatConversationEngine {
                 }
             }
         } catch let unavailable as ChatSourceUnavailable {
-            stop(isConversationStillToStart(unavailable.reason) ? .awaitingFirstMessage(reference.program) : unavailable.reason)
+            stop(
+                isConversationStillToStart(unavailable.reason)
+                    ? .awaitingFirstMessage(reference.program) : unavailable.reason)
         } catch {
             recordFailure(error)
         }
