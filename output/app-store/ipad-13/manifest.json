@@ -10,8 +10,8 @@
       255
     ],
     "export": "exports/01-fits-your-workspace.png",
-    "source_sha256": "023e7a7f135f728395cff283477832b4025a0e6b9abe1f8d2066cd7c6a99c3eb",
-    "export_sha256": "b7295a7d3271ebba5480f2d816a97a6f64b369b30afdaa23fbfa5d835229415b",
+    "source_sha256": "e837897cd1327f30482aa604cb814380695169c95a39c0902d3e684aaf4c5085",
+    "export_sha256": "d153df7cb3a76f7c47794d89790c6fdc0a02f170ea1e7aef60401037520cccf0",
     "pixels": [
       2752,
       2064
@@ -38,8 +38,8 @@
       255
     ],
     "export": "exports/02-every-agent-one-console.png",
-    "source_sha256": "83ab10183e0e8711c7156fddb4621ebe19e556393a526c948beee3c9c12d142d",
-    "export_sha256": "dd3c9d56f2ee988289681cdcfcdcb5bd7e4b139a8c06b1bbcb00c8e762ed044e",
+    "source_sha256": "75e7c645a412a0517dc0ff59e11651a955ce7f7eb4749513e2195f692c8f5c72",
+    "export_sha256": "43185f2e4ecc530e7446e96eac2ba75c5c2aefb42642891ff6aa9d3a76e98a3d",
     "pixels": [
       2752,
       2064
@@ -66,8 +66,8 @@
       177
     ],
     "export": "exports/03-type-directly-stay-in-flow.png",
-    "source_sha256": "66255d851535a6af31a331401a6e3c9d89b63efb293da65202a78b61d3545060",
-    "export_sha256": "c8d036430b19dde5939b3a4ae88fc2573cc56af2c7f8a081d0fb4255b43312f3",
+    "source_sha256": "fbdb6d2966d9f1d13284a34c1cbcc020c16edbc4ec21c3c6d5ff02c33b3211b7",
+    "export_sha256": "72361ce6e113912dee6c2e14116be5f15b75fe8a6b97dda4f4ab1a3ec215cddd",
     "pixels": [
       2752,
       2064
@@ -94,8 +94,8 @@
       132
     ],
     "export": "exports/04-see-what-changed.png",
-    "source_sha256": "269b06e1c2cc034bdcca9ba914ee056f88d0674ba163338c30943398011055e9",
-    "export_sha256": "a38262f5cb277ecefd5ac28bcc332e1f185c067b7e85ce594ada60b8a3fbe932",
+    "source_sha256": "59fe9972f813286eccb15637a6cf03818807b893b6f5df2d870020cd1a9ce6b3",
+    "export_sha256": "5a613e56de672332a512da3031a6dd2ad7d5bf6a000d197be51177ac7a7524cf",
     "pixels": [
       2752,
       2064
@@ -122,8 +122,8 @@
       90
     ],
     "export": "exports/05-every-change-line-by-line.png",
-    "source_sha256": "e1ca61baba90f415955a8fb06216646f6ee10a95f5c4517275e1a935536b073a",
-    "export_sha256": "c04415164dd992a0882209c13a4d92c6529d601e6200522455d2b7c28b962401",
+    "source_sha256": "341d36e13acaf477cc40cbf0db53bc85cc6d3909e0066cfd6b6e46a91beafa26",
+    "export_sha256": "30f2946668d40c22a410caf567900e6a98e5e887826c4989117c3f713c2a2830",
     "pixels": [
       2752,
       2064
@@ -150,8 +150,8 @@
       255
     ],
     "export": "exports/06-skills-within-reach.png",
-    "source_sha256": "56c60787fabd6a53ca539bab69229072a5c8ead4ed72e2a3604fc42693a11519",
-    "export_sha256": "9a99a82f6ba1cd455c56d3ca4678df684f59c483d964f99985f7288f1215fef9",
+    "source_sha256": "87cb8c27a2828976710b1bbcab0fce1689075059206b4e72eeb9bdbf5986c633",
+    "export_sha256": "ca7d864a950fe882ccf345dc59a133208d47b1ee2b58eb97ec42806b6c2c0e3f",
     "pixels": [
       2752,
       2064
@@ -178,8 +178,8 @@
       198
     ],
     "export": "exports/07-a-shell-when-you-need-one.png",
-    "source_sha256": "2f2ac4cb48aa7d47321fe59524beaeeecb3b84b92813e7a019c2a56202f686c6",
-    "export_sha256": "c3eb7f8fe6c4dfa9466606f5049b102c07421e58e1cc53eb0f2f5a4bfa6686c5",
+    "source_sha256": "ddee77f028e2f1990e6e3bb5e4d60bc08e8a07caef4aa870992d8f90ce150bd3",
+    "export_sha256": "d957ef19183dd92eba05bceb294a9223d3d40a03e47dc262c7bb1449ec3eac9f",
     "pixels": [
       2752,
       2064
