@@ -128,7 +128,8 @@ class LabCheckTests(unittest.TestCase):
             if "server start" in command or "server stop" in command:
                 self.assertIn("/home/lab/.local/bin/herdr-core server", command)
                 self.assertTrue(command.startswith("env -i "), command)
-                self.assertRegex(command, r"HC_SESSION=hl[0-9a-f]{8}")
+                # Its own, or the session of a method of the suite it ran.
+                self.assertRegex(command, r"HC_SESSION=hl?[0-9a-f]{8}")
 
     def test_it_stops_only_sessions_it_found_new(self):
         box = ScriptedBox()
