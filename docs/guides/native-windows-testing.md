@@ -406,7 +406,8 @@ agent discovery and launch, and its `terminal.put` through sshd.
 2. In your desktop session, in PowerShell, not as administrator, run the command
    the Host shows. Within its retry, the Host connects by itself.
 3. The Console lists the core's Terminals and Agents, each in a card named for
-   its directory. Send, Stop, Chat, Rename and Worktrees are not offered.
+   its directory. Rename and Worktrees are not offered, and neither is Chat until
+   a build lists a program (step 24).
 4. Open an Agent. Direct Input types into it and its output follows.
 5. Open a Shell Terminal. Rotate or resize it, run a full-screen program, and
    scroll back.
@@ -420,7 +421,7 @@ agent discovery and launch, and its `terminal.put` through sshd.
    Worktrees stay off. Outside a repository it takes its directory's. This is the
    first run of Heeler's PowerShell checkout read through sshd.
 9. Edit the Host's Session to a name with a space. The Host reads that the name is
-   refused, and Send, Rename and Worktrees are still not offered.
+   refused, and Rename and Worktrees are still not offered.
 10. Install an agent the launch can find, with OpenCode too if you have it. New
     Agent lists what a Windows PowerShell session over SSH finds, and OpenCode's
     version reaches its launch (`-s ses_...` in the Terminal's argv on 2.1 or newer).
@@ -442,6 +443,74 @@ agent discovery and launch, and its `terminal.put` through sshd.
 15. Add a 9 MiB file. Heeler says it is over the 8 MiB limit, the draft stays, and
     no file appears in that folder. Add one of exactly 8 MiB: it lands with the same
     hash, and the Host stays connected while it crosses on a slow link.
+16. In an Agent New Agent started, type a message and tap Send. It submits within
+    about a second, and the draft empties. Whether an Agent's bracketed paste reaches
+    Heeler through the pseudo console has not been seen on any machine. If Send says
+    **not accepting a paste** at the Agent's own input, note the program and its
+    version: Send cannot work for it on this machine.
+17. Add an image and Send the draft holding its path. The Agent reads the file by
+    that path.
+18. Leave a draft in an Agent's Composer, exit the Agent with Direct Input, and tap
+    Send. Its Terminal has ended, so nothing runs anywhere, and the draft stays.
+19. From the Herdr desktop app, start an agent (its `-NoExit` form), then in Heeler
+    tap Send: the notice says the terminal **keeps a shell open**, nothing is
+    written, and the draft stays. Exit that agent and tap Send again: the same notice,
+    and PowerShell runs nothing.
+20. Start an agent by typing it in a PowerShell Terminal. It is not listed as an Agent,
+    since the foreground stays PowerShell, so it has no Composer.
+21. Tap Stop during a working turn. The turn stops, and the Agent stays listed. Stop
+    an Agent that exits at the key: it leaves the list.
+22. Bring an Agent to a question and Send: the text lands in its input unsubmitted.
+    The tools keyboard submits it.
+23. Windows PowerShell 5.1 dropped a pending paste on one Ctrl+C in the runs recorded
+    in `docs/agents/herdr-compatibility.md`, so Send says the text is **no longer in
+    the terminal**. If your PowerShell or PSReadLine version keeps it, or PowerShell 7
+    is installed and acts otherwise, record the versions there, and ADR 0035 needs your
+    decision before Send ships on Windows.
+
+These steps are for Chat ([#590](https://github.com/ZingerLittleBee/Heeler/issues/590)).
+No lane runs them either. Nothing of the Windows process read has run on a Windows
+machine: its body ran under PowerShell 7 on a Mac with its native calls stubbed, and
+its C# only compiled there. Sign in to each program yourself. Never open Claude
+Code's `.key` files.
+
+24. In a local build, put one program in
+    `HostCapabilities.confirmedWindowsCoreChatPrograms`. Codex and OpenCode are not
+    candidates, and stay off even if listed. The other programs still offer the
+    terminal alone. On a native Windows Herdr TUI Host, no Agent offers Chat.
+25. Start Claude Code from New Agent, reach its prompt, send one message and open
+    Chat. It shows that conversation. On the machine, in PowerShell, compare
+    `(Get-Process -Id <pid>).StartTime.ToFileTimeUtc()` of `claude.exe` with
+    `procStartFt` in `%USERPROFILE%\.claude\sessions\<pid>.json`. Record the field's
+    name and form. If they differ, Chat says **Can't Tell the Conversation**, with no
+    offer of the Helper.
+26. Note how long Chat takes to bind. Each check is one PowerShell exec with an
+    `Add-Type` compile, bounded at 20 seconds. Run it from an SSH session that is not
+    elevated against a core that is, and the other way round: a process Heeler cannot
+    read reads as **Can't Tell**.
+27. Repeat step 25 with an npm-installed Claude Code, where the Agent's image is
+    `node.exe`, and through `npx`. Under `npx` Chat may say it can't tell. Record the
+    tree from `Get-CimInstance Win32_Process`.
+28. Run `/clear` in the terminal. Chat follows at its next check.
+29. Start Grok Build and send a message. Chat shows it, from the one row of
+    `active_sessions.json` with that `pid` and `pid_start`. Record `pid_start`'s value
+    beside the creation time: Heeler assumes they are equal. Run `/new`: two rows
+    match, and Chat says it can't tell until Grok Build starts again.
+30. Open Chat on a Pi Agent with no extension. It says it can't tell, and offers
+    **Add Heeler's Extension…**. The sheet names the folders and has written nothing.
+    Tap Add. `heeler-session.js` is in Pi's folder, `.omp\agent\extensions` and each
+    profile's folder, and nowhere else.
+31. Start Pi again and send a message. The Terminal's `heeler.session` label appears,
+    with a `start` equal to its process's creation time, and Chat shows the
+    conversation. Record Pi's image name, whether Pi loaded the file, and how long the
+    label took, since it runs one hidden PowerShell. Repeat on Oh My Pi, with a profile.
+32. Send from Chat in a Terminal New Agent started: the message submits. Stop a working
+    turn. Answer a Blocked card. For a program whose bracketed paste does not cross the
+    pseudo console (step 16), record that Chat's Send says the same.
+33. Record each program that passed as a versioned observation in
+    `docs/agents/herdr-compatibility.md`, here, and by adding it to
+    `HostCapabilities.confirmedWindowsCoreChatPrograms`. One that fails stays off, with
+    its observation saying why.
 
 ## Scope and results
 

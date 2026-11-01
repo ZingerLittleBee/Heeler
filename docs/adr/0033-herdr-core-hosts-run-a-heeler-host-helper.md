@@ -202,7 +202,14 @@ that Heeler can read from outside the process.
 - Native Windows herdr-core Hosts get no Helper for now, so no background
   notifications, Live Activity pushes or Usage: Windows needs a user-service
   design of its own, and none has been tested there. The app writes the Pi and
-  Oh My Pi extensions there itself, through the core's `file.write`.
+  Oh My Pi extensions there itself, through the core's `file.write`, one file per
+  folder: Pi's, Oh My Pi's and each profile's, found from the locator's home and one
+  SFTP listing. It writes only when the user asks from Chat's cannot-tell, after a
+  sheet names each folder, as an install lists its files, since these folders load
+  for every session on the machine (#590). Node has no creation time of its own, so
+  on Windows the extension's label takes its `start` from one hidden `powershell.exe`
+  child reading `StartTime.ToFileTimeUtc()`, which the program does not wait on and
+  which gives up after 5 seconds. A label with no `start` is never adopted.
 
 This amends ADR 0024's "nothing is installed on the Host", and ADR 0025's
 rejection of a Heeler OpenCode plugin, for herdr-core Hosts only; Herdr TUI

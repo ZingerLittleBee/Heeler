@@ -186,7 +186,7 @@ struct ClaudeTranscriptLocator: Sendable {
     static func plan(directories: [String]) -> Plan {
         var keys: [String] = []
         var prefixes: [String] = []
-        for directory in directories where directory.hasPrefix("/") {
+        for directory in directories where directory.hasPrefix("/") || RemoteHostPath.isWindowsAbsolute(directory) {
             for key in [
                 ClaudeProjectKey.key(forDirectory: directory),
                 ClaudeProjectKey.unnormalizedKey(forDirectory: directory),

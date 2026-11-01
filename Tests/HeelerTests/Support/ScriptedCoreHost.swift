@@ -243,6 +243,12 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// What git prints as each directory's top level on a native Windows Host.
     private var windowsGitRoots: [String: String] = [:]
     private var windowsCheckoutAnswer: GitExecResult?
+    private var windowsProcesses = WindowsProcessTable()
+    private(set) var fileWrites: [(path: String, contents: Data)] = []
+    private var fileWriteRefusal: String?
+    private var answersLabels = false
+    private var virtualFiles: VirtualHostFiles?
+    private var windowsProcessAnswer: GitExecResult?
     /// Every ask for the POSIX checkout script, which never reaches a Host here.
     private(set) var posixCheckoutAsks = 0
     /// Every native Windows discovery's whole command line, oldest first.
@@ -428,6 +434,38 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         return GitExecResult(stdout: shellBanner + Data(output.utf8), stderr: Data(), exitStatus: 0)
     }
 
+    /// Prints what its script would for the processes set on this Host.
+    func runWindowsProcessRead(_ command: String) async throws -> GitExecResult {
+        log.append("windows-process-read")
+        let body = try HerdrCoreWindowsLocatorTests.decoded(command)
+        scripts.append(body)
+        if let windowsProcessAnswer { return windowsProcessAnswer }
+        return GitExecResult(
+            stdout: shellBanner + Data(windowsProcesses.output(forScript: body).utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    func setWindowsProcesses(_ processes: [WindowsProcessTable.Process]) {
+        windowsProcesses = WindowsProcessTable()
+        for process in processes { windowsProcesses.add(process) }
+    }
+
+    func setAnswersLabels(_ answers: Bool) {
+        answersLabels = answers
+    }
+
+    func setFileWriteRefusal(_ kind: String?) {
+        fileWriteRefusal = kind
+    }
+
+    /// Chat's SFTP reads and listings go here.
+    func setHostFiles(_ files: VirtualHostFiles) {
+        virtualFiles = files
+    }
+
+    func setWindowsProcessAnswer(_ answer: GitExecResult?) {
+        windowsProcessAnswer = answer
+    }
+
     /// The literals of the script's directory list, as PowerShell reads them.
     static func windowsCheckoutDirectories(in script: String) -> [String] {
         let lines = script.split(separator: "\n", omittingEmptySubsequences: false)
@@ -596,6 +634,20 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
                 }
             case "terminal.put":
                 answerPut(request, on: socket)
+            case "terminal.label" where answersLabels:
+                try? await socket.reply(to: request.id, result: .object([:]))
+            // A real core makes the folders and swaps the file in.
+            case "file.write":
+                let contents = Data(base64Encoded: request.params["data"]?.stringValue ?? "") ?? Data()
+                let path = request.params["path"]?.stringValue ?? ""
+                fileWrites.append((path, contents))
+                if let refusal = fileWriteRefusal {
+                    try? await socket.replyError(to: request.id, kind: refusal)
+                } else {
+                    try? await socket.reply(
+                        to: request.id,
+                        result: .object(["path": .string(path), "bytes": .number(Double(contents.count))]))
+                }
             case "templates.list":
                 if let templateList { try? await socket.reply(to: request.id, result: templateList) }
             case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
@@ -916,7 +968,18 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
-        await helper.readHostFile(range)
+        if let virtualFiles { return try await virtualFiles.readRange(range) }
+        return await helper.readHostFile(range)
+    }
+
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+        guard let virtualFiles else { throw TransportError.hostFeatureUnavailable(feature: "Chat") }
+        return try await virtualFiles.fileStatus(atPath: path)
+    }
+
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+        guard let virtualFiles else { throw TransportError.hostFeatureUnavailable(feature: "Chat") }
+        return try await virtualFiles.listFiles(request)
     }
 
     func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {

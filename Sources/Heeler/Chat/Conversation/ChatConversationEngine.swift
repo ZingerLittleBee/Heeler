@@ -35,6 +35,8 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// Nothing on the Host shows which conversation a herdr-core Agent is in,
     /// and Chat never guesses (ADR 0034).
     case cannotTellSession(ChatProgram)
+    /// The same on a native Windows Host, which has no Host Helper to offer.
+    case cannotTellSessionOnWindows(ChatProgram)
     /// The Agent's process carries a variable that stops the program keeping
     /// a Transcript, so there is no file to wait for (ADR 0034).
     case transcriptOff(ChatTranscriptOffVariable, coreCarriesIt: Bool)

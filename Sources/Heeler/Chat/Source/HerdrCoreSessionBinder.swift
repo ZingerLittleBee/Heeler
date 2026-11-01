@@ -80,7 +80,13 @@ struct HerdrCoreSessionBinder: Sendable {
     /// whose removal may not have reached the core.
     var isDroppedPick: @Sendable (String) async -> Bool = { _ in false }
     var now: @Sendable () -> Date = { Date() }
+    /// A native Windows Host, whose foreground is the Terminal's PowerShell and whose
+    /// processes go by their image's name (herdr compatibility). Only the programs in
+    /// `HostCapabilities.windowsCoreChatCandidates` are checked there.
+    var isOnWindows = false
 
+    /// What an npm install runs as on Windows, where a program cannot retitle itself.
+    static let windowsRuntimes: Set<String> = ["node", "bun"]
     static let scopeVariable = HerdrCoreTerminalProcesses.scopeVariable
     static let homeVariable = "HOME"
     private static let configVariable = "CLAUDE_CONFIG_DIR"
@@ -90,6 +96,7 @@ struct HerdrCoreSessionBinder: Sendable {
     /// `coreCarries` is what the core's own environment holds, from the Host's
     /// leak check, so a reason can point at the Host notice.
     func check(_ record: HerdrCoreTerminalRecord, coreCarries: Set<String> = []) async throws -> ChatSessionEvidence {
+        if isOnWindows, !HostCapabilities.windowsCoreChatCandidates.contains(program) { return cannotTell }
         guard let tree = try await readTerminalProcesses(of: record, ask: processAsk) else {
             return await evidenceWithoutProcesses(in: record)
         }
@@ -104,7 +111,16 @@ struct HerdrCoreSessionBinder: Sendable {
         return await applyingPick(to: evidence, record: record, tree: tree)
     }
 
-    var cannotTell: ChatSessionEvidence { .unavailable(.cannotTellSession(program)) }
+    var cannotTell: ChatSessionEvidence {
+        .unavailable(isOnWindows ? .cannotTellSessionOnWindows(program) : .cannotTellSession(program))
+    }
+
+    /// Where a program says its session started, in the form the Host writes paths.
+    func startDirectory(_ directory: String?) -> String? {
+        directory.flatMap { path in
+            path.hasPrefix("/") || (isOnWindows && RemoteHostPath.isWindowsAbsolute(path)) ? path : nil
+        }
+    }
 
     /// What one exec asks of a Terminal's processes, for this program's agent and
     /// its evidence.
@@ -133,9 +149,15 @@ struct HerdrCoreSessionBinder: Sendable {
     func agentProcess(in tree: HerdrCoreTerminalProcesses) -> String? {
         switch program {
         case .claude:
-            tree.agent(isAgent: Self.isClaudeCode, followsLauncher: true, isTool: Self.isToolOfClaudeCode)
+            isOnWindows
+                ? tree.agentOnWindows(
+                    isAgent: Self.isClaudeCode, followsLauncher: true, isTool: Self.isToolOfClaudeCode,
+                    runtimes: Self.windowsRuntimes)
+                : tree.agent(isAgent: Self.isClaudeCode, followsLauncher: true, isTool: Self.isToolOfClaudeCode)
         case .codex: codexAgent(in: tree)
-        case .grok: tree.agent(isAgent: { $0?.name == "grok" })
+        case .grok:
+            isOnWindows
+                ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" })
         case .opencode: tree.agent(isAgent: { $0?.name == "opencode" })
         case .pi, .omp: piFamilyAgent(in: tree)
         }
@@ -237,10 +259,13 @@ struct HerdrCoreSessionBinder: Sendable {
 
     // MARK: Registry
 
+    /// On Windows Claude Code keeps the creation FILETIME in `procStartFt`, as
+    /// decimal digits (2.1.316 source, herdr compatibility).
     private struct RegistryEntry: Decodable {
         let pid: Int?
         let sessionId: String
-        let procStart: String
+        let procStart: String?
+        let procStartFt: String?
         let cwd: String?
     }
 
@@ -251,10 +276,11 @@ struct HerdrCoreSessionBinder: Sendable {
         let slice = try await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: Self.entryLimit))
         guard slice.length != nil, slice.data.count < Self.entryLimit,
             let entry = try? JSONDecoder().decode(RegistryEntry.self, from: slice.data),
-            entry.procStart == start, entry.pid.map(String.init) == pid,
+            (isOnWindows ? entry.procStartFt ?? entry.procStart : entry.procStart) == start,
+            entry.pid.map(String.init) == pid,
             let sessionID = ConversationReference.canonicalUUID(entry.sessionId)
         else { return nil }
-        return (sessionID, entry.cwd.flatMap { $0.hasPrefix("/") ? $0 : nil })
+        return (sessionID, startDirectory(entry.cwd))
     }
 
     // MARK: Hints
@@ -283,6 +309,27 @@ struct HerdrCoreTerminalProcesses: Sendable {
     let facts: [String: HostProcessReader.Facts]
     let root: String
     let scope: String
+
+    /// On Windows the foreground is the Terminal's PowerShell, which is never the
+    /// Agent, and a program under npm goes by its runtime's image. So: the nearest
+    /// process named for the program, else the nearest runtime under the foreground,
+    /// with no following past it, since its children go by the same name whatever they
+    /// are. What then proves it the Agent is its pid and start matching what the
+    /// program recorded (ADR 0034).
+    func agentOnWindows(
+        isAgent: (HostProcessReader.Facts?) -> Bool, followsLauncher: Bool = false,
+        isTool: (HostProcessReader.Facts?) -> Bool = { _ in false }, runtimes: Set<String> = []
+    ) -> String? {
+        if let found = agent(isAgent: isAgent, followsLauncher: followsLauncher, isTool: isTool),
+            isAgent(facts[found])
+        {
+            return found
+        }
+        func isRuntime(_ process: HostProcessReader.Facts?) -> Bool {
+            process?.name.map(runtimes.contains) ?? false
+        }
+        return agent(isAgent: isRuntime).flatMap { isRuntime(facts[$0]) ? $0 : nil }
+    }
 
     /// The foreground's descendants, whatever scope they carry.
     var descendants: [String] {

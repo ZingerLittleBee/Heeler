@@ -13,7 +13,7 @@ extension ChatUnavailableReason {
         case .compressed: "Conversation Compressed"
         case .unsupportedSession, .unsupportedFormat, .sessionStore: "Conversation Not Readable"
         case .startScreen: "Not in This Conversation"
-        case .cannotTellSession: "Can't Tell the Conversation"
+        case .cannotTellSession, .cannotTellSessionOnWindows: "Can't Tell the Conversation"
         case .transcriptOff: "Transcript Saving Is Off"
         case .codexSharedDaemon: "Codex Started Without \(ChatLaunchNotice.unbrokenNoDaemon)"
         }
@@ -69,6 +69,10 @@ extension ChatUnavailableReason {
         case .cannotTellSession(.omp):
             "Chat can't tell which conversation this Agent is in, and doesn't guess. Oh My Pi names it through Heeler's extension, which comes with the Host Helper. Install the Helper from this Host's details, then start the Agent again. Without it, Chat follows the conversation after its first message."
         case .cannotTellSession(let program):
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes."
+        case .cannotTellSessionOnWindows(let program) where program == .pi || program == .omp:
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again."
+        case .cannotTellSessionOnWindows(let program):
             "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes."
         case .transcriptOff(let variable, let coreCarriesIt):
             variable.explanation(coreCarriesIt: coreCarriesIt)
@@ -128,7 +132,7 @@ extension ChatUnavailableReason {
         // Never over the timeline, which this reason hides.
         case .startScreen(let program):
             "\(program.chatName) is on its home screen."
-        case .cannotTellSession:
+        case .cannotTellSession, .cannotTellSessionOnWindows:
             "Chat can't tell which conversation this Agent is in now.\(saved)"
         case .transcriptOff:
             "This Agent isn't saving a transcript.\(saved)"
@@ -143,11 +147,17 @@ extension ChatUnavailableReason {
         self == .cannotTellSession(.opencode)
     }
 
+    /// A Pi or Oh My Pi on a native Windows core Host, which has no Helper to bring the
+    /// extension that names its session (ADR 0033).
+    var offersWindowsExtension: Bool {
+        self == .cannotTellSessionOnWindows(.pi) || self == .cannotTellSessionOnWindows(.omp)
+    }
+
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
-        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .transcriptOff,
-            .codexSharedDaemon:
+        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .cannotTellSessionOnWindows,
+            .transcriptOff, .codexSharedDaemon:
             true
         case .sessionStore(_, let problem): problem.isRetryable
         default: false
@@ -447,6 +457,8 @@ struct ChatUnavailableView: View {
     var chooseConversation: (() -> Void)?
     /// Opens the one configuration edit that can settle this reason.
     var reviewEdit: (() -> Void)?
+    /// Opens what writes Heeler's extension, on a native Windows core Host.
+    var addExtension: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
@@ -467,6 +479,11 @@ struct ChatUnavailableView: View {
                 } else {
                     edit.buttonStyle(.bordered)
                 }
+            }
+            if let addExtension, reason.offersWindowsExtension {
+                Button("Add Heeler's Extension…", action: addExtension)
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("chat.unavailable.windowsExtension")
             }
             Button(AgentDetailSurface.terminal.showTitle, action: showAgentTerminal)
                 .buttonStyle(.bordered)

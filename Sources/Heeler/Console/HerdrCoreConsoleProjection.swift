@@ -985,10 +985,19 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     func readForeground(at address: String) async throws {
         let changes = foregroundChanges
         let record = try await inventoryTransport().terminalRecord(address)
-        guard !hasEnded, foregroundChanges == changes, let foreground = record.foreground else {
-            return
+        guard !hasEnded, foregroundChanges == changes else { return }
+        // On native Windows the foreground stays the same to the end, so only the
+        // state says the program went.
+        if record.hasFinished {
+            apply(
+                .finished(
+                    terminal: address,
+                    HerdrCoreTerminalEnd(
+                        reason: record.reason, exitCode: record.exitCode, signal: record.signal,
+                        finishedMilliseconds: record.finishedMilliseconds)))
+        } else if let foreground = record.foreground {
+            apply(.foreground(terminal: address, foreground))
         }
-        apply(.foreground(terminal: address, foreground))
     }
 
     // MARK: Worktrees
@@ -1490,8 +1499,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         // An Agent that left has no process to look at, and nothing it left says
         // which conversation it was in. Its Chat says what became of it.
         guard departedAgentsByPane[paneID] == nil else { throw TransportError.cancelled }
+        let isOnWindows = kernel == HerdrCoreLocator.windowsKernel
         guard let record = terminalRecord(at: paneID) else {
-            return .unavailable(.cannotTellSession(program))
+            return .unavailable(isOnWindows ? .cannotTellSessionOnWindows(program) : .cannotTellSession(program))
         }
         return try await chatBinder(paneID: paneID, program: program, core: inventoryCore)
             .check(record, coreCarries: leakedEnvironmentNames)
@@ -1513,7 +1523,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             },
             isDroppedPick: { value in
                 await self.droppedPicks[paneID]?.contains(value) ?? false
-            })
+            },
+            isOnWindows: kernel == HerdrCoreLocator.windowsKernel)
     }
 
     /// What the user could confirm for this Agent, on request (ADR 0034).
@@ -1591,6 +1602,38 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         _ = try await transport.call("terminal.label", params: params, isMutation: true)
     }
 
+    /// The folders Heeler's extension goes in on this native Windows Host: one SFTP
+    /// listing, for Oh My Pi's profiles (ADR 0033).
+    func windowsExtensionFolders() async throws -> [String] {
+        let transport = try await session.withTransport { $0 }
+        guard let location = await transport.lastLocation(), location.isNativeWindows, let home = location.home else {
+            throw TransportError.hostFeatureUnavailable(feature: "Heeler's extension on this Host")
+        }
+        let services = transport.hostServices
+        let profiles = RemoteFilePath.join(RemoteFilePath.windowsForSFTP(home), ".omp", "profiles")
+        let listing = try await services.listFiles(
+            RemoteFileListingRequest(directory: profiles, kinds: [.directory, .symlink]))
+        var names: [String] = []
+        for entry in listing?.entries ?? [] where HerdrCoreWindowsExtensions.isProfileName(entry.name) {
+            if entry.status.kind == .symlink {
+                let target = try await services.fileStatus(atPath: RemoteFilePath.join(profiles, entry.name))
+                guard target?.kind == .directory else { continue }
+            }
+            names.append(entry.name)
+        }
+        return HerdrCoreWindowsExtensions.folders(home: home, profiles: names)
+    }
+
+    /// One `file.write` for `folder`, on the core this projection serves right now.
+    func writeWindowsExtension(_ contents: Data, to folder: String) async throws {
+        let transport = try await session.withTransport(servingCore: inventoryCore) { $0 }
+        let params = HerdrCoreWindowsExtensions.writeParams(folder: folder, contents: contents)
+        let result = try await transport.call("file.write", params: params, isMutation: true)
+        guard result["bytes"] == .number(Double(contents.count)) else {
+            throw TransportError.hostFeatureUnavailable(feature: "Heeler's extension in \(folder)")
+        }
+    }
+
     func chatHostFiles() -> ChatHostFiles {
         let session = session
         return ChatHostFiles(
@@ -1604,7 +1647,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 try await session.withTransport { $0.hostServices }.readHostFileRange(range)
             },
             home: {
-                try await session.withTransport { $0.hostServices }.hostHomeDirectory()
+                // A native Windows Host's locator already said, and that read refuses it.
+                let transport = try await session.withTransport { $0 }
+                if let location = await transport.lastLocation(), location.isNativeWindows, let home = location.home {
+                    return RemoteFilePath.windowsForSFTP(home)
+                }
+                return try await transport.hostServices.hostHomeDirectory()
             },
             queryOpenCode: { query in
                 try await session.withTransport { $0.hostServices }.queryOpenCode(query)

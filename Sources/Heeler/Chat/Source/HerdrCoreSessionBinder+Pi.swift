@@ -20,8 +20,11 @@ extension HerdrCoreSessionBinder {
             .bound(sessionID: session, transcriptRoot: places.sessions, directory: nil)
         }
         for hint in hints {
-            if let session = hint.piSession { return bound(session) }
+            if let session = hint.piSession(onWindows: isOnWindows) { return bound(session) }
         }
+        // On Windows only the extension's label counts: Heeler's launch runs under
+        // PowerShell, and open files are not read there.
+        guard !isOnWindows else { return cannotTell }
         if program == .pi, pid == record.pid.map(String.init), let id = record.piLaunchSession {
             return bound(id)
         }
@@ -47,6 +50,9 @@ extension HerdrCoreSessionBinder {
     /// equally near. Oh My Pi's own broker and worker sit further from the foreground
     /// than it, and a worker takes the same name.
     func piFamilyAgent(in tree: HerdrCoreTerminalProcesses) -> String? {
+        if isOnWindows {
+            return tree.agentOnWindows(isAgent: { $0?.name == program.rawValue }, runtimes: Self.windowsRuntimes)
+        }
         func sharesScope(_ pid: String) -> Bool {
             tree.facts[pid]?.variables[Self.scopeVariable] == .value(tree.scope)
         }
@@ -99,9 +105,11 @@ extension HerdrCoreSessionBinder {
 extension HerdrCoreSessionHint {
     /// What an extension's label names: its file when the label gives one, which
     /// must be under the session's own name, else its id. A label whose file holds
-    /// another session's name names nothing.
-    var piSession: String? {
-        guard let file else { return ConversationReference.canonicalUUID(session) }
+    /// another session's name names nothing. On Windows the file reads as SFTP opens it.
+    func piSession(onWindows: Bool) -> String? {
+        guard let file = file.map({ onWindows ? RemoteFilePath.windowsForSFTP($0) : $0 }) else {
+            return ConversationReference.canonicalUUID(session)
+        }
         guard RemoteFilePath.isAcceptable(file), let name = file.split(separator: "/").last,
             name == "\(session).jsonl" || name.hasSuffix("_\(session).jsonl")
         else { return nil }

@@ -1222,7 +1222,7 @@ final class AgentChatStore {
     private var showsAwaitingReason: Bool {
         switch conversation.phase {
         case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
-            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
+            .unavailable(.cannotTellSessionOnWindows), .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
             true
         default: false
         }

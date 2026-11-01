@@ -88,7 +88,7 @@ enum HostProcessReader {
     /// The script's output past this is cut, with its end marker, so the read
     /// fails rather than answering in part. The exec's watchdog bounds its time.
     private static let outputCap = 2_097_152
-    private static let processCap = 64
+    static let processCap = 64
     /// More open descriptors than this read as unavailable.
     private static let openFileCap = 1024
 
@@ -364,22 +364,22 @@ enum HostProcessReader {
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
     private static let nameBytesHex = nameBytes.utf8.map { String(format: "%02x", $0) }.joined()
 
-    private static func beginMarker(_ nonce: String) -> String { "__HEELER_PROC_BEGIN_\(nonce)" }
-    private static func endMarker(_ nonce: String) -> String { "__HEELER_PROC_END_\(nonce)" }
+    static func beginMarker(_ nonce: String) -> String { "__HEELER_PROC_BEGIN_\(nonce)" }
+    static func endMarker(_ nonce: String) -> String { "__HEELER_PROC_END_\(nonce)" }
 
-    private static func isProcessID(_ text: String) -> Bool {
+    static func isProcessID(_ text: String) -> Bool {
         let bytes = Array(text.utf8)
         return !bytes.isEmpty && bytes.count <= 10 && bytes[0] != UInt8(ascii: "0")
             && bytes.allSatisfy { (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0) }
     }
 
-    private static func isVariableName(_ text: String) -> Bool {
+    static func isVariableName(_ text: String) -> Bool {
         guard let first = text.utf8.first, !(UInt8(ascii: "0")...UInt8(ascii: "9")).contains(first)
         else { return false }
         return text.utf8.allSatisfy { nameBytes.utf8.contains($0) }
     }
 
-    private static func isArgumentWord(_ text: String) -> Bool {
+    static func isArgumentWord(_ text: String) -> Bool {
         !text.isEmpty
             && text.utf8.allSatisfy { nameBytes.utf8.contains($0) || $0 == UInt8(ascii: "-") }
     }

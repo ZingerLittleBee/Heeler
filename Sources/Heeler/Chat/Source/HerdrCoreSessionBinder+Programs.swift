@@ -195,8 +195,7 @@ extension HerdrCoreSessionBinder {
         guard matching.count == 1, let row = matching.first,
             let session = ConversationReference.lowercaseUUID(row.sessionID)
         else { return cannotTell }
-        return .bound(
-            sessionID: session, transcriptRoot: grokHome, directory: row.cwd.flatMap { $0.hasPrefix("/") ? $0 : nil })
+        return .bound(sessionID: session, transcriptRoot: grokHome, directory: startDirectory(row.cwd))
     }
 
     var grokProcessAsk: ProcessAsk {
@@ -209,6 +208,8 @@ extension HerdrCoreSessionBinder {
 
     /// One row of `active_sessions.json`. `pid_start` is a JSON number, field 22
     /// of `/proc/<pid>/stat` (Grok Build 1.0.70, `host-evidence/grok/s-flag.json`).
+    /// On Windows it is taken to be the creation FILETIME, which no row has shown yet
+    /// (herdr compatibility): any other number binds nothing.
     private struct ActiveSession: Decodable {
         let sessionID: String
         let pid: Int
