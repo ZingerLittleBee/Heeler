@@ -46,6 +46,8 @@ struct ContentView: View {
         .environment(app.hostStore)
         // The Hosts list's removal reaches app-wide state.
         .environment(\.hostRemovalDependencies, app.hostRemoval)
+        // Host detail's Helper actions reach what follows the Helper.
+        .environment(\.hostOnboardingDependencies, app.hostOnboarding)
         .environment(\.sceneWindow, window)
         .environment(
             \.agentSceneRouting,

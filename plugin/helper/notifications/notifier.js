@@ -15,8 +15,9 @@ import { basename, join } from "node:path";
 
 import { agentIn } from "../core/agent-rule.js";
 import { normalizeSessionName } from "../core/session-name.js";
-import { AGENT_EVENTS, foldEvent, foldRecord } from "../core/turn-fold.js";
+import { AGENT_EVENTS, decisionSignature, foldEvent, foldRecord } from "../core/turn-fold.js";
 import { TurnState } from "../core/turn-state.js";
+import { strippedSidebarTitle } from "../shared/activity-rows.js";
 import { collapseKeyFor, sendAlertPush } from "../shared/delivery/push.js";
 import { pruneAlertTokens, readAlertDevices, registeredSessions } from "../shared/delivery/registrations.js";
 import { forDisplay } from "../shared/display-text.js";
@@ -29,6 +30,7 @@ const MEMORY_VERSION = 1;
 const ATTENTION_STATUSES = new Set(["blocked", "error"]);
 
 const sameMark = (left, right) => left?.turn === right?.turn && left?.word === right?.word;
+const tokensFrom = (value) => (Array.isArray(value) ? value.filter((token) => typeof token === "string") : []);
 
 class Terminal {
   turns = new TurnState();
@@ -36,11 +38,23 @@ class Terminal {
   notified = null;
   /** The finished turn last decided on. */
   notifiedTurn = null;
+  /** Tokens `notified` has yet to reach, because their send failed. */
+  unsentStatus = [];
+  /** Tokens `notifiedTurn` has yet to reach, because their send failed. */
+  unsentTurn = [];
   timer = null;
+  /** What the pending timer's wait is about. */
+  signature = null;
   deciding = Promise.resolve();
 
   toJSON() {
-    return { turns: this.turns, notified: this.notified, notifiedTurn: this.notifiedTurn };
+    return {
+      turns: this.turns,
+      notified: this.notified,
+      notifiedTurn: this.notifiedTurn,
+      unsentStatus: this.unsentStatus,
+      unsentTurn: this.unsentTurn,
+    };
   }
 
   static restore(value) {
@@ -48,6 +62,8 @@ class Terminal {
     terminal.turns = TurnState.restore(value?.turns);
     terminal.notified = typeof value?.notified === "string" ? value.notified : null;
     terminal.notifiedTurn = TurnState.restore({ ended: value?.notifiedTurn }).ended;
+    terminal.unsentStatus = tokensFrom(value?.unsentStatus);
+    terminal.unsentTurn = tokensFrom(value?.unsentTurn);
     return terminal;
   }
 }
@@ -97,38 +113,41 @@ export function notificationListener({ directory, log = () => {} }) {
     }
   }
 
-  /** Sends one notification to each device. True once there is nothing left to try. */
+  /** Sends one notification to each device, and returns the tokens whose send failed. */
   async function deliver(session, address, record, agent, status, flag, wants = () => true) {
     const config = readNotificationConfig(directory);
     const devices = readAlertDevices(directory, flag, session).filter(wants);
-    if (devices.length === 0) return true;
+    if (devices.length === 0) return [];
     const payload = {
       paneId: address,
       agentKind: agent.kind,
       status,
       timestamp: Math.floor(Date.now() / 1000),
       project: forDisplay(typeof record.cwd === "string" && record.cwd !== "" ? basename(record.cwd) : null),
-      title: forDisplay(record.title),
+      title: forDisplay(strippedSidebarTitle(record.title)),
     };
     const gone = [];
-    let failed = false;
-    let delivered = false;
+    const failed = [];
     for (const device of devices) {
       try {
         const envelope = encryptNotificationEnvelope(payload, device.key);
         const outcome = await sendAlertPush(config.relayUrl, device, envelope, collapseKeyFor(device.key, address), config.retryDelayMs);
-        if (outcome === "ok") delivered = true;
-        else gone.push(device);
+        if (outcome !== "ok") gone.push(device);
       } catch (error) {
-        failed = true;
+        failed.push(device.token);
         say(session, `could not notify about ${JSON.stringify(address)}: ${error.message}`);
       }
     }
-    if (gone.length > 0) {
-      pruneAlertTokens(directory, new Set(gone.map((device) => device.token)));
-      for (const device of gone) removeSeenMarks(directory, notificationKeyId(device.key));
+    // Housekeeping, which says nothing of who heard this: the next 410 tries it again.
+    try {
+      if (gone.length > 0) {
+        pruneAlertTokens(directory, new Set(gone.map((device) => device.token)));
+        for (const device of gone) removeSeenMarks(directory, notificationKeyId(device.key));
+      }
+    } catch (error) {
+      say(session, `could not remove a device the relay says is gone: ${error.message}`);
     }
-    return delivered || !failed;
+    return failed;
   }
 
   async function decide(session, memory, address) {
@@ -136,19 +155,35 @@ export function notificationListener({ directory, log = () => {} }) {
     const record = memory.inventory?.get(address);
     if (terminal === undefined || record === undefined) return;
     const agent = agentIn(record);
-    if (agent === null) {
-      terminal.notified = null;
-    } else if (ATTENTION_STATUSES.has(agent.status)) {
-      if (terminal.notified === agent.status) return;
+    // A send that failed waits for the next decision while what it said still holds.
+    // What was notified is noted only once `deliver` returns: a report during the send
+    // saves this memory, and a Helper killed there must send again after its restart.
+    const isUnsent = (unsent) => (device) => unsent.includes(device.token);
+    if (agent?.status !== "idle") terminal.unsentTurn = [];
+    if (agent !== null && ATTENTION_STATUSES.has(agent.status)) {
       const status = agent.status;
-      if (await deliver(session, address, record, agent, status, "blocked")) terminal.notified = status;
+      if (terminal.notified !== status) {
+        terminal.unsentStatus = await deliver(session, address, record, agent, status, "blocked");
+        terminal.notified = status;
+      } else if (terminal.unsentStatus.length > 0) {
+        terminal.unsentStatus = await deliver(session, address, record, agent, status, "blocked", isUnsent(terminal.unsentStatus));
+      } else {
+        return;
+      }
     } else {
       terminal.notified = null;
+      terminal.unsentStatus = [];
       const ended = terminal.turns.ended;
-      if (agent.status === "idle" && ended !== null && !sameMark(terminal.notifiedTurn, ended)) {
+      if (agent?.status === "idle" && ended !== null) {
         const stillDone = (device) =>
           terminal.turns.isDoneFor(readSeenMark(directory, notificationKeyId(device.key), memory.core, address));
-        if (await deliver(session, address, record, agent, "done", "done", stillDone)) terminal.notifiedTurn = ended;
+        if (!sameMark(terminal.notifiedTurn, ended)) {
+          terminal.unsentTurn = await deliver(session, address, record, agent, "done", "done", stillDone);
+          terminal.notifiedTurn = ended;
+        } else if (terminal.unsentTurn.length > 0) {
+          const unsent = isUnsent(terminal.unsentTurn);
+          terminal.unsentTurn = await deliver(session, address, record, agent, "done", "done", (device) => unsent(device) && stillDone(device));
+        }
       }
     }
     remember(session, memory);
@@ -190,6 +225,7 @@ export function notificationListener({ directory, log = () => {} }) {
         terminal.notified = ATTENTION_STATUSES.has(status) ? status : null;
         terminal.notifiedTurn = terminal.turns.ended;
       }
+      terminal.signature = decisionSignature(record, terminal.turns);
       decideLater(session, memory, address);
     }
     remember(session, memory);
@@ -238,7 +274,10 @@ export function notificationListener({ directory, log = () => {} }) {
       }
       foldEvent(terminal.turns, event, record);
       remember(session, memory);
-      decideLater(session, memory, event.terminal);
+      const signature = decisionSignature(record, terminal.turns);
+      const isWaitingForThis = terminal.timer !== null && signature === terminal.signature;
+      terminal.signature = signature;
+      if (!isWaitingForThis) decideLater(session, memory, event.terminal);
     }),
     ended: guarded(({ session }) => {
       const memory = sessionNamed(session);

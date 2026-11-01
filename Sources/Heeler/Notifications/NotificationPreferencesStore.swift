@@ -76,12 +76,19 @@ final class NotificationPreferencesStore {
     /// Whether a core Host's Helper can drive a Live Activity, from its last read.
     /// Nil on a read that failed, and on any other Host.
     private var helperDrivesLiveActivity: [Host.ID: Bool] = [:]
+    /// What a core Host last confirmed, held for its banner gate while it is read
+    /// again. Reads repeat with the connection and a Helper's takes seconds; Herdr
+    /// TUI's gate still fails closed for its read.
+    private var settingsDuringReRead: [Host.ID: HostSettings] = [:]
     /// A catalog edit/removal invalidates every result captured for that Host.
     private var operations: [Host.ID: UUID] = [:]
     /// Seen marks waiting for a core Host's registration to be known, or for the
     /// write before them. Each holds every mark, so a newer one replaces an older.
     private var pendingSeenMarks: [Host.ID: PendingSeenMarks] = [:]
     private var seenMarkWrites: [Host.ID: Task<Void, Never>] = [:]
+    /// Every mark this device holds on a core Host, for a registration that has
+    /// no file of them yet.
+    @ObservationIgnored private var heldSeenMarks: @MainActor (Host.ID) -> PendingSeenMarks? = { _ in nil }
 
     private let transports: any NotificationTransportProvider
     private let deviceToken: @MainActor () -> APNSDeviceToken?
@@ -115,6 +122,7 @@ final class NotificationPreferencesStore {
         states = states.filter { unchanged.contains($0.key) }
         helperRequirements = helperRequirements.filter { unchanged.contains($0.key) }
         helperDrivesLiveActivity = helperDrivesLiveActivity.filter { unchanged.contains($0.key) }
+        settingsDuringReRead = settingsDuringReRead.filter { unchanged.contains($0.key) }
         operations = operations.filter { unchanged.contains($0.key) }
         pendingSeenMarks = pendingSeenMarks.filter { unchanged.contains($0.key) }
     }
@@ -208,8 +216,8 @@ final class NotificationPreferencesStore {
     /// pushing here, with its seen marks on a Host Helper, keeping the
     /// Notification Key (`forgetNotificationKey` deletes it).
     /// Entries are matched by the key alone, so no device token is needed.
-    /// Only a connected Host with a stored key is asked; anything else
-    /// touches no network. The whole revoke, gate wait included, is
+    /// Only a Host that can be reached (`isConnected`) with a stored key is
+    /// asked; anything else touches no network. The whole revoke, gate wait included, is
     /// abandoned after `timeout`: a dead link waits out its own request
     /// deadline and redial, and removal must not. Failures are swallowed;
     /// the removal goes ahead either way. A revoke the Host confirmed reads
@@ -248,6 +256,7 @@ final class NotificationPreferencesStore {
     /// Settles a confirmed state on unregistered; one still loading or
     /// updating is left for its own read or write to settle.
     private func markUnregistered(_ hostID: Host.ID) {
+        settingsDuringReRead[hostID] = nil
         guard confirmedSettings(for: hostID) != nil else { return }
         states[hostID] = .idle(
             HostSettings(isRegistered: false, notify: NotificationTriggerPreferences()))
@@ -263,6 +272,9 @@ final class NotificationPreferencesStore {
         }
         let operation = UUID()
         operations[host.id] = operation
+        if states[host.id] != .loading {
+            settingsDuringReRead[host.id] = host.serverKind == .herdrCore ? confirmedSettings(for: host.id) : nil
+        }
         states[host.id] = .loading
         defer { writeSeenMarks(for: host.id) }
         do {
@@ -353,6 +365,10 @@ final class NotificationPreferencesStore {
             }
             guard isCurrent(operationID, for: host) else { return }
             states[host.id] = .idle(confirmed)
+            // A new key has no file yet, and the projection only reports changes.
+            if registers, !settings.isRegistered, pendingSeenMarks[host.id] == nil {
+                pendingSeenMarks[host.id] = heldSeenMarks(host.id)
+            }
             if registers {
                 onRegistered?(host.id)
                 await reloadRegisteredHosts(except: host.id)
@@ -380,9 +396,11 @@ final class NotificationPreferencesStore {
     /// The gate the in-app banner reads (#77): the Host's confirmed notify
     /// flags, or nil when this device is not registered or the Host's truth
     /// is unknown (unreachable, still loading, never refreshed) — in which
-    /// case the banner fails closed, matching the plugin's semantics.
+    /// case the banner fails closed, matching the plugin's semantics. A core
+    /// Host being read again keeps what it last confirmed until the read settles.
     func confirmedTriggers(for hostID: Host.ID) -> NotificationTriggerPreferences? {
-        guard let settings = confirmedSettings(for: hostID), settings.isRegistered else { return nil }
+        let held = states[hostID] == .loading ? settingsDuringReRead[hostID] : nil
+        guard let settings = confirmedSettings(for: hostID) ?? held, settings.isRegistered else { return nil }
         return settings.notify
     }
 
@@ -431,6 +449,10 @@ final class NotificationPreferencesStore {
     func followSeenMarks(of console: ConsoleStore) {
         console.onCoreSeenMarksChanged = { [weak self] hostID, core, marks in
             self?.noteSeenMarks(core: core, marks: marks, for: hostID)
+        }
+        heldSeenMarks = { [weak console] hostID in
+            guard let held = console?.coreSeenMarks(on: hostID), !held.marks.isEmpty else { return nil }
+            return PendingSeenMarks(core: held.core, marks: held.marks)
         }
     }
 

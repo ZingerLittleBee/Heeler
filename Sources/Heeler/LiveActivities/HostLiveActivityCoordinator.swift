@@ -408,6 +408,9 @@ final class HostLiveActivityCoordinator {
     /// loading, not all-idle. Covers cold-launch adoption and a reconnect
     /// that cleared `agentsByPane` before the next snapshot.
     private func shouldDeferApply(for hostID: Host.ID) -> Bool {
+        // A registration known to be closed ends the activity whatever the Agent
+        // list turns out to hold, and the Host may no longer have its token later.
+        if registrationGate(hostID) == .closed { return false }
         if isUnknownAgentInventory(hostID) { return true }
         if registrationGate(hostID) == .unknown { return true }
         if sessions[hostID]?.awaitingFirstSnapshot == true { return true }

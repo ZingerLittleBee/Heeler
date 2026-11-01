@@ -49,7 +49,8 @@ struct HostRemovalDependencies: Sendable {
     /// The removals under way. App-owned, so a Hosts list rebuilt mid-removal
     /// still shows them and another window cannot start the same one.
     var inFlight = HostRemovalsInFlight()
-    /// Whether the Host's connection is up, for the confirmation's copy.
+    /// Whether the Host can be asked to stop notifying this device, for the
+    /// confirmation's copy.
     var isConnected: @MainActor @Sendable (Host.ID) -> Bool = { _ in false }
     /// Whether this device holds a Notification Key for the Host.
     var hasNotificationKey: @MainActor @Sendable (Host.ID) -> Bool = { _ in false }
@@ -79,13 +80,13 @@ extension HostRemovalDependencies {
         revokeTimeout: Duration = .seconds(6)
     ) -> HostRemovalDependencies {
         HostRemovalDependencies(
-            isConnected: { [weak console] id in console?.hostStatuses[id] == .connected },
+            isConnected: { [weak console] id in console?.canReachNotificationFiles(id) == true },
             hasNotificationKey: { [weak notificationPreferences] id in
                 notificationPreferences?.hasNotificationKey(for: id) ?? false
             },
             revokeNotifications: { [weak console, weak notificationPreferences] host in
                 await notificationPreferences?.revokeRegistration(
-                    for: host, isConnected: console?.hostStatuses[host.id] == .connected,
+                    for: host, isConnected: console?.canReachNotificationFiles(host.id) == true,
                     timeout: revokeTimeout)
             },
             forgetNotificationKey: { [weak notificationPreferences] id in

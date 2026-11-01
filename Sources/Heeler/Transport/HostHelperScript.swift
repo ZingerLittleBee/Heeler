@@ -81,14 +81,16 @@ struct HostHelperScript: Sendable, Equatable {
             // The script itself is this shell's stdin, so Node must not read it.
             lines = ["\(quote(node)) --input-type=module -e \(quote(lister)) \(quote(home)) </dev/null"]
         case .makeFolders(let folders, let privateFolder):
-            lines = ["umask 077"]
+            // A function, so a failure still ends the frame and the app learns
+            // which folders it would otherwise leave behind.
+            lines = ["umask 077", "__h_make() {"]
                 + folders.map { folder in
                     let path = quote(folder)
-                    return "if [ ! -d \(path) ]; then mkdir -- \(path) || exit 1; "
+                    return "if [ ! -d \(path) ]; then mkdir -- \(path) || return 1; "
                         + "printf 'created %s\\n' \(path); fi"
                 }
                 // Paths are absolute, and BSD chmod takes no `--`.
-                + ["chmod 700 \(quote(privateFolder)) || exit 1"]
+                + ["chmod 700 \(quote(privateFolder)) || return 1", "}", "__h_make"]
         case .prepareStaging(let directory, let staging, let folders):
             let dir = quote(directory)
             lines = [
@@ -338,14 +340,15 @@ struct HostHelperProbe: Sendable, Equatable {
     }
 
     private static func bytes(hex: String) -> Data? {
-        guard hex.utf8.count.isMultiple(of: 2) else { return nil }
-        var data = Data(capacity: hex.utf8.count / 2)
-        var index = hex.startIndex
-        while index < hex.endIndex {
-            let next = hex.index(index, offsetBy: 2)
-            guard let byte = UInt8(hex[index..<next], radix: 16) else { return nil }
-            data.append(byte)
-            index = next
+        // Counted in bytes: the Host chooses this text, so it need not be ASCII.
+        let digits = Array(hex.utf8)
+        guard digits.count.isMultiple(of: 2) else { return nil }
+        var data = Data(capacity: digits.count / 2)
+        for index in stride(from: 0, to: digits.count, by: 2) {
+            guard let high = Character(UnicodeScalar(digits[index])).hexDigitValue,
+                let low = Character(UnicodeScalar(digits[index + 1])).hexDigitValue
+            else { return nil }
+            data.append(UInt8(high << 4 | low))
         }
         return data
     }

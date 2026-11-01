@@ -223,7 +223,7 @@ The Host Helper is Heeler's own background service on a herdr-core Host. It stan
 
 The Helper never starts a core. It connects to the core's socket directly, and while no core runs it waits and tries again, so a core you stopped stays stopped until you start it. When you do, the Helper connects on its own, without a restart.
 
-**Install on Linux.** Open the Host's detail and tap **Host Helper**. The sheet lists every file the install writes, including its systemd user unit. Tap **Install**. The files go in `~/.local/share/heeler/host-helper` (or under `XDG_DATA_HOME`) and are private to your account. Heeler replaces a Helper only with a newer version, or when it is missing or damaged, and never one that a newer version of the app installed.
+**Install on Linux.** Open the Host's detail and tap **Host Helper**. The sheet lists every file the install writes, including its systemd user unit. Tap **Install**. If the sheet could not read the list, the first tap only reads it again and writes nothing. The files go in `~/.local/share/heeler/host-helper` (or under `XDG_DATA_HOME`) and are private to your account. Heeler replaces a Helper only with a newer version, or when it is missing or damaged, and never one that a newer version of the app installed.
 
 The install also places Heeler's extension for Pi in `~/.pi/agent/extensions` and for Oh My Pi in each profile's `agent/extensions` folder, also listed in the sheet. Those programs load it on their own, so no configuration file changes. It does nothing outside a herdr-core Terminal. Inside one it tells the Terminal which session the program is on, for Chat, and Pi releases before 1.1.0 also report their status through it. An Oh My Pi profile you add later gets its extension from **Repair** in the sheet.
 
@@ -235,11 +235,11 @@ Without systemd linger, the Helper stops about ten seconds after your last login
 | --- | --- |
 | **Not Installed** | No Helper on this Host |
 | A version | Installed and running. The sheet says when this app carries a newer one |
-| A newer version | A newer version of Heeler installed it. Update the app to change it |
+| A newer version | A newer version of Heeler installed it, and it runs. Update the app to change it |
 | **Damaged** | Files are missing or changed. **Repair** puts them back |
 | **Node.js Missing** | The Host has no Node.js, or one too old to run the Helper |
 | **Linger Off** | Runs only while you are logged in |
-| **Service Failed** | The service stopped and will not start again by itself, for example after Node.js moved. **Repair** sets it up with the Node.js the Host has now |
+| **Service Failed** | The service stopped and will not start again by itself, for example after Node.js moved. **Repair** sets it up with the Node.js the Host has now. A Helper a newer version of Heeler installed reads this too, and updating the app is what changes it |
 | **Not Available** | This platform has no Helper |
 
 Native Windows Hosts read **Not Available**, so Agent Notifications (in-app banners included), Live Activity and Usage are not available there yet. macOS Hosts also read **Not Available** in this version, with no install offered.
@@ -253,7 +253,7 @@ With the Host Helper running, a herdr-core Host notifies you as any other Host d
 - A Terminal that has no Agent, or whose Agent has given way to a shell, sends nothing. A status that lasts under about five seconds sends nothing either.
 - What a core had already reported when the Helper first saw it is not announced.
 
-Turning notifications off, or removing the Host while connected, removes this device's entry and its file from the Host. If you remove a disconnected Host, the entry stays and Heeler says so: reconnect first to stop them.
+Turning notifications off, or removing the Host while Heeler can reach it, with its core stopped too, removes this device's entry and its file from the Host. If you remove a Host Heeler cannot reach, the entry stays and Heeler says so: reconnect first to stop them.
 
 The switches need the Helper, so **Settings > Notifications** says what the Host's Helper needs, such as **Not Installed**, **Service Failed** or **Node.js Missing**. Fix that from the Host's page in **Hosts**. A device already registered keeps its switches there, so it can still leave. With **Linger Off**, the switches work and a note says the Helper stops about ten seconds after your last login ends, so notifications stop too. Notifications need Host Helper 0.4.0 or newer.
 
@@ -276,7 +276,7 @@ To count more Claude Code sign-ins, open **Claude Code Accounts**. Heeler sugges
 
 | Usage reads | What to do |
 | --- | --- |
-| **Usage needs the Host Helper** | Install it from the Host's detail |
+| **Usage needs the Host Helper** | See the Host Helper row on the Host's detail, which says whether this Host can take one |
 | **Usage needs a newer Host Helper** | Update it from the Host's detail |
 | **The Host Helper has not reached this session's core yet** | Start the core if it is not running. Heeler keeps checking, and the Helper never starts one |
 | **Usage comes with the Host Helper, which is not available on native Windows yet** | Nothing for now |
@@ -285,4 +285,4 @@ Usage reaches the Helper over its own SSH connection when the Host's session has
 
 The Usage widgets say the same in a shorter form, such as **Needs the Host Helper**. With a widget installed, Heeler checks each core Host when you open the app, so you do not have to open Usage for the widget to catch up.
 
-**Remove.** In the sheet, tap **Remove**. Heeler disables and stops the service, deletes the files the install recorded, the Pi and Oh My Pi extensions among them, then the folders it created that are now empty, and finally the Helper's directory with its notification registrations and seen marks. Removal leaves systemd linger and the Grok Build edit (`program_status` in its configuration) as they are: change those yourself if you no longer want them.
+**Remove.** In the sheet, tap **Remove**. Heeler disables and stops the service, deletes the files the install recorded, the Pi and Oh My Pi extensions among them, then the folders it created that are now empty, and finally the Helper's directory with its notification registrations and seen marks. The Host's banners and Live Activity stop with it. Removal leaves systemd linger and the Grok Build edit (`program_status` in its configuration) as they are: change those yourself if you no longer want them.

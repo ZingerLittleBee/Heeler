@@ -127,7 +127,7 @@ export function liveActivityPreferences(devices) {
 function writeRegistrationFile(dir, file) {
   const path = join(dir, REGISTRATIONS_FILE);
   const temp = `${path}.tmp-${process.pid}`;
-  writeFileSync(temp, JSON.stringify(file));
+  writeFileSync(temp, JSON.stringify(file), { mode: 0o600 });
   renameSync(temp, path);
 }
 

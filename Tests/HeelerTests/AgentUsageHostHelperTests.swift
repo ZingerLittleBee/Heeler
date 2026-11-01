@@ -290,7 +290,7 @@ struct AgentUsageHostHelperTests {
         let (reason, sentence) = session == .nativeWindows
             ? ("Comes with the Host Helper, not available yet",
                "Usage comes with the Host Helper, which is not available on native Windows yet.")
-            : ("Needs the Host Helper", "Usage needs the Host Helper. Install it from this Host's details.")
+            : ("Needs the Host Helper", "Usage needs the Host Helper. See this Host's details.")
         #expect(scope.excluded.map(\.reason) == [reason])
         let labels = try await pageLabels(entry, expecting: sentence)
         #expect(labels.contains(sentence), "\(labels)")
@@ -362,10 +362,34 @@ struct AgentUsageHostHelperTests {
         let (console, host) = try await unconnectedConsole(helper)
         defer { console.setHosts([]) }
 
-        await console.agentUsageStore(for: host.id).pullToRefresh()
+        let store = console.agentUsageStore(for: host.id)
+        await store.pullToRefresh()
 
         let scope = AgentUsageScope(readings: [console.agentUsageEntry(for: host).reading])
         #expect(scope.excluded.map(\.reason) == ["Could not read Usage"])
+        // This Server Kind has no plugin to update.
+        #expect(store.state == .failed(AgentUsageStore.helperFailureMessage))
+        #expect(AgentUsageStore.helperFailureMessage.contains("Host Helper"))
+        #expect(!AgentUsageStore.helperFailureMessage.contains("plugin"))
+    }
+
+    @Test func aHelperReadThatFailsOnTheWayToTheHostStillBlamesTheConnection() async throws {
+        struct Unreachable: HostHelperHost {
+            func hostPlatform() async throws -> HostPlatform { .posix }
+            func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
+                throw TransportError.sshUnreachable(detail: "no route")
+            }
+            func readHostHelperFile(at path: String, privateDirectory: String) async throws -> Data? { nil }
+            func replaceHostHelperFile(_ contents: Data, at path: String, privateDirectory: String?) async throws {}
+        }
+        await #expect(throws: TransportError.self) {
+            _ = try await AgentUsageStore.reading(
+                overHelper: Unreachable(), session: "work", timeZone: "UTC", claudeLimits: false)
+        }
+    }
+
+    @Test func aHostHelperNeedDoesNotPromiseAnInstallEveryHostCanTake() {
+        #expect(!AgentUsageHostHelperNeed.notInstalled.message.contains("Install"))
     }
 
     @Test func aHerdrTUIHostWithoutAConnectionStillReadsAsNotConnected() async throws {

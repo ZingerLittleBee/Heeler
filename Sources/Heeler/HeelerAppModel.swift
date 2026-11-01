@@ -42,6 +42,7 @@ final class HeelerAppModel {
     let liveActivities: HostLiveActivityCoordinator
     /// What a confirmed Host removal cleans up beyond the catalog (#414).
     let hostRemoval: HostRemovalDependencies
+    let hostOnboarding: HostOnboardingDependencies
     let activity: AppActivityCoordinator
 
     private var isStarted = false
@@ -94,6 +95,11 @@ final class HeelerAppModel {
             ceremony: NotificationRegistrationCeremony(gate: registrationGate))
         self.notificationPreferences = notificationPreferences
         notificationPreferences.followSeenMarks(of: console)
+        // Installing or removing a Helper changes what the banner and Live
+        // Activity gates may say, with the Console's connection unchanged.
+        hostOnboarding = HostOnboardingDependencies(hostHelperDidChange: { [weak notificationPreferences] in
+            Task { await notificationPreferences?.refresh() }
+        })
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on
@@ -283,10 +289,12 @@ final class HeelerAppModel {
         // so re-read each Host's registration file as its connection comes up
         // (and once the push token lands) instead of waiting for a Settings
         // visit that may never happen.
-        observe({ console.hostStatuses }) { [weak self] _ in
+        observe({ console.hostStatuses.mapValues(\.forRegistrationRead) }) { [weak self] _ in
             guard let self else { return }
             Task { await self.notificationPreferences.refresh() }
-            liveActivities.connectionsDidChange()
+        }
+        observe({ console.hostStatuses }) { [weak self] _ in
+            self?.liveActivities.connectionsDidChange()
         }
         observe({ console.hostsAwaitingSnapshot }) { [weak self] _ in
             self?.liveActivities.connectionsDidChange()

@@ -98,7 +98,9 @@ Decrypted plaintext (canonical form):
   (`display_agent`, then `name`, then raw kind); raw terminal title; stripped terminal title (an absent value falls back
   to the raw title with one leading activity glyph removed only at a whitespace
   boundary, while an explicitly empty value stays empty); configured Host display name; capitalized status;
-  trimmed `cwd` for directory; and `tokens` values for `$custom` fields.
+  trimmed `cwd` for directory; `tokens` values for `$custom` fields; and on a
+  herdr-core Host the Terminal's label for `label:<key>` fields, which the Helper
+  reads from the same `tokens`.
   `state_icon` and `state_text` render no text because the status indicator
   owns that information. Missing context suppresses that field only.
 - `host` is the Host machine's short hostname (first DNS label), ≤80
@@ -214,6 +216,10 @@ metadata; unknown sibling keys on `live_activity` must survive a rewrite.
 `row_layout` is the app's resolved per-Host Agent List Fields layout: at most
 three rows, at most 16 fields per row, no per-kind overrides. Each field has
 `token` and optional `fg`, `bold`, and `dim`, matching the Console layout JSON.
+A `label:<key>` token follows the app's rule for a label it offers
+(`AgentRowToken.terminalLabel`): a key of 1 to 64 UTF-8 bytes, not all whitespace,
+with no `=` and no control or format character. Any other token makes the layout
+malformed.
 `row_gap` and `rows_by_agent` are accepted for structural compatibility but do
 not change activity rendering. The app writes this layout and optional
 `host_name` on registration, layout edits, Host name changes, and plugin sync.

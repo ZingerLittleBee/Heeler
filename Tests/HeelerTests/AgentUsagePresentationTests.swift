@@ -116,7 +116,7 @@ struct AgentUsagePresentationTests {
              ["Usage needs plugin 0.7.0 or newer; this Host has 0.6.2."]),
             (.init(state: .unsupportedPlatform), ["Not supported on Windows"]),
             (.init(state: .hostHelper(.notInstalled)),
-             ["Usage needs the Host Helper. Install it from this Host's details."]),
+             ["Usage needs the Host Helper. See this Host's details."]),
             (.init(state: .hostHelper(.outdated)),
              ["Usage needs a newer Host Helper. Update it from this Host's details."]),
             (.init(state: .hostHelper(.waitingForCore)),

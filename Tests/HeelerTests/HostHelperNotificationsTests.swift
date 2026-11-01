@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import os
 
 @testable import Heeler
 
@@ -222,8 +223,10 @@ struct HostHelperNotificationsTests {
     // MARK: Banners
 
     /// A banner store fed from the Console as the app feeds it, on the rig's triggers.
-    private func bannerStore(_ rig: Rig) -> AgentNotificationBannerStore {
-        let preferences = rig.preferences
+    private func bannerStore(
+        _ rig: Rig, preferences: NotificationPreferencesStore? = nil
+    ) -> AgentNotificationBannerStore {
+        let preferences = preferences ?? rig.preferences
         let store = AgentNotificationBannerStore(
             holdDuration: .milliseconds(5), presentedAgent: { nil },
             triggers: { preferences.confirmedTriggers(for: $0) }, playSound: {})
@@ -351,11 +354,206 @@ struct HostHelperNotificationsTests {
         try await expectNoBanner(store)
     }
 
+    // MARK: A re-read of a registration
+
+    /// A preferences store whose reads and writes can be held at the door.
+    private func heldPreferences(
+        over provider: any NotificationTransportProvider, hold: FileAccessHold
+    ) -> NotificationPreferencesStore {
+        let token = token
+        return NotificationPreferencesStore(
+            transports: HeldNotificationFiles(provider: provider, hold: hold), deviceToken: { token },
+            relayBaseURL: { Self.relay }, ceremony: NotificationRegistrationCeremony(keys: keys))
+    }
+
+    @Test func aBannerDueDuringAReReadOfARegisteredHostStillShows() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        let hold = FileAccessHold()
+        let preferences = heldPreferences(over: rig.console, hold: hold)
+        preferences.setHosts([host])
+        await preferences.refresh()
+        #expect(preferences.confirmedTriggers(for: host.id) != nil)
+        let store = bannerStore(rig, preferences: preferences)
+
+        await hold.close()
+        let reread = Task { await preferences.refresh() }
+        try await waitUntil("the re-read to begin") { preferences.states[host.id] == .loading }
+        await report(rig, seq: 2, "working")
+        try await follow(rig, into: store, until: .working)
+        await report(rig, seq: 3, "error")
+        try await follow(rig, into: store, until: .error)
+
+        try await waitUntil("the Error banner") { store.banner != nil }
+        #expect(store.banner?.alert.body == "Error")
+        // Only the banner's gate holds: the toggles wait for the read.
+        #expect(preferences.liveActivityGate(forCoreHost: host.id) == .unknown)
+        #expect(preferences.helperRequirement(for: host.id) == nil)
+
+        await hold.open()
+        await reread.value
+    }
+
+    @Test func aReReadThatFindsTheRegistrationGoneClosesTheBannerGate() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        let hold = FileAccessHold()
+        let preferences = heldPreferences(over: rig.console, hold: hold)
+        preferences.setHosts([host])
+        await preferences.refresh()
+
+        await hold.close()
+        let reread = Task { await preferences.refresh() }
+        try await waitUntil("the re-read to begin") { preferences.states[host.id] == .loading }
+        await rig.preferences.setNotificationsEnabled(false, for: host)
+        await hold.open()
+        await reread.value
+
+        #expect(preferences.confirmedTriggers(for: host.id) == nil)
+    }
+
+    @Test func aFirstReadStillFailsClosed() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        let hold = FileAccessHold()
+        await hold.close()
+        let preferences = heldPreferences(over: rig.console, hold: hold)
+        preferences.setHosts([host])
+
+        let read = Task { await preferences.refresh() }
+        try await waitUntil("the read to begin") { preferences.states[host.id] == .loading }
+        #expect(preferences.confirmedTriggers(for: host.id) == nil)
+
+        await hold.open()
+        await read.value
+    }
+
+    /// A removal during a read is not undone by what that read still holds.
+    @Test func forgettingTheKeyDuringAReReadClosesTheBannerGate() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        let hold = FileAccessHold()
+        let preferences = heldPreferences(over: rig.console, hold: hold)
+        preferences.setHosts([host])
+        await preferences.refresh()
+
+        await hold.close()
+        let reread = Task { await preferences.refresh() }
+        try await waitUntil("the re-read to begin") { preferences.states[host.id] == .loading }
+        try preferences.forgetNotificationKey(for: host.id)
+        #expect(preferences.confirmedTriggers(for: host.id) == nil)
+
+        await hold.open()
+        await reread.value
+    }
+
+    /// Herdr TUI's gate fails closed for its read, as it always has.
+    @Test func aHerdrTUIHostsBannerGateStillFailsClosedDuringAReRead() async throws {
+        let host = Host.fixture()
+        let token = token
+        let transport = ScriptedTransport(snapshot: .fixture(agents: []))
+        let ceremony = NotificationRegistrationCeremony(keys: keys)
+        try await ceremony.register(host: host, deviceToken: token, over: transport)
+        let hold = FileAccessHold()
+        let preferences = NotificationPreferencesStore(
+            transports: HeldNotificationFiles(
+                provider: ScriptedTransportProvider(transports: [host.id: transport]), hold: hold),
+            deviceToken: { token }, ceremony: ceremony)
+        preferences.setHosts([host])
+        await preferences.refresh()
+        #expect(preferences.confirmedTriggers(for: host.id) != nil)
+
+        await hold.close()
+        let reread = Task { await preferences.refresh() }
+        try await waitUntil("the re-read to begin") { preferences.states[host.id] == .loading }
+        #expect(preferences.confirmedTriggers(for: host.id) == nil)
+
+        await hold.open()
+        await reread.value
+    }
+
+    // MARK: What can drive an activity
+
+    @Test func aNewerHelperThatFailedClosesBothGates() async throws {
+        let helper = try await installedHelper(version: "9.9.9")
+        let rig = try await rig(helper)
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        await rig.preferences.setNotificationsEnabled(true, for: host)
+        await rig.preferences.refresh()
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .open)
+
+        await helper.configure {
+            $0.activeState = "failed"
+            $0.result = "start-limit-hit"
+        }
+        await rig.preferences.refresh()
+
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .closed)
+        #expect(!rig.preferences.offersLiveActivity(for: host))
+    }
+
+    @Test func aNewerHelperThatFailedTakesNoNewRegistration() async throws {
+        let helper = try await installedHelper(version: "9.9.9")
+        await helper.configure {
+            $0.activeState = "failed"
+            $0.result = "start-limit-hit"
+        }
+        let rig = try await rig(helper)
+        defer { rig.console.setHosts([]) }
+
+        await rig.preferences.refresh()
+
+        #expect(try #require(unavailableMessage(rig)).hasPrefix("Host Helper: Service Failed."))
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .closed)
+    }
+
+    @Test func aUserManagerNobodyCanReachWithLingerOffClosesTheActivityGate() async throws {
+        let helper = try await installedHelper()
+        let rig = try await rig(helper)
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        await rig.preferences.setNotificationsEnabled(true, for: host)
+        await rig.preferences.refresh()
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .open)
+
+        await helper.configure {
+            $0.userManagerReachable = false
+            $0.lingerOn = false
+        }
+        await rig.preferences.refresh()
+
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .closed)
+    }
+
+    @Test func removingTheHelperFromHostDetailClosesBothGatesWhileTheConsoleStaysConnected() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        #expect(rig.preferences.confirmedTriggers(for: host.id) != nil)
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .open)
+        let helperHost = ScriptedCoreHost(helper: rig.helper, channel: .refused)
+        let bundle = HostHelperFixture.bundle()
+        let store = HostHelperStore(connect: { helperHost.transport() }, bundle: { bundle })
+        let preferences = rig.preferences
+        store.onChanged = { Task { await preferences.refresh() } }
+        await store.refresh()
+
+        await store.remove()
+
+        try await waitUntil("the gates to close") {
+            preferences.confirmedTriggers(for: host.id) == nil
+                && preferences.liveActivityGate(forCoreHost: host.id) == .closed
+        }
+        #expect(rig.console.hostStatuses[host.id] == .connected)
+    }
+
     // MARK: Live Activity
 
     /// A coordinator wired to the rig's stores as the app wires them, already started.
     private func coordinator(
-        _ rig: Rig, preferences: NotificationPreferencesStore? = nil, controller: FakeLiveActivityController
+        _ rig: Rig, preferences: NotificationPreferencesStore? = nil, controller: FakeLiveActivityController,
+        connectionStatus: (@MainActor (Host.ID) -> EventsSessionStatus?)? = nil
     ) throws -> HostLiveActivityCoordinator {
         let suite = "core-activity-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -374,7 +572,7 @@ struct HostHelperNotificationsTests {
             knownHostIDs: { [host.id] },
             hostDisplayName: { _ in "box" },
             isAwaitingSnapshot: { console.hostsAwaitingSnapshot.contains($0) },
-            connectionStatus: { console.hostStatuses[$0] },
+            connectionStatus: connectionStatus ?? { console.hostStatuses[$0] },
             registrationGate: { registrations.liveActivityGate(forCoreHost: $0) },
             settleDuration: .milliseconds(5))
         coordinator.setEnabled(true, for: host.id)
@@ -493,6 +691,58 @@ struct HostHelperNotificationsTests {
         coordinator.registrationsDidChange()
 
         try await waitUntil("the end") { !controller.ended.isEmpty }
+        await finish(coordinator, controller)
+    }
+
+    /// The Helper answers with no core running, so turning off succeeds, and it no
+    /// longer holds the token that could end the activity later.
+    @Test func turningNotificationsOffEndsTheActivityWhileTheCoreIsStopped() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        let controller = FakeLiveActivityController()
+        let connection = ConnectionBox()
+        let coordinator = try coordinator(rig, controller: controller, connectionStatus: { _ in connection.status })
+        coordinator.agentsDidChange(rig.console.agents)
+        try await waitUntil("the activity") { !controller.requestedHandles.isEmpty }
+
+        connection.status = .reconnecting(
+            attempt: 1, delay: .seconds(1),
+            failure: .herdrCoreNotRunning(socketPath: "/run/core.sock", socketFilePresent: false))
+        coordinator.connectionsDidChange()
+        coordinator.registrationsDidChange()
+        try await settleWrites(rig)
+        // The Agent list is unknown and the registration stands, so it holds.
+        #expect(controller.ended.isEmpty)
+
+        await rig.preferences.setNotificationsEnabled(false, for: host)
+        coordinator.registrationsDidChange()
+
+        try await waitUntil("the end") { !controller.ended.isEmpty }
+        await finish(coordinator, controller)
+    }
+
+    @Test func aRegistrationReadThatFailsKeepsTheActivityWhileTheCoreIsStopped() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        let controller = FakeLiveActivityController()
+        let connection = ConnectionBox()
+        let coordinator = try coordinator(rig, controller: controller, connectionStatus: { _ in connection.status })
+        coordinator.agentsDidChange(rig.console.agents)
+        try await waitUntil("the activity") { !controller.requestedHandles.isEmpty }
+
+        connection.status = .reconnecting(
+            attempt: 1, delay: .seconds(1),
+            failure: .herdrCoreNotRunning(socketPath: "/run/core.sock", socketFilePresent: false))
+        coordinator.connectionsDidChange()
+        rig.console.setHosts([])
+        await rig.preferences.refresh()
+        coordinator.registrationsDidChange()
+        try await settleWrites(rig)
+
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .unknown)
+        #expect(controller.ended.isEmpty)
         await finish(coordinator, controller)
     }
 
@@ -631,6 +881,69 @@ struct HostHelperNotificationsTests {
         try await waitUntil("the mark") { await rig.helper.files[path] != nil }
     }
 
+    @Test func turningOnWritesWhatThisDeviceAlreadySawOnTheHost() async throws {
+        let rig = try await rig(try await installedHelper())
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        rig.console.setAgentShown(id("t1"), viewer: viewer, scene: window)
+        try await waitUntil("t1 read as seen") { rig.console.agents.first?.agent.status == .idle }
+        try await settleWrites(rig)
+        #expect(await markWrites(rig.helper).isEmpty)
+
+        await rig.preferences.setNotificationsEnabled(true, for: host)
+
+        let path = try markPath()
+        try await waitUntil("the mark") { await rig.helper.files[path] != nil }
+        let contents = try #require(await rig.helper.files[path]?.contents)
+        #expect(String(decoding: contents, as: UTF8.self).contains(#""terminal":"t1","turn":3"#))
+        try await settleWrites(rig)
+        #expect(await markWrites(rig.helper) == [path])
+    }
+
+    @Test func turningOffAndOnWritesTheMarksUnderTheNewKey() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        rig.console.setAgentShown(id("t1"), viewer: viewer, scene: window)
+        let first = try markPath()
+        try await waitUntil("the mark") { await rig.helper.files[first] != nil }
+        try await settleWrites(rig)
+
+        await rig.preferences.setNotificationsEnabled(false, for: host)
+        #expect(await rig.helper.files[first] == nil)
+        await rig.preferences.setNotificationsEnabled(true, for: host)
+
+        let second = try markPath()
+        #expect(second != first)
+        try await waitUntil("the mark under the new key") { await rig.helper.files[second] != nil }
+        #expect(await rig.helper.files[first] == nil)
+    }
+
+    @Test func changingTheDoneFlagWritesNoMark() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        rig.console.setAgentShown(id("t1"), viewer: viewer, scene: window)
+        let path = try markPath()
+        try await waitUntil("the mark") { await rig.helper.files[path] != nil }
+        try await settleWrites(rig)
+        await rig.helper.configure { $0.clearLog() }
+
+        await rig.preferences.setDoneEnabled(false, for: host)
+
+        try await settleWrites(rig)
+        #expect(await markWrites(rig.helper).isEmpty)
+    }
+
+    @Test func turningOnWithNothingSeenWritesNoMark() async throws {
+        let rig = try await rig(try await installedHelper())
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+
+        await rig.preferences.setNotificationsEnabled(true, for: host)
+
+        try await settleWrites(rig)
+        #expect(await markWrites(rig.helper).isEmpty)
+    }
+
     @Test func noMarkOnAHostWithoutTheHelper() async throws {
         let helper = ScriptedHelperHost()
         let rig = try await rig(helper)
@@ -720,6 +1033,181 @@ struct HostHelperNotificationsTests {
 
         #expect(try await entries(rig.helper).isEmpty)
         #expect(await rig.helper.files[path] == nil)
+    }
+
+    private nonisolated static let stoppedCore = TransportError.herdrCoreNotRunning(
+        socketPath: "/run/core.sock", socketFilePresent: false)
+
+    /// A Console whose session keeps retrying `failure`, while `connectCore` still
+    /// reaches the Host for one operation.
+    private func unconnectedConsole(_ helper: ScriptedHelperHost, failure: TransportError) async throws -> ConsoleStore {
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let console = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                    keepalive: nil)
+            },
+            connectCore: { _ in core.transport() },
+            makeCoreSession: { _ in HerdrCoreHostSession(connect: { throw failure }, keepalive: nil) })
+        console.setHosts([host])
+        await console.resume()
+        let host = host
+        try await waitUntil("the session to retry") {
+            if case .reconnecting = console.hostStatuses[host.id] { return true }
+            return false
+        }
+        return console
+    }
+
+    @Test func removingAHostWhoseCoreIsStoppedRemovesThisDevicesEntryAndItsMarkFile() async throws {
+        let helper = try await installedHelper()
+        let console = try await unconnectedConsole(helper, failure: Self.stoppedCore)
+        defer { console.setHosts([]) }
+        let token = token
+        let preferences = NotificationPreferencesStore(
+            transports: console, deviceToken: { token }, relayBaseURL: { Self.relay },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        preferences.setHosts([host])
+        await preferences.refresh()
+        await preferences.setNotificationsEnabled(true, for: host)
+        #expect(preferences.confirmedTriggers(for: host.id) != nil)
+        let path = try markPath()
+        await helper.seedFile(path, Data("{}".utf8))
+
+        let suite = "core-removal-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let hostStore = HostStore(volatileHosts: [host])
+        let host = host
+        let liveActivities = HostLiveActivityCoordinator(
+            controller: FakeLiveActivityController(),
+            preferences: LiveActivityPreferences(defaults: defaults),
+            transports: console,
+            keys: keys,
+            deviceToken: { token },
+            knownHostIDs: { Set(hostStore.hosts.map(\.id)) },
+            hostDisplayName: { _ in host.displayName },
+            isAwaitingSnapshot: { _ in false },
+            connectionStatus: { console.hostStatuses[$0] })
+        let dependencies = HostRemovalDependencies.app(
+            console: console, notificationPreferences: preferences, liveActivities: liveActivities)
+        let removal = HostRemovalStore(store: hostStore)
+
+        removal.requestRemoval([host.id], dependencies: dependencies)
+        let request = try #require(removal.pendingRequest)
+        #expect(!request.leavesNotificationsBehind)
+        await removal.confirmRemoval(request, dependencies: dependencies)
+
+        #expect(try await entries(helper).isEmpty)
+        #expect(await helper.files[path] == nil)
+    }
+
+    /// Anything else short of connected says nothing about the Host being reachable.
+    @Test func onlyAStoppedCoreCountsAsAReachableHostShortOfConnected() async throws {
+        let unreachable = try await unconnectedConsole(
+            ScriptedHelperHost(), failure: .sshUnreachable(detail: "no route"))
+        defer { unreachable.setHosts([]) }
+        #expect(!unreachable.canReachNotificationFiles(host.id))
+
+        let stopped = try await unconnectedConsole(ScriptedHelperHost(), failure: Self.stoppedCore)
+        defer { stopped.setHosts([]) }
+        #expect(stopped.canReachNotificationFiles(host.id))
+    }
+
+    @Test func aHerdrTUIHostMustBeConnectedForItsFilesToBeReachable() async throws {
+        let host = Host.fixture()
+        let console = ConsoleStore(makeSession: { _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { throw Self.stoppedCore },
+                keepalive: nil)
+        })
+        defer { console.setHosts([]) }
+        console.setHosts([host])
+        await console.resume()
+        try await waitUntil("the session to settle") {
+            console.hostStatuses[host.id] != .connecting
+        }
+        #expect(!console.canReachNotificationFiles(host.id))
+    }
+
+    // MARK: What makes a registration read again
+
+    @Test func aStoppedCoresRetriesAreOneStatusToARegistrationRead() {
+        let first = EventsSessionStatus.reconnecting(attempt: 1, delay: .seconds(1), failure: Self.stoppedCore)
+        let later = EventsSessionStatus.reconnecting(attempt: 7, delay: .seconds(30), failure: Self.stoppedCore)
+        #expect(first.forRegistrationRead == later.forRegistrationRead)
+    }
+
+    /// Herdr TUI's offline retries read again as they always have.
+    @Test func anotherFailuresRetriesStayDistinctToARegistrationRead() {
+        let failure = TransportError.sshUnreachable(detail: "no route")
+        let first = EventsSessionStatus.reconnecting(attempt: 1, delay: .seconds(1), failure: failure)
+        let later = EventsSessionStatus.reconnecting(attempt: 2, delay: .seconds(2), failure: failure)
+        #expect(first.forRegistrationRead != later.forRegistrationRead)
+        #expect(first.forRegistrationRead == first)
+    }
+
+    @Test func aRealChangeStillReadsAgain() {
+        let stopped = EventsSessionStatus.reconnecting(attempt: 1, delay: .seconds(1), failure: Self.stoppedCore)
+        let offline = EventsSessionStatus.reconnecting(
+            attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "no route"))
+        #expect(stopped.forRegistrationRead != offline.forRegistrationRead)
+        #expect(stopped.forRegistrationRead != EventsSessionStatus.connected)
+        #expect(EventsSessionStatus.connected.forRegistrationRead == .connected)
+    }
+
+    /// Through the app's own observers: retries of one stopped core must not probe
+    /// the Helper over and over, for this Host or any other.
+    @Test func theAppDoesNotReadEveryRegistrationAgainForEachRetryOfAStoppedCore() async throws {
+        let helper = try await installedHelper()
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let attempts = OSAllocatedUnfairLock(initialState: 0)
+        let console = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                    keepalive: nil)
+            },
+            connectCore: { _ in core.transport() },
+            makeCoreSession: { _ in
+                HerdrCoreHostSession(
+                    connect: {
+                        attempts.withLock { $0 += 1 }
+                        throw Self.stoppedCore
+                    },
+                    reconnectPolicy: ReconnectPolicy(
+                        initialDelay: .milliseconds(5), multiplier: 1, maxDelay: .milliseconds(5)),
+                    keepalive: nil)
+            })
+        defer { console.setHosts([]) }
+        let registration = PushRegistrationStore(client: ScriptedPushRegistrationClient(), environment: .sandbox)
+        registration.deviceTokenDidArrive(Data([0x0A, 0x1B, 0x2C, 0x3D]))
+        let app = HeelerAppModel(
+            pushRegistration: registration, sceneDirectory: AgentSceneDirectory(),
+            hostStore: HostStore(volatileHosts: [host]), console: console)
+        app.start()
+        let host = host
+        try await waitUntil("the first read") {
+            switch app.notificationPreferences.states[host.id] {
+            case .idle, .unavailable: true
+            default: false
+            }
+        }
+        try await waitUntil("the session to retry") {
+            if case .reconnecting = console.hostStatuses[host.id] { return true }
+            return false
+        }
+        let probesBefore = await helper.steps.filter { $0 == .probe }.count
+        let attemptsBefore = attempts.withLock { $0 }
+
+        try await waitUntil("twenty more retries") { attempts.withLock { $0 } >= attemptsBefore + 20 }
+
+        // The move into reconnecting may be heard after the count above, once.
+        #expect(await helper.steps.filter { $0 == .probe }.count <= probesBefore + 1)
     }
 
     @Test func aDeviceRegisteredOnAHelperThatStoppedWorkingCanStillLeave() async throws {
@@ -812,5 +1300,49 @@ struct HostHelperNotificationsTests {
         #expect(message.contains("not available on native Windows yet because they come with the Host Helper"))
         #expect(await helper.reads.isEmpty)
         #expect(await helper.writes.isEmpty)
+    }
+}
+
+/// The Host's connection status, for a test to change as it goes.
+@MainActor
+private final class ConnectionBox {
+    var status: EventsSessionStatus? = .connected
+}
+
+/// Keeps a store's file access waiting at the door until opened.
+private actor FileAccessHold {
+    private var isClosed = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func close() { isClosed = true }
+
+    func open() {
+        isClosed = false
+        for waiter in waiting { waiter.resume() }
+        waiting = []
+    }
+
+    func pass() async {
+        guard isClosed else { return }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+}
+
+private struct HeldNotificationFiles: NotificationTransportProvider {
+    let provider: any NotificationTransportProvider
+    let hold: FileAccessHold
+
+    func withNotificationTransport<Value: Sendable>(
+        for hostID: Host.ID, _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        await hold.pass()
+        return try await provider.withNotificationTransport(for: hostID, operation)
+    }
+
+    func withNotificationFiles<Value: Sendable>(
+        for hostID: Host.ID, _ operation: @escaping @Sendable (any HostNotificationFiles) async throws -> Value
+    ) async throws -> Value {
+        await hold.pass()
+        return try await provider.withNotificationFiles(for: hostID, operation)
     }
 }

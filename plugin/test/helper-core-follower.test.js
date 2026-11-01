@@ -58,6 +58,17 @@ function follow(session, options = {}) {
 const restartedStatus = (pid) => ({ ...STATUS, pid });
 const snapshot = (...addresses) => ({ channel: 1, seq: 1, terminals: addresses.map((address) => ({ address })) });
 
+suite("a handshake that fails after `connected`", () => {
+  test("a bad early line still tells the listener the connection ended", async () => {
+    await core("work", { snapshot: snapshot("t1"), earlyEvents: ["not json\n"] });
+    const { seen } = follow("work");
+    await waitFor(() => seen.connected.length >= 1 && seen.ended.length >= 1, "connected and ended");
+    assert.equal(seen.ended[0].session, "work");
+    assert.equal(seen.ended[0].pid, STATUS.pid);
+    assert.match(seen.ended[0].reason.message, /./);
+  });
+});
+
 suite("waiting for a core", () => {
   test("waits while no socket answers and connects once one does", async () => {
     const { seen } = follow("work");

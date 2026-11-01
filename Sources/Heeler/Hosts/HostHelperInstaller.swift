@@ -118,12 +118,20 @@ struct HostHelperInstaller: Sendable {
         let created = try await makeFolders(plan)
 
         // Written first, so a failure below leaves removal knowing about them.
+        // Until it is, nothing else does, so a failure here takes them back.
         let previous = reading.probe?.record.flatMap {
             try? JSONDecoder().decode(HostHelperInstallRecord.self, from: $0)
         }
         let record = (previous ?? HostHelperInstallRecord(files: [], folders: []))
-            .merged(files: plan.outsideFiles, folders: created)
-        try await write(try Self.encoded(record), to: layout.record, in: layout.directory, step: "Writing the install record")
+            // The Helper directory goes as a whole, at the end of a removal.
+            .merged(files: plan.outsideFiles, folders: created.filter { $0 != layout.directory })
+        do {
+            try await write(
+                try Self.encoded(record), to: layout.record, in: layout.directory, step: "Writing the install record")
+        } catch {
+            await takeBack(created)
+            throw error
+        }
 
         if plan.replacesHelper {
             try await placeHelper(bundle, layout: layout)
@@ -183,24 +191,29 @@ struct HostHelperInstaller: Sendable {
         }
     }
 
+    /// Every folder this run created, parents first. A failure takes back those
+    /// it got to, since no record names them yet.
     private func makeFolders(_ plan: HostHelperInstallPlan) async throws -> [String] {
-        let layout = plan.layout
         let script = HostHelperScript(
-            .makeFolders(plan.folderChain, privateFolder: layout.directory), nonce: nonce())
+            .makeFolders(plan.folderChain, privateFolder: plan.layout.directory), nonce: nonce())
         let result = try await host.runHostHelperScript(script)
+        let lines = try? HostHelperProbe.framedLines(stdout: result.stdout, nonce: script.nonce)
+        let created = (lines ?? [])
+            .filter { $0.hasPrefix("created ") }
+            .map { String($0.dropFirst("created ".count)) }
         guard result.exitStatus == 0 else {
+            await takeBack(created)
             throw HostHelperError.stepFailed(step: "Creating the folders", detail: Self.detail(of: result))
         }
-        do {
-            let helperFolder = layout.directory
-            return try HostHelperProbe.framedLines(stdout: result.stdout, nonce: script.nonce)
-                .filter { $0.hasPrefix("created ") }
-                .map { String($0.dropFirst("created ".count)) }
-                // The Helper directory goes as a whole, at the end of a removal.
-                .filter { $0 != helperFolder }
-        } catch {
-            throw HostHelperError.unreadableHost
-        }
+        guard lines != nil else { throw HostHelperError.unreadableHost }
+        return created
+    }
+
+    /// Only ever removes what is still empty. A connection that has gone cannot
+    /// do even that, and the install's failure is what the user needs to read.
+    private func takeBack(_ folders: [String]) async {
+        guard !folders.isEmpty else { return }
+        _ = try? await run(.removeEmptyFolders(folders.sorted(by: Self.deepestFirst)))
     }
 
     /// Uploads into a staging directory, checks the manifest there, and renames
@@ -266,7 +279,7 @@ struct HostHelperInstaller: Sendable {
         } catch let error as HostHelperError {
             throw error
         } catch {
-            throw HostHelperError.stepFailed(step: step, detail: "\(error)")
+            throw HostHelperError.stepFailed(step: step, detail: Self.detail(of: error))
         }
     }
 
@@ -278,6 +291,15 @@ struct HostHelperInstaller: Sendable {
 
     private static func detail(of result: GitExecResult) -> String {
         String(decoding: result.stderr, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// In words a person can read. What has none says nothing, not its type's name.
+    private static func detail(of error: any Error) -> String {
+        switch error {
+        case NotificationRegistrationError.writeFailed(let detail): detail
+        case let error as TransportError: error.presentation.message
+        default: ""
+        }
     }
 
     private static func deepestFirst(_ first: String, _ second: String) -> Bool {

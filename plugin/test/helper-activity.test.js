@@ -241,6 +241,15 @@ suite("an update to a registered activity token", () => {
     ]);
   });
 
+  test("a layout with a Terminal label keeps its other fields and shows the label", async () => {
+    const layout = { rows: [[{ token: "agent" }, { token: "label:team.owner" }]] };
+    register(entry(KEY_A, ALERT_A, ACTIVITY_A, { live: { row_layout: layout } }));
+    await connected([agent("t1", { labels: { "team.owner": "ana" } })]);
+    await pushes(ACTIVITY_A, 1);
+
+    assert.deepEqual(opened(lastTo(ACTIVITY_A), KEY_A).agents[0].rows, [[{ text: "claude" }, { text: " · " }, { text: "ana" }]]);
+  });
+
   test("follows this device's pins and layout, each device its own", async () => {
     const layout = { rows: [[{ token: "agent" }, { token: "status" }, { token: "$branch" }]] };
     register(
@@ -285,6 +294,21 @@ suite("an update to a registered activity token", () => {
 });
 
 suite("when it is sent", () => {
+  test("one Terminal's reports that change nothing do not hold back another's Blocked", async () => {
+    writeFileSync(join(directory, "notify.json"), JSON.stringify({ relay_url: relay.url, activity_debounce_ms: 80, retry_delay_ms: 1 }));
+    register(entry(KEY_A, ALERT_A, ACTIVITY_A));
+    const core = await connected([agent("t1"), agent("t2")]);
+    await pushes(ACTIVITY_A, 1);
+
+    status(core, "t1", "blocked");
+    const reports = setInterval(() => status(core, "t2", "working"), 5);
+    try {
+      await waitFor(() => lastTo(ACTIVITY_A).counts.blocked === 1, "the Blocked through the reports", 2000);
+    } finally {
+      clearInterval(reports);
+    }
+  });
+
   test("a status that does not hold through the debounce is not sent", async () => {
     register(entry(KEY_A, ALERT_A, ACTIVITY_A));
     const core = await connected([agent("t1")]);

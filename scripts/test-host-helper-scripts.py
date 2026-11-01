@@ -351,6 +351,19 @@ class InstallStepTests(HelperScriptCase):
         self.assertEqual(stat.S_IMODE(Path(folders[2]).stat().st_mode), 0o700)
         self.assertEqual(stat.S_IMODE(Path(folders[1]).stat().st_mode), 0o700)
 
+    def test_make_folders_that_fails_partway_says_which_it_created_and_ends_its_frame(self) -> None:
+        (self.home / "taken").write_text("a file")
+        made = self.home / "made"
+        folders = [str(made), str(self.home / "taken"), str(self.home / "never")]
+        result = self.run_script(step="makeFolders", folders=folders, privateFolder=folders[0])
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            [line for line in result.stdout.splitlines() if line.startswith("created")],
+            [f"created {made}"],
+        )
+        self.assertTrue(result.stdout.rstrip().endswith(" end"), result.stdout)
+        self.assertFalse((self.home / "never").exists())
+
     def test_make_folders_tightens_an_existing_private_folder(self) -> None:
         folder = self.home / "open"
         folder.mkdir(mode=0o755)
