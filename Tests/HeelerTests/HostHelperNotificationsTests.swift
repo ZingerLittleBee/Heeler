@@ -701,12 +701,12 @@ struct HostHelperNotificationsTests {
         defer { rig.console.setHosts([]) }
         await rig.preferences.refresh()
         let controller = FakeLiveActivityController()
-        var status: EventsSessionStatus? = .connected
-        let coordinator = try coordinator(rig, controller: controller, connectionStatus: { _ in status })
+        let connection = ConnectionBox()
+        let coordinator = try coordinator(rig, controller: controller, connectionStatus: { _ in connection.status })
         coordinator.agentsDidChange(rig.console.agents)
         try await waitUntil("the activity") { !controller.requestedHandles.isEmpty }
 
-        status = .reconnecting(
+        connection.status = .reconnecting(
             attempt: 1, delay: .seconds(1),
             failure: .herdrCoreNotRunning(socketPath: "/run/core.sock", socketFilePresent: false))
         coordinator.connectionsDidChange()
@@ -727,12 +727,12 @@ struct HostHelperNotificationsTests {
         defer { rig.console.setHosts([]) }
         await rig.preferences.refresh()
         let controller = FakeLiveActivityController()
-        var status: EventsSessionStatus? = .connected
-        let coordinator = try coordinator(rig, controller: controller, connectionStatus: { _ in status })
+        let connection = ConnectionBox()
+        let coordinator = try coordinator(rig, controller: controller, connectionStatus: { _ in connection.status })
         coordinator.agentsDidChange(rig.console.agents)
         try await waitUntil("the activity") { !controller.requestedHandles.isEmpty }
 
-        status = .reconnecting(
+        connection.status = .reconnecting(
             attempt: 1, delay: .seconds(1),
             failure: .herdrCoreNotRunning(socketPath: "/run/core.sock", socketFilePresent: false))
         coordinator.connectionsDidChange()
@@ -1301,6 +1301,12 @@ struct HostHelperNotificationsTests {
         #expect(await helper.reads.isEmpty)
         #expect(await helper.writes.isEmpty)
     }
+}
+
+/// The Host's connection status, for a test to change as it goes.
+@MainActor
+private final class ConnectionBox {
+    var status: EventsSessionStatus? = .connected
 }
 
 /// Keeps a store's file access waiting at the door until opened.
