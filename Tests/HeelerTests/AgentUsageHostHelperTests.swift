@@ -290,7 +290,7 @@ struct AgentUsageHostHelperTests {
         let (reason, sentence) = session == .nativeWindows
             ? ("Comes with the Host Helper, not available yet",
                "Usage comes with the Host Helper, which is not available on native Windows yet.")
-            : ("Needs the Host Helper", "Usage needs the Host Helper. Install it from this Host's details.")
+            : ("Needs the Host Helper", "Usage needs the Host Helper. See this Host's details.")
         #expect(scope.excluded.map(\.reason) == [reason])
         let labels = try await pageLabels(entry, expecting: sentence)
         #expect(labels.contains(sentence), "\(labels)")

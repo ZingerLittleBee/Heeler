@@ -68,11 +68,12 @@ struct HostHelperStoreTests {
     }
 
     /// Another device may have installed a newer Helper since the sheet read.
-    @Test func anInstallGoesByWhatTheHostSaysNow() async {
+    @Test func anInstallGoesByWhatTheHostSaysNow() async throws {
         let store = await refreshed()
-        let newer = HostHelperFixture.bundle(version: "9.9.9")
-        await helper.seedFolder("\(ScriptedHelperHost.helperDirectory)/app")
-        await helper.seedFile("\(ScriptedHelperHost.helperDirectory)/app/manifest.json", newer.manifestData)
+        let otherDevice = HostHelperInstaller(host: helper)
+        _ = try await otherDevice.install(
+            over: try await otherDevice.read(), bundle: HostHelperFixture.bundle(version: "9.9.9"))
+        await helper.configure { $0.clearLog() }
 
         await store.install()
 
