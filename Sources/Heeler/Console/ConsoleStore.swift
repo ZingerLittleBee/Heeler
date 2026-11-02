@@ -925,6 +925,10 @@ final class ConsoleStore {
             drop: { [weak self] in
                 guard let core = self?.projections[hostID] as? HerdrCoreConsoleProjection else { return }
                 core.dropChatPick(paneID: paneID, scope: scope)
+            },
+            cannotTell: { [weak self] in
+                let core = self?.projections[hostID] as? HerdrCoreConsoleProjection
+                return core?.chatCannotTell(program) ?? .cannotTellSession(program)
             })
     }
 

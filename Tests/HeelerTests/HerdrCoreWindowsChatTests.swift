@@ -78,7 +78,8 @@ struct HerdrCoreWindowsChatTests {
         /// `offered` nil is the list the app ships.
         init(
             terminal: JSONValue = HerdrCoreWindowsChatTests.record(), image: String = "claude.exe",
-            offered: Set<ChatProgram>? = HerdrCoreWindowsChatTests.candidates, screen: String = readyScreen
+            offered: Set<ChatProgram>? = HerdrCoreWindowsChatTests.candidates, screen: String = readyScreen,
+            timing: AgentChatStore.Timing = AgentChatStore.Timing()
         ) async throws {
             let scripted = ScriptedCoreHost(
                 windowsLocator: ScriptedCoreHost.windowsLocatorLines(),
@@ -116,7 +117,8 @@ struct HerdrCoreWindowsChatTests {
                 coreHostMemory: HerdrCoreHostMemory(
                     defaults: UserDefaults(suiteName: "core-windows-chat-\(UUID().uuidString)") ?? .standard),
                 coreSendClock: sleeping,
-                coreWindowsChatPrograms: offered ?? HostCapabilities.confirmedWindowsCoreChatPrograms)
+                coreWindowsChatPrograms: offered ?? HostCapabilities.confirmedWindowsCoreChatPrograms,
+                chatTiming: timing)
             self.console = console
             let host = host
             console.setHosts([host])
@@ -323,6 +325,50 @@ struct HerdrCoreWindowsChatTests {
         }
         #expect(ChatUnavailableReason.cannotTellSessionOnWindows(.pi).offersWindowsExtension)
         await fixture.scripted.waitForMethod("terminal.label")
+        fixture.finish()
+    }
+
+    /// A send guard's verdict says what any check here says, whatever the Host: this
+    /// Host has no Helper to install and no list to choose from.
+    @Test func aDroppedPickSaysTheWindowsCannotTell() async throws {
+        var timing = AgentChatStore.Timing()
+        timing.pickGuardSettle = 0
+        let fixture = try await Fixture(
+            terminal: Self.record(
+                program: "pi", app: "pi", labels: ["heeler.chat": try Self.piLabel(start: Self.agentStart)]),
+            image: "pi.exe", timing: timing)
+        let path = "\(Self.home)/.pi/agent/sessions/--C--Users-me-proj--/2026-11-01_\(Self.session).jsonl"
+        await fixture.files.write(try Self.piTranscript(), at: path)
+        let chat = try #require(fixture.console.chatStore(for: fixture.agent, program: .pi))
+        try await Self.until("the picked conversation") {
+            await chat.step()
+            return chat.conversation.phase == .following(path: path)
+        }
+        let id = UUID()
+        chat.updateSends([.init(id: id, text: "this never arrives", isDelivered: false, mayNotHaveGone: false)])
+        chat.updateSends([.init(id: id, text: "this never arrives", isDelivered: true, mayNotHaveGone: false)])
+
+        for (sequence, state, status) in [(5, "working", AgentStatus.working), (6, "idle", .idle)] {
+            let line = JSONValue.object([
+                "jsonrpc": .string("2.0"), "method": .string("event"),
+                "params": .object([
+                    "seq": .number(Double(sequence)), "type": .string("status"), "terminal": .string("t1"),
+                    "data": .object([
+                        "status": .object(["state": .string(state), "app": .string("pi")]),
+                        "records": .object([:]), "reported": .bool(true),
+                    ]),
+                ]),
+            ])
+            try await fixture.scripted.deliverEvent(try JSONEncoder().encode(line))
+            try await Self.until("the Agent's status") { [console = fixture.console] in
+                console.agents.first?.agent.status == status
+            }
+        }
+        await chat.step()
+
+        #expect(chat.conversation.phase == .unavailable(.cannotTellSessionOnWindows(.pi)))
+        #expect(!chat.offersCandidates)
+        chat.end()
         fixture.finish()
     }
 

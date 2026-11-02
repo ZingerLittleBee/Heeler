@@ -1508,12 +1508,14 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         // An Agent that left has no process to look at, and nothing it left says
         // which conversation it was in. Its Chat says what became of it.
         guard departedAgentsByPane[paneID] == nil else { throw TransportError.cancelled }
-        let isOnWindows = kernel == HerdrCoreLocator.windowsKernel
-        guard let record = terminalRecord(at: paneID) else {
-            return .unavailable(isOnWindows ? .cannotTellSessionOnWindows(program) : .cannotTellSession(program))
-        }
+        guard let record = terminalRecord(at: paneID) else { return .unavailable(chatCannotTell(program)) }
         return try await chatBinder(paneID: paneID, program: program, core: inventoryCore)
             .check(record, coreCarries: leakedEnvironmentNames)
+    }
+
+    /// What Chat says when nothing names the session, in this Host's form.
+    func chatCannotTell(_ program: ChatProgram) -> ChatUnavailableReason {
+        kernel == HerdrCoreLocator.windowsKernel ? .cannotTellSessionOnWindows(program) : .cannotTellSession(program)
     }
 
     private func chatBinder(paneID: String, program: ChatProgram, core: String?) -> HerdrCoreSessionBinder {

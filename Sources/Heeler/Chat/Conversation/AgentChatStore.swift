@@ -41,6 +41,8 @@ struct ChatPickIO: Sendable {
         @MainActor @Sendable (ChatSessionCandidate, ChatSessionCandidates, TerminalCorePin?) async throws -> Void
     /// The send guard failed: forgets the choice on this device and removes its label.
     var drop: @MainActor @Sendable () -> Void
+    /// What Chat says once the choice is gone, in this Host's form.
+    var cannotTell: @MainActor @Sendable () -> ChatUnavailableReason
 }
 
 /// Chat's candidate list on request.
@@ -1493,7 +1495,7 @@ final class AgentChatStore {
         // A check on its way read the label as it was.
         sessionRecordRevision += 1
         source.picks?.drop()
-        adoptEvidence(.unavailable(.cannotTellSession(program)))
+        adoptEvidence(.unavailable(source.picks?.cannotTell() ?? .cannotTellSession(program)))
     }
 
     // MARK: Start screen
