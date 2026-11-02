@@ -107,7 +107,8 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   PATH the space takes its directory's name. Until a later ticket turns them on,
   what a Windows core Host cannot do stays hidden whatever its connection reads,
   stopped, update required, not installed or a refused session name included:
-  Send, Stop, Chat, Rename and Worktrees. Changes and Skills, which run POSIX
+  Rename, Worktrees and Chat for a program not confirmed there. Send and Stop are
+  on (ADR 0035). Changes and Skills, which run POSIX
   scripts on the Host, and Grok Build's status edit, which reads and writes through
   them, are not offered there either, so a native Windows Herdr TUI Host differs: it
   keeps showing the first two as ADR 0018 left them. New Agent, New Terminal and New Workspace
