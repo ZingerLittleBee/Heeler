@@ -169,6 +169,7 @@ struct HostHelperScript: Sendable, Equatable {
             "__h_dir=\"$__h_data\"/\(quote(helperDirectorySuffix))",
             "__h_app=\"$__h_dir\"/\(quote(appFolderName))",
             "__h_session=\"$__h_dir\"/sessions/\(quote(session))",
+            nodeGoneFunction,
             "__h_usage() {",
             "  [ -f \"$__h_app/main.js\" ] || { printf 'helper-absent\\n'; return 0; }",
             "  [ -f \"$__h_app/usage-query.js\" ] || { printf 'helper-outdated\\n'; return 0; }",
@@ -177,7 +178,16 @@ struct HostHelperScript: Sendable, Equatable {
             "  case \"$__h_node\" in /*) ;; *) \(missing); return 0 ;; esac",
             "  \"$__h_node\" \"$__h_app/usage-query.js\" --tz \(quote(timeZone)) --session \(quote(session))\(flags)",
             "  __h_result=$?",
-            "  case \"$__h_result\" in 126|127) \(missing); return 0 ;; *) return \"$__h_result\" ;; esac",
+            "  case \"$__h_result\" in 126|127) ;; *) return \"$__h_result\" ;; esac",
+            // A service on a Node.js that runs rewrites this record when it next
+            // reaches the core. One on the same lost Node.js never will.
+            "  case \"$(uname -s)\" in",
+            "  Darwin) __h_service_node=$(launchctl print \"user/$(id -u)/\(HostHelperLaunchAgent.label)\" 2>/dev/null | \(programOfPrint)) ;;",
+            "  *) case \"$XDG_CONFIG_HOME\" in /*) __h_config=\"$XDG_CONFIG_HOME\";; *) __h_config=\"$HOME/.config\";; esac",
+            "     __h_service_node=$(\(programOfUnit)) ;;",
+            "  esac",
+            "  if __h_node_gone \"$__h_service_node\"; then printf '\(serviceNodeGoneLine)\\n'; else \(missing); fi",
+            "  return 0",
             "}",
             "__h_usage",
             "__h_result=$?",
@@ -185,6 +195,21 @@ struct HostHelperScript: Sendable, Equatable {
             ") | head -c 1048576",
         ]
     }
+
+    /// What the probe and a Usage read say of a service whose Node.js has gone.
+    static let serviceNodeGoneLine = "helper-node-gone"
+
+    /// The Node.js a loaded LaunchAgent would start next, from `launchctl print`.
+    private static let programOfPrint = "sed -n 's/^\tprogram = //p'"
+    /// The same from the unit as `HostHelperUnit` wrote it. `__h_node_gone` reads
+    /// nothing into a path that still holds a backslash, which this does not undo.
+    private static let programOfUnit =
+        "sed -n 's/^ExecStart=\"\\(.*\\)\" \".*$/\\1/p' \"$__h_config/systemd/user/\(unitName)\" 2>/dev/null "
+        + "| sed 's/%%/%/g; s/\\$\\$/$/g'"
+    /// True for a path a service names that cannot run now.
+    private static let nodeGoneFunction =
+        "__h_node_gone() { case \"$1\" in *\\\\*) return 1 ;; /*) "
+        + "if [ -f \"$1\" ] && [ -x \"$1\" ]; then return 1; fi; return 0 ;; esac; return 1; }"
 
     /// A tree's hashes as `hash <sum> <path under root>` lines, or one
     /// `hash-tool-missing` line on a Host with neither tool.
@@ -209,6 +234,7 @@ struct HostHelperScript: Sendable, Equatable {
         "printf 'user %s\\n' \"$__h_user\"",
     ] + locations + [
         "( \(NodeToolchainProbe.nodeOnlyScript) )",
+        nodeGoneFunction,
         "if [ \"$__h_kernel\" = Darwin ]; then",
         "__h_uid=$(id -u)",
         "printf 'uid %s\\n' \"$__h_uid\"",
@@ -219,6 +245,7 @@ struct HostHelperScript: Sendable, Equatable {
         // dictionaries, its environment among them, are never read.
         "printf '%s\\n' \"$__h_print\" | while IFS= read -r __h_line; do "
             + "case \"$__h_line\" in \"\t\t\"*) ;; *) printf 'launchd %s\\n' \"$__h_line\" ;; esac; done",
+        "__h_service_node=$(printf '%s\\n' \"$__h_print\" | \(programOfPrint))",
         "else",
         // A user who has never logged in through logind has no record to show,
         // and the file is what logind itself keeps.
@@ -230,7 +257,9 @@ struct HostHelperScript: Sendable, Equatable {
             + "if __h_unit=$(\(systemctlCommand(["show", unitName, "-p", "LoadState", "-p", "ActiveState", "-p", "Result", "-p", "NRestarts"])) 2>/dev/null); then "
             + "printf '%s\\n' \"$__h_unit\" | while IFS= read -r __h_line; do printf 'unit %s\\n' \"$__h_line\"; done; "
             + "else printf 'unit-unreachable\\n'; fi; else printf 'no-systemd\\n'; fi",
+        "__h_service_node=$(\(programOfUnit))",
         "fi",
+        "if __h_node_gone \"$__h_service_node\"; then printf '\(serviceNodeGoneLine)\\n'; fi",
         "__h_dir=\"$__h_data/\(helperDirectorySuffix)\"",
         "__h_app=\"$__h_dir/\(appFolderName)\"",
         "__h_hex() { od -An -v -tx1 \"$1\" | tr -d ' \\n'; }",
@@ -346,6 +375,9 @@ struct HostHelperProbe: Sendable, Equatable {
     var health: HostHelperHealth?
     /// Whether the LaunchAgent's property list is in the user's LaunchAgents folder.
     var launchAgentFilePresent = false
+    /// The Node.js the service names cannot run now. A process already running on
+    /// it carries on, so nothing else about the service shows this.
+    var serviceNodeGone = false
     var appPresent = false
     var manifest: Data?
     var record: Data?
@@ -428,6 +460,7 @@ struct HostHelperProbe: Sendable, Equatable {
                 unitReachable = true
                 let pair = value.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
                 if pair.count == 2 { unit[String(pair[0])] = String(pair[1]) }
+            case HostHelperScript.serviceNodeGoneLine: serviceNodeGone = true
             case "app-present": appPresent = true
             case "manifest": manifest = Self.bytes(hex: value)
             case "record": record = Self.bytes(hex: value)

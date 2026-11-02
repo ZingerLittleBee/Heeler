@@ -525,6 +525,75 @@ struct HostHelperMacOSTests {
         #expect(!journal.contains { $0.contains("kickstart") })
     }
 
+    // MARK: Node.js gone from under a running Helper
+
+    @Test func aRunningHelperWhoseNodeHasGoneOffersRepairAndKeepsNotifying() async throws {
+        let host = try await installed()
+        await host.configure { $0.serviceNodeGone = true }
+        let reading = try await installer(host).check()
+        #expect(reading.status == .serviceNodeGone)
+        #expect(reading.installAction == .repair)
+        let presentation = reading.presentation
+        #expect(presentation.value == "Node.js Moved")
+        #expect(presentation.detail.contains("Repair"))
+        #expect(presentation.needsAttention)
+        let standing = reading.notificationStanding
+        #expect(standing.canRegister)
+        #expect(standing.drivesLiveActivity)
+        #expect(standing.requirement?.hasPrefix("Host Helper: Node.js Moved.") == true)
+    }
+
+    @Test func aRepairSetsTheServiceUpOnTheNodeTheHostHasNow() async throws {
+        let host = try await installed()
+        await host.configure {
+            $0.serviceNodeGone = true
+            $0.node = .found(path: "/opt/homebrew/Cellar/node/25.0.0/bin/node")
+        }
+        let installer = installer(host)
+        let after = try await installer.install(over: try await installer.check(), bundle: bundle)
+        let list = try #require(await host.files[agent]?.contents)
+        let parsed = try #require(try PropertyListSerialization.propertyList(from: list, format: nil) as? [String: Any])
+        #expect((parsed["ProgramArguments"] as? [String])?.first == "/opt/homebrew/Cellar/node/25.0.0/bin/node")
+        #expect(after.status == current)
+        #expect(after.installAction == nil)
+    }
+
+    /// Repair names what is wrong first: a Helper not staying up says so.
+    @Test func aFailedHelperStillReadsAsFailedWhenItsNodeHasGone() async throws {
+        let host = try await installed()
+        let failing = try LaunchctlFixture.text("failed-node-missing")
+        await host.configure {
+            $0.serviceNodeGone = true
+            $0.launchctlPrints = [failing, failing]
+        }
+        guard case .serviceFailed = try await installer(host).check().status else {
+            Issue.record("expected Service Failed")
+            return
+        }
+    }
+
+    @Test func anOlderHelperOffersItsUpdateWhichAlsoFixesTheNode() async throws {
+        let host = await ScriptedHelperHost.macOS()
+        let installer = installer(host)
+        _ = try await installer.install(
+            over: try await installer.read(), bundle: HostHelperFixture.bundle(version: "0.0.1"))
+        await host.configure { $0.serviceNodeGone = true }
+        let reading = try await installer.check()
+        #expect(reading.installAction == .update)
+        #expect(reading.status == .installed(version: PluginVersion(0, 0, 1), updateAvailable: true))
+    }
+
+    @Test func noNodeOnTheHostSaysThatRatherThanOfferARepairItCannotDo() async throws {
+        let host = try await installed()
+        await host.configure {
+            $0.serviceNodeGone = true
+            $0.node = .missing
+        }
+        let reading = try await installer(host).check()
+        #expect(reading.status == .nodeMissing(tooOld: nil))
+        #expect(reading.installAction == nil)
+    }
+
     // MARK: A restart of the Mac
 
     @Test func anAgentARestartLeftOutIsLoadedAgainWithoutWritingAnything() async throws {

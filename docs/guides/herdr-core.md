@@ -355,6 +355,7 @@ After a restart of the Mac the Helper may not be running until Heeler next reach
 | **Damaged** | Files are missing or changed. **Repair** puts them back |
 | **Node.js Missing** | The Host has no Node.js, or one too old to run the Helper |
 | **Linger Off** | Runs only while you are logged in |
+| **Node.js Moved** | Still running, but the Node.js it was set up with has gone from where the service names it, for example after a Homebrew upgrade removed that version. Usage cannot read, and the Helper would not start again after a restart. **Repair** sets it up with the Node.js the Host has now |
 | **Service Failed** | The service stopped and will not start again by itself, or on macOS keeps failing, for example after Node.js moved. **Repair** sets it up with the Node.js the Host has now. A Helper a newer version of Heeler installed reads this too, and updating the app is what changes it |
 | **Not Available** | This platform has no Helper |
 
@@ -398,6 +399,7 @@ To count more Claude Code sign-ins, open **Claude Code Accounts**. Heeler sugges
 | **Usage needs the Host Helper** | See the Host Helper row on the Host's detail, which says whether this Host can take one |
 | **Usage needs a newer Host Helper** | Update it from the Host's detail |
 | **The Host Helper has not reached this session's core yet** | Start the core if it is not running. Heeler keeps checking, and the Helper never starts one |
+| **The Node.js the Host Helper was set up with has gone from this Host** | Tap **Repair** on the Host's detail, which sets it up with the Node.js the Host has now. Usage then waits for the Helper to reach the core again |
 | **Usage comes with the Host Helper, which is not available on native Windows yet** | Nothing for now |
 
 On macOS, Claude Code keeps its sign-in in the login keychain, which neither the Helper nor SSH can reach, so its Usage Limits read **need your own login on this Mac**. Token Usage still counts.

@@ -462,6 +462,25 @@ struct HostHelperServiceTests {
         #expect(await !host.filePaths().contains { $0.contains("/staging-") })
     }
 
+    @Test func aRunningServiceWhoseNodeHasGoneOffersARepairThatRestartsIt() async throws {
+        _ = try await install()
+        await host.configure {
+            $0.serviceNodeGone = true
+            $0.node = .found(path: "/usr/bin/node")
+            $0.clearLog()
+        }
+        let reading = try await installer.check()
+        #expect(reading.status == .serviceNodeGone)
+        #expect(reading.installAction == .repair)
+
+        let after = try await installer.install(over: reading, bundle: bundle)
+
+        let unit = try #require(await host.files[ScriptedHelperHost.unit]?.contents)
+        #expect(String(decoding: unit, as: UTF8.self).contains("ExecStart=\"/usr/bin/node\""))
+        #expect(await host.journal.contains("systemctl restart \(HostHelperScript.unitName)"))
+        #expect(after.status == .installed(version: HostHelperCompatibility.bundled, updateAvailable: false))
+    }
+
     @Test func aRefusedSystemctlShowsWhatItSaid() async throws {
         await host.configure { $0.systemctlFailure = "Failed to connect to bus: No medium found" }
         await #expect(

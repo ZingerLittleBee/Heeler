@@ -71,6 +71,13 @@ actor ScriptedHelperHost: HostHelperHost {
     /// Fails the Node.js run that finds the extension folders, with this message.
     var extensionFoldersFailure: String?
 
+    /// The Node.js the service names has gone. Setting the service up again with
+    /// the Host's current Node.js clears it.
+    var serviceNodeGone = false
+    /// The Node.js a session's record names has gone, which only the Helper's next
+    /// connection to that session's core rewrites.
+    var recordNodeGone = false
+
     /// What the Helper's Usage query prints, per session.
     private var usageAnswers: [String: Data] = [:]
 
@@ -306,6 +313,9 @@ actor ScriptedHelperHost: HostHelperHost {
         folders["\(directory)/sessions"] = 0o700
         folders["\(directory)/sessions/\(session)"] = 0o700
         let missing = #"{"version":1,"runtime":"missing"}"#
+        if recordNodeGone, files["\(directory)/sessions/\(session)/runtime-node"] != nil {
+            return serviceNodeGone ? "helper-node-gone" : missing
+        }
         guard files["\(directory)/sessions/\(session)/runtime-node"] != nil, let report = usageAnswers[session]
         else { return missing }
         return String(decoding: report, as: UTF8.self)
@@ -348,6 +358,7 @@ actor ScriptedHelperHost: HostHelperHost {
             activeState = "active"
             result = "success"
             runningCode = files["\(helperDirectory)/app/manifest.json"]?.contents
+            serviceNodeGone = false
         default:
             break
         }
@@ -367,6 +378,7 @@ actor ScriptedHelperHost: HostHelperHost {
             else { return ([], 5, "Bootstrap failed: 5: Input/output error") }
             agentLoaded = true
             runningCode = files["\(helperDirectory)/app/manifest.json"]?.contents
+            serviceNodeGone = false
             return ([], 0, "")
         case "bootout":
             if let bootoutRefusal { return ([], bootoutRefusal.status, bootoutRefusal.message) }
@@ -444,6 +456,7 @@ actor ScriptedHelperHost: HostHelperHost {
                 "unit Result=\(result)", "unit NRestarts=\(restarts)",
             ]
         }
+        if serviceNodeGone { lines.append("helper-node-gone") }
         let directory = helperDirectory
         if let record = files["\(directory)/installed.json"] { lines.append("record \(Self.hex(record.contents))") }
         let app = "\(directory)/app"

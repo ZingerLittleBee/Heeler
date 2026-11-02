@@ -118,6 +118,7 @@ case "parse-probe":
         "record": probe.record.map { String(decoding: $0, as: UTF8.self) } ?? "",
         "hashes": probe.hashes,
         "hashToolMissing": probe.hashToolMissing,
+        "serviceNodeGone": probe.serviceNodeGone,
     ]
     let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys])
     print(String(decoding: data, as: UTF8.self))
@@ -374,6 +375,75 @@ class ProbeTests(HelperScriptCase):
                 self.assertEqual(probe["manifest"], '{"v":1}\n')
                 self.assertEqual(probe["record"], '{"files":["é"]}')
                 self.assertEqual(probe["hashes"], hashes)
+
+
+class ServiceNodeTests(HelperScriptCase):
+    """Whether the Node.js the service names can still run, which a live process never shows."""
+
+    LABEL = "dev.bybee.heeler.host-helper"
+
+    def node_path(self, name: str = "node", exists: bool = True) -> Path:
+        node = self.root / "keg 24%" / "bin" / name
+        if exists:
+            node.parent.mkdir(parents=True, exist_ok=True)
+            node.write_text("#!/bin/sh\n")
+            node.chmod(0o755)
+        return node
+
+    def write_unit(self, node: Path | str) -> None:
+        unit = subprocess.run(
+            [str(self.binary), "unit", '{"step":"locate"}', str(node), f"{self.helper_dir}/app/main.js"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+        path = self.home / ".config/systemd/user/heeler-host-helper.service"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(unit)
+
+    def use_print_naming(self, node: Path) -> None:
+        text = (LAUNCHCTL_FIXTURES / "running.txt").read_text()
+        printed = self.root / "print.txt"
+        printed.write_text(text.replace("\tprogram = /opt/homebrew/bin/node", f"\tprogram = {node}"))
+        self.env["FAKE_LAUNCHCTL_PRINT"] = str(printed)
+        self.env["FAKE_KERNEL"] = "Darwin"
+
+    def test_a_unit_whose_node_has_gone_says_so_under_every_shell(self) -> None:
+        self.write_unit(self.node_path(exists=False))
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertTrue(self.probe(shell)["serviceNodeGone"])
+
+    def test_a_unit_whose_node_runs_says_nothing(self) -> None:
+        self.write_unit(self.node_path())
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertFalse(self.probe(shell)["serviceNodeGone"])
+
+    def test_a_node_that_is_not_executable_counts_as_gone(self) -> None:
+        node = self.node_path()
+        node.chmod(0o644)
+        self.write_unit(node)
+        self.assertTrue(self.probe()["serviceNodeGone"])
+
+    def test_a_host_with_no_unit_says_nothing(self) -> None:
+        self.assertFalse(self.probe()["serviceNodeGone"])
+
+    def test_a_path_the_check_cannot_read_back_says_nothing(self) -> None:
+        self.write_unit(self.root / "a\\b" / "node")
+        self.assertFalse(self.probe()["serviceNodeGone"])
+
+    def test_a_launchagent_whose_node_has_gone_says_so_under_every_shell(self) -> None:
+        self.use_print_naming(self.node_path(exists=False))
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertTrue(self.probe(shell)["serviceNodeGone"])
+
+    def test_a_launchagent_whose_node_runs_says_nothing(self) -> None:
+        self.use_print_naming(self.node_path())
+        self.assertFalse(self.probe()["serviceNodeGone"])
+
+    def test_an_agent_launchd_does_not_hold_says_nothing(self) -> None:
+        self.env["FAKE_KERNEL"] = "Darwin"
+        self.assertFalse(self.probe()["serviceNodeGone"])
 
 
 class InstallStepTests(HelperScriptCase):
@@ -775,6 +845,43 @@ printf '{{}}\\n'
         node = self.record("#!/bin/sh\nexit 127\n")
         self.assertEqual(self.query(), (self.MISSING, "0"))
         node.unlink()
+        self.assertEqual(self.query(), (self.MISSING, "0"))
+
+    def unit_names(self, node: Path) -> None:
+        unit = self.home / ".config/systemd/user/heeler-host-helper.service"
+        unit.parent.mkdir(parents=True, exist_ok=True)
+        unit.write_text(f'[Service]\nExecStart="{node}" "{self.helper_dir}/app/main.js"\n')
+
+    def test_a_record_and_a_service_on_a_node_that_has_gone_ask_for_repair(self) -> None:
+        self.installed()
+        node = self.record("#!/bin/sh\n")
+        node.unlink()
+        self.unit_names(node)
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.query(shell), ("helper-node-gone", "0"))
+
+    def test_a_mac_whose_record_and_agent_name_a_node_that_has_gone_asks_for_repair(self) -> None:
+        self.env["FAKE_KERNEL"] = "Darwin"
+        self.helper_dir = self.home / "Library/Application Support/heeler/host-helper"
+        self.installed()
+        node = self.record("#!/bin/sh\n")
+        node.unlink()
+        printed = self.root / "print.txt"
+        printed.write_text(
+            (LAUNCHCTL_FIXTURES / "running.txt").read_text().replace(
+                "\tprogram = /opt/homebrew/bin/node", f"\tprogram = {node}"))
+        self.env["FAKE_LAUNCHCTL_PRINT"] = str(printed)
+        self.assertEqual(self.query(), ("helper-node-gone", "0"))
+
+    def test_a_service_repaired_onto_another_node_waits_for_its_next_record(self) -> None:
+        self.installed()
+        node = self.record("#!/bin/sh\n")
+        node.unlink()
+        repaired = self.root / "new-node"
+        repaired.write_text("#!/bin/sh\n")
+        repaired.chmod(0o755)
+        self.unit_names(repaired)
         self.assertEqual(self.query(), (self.MISSING, "0"))
 
     def test_a_relative_node_is_never_run(self) -> None:

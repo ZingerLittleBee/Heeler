@@ -121,6 +121,9 @@ struct AgentUsagePresentationTests {
              ["Usage needs a newer Host Helper. Update it from this Host's details."]),
             (.init(state: .hostHelper(.waitingForCore)),
              ["The Host Helper has not reached this session's core yet. Start the core if it is not running."]),
+            (.init(state: .hostHelper(.nodeGone)),
+             ["The Node.js the Host Helper was set up with has gone from this Host. "
+                + "Repair it from this Host's details."]),
             (.init(state: .hostHelper(.notOnWindows)),
              ["Usage comes with the Host Helper, which is not available on native Windows yet."]),
             (.init(state: .runtimeMissing),

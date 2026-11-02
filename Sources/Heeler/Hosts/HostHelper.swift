@@ -194,6 +194,9 @@ enum HostHelperStatus: Sendable, Equatable {
     /// `tooOld` is the version the Host has, when it has one.
     case nodeMissing(tooOld: String?)
     case lingerOff
+    /// Running, on a Node.js that has since gone from where the service names it,
+    /// so it would not start again and Usage has nothing to run.
+    case serviceNodeGone
     /// `health` is nil when systemd's user manager could not be reached. On a
     /// Mac it also stands for an agent that is not staying up, or not loaded.
     case serviceFailed(HostHelperHealth?)
@@ -300,6 +303,8 @@ struct HostHelperReading: Sendable, Equatable {
                 return nodeProblem ?? (filesInPlace ? .serviceFailed(health) : .damaged)
             }
             if !health.isUp { return nodeProblem ?? .serviceFailed(health) }
+            // An older Helper's Update sets the service up again too.
+            if probe.serviceNodeGone, version >= bundled { return nodeProblem ?? .serviceNodeGone }
             if probe.manager == .systemd, !probe.lingerOn { return .lingerOff }
             return .installed(version: version, updateAvailable: version < bundled)
         }
@@ -339,7 +344,7 @@ struct HostHelperReading: Sendable, Equatable {
         case .intact(let version):
             if version < bundled { return .update }
             switch status {
-            case .damaged, .serviceFailed: return .repair
+            case .damaged, .serviceFailed, .serviceNodeGone: return .repair
             default: return lacksAnExtension ? .repair : nil
             }
         }
@@ -406,8 +411,9 @@ struct HostHelperNotificationStanding: Sendable, Equatable {
                 lacksLiveActivity
                 ? "Host Helper: \(presentation.value). Live Activity needs a newer Host Helper. \(action)" : nil
             drivesLiveActivity = !lacksLiveActivity
-        case .lingerOff:
-            // It runs now, so it notifies, only not once the last login has ended.
+        case .lingerOff, .serviceNodeGone:
+            // It runs now, so it notifies, only not once the last login has ended
+            // or once this process ends.
             canRegister = true
             requirement = asRequirement
             drivesLiveActivity = !lacksLiveActivity
@@ -467,6 +473,12 @@ struct HostHelperPresentation: Sendable, Equatable {
             value = "Linger Off"
             detail = "The Host Helper stops about ten seconds after your last login to this Host ends, "
                 + "unless systemd linger is on."
+            needsAttention = true
+        case .serviceNodeGone:
+            value = "Node.js Moved"
+            detail = "The Host Helper is running, but the Node.js it was set up with has gone from this Host, "
+                + "so Usage cannot read and the Helper would not start again. "
+                + "Repair sets it up again with the Node.js this Host has now."
             needsAttention = true
         case .serviceFailed(let health):
             value = "Service Failed"

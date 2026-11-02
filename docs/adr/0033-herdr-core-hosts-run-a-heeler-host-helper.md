@@ -277,6 +277,18 @@ Hosts are unchanged.
   back alone once the path did, but with nobody logged in it was still down
   after almost five minutes, and `launchctl kickstart` blocked until the service
   was booted out. So a repair uses `bootout` then `bootstrap`, in a bounded exec.
+- A Helper already running outlives the Node.js it started from, so neither
+  service manager reports anything when an upgrade removes a versioned path, as
+  Homebrew's and nvm's are, though a restart would fail and Usage, which runs the
+  path the session's record names, cannot read. The probe therefore checks the
+  path the service would start next: `program` in `launchctl print` on a Mac, and
+  `ExecStart` in the unit it wrote on Linux. A path that cannot run reads as
+  **Node.js Moved** with Repair. The Helper is not made to exit over this: it still
+  sends notifications, and nothing else about it is wrong until it stops. Usage
+  asks for the Repair only when the service's path has gone too. When only the
+  record's has, the Helper rewrites that record at its next connection to the
+  core, so Usage waits for the core. The check has run against scripts and fake
+  service managers, and not yet on a Host where Node.js went away.
 - The VM showed a notification that `node` can run in the background and listed
   it under Login Items, with no mention of Heeler. What the list does when the
   user turns it off has not been tried.
