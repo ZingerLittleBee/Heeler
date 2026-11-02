@@ -383,11 +383,12 @@ struct HerdrCoreTerminalProcesses: Sendable {
     }
 
     /// The nearest process to the foreground that calls itself the program, or
-    /// the foreground itself when nothing under it could be. Nil when two are
-    /// equally near. A process `skips` names counts for nothing, and neither do
-    /// those of another scope. `followsLauncher` goes on past a launcher into the
-    /// process it started under the same name, unless `isTool` says that one is
-    /// the program's own tool and its parent is not.
+    /// the foreground itself when nothing under it could be, which a process whose
+    /// environment cannot be read could. Nil when two are equally near. A process
+    /// `skips` names counts for nothing, and neither do those of another scope.
+    /// `followsLauncher` goes on past a launcher into the process it started under
+    /// the same name, unless `isTool` says that one is the program's own tool and its
+    /// parent is not.
     func agent(
         isAgent: (HostProcessReader.Facts?) -> Bool, followsLauncher: Bool = false,
         isTool: (HostProcessReader.Facts?) -> Bool = { _ in false },
@@ -415,6 +416,7 @@ struct HerdrCoreTerminalProcesses: Sendable {
             }
             level = level.flatMap { children[$0] ?? [] }
         }
-        return (children[root] ?? []).isEmpty ? root : nil
+        let isOutOfSight = descendants.contains { facts[$0]?.variables[Self.scopeVariable] == .unavailable }
+        return (children[root] ?? []).isEmpty && !isOutOfSight ? root : nil
     }
 }

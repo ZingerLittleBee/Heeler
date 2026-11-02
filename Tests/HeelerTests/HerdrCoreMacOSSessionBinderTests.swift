@@ -555,6 +555,26 @@ struct HerdrCoreMacOSSessionBinderTests {
         #expect(try await rig.binder(.claude).candidates(of: try rig.record(foreground: launcher)) == .noProcess)
     }
 
+    /// A launcher that can be read says the scope, and what it runs through one of
+    /// Apple's binaries is out of sight below it. It is not the Agent, so nothing can
+    /// bind to its pid.
+    @Test func anAppleBinaryBelowAReadableLauncherOffersNoList() async throws {
+        let rig = try await Rig("claude-direct")
+        let row = try #require(rig.scene.processes?.first)
+        var titled = row.process
+        titled.name = "node"
+        await rig.table.add(titled)
+        for (pid, parent, name) in [(77_001, row.pid, "sh"), (77_002, 77_001, "claude")] {
+            await rig.table.add(
+                ScriptedProcessTable.Process(pid: pid, parent: parent, name: name, start: row.start, environment: [:]))
+            await rig.table.withholdEnvironment(of: pid)
+        }
+        let launcher = (pid: row.pid, name: "node", argv: ["node", "/opt/claude/cli.js"])
+
+        #expect(try await rig.binder(.claude).check(try rig.record(foreground: launcher)) == Self.cannotTell(.claude))
+        #expect(try await rig.binder(.claude).candidates(of: try rig.record(foreground: launcher)) == .noProcess)
+    }
+
     /// Linux does not withhold, so an unreadable Terminal is still no scope there.
     @Test func aLinuxHostTakesOnlyTheTerminalsOwnScope() async throws {
         let rig = try await Rig("claude-under-zsh")

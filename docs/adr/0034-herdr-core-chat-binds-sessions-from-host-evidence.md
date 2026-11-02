@@ -325,8 +325,11 @@ herdr-core Hosts only.
   `lsof`. macOS withholds an Apple platform binary's environment, which reads
   as unavailable, and so does an asked name that a process's rewritten argv
   (Node's `process.title`) leaves indistinguishable from an argument; a title
-  shorter than argv still reads. Any of these that fails leaves the program to
-  its candidate list and the leak notice to show nothing.
+  shorter than argv still reads. Open files or an asked name that cannot be read
+  leave the program to its candidate list and the leak notice to show nothing. What
+  a confirmation binds to has no such fallback: a start that cannot be read, or an
+  environment withheld between the foreground and the Agent, reads as cannot tell
+  with no list, because a list would bind to no process or to the launcher's pid.
 - Chat on a macOS core Host binds as on Linux, through the macOS forms of the same
   reads, for the same `confirmedCoreChatPrograms`: a program waiting on its owner
   check waits on both. Each of the six was seen through those reads in a macOS 26.5
@@ -341,4 +344,6 @@ herdr-core Hosts only.
   so there alone the foreground's `HC_SCOPE` stands in for the Terminal's. With both
   withheld no process is the Agent, and a walk still drops a pick whose process left.
   An Apple binary between the foreground and the Agent therefore reads as cannot
-  tell with no list.
+  tell with no list, also under a launcher that can be read, which is not taken for
+  the Agent while something below it is out of sight. Asking again finds the same,
+  so the list's answer says to start the program directly and not to retry.

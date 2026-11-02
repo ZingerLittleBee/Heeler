@@ -1362,7 +1362,7 @@ final class AgentChatStore {
                 candidates = .unavailable(ChatUnavailableReason.codexSharedDaemon.explanation)
             case .noProcess:
                 candidates = .unavailable(
-                    "Heeler can't read this Agent's process now, and a choice needs it. Check that the program still runs in its terminal, then try again.")
+                    "Heeler can't read this Agent's process, and a choice needs it. Check that the program still runs in its terminal. On a Mac, a program started through a script that Apple's /bin/sh or /bin/zsh keeps running can't be read, so start it directly instead.")
             }
         } catch {
             candidates = .unavailable(Self.message(for: error))

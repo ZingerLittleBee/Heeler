@@ -26,6 +26,8 @@ actor MacOSProcessTable {
         for row in rows { self.rows[row.pid] = row.process }
     }
 
+    func add(_ process: ScriptedProcessTable.Process) { rows[process.pid] = process }
+
     func remove(_ pid: Int) { rows[pid] = nil }
 
     func withholdEnvironment(of pid: Int) { withholdsEnvironment.insert(pid) }
