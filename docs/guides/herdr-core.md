@@ -320,7 +320,7 @@ Once a program's Chat is on, Heeler finds its conversation the same way: from th
 
 Windows has no Host Helper, so **Can't Tell the Conversation** never points you to one. Pi and Oh My Pi name their conversation through Heeler's extension, which you add from there:
 
-1. Tap **Add Heeler's Extension…**. The sheet lists each folder: `.pi\agent\extensions`, `.omp\agent\extensions` and each Oh My Pi profile's `agent\extensions` under your home folder. Those programs load what is there for every session on the machine. Nothing is written yet.
+1. Tap **Add Heeler's Extension…**. The sheet lists each folder: `.pi\agent\extensions`, `.omp\agent\extensions` and each Oh My Pi profile's `agent\extensions` under your home folder. Expect those programs to load what is there for every session on the machine, though that has not been seen on Windows yet. Nothing is written yet.
 2. Tap **Add to … Folders**. Heeler writes one file, `heeler-session.js`, into each folder, through the core.
 3. Start the Agent again, and Chat follows its conversation.
 

@@ -336,13 +336,14 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
 - The rules hold on Windows in the same costs: one exec, here
   `HostProcessReader.windowsCommand`, and at most one read, named variables only,
   never a `.key` file. Windows names a process by its image and a program cannot
-  retitle itself, so under npm the Agent is a `node.exe` or `bun.exe`: the binder
+  retitle itself, so under npm the Agent should be a `node.exe` or `bun.exe`, which
+  no run has shown: the binder
   takes the nearest process named for the program, else for Claude Code, Pi and
   Oh My Pi the nearest runtime, with no following past it, and never the PowerShell.
   A wrong pick binds nothing, because what proves the Agent is still its pid and
   start against what the program recorded, and Grok Build gets no runtime rule since
-  it is a native binary. Under `npx` the nearest runtime is the launcher, so Chat
-  says it can't tell. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the
+  it is a native binary. Under `npx` the nearest runtime should be the launcher, so
+  Chat would say it can't tell; no Agent has run that way on Windows. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the
   launch runs under PowerShell, and open files are not read. Chat's cannot-tell there
   is its own reason, `cannotTellSessionOnWindows`, which never offers the Helper,
   and offers no candidates yet: open files are not read there, and no listing of a
