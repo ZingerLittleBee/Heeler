@@ -350,12 +350,12 @@ herdr-core Hosts only.
   withholds `/bin/zsh`'s environment, which is usually the Terminal's own process,
   so there alone the foreground's `HC_SCOPE` stands in for the Terminal's. With both
   withheld no process is the Agent, and a walk still drops a pick whose process left.
+  An Apple binary between the foreground and the Agent therefore reads as cannot
+  tell with no list, also under a launcher that can be read, which is not taken for
+  the Agent while something below it is out of sight. Asking again finds the same,
+  so the list's answer says to start the program directly and not to retry.
   A process's name there comes from `ps -o comm=`, which is argv[0] and so a
   program's title: a Node program names itself no other way. That is the one part of
   an argv a check brings off the Host. Only its last path part leaves, only when it
   holds nothing but `[A-Za-z0-9._-]`, which rules out `--token=x` but not a bare token
   a process set as its argv[0], and it is only ever compared to a program's name.
-  An Apple binary between the foreground and the Agent therefore reads as cannot
-  tell with no list, also under a launcher that can be read, which is not taken for
-  the Agent while something below it is out of sight. Asking again finds the same,
-  so the list's answer says to start the program directly and not to retry.
