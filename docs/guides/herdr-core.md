@@ -257,6 +257,23 @@ Codex on its shared background server offers no list, only `codex resume --no-da
 | **Transcript Saving Is Off** | The Agent runs with the variable Chat names, `CLAUDE_CODE_CHILD_SESSION` or `CLAUDE_CODE_SKIP_PROMPT_HISTORY`, so it keeps no conversation to read. Start it again without the variable. If the core itself carries it, the Host's **Core Environment** says how to fix that |
 | **Restarting…**, **The Agent ended** or **The Agent is gone** | The program in the Agent's Terminal was lost, exited, or gave way to a shell. Chat stays on the conversation and sends nothing, and follows the next Claude Code started at that address |
 
+### Let Chat follow OpenCode
+
+This offer stays off with OpenCode's Chat until OpenCode passes its check, so for now an OpenCode Agent offers the terminal alone. Once its Chat is on, it works like this:
+
+When Chat can't tell an OpenCode Agent's conversation, it offers **Let Chat Follow OpenCode…**, in the conversation's place or on the banner over one it keeps showing. This is the only OpenCode setting Heeler changes, and it does nothing until you agree.
+
+The sheet shows the exact change: the folder `heeler-opencode` with Heeler's plugin files, under `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`, and the one entry `"./heeler-opencode"` in the file your release reads. That is `plugin` in `tui.json` or `tui.jsonc` on OpenCode 1.x, and `plugins` in `cli.json` on 2.x. Tap **Apply This Change**, then start OpenCode again. Chat then follows its conversation, through `/new` and picks in its list too.
+
+If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler can't read the file with certainty, or can't read which OpenCode the Host runs, it writes nothing and says what to add by hand. On OpenCode 1.x, a file with a `tui` section is one of those: the entry goes in `plugin` inside `tui`, because a `plugin` at the top of the file would replace that list. The plugin's files for that are in `plugin/helper/extensions/opencode` in Heeler's repository.
+
+The plugin does nothing outside a herdr-core Terminal. It only tells the core which conversation OpenCode shows, as a Terminal label.
+
+**Undo** in the same sheet, or under **Harness Edits** in the Host's detail, takes the entry out and then the plugin's files and folder. Anything else you changed in the file since stays. Heeler keeps a folder that now holds something of yours, or that another file it edited still names, as after applying again once OpenCode moved to 2.x. If a file in the folder changes while Heeler removes it, Heeler says so and **Undo** again finishes. Removing the [Host Helper](#host-helper) from the device that made the edit undoes it too, and from another device leaves it in place, where it does nothing without a core.
+
+- A later app update does not refresh the plugin's copy. **Undo** and apply again to update it.
+- OpenCode 1.x gets its conversation named this way, but Chat reads only OpenCode 2.x's format, so an OpenCode that has never moved to 2.x says so instead of showing the conversation. The sheet says this before you apply the change.
+
 ### Pi and Oh My Pi
 
 Chat for Pi and Oh My Pi stays off until each program passes a check with a signed-in account, so for now both offer the terminal alone. Once a program's Chat is on, it works like this:
@@ -322,21 +339,6 @@ When Heeler can't read the Agent's process at all, **Can't Tell the Conversation
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
 - If Heeler cannot read its saved herdr-core Hosts, the Hosts tab says so. Herdr TUI Hosts keep working and the saved data stays as it was, but no herdr-core Host can be added until it reads again.
-
-### Let Chat follow OpenCode
-
-When Chat can't tell an OpenCode Agent's conversation, it offers **Let Chat Follow OpenCode…**, in the conversation's place or on the banner over one it keeps showing. This is the only OpenCode setting Heeler changes, and it does nothing until you agree.
-
-The sheet shows the exact change: the folder `heeler-opencode` with Heeler's plugin files, under `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`, and the one entry `"./heeler-opencode"` in the file your release reads. That is `plugin` in `tui.json` or `tui.jsonc` on OpenCode 1.x, and `plugins` in `cli.json` on 2.x. Tap **Apply This Change**, then start OpenCode again. Chat then follows its conversation, through `/new` and picks in its list too.
-
-If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler can't read the file with certainty, or can't read which OpenCode the Host runs, it writes nothing and says what to add by hand. On OpenCode 1.x, a file with a `tui` section is one of those: the entry goes in `plugin` inside `tui`, because a `plugin` at the top of the file would replace that list. The plugin's files for that are in `plugin/helper/extensions/opencode` in Heeler's repository.
-
-The plugin does nothing outside a herdr-core Terminal. It only tells the core which conversation OpenCode shows, as a Terminal label.
-
-**Undo** in the same sheet, or under **Harness Edits** in the Host's detail, takes the entry out and then the plugin's files and folder. Anything else you changed in the file since stays. Heeler keeps a folder that now holds something of yours, or that another file it edited still names, as after applying again once OpenCode moved to 2.x. If a file in the folder changes while Heeler removes it, Heeler says so and **Undo** again finishes. Removing the [Host Helper](#host-helper) from the device that made the edit undoes it too, and from another device leaves it in place, where it does nothing without a core.
-
-- A later app update does not refresh the plugin's copy. **Undo** and apply again to update it.
-- OpenCode 1.x gets its conversation named this way, but Chat reads only OpenCode 2.x's format, so an OpenCode that has never moved to 2.x says so instead of showing the conversation. The sheet says this before you apply the change.
 
 ## Host Helper
 
