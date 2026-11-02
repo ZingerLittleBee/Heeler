@@ -19,8 +19,6 @@ actor MacOSProcessTable {
     private var isPastTheWalksCap = false
 
     private(set) var requests: [HostProcessReader.Request] = []
-    /// Each exec's stdout, which a test can search for what it must not carry.
-    private(set) var outputs: [String] = []
 
     init(_ rows: [HostEvidenceFixture.Row] = []) {
         for row in rows { self.rows[row.pid] = row.process }
@@ -40,9 +38,7 @@ actor MacOSProcessTable {
 
     func read(_ request: HostProcessReader.Request) throws -> [String: HostProcessReader.Facts] {
         requests.append(request)
-        let text = render(request)
-        outputs.append(text)
-        return try HostProcessReader.parse(stdout: Data(text.utf8), nonce: Self.nonce, request: request)
+        return try HostProcessReader.parse(stdout: Data(render(request).utf8), nonce: Self.nonce, request: request)
     }
 
     private func render(_ request: HostProcessReader.Request) -> String {
