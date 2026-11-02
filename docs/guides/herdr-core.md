@@ -295,7 +295,7 @@ On a native Windows core Host, each program's Chat turns on only once it has pas
 
 A native Windows Herdr TUI Host offers no Chat for any Agent.
 
-Once a program's Chat is on, Heeler finds its conversation the same way: from the Agent's own process, here a child of the Terminal's PowerShell, and its creation time. Send, Stop and Blocked answers work as above, with the limit [Send](#send) describes for a Terminal that keeps a shell open.
+Once a program's Chat is on, Heeler finds its conversation the same way: from the Agent's own process, here usually a child of the Terminal's PowerShell, and its creation time. Send, Stop and Blocked answers work as above, with the limit [Send](#send) describes for a Terminal that keeps a shell open.
 
 Windows has no Host Helper, so **Can't Tell the Conversation** never points you to one. Pi and Oh My Pi name their conversation through Heeler's extension, which you add from there:
 
