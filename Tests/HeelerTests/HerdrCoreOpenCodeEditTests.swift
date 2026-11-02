@@ -60,7 +60,7 @@ struct HerdrCoreOpenCodeEditTests {
             },
             makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) },
             harnessEdits: HarnessConfigEditStore(),
-            openCodePluginBundle: { bundle })
+            hostHelperBundle: { bundle })
         store.setHosts([host])
         await store.resume()
         try await waitUntil("the first snapshot") { !store.hostsAwaitingSnapshot.contains(host.id) }
