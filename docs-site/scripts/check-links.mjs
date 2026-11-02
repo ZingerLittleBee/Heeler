@@ -158,9 +158,46 @@ for (const file of markdownFiles) {
   if (!expectedMarkdown.has(file)) failures.push(`unexpected Markdown /${file} (not a published guide)`);
 }
 
+// 4. Canonical/indexing contracts and reciprocal language alternatives.
+const origin = 'https://docs.heeler.bybee.dev';
+const sitemap = readFileSync(join(dist, 'sitemap-0.xml'), 'utf8');
+const sitemapURLs = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]);
+const indexable = [...expected].filter((route) => route !== '/404').map((route) => `${origin}${route}`);
+if (JSON.stringify([...sitemapURLs].sort()) !== JSON.stringify(indexable.sort())) {
+  failures.push('sitemap must contain exactly the clean canonical URLs, without 404 or non-HTML endpoints');
+}
+for (const [route, { html }] of pages) {
+  const canonical = [...html.matchAll(/<link rel="canonical" href="([^"]+)"/g)].map((match) => match[1]);
+  const noindex = /name="robots" content="noindex"/.test(html);
+  if (route === '/404') {
+    if (!noindex || canonical.length || html.includes('application/ld+json')) failures.push('/404: must be noindex without canonical or structured data');
+    continue;
+  }
+  if (noindex || canonical.length !== 1 || canonical[0] !== `${origin}${route}`) failures.push(`${route}: incorrect canonical or indexing directive`);
+  if (!html.includes('name="apple-itunes-app" content="app-id=6797263135"')) failures.push(`${route}: missing Smart App Banner`);
+  const en = route === '/zh' ? '/' : route.replace(/^\/zh\//, '/');
+  const zh = en === '/' ? '/zh' : `/zh${en}`;
+  for (const [lang, target] of [['en', en], ['zh-CN', zh], ['x-default', en]]) {
+    if (!html.includes(`hreflang="${lang}" href="${origin}${target}"`)) failures.push(`${route}: incorrect ${lang} alternate`);
+  }
+  const sitemapEntry = [...sitemap.matchAll(/<url>(.*?)<\/url>/g)].find((match) => match[1].includes(`<loc>${origin}${route}</loc>`))?.[1] ?? '';
+  for (const [lang, target] of [['en', en], ['zh-CN', zh]]) {
+    if (!sitemapEntry.includes(`hreflang="${lang}" href="${origin}${target}"`)) failures.push(`${route}: incorrect ${lang} sitemap alternate`);
+  }
+  const graph = JSON.parse(html.match(/<script[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/s)?.[1] ?? '{}')['@graph'] ?? [];
+  if (route !== '/' && route !== '/zh') {
+    const article = graph.find((item) => item['@type'] === 'TechArticle');
+    const breadcrumb = graph.find((item) => item['@type'] === 'BreadcrumbList');
+    if (article?.url !== `${origin}${route}` || breadcrumb?.itemListElement?.[1]?.item !== article?.url) failures.push(`${route}: incorrect article/breadcrumb data`);
+  }
+  for (const [tag] of html.matchAll(/<img\b[^>]*src="\/images\/[^>]*>/g)) {
+    if (!/\sheight="\d+"/.test(tag) || !tag.includes('loading="lazy"')) failures.push(`${route}: screenshot needs height and lazy loading`);
+  }
+}
+
 if (failures.length > 0) {
   console.error(`check-links: ${failures.length} problem(s)\n`);
   for (const failure of failures) console.error(`  ${failure}`);
   process.exit(1);
 }
-console.log(`check-links: ${pages.size} pages and ${markdownFiles.size} guide Markdown files; all internal links and fragments resolve.`);
+console.log(`check-links: ${pages.size} pages and ${markdownFiles.size} guide Markdown files; links, fragments, metadata, and ${sitemapURLs.length} bilingual sitemap URLs passed.`);

@@ -249,6 +249,26 @@ The Geist and Geist Mono variable fonts in `src/styles/fonts/` and
 The fonts come from the `geist` npm package (SIL Open Font License 1.1,
 `LICENSE.txt` alongside them).
 
+## Search and sharing
+
+`@astrojs/sitemap` includes only clean HTML page URLs, with reciprocal `en`
+and `zh-CN` alternatives. The layout also emits `x-default` links to English,
+localized Twitter metadata, and JSON-LD (`WebSite`, plus `TechArticle` and
+`BreadcrumbList` for guides). It omits canonical, alternates, and JSON-LD on
+the `noindex` 404 page. `pnpm run check:links` checks these build outputs.
+
+`public/_headers` keeps guide Markdown and both static search indexes available
+but sends `X-Robots-Tag: noindex`; do not disallow crawling them in robots.txt,
+which would hide that directive. Its `/*.md` splat includes `/zh/` paths.
+Only fingerprinted `/_astro/*` assets get immutable caching. Verify these
+rules with `pnpm exec wrangler dev --local`, not Astro preview.
+
+`rehypeGuideImages` uses real screenshot dimensions from `astro.config.mjs`
+to reserve their aspect ratios and add lazy loading without changing the
+GitHub guides or full-resolution lightbox links. Icons and the square sharing
+image follow [the landing site's asset notes](../landing/README.md#search-and-sharing).
+Managed robots and HTTPS redirect policy still require Cloudflare review.
+
 ## Deployment
 
 `wrangler.toml` describes an assets-only Worker (`heeler-docs`) bound to the
