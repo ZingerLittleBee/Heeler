@@ -136,6 +136,32 @@ struct HerdrCoreWindowsTransportTests {
         }
     }
 
+    // MARK: A `connect` that does not last
+
+    /// The marker is `cmd`'s, printed before `connect` runs.
+    @Test func aConnectThatExitsAfterTheMarkerSaysSo() async throws {
+        let host = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(), channel: .execEnds(afterMarker: true))
+        let transport = host.transport()
+
+        await #expect(
+            throws: TransportError.channelFailed(detail: "herdr-core connect exited before answering hello.")
+        ) { _ = try await transport.hello() }
+        try await transport.close()
+    }
+
+    /// With no marker, `cmd` never got as far as `connect`.
+    @Test func aCommandThatEndsBeforeTheMarkerSaysConnectDidNotStart() async throws {
+        let host = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(), channel: .execEnds(afterMarker: false))
+        let transport = host.transport()
+
+        await #expect(
+            throws: TransportError.channelFailed(detail: "The command that runs herdr-core connect did not start.")
+        ) { _ = try await transport.hello() }
+        try await transport.close()
+    }
+
     // MARK: Checkouts
 
     @Test func aWindowsHostsCheckoutsComeFromItsOwnReadNotTheGitScript() async throws {

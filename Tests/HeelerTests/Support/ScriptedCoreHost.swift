@@ -14,6 +14,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         /// A core that answers `hello`, `events.subscribe`, `server.status` and
         /// `doc.get`, as `ScriptedCoreHost.Core` scripts them.
         case core(Core)
+        /// The Windows link's exec ends before anything answers `hello`.
+        case execEnds(afterMarker: Bool)
     }
 
     /// A running core's answers, for the Host session above the real link.
@@ -402,6 +404,13 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     func openCoreLinkExec(command: String) async throws -> any WindowsTerminalExecChannel {
         log.append("connect")
         connectCommands.append(command)
+        if case .execEnds(let afterMarker) = channel {
+            let socket = FakeCoreSocket()
+            self.socket = socket
+            if afterMarker { await socket.deliver(Data("\(PowerShellCommand.streamMarker)\r\n".utf8)) }
+            await socket.deliverEndOfFile()
+            return socket
+        }
         let channel = try linkChannel(onPath: command)
         // What a real exec's `echo` prints before the core has said anything.
         await channel.deliver(connectBanner + Data("\(PowerShellCommand.streamMarker)\r\n".utf8))
@@ -573,7 +582,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
 
     private func linkChannel(onPath path: String) throws -> FakeCoreSocket {
         switch channel {
-        case .refused:
+        case .refused, .execEnds:
             throw TransportError.streamLocalOpenFailed(path: path)
         case .answersHello(let reply):
             let socket = FakeCoreSocket()

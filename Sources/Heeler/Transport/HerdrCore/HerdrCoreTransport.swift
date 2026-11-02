@@ -664,6 +664,10 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             return Opened(link: link, info: info, executablePath: executablePath)
         } catch is HerdrCoreUpdateRequired {
             throw TransportError.herdrCoreUpdateRequired(command: Self.updateCommand(executablePath))
+        } catch TransportError.channelFailed(detail: HerdrCoreLink.closedDetail) where location.isNativeWindows {
+            // `cmd` prints the marker before it runs `connect`, so this is `connect`
+            // itself ending. Its stderr does not reach here, so why stays unknown.
+            throw TransportError.channelFailed(detail: "herdr-core connect exited before answering hello.")
         }
     }
 
@@ -676,7 +680,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             let exec = try await connection.openCoreLinkExec(
                 command: try HerdrCoreLocator.windowsConnectCommand(session: session))
             return BootstrappedExecChannel(
-                channel: exec, startupFailure: "herdr-core connect exited before its stream started.")
+                channel: exec, startupFailure: "The command that runs herdr-core connect did not start.")
         }
         do {
             return try await connection.openCoreLinkChannel(socketPath: location.socketPath)
