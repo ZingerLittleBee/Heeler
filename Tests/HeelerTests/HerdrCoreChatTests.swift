@@ -436,19 +436,19 @@ struct HerdrCoreChatTests {
             onClosed: {})
     }
 
-    /// Activates Choose a Conversation, which `controller` must offer, until its sheet
-    /// comes up.
+    /// Activates the element of this label, until the list's sheet comes up.
     private static func opensTheList(
-        in controller: UIViewController, sourceLocation: SourceLocation = #_sourceLocation
+        from label: String, in controller: UIViewController, sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
         var budget = PollBudget(.seconds(10))
         while budget.hasTimeLeft, controller.presentedViewController == nil {
-            AccessibilityProbe.elements(labeled: ChatCandidatePickerView.title, in: controller.view)
-                .first?.accessibilityActivate()
+            AccessibilityProbe.elements(labeled: label, in: controller.view).first?.accessibilityActivate()
             try await Task.sleep(for: .milliseconds(50))
             budget.charge()
         }
-        #expect(controller.presentedViewController != nil, sourceLocation: sourceLocation)
+        #expect(
+            controller.presentedViewController != nil, "\(AccessibilityProbe.labels(in: controller.view))",
+            sourceLocation: sourceLocation)
     }
 
     private static let cannotTell = ChatConversationSnapshot.Phase.unavailable(.cannotTellSession(.claude))
@@ -469,7 +469,7 @@ struct HerdrCoreChatTests {
         ) { _ in
             try await rig.waitUntil("Chat to say it cannot tell") { chat.conversation.phase == Self.cannotTell }
             #expect(chat.conversation.transcript.entries.isEmpty)
-            try await Self.opensTheList(in: controller)
+            try await Self.opensTheList(from: ChatCandidatePickerView.title, in: controller)
         }
         chat.end()
         rig.store.setHosts([])
@@ -496,7 +496,9 @@ struct HerdrCoreChatTests {
             chat.retry()
             try await rig.waitUntil("Chat to say it cannot tell") { chat.conversation.phase == Self.cannotTell }
             #expect(!chat.conversation.transcript.entries.isEmpty)
-            try await Self.opensTheList(in: controller)
+            // The banner reads as one element, whose action is its button's.
+            let banner = ChatBannerLine.unavailable(.cannotTellSession(.claude), showingSavedMessages: true).text
+            try await Self.opensTheList(from: banner, in: controller)
         }
         chat.end()
         rig.store.setHosts([])
