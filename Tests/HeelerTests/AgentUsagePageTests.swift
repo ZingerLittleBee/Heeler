@@ -227,8 +227,10 @@ struct AgentUsagePageInteractionTests {
         let store = AgentUsageStore(hostID: hostID,
             transports: ScriptedTransportProvider(transports: [hostID: transport]),
             sleep: { try await sleeper.sleep($0) })
+        var hostDidDisappear = false
         let controller = UIHostingController(rootView: AnyView(
-            UsageHarness(hostID: hostID, store: store).environment(\.locale, Locale(identifier: "en_US"))))
+            UsageHarness(hostID: hostID, store: store, onHostDisappear: { hostDidDisappear = true })
+                .environment(\.locale, Locale(identifier: "en_US"))))
         let window = try await makeTestWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844),
             rootViewController: controller)
         defer { window.isHidden = true }
@@ -245,9 +247,9 @@ struct AgentUsagePageInteractionTests {
         try #require(await eventually(seconds: interactive ? 120 : 5) {
             ChangesViewTests.navigationControllers(in: controller).contains { $0.viewControllers.count > 1 }
         })
-        // Sending UIControl actions bypasses UIKit's transition interaction
-        // guard. Let the outgoing Host section disappear before refreshing.
-        try #require(await eventually { isNavigationSettled(controller) })
+        // UIKit can settle before SwiftUI delivers the outgoing List's
+        // onDisappear. Sending a refresh then races its task cancellation.
+        try #require(await eventually { hostDidDisappear && isNavigationSettled(controller) })
         try #require(await eventually { await transport.agentUsageReads > initialReads && !store.isLoading })
         let beforeRefresh = await transport.agentUsageReads
         await transport.setAgentUsage(.success(partial))
@@ -313,6 +315,7 @@ struct AgentUsagePageInteractionTests {
     private struct UsageHarness: View {
         let hostID: Host.ID
         let store: AgentUsageStore
+        let onHostDisappear: () -> Void
         @State private var showsUsage = false
 
         var body: some View {
@@ -321,6 +324,7 @@ struct AgentUsagePageInteractionTests {
                     AgentUsageSection(hostID: hostID, hostName: "Test Host", store: store,
                         openUsage: { showsUsage = true })
                 }
+                .onDisappear(perform: onHostDisappear)
                 .navigationTitle("Test Host")
                 .navigationDestination(isPresented: $showsUsage) {
                     AgentUsageDashboard(
