@@ -125,6 +125,15 @@ struct TerminalKeysKeyboardTests {
             inset: inset, presentation: text).contentInset == 0)
     }
 
+    /// The optional shortcut row shows only while turned on and in Text
+    /// mode; the Keys keyboard already carries every key on it.
+    @Test func shortcutRowShowsOnlyWhenEnabledInTextMode() {
+        #expect(ShellTerminalView.showsShortcutRow(isEnabled: true, keyboardMode: .text))
+        #expect(!ShellTerminalView.showsShortcutRow(isEnabled: true, keyboardMode: .controls))
+        #expect(!ShellTerminalView.showsShortcutRow(isEnabled: false, keyboardMode: .text))
+        #expect(!ShellTerminalView.showsShortcutRow(isEnabled: false, keyboardMode: .controls))
+    }
+
     /// Keys suppresses the system keyboard, so its will-hide is a real
     /// dismissal and gets confirmed while the dock is up. Switching back to
     /// Text must restore the pre-show pin before UIKit's frame arrives, or

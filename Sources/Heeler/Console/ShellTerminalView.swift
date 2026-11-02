@@ -59,6 +59,10 @@ struct ShellTerminalView: View {
     /// Shared with Agent detail's header: folding it is one reading
     /// preference across both kinds of terminal.
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
+    /// The optional shortcut row above the input row. Its own preference,
+    /// not Agent detail's input mode: hiding it here must not move every
+    /// Agent back to the Composer. Off by default.
+    @AppStorage(Self.shortcutRowDefaultsKey) private var isShortcutRowEnabled = false
     /// The Workspace drawer's panel, while the back header's menu owns it.
     @State private var isHeaderDrawerOpen = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -189,6 +193,36 @@ struct ShellTerminalView: View {
         keyboardMode == .controls
     }
 
+    static let shortcutRowDefaultsKey = "shell-terminal.shortcut-row"
+
+    /// The shortcut row shows while it is turned on and the system keyboard's
+    /// Text mode is in use; the Keys keyboard already carries every key on it.
+    static func showsShortcutRow(
+        isEnabled: Bool, keyboardMode: TerminalKeyboardMode
+    ) -> Bool {
+        isEnabled && keyboardMode == .text
+    }
+
+    private var inputRow: ShellTerminalInputRow {
+        ShellTerminalInputRow(
+            mode: Binding(
+                get: { keyboardMode },
+                set: { setKeyboardMode($0) }),
+            paste: { keyboardControl.paste($0) },
+            isKeyboardUp: isKeyboardShown,
+            toggleKeyboard: toggleKeyboard,
+            isShortcutRowEnabled: $isShortcutRowEnabled,
+            more: ShellTerminalMoreMenu(
+                title: title,
+                backTitle: backTitle,
+                isReturning: isReturning,
+                isClosingTerminal: isClosingTerminal,
+                onBack: { Task { await goBack() } },
+                isConfirmingClose: $isConfirmingClose,
+                onCloseTerminal: onCloseTerminal == nil
+                    ? nil : { closeTerminal() }))
+    }
+
     var body: some View {
         terminalScreen
             .id(store.terminalID)
@@ -219,22 +253,18 @@ struct ShellTerminalView: View {
             // Always present, keyboard up or down: with no title bar, its
             // More menu is the only visible way back or to Close Terminal.
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                ShellTerminalInputRow(
-                    mode: Binding(
-                        get: { keyboardMode },
-                        set: { setKeyboardMode($0) }),
-                    paste: { keyboardControl.paste($0) },
-                    isKeyboardUp: isKeyboardShown,
-                    toggleKeyboard: toggleKeyboard,
-                    more: ShellTerminalMoreMenu(
-                        title: title,
-                        backTitle: backTitle,
-                        isReturning: isReturning,
-                        isClosingTerminal: isClosingTerminal,
-                        onBack: { Task { await goBack() } },
-                        isConfirmingClose: $isConfirmingClose,
-                        onCloseTerminal: onCloseTerminal == nil
-                            ? nil : { closeTerminal() }))
+                VStack(spacing: 0) {
+                    if Self.showsShortcutRow(
+                        isEnabled: isShortcutRowEnabled, keyboardMode: keyboardMode)
+                    {
+                        InputShortcutStripRow(
+                            strip: InputShortcutStripPresentation(surface: .shellTerminal),
+                            keyAccessibilityHint: "Sends this key to the terminal",
+                            sendKey: keyboardControl.sendTerminalKey
+                        ) { _ in EmptyView() }
+                    }
+                    inputRow
+                }
             }
             .padding(.bottom, keyboardLayout.contentInset)
             // This dock is always present at the system keyboard's last
@@ -668,6 +698,8 @@ struct ShellTerminalInputRow: View {
     let paste: (String) -> Void
     let isKeyboardUp: Bool
     let toggleKeyboard: () -> Void
+    /// The shortcut row's preference; the row itself is the parent's.
+    @Binding var isShortcutRowEnabled: Bool
     let more: ShellTerminalMoreMenu
     /// Matches the Composer chrome's small glyphs, or the row's icons read as
     /// borrowed from a different set.
@@ -688,13 +720,16 @@ struct ShellTerminalInputRow: View {
         HStack(spacing: 0) {
             // Painting the fill with the row's own background leaves the
             // glyph reading as a bare icon, like the row's other buttons.
-            PinnedPasteControl(backgroundColor: .secondarySystemBackground, paste: paste)
-                .id(colorScheme)
-                .accessibilityHint("Pastes the clipboard into the terminal")
-                .frame(
-                    width: InputChromeLayout.shellAccessoryButtonWidth,
-                    height: InputChromeLayout.shortcutRowHeight)
-                .frame(width: Self.sideWidth, alignment: .leading)
+            HStack(spacing: 0) {
+                PinnedPasteControl(backgroundColor: .secondarySystemBackground, paste: paste)
+                    .id(colorScheme)
+                    .accessibilityHint("Pastes the clipboard into the terminal")
+                    .frame(
+                        width: InputChromeLayout.shellAccessoryButtonWidth,
+                        height: InputChromeLayout.shortcutRowHeight)
+                shortcutRowToggle
+            }
+            .frame(width: Self.sideWidth, alignment: .leading)
 
             Spacer(minLength: 4)
 
@@ -708,7 +743,8 @@ struct ShellTerminalInputRow: View {
             Spacer(minLength: 4)
 
             // A line break without submitting (Shift+Enter) lives on the Keys
-            // keyboard; the row keeps only what Text mode cannot do itself.
+            // keyboard and the optional shortcut row; this row keeps only
+            // what Text mode cannot do itself.
             HStack(spacing: 0) {
                 more
                 keyboardToggle
@@ -723,6 +759,27 @@ struct ShellTerminalInputRow: View {
                 .frame(height: 1 / max(displayScale, 1))
         }
         .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    /// Shows or hides the shortcut row with Agent detail's Direct Input
+    /// glyph, tinted while on. In Keys mode the row stays hidden either way,
+    /// but the toggle still sets what Text mode will show.
+    private var shortcutRowToggle: some View {
+        Button {
+            isShortcutRowEnabled.toggle()
+        } label: {
+            Image(systemName: "rectangle.bottomhalf.inset.filled")
+                .font(.system(size: Self.glyphPointSize))
+                .foregroundStyle(
+                    isShortcutRowEnabled ? Color.accentColor : Color(uiColor: .label))
+                .frame(
+                    width: InputChromeLayout.shellAccessoryButtonWidth,
+                    height: InputChromeLayout.shortcutRowHeight)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isShortcutRowEnabled ? "Hide shortcut row" : "Show shortcut row")
+        .accessibilityHint("Puts Esc, Tab and arrow keys above the input row")
     }
 
     private var keyboardToggle: some View {
