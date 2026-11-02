@@ -28,7 +28,7 @@ import widgetsLockShot from '../assets/screens/widgets-lock-iphone.png';
 import widgetsShot from '../assets/screens/widgets-iphone.png';
 
 const description =
-  'Monitor and steer Claude Code, Codex, and other herdr agents over SSH from your iPhone or iPad. Native terminals, Chat, code changes, and encrypted alerts.';
+  'Control Claude Code and Codex from your iPhone or iPad over SSH. Monitor Agents on your own Hosts, get encrypted alerts, and check Usage Limits with widgets.';
 
 const structuredData = {
   '@context': 'https://schema.org',
@@ -204,7 +204,7 @@ const awaySteps: FigureStep[] = [
 ];
 ---
 
-<Layout title="Heeler — SSH agent console for iPhone and iPad" description={description}>
+<Layout title="Heeler — Claude Code & Codex on iPhone and iPad" description={description}>
   <script is:inline slot="head" type="application/ld+json" set:html={JSON.stringify(structuredData).replace(/</g, '\\u003c')} />
   <section class="hero" id="top">
     <HeroWall />
@@ -313,7 +313,7 @@ const awaySteps: FigureStep[] = [
           label="While you’re away"
           lead="Leave Heeler."
           rest="The Lock Screen keeps watch."
-          body="Heeler keeps SSH open for a short grace after you leave, then closes it. From then on, Blocked and Done alerts and Live Activity updates reach you as sealed pushes."
+          body="Get encrypted notifications when Claude Code, Codex, or another Agent goes Blocked or Done. After Heeler closes SSH in the background, alerts and Live Activity updates arrive as sealed pushes. <a class='text-link' href='https://docs.heeler.bybee.dev/pairing#after-pairing'>Enable Agent notifications</a>."
         />
         <StepFigure figure={figures.away} steps={awaySteps} />
       </section>
@@ -325,7 +325,7 @@ const awaySteps: FigureStep[] = [
           lead="Know your limits"
           rest="before an Agent runs into them."
           bar="Usage Limits per Host"
-          body="Claude Code and Codex Usage Limits with their reset times, and up to 30 days of Token Usage with its estimated API cost, on every Host or one. Widgets keep them on the Home Screen and Lock Screen."
+          body="Check Claude Code and Codex Usage Limits and reset times with Home Screen and Lock Screen widgets. In Usage, see up to 30 days of Token Usage and estimated API cost across Hosts. <a class='text-link' href='https://docs.heeler.bybee.dev/usage#add-a-widget'>Set up Usage widgets</a>."
         />
         <div data-rv><PhoneScreens screens={usageScreens} /></div>
       </section>

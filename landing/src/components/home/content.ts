@@ -2,15 +2,15 @@
 // with README.md at the repo root, where most of it comes from.
 
 export const hero = {
-  lede: 'A native iOS companion for <a class="text-link" href="https://herdr.dev">herdr</a>, the agent-first terminal runtime, over plain SSH.',
+  lede: 'Control Claude Code and Codex from your iPhone or iPad. Agents run on your own Hosts with <a class="text-link" href="https://herdr.dev">herdr</a>; Heeler connects over SSH.',
 };
 
 export const consoleCopy = {
-  body: "Every Agent across your machines in one status-sorted list (Blocked comes first), filterable by Host, updating live off herdr's event stream.",
+  body: 'Monitor multiple coding Agents across your machines in one live list, filterable by Host. Blocked Agents come first, so you can see who needs a reply without opening every terminal.',
 };
 
 export const steerCopy = {
-  body: 'Through libghostty, with Metal rendering, native scrollback, momentum touch scrolling that drives full-screen TUIs, and long-press selection. Draft locally with the full standard iOS keyboard (autocorrect, IME, dictation), then Send the complete message once as a single <span class="mono">agent.prompt</span> RPC.',
+  body: 'Send instructions to Claude Code or Codex from your iPhone or iPad, using the live terminal or <a class="text-link" href="https://docs.heeler.bybee.dev/chat">native Chat</a>. Draft locally with autocorrect, IME, or dictation, then send the complete message over SSH.',
 };
 
 export const connect = {
@@ -74,8 +74,8 @@ export const faq = [
     a: 'Attach and Reattach use herdr takeover mode, disconnecting the previous terminal owner when necessary.',
   },
   {
-    q: 'Is it affiliated with herdr?',
-    a: 'No. Heeler is an independent, personal-use-first project on the App Store and is not affiliated with the herdr project.',
+    q: 'Is Heeler an official Claude Code, Codex, or herdr app?',
+    a: 'No. Heeler is an independent, open-source app on the App Store. It is not affiliated with Anthropic, OpenAI, or the herdr project.',
   },
   {
     q: 'Where can I read the design decisions?',
