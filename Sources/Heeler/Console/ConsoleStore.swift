@@ -799,7 +799,10 @@ final class ConsoleStore {
             stageImage: imageStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
             stageFile: fileStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
             corePin: corePin,
-            isOnCoreHost: coreSend != nil)
+            isOnCoreHost: coreSend != nil,
+            filePreparer: WindowsCoreFilePreparer(isOnWindows: { [weak self] in
+                self?.capabilities(for: hostID).startsInWindowsDirectories == true
+            }))
         composerSessions[agent.id] = session
         requestHostPlatforms(Array(projections.values))
         return session

@@ -189,6 +189,35 @@ struct HerdrCoreWindowsStagingTests {
         await fixture.finish()
     }
 
+    /// The limit is this Host's, and a file past it is not even copied here, whatever
+    /// the 64 MiB every other Host's Composer takes.
+    @Test(arguments: [9, 65])
+    func aFileOverTheLimitSaysThisHostsLimitBeforeItIsCopied(mebibytes: Int) async throws {
+        let fixture = try await Fixture()
+        let session = try fixture.session
+        try await Self.until("the Host's platform") {
+            fixture.console.capabilities(for: fixture.host.id).startsInWindowsDirectories
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("core-windows-staging-\(UUID().uuidString).bin")
+        #expect(FileManager.default.createFile(atPath: url.path, contents: nil))
+        defer { try? FileManager.default.removeItem(at: url) }
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.truncate(atOffset: UInt64(mebibytes * Self.mebibyte))
+        try handle.close()
+        let copies = try? FileManager.default.contentsOfDirectory(atPath: FilePreparer.defaultDirectory.path).count
+
+        try #require(session.staging.begin(.file(url)) != nil)
+        try await Self.until("the refusal") { Self.failure(session.staging) != nil }
+
+        #expect(
+            Self.failure(session.staging)?.message
+                == "This file is over the 8 MiB limit on a native Windows Host. Nothing was sent.")
+        #expect((try? FileManager.default.contentsOfDirectory(atPath: FilePreparer.defaultDirectory.path).count) == copies)
+        #expect(await putCount(fixture) == 0)
+        await fixture.finish()
+    }
+
     /// An ordinary photo comes out of `ImagePreparer` well under the limit, so this
     /// one comes from a preparer that hands over 9 MiB. The rest is the Composer's own.
     @Test func anImageOverTheLimitIsRefusedTheSameWay() async throws {

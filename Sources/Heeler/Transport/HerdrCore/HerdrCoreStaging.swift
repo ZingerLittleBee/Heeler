@@ -58,3 +58,28 @@ enum HerdrCoreStaging {
         Int((byteCount + 2) / 3 * 4)
     }
 }
+
+/// A file for a Composer on any Host. On a native Windows core Host, one `terminal.put`
+/// carries 8 MiB, not the 64 MiB `FilePreparer` keeps for every other Host, so a file
+/// past it is refused here, in those words, before any of it is copied.
+struct WindowsCoreFilePreparer: FilePreparing {
+    let isOnWindows: @MainActor @Sendable () -> Bool
+    var preparer: any FilePreparing = FilePreparer()
+
+    func prepare(_ sourceURL: URL) async throws -> PreparedFile {
+        if await isOnWindows(), Self.isPastTheLimit(sourceURL) {
+            throw AttachmentStagingError.exceedsCoreFileLimit
+        }
+        return try await preparer.prepare(sourceURL)
+    }
+
+    /// A size that cannot be read is the preparer's to report.
+    private static func isPastTheLimit(_ url: URL) -> Bool {
+        let hasSecurityScope = url.startAccessingSecurityScopedResource()
+        defer {
+            if hasSecurityScope { url.stopAccessingSecurityScopedResource() }
+        }
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return false }
+        return Int64(size) > HerdrCoreStaging.maximumBytes
+    }
+}
