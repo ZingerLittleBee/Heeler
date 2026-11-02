@@ -89,11 +89,35 @@ struct RemoteDirectoryBrowserTests {
         try await waitUntil("home path loaded") { browser.currentPath == "/home/you" }
 
         browser.filter = "alp"
-        #expect(browser.visibleDirectories == ["alpha"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == ["alpha"])
         #expect(fake.calls == ["/home/you"])
 
         browser.filter = ""
-        #expect(browser.visibleDirectories == ["alpha", "beta"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == ["alpha", "beta"])
+    }
+
+    @Test func hidingDotFoldersLeavesThemOutBeforeTheFilterApplies() async throws {
+        let fake = FakeLister()
+        fake.listings = [
+            "/home/you": RemoteDirectoryListing(
+                directories: [".config", ".repos-cache", "repos", "notes.d"], truncated: false),
+        ]
+        let browser = makeBrowser(fake)
+        browser.start()
+        try await waitUntil("home path loaded") { browser.currentPath == "/home/you" }
+
+        #expect(browser.visibleDirectories(hidingDotFolders: true) == ["repos", "notes.d"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false)
+            == [".config", ".repos-cache", "repos", "notes.d"])
+
+        browser.filter = "repos"
+        #expect(browser.visibleDirectories(hidingDotFolders: true) == ["repos"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == [".repos-cache", "repos"])
+
+        browser.filter = ".con"
+        #expect(browser.visibleDirectories(hidingDotFolders: true).isEmpty)
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == [".config"])
+        #expect(fake.calls == ["/home/you"])
     }
 
     @Test func windowsHomeSupportsEnteringAndReturningToTheDriveRoot() async throws {
@@ -131,12 +155,12 @@ struct RemoteDirectoryBrowserTests {
         browser.enter("src")
         try await waitUntil("child loaded") { browser.currentPath == "/home/you/src" }
         #expect(browser.filter.isEmpty)
-        #expect(browser.visibleDirectories == ["app"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == ["app"])
         browser.filter = "app"
         browser.goBack()
         try await waitUntil("parent loaded") { browser.currentPath == "/home/you" }
         #expect(browser.filter.isEmpty)
-        #expect(browser.visibleDirectories == ["src"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == ["src"])
     }
 
     @Test func retryReopensTheFailedChildAndKeepsFilterUntilSuccess() async throws {

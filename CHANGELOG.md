@@ -9,6 +9,9 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Browse Directories hides folders whose names start with a dot. Tap the eye
+  button beside Select to list them again; Heeler remembers the choice.
+  (#602)
 - Turn Usage off in Settings to hide its tab and each Host's Usage section and
   stop reading usage from your Hosts. Usage widgets clear their figures and say
   so until you turn it back on. (#597)
