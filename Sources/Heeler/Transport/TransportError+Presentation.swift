@@ -171,7 +171,7 @@ extension TransportError {
                 detail: "The named pipe \(socketPath) does not exist",
                 recoverySuggestion:
                     "Start the core on that machine in your desktop session, in a PowerShell window "
-                    + "not run as administrator. Heeler keeps checking, and starts nothing itself.")
+                    + "not run as administrator. Heeler keeps checking.")
         case .herdrCoreNotRunning(let socketPath, let socketFilePresent):
             socketFilePresent
                 ? TransportErrorPresentation(

@@ -20,7 +20,7 @@ A session name the server refuses, or one native Windows cannot carry, leaves th
 
 ## Not running and Start
 
-Heeler never starts a core by connecting or checking, so a mistyped session name reads **herdr-core is not running** rather than an empty, new core. While the core is not running, Heeler keeps trying to reconnect by itself, and the Host's checks run again when the core stops or comes back.
+Heeler never starts a core by connecting or checking, with one narrow case on [native Windows](#native-windows), so a mistyped session name reads **herdr-core is not running** rather than an empty, new core. While the core is not running, Heeler keeps trying to reconnect by itself, and the Host's checks run again when the core stops or comes back.
 
 | Host reads | What to do |
 | --- | --- |
@@ -37,7 +37,7 @@ Heeler never starts a core by connecting or checking, so a mistyped session name
 
 Add a Windows machine as any other Host, over its OpenSSH server. Heeler looks for the core where its installer puts it, `%LOCALAPPDATA%\Programs\herdr-core\herdr-core.exe`, and connects only once the core's named pipe exists. Each reconnect looks again, so a core you stopped stays stopped: the Host reads **herdr-core is not running** and keeps checking.
 
-Heeler never starts a core on Windows. On that machine, in your desktop session, open PowerShell, not as administrator, and run the command the Host's checks show. For a session named `work` it reads:
+Heeler offers no Start on Windows, and connecting starts a core in one narrow case: `herdr-core connect` starts a core when none runs, so a core that stops in the one round trip between Heeler's check and its connect comes back. To start one yourself, on that machine, in your desktop session, open PowerShell, not as administrator, and run the command the Host's checks show. For a session named `work` it reads:
 
 ```powershell
 $env:HC_SESSION='work'; C:\Users\you\AppData\Local\Programs\herdr-core\herdr-core.exe server start
