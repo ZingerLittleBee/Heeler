@@ -228,6 +228,8 @@ Run this once with OpenCode 1.x and once with 2.x, each signed in with the lab's
 | Others untouched | Compare `opencode.json` and every other OpenCode setting before and after | No change |
 | Herdr TUI | Open Chat for OpenCode on a Herdr TUI Host | Its session comes from herdr, with no offer |
 
+A Mac run of 2026-11-02 with OpenCode 2.0.32 passed Offer by hand, Shown change, Apply, Binds by hand and with `hc run`, `/new`, Wrong list, Host detail, Undo, Apply again, Remove the Helper, and Others untouched within `~/.config/opencode` ([herdr compatibility](../agents/herdr-compatibility.md)). OpenCode 1.x, Changed under it, Undo a changed file, No edit and Herdr TUI were not run there.
+
 ## Composer Send
 
 `composerPasteThenSubmit` holds the bytes against a stub on the scripted check's real
