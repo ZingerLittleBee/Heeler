@@ -235,7 +235,9 @@ with test clients, not the app.
   showed the exit, and the attach stream later carried PowerShell's prompt; the
   screen and the other event types were not compared as signals. Heeler's launch
   does not use `-NoExit`, so this reaches only a Terminal the desktop app started.
-  Until #590 adds a check, that staleness stands.
+  No ticket adds a check: #590's read of PowerShell's children serves Chat's
+  binding only (ADR 0034), so that staleness stands, and Send refuses such a
+  Terminal (ADR 0035).
 - The same `choice.exe` runs through `connect` over one SSH exec gave the same
   foreground and finishes, 2 under Heeler's form and the shell's `exit 5` under
   `-NoExit`. On that machine the exec refused a program on a path through fnm's

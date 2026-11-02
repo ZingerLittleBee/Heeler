@@ -68,7 +68,7 @@ A changed space, tab or label moves the rows within a moment, with no reconnect.
 
 ## Agents and status
 
-A Terminal is an Agent while its foreground program is a known coding program, or any program but a shell that reports a status. Everything else stays in the Terminals tab. Quitting a harness back to its shell ends the Agent, whatever it last reported.
+A Terminal is an Agent while its foreground program is a known coding program, or any program but a shell that reports a status. Everything else stays in the Terminals tab. Quitting a harness back to its shell ends the Agent, whatever it last reported. On Windows, a Terminal that keeps a shell open after its Agent exits, as one the Herdr desktop app started does, stays listed as that Agent until the shell exits.
 
 | Status | What it means |
 | --- | --- |
