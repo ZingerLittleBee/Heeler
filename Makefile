@@ -55,8 +55,8 @@ build: generate ## Build Debug for a physical device without installing
 		-allowProvisioningUpdates build
 
 .PHONY: build-ci-app
-build-ci-app: ## Compile the committed app and extensions, without tests or simulator boot
-	xcodebuild build -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
+build-ci-app: ## Compile the committed app, extensions and test bundle without running tests or booting a Simulator
+	xcodebuild build-for-testing -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
 		-destination 'generic/platform=iOS Simulator' ARCHS="$$(uname -m)" \
 		-derivedDataPath '$(CURDIR)/.ci/app-derived' \
 		-clonedSourcePackagesDirPath '$(CURDIR)/.ci/source-packages' \
@@ -91,18 +91,6 @@ test-ci-app: ## Run the committed-project CI app lane (CI_APP_SHARD, no generate
 test-ci-package: ## Run the committed-project CI SSH package lane (SIMULATOR_UDID)
 	HEELER_CI_LANE=package HEELER_CI_SIMULATOR_UDID='$(or $(SIMULATOR_UDID),$(HEELER_CI_SIMULATOR_UDID))' \
 		scripts/run-ci-ios-tests.sh
-
-.PHONY: profile-ci-build
-profile-ci-build: ## Compare compilation caching (PROFILE_PHASE=seed or restored, no test execution)
-	python3 scripts/profile-ci-build.py --phase '$(PROFILE_PHASE)'
-
-.PHONY: profile-git-startup
-profile-git-startup: ## Compare Git launchers with fresh HOME directories (no App build)
-	python3 scripts/profile-git-startup.py \
-		--transport '$(or $(GIT_STARTUP_TRANSPORT),local)' \
-		--iterations '$(or $(GIT_STARTUP_ITERATIONS),20)' \
-		--first-path '$(or $(GIT_STARTUP_FIRST),system)' \
-		--output '$(or $(GIT_STARTUP_OUTPUT),.ci/git-startup)'
 
 .PHONY: test-ci-diagnostics test-ci-diagnostic-controls test-weak-network-proxy
 test-ci-diagnostics: ## Diagnose one scenario (HEELER_CI_DIAGNOSTIC_TARGET, optional iterations)

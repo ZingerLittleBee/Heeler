@@ -18,7 +18,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-simulator-recovery.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-for function in prepare_evidence_directory prepare_app_build_directory record_phase start_background_build cancel_background_build run_app_fixture_suites assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
+for function in prepare_evidence_directory prepare_app_build_directory record_phase opt_in_build_settings start_background_build cancel_background_build run_app_fixture_suites assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
     claim_simulator claim_resource_lock release_resource_lock write_lock_owner \
     lock_is_stale acquire_claim_guard release_claim_guard \
     clear_simulator_environment push_simulator_environment; do
@@ -438,7 +438,6 @@ for reason in preparation-failure parent-cancellation; do
         package_derived_data_path="$fixture_dir/PackageDerivedData"
         xcodebuild_build_timeout_seconds=10
         diagnostic_root=""
-        diagnostic_sampler_pid=""
         evidence_dir=""
         background_build_pid=""
         simulator_destination="platform=iOS Simulator,id=$ORIGINAL"

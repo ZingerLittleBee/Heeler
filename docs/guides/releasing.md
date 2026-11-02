@@ -98,7 +98,7 @@ The tag starts [`release.yml`](../../.github/workflows/release.yml):
 | Job | What it does |
 |---|---|
 | `meta` | Checks the tag: `vX.Y.Z`, annotated, on `main`, equal to `MARKETING_VERSION` in `project.yml` and in the committed project, no GitHub release yet. Takes the `[X.Y.Z]` CHANGELOG section as the release notes. |
-| `test` | Runs the complete app and SSH package suites in `ci-full.yml` against the tag. The daily build-only workflow is not a release test gate. |
+| `test` | Runs the complete app and SSH package suites in `ci-full.yml` against the tag. The fast build workflow (`ci.yml`) is not a release test gate. |
 | `archive` | Runs in the `release` environment. Archives the committed project with manual App Store signing, exports the IPA, checks its versions, bundle IDs, and entitlements, validates it with App Store Connect, checks that the tag still names the run's commit, and uploads it. |
 | `release` | Creates the GitHub release with the notes as its body and checks that it is not a draft. |
 

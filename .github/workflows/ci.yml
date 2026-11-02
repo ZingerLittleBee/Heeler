@@ -1,4 +1,18 @@
-# Fast feedback only. Full Swift/UI/SSH verification lives in ci-full.yml.
+# Fast feedback on every PR and push to main (refs #23). Full Swift/UI/SSH
+# verification lives in ci-full.yml, which runs daily, manually and before
+# every release.
+#
+# app-build compiles the committed app, extensions and HeelerTests bundle with
+# build-for-testing against the generic Simulator SDK. It never boots a
+# Simulator or executes a test, so a green build establishes compilation
+# (including test sources broken by an app change), not behavior.
+#
+# Positive `paths` (not paths-ignore): one matching path is enough, so a
+# commit that also edits markdown still runs. Only build inputs start it:
+# tests and shared vectors are compiled here, and the two scripts listed are
+# the ones this job executes. Other script and ci-full.yml changes start only
+# ci-scripts.yml, never an app build. landing/**, LICENSE, prose, plugin/src,
+# plugin/package.json, and relay/** never spend a macos-26 runner.
 name: iOS build
 
 on:
@@ -6,21 +20,27 @@ on:
   pull_request:
     paths:
       - Sources/**
+      - Tests/**
       - Packages/**
       - Heeler.xcodeproj/**
       - project.yml
       - Makefile
       - scripts/run-ci-background-build.py
+      - scripts/ci-compilation-cache-prefix.sh
+      - plugin/test-vectors/**
       - .github/workflows/ci.yml
   push:
     branches: [main]
     paths:
       - Sources/**
+      - Tests/**
       - Packages/**
       - Heeler.xcodeproj/**
       - project.yml
       - Makefile
       - scripts/run-ci-background-build.py
+      - scripts/ci-compilation-cache-prefix.sh
+      - plugin/test-vectors/**
       - .github/workflows/ci.yml
 
 permissions:
@@ -36,9 +56,9 @@ concurrency:
 
 jobs:
   app-build:
-    name: Build app (no tests)
+    name: Build app and tests (not run)
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
@@ -59,23 +79,16 @@ jobs:
         run: make verify-ssh-artifacts
       - name: Record build identity
         id: toolchain
-        env:
-          BUILD_INPUT_HASH: ${{ hashFiles('project.yml', 'Heeler.xcodeproj/project.pbxproj', 'Heeler.xcodeproj/xcshareddata/xcschemes/Heeler.xcscheme', 'Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'Packages/**/Package.swift') }}
         run: |
           mkdir -p .ci/build-evidence
-          {
-            xcodebuild -version
-            xcrun --sdk iphonesimulator --show-sdk-version
-            uname -m
-            printf '%s\n' "$BUILD_INPUT_HASH" 'Debug-no-symbols-no-index-v1'
-          } | tee .ci/build-evidence/toolchain.txt
-          identity=$(shasum -a 256 .ci/build-evidence/toolchain.txt | cut -d ' ' -f 1)
-          echo "cache-prefix=ios-build-cas-v1-${RUNNER_OS}-${RUNNER_ARCH}-${identity}-" >> "$GITHUB_OUTPUT"
+          scripts/ci-compilation-cache-prefix.sh ios-build-cas-v1 .ci/build-evidence/toolchain.txt
           printf 'checkout_sha=%s\nimage_version=%s\ntests_executed=0\n' \
             "$(git rev-parse HEAD)" "${ImageVersion:-unknown}" > .ci/build-evidence/run-settings.txt
       # Cache compiler objects, never DerivedData, products or test results.
-      # Use a separate namespace so a build-only run cannot occupy the full
-      # suite's same-SHA cache key without its compiled test objects.
+      # The generic destination produces different compiler commands than
+      # full verification's booted Simulator, so each lane keeps its own
+      # namespace: an exact hit from one lane must not stop the other from
+      # saving the objects it actually compiled.
       - name: Restore compilation cache
         id: compilation-cache
         uses: actions/cache/restore@v4
@@ -84,8 +97,8 @@ jobs:
           key: ${{ steps.toolchain.outputs.cache-prefix }}${{ github.sha }}
           restore-keys: |
             ${{ steps.toolchain.outputs.cache-prefix }}
-      - name: Build app and extensions without launching a Simulator
-        timeout-minutes: 15
+      - name: Build app, extensions and tests without launching a Simulator
+        timeout-minutes: 20
         run: |
           python3 scripts/run-ci-background-build.py --timing-path .ci/build-evidence/build.json -- \
             make build-ci-app 2>&1 | tee .ci/build-evidence/build.log

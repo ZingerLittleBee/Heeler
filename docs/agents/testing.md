@@ -6,14 +6,20 @@ counts in [the review handoff](review-handoff.md). A successful test command tha
 selected no tests is a failed verification. Build-only success establishes
 compilation, not behavior or test coverage.
 
-## Daily feedback and full verification
+## Fast build and full verification
 
-[Daily iOS CI](../../.github/workflows/ci.yml) compiles the committed app and
-extensions once with `make build-ci-app`, using a generic Simulator SDK
-destination, stable paths and compiler caching. It neither compiles the test
-target nor boots a Simulator. App/build changes trigger it on PRs and pushes
-to `main`; test-only, fixture and documentation edits still get the existing
-tooling checks. Node and site checks retain their own path filters.
+The [fast iOS build](../../.github/workflows/ci.yml) runs on PRs and pushes to
+`main` that change app, test, package, project or shared-vector paths, the
+Makefile, or the two scripts it executes. It compiles the committed app,
+extensions and HeelerTests bundle once with `make build-ci-app`
+(`build-for-testing` against the generic Simulator SDK, stable paths and
+compiler caching), so an app change that breaks test sources fails before
+merge. It never boots a Simulator or runs a test. Other script and
+`ci-full.yml` changes skip the app build; [the script self-tests](../../.github/workflows/ci-scripts.yml)
+run `make test-ci-watchdog`, `make test-ci-guards` and
+`make test-ci-diagnostic-controls` on macOS, under the `/bin/bash` 3.2 that
+full verification executes. Documentation-only edits get the Ubuntu tooling
+checks; Node and site checks keep their own path filters.
 
 Run focused behavior tests for the feature being changed. The
 [full native workflow](../../.github/workflows/ci-full.yml) retains all app,
@@ -22,9 +28,14 @@ daily on the latest `main` commit at 20:17 UTC (04:17 UTC+8), using the sharded
 layout and warm caches. The schedule takes effect only after the workflow is
 merged into the default branch; GitHub may delay its start under load. PRs and
 pushes retain fast feedback without starting this full native workflow.
-Run it manually for broader acceptance of a candidate branch; `release.yml`
-still requires it against the release tag before signing a release. A scheduled
-run or daily build cannot substitute for verifying a different candidate.
+A failed scheduled run opens or comments on the issue "Scheduled full iOS
+verification is failing" ([the alert workflow](../../.github/workflows/ci-full-alert.yml));
+the next passing scheduled run closes it. Run it manually for broader
+acceptance of a candidate branch; manual runs default to warm caches, and
+`cache_mode=cold` measures a first build. `release.yml` still requires it
+against the release tag before signing a release; tag runs compile without the
+cross-run compiler cache. A scheduled run or fast build cannot substitute for
+verifying a different candidate.
 
 ```sh
 gh workflow run ci-full.yml --ref <candidate-branch>
@@ -66,7 +77,7 @@ preparation and can miss SwiftUI labels on a clean Simulator (#339).
 
 | Change | Entry point | What it establishes |
 | --- | --- | --- |
-| App compilation only | `make build-ci-app` | Committed app and extensions compile; no Swift tests executed |
+| App and test compilation | `make build-ci-app` | Committed app, extensions and test bundle compile; no tests executed |
 | App stores, parsers, SwiftUI hosting | `make test-app TEST_SELECTOR='HeelerTests/<Suite>'` | Selected app behavior on the named candidate and Simulator |
 | Full local app and SSH package suites | `make test` or `make test-ipad` | App tests followed by the separate HeelerSSH test plan |
 | `Packages/HeelerSSH` | `make test-ci-package` | Committed-project package CI lane with disposable SSH fixtures and count gates |
@@ -106,7 +117,7 @@ test-writing rules follow:
 
 ## Intermittent CI diagnosis
 
-The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml) builds once and repeats the original TOFU, staging recovery, weak-network Changes, or diff-layout assertions with fresh per-round state. `staging` selects the whole nine-method suite to retain preceding window lifecycles and the failed-owner cleanup regression; `staging-method` isolates the recovery method. `layout` selects all eight `FileDiffLayoutViewTests` methods in the ordinary shard and repeats the topmost-line method with a fresh window and settings each round. Defaults are 50 SSH, 20 staging or layout, and 10 weak rounds. `all` selects only SSH, staging, and weak; layout requires an explicit selection and adds no work to daily CI or the existing `all` diagnostic.
+The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml) builds once and repeats the original TOFU, staging recovery, weak-network Changes, or diff-layout assertions with fresh per-round state. `staging` selects the whole nine-method suite to retain preceding window lifecycles and the failed-owner cleanup regression; `staging-method` isolates the recovery method. `layout` selects all eight `FileDiffLayoutViewTests` methods in the ordinary shard and repeats the topmost-line method with a fresh window and settings each round. Defaults are 50 SSH, 20 staging or layout, and 10 weak rounds. `all` selects only SSH, staging, and weak; layout requires an explicit selection and adds no work to the fast build, full verification or the existing `all` diagnostic.
 
 Repeated weak and layout diagnostics have a 30-minute outer deadlock limit. Full verification retains the weak suite's two-minute limit and the layout suite's one-minute limit; every weak read still asserts its original 10-second deadline, and both layout setup waits retain eight seconds. Diagnostic artifacts capture the selected test counts, completion markers and fixture logs; they never establish complete coverage or replace full verification.
 

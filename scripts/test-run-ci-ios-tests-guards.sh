@@ -237,7 +237,6 @@ grep -qF 'Show Xcode version' "$workflow" \
     run_lock_dir=""
     device_lock_dir=""
     diagnostic_root=""
-    diagnostic_sampler_pid=""
     phase_log="$work/phases.tsv"
     app_derived_data_path=""
     package_derived_data_path=""

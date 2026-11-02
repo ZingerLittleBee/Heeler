@@ -7,15 +7,17 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-diagnostic-controls.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-# Build-only feedback and manual diagnostics must not publish full-coverage
-# check names or artifacts, even as skipped jobs. Releases always call full CI.
+# Fast builds and manual diagnostics must not publish full-coverage check
+# names or artifacts, even as skipped jobs. Releases always call full CI.
 python3 - "$repo_root/.github/workflows/ci-full.yml" "$repo_root/.github/workflows/ci-diagnostics.yml" <<'PYWORKFLOW'
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 
-workflow, reusable = (Path(path).read_text() for path in sys.argv[1:])
+workflow, diagnostics = (Path(path).read_text() for path in sys.argv[1:])
+workflows = Path(sys.argv[1]).parent
 
 def require_line(body, expected):
     if [line.strip() for line in body.splitlines()].count(expected) != 1:
@@ -36,7 +38,7 @@ def events(source):
 
 require_line(workflow, "workflow_dispatch:")
 require_line(workflow, "workflow_call:")
-release = Path(sys.argv[1]).with_name("release.yml").read_text()
+release = workflows.joinpath("release.yml").read_text()
 release_test = job("test", release)
 require_line(release_test, "uses: ./.github/workflows/ci-full.yml")
 require_line(release_test, "contents: read")
@@ -44,6 +46,12 @@ require_line(release_test, "actions: read")
 if events(workflow) != {"schedule", "workflow_dispatch", "workflow_call"}:
     raise SystemExit("Full native verification must run daily, manually or before release")
 require_line(workflow, "- cron: '17 20 * * *'")
+# A manual run must not cancel the scheduled run on the same ref.
+require_line(workflow, "group: ci-ios-full-${{ github.ref }}-${{ github.event_name }}")
+# Release tags compile without cross-run compiler objects.
+app_tests = job("app-tests")
+require_line(app_tests, "HEELER_CI_DISABLE_COMPILATION_CACHE: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '0' }}")
+require_line(app_tests, "if: ${{ env.HEELER_CI_DISABLE_COMPILATION_CACHE != '1' && (github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm') }}")
 names = {
     "app-tests": "App tests (${{ matrix.shard }})",
     "heelerssh-package-e2e": "HeelerSSH package E2E (iOS Simulator)",
@@ -57,50 +65,63 @@ for name, display in names.items():
 require_line(job("build-test"), "if: ${{ always() }}")
 require_line(job("build-test"), "needs: [app-tests, heelerssh-package-e2e]")
 
-fast = Path(sys.argv[1]).with_name("ci.yml").read_text()
+# release.yml grants read-only permissions, so only the listener may write.
+alert = workflows.joinpath("ci-full-alert.yml").read_text()
+full_name = re.search(r"(?m)^name: (.+)$", workflow).group(1)
+require_line(alert, f"workflows: [{full_name}]")
+require_line(alert, "if: ${{ github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion != 'cancelled' }}")
+if re.search(r"(?m)^\s+[\w-]+: write\s*$", workflow):
+    raise SystemExit("ci-full.yml must stay read-only for release.yml")
+
+fast = workflows.joinpath("ci.yml").read_text()
 if events(fast) != {"workflow_dispatch", "pull_request", "push"}:
-    raise SystemExit("Daily builds must run on PR/push and support manual sampling")
+    raise SystemExit("The fast build must run on PR/push and support manual runs")
 if re.findall(r"(?m)^  ([\w-]+):", fast.split("\njobs:\n", 1)[1]) != ["app-build"]:
-    raise SystemExit("Daily native feedback must have one build-only job")
-require_line(job("app-build", fast), "name: Build app (no tests)")
-if "ios-ci-evidence-" in fast or "test-ci-" in fast or "simctl" in fast:
-    raise SystemExit("Daily builds must not execute or claim native tests")
-for source in [fast, reusable]:
+    raise SystemExit("The fast build must have one build-only job")
+require_line(job("app-build", fast), "name: Build app and tests (not run)")
+# Script self-tests build nothing, so a script-only change never starts ci.yml.
+scripts = workflows.joinpath("ci-scripts.yml").read_text()
+if events(scripts) != {"workflow_dispatch", "pull_request", "push"}:
+    raise SystemExit("Script self-tests must run on PR/push and support manual runs")
+if re.findall(r"(?m)^  ([\w-]+):", scripts.split("\njobs:\n", 1)[1]) != ["gate-scripts"]:
+    raise SystemExit("Script self-tests must have one job")
+if re.findall(r"(?m)^\s+run: (.+)$", scripts) != [
+        "make test-ci-watchdog", "make test-ci-guards", "make test-ci-diagnostic-controls"]:
+    raise SystemExit("Script self-tests must not build the app or run native tests")
+if ("ios-ci-evidence-" in fast or "verify-ci-ios-evidence" in fast or "simctl" in fast
+        or re.search(r"\bmake test-ci-(?:app|package|diagnostics)\b", fast)):
+    raise SystemExit("The fast build must not execute or claim native tests")
+for source in [fast, scripts, diagnostics]:
     if any("name: " + display in source for display in names.values()):
         raise SystemExit("Only full verification may publish full coverage check names")
+# Compare whole tokens: the checkout path may contain words such as `test`.
 command = subprocess.check_output(
     ["make", "--no-print-directory", "-n", "build-ci-app"],
-    cwd=Path(sys.argv[1]).resolve().parents[2], text=True)
-if not command.startswith("xcodebuild build ") or re.search(
-        r"\b(test|build-for-testing|test-without-building|xcodegen|simctl)\b", command):
-    raise SystemExit("Daily build entrypoint must compile the committed app without native tests")
-if "generic/platform=iOS Simulator" not in command:
-    raise SystemExit("Daily builds must not need a booted Simulator destination")
-if re.search(r"(?:^|\s)-arch(?:\s|$)", command):
+    cwd=workflows.resolve().parents[1], text=True)
+tokens = shlex.split(command.replace("\\\n", " "))
+actions = {"build", "build-for-testing", "test", "test-without-building", "analyze", "archive", "clean"}
+if tokens[:1] != ["xcodebuild"] or [token for token in tokens if token in actions] != ["build-for-testing"]:
+    raise SystemExit("The fast build entrypoint must compile the app and tests without running them")
+if any(Path(token).name in {"xcodegen", "simctl"} for token in tokens):
+    raise SystemExit("The fast build must use the committed project without a Simulator")
+if "-destination" not in tokens or tokens[tokens.index("-destination") + 1] != "generic/platform=iOS Simulator":
+    raise SystemExit("The fast build must not need a booted Simulator destination")
+if "-arch" in tokens:
     raise SystemExit("The generic destination conflicts with -arch; use the ARCHS build setting")
 
-require_line(reusable, "workflow_call:")
-require_line(reusable, "workflow_dispatch:")
-if events(reusable) != {"workflow_dispatch", "workflow_call"}:
-    raise SystemExit("Repeated diagnostics must remain opt-in")
-require_line(reusable, "options: [all, ssh-jump, staging, staging-method, weak, layout, changes-field, git-startup, git-startup-ssh]")
-require_line(reusable, "default: all")
-require_line(reusable, "target: ${{ fromJSON(inputs.target == 'all' && '[\"ssh-jump\",\"staging\",\"weak\"]' || format('[\"{0}\"]', inputs.target)) }}")
-require_line(reusable, "HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '1800'")
-require_line(reusable, "run: make test-ci-diagnostics")
-require_line(job("diagnose", reusable), "if: ${{ inputs.target != 'git-startup' && inputs.target != 'git-startup-ssh' }}")
-startup = job("git-startup", reusable)
-require_line(startup, "if: ${{ inputs.target == 'git-startup' || inputs.target == 'git-startup-ssh' }}")
-require_line(startup, "first: [system, developer]")
-require_line(startup, "GIT_STARTUP_TRANSPORT: ${{ inputs.target == 'git-startup-ssh' && 'ssh' || 'local' }}")
-require_line(startup, "run: make profile-git-startup")
-if re.findall(r"(?m)^\s+run: (.+)$", startup) != ["make profile-git-startup"] or "needs:" in startup:
-    raise SystemExit("Git startup diagnosis must not run or depend on an App build")
-if "ios-ci-evidence-" in reusable or re.search(r"\bmake test-ci-(?:app|package)\b|verify-ci-ios-evidence\.py complete", reusable):
+require_line(diagnostics, "workflow_dispatch:")
+if events(diagnostics) != {"workflow_dispatch"}:
+    raise SystemExit("Repeated diagnostics must remain manual")
+require_line(diagnostics, "options: [all, ssh-jump, staging, staging-method, weak, layout]")
+require_line(diagnostics, "default: all")
+require_line(diagnostics, "target: ${{ fromJSON(inputs.target == 'all' && '[\"ssh-jump\",\"staging\",\"weak\"]' || format('[\"{0}\"]', inputs.target)) }}")
+require_line(diagnostics, "HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '1800'")
+require_line(diagnostics, "run: make test-ci-diagnostics")
+if "ios-ci-evidence-" in diagnostics or re.search(r"\bmake test-ci-(?:app|package)\b|verify-ci-ios-evidence\.py complete", diagnostics):
     raise SystemExit("Diagnostic workflow publishes or runs the complete merge gate")
-if not any(line.strip().startswith("name: ios-diagnostic-") for line in reusable.splitlines()):
+if not any(line.strip().startswith("name: ios-diagnostic-") for line in diagnostics.splitlines()):
     raise SystemExit("Diagnostic workflow has no distinct artifact name")
-print("Passed fast build, daily/release full verification and diagnostic isolation contracts.")
+print("Passed fast build, full verification, scheduled alert and diagnostic isolation contracts.")
 PYWORKFLOW
 
 python3 - "$repo_root/Tests/HeelerTests/FileDiffLayoutViewTests.swift" <<'PYLAYOUT'
@@ -187,7 +208,7 @@ done
 
 # A literal command substitution must be rejected, never evaluated.
 # shellcheck disable=SC2016
-for target in ssh-jump staging staging-method weak layout changes-field; do
+for target in ssh-jump staging staging-method weak layout; do
     for value in 0 101 -1 '1;false' '$(false)' ' 2' 01; do
         if (ci_lane=app; ci_app_shard=all; ci_diagnostic_target=$target;
             ci_diagnostic_iterations=$value; configure_diagnostic_lane) >/dev/null 2>&1; then
@@ -232,7 +253,6 @@ check_configuration staging ordinary AgentSurfaceReplacementTests HEELER_STAGING
 check_configuration staging-method ordinary 'AgentSurfaceReplacementTests/aPossibleSuspensionRebuildsTheTerminalAndPreservesAttachState()' HEELER_STAGING_RECOVERY_ITERATIONS 1 20
 check_configuration weak session-weak 'WeakNetworkE2ETests/largeChangesReadsFitTheGitDeadlineOverACellularLink()' HEELER_WEAK_CHANGES_ITERATIONS 1 10
 check_configuration layout ordinary FileDiffLayoutViewTests HEELER_DIFF_LAYOUT_ITERATIONS 8 20
-check_configuration changes-field transport 'ChangesFieldHostE2ETests/everyFieldHostReadsChanges()' HEELER_CHANGES_FIELD_ITERATIONS 1 20
 
 run_case() (
     local target=$1 scenario=$2 expected=$3 fixture_mode=$4 status=0 test_noun=tests variable
@@ -247,7 +267,7 @@ run_case() (
     simulator_destination='platform=iOS Simulator,id=fake'
     simulator_udid=original-device
     simulator_environment_variables=()
-    local iteration_variables=(HEELER_SSH_JUMP_TOFU_ITERATIONS HEELER_STAGING_RECOVERY_ITERATIONS HEELER_WEAK_CHANGES_ITERATIONS HEELER_DIFF_LAYOUT_ITERATIONS HEELER_CHANGES_FIELD_ITERATIONS)
+    local iteration_variables=(HEELER_SSH_JUMP_TOFU_ITERATIONS HEELER_STAGING_RECOVERY_ITERATIONS HEELER_WEAK_CHANGES_ITERATIONS HEELER_DIFF_LAYOUT_ITERATIONS)
     for variable in "${iteration_variables[@]}"; do
         export "$variable=inherited-value"
     done
@@ -307,7 +327,7 @@ run_case() (
         grep -qxF "replacement-device $variable" "$fixture_dir/cleared-environment"
     done
 )
-for target in ssh-jump staging staging-method weak layout changes-field; do
+for target in ssh-jump staging staging-method weak layout; do
     for fixture_mode in empty configured; do
         run_case "$target" passed 0 "$fixture_mode"
         run_case "$target" missing-completion 1 "$fixture_mode"
@@ -317,4 +337,4 @@ for target in ssh-jump staging staging-method weak layout changes-field; do
         run_case "$target" native-failure 65 "$fixture_mode"
     done
 done
-echo 'Passed diagnostic isolation, input rejection and 72 native-boundary/replacement/cleanup scenarios.'
+echo 'Passed diagnostic isolation, input rejection and 60 native-boundary/replacement/cleanup scenarios.'

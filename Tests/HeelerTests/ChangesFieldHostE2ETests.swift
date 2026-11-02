@@ -26,24 +26,8 @@ struct ChangesFieldHostE2ETests {
         }
         let hosts = ChangesFieldHost.configured
         try #require(!hosts.isEmpty)
-        let configured = ProcessInfo.processInfo.environment["HEELER_CHANGES_FIELD_ITERATIONS"]
-        let iterations = try #require(Int(configured ?? "1"))
-        try #require((1...100).contains(iterations))
-        for iteration in 1...iterations {
-            for host in hosts {
-                ChangesFieldCheckout.trace("iteration=\(iteration)/\(iterations) begin", on: host)
-                do {
-                    try await ChangesFieldCheckout.verifyReads(on: host)
-                } catch {
-                    guard configured != nil else { throw error }
-                    // Keep sampling, but every failed round remains a test failure.
-                    Issue.record(error, "iteration=\(iteration)/\(iterations) host=\(host.label)")
-                }
-                ChangesFieldCheckout.trace("iteration=\(iteration)/\(iterations) end", on: host)
-            }
-        }
-        if configured != nil {
-            print("[changes-field-test] completed \(iterations) iterations")
+        for host in hosts {
+            try await ChangesFieldCheckout.verifyReads(on: host)
         }
     }
 }
@@ -116,15 +100,8 @@ enum ChangesFieldCheckout {
         return files.sorted { $0.path.lexicographicallyPrecedes($1.path) }
     }
 
-    static func trace(_ stage: String, on host: ChangesFieldHost) {
-        guard ProcessInfo.processInfo.environment["HEELER_CHANGES_FIELD_ITERATIONS"] != nil else { return }
-        print("[DEBUG-changes-field] time=\(Date().timeIntervalSince1970) host=\(host.label) \(stage)")
-    }
-
     static func verifyReads(on host: ChangesFieldHost) async throws {
-        trace("connect begin", on: host)
         let transport = try await HeelerSSHTransport.connect(settings: host.settings)
-        trace("connect end", on: host)
         defer { Task { try? await transport.close() } }
         // `$HOME` resolves on the Host, so one script serves every account.
         let root = "\"$HOME\"/changes-field-" + UUID().uuidString
@@ -132,23 +109,17 @@ enum ChangesFieldCheckout {
         do {
             try await verifyReads(on: host, transport: transport, root: root)
         } catch {
-            trace("failed error=\(error); cleanup begin", on: host)
             _ = try? await transport.runGitScript(cleanup)
-            trace("failure cleanup end", on: host)
             throw error
         }
-        trace("cleanup begin", on: host)
         let cleaned = try await transport.runGitScript(cleanup)
         #expect(cleaned.exitStatus == 0, "\(host.label): cleanup failed")
-        trace("cleanup end", on: host)
     }
 
     private static func verifyReads(
         on host: ChangesFieldHost, transport: HeelerSSHTransport, root: String
     ) async throws {
-        trace("seed begin root=\(root)", on: host)
         let seeded = try await transport.runGitScript(seedScript(root: root))
-        trace("seed end exit=\(seeded.exitStatus)", on: host)
         try #require(
             seeded.exitStatus == 0,
             "\(host.label): seed failed: \(String(decoding: seeded.stderr, as: UTF8.self))")
@@ -157,11 +128,9 @@ enum ChangesFieldCheckout {
         let indexBefore = try #require(seedValues["INDEX"]?.first, "\(host.label): no index")
 
         let reader: any Transport = transport
-        trace("readChanges begin", on: host)
         let (read, changesDuration) = try await timed {
             try await reader.readChanges(ChangesReadRequest(directory: topLevel + "/sub"))
         }
-        trace("readChanges end elapsed=\(milliseconds(changesDuration))", on: host)
 
         let changes = read.changes
         #expect(changes.checkout.topLevel == Data(topLevel.utf8), "\(host.label)")
@@ -185,21 +154,17 @@ enum ChangesFieldCheckout {
         var patchDurations: [Duration] = []
         for file in changes.files where !file.isUntrackedDirectory {
             let request = try #require(FilePatchRequest(file: file, checkout: changes.checkout))
-            trace("patch begin index=\(patchDurations.count)", on: host)
             let (patch, elapsed) = try await timed { try await reader.readFilePatch(request) }
-            trace("patch end elapsed=\(milliseconds(elapsed))", on: host)
             patchDurations.append(elapsed)
             expectPatch(patch, for: file, host: host)
         }
 
         let directory = try #require(changes.files.first { $0.isUntrackedDirectory })
-        trace("listing begin", on: host)
         let (listing, listingDuration) = try await timed {
             try await reader.listUntrackedDirectory(
                 UntrackedDirectoryRequest(
                     topLevel: changes.checkout.topLevel, directory: directory.path))
         }
-        trace("listing end elapsed=\(milliseconds(listingDuration))", on: host)
         #expect(
             listing.entries.map { String(decoding: $0.path, as: UTF8.self) }
                 == ["newdir/a.txt", "newdir/deep/b.txt", "newdir/sp ace.txt"],
@@ -209,27 +174,21 @@ enum ChangesFieldCheckout {
         // A file found only by expanding the directory reads like any other.
         let nested = try #require(listing.entries.first { $0.path == Data("newdir/sp ace.txt".utf8) })
         let nestedRequest = try #require(FilePatchRequest(file: nested, checkout: changes.checkout))
-        trace("nested patch begin", on: host)
         let nestedPatch = try await reader.readFilePatch(nestedRequest)
-        trace("nested patch end", on: host)
         #expect(
             nestedPatch.files.flatMap(\.hunks).flatMap(\.lines).map(\.text) == ["s"],
             "\(host.label)")
 
         // Nothing above touched the Checkout: same index inode and bytes, no
         // index write after the seed finished, and neither trap fired.
-        trace("fingerprint begin", on: host)
         let after = try await transport.runGitScript(afterScript(root: root))
-        trace("fingerprint end", on: host)
         let afterValues = markedValues(after.stdout)
         #expect(afterValues["INDEX"] == [indexBefore], "\(host.label)")
         #expect(afterValues["REWRITTEN"] == nil, "\(host.label)")
         #expect(afterValues["TRAP"] == nil, "\(host.label)")
 
         // The traps were armed: plain git on this Host fires both.
-        trace("control begin", on: host)
         let control = try await transport.runGitScript(controlScript(root: root))
-        trace("control end", on: host)
         #expect(
             markedValues(control.stdout)["TRAP"] == ["fsmonitor-ran", "post-index-change-ran"],
             "\(host.label)")
@@ -276,21 +235,6 @@ enum ChangesFieldCheckout {
     /// never parses a hostile name. Only fixed markers are printed, because a
     /// chatty login shell writes its own lines around them.
     private static func seedScript(root: String) -> Data {
-        // Diagnostic-only files sit beside the Checkout so failure cleanup
-        // cannot erase them. Only this disposable script is traced, never SSH
-        // credentials or the runner's environment. The CI fixture preserves them.
-        let trace: String
-        if ProcessInfo.processInfo.environment["HEELER_CHANGES_FIELD_ITERATIONS"] != nil {
-            trace = """
-                exec 2>>\(root).trace.log
-                export GIT_TRACE2_EVENT=\(root).git.log
-                PS4='[DEBUG-changes-field] '
-                set -x
-                printf '[DEBUG-changes-field] seed pid=%s\\n' "$$" >&2
-                """
-        } else {
-            trace = ""
-        }
         var hostileWrites = Data()
         var hostileEdits = Data()
         for name in hostileNames {
@@ -301,7 +245,6 @@ enum ChangesFieldCheckout {
         var script = Data(
             """
             {
-            \(trace)
             set -e
             r=\(root)
             mkdir -p "$r/repo/sub" "$r/repo/newdir/deep"

@@ -210,33 +210,40 @@ fi
     exit 1
 }
 
-# Daily iOS builds use positive paths. Test-only, fixture and documentation
-# changes get the fast tooling checks without spending a macOS build worker.
-if grep -qE '^[[:space:]]+paths-ignore:' "$build_workflow"; then
-    echo "ci.yml must use positive paths, not paths-ignore" >&2
-    exit 1
-fi
-for required in \
-    'Sources/**' \
-    'Heeler.xcodeproj/**' \
-    'Packages/**' \
-    'project.yml' \
-    'Makefile' \
-    'scripts/run-ci-background-build.py' \
-    '.github/workflows/ci.yml'
-do
-    # The sed character class includes a literal dollar sign.
-    # shellcheck disable=SC2016
-    escaped="$(printf '%s' "$required" | sed 's/[.[*^$()+?{|]/\\&/g')"
-    [[ "$(grep -cE "^[[:space:]]+- ${escaped}$" "$build_workflow")" == 2 ]] || {
-        echo "pull_request and push paths must both include $required" >&2
+# Both iOS feedback workflows use positive paths, listed identically for
+# pull_request and push. The app build starts only for what it compiles or
+# executes; any other script or ci-full.yml change starts only the macOS
+# script self-tests, and exports or the marketing site start neither.
+require_trigger_paths() {
+    local file=$1 required escaped
+    shift
+    if grep -qE '^[[:space:]]+paths-ignore:' "$file"; then
+        echo "${file##*/} must use positive paths, not paths-ignore" >&2
         exit 1
-    }
-done
-if grep -qE '^[[:space:]]+- (Tests|scripts|output|landing|plugin/test-vectors)/\*\*' "$build_workflow"; then
-    echo "test, fixture, export and site changes must not trigger an App-only build" >&2
+    fi
+    for required in "$@"; do
+        # The sed character class includes a literal dollar sign.
+        # shellcheck disable=SC2016
+        escaped="$(printf '%s' "$required" | sed 's/[.[*^$()+?{|]/\\&/g')"
+        [[ "$(grep -cE "^[[:space:]]+- ${escaped}$" "$file")" == 2 ]] || {
+            echo "${file##*/} pull_request and push paths must both include $required" >&2
+            exit 1
+        }
+    done
+}
+require_trigger_paths "$build_workflow" \
+    'Sources/**' 'Tests/**' 'Heeler.xcodeproj/**' 'Packages/**' 'project.yml' \
+    'Makefile' 'scripts/run-ci-background-build.py' \
+    'scripts/ci-compilation-cache-prefix.sh' 'plugin/test-vectors/**' \
+    '.github/workflows/ci.yml'
+if grep -qE '^[[:space:]]+- (scripts|output|landing)/\*\*|^[[:space:]]+- \.github/workflows/ci-full\.yml$' "$build_workflow"; then
+    echo "script, full-workflow, export and site changes must not trigger the app build" >&2
     exit 1
 fi
+scripts_workflow="$repo_root/.github/workflows/ci-scripts.yml"
+require_trigger_paths "$scripts_workflow" \
+    'scripts/**' 'Makefile' '.github/workflows/ci-full.yml' \
+    '.github/workflows/ci-scripts.yml'
 if grep -qE '^  (plugin-test|relay-test|codegen-drift):' "$build_workflow"; then
     echo "plugin, relay, and codegen jobs belong in ci-node.yml" >&2
     exit 1
