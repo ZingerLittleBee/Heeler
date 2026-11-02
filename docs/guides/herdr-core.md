@@ -229,7 +229,7 @@ Typing from Chat does not change the terminal's size for anyone viewing it.
 
 Heeler finds the conversation from the Agent's own process on the Host, with nothing to install, and never guesses from a directory or the newest file. It follows Claude Code's `/clear` and `/resume`, and reads from the `CLAUDE_CONFIG_DIR`, `CODEX_HOME` or `GROK_HOME` the Agent itself runs with. It checks when you open or return to Chat, before each Send, when you retry, when a reconnect or the Agent's return brings its Terminal back, and when the Agent's status, turn, foreground program or session label changes. No timer checks in between.
 
-When Chat says **Can't Tell the Conversation**, the fix it names is still the better one. If you want Chat now, tap **Choose a Conversation**. It lists the conversations the Agent's process holds open, the ones its status names, and the newest ones in its directory. Open one to read it, then tap **Use This Conversation**. Chat binds only then, and any device that opens this Agent's Chat follows the same choice. If Heeler sent your choice and got no answer, it says so and does not send it again. Chat shows the conversation if the choice landed.
+When Chat says **Can't Tell the Conversation**, the fix it names is still the better one. If you want Chat now, tap **Choose a Conversation**. It lists the conversations the Agent's process holds open, the ones its status names, and the newest ones in its directory. An OpenCode database Heeler can't read says why in place of the list. Open one to read it, then tap **Use This Conversation**. Chat binds only then, and any device that opens this Agent's Chat follows the same choice. If Heeler sent your choice and got no answer, it says so and does not send it again. Chat shows the conversation if the choice landed.
 
 Your choice is dropped, and Chat goes back to **Can't Tell the Conversation**, when:
 
@@ -319,18 +319,18 @@ When Heeler can't read the Agent's process at all, **Can't Tell the Conversation
 
 ### Let Chat follow OpenCode
 
-When Chat can't tell an OpenCode Agent's conversation, it offers **Let Chat Follow OpenCode…**. This is the only OpenCode setting Heeler changes, and it does nothing until you agree.
+When Chat can't tell an OpenCode Agent's conversation, it offers **Let Chat Follow OpenCode…**, in the conversation's place or on the banner over one it keeps showing. This is the only OpenCode setting Heeler changes, and it does nothing until you agree.
 
 The sheet shows the exact change: the folder `heeler-opencode` with Heeler's plugin files, under `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`, and the one entry `"./heeler-opencode"` in the file your release reads. That is `plugin` in `tui.json` or `tui.jsonc` on OpenCode 1.x, and `plugins` in `cli.json` on 2.x. Tap **Apply This Change**, then start OpenCode again. Chat then follows its conversation, through `/new` and picks in its list too.
 
-If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler can't read the file with certainty, or can't read which OpenCode the Host runs, it writes nothing and says what to add by hand. The plugin's files for that are in `plugin/helper/extensions/opencode` in Heeler's repository.
+If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler can't read the file with certainty, or can't read which OpenCode the Host runs, it writes nothing and says what to add by hand. On OpenCode 1.x, a file with a `tui` section is one of those: the entry goes in `plugin` inside `tui`, because a `plugin` at the top of the file would replace that list. The plugin's files for that are in `plugin/helper/extensions/opencode` in Heeler's repository.
 
 The plugin does nothing outside a herdr-core Terminal. It only tells the core which conversation OpenCode shows, as a Terminal label.
 
-**Undo** in the same sheet, or under **Harness Edits** in the Host's detail, takes the entry out and then the plugin's files and folder. Anything else you changed in the file since stays. Heeler keeps a folder that now holds something of yours. Removing the [Host Helper](#host-helper) from the device that made the edit undoes it too, and from another device leaves it in place, where it does nothing without a core.
+**Undo** in the same sheet, or under **Harness Edits** in the Host's detail, takes the entry out and then the plugin's files and folder. Anything else you changed in the file since stays. Heeler keeps a folder that now holds something of yours, or that another file it edited still names, as after applying again once OpenCode moved to 2.x. If a file in the folder changes while Heeler removes it, Heeler says so and **Undo** again finishes. Removing the [Host Helper](#host-helper) from the device that made the edit undoes it too, and from another device leaves it in place, where it does nothing without a core.
 
 - A later app update does not refresh the plugin's copy. **Undo** and apply again to update it.
-- OpenCode 1.x gets its conversation named this way, but Chat reads only OpenCode 2.x's format, so an OpenCode that has never moved to 2.x says so instead of showing the conversation.
+- OpenCode 1.x gets its conversation named this way, but Chat reads only OpenCode 2.x's format, so an OpenCode that has never moved to 2.x says so instead of showing the conversation. The sheet says this before you apply the change.
 
 ## Host Helper
 

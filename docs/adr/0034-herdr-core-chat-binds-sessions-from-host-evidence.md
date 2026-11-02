@@ -123,7 +123,7 @@ never show or send into a conversation it has guessed.
 - Candidates serve every program whose Chat binds on core, and only a Chat that
   already says it cannot tell offers them, on request. A list costs one exec, as
   a check does, then the listings it takes: a directory's folder, or for OpenCode
-  a read-only query of its roots there, and for Codex the heads of its newest
+  a read-only query of its roots there, whose store problem replaces the list, and for Codex the heads of its newest
   rollouts, up to 24, since Codex files by day. A process walk past its cap lists
   nothing, because a launcher would pass for the Agent and a daemon under it would
   go unseen. A Status child is listed only when

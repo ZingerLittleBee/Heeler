@@ -184,13 +184,18 @@ that Heeler can read from outside the process.
     a folder that isn't there. If the user changed the file since, undo takes
     out only the entry, against what it read then. The plugin ships in the
     Helper's bundle and manifest, so publishing the Heeler plugin never ships
-    it, and an app update doesn't refresh a copy already placed.
+    it, and an app update doesn't refresh a copy already placed. Two files can
+    name the one folder, after applying again once OpenCode moved from 1.x to
+    2.x, so the folder goes only with the last record that names it. On 1.x
+    the sheet says before the user agrees that Chat still can't show the
+    conversation, since Chat reads only 2.x's store (ADR 0025).
 
     Removal undoes it after the listed files and created folders and before
     the Helper's directory. A record of the edit lives on the device that made
     it, so a removal from another device leaves it, harmless without a core. A
     file that refuses the undo doesn't keep the Helper: the Helper goes, and
-    the edit stays listed with its Undo. A failed connection stops the removal
+    the edit stays listed with its Undo. So does a conflict on a file in the
+    folder, once the entry is already out. A failed connection stops the removal
     as any step's does.
   - Grok Build, offered where a Grok Build Agent shows no status because its
     automatic check left Program Status off: `[ui.notifications]
