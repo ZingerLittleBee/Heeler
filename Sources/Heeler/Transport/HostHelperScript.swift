@@ -215,7 +215,10 @@ struct HostHelperScript: Sendable, Equatable {
         "if [ -f \"$HOME/Library/LaunchAgents/\(HostHelperLaunchAgent.fileName)\" ]; then printf 'launch-agent-file\\n'; fi",
         "__h_print=$(launchctl print \"user/$__h_uid/\(HostHelperLaunchAgent.label)\" 2>&1)",
         "printf 'launchd-exit %s\\n' \"$?\"",
-        "printf '%s\\n' \"$__h_print\" | while IFS= read -r __h_line; do printf 'launchd %s\\n' \"$__h_line\"; done",
+        // Only the service's own fields leave the Host: the values of its nested
+        // dictionaries, its environment among them, are never read.
+        "printf '%s\\n' \"$__h_print\" | while IFS= read -r __h_line; do "
+            + "case \"$__h_line\" in \"\t\t\"*) ;; *) printf 'launchd %s\\n' \"$__h_line\" ;; esac; done",
         "else",
         // A user who has never logged in through logind has no record to show,
         // and the file is what logind itself keeps.
@@ -492,8 +495,9 @@ struct HostHelperProbe: Sendable, Equatable {
 }
 
 /// The Helper as a LaunchAgent (ADR 0033): one per SSH user, in `user/<uid>`, the
-/// only domain a plain SSH exec can use with or without a desktop login. That
-/// domain refuses a property list without `LimitLoadToSessionType`.
+/// only domain a plain SSH exec could use with or without a desktop login in a VM
+/// of macOS 26.5. There that domain refused a property list without
+/// `LimitLoadToSessionType`.
 enum HostHelperLaunchAgent {
     static let label = "dev.bybee.heeler.host-helper"
     static let fileName = "\(label).plist"

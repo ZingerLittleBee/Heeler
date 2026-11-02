@@ -512,6 +512,16 @@ class MacOSTests(HelperScriptCase):
                 self.assertEqual(probe["health"], ["loaded", "running", "", "0"])
                 self.assertEqual(probe["launchdPid"], 1116)
 
+    def test_leaves_the_services_environment_on_the_host(self) -> None:
+        self.use_fixture("running.txt")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                stdout = self.run_script(shell, step="probe").stdout
+                self.assertIn("launchd \tstate = running", stdout)
+                self.assertIn("launchd \tenvironment = {", stdout)
+                self.assertNotIn("OSLogRateLimit", stdout)
+                self.assertNotIn("PATH =>", stdout)
+
     def test_an_agent_launchd_does_not_hold_reads_as_not_loaded(self) -> None:
         probe = self.probe()
         self.assertEqual(probe["health"], ["not-found", "inactive", "", "0"])
