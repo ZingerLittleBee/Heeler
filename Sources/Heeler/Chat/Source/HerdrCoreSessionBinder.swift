@@ -140,9 +140,7 @@ struct HerdrCoreSessionBinder: Sendable {
 
     /// Where a program says its session started, in the form the Host writes paths.
     func startDirectory(_ directory: String?) -> String? {
-        directory.flatMap { path in
-            path.hasPrefix("/") || (isOnWindows && RemoteHostPath.isWindowsAbsolute(path)) ? path : nil
-        }
+        directory.flatMap { RemoteHostPath.isStartDirectory($0, allowingWindows: isOnWindows) ? $0 : nil }
     }
 
     /// What one exec asks of a Terminal's processes, for this program's agent and

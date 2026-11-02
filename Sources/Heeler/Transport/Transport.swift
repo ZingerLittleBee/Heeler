@@ -662,6 +662,12 @@ enum RemoteHostPath {
         windowsRoot(of: path) != nil && isSafeWindowsPath(path)
     }
 
+    /// Whether a Terminal or a session can start in this directory: an absolute POSIX
+    /// path always, and a Windows one where the caller says its Host may have them.
+    static func isStartDirectory(_ path: String, allowingWindows: Bool) -> Bool {
+        path.hasPrefix("/") || (allowingWindows && isWindowsAbsolute(path))
+    }
+
     static func childPath(_ parent: String, name: String) -> String {
         let separator = windowsRoot(of: parent)?.separator ?? "/"
         if let last = parent.last, isSeparator(last, windows: windowsRoot(of: parent) != nil) {

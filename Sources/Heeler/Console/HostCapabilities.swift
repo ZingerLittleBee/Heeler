@@ -65,8 +65,7 @@ struct HostCapabilities: Equatable, Sendable {
 
     /// Whether a Terminal here can start in this directory.
     func startsIn(_ directory: String) -> Bool {
-        directory.hasPrefix("/")
-            || (isNativeWindowsCore && RemoteHostPath.isWindowsAbsolute(directory))
+        RemoteHostPath.isStartDirectory(directory, allowingWindows: isNativeWindowsCore)
     }
 
     /// What a window may do with this Host's terminals. Windows only take
@@ -149,7 +148,7 @@ extension Host {
     /// For a directory the Host reported, which says its own platform: a core
     /// Host's is a Windows path only on native Windows.
     func reportedDirectoryStartsTerminals(_ directory: String) -> Bool {
-        directory.hasPrefix("/") || (serverKind == .herdrCore && RemoteHostPath.isWindowsAbsolute(directory))
+        RemoteHostPath.isStartDirectory(directory, allowingWindows: serverKind == .herdrCore)
     }
 }
 
