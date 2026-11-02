@@ -1949,8 +1949,6 @@ final class ConsoleStore {
             })
     }
 
-    /// The OpenCode edit a Chat that can't bind offers. It keeps to `corePin`, as
-    /// anything a detail does: past that core there is no Agent left to do it for.
     /// Heeler's extension on a native Windows core Host (ADR 0033). A detail keeps to
     /// its own core: a Host that has moved on writes nothing more, even part way.
     func windowsExtensionFlow(
@@ -1980,6 +1978,8 @@ final class ConsoleStore {
             })
     }
 
+    /// The OpenCode edit a Chat that can't bind offers. It keeps to `corePin`, as
+    /// anything a detail does: past that core there is no Agent left to do it for.
     func openCodePluginEditFlow(
         for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
     ) -> HarnessConfigEditFlow {
