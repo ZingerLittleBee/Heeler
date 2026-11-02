@@ -185,10 +185,14 @@ struct HostHelperMacOSTests {
         #expect(await !host.steps.contains { if case .systemctl = $0 { true } else { false } })
     }
 
-    @Test func theLogIsPrivateAndInTheHelperDirectory() async throws {
-        let host = try await installed()
-        #expect(await host.files["\(directory)/helper.log"]?.mode == 0o600)
-        #expect(await host.folders[directory] == 0o700)
+    /// The write through this seam keeps the directory private. Its 0600 comes
+    /// from the SFTP path, which only a real Host runs.
+    @Test func theLogGoesThroughThePrivateWriteIntoTheHelperDirectory() async throws {
+        let host = await ScriptedHelperHost.macOS()
+        let installer = installer(host)
+        _ = try await installer.install(over: try await installer.read(), bundle: bundle)
+        let log = try #require(await host.writes.first { $0.path == "\(directory)/helper.log" })
+        #expect(log.privateDirectory == directory)
     }
 
     @Test func anUpdateReplacesARunningCopy() async throws {
