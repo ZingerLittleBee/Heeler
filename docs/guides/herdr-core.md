@@ -303,7 +303,7 @@ Windows has no Host Helper, so **Can't Tell the Conversation** never points you 
 2. Tap **Add to … Folders**. Heeler writes one file, `heeler-session.js`, into each folder, through the core.
 3. Start the Agent again, and Chat follows its conversation.
 
-Add it again for a profile you created later, or after updating Heeler. To remove it, delete `heeler-session.js` from those folders.
+Chat offers this again whenever it can't tell the conversation, for example for a profile you created later, and adding it replaces the copy in every folder. A copy that still names its conversation stays as it is after you update Heeler. To replace it, delete `heeler-session.js` from those folders and start the Agent again, and Chat offers **Add Heeler's Extension…**. To remove it, delete the same file.
 
 When Heeler can't read the Agent's process at all, **Can't Tell the Conversation** says that, and the extension wouldn't help, so it isn't offered. This happens when herdr-core and your SSH session run at different elevation, or when PowerShell runs in constrained language mode. Tap **Check Again** once that's changed.
 
