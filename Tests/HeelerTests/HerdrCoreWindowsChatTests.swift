@@ -217,7 +217,7 @@ struct HerdrCoreWindowsChatTests {
         let agent = Agent(.fixture(paneID: "p1", kind: program.rawValue))
         #expect(
             AgentChatAvailability.program(
-                for: agent, platform: .nativeWindows, opensOnWindows: capabilities.startsInWindowsDirectories) == nil)
+                for: agent, platform: .nativeWindows, isNativeWindowsCore: capabilities.isNativeWindowsCore) == nil)
     }
 
     @Test func theStoreOffersAProgramOnlyOnceItIsOnTheList() async throws {

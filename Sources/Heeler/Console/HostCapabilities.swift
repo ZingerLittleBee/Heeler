@@ -31,8 +31,9 @@ struct HostCapabilities: Equatable, Sendable {
     var desktopAppNaming: HerdrAppNaming?
     /// The programs Chat opens for; nil for every one it can read.
     var chatPrograms: Set<ChatProgram>?
-    /// A core runs what it is given in a directory of its own machine's form.
-    var startsInWindowsDirectories = false
+    /// A core on a native Windows machine. Its Terminals start in directories of that
+    /// machine's form, and Send, staging and Chat each read it for their own rule.
+    var isNativeWindowsCore = false
     /// Changes, Skills and Grok Build's status edit run POSIX scripts on the Host.
     /// A native Windows core Host offers none of them, rather than failing once
     /// opened; a native Windows Herdr TUI Host keeps what it has always shown.
@@ -65,7 +66,7 @@ struct HostCapabilities: Equatable, Sendable {
     /// Whether a Terminal here can start in this directory.
     func startsIn(_ directory: String) -> Bool {
         directory.hasPrefix("/")
-            || (startsInWindowsDirectories && RemoteHostPath.isWindowsAbsolute(directory))
+            || (isNativeWindowsCore && RemoteHostPath.isWindowsAbsolute(directory))
     }
 
     /// What a window may do with this Host's terminals. Windows only take
@@ -116,7 +117,7 @@ extension HostCapabilities {
             composerStop: offered || coreOnPosix || coreOnWindows,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatPrograms: coreChat ? coreChatPrograms : coreOnWindows ? windowsChatPrograms : nil,
-            startsInWindowsDirectories: coreOnWindows,
+            isNativeWindowsCore: coreOnWindows,
             hostScripts: !coreOnWindows)
     }
 

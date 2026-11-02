@@ -780,7 +780,7 @@ final class ConsoleStore {
                 corePin: corePin,
                 clock: coreSendClock,
                 isOnWindows: { [weak self] in
-                    self?.capabilities(for: hostID).startsInWindowsDirectories == true
+                    self?.capabilities(for: hostID).isNativeWindowsCore == true
                 })
             : nil
         let composer = AgentComposerStore(
@@ -800,7 +800,7 @@ final class ConsoleStore {
             corePin: corePin,
             isOnCoreHost: coreSend != nil,
             filePreparer: WindowsCoreFilePreparer(isOnWindows: { [weak self] in
-                self?.capabilities(for: hostID).startsInWindowsDirectories == true
+                self?.capabilities(for: hostID).isNativeWindowsCore == true
             }))
         composerSessions[agent.id] = session
         requestHostPlatforms(Array(projections.values))
@@ -2076,7 +2076,7 @@ final class ConsoleStore {
         let platform = hostPlatforms[agent.hostID]
         if let platform {
             return AgentChatAvailability.program(
-                for: agent.agent, platform: platform, opensOnWindows: capabilities.startsInWindowsDirectories,
+                for: agent.agent, platform: platform, isNativeWindowsCore: capabilities.isNativeWindowsCore,
                 hasAdapter: { chatAdapter($0) != nil })
         }
         guard let host = projections[agent.hostID]?.host,
