@@ -33,9 +33,11 @@ Recommendation, pending owner confirmation:
 
 - **Bring your own key first. No Heeler proxy is scheduled.** See
   [Who provides the API](#who-provides-the-api).
-- **One OpenAI-compatible upload adapter with two presets:** DeepInfra overseas and
-  SiliconFlow CN in mainland China, both serving `Qwen/Qwen3-ASR-1.7B`. See
-  [Launch presets](#launch-presets).
+- **One OpenAI-shaped upload adapter behind built-in presets and a Custom entry.** Presets
+  are DeepInfra overseas and SiliconFlow CN in mainland China, both serving
+  `Qwen/Qwen3-ASR-1.7B`, plus OpenAI for people who already hold a key. See
+  [Launch presets](#launch-presets) and
+  [API format and custom endpoints](#api-format-and-custom-endpoints).
 - **The first slice has no streaming and no partial preview.** Audio uploads when the
   user stops. Live text is added only if evaluation or users demand it.
 
@@ -95,7 +97,7 @@ rationale was recorded when it was removed together with `AgentInputBar`.
 
 ```text
 Composer mic -> VoiceInputSession (one app-level owner; AVAudioSession is per process)
-                 -> capture: AVAudioRecorder, AAC, 16 kHz mono, about 120 s cap (tune later)
+                 -> capture: 16 kHz mono WAV, about 120 s cap (tune later)
                  -> SpeechEngine: cloud preset (BYOK) | Apple (iOS 26+)
                  -> frozen raw speech text
                  -> VoiceTextPolisher: none | same-key LLM | later Foundation Models
@@ -192,10 +194,11 @@ separate mode, off by default.
 
 | Preset | Model | Price | API | Status |
 | --- | --- | --- | --- | --- |
-| DeepInfra (overseas) | `Qwen/Qwen3-ASR-1.7B` | [$0.00045/min](https://deepinfra.com/Qwen/Qwen3-ASR-1.7B) | `/v1/audio/transcriptions`, upload only | Model page labels it zero retention; file size limit not documented |
-| SiliconFlow CN (mainland) | `Qwen/Qwen3-ASR-1.7B` | [¥0.00022/s](https://siliconflow.cn/pricing), about ¥0.0132/min | `https://api.siliconflow.cn/v1`, upload only | Must pass a real-key smoke test first |
+| DeepInfra (overseas) | `Qwen/Qwen3-ASR-1.7B` | [$0.00045/min](https://deepinfra.com/Qwen/Qwen3-ASR-1.7B) | Base `https://api.deepinfra.com/v1/openai`, upload only | Model page labels it zero retention; file size limit not documented |
+| SiliconFlow CN (mainland) | `Qwen/Qwen3-ASR-1.7B` | [¥0.00022/s](https://siliconflow.cn/pricing), about ¥0.0132/min | Base `https://api.siliconflow.cn/v1`, upload only | Must pass a real-key smoke test first |
+| OpenAI | `gpt-transcribe` | $0.0045/min | Base `https://api.openai.com/v1`, upload here | For existing keys; `languages[]` replaces `language`; unavailable in mainland China and Hong Kong |
 
-Why these two: they are the only pay-per-use, single-key hosts found for the open 1.7B
+Why DeepInfra and SiliconFlow: they are the only pay-per-use, single-key hosts found for the open 1.7B
 family the owner likes, and each also sells a cleanup model on the same key (see
 [Cleanup](#cleanup)). OpenRouter's 1.7B only forwards to DeepInfra, with a 60 s upstream
 timeout and a minimum top-up. Baseten and FriendliAI are dedicated GPU deployments, which
@@ -204,14 +207,86 @@ found, and Together and Fireworks list none on their pricing pages.
 
 Known problems with the choice:
 
-- SiliconFlow's speech API reference enumerates only `FunAudioLLM/SenseVoiceSmall` and
-  `TeleAI/TeleSpeechASR`, contradicting its pricing page. A third-party issue reports 1.7B
-  working. Its real-name requirement comes from third-party guides, and its retention
+- SiliconFlow's speech API reference documents only `file` and `model`, and enumerates only
+  `FunAudioLLM/SenseVoiceSmall` and `TeleAI/TeleSpeechASR`, contradicting its pricing and model
+  pages, which list 1.7B as speech to text. A third-party issue reports it working. Its real-name requirement comes from third-party guides, and its retention
   policy has not been read.
 - Hosts do not disclose quantization, and the owner's Mac runs a 6-bit MLX build, so the
   hosted result may differ from what they use today.
 - If SiliconFlow fails, the mainland fallback is Bailian Beijing `qwen3-asr-flash` at the
   same price. It uses `chat/completions` with `input_audio`, so it needs a second adapter.
+
+### API format and custom endpoints
+
+There is a de facto shape but no standard. No formal specification for speech-to-text HTTP APIs was
+found: [RFC 6787](https://www.rfc-editor.org/rfc/rfc6787.txt) is SIP and RTP, and
+[Web Speech](https://webaudio.github.io/web-speech-api/) excludes transport. What hosts copy is
+OpenAI's `POST <base>/audio/transcriptions`, a Bearer token, a multipart `file` and `model`, and a
+`text` key in the response.
+
+Only that route shape is common. Same route, different rules:
+
+| Host | Difference that matters |
+| --- | --- |
+| OpenAI `gpt-transcribe` | `languages[]` replaces `language` |
+| Together | `language` defaults to `en`, so omitting it is wrong for Chinese |
+| Cohere | Base ends in `/v2`; `language` is required; no m4a |
+| StepFun | `response_format` is required; no `language`; no m4a |
+| Zhipu | No `language`; WAV or MP3; 30 s cap |
+| SiliconFlow | Only `file` and `model` documented; formats not listed |
+| Groq | Base ends in `/openai/v1`; Whisper models only |
+
+Many vendors are outside the shape altogether: ElevenLabs, Deepgram, AssemblyAI, Soniox, xAI, Doubao,
+Tencent, and iFlytek have their own routes, and several need extra credentials or several steps.
+Bailian and Gemini need `chat/completions` with audio content, plus a region and workspace on Bailian.
+Live streaming has no common protocol at all, so Custom stays upload only. OpenRouter is a partial way
+around this: its catalog lists `elevenlabs/scribe-v2`, `deepgram/nova-3`, and others behind OpenAI-style
+multipart, at the cost of another third party and a 60 s upstream timeout. Per-model behavior is unverified.
+
+**Build both.** A Custom entry costs no second adapter, but presets are still needed: they spare people
+from finding a URL, encode the differences above, and name a vendor in the consent. OpenRouter, Groq,
+Mistral, and self-hosted servers such as vLLM and speaches are reached through Custom at first, and a
+preset is added only after a real-key test. A native adapter for a vendor outside the shape waits for
+evaluation evidence, such as Scribe clearly beating Qwen.
+
+Shipped apps agree on the combination. OpenWhispr, OSGKeyboard, and VoiceInk take a URL, key, and model;
+Moshi puts the model in the URL as `?model=`. VoiceInk and OpenWhispr send WAV to custom endpoints.
+
+**Custom form:** Base URL, API key, Model (required), and whether to send the primary language (default
+off). Keep the path the user entered, since `/v1` is not universal, and strip a trailing slash or a
+pasted `/audio/transcriptions`.
+
+**Upload WAV.** Every host that publishes a format list and was read includes WAV, while m4a is not
+universal. 120 s of 16 kHz mono 16-bit is 3.84 MB, and 15 s is 480 KB, which is larger than AAC. A preset
+can move to AAC later if a real-key test passes and upload time matters.
+
+**The risk is where the key and audio go, not the format:**
+
+- HTTPS only in the first release. On the iOS 27.1 Simulator and macOS 27, plain HTTP to private addresses
+  passed ATS, while CGNAT `100.64/10`, public IPs, and `*.ts.net` were blocked, which contradicts Apple's
+  documentation in both directions, so do not build on it. An `http://192.168.x.x` saved at home would
+  also send the Bearer token in clear text on the next Wi-Fi network. Never add `NSAllowsArbitraryLoads`.
+- Tailscale servers use `https://<machine>.<tailnet>.ts.net` through `tailscale serve`. `URLSession` will
+  not use Heeler's in-process overlay node (ADR 0021), so this needs the system Tailscale app, and the
+  settings page says so. That comes from reading the code and is untested.
+- Refuse every redirect and report the target host. `URLSession` drops `Authorization` on redirect but
+  resends the multipart body on 307 and 308, so a redirect can send audio to a third party. DeepInfra
+  answers a trailing slash with a 307 to `http://`.
+- Bind each key to its normalized origin and path, as OpenWhispr does, so editing the URL requires
+  re-entering the key. Preset keys only ever go to the built-in URL.
+- Show the normalized host and send nothing carrying the key until the user confirms it. A mistyped
+  domain with a valid certificate passes TLS and ATS. Links, Pairing QR codes, and any other external
+  configuration cannot set an endpoint.
+- Test with a user-confirmed upload of a short built-in clip, expecting 200 and a `text` field. Neither
+  `GET /models` nor a keyless probe proves anything: a keyless 401 also comes back for nonexistent paths
+  on Mistral, Zhipu, StepFun, Cohere, and Ark, `/models` is public on DeepInfra and always 200 on OpenRouter,
+  and whisper.cpp has no such route. A passing test is a hint, never a reason to trust the host.
+
+Guidelines 5.1.2(i) and 5.1.1(i) have no wording for an unknown endpoint. Moshi, OpenWhispr, and Spokenly are
+on the store with custom endpoints, which is weak evidence since nothing shows that App Review examined the
+feature, and their disclosures are not a model. Custom consent names the host and says Heeler does not know
+who operates it. PRIVACY.md says Custom sends data where the user decides, under that operator's terms. Whether
+that satisfies 5.1.1(i)'s "same or equal protection" is unsettled, so ask App Review before submission.
 
 ### Qwen API models are not the open weights
 
@@ -422,7 +497,7 @@ Do not take:
   today. Add `NSSpeechRecognitionUsageDescription` only if a device test of the Apple engine
   shows it is required (the earlier `SpeechTranscriber` branch omitted it, though Apple's key
   page says to include it for Speech framework use). Keep no "never leaves your phone" wording.
-- Per-vendor consent screen on first use and on vendor change (5.1.2(i)); a visible recording
+- Consent screen on first use and on any preset or Custom origin change (5.1.2(i)); a visible recording
   indicator (2.5.14); Review Notes with a limited test key (2.3.1(a)); no
   hidden remote toggle (2.5.19).
 - App Privacy label for BYOK audio is undefined by Apple's text. Declare conservatively or
@@ -445,8 +520,9 @@ Do not take:
 
 No engine choice is final until this runs. The owner records the corpus and provides the keys.
 
-- **Smoke test first, about half a day:** one real key on each preset. Confirm SiliconFlow serves
-  1.7B and honors `language`, accepted formats and file limits, cold starts, and the median time from
+- **Smoke test first, about half a day:** one real key on each preset, plus one Custom endpoint
+  through OpenRouter. Confirm SiliconFlow serves 1.7B and honors `language`, WAV upload and file limits,
+  the built-in test clip's acceptance and billing, cold starts, and the median time from
   a 15 s clip to its result. Run both presets on an iPhone on a mainland SIM with no proxy; earlier
   probes went through a proxy and prove nothing about direct access.
 - **Corpus:** 40 to 60 real sentences recorded on an iPhone, by at least the owner, in quiet and
@@ -468,8 +544,8 @@ No engine choice is final until this runs. The owner records the corpus and prov
 
 1. **Smoke test and evaluation** (above). They also test the [UITextInput](https://developer.apple.com/documentation/uikit/uitextinput)
    dictation callbacks on `AgentComposerUITextView`.
-2. **In-app capture with both presets:** mic in the terminal and Chat Composers, the first-tap choice,
-   consent per vendor, recording indicator, single insertion, retry from the local recording, and a new
+2. **In-app capture with the presets and Custom:** mic in the terminal and Chat Composers, the first-tap choice,
+   consent per preset or Custom origin, recording indicator, single insertion, retry from the local recording, and a new
    ADR with the PRIVACY.md, CONTEXT.md, and App Privacy updates.
 3. **Apple engine** for the no-API path on iOS 26+, labeled single language.
 4. **Cleanup:** `VoiceTextPolisher` and its guard, using the preset's key. Polishing was a core request,
@@ -482,8 +558,8 @@ No engine choice is final until this runs. The owner records the corpus and prov
 5. **Bilingual settings:** the ordered language list and per-engine strategy. Until then, the primary
    comes from the system language, and only zh + en is promised.
 6. **Optional, each behind evidence:** streaming with partials, vocabulary, Foundation Models cleanup
-   (the Chinese rollout in 27.3 is announced, but third-party framework access is unknown), custom
-   endpoints, and a proxy.
+   (the Chinese rollout in 27.3 is announced, but third-party framework access is unknown), private
+   network HTTP endpoints, native adapters for vendors outside the OpenAI shape, and a proxy.
 
 ## Not verified
 
@@ -495,6 +571,7 @@ No engine choice is final until this runs. The owner records the corpus and prov
 - Any engine's accuracy on Heeler-style speech. No official or independent same-sentence zh + en ASR data
   exists for Qwen3-ASR.
 - All usage, conversion, and proxy numbers, which are our assumptions.
+- ATS and redirect behavior on devices and on iOS 18 to 26; Local Network prompts for custom endpoints.
 - Two concurrent recognizers on an iPhone, and microphone behavior with two foreground iPad apps.
 - OpenAI usage terms and Codex help pages (HTTP 403 during checking).
 - The legal reading of Anthropic's terms for Host CLI use, which is our interpretation.
