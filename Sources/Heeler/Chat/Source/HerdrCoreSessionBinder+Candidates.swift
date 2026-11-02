@@ -208,16 +208,32 @@ extension HerdrCoreSessionBinder {
 
     private func recentClaudeCode(root: String?, directories: [String]) async throws -> [Found] {
         guard let root else { return [] }
+        let projects = RemoteFilePath.join(root, "projects")
+        let plan = ClaudeTranscriptLocator.plan(directories: directories)
         var found: [Found] = []
-        for key in ClaudeTranscriptLocator.plan(directories: directories).exactKeys {
-            let listing = try await files.list(
-                RemoteFileListingRequest(
-                    directory: RemoteFilePath.join(root, "projects", key), kinds: [.regular], nameSuffixes: [".jsonl"]))
-            for entry in listing?.entries ?? [] where (entry.status.size ?? 0) > 0 {
+        var sawFolder = false
+        func listTranscripts(in key: String) async throws {
+            guard
+                let listing = try await files.list(
+                    RemoteFileListingRequest(
+                        directory: RemoteFilePath.join(projects, key), kinds: [.regular], nameSuffixes: [".jsonl"]))
+            else { return }
+            sawFolder = true
+            for entry in listing.entries where (entry.status.size ?? 0) > 0 {
                 if let session = ConversationReference.canonicalUUID(String(entry.name.dropLast(".jsonl".count))) {
                     found.append(Found(session: session, modified: entry.status.modificationTime))
                 }
             }
+        }
+        for key in plan.exactKeys { try await listTranscripts(in: key) }
+        // A long directory's hash differs by how Claude Code was built, so its folder
+        // goes by the prefix, as when a Transcript is read. A directory sharing that
+        // whole prefix lists here too, and a choice of it binds only as any pick does.
+        for prefix in plan.longKeyPrefixes where !sawFolder {
+            let listing = try await files.list(
+                RemoteFileListingRequest(
+                    directory: projects, kinds: [.directory, .symlink], namePrefix: prefix, maximumEntries: 100))
+            for entry in listing?.entries ?? [] { try await listTranscripts(in: entry.name) }
         }
         return Self.newest(found)
     }

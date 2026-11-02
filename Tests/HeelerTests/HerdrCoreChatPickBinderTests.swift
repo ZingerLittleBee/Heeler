@@ -434,6 +434,33 @@ struct HerdrCoreChatPickBinderTests {
         #expect(list.candidates.allSatisfy { $0.file == nil })
     }
 
+    /// A long directory's folder ends in a hash that differs by how Claude Code was
+    /// built, so its folder goes by the key's prefix, as when a Transcript is read.
+    @Test func claudeCodeListsTheRecentTranscriptsOfALongDirectoryWhateverItsHash() async throws {
+        let rig = await Rig(.claude)
+        let directory = "/work/" + String(repeating: "a", count: 250)
+        let prefix = try #require(ClaudeProjectKey.longKeyPrefix(forDirectory: directory))
+        await rig.files.write("{}\n", at: "\(Self.home)/.claude/projects/\(prefix)bunhash1/\(Self.uuid).jsonl")
+        let name = JSONValue.string("claude")
+        let record = try JSONDecoder().decode(
+            HerdrCoreTerminalRecord.self,
+            from: try JSONEncoder().encode(
+                JSONValue.object([
+                    "address": .string("t1"), "cwd": .string(directory), "state": .string("live"),
+                    "argv": .array([name]), "keep": .bool(false), "title": .string(""),
+                    "cols": .number(80), "rows": .number(24), "name": .null, "reason": .null,
+                    "pid": .number(Double(Self.pid)),
+                    "foreground": .object([
+                        "pid": .number(Double(Self.pid)), "name": name, "argv": .array([name]), "cwd": .string(directory),
+                    ]),
+                ])))
+
+        let list = try await Self.list(rig, record: record)
+
+        #expect(list.candidates.map(\.sessionID) == [Self.uuid])
+        #expect(list.candidates.first?.origins == [.recentTranscript])
+    }
+
     @Test(arguments: [ChatProgram.pi, .omp])
     func thePiFamilyListsSessionFilesByTheirFile(_ program: ChatProgram) async throws {
         let rig = await Rig(program)
