@@ -34,7 +34,7 @@ never show or send into a conversation it has guessed.
   (`app-server --managed-daemon`) and the daemon's `app-server daemon
   pid-update-loop`, which keep the `HC_SCOPE` of the Terminal that started them
   while the daemon serves every window. It tells them by those exact arguments,
-  and learns nothing else of any argv. It reads only the variables it names from a
+  and learns nothing else of any argv, past a macOS name (below). It reads only the variables it names from a
   process environment, on the Host, because environments hold secrets. The core keeps a Terminal's scope out of its record, so the check
   reads `HC_SCOPE` from the Terminal's own process, in the same exec.
 - For Claude Code the agent is the nearest of those processes that calls itself
@@ -343,6 +343,11 @@ herdr-core Hosts only.
   withholds `/bin/zsh`'s environment, which is usually the Terminal's own process,
   so there alone the foreground's `HC_SCOPE` stands in for the Terminal's. With both
   withheld no process is the Agent, and a walk still drops a pick whose process left.
+  A process's name there comes from `ps -o comm=`, which is argv[0] and so a
+  program's title: a Node program names itself no other way. That is the one part of
+  an argv a check brings off the Host. Only its last path part leaves, only when it
+  holds nothing but `[A-Za-z0-9._-]`, which rules out `--token=x` but not a bare token
+  a process set as its argv[0], and it is only ever compared to a program's name.
   An Apple binary between the foreground and the Agent therefore reads as cannot
   tell with no list, also under a launcher that can be read, which is not taken for
   the Agent while something below it is out of sight. Asking again finds the same,

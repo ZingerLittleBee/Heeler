@@ -20,8 +20,9 @@ enum HostProcessReader {
         /// As ``namesOf``, for any name starting with one of these.
         var namesWithPrefix: [String] = []
         var readsOpenFiles = false
-        /// Exact arguments reported when a process's argv holds them. Nothing
-        /// else in an argv leaves the Host, since an argv can hold a secret.
+        /// Exact arguments reported when a process's argv holds them. Nothing else in
+        /// an argv leaves the Host, since an argv can hold a secret, past one exception:
+        /// macOS's walk reports argv[0]'s last path part as a process's ``Facts/name``.
         var argumentsAmong: [String] = []
         /// One of ``pids``: also finds its descendants on the Host and reads
         /// each of them the same way, since nothing can name them beforehand.
@@ -75,8 +76,9 @@ enum HostProcessReader {
         var openFiles: Reading<[String]> = .unavailable
         /// Those of ``Request/argumentsAmong`` the argv holds.
         var arguments: Reading<Set<String>> = .unavailable
-        /// In ``Request/descendantsOf``'s walk: the parent, and the kernel's
-        /// name for the process, `-` when it holds anything but `[A-Za-z0-9._-]`.
+        /// In ``Request/descendantsOf``'s walk: the parent, and the process's name,
+        /// `-` when it holds anything but `[A-Za-z0-9._-]`. Linux gives the kernel's name,
+        /// macOS the last path part of argv[0] (so a title), Windows the image's name.
         var parent: String?
         var name: String?
         /// On the walk's root: everything under it, each with its own facts.
@@ -372,7 +374,8 @@ enum HostProcessReader {
             "done",
             "}",
             // The strings before `argc` runs out, hex, compared whole. Nothing else
-            // of an argv leaves. An entry past them holds `=`, which no asked word does.
+            // of an argv leaves here, `w`'s name being the one thing that does. An entry
+            // past them holds `=`, which no asked word does.
             "a() {",
             "  /usr/bin/perl -e '",
             "use strict;my $p=shift;my %W=map{($_,1)}qw(\(request.argumentsAmong.joined(separator: " ")));",
