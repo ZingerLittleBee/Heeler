@@ -24,6 +24,9 @@ struct HostHelperScript: Sendable, Equatable {
         case promote(staging: String, app: String)
         case systemctl([String])
         case launchctl([String])
+        /// Boots a LaunchAgent out and, once it is gone, deletes its property list
+        /// in the same exec, so no read in between finds a list to load back.
+        case bootOutAndRemove(service: String, propertyList: String)
         case enableLinger(user: String)
         case removeFiles([String])
         /// Removes each folder that is empty, in the order given.
@@ -113,6 +116,15 @@ struct HostHelperScript: Sendable, Equatable {
             lines = ["LC_ALL=C; export LC_ALL", systemctlCommand(arguments)]
         case .launchctl(let arguments):
             lines = ["LC_ALL=C; export LC_ALL", "launchctl \(arguments.map(quote).joined(separator: " "))"]
+        case .bootOutAndRemove(let service, let propertyList):
+            let done = HostHelperLaunchAgent.bootoutDone.map(String.init).joined(separator: "|")
+            lines = [
+                "LC_ALL=C; export LC_ALL",
+                "launchctl bootout \(quote(service))",
+                "__h_bootout=$?",
+                "case \"$__h_bootout\" in \(done)) rm -f -- \(quote(propertyList)) ;; esac",
+                "(exit \"$__h_bootout\")",
+            ]
         case .enableLinger(let user):
             // Never waits on an administrator's password: a refusal comes back.
             lines = ["LC_ALL=C; export LC_ALL", "loginctl --no-ask-password enable-linger \(quote(user))"]
@@ -490,6 +502,10 @@ enum HostHelperLaunchAgent {
     /// not restarted before it has passed, so two reads this far apart cannot
     /// meet the same pid in a Helper that dies at start.
     static let healthGap = Duration.seconds(11)
+    /// `bootout`'s answers for stopped now, or nothing to stop. A VM of macOS 26.5
+    /// answered 3 for a label it did not hold. 113, `launchctl print`'s answer for
+    /// that, was not seen here, and can only mean the same.
+    static let bootoutDone: [Int32] = [0, 3, HostHelperHealth.launchctlNotLoadedStatus]
 
     static func domain(uid: String) -> String { "user/\(uid)" }
     static func service(uid: String) -> String { "\(domain(uid: uid))/\(label)" }

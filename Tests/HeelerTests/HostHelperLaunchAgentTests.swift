@@ -300,12 +300,30 @@ struct HostHelperMacOSTests {
         #expect(await host.filePaths().isEmpty)
     }
 
-    @Test func aBootoutThatFindsNoProcessDoesNotStopTheRemoval() async throws {
+    /// Only `launchctl print` has been seen to answer this, which still can only
+    /// mean launchd holds nothing to stop.
+    @Test func aBootoutAnsweringThatItFindsNoServiceDoesNotStopTheRemoval() async throws {
         let host = try await installed()
-        await host.configure { $0.bootoutRefusal = (3, "Boot-out failed: 3: No such process") }
+        await host.configure { $0.bootoutRefusal = (HostHelperHealth.launchctlNotLoadedStatus, "Could not find service") }
         let installer = installer(host)
         try await installer.remove(over: try await installer.read())
         #expect(await host.files[agent] == nil)
+    }
+
+    /// Another connection reading the Helper in that moment finds no property
+    /// list to load, so nothing outlives the removal in launchd with no record.
+    @Test func aReadRightAfterTheRemovalsBootoutLoadsNothing() async throws {
+        let host = try await installed()
+        let installer = installer(host)
+        let other = HostHelperInstaller(host: host, bundle: { HostHelperFixture.bundle() }, healthGap: {})
+        await host.configure {
+            $0.afterBootout = { _ = try? await other.readLoadingAgent() }
+        }
+
+        try await installer.remove(over: try await installer.read())
+
+        #expect(await !host.agentLoaded)
+        #expect(await !host.journal.contains("launchctl bootstrap user/501 \(agent)"))
     }
 
     @Test func turningOnLingerIsNotAThingOnAMac() async throws {

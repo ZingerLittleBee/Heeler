@@ -241,7 +241,12 @@ struct HostHelperInstaller: Sendable {
                 _ = try await run(.systemctl(["reset-failed", HostHelperScript.unitName]))
             }
         case .launchd:
-            try await bootOutLaunchAgent(label: record.launchAgentLabel, uid: probe.uid)
+            guard !probe.uid.isEmpty else { throw HostHelperError.unreadableHost }
+            let label = record.launchAgentLabel ?? HostHelperLaunchAgent.label
+            try await checkBootOut(
+                .bootOutAndRemove(
+                    service: "\(HostHelperLaunchAgent.domain(uid: probe.uid))/\(label)",
+                    propertyList: layout.launchAgent))
             try await check(.removeFiles(record.safeFiles), step: "Deleting the files")
         }
         let folders = record.safeFolders.sorted(by: Self.deepestFirst)
@@ -359,14 +364,12 @@ struct HostHelperInstaller: Sendable {
         }
     }
 
-    /// A LaunchAgent already gone is what this asked for. Other answers stop the
-    /// removal before it deletes anything, since launchd would go on restarting
-    /// an agent whose files have gone.
-    private func bootOutLaunchAgent(label: String?, uid: String) async throws {
-        guard !uid.isEmpty else { throw HostHelperError.unreadableHost }
-        let service = "\(HostHelperLaunchAgent.domain(uid: uid))/\(label ?? HostHelperLaunchAgent.label)"
-        let result = try await run(.launchctl(["bootout", service]))
-        guard Self.bootoutDone.contains(result.exitStatus) else {
+    /// A LaunchAgent already gone is what this asked for. Other answers stop before
+    /// anything is replaced or deleted, since launchd would go on restarting an
+    /// agent whose files have gone.
+    private func checkBootOut(_ step: HostHelperScript.Step) async throws {
+        let result = try await run(step)
+        guard HostHelperLaunchAgent.bootoutDone.contains(result.exitStatus) else {
             throw HostHelperError.stepFailed(step: "Stopping the service", detail: Self.detail(of: result))
         }
     }

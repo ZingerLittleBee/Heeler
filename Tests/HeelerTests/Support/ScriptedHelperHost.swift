@@ -38,6 +38,12 @@ actor ScriptedHelperHost: HostHelperHost {
     var bootstrapRefusal: (status: Int32, message: String)?
     /// `bootout` answers this, whatever launchd holds.
     var bootoutRefusal: (status: Int32, message: String)?
+    /// Runs once, right after a `bootout` that stopped the agent, as another
+    /// connection reading the Helper at that moment would.
+    var afterBootout: (@Sendable () async -> Void)?
+    /// The manifest of the Helper the service last started, which stays as it was
+    /// until something starts it again. Nil while the service is stopped.
+    private(set) var runningCode: Data?
 
     var platform = HostPlatform.posix
     var kernel = "Linux"
@@ -253,6 +259,12 @@ actor ScriptedHelperHost: HostHelperHost {
             lines = answer.lines
             status = answer.status
             stderr = answer.stderr
+        case .bootOutAndRemove(let service, let propertyList):
+            let answer = applyLaunchctl(["bootout", service])
+            lines = answer.lines
+            status = answer.status
+            stderr = answer.stderr
+            if HostHelperLaunchAgent.bootoutDone.contains(status) { files[propertyList] = nil }
         case .enableLinger:
             if let lingerRefusal {
                 status = 1
@@ -269,8 +281,20 @@ actor ScriptedHelperHost: HostHelperHost {
         case .usageQuery(_, _, let session):
             lines = ["__HEELER_USAGE_BEGIN_\(script.nonce)", usageBody(session: session), "__HEELER_USAGE_END_\(script.nonce):0"]
         }
+        if let afterBootout, isStoppedByBootout(script.step) {
+            self.afterBootout = nil
+            await afterBootout()
+        }
         let framed = (["\(script.nonce) begin"] + lines + ["\(script.nonce) end"]).joined(separator: "\n") + "\n"
         return GitExecResult(stdout: Data(framed.utf8), stderr: Data(stderr.utf8), exitStatus: status)
+    }
+
+    private func isStoppedByBootout(_ step: HostHelperScript.Step) -> Bool {
+        switch step {
+        case .launchctl(let arguments): arguments.first == "bootout" && !agentLoaded
+        case .bootOutAndRemove: !agentLoaded
+        default: false
+        }
     }
 
     /// Acts as the Usage script does: it checks the Helper's files, makes the
@@ -313,10 +337,17 @@ actor ScriptedHelperHost: HostHelperHost {
             files[Self.unitLink] = File(contents: Data(), mode: 0o777)
         case "disable":
             files[Self.unitLink] = nil
-            if arguments.contains("--now") { activeState = "inactive" }
+            if arguments.contains("--now") {
+                activeState = "inactive"
+                runningCode = nil
+            }
+        case "stop":
+            activeState = "inactive"
+            runningCode = nil
         case "restart":
             activeState = "active"
             result = "success"
+            runningCode = files["\(helperDirectory)/app/manifest.json"]?.contents
         default:
             break
         }
@@ -324,7 +355,6 @@ actor ScriptedHelperHost: HostHelperHost {
 
     /// launchd's answers, by the spike's records (`docs/agents/herdr-compatibility.md`).
     private func applyLaunchctl(_ arguments: [String]) -> (lines: [String], status: Int32, stderr: String) {
-        let notFound = "Bad request.\nCould not find service"
         switch arguments.first {
         case "print":
             let read = printAnswer()
@@ -336,13 +366,15 @@ actor ScriptedHelperHost: HostHelperHost {
                 agent["LimitLoadToSessionType"] as? String == "Background"
             else { return ([], 5, "Bootstrap failed: 5: Input/output error") }
             agentLoaded = true
+            runningCode = files["\(helperDirectory)/app/manifest.json"]?.contents
             return ([], 0, "")
         case "bootout":
             if let bootoutRefusal { return ([], bootoutRefusal.status, bootoutRefusal.message) }
             guard agentLoaded, arguments.count == 2, arguments[1] == Self.macService else {
-                return ([], HostHelperHealth.launchctlNotLoadedStatus, notFound)
+                return ([], 3, "Boot-out failed: 3: No such process")
             }
             agentLoaded = false
+            runningCode = nil
             return ([], 0, "")
         default:
             return ([], 64, "Unrecognized subcommand")
@@ -438,6 +470,7 @@ actor ScriptedHelperHost: HostHelperHost {
         case .promote: "promote"
         case .systemctl(let arguments): "systemctl \(arguments.joined(separator: " "))"
         case .launchctl(let arguments): "launchctl \(arguments.joined(separator: " "))"
+        case .bootOutAndRemove(let service, _): "launchctl bootout \(service)"
         case .enableLinger: "enableLinger"
         case .removeFiles(let paths): "removeFiles \(paths.joined(separator: " "))"
         case .removeEmptyFolders(let paths): "removeEmptyFolders \(paths.joined(separator: " "))"

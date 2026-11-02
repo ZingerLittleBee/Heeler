@@ -56,6 +56,7 @@ struct Input: Decodable {
     var session: String?
     var node: String?
     var lister: String?
+    var service: String?
     var home: String?
 }
 
@@ -76,6 +77,8 @@ case "hashTree": step = .hashTree(root: input.path ?? "")
 case "promote": step = .promote(staging: input.staging ?? "", app: input.app ?? "")
 case "systemctl": step = .systemctl(input.arguments ?? [])
 case "launchctl": step = .launchctl(input.arguments ?? [])
+case "bootOutAndRemove":
+    step = .bootOutAndRemove(service: input.service ?? "", propertyList: input.path ?? "")
 case "enableLinger": step = .enableLinger(user: input.user ?? "")
 case "removeFiles": step = .removeFiles(input.files ?? [])
 case "removeEmptyFolders": step = .removeEmptyFolders(input.folders ?? [])
@@ -179,6 +182,9 @@ if [ "$1" = print ]; then
     fi
     cat "$FAKE_LAUNCHCTL_PRINT"
     exit 0
+fi
+if [ -n "${FAKE_LAUNCHCTL_EXIT:-}" ]; then
+    exit "$FAKE_LAUNCHCTL_EXIT"
 fi
 if [ -n "${FAKE_LAUNCHCTL_REFUSES:-}" ]; then
     echo 'Bootstrap failed: 5: Input/output error' >&2
@@ -540,6 +546,29 @@ class MacOSTests(HelperScriptCase):
         self.assertEqual(refused.returncode, 5)
         self.assertIn("Bootstrap failed: 5", refused.stderr)
         self.assertIn(f"{NONCE} end", refused.stdout)
+
+    def test_a_bootout_that_stopped_or_found_nothing_takes_the_property_list_with_it(self) -> None:
+        for answer in ("", "3", "113"):
+            with self.subTest(answer=answer):
+                self.env["FAKE_LAUNCHCTL_EXIT"] = answer
+                self.agent.parent.mkdir(parents=True, exist_ok=True)
+                self.agent.write_text("<plist/>")
+                result = self.run_script(
+                    step="bootOutAndRemove", service=f"user/501/{self.LABEL}", path=str(self.agent))
+                self.assertEqual(result.returncode, int(answer or 0), result.stderr)
+                self.assertIn(f"{NONCE} end", result.stdout)
+                self.assertFalse(self.agent.exists())
+
+    def test_a_refused_bootout_keeps_the_property_list_and_says_so(self) -> None:
+        self.agent.parent.mkdir(parents=True)
+        self.agent.write_text("<plist/>")
+        self.env["FAKE_LAUNCHCTL_EXIT"] = "1"
+        result = self.run_script(
+            step="bootOutAndRemove", service=f"user/501/{self.LABEL}", path=str(self.agent))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"{NONCE} end", result.stdout)
+        self.assertTrue(self.agent.exists())
+        self.assertIn(f"launchctl bootout user/501/{self.LABEL}", self.log.read_text())
 
     def test_the_property_list_is_what_the_recorded_domain_accepts(self) -> None:
         node, main, log = "/opt/no de/<bin>/node", "/Users/a&b/app/main.js", "/Users/a&b/helper.log"
