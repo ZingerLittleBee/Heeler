@@ -13,7 +13,8 @@ extension ChatUnavailableReason {
         case .compressed: "Conversation Compressed"
         case .unsupportedSession, .unsupportedFormat, .sessionStore: "Conversation Not Readable"
         case .startScreen: "Not in This Conversation"
-        case .cannotTellSession, .cannotTellSessionOnWindows: "Can't Tell the Conversation"
+        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows:
+            "Can't Tell the Conversation"
         case .transcriptOff: "Transcript Saving Is Off"
         case .codexSharedDaemon: "Codex Started Without \(ChatLaunchNotice.unbrokenNoDaemon)"
         }
@@ -71,9 +72,11 @@ extension ChatUnavailableReason {
         case .cannotTellSession(let program):
             "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes."
         case .cannotTellSessionOnWindows(let program) where program == .pi || program == .omp:
-            "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again."
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it through Heeler's extension, which goes in its extension folder on this Host. If it isn't there yet, add it here, then start the Agent again."
         case .cannotTellSessionOnWindows(let program):
             "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes."
+        case .cannotReadProcessesOnWindows:
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler couldn't read this Agent's process on the Host, which happens when herdr-core and the SSH session run at different elevation, or when PowerShell runs in constrained language mode."
         case .transcriptOff(let variable, let coreCarriesIt):
             variable.explanation(coreCarriesIt: coreCarriesIt)
         case .codexSharedDaemon:
@@ -132,7 +135,7 @@ extension ChatUnavailableReason {
         // Never over the timeline, which this reason hides.
         case .startScreen(let program):
             "\(program.chatName) is on its home screen."
-        case .cannotTellSession, .cannotTellSessionOnWindows:
+        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows:
             "Chat can't tell which conversation this Agent is in now.\(saved)"
         case .transcriptOff:
             "This Agent isn't saving a transcript.\(saved)"
@@ -157,7 +160,7 @@ extension ChatUnavailableReason {
     var offersRetry: Bool {
         switch self {
         case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .cannotTellSessionOnWindows,
-            .transcriptOff, .codexSharedDaemon:
+            .cannotReadProcessesOnWindows, .transcriptOff, .codexSharedDaemon:
             true
         case .sessionStore(_, let problem): problem.isRetryable
         default: false

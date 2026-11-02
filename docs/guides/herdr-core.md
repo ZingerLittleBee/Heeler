@@ -303,6 +303,8 @@ Windows has no Host Helper, so **Can't Tell the Conversation** never points you 
 
 Add it again for a profile you created later, or after updating Heeler. To remove it, delete `heeler-session.js` from those folders.
 
+When Heeler can't read the Agent's process at all, **Can't Tell the Conversation** says that, and the extension wouldn't help, so it isn't offered. This happens when herdr-core and your SSH session run at different elevation, or when PowerShell runs in constrained language mode. Tap **Check Again** once that's changed.
+
 ## Known limits
 
 - Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.

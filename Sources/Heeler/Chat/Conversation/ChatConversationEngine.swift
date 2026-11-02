@@ -37,6 +37,9 @@ enum ChatUnavailableReason: Equatable, Sendable {
     case cannotTellSession(ChatProgram)
     /// The same on a native Windows Host, which has no Host Helper to offer.
     case cannotTellSessionOnWindows(ChatProgram)
+    /// The same because the read of the Agent's process failed on that Host, which
+    /// its extension would not change (ADR 0034).
+    case cannotReadProcessesOnWindows(ChatProgram)
     /// The Agent's process carries a variable that stops the program keeping
     /// a Transcript, so there is no file to wait for (ADR 0034).
     case transcriptOff(ChatTranscriptOffVariable, coreCarriesIt: Bool)

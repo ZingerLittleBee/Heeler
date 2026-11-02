@@ -320,7 +320,10 @@ herdr-core Hosts only.
   launch runs under PowerShell, and open files are not read. Chat's cannot-tell there
   is its own reason, `cannotTellSessionOnWindows`, which never offers the Helper,
   and offers no candidates yet: open files are not read there, and no listing of a
-  Windows directory's Transcripts has been checked against a real one.
+  Windows directory's Transcripts has been checked against a real one. A process read
+  that failed, as across an elevation mismatch or under constrained language mode,
+  reads as `cannotReadProcessesOnWindows`, which offers Check Again and not the
+  extension, since adding that would not change the read.
 - Confirmed on macOS 27.0.1, against processes the spike started
   ([herdr compatibility](../agents/herdr-compatibility.md)): process start from
   `ps -o lstart=`, named variables from `KERN_PROCARGS2`, open files from

@@ -63,11 +63,13 @@ extension HerdrCoreSessionBinder {
     }
 
     /// What a check says with no processes to read: a pick label still there stands
-    /// until a check can hold it against them.
+    /// until a check can hold it against them. On Windows the read's failure has its
+    /// own reason, since the fix the usual one offers there would not help.
     func evidenceWithoutProcesses(in record: HerdrCoreTerminalRecord) async -> ChatSessionEvidence {
+        let evidence = isOnWindows ? .unavailable(.cannotReadProcessesOnWindows(program)) : cannotTell
         let labels = await currentLabels() ?? record.labels
-        guard let value = labels[HerdrCoreSessionHint.pickLabel], await !isDroppedPick(value) else { return cannotTell }
-        return unconfirmed(cannotTell)
+        guard let value = labels[HerdrCoreSessionHint.pickLabel], await !isDroppedPick(value) else { return evidence }
+        return unconfirmed(evidence)
     }
 
     private func unconfirmed(_ evidence: ChatSessionEvidence) -> ChatSessionEvidence {

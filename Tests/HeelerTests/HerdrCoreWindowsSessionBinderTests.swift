@@ -328,6 +328,27 @@ struct HerdrCoreWindowsSessionBinderTests {
         #expect(await rig.files.listings.isEmpty)
     }
 
+    /// A read that failed is not a missing extension, and adding one would not help.
+    @Test("A process read that fails says so, and offers no extension", arguments: [ChatProgram.pi, .omp, .claude])
+    func readThatFails(program: ChatProgram) async throws {
+        var rig = Rig(agentImage: "\(program.rawValue).exe")
+        rig.table = WindowsProcessTable()
+        let evidence = try await rig.binder(program).check(try Self.record())
+        #expect(evidence == .unavailable(.cannotReadProcessesOnWindows(program)))
+        #expect(!ChatUnavailableReason.cannotReadProcessesOnWindows(program).offersWindowsExtension)
+        #expect(ChatUnavailableReason.cannotReadProcessesOnWindows(program).offersRetry)
+    }
+
+    /// `E <pid> -`: the Terminal's own environment could not be read, as from an SSH
+    /// session that is not elevated against a core that is.
+    @Test("A Terminal whose environment cannot be read says the read failed")
+    func terminalEnvironmentWithheld() async throws {
+        var rig = Rig(agentImage: "pi.exe")
+        rig.table.processes[Self.shellPid]?.environment = nil
+        let evidence = try await rig.binder(.pi).check(try Self.record())
+        #expect(evidence == .unavailable(.cannotReadProcessesOnWindows(.pi)))
+    }
+
     // MARK: Programs with no Chat here
 
     @Test("Codex and OpenCode cost no exec and no read", arguments: [ChatProgram.codex, .opencode])
