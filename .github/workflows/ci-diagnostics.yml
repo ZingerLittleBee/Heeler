@@ -2,14 +2,6 @@ name: iOS CI diagnostics
 run-name: iOS diagnostics (${{ inputs.target }})
 
 on:
-  workflow_call:
-    inputs:
-      target:
-        type: string
-        required: true
-      iterations:
-        type: string
-        default: ''
   workflow_dispatch:
     inputs:
       target:

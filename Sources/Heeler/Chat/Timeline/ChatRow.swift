@@ -108,9 +108,11 @@ struct ChatRow: Identifiable, Sendable {
 
     /// Whether the row holds controls besides its own disclosure, which
     /// VoiceOver must reach one by one rather than as one element: changed
-    /// files to open, or a diff with View All.
+    /// files to open, a diff with View All, or an image to open.
     var hasInnerControls: Bool {
-        guard case .tool(let tool) = content, let changes = tool.fileChanges else { return false }
+        guard case .tool(let tool) = content else { return false }
+        if tool.imagePath != nil { return true }
+        guard let changes = tool.fileChanges else { return false }
         return tool.showsDiffAsOutput || !changes.files.isEmpty
     }
 

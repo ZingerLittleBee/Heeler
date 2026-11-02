@@ -717,6 +717,7 @@ struct AgentChatSurfaceView: View {
                 guard let chat else { throw ChatImagePreviewError.unavailable }
                 return try await chat.readImage(at: path)
             },
+            thumbnails: chat?.thumbnails,
             collapseAvailabilityChanged: { canCollapseTrajectory = $0 })
     }
 

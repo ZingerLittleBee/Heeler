@@ -1,7 +1,9 @@
-<!-- Translated from docs/guides/usage.md at ed1e9e66 -->
+<!-- Translated from docs/guides/usage.md at 371b84c8 -->
 # 查看 Usage 与 Usage Limits
 
-Usage 显示你的 Claude Code 和 Codex 账号离 Usage Limits 还有多远，以及每台 Host 上的 Agent 最近 30 天用了多少 token、按 API 标价折算大约值多少钱。小组件把同样的数字放到主屏和锁屏上。
+在 iPhone 或 iPad 上查看 Claude Code 和 Codex 的用量额度（Usage Limits），并用主屏和锁屏小组件查看账号额度与重置时间。
+
+Usage 还会显示每台 Host 上的 Agent 最近 30 天用了多少 token，以及按 API 标价折算的估算费用。估算费用不是你的订阅账单。
 
 你需要一台装有 Heeler 插件 0.7.0 或更新版本的 macOS 或 Linux Host。
 

@@ -12,6 +12,11 @@ Entries reference the pull request that made the change.
 - Browse Directories hides folders whose names start with a dot. Tap the eye
   button beside Select to list them again; Heeler remembers the choice.
   (#609)
+- Chat shows the images Agents read or make as thumbnails under their rows;
+  tap one to open it with zoom. Claude Code, Codex, Grok Build, Pi, Oh My Pi
+  and OpenCode are covered, and image rows no longer fold into tool groups.
+  Images over 8 MB load on a tap, and a deleted image or an offline Host says
+  so in the thumbnail's place. (#600)
 - Turn Usage off in Settings to hide its tab and each Host's Usage section and
   stop reading usage from your Hosts. Usage widgets clear their figures and say
   so until you turn it back on. (#597)
@@ -70,6 +75,13 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Give the website and bilingual docs clean search URLs, sitemaps, app metadata,
+  browser icons, landscape sharing cards, and permanent canonical redirects.
+  Keep error pages, raw guides, and search data out of search results, and add
+  direct App Store links to both docs home pages. Explain remote Claude Code
+  and Codex use on iPhone and iPad, with setup, Chat, notification, and Usage
+  widget guidance on the existing pages, and identify Heeler as an independent
+  herdr mobile client. (#605)
 - Chat fills in earlier messages page by page and keeps up with the Agent while
   it does, so returning to a long conversation no longer shows a few old rows
   under a spinner and a blank screen until a whole turn has loaded. Messages

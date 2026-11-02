@@ -55,7 +55,8 @@ struct ChatRowView: View {
                 ChatToolRow(
                     tool: tool, isExpanded: isExpanded, expandedFiles: expandedFiles,
                     missingOutputText: actions.missingOutputText, toggle: { actions.toggle(row.id) },
-                    files: fileActions, textActions: row.hasInnerControls ? textActions : nil)
+                    files: fileActions, textActions: row.hasInnerControls ? textActions : nil,
+                    thumbnails: actions.thumbnails, previewImage: actions.previewImage)
             }
         case .plan(let plan, let blocks):
             ChatPlanRow(plan: plan, blocks: blocks)
@@ -594,13 +595,16 @@ private struct ChatToolRow: View {
     /// Set when the row's own controls keep VoiceOver from reading it as
     /// one element, so the header carries them.
     let textActions: TextActions?
+    let thumbnails: ChatImageThumbnails?
+    let previewImage: @MainActor (String, UIImage?) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: toggle) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        ChatToolKindIcon(kind: tool.kind)
+                        // A read that showed an image reads as one.
+                        ChatToolKindIcon(kind: tool.imagePath == nil ? tool.kind : .image)
                         Text(verbatim: tool.title)
                             .font(.subheadline)
                             .modifier(ChatFontDesign(isCode: titleIsCode))
@@ -633,6 +637,10 @@ private struct ChatToolRow: View {
                     Button("Copy", action: textActions.copy)
                     Button("Select Text", action: textActions.selectText)
                 }
+            }
+            if let path = tool.imagePath {
+                ChatImageThumbnail(path: path, thumbnails: thumbnails) { previewImage(path, $0) }
+                    .padding(.leading, 26)
             }
             if isExpanded {
                 details

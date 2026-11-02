@@ -164,6 +164,8 @@ final class AgentChatStore {
     }
 
     @ObservationIgnored private let source: AgentChatSource
+    /// The pictures image rows show, read over the same Host connection.
+    @ObservationIgnored let thumbnails: ChatImageThumbnails
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private var agent: Agent
@@ -349,6 +351,7 @@ final class AgentChatStore {
         self.agent = agent
         self.program = program
         self.source = source
+        thumbnails = ChatImageThumbnails(source: .init(files: source.files))
         self.timing = timing
         self.now = now
         let resolution = ConversationReference.resolve(agent.agentSession)
@@ -465,7 +468,8 @@ final class AgentChatStore {
 
     // MARK: Requests
 
-    /// Preview reads use the same Host connection as the transcript.
+    /// Preview reads use the same Host connection as the transcript;
+    /// thumbnails come from ``thumbnails``.
     func readImage(at path: String) async throws -> Data {
         try await ChatImagePreviewReader.read(path: path, files: source.files)
     }
@@ -512,6 +516,7 @@ final class AgentChatStore {
     /// The Console's Host status changed. Rows expanded while it was not
     /// connected are read once it is.
     func hostConnectionChanged(_ isConnected: Bool) {
+        thumbnails.hostConnectionChanged(isConnected)
         guard isConnected != isHostConnected else { return }
         isHostConnected = isConnected
         guard isConnected else { return }

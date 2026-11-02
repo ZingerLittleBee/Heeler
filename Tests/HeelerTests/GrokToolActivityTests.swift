@@ -553,6 +553,45 @@ struct GrokToolActivityTests {
         #expect(reducer.output(of: same[3], for: tool) == .preview(nil))
     }
 
+    // MARK: Images
+
+    /// A read as Grok writes it: the path in the call and its input update,
+    /// what it read only in the result (seen in a session from 2026-08-27).
+    private static func read(_ target: String, location: String?, content: String, rawOutput: String) throws
+        -> [ChatLine]
+    {
+        let locations = location.map { #","locations":[{"path":"\#($0)"}]"# } ?? ""
+        return Self.lines([
+            try Self.prompt("Look at the screenshot", index: 0, event: 1),
+            Self.call(name: "read_file", kind: "read", input: #""target_file":"\#(target)""#, event: 2),
+            Self.record(
+                #""sessionUpdate":"tool_call_update","toolCallId":"\#(Self.callID)","kind":"read","title":"Read `\#(target)`"\#(locations),"rawInput":{"variant":"ReadFile","target_file":"\#(target)"}"#,
+                event: 3),
+            Self.result(content: content, rawOutput: rawOutput, event: 4),
+            Self.completed("end_turn", event: 5),
+        ])
+    }
+
+    @Test func imageReadsRecordTheFileTheyShowed() throws {
+        let image = #"{"type":"content","content":{"type":"image","data":"iVBORw0KGgo=","mimeType":"image/png"}}"#
+        let raw = #""type":"ReadFile","ImageContent":{"data":"iVBORw0KGgo=","mime_type":"image/png"}"#
+
+        let shown = Self.transcript(
+            try Self.read("/tmp/shot.png", location: "/tmp/shot.png", content: image, rawOutput: raw))
+        #expect(try Self.tool(shown, Self.callID).imagePath == "/tmp/shot.png")
+
+        // A relative path reads in the session's directory.
+        let relative = Self.transcript(try Self.read("shots/a.png", location: nil, content: image, rawOutput: raw))
+        #expect(try Self.tool(relative, Self.callID).imagePath == Self.directoryA + "/shots/a.png")
+
+        // A read that showed text has no image, whatever the file's name.
+        let text = Self.transcript(
+            try Self.read(
+                "/tmp/notes.png", location: "/tmp/notes.png", content: try Self.text("1→hello"),
+                rawOutput: #""type":"ReadFile","FileContent":{"content":"1→hello"}"#))
+        #expect(try Self.tool(text, Self.callID).imagePath == nil)
+    }
+
     // MARK: Outcomes
 
     @Test func aRejectedCallIsDeclinedAndEndsTheTurn() throws {
