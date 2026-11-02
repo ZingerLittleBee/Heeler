@@ -693,6 +693,6 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private static func updateCommand(_ executablePath: String) -> String {
         RemoteHostPath.isWindowsAbsolute(executablePath)
             ? HerdrCoreStart.windowsUpdateCommand(executablePath: executablePath)
-            : "\(executablePath) update"
+            : HerdrCoreStart.updateCommand(executablePath: executablePath)
     }
 }

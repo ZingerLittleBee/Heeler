@@ -404,7 +404,9 @@ agent discovery and launch, and its `terminal.put` through sshd.
    **herdr-core is not running** with the start command, and on the machine no
    `herdr-core` process appears.
 2. In your desktop session, in PowerShell, not as administrator, run the command
-   the Host shows. Within its retry, the Host connects by itself.
+   the Host shows. Within its retry, the Host connects by itself. With a plain
+   Session name this is the first run of `$env:HC_SESSION` with `server start` on
+   Windows, which no observation has covered: record that the core took the name.
 3. The Console lists the core's Terminals and Agents, each in a card named for
    its directory. Rename and Worktrees are not offered, and neither is Chat until
    a build lists a program (step 24). An Agent with a directory offers neither
