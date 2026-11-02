@@ -47,7 +47,12 @@ that Heeler can read from outside the process.
   `user/<uid>` the agent outlives the SSH session and a desktop logout, and
   restarts when killed. The evidence comes from a throwaway Tart VM of macOS
   26.5, not a Mac anyone uses (herdr compatibility, launchd bootstrap domains).
-  The list is `~/Library/LaunchAgents/dev.bybee.heeler.host-helper.plist`, its
+  On the owner's Mac, macOS 27.0.1, the app's install of Helper 0.5.3 over SSH
+  bootstrapped it into `user/501` with `LimitLoadToSessionType` `Background` and
+  the absolute Node.js path, `gui/501` never held it, launchd started it again with
+  a new pid after `kill -9`, and its removal left `launchctl print` answering 113
+  and the listed folders as they were before the install (herdr compatibility,
+  the Host Helper's LaunchAgent on a real Mac). The list is `~/Library/LaunchAgents/dev.bybee.heeler.host-helper.plist`, its
   label is in the install record, the Helper directory is
   `~/Library/Application Support/heeler/host-helper`, whatever `XDG_DATA_HOME` an
   SSH login has, and the agent logs to `helper.log` there. An install writes that
@@ -61,7 +66,12 @@ that Heeler can read from outside the process.
   VM with a dummy credential, compared by equality with what `security` and
   Claude Code returned: `gui/<uid>` reached the dummy and sent it as a bearer to
   a local stub, `user/<uid>` did neither, and no real Usage Limits value was
-  read (herdr compatibility, the login Keychain from a LaunchAgent).
+  read (herdr compatibility, the login Keychain from a LaunchAgent). On the
+  owner's Mac, macOS 27.0.1 with Claude Code 2.1.316 signed in, the read answered
+  `keychainUnavailable` and Usage showed that wording while Token Usage kept
+  counting. That read ran from the app's SSH exec, not from the LaunchAgent, so
+  whether the agent itself reaches the login Keychain on a real Mac is untested
+  (herdr compatibility, Claude Code's Usage Limits on a real Mac).
 - The Helper connects to the core's socket directly, never through `hc`, so it
   never starts a core. While no core runs it waits for one. It finds the
   socket as the app does (ADR 0031): the session's `core.lock`, else the

@@ -616,6 +616,8 @@ as the agent.
 | Usage Limits | With Claude Code signed in with an account of the Mac's own, turn on Usage Limits for the Host | They read that they need your own login on this Mac, with Token Usage still counting |
 | Remove | Tap **Remove** and confirm | `launchctl print` answers 113, no agent process is left, and the saved listing matches again |
 
+A run of 2026-11-02 on macOS 27.0.1 passed Install, Privacy, Kill, Usage Limits and Remove ([herdr compatibility](../agents/herdr-compatibility.md)). Its Usage Limits read ran from the SSH exec, not from the agent. The other steps were not run there.
+
 ### The Helper and the core
 
 Use a unique non-default session `<s>` of your own, plus a second one `<s2>` for the
