@@ -49,7 +49,8 @@ that Heeler can read from outside the process.
   26.5, not a Mac anyone uses (herdr compatibility, launchd bootstrap domains).
   On the owner's Mac, macOS 27.0.1, the app's install of Helper 0.5.3 over SSH
   bootstrapped it into `user/501` with `LimitLoadToSessionType` `Background` and
-  the absolute Node.js path, `gui/501` never held it, launchd started it again with
+  the absolute Node.js path, `gui/501` answered 113 for its label before and just
+  after the install, launchd started it again with
   a new pid after `kill -9`, and its removal left `launchctl print` answering 113
   and the listed folders as they were before the install (herdr compatibility,
   the Host Helper's LaunchAgent on a real Mac). The list is `~/Library/LaunchAgents/dev.bybee.heeler.host-helper.plist`, its
