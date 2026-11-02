@@ -348,7 +348,7 @@ On Linux, without systemd linger, the Helper stops about ten seconds after your 
 
 On macOS there is no linger to turn on: the Helper keeps running after your SSH session and a desktop logout. It writes its log to `helper.log` in its directory. macOS may notify you that `node` can run in the background and list it under Login Items, because that is the program the Helper runs on.
 
-After a restart of the Mac the Helper may not be running until Heeler next reaches the Host, when it starts it again without asking. No notification goes out in between.
+After a restart of the Mac the Helper may not be running until Heeler next reads it, when it starts it again without asking: when you open the Host's detail, or as the Host connects on a device that allows Heeler's notifications. No notification goes out in between.
 
 **Check.** The Host Helper row shows the Host's state each time you check the Host. On macOS the row takes about eleven seconds, because one look cannot tell a Helper that runs from one that keeps dying:
 
