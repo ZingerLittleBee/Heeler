@@ -714,7 +714,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let shell = try await transport.launchShell()
         let nonce = HostProcessReader.makeNonce()
         let result = try await transport.runAgentDiscovery(
-            HerdrCoreLaunch.discoveryScript(shell: shell, nonce: nonce))
+            HerdrCoreLaunch.discovery(shell: shell, nonce: nonce))
         guard
             let installed = try? HerdrCoreLaunch.installedAgents(stdout: result.stdout, nonce: nonce)
         else {

@@ -1613,7 +1613,7 @@ struct HerdrCoreLaunchTransportTests {
         await host.setAgentDiscovery(stdout: "printed")
         let transport = host.transport()
 
-        let result = try await transport.runAgentDiscovery(Data("the script".utf8))
+        let result = try await transport.runAgentDiscovery(.posixScript(Data("the script".utf8)))
 
         #expect(result.stdout == Data("printed".utf8))
         #expect(await host.log == ["agent-discovery"])

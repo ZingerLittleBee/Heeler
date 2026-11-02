@@ -90,8 +90,8 @@ protocol HerdrCoreTransport: Sendable {
     /// On native Windows it is PowerShell, with no read.
     func launchShell() async throws -> String
 
-    /// Runs installed-agent discovery's script in one bounded exec.
-    func runAgentDiscovery(_ script: Data) async throws -> GitExecResult
+    /// Runs installed-agent discovery in one bounded exec.
+    func runAgentDiscovery(_ discovery: HerdrCoreAgentDiscovery) async throws -> GitExecResult
 
     /// `terminal.run`, as a mutation: with no answer it throws
     /// `.coreMutationOutcomeUnknown`, and nothing here sends it again.
@@ -209,6 +209,13 @@ extension HerdrCoreTransport {
             throw TransportError.coreMutationOutcomeUnknown
         }
     }
+}
+
+/// Installed-agent discovery in the form its Host runs: a script for the bounded
+/// runner to feed a shell, or a whole command line to exec.
+enum HerdrCoreAgentDiscovery: Sendable {
+    case posixScript(Data)
+    case windowsCommand(String)
 }
 
 /// What a whole command line on a native Windows Host is for, which sets how long it
@@ -512,11 +519,11 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         return shell
     }
 
-    func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
-        if try await resolvedPlatform() == .nativeWindows {
-            return try await connection.runWindowsCommand(String(decoding: script, as: UTF8.self), for: .agentDiscovery)
+    func runAgentDiscovery(_ discovery: HerdrCoreAgentDiscovery) async throws -> GitExecResult {
+        switch discovery {
+        case .posixScript(let script): try await connection.runAgentDiscovery(script)
+        case .windowsCommand(let command): try await connection.runWindowsCommand(command, for: .agentDiscovery)
         }
-        return try await connection.runAgentDiscovery(script)
     }
 
     func stagesThroughCore() async throws -> Bool {
