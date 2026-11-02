@@ -24,11 +24,17 @@ Native iOS companion app for [herdr](https://herdr.dev), an agent console over S
 - SwiftUI, iOS 18+, iPhone and iPad. SSH uses the repository-local
   `Packages/HeelerSSH` (pinned libssh2 and OpenSSL); terminal rendering uses the
   pinned libghostty-spm `GhosttyTerminal` product (ADRs 0001 and 0004).
-- Unix API and Events use NDJSON over direct-streamlocal channels to herdr's
-  socket. Unix Agent and shell terminals use PTY exec (ADR 0011).
-- Native Windows API and Events use `herdr remote-api-bridge`; live terminals
-  use `herdr terminal session control` over SSH exec (ADR 0018). This is a
+- On Herdr TUI Hosts, Unix API and Events use NDJSON over direct-streamlocal
+  channels to herdr's socket. Unix Agent and shell terminals use PTY exec
+  (ADR 0011).
+- On Herdr TUI Hosts, Native Windows API and Events use
+  `herdr remote-api-bridge`; live terminals use
+  `herdr terminal session control` over SSH exec (ADR 0018). This is a
   platform branch, never a fallback after Unix forwarding refusal.
+- herdr-core Hosts carry one framed link: direct-streamlocal to the core's
+  socket on Unix, SSH exec of `herdr-core connect` on native Windows after a
+  pipe check. Connecting never starts a core on Unix, and on Windows starts one
+  only if it stops in the round trip after that check (ADR 0031).
 - UI depends on `Transport`, not SSH library types. Pane ids are opaque strings.
   Protocol negotiation enforces a floor, ignores unknown fields, and treats the
   generated protocol version as advisory. API requests are one-shot; subscribe
