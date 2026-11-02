@@ -416,6 +416,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     func runWindowsCoreProbe(_ command: String) async throws -> GitExecResult {
         log.append("windows-probe")
         scripts.append(try HerdrCoreWindowsLocatorTests.decoded(command))
+        if !nextLocatorAnswers.isEmpty { return nextLocatorAnswers.removeFirst() }
         let lines = windowsLocator ?? []
         let output = (["\(Self.nonce) begin"] + lines + ["\(Self.nonce) end"]).joined(separator: "\n") + "\n"
         return GitExecResult(stdout: shellBanner + Data(output.utf8), stderr: Data(), exitStatus: locatorStatus)

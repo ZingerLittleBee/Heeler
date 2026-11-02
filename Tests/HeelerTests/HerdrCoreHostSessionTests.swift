@@ -404,6 +404,28 @@ struct HerdrCoreHostSessionTests {
         await session.end()
     }
 
+    /// A Windows process ended from outside exits with an NTSTATUS, which a signed
+    /// read gives as a negative number. It says nothing of the core.
+    @Test func aWindowsLocatorKilledWithAnNTStatusRetries() async throws {
+        let host = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(), channel: .core(.init(id: "c1")))
+        await host.answerNextLocator(GitExecResult(stdout: Data(), stderr: Data(), exitStatus: -1_073_741_510))
+        let session = session(on: host)
+        let reader = Reader(session)
+        await session.resume()
+        #expect(await reader.nextStatus() == .connecting)
+        guard case .reconnecting(let attempt, let delay, _) = await reader.nextStatus() else {
+            Issue.record("expected reconnecting")
+            await session.end()
+            return
+        }
+        #expect(attempt == 1)
+        await clock.untilParked(1)
+        clock.advance(delay)
+        #expect(await reader.nextStatus() == .connected)
+        await session.end()
+    }
+
     @Test func anUnknownEventKindNeedsNoNewSnapshot() async throws {
         let host = ScriptedCoreHost(channel: .core(.init(id: "c1", sequence: 1)))
         let session = session(on: host)

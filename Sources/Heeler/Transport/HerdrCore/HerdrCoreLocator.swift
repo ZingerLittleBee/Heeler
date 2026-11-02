@@ -164,11 +164,13 @@ enum HerdrCoreLocator {
     }
 
     /// An exec the Host's shutdown or session cleanup ended partway: killed by a
-    /// signal, with nothing printed, or with a begin marker and no end. That says
-    /// nothing about this Host's core, as a shell's own failure or output that is
-    /// not this script's does.
+    /// signal, ended from outside on Windows, with nothing printed, or with a begin
+    /// marker and no end. That says nothing about this Host's core, as a shell's own
+    /// failure or output that is not this script's does. A negative status is a
+    /// Windows NTSTATUS read as signed, such as `0xC000013A`; POSIX has none. A plain
+    /// 1 stays a failure, since `taskkill /f` and PowerShell's own failure both print it.
     static func wasCutShort(stdout: Data, exitStatus: Int32, nonce: String) -> Bool {
-        if exitStatus > 128 { return true }
+        if exitStatus > 128 || exitStatus < 0 { return true }
         guard exitStatus == 0 else { return false }
         if stdout.isEmpty { return true }
         let lines = stdout.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: false)
