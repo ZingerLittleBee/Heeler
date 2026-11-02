@@ -1,5 +1,5 @@
 // @ts-check
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mdx from '@astrojs/mdx';
@@ -93,6 +93,24 @@ export default defineConfig({
       filter: (page) => !/\/404(?:\.html)?\/?$/.test(page),
       i18n: { defaultLocale: 'en', locales: { en: 'en', zh: 'zh-CN' } },
     }),
+    {
+      name: 'canonical-redirects',
+      hooks: {
+        'astro:build:done': ({ dir, pages }) => {
+          // Exact published-page aliases override Workers' default 307s.
+          // Do not redirect unknown URLs or the noindex error page.
+          const redirects = pages.flatMap(({ pathname }) => {
+            const path = `/${pathname.replace(/\/$/, '')}`;
+            if (path === '/404') return [];
+            const aliases = path === '/'
+              ? ['/index', '/index.html']
+              : [`${path}.html`, `${path}/`, `${path}/index`, `${path}/index.html`];
+            return aliases.map((alias) => `${alias} ${path} 301`);
+          });
+          writeFileSync(new URL('_redirects', dir), `${redirects.join('\n')}\n`);
+        },
+      },
+    },
   ],
   vite: {
     plugins: [tailwindcss()],

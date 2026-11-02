@@ -14,7 +14,8 @@ const { title, description, noindex = false } = Astro.props;
 // File output is served at clean URLs by Workers' static asset router.
 const path = Astro.url.pathname.replace(/(\/index)?\.html$/, '') || '/';
 const canonical = new URL(path, Astro.site);
-const ogImage = new URL('/logo.png', Astro.site);
+const ogImage = new URL('/social-card.jpg', Astro.site);
+const imageAlt = 'Heeler Agent List on iPhone. Your agents. On iPhone and iPad. Claude Code, Codex, SSH.';
 ---
 
 <!doctype html>
@@ -40,14 +41,15 @@ const ogImage = new URL('/logo.png', Astro.site);
     <meta property="og:description" content={description} />
     {!noindex && <meta property="og:url" content={canonical} />}
     <meta property="og:image" content={ogImage} />
-    <meta property="og:image:width" content="1024" />
-    <meta property="og:image:height" content="1024" />
-    <meta property="og:image:alt" content="Heeler app icon" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={imageAlt} />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
-    <meta name="twitter:image:alt" content="Heeler app icon" />
+    <meta name="twitter:image:alt" content={imageAlt} />
     <meta name="generator" content={Astro.generator} />
     <slot name="head" />
   </head>
