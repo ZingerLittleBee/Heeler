@@ -263,6 +263,10 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     /// pipe cannot be forwarded. The caller owes it the pipe check first (ADR 0031).
     func openCoreLinkExec(command: String) async throws -> any WindowsTerminalExecChannel
 
+    /// The same exec for one long call beside the link, which holds that slot for its
+    /// whole life, so this one must not wait for it. The caller owes it the pipe check too.
+    func openCoreCallExec(command: String) async throws -> any WindowsTerminalExecChannel
+
     func close() async throws
 }
 
@@ -295,6 +299,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private var environmentCheck: (link: HerdrCoreLink, answer: Task<Set<String>, Never>)?
     /// The core of the last subscribe. Nil before one, as on a preflight.
     private var inventoryCoreID: String?
+    /// The links of calls in flight, each one call's, for `close` to end.
+    private var callLinks: [HerdrCoreLink] = []
 
     private struct Opened {
         let link: HerdrCoreLink
@@ -516,15 +522,34 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         try await resolvedPlatform() == .nativeWindows
     }
 
-    /// The call's deadline runs from when it queues, so it covers the whole write.
+    /// On a link of its own, closed when the call ends: one frame of up to about 11 MiB
+    /// holds its link's writer for as long as the uplink takes, and a Send's Enter,
+    /// Stop, Attach input and credit must not wait behind it, nor go out long after
+    /// their checks (ADR 0035). The call's deadline runs from when it queues, so it
+    /// covers the whole write.
     func putFile(_ source: HerdrCoreStaging.Source, terminal address: String, coreID: String?) async throws -> String {
         let params = try HerdrCoreStaging.params(for: source, terminal: try HerdrCoreWire.address(address))
         let deadline =
             Self.runDeadline + HerdrCoreLink.writeTimeout(forBytes: HerdrCoreStaging.encodedBytes(source.byteCount))
-        let result = try await onInventoryLink(meaning: coreID) { link in
-            try await link.call("terminal.put", params: params, deadline: deadline, isMutation: true)
+        let opened = try await establish(reusingLocation: false, forOneCall: true)
+        callLinks.append(opened.link)
+        defer { callLinks.removeAll { $0 === opened.link } }
+        let result: Result<JSONValue, any Error>
+        do {
+            // It reached whichever core answers now, where the address may be another Terminal.
+            if let expected = coreID ?? inventoryCoreID, opened.info.coreID != expected {
+                throw TransportError.herdrCoreInventoryStale
+            }
+            result = .success(
+                try await run(
+                    { link in
+                        try await link.call("terminal.put", params: params, deadline: deadline, isMutation: true)
+                    }, on: opened))
+        } catch {
+            result = .failure(error)
         }
-        return try HerdrCoreStaging.path(in: result, for: source)
+        await opened.link.close()
+        return try HerdrCoreStaging.path(in: try result.get(), for: source)
     }
 
     func runTerminal(params: JSONValue) async throws -> JSONValue {
@@ -589,6 +614,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         self.opening = nil
         opening?.cancel()
         if let opened = try? await opening?.value { await opened.link.close() }
+        for link in callLinks { await link.close() }
         try await connection.close()
     }
 
@@ -641,7 +667,9 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         }
     }
 
-    private func establish(reusingLocation: Bool) async throws -> Opened {
+    /// `forOneCall` opens beside the shared link rather than as it, which only a
+    /// native Windows Host's exec can: a Unix link's channel holds the one events slot.
+    private func establish(reusingLocation: Bool, forOneCall: Bool = false) async throws -> Opened {
         let location: HerdrCoreLocator.Location
         // A pipe is checked before every `connect`, since nothing else stands
         // between a stopped core and that exec starting one.
@@ -657,7 +685,10 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             throw TransportError.herdrCoreSocketPathTooLong(
                 path: location.socketPath, limit: location.socketPathLimit)
         }
-        let channel = try await openChannel(to: location)
+        guard !forOneCall || location.isNativeWindows else {
+            throw TransportError.hostFeatureUnavailable(feature: "A core call on a link of its own")
+        }
+        let channel = try await openChannel(to: location, forOneCall: forOneCall)
         do {
             let (link, info) = try await HerdrCoreLink.connect(
                 over: channel, helloDeadline: Self.callDeadline, sleep: sleep)
@@ -671,14 +702,19 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         }
     }
 
-    private func openChannel(to location: HerdrCoreLocator.Location) async throws -> any HeelerSSHAPIChannel {
+    private func openChannel(
+        to location: HerdrCoreLocator.Location, forOneCall: Bool
+    ) async throws -> any HeelerSSHAPIChannel {
         if location.isNativeWindows {
             guard location.socketFilePresent else {
                 throw TransportError.herdrCoreNotRunning(
                     socketPath: location.socketPath, socketFilePresent: false)
             }
-            let exec = try await connection.openCoreLinkExec(
-                command: try HerdrCoreLocator.windowsConnectCommand(session: session))
+            let command = try HerdrCoreLocator.windowsConnectCommand(session: session)
+            let exec =
+                forOneCall
+                ? try await connection.openCoreCallExec(command: command)
+                : try await connection.openCoreLinkExec(command: command)
             return BootstrappedExecChannel(
                 channel: exec, startupFailure: "The command that runs herdr-core connect did not start.")
         }

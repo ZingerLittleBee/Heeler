@@ -311,8 +311,27 @@ struct HerdrCoreWindowsComposerTests {
         await fixture.finish()
     }
 
-    /// Windows PowerShell 5.1 dropped such a paste on one 0x03 (herdr compatibility).
-    @Test func powerShellBackInTheForegroundGetsOneCtrlCAndTheTextIsGone() async throws {
+    /// Read past the end with its record: the foreground stays what it was to the end
+    /// (ADR 0035), so only the record's state keeps Enter from going.
+    @Test func aReadOfAFinishedRecordWithTheSameForegroundEndsTheSendWithNothingMore() async throws {
+        let fixture = try await Fixture(terminal: try Self.heelerForm())
+        let attached = try await fixture.live()
+        let sending = await fixture.sendPastingHello(on: attached)
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(
+            with: Self.record(foreground: try Self.capturedForeground("foreground-heeler-form"), state: "finished"))
+
+        let reason = Self.notSubmitted(await sending.value)
+        #expect(reason?.contains("ended before the message was submitted") == true)
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+        #expect(fixture.composer.draft == "hello")
+        await fixture.finish()
+    }
+
+    /// Windows PowerShell 5.1 dropped such a paste on one 0x03, with one PSReadLine on
+    /// one machine (herdr compatibility), so the notice does not promise it elsewhere.
+    @Test func powerShellBackInTheForegroundGetsOneCtrlCAndTheTextMayRemain() async throws {
         let fixture = try await Fixture(terminal: Self.heelerFormClaude())
         let attached = try await fixture.live()
         let sending = await fixture.sendPastingHello(on: attached)
@@ -322,7 +341,7 @@ struct HerdrCoreWindowsComposerTests {
             with: Self.record(foreground: Self.foreground(argv: [Self.powerShell]), app: "claude-code"))
 
         let reason = Self.notSubmitted(await sending.value)
-        #expect(reason?.contains("no longer in the terminal") == true)
+        #expect(reason?.contains("may still be in the terminal") == true)
         #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.ctrlC])
         #expect(fixture.composer.draft == "hello")
         await fixture.finish()
@@ -358,6 +377,11 @@ struct HerdrCoreWindowsComposerTests {
         ["-NoExit", "-Command", "& 'claude'; exit $LASTEXITCODE"],
         ["-Command", "& 'claude'; Read-Host; exit $LASTEXITCODE"],
         ["-NoLogo", "-Command", "& 'claude'; exit $LASTEXITCODE"],
+        ["-Command", "& 'cmd' '/k' 'claude'; exit $LASTEXITCODE"],
+        ["-Command", #"& 'C:\WINDOWS\system32\cmd.exe' '/k' 'claude'; exit $LASTEXITCODE"#],
+        ["-Command", "& 'powershell.exe' '-NoExit' '-Command' 'claude'; exit $LASTEXITCODE"],
+        ["-Command", "& 'pwsh' '-NoExit' 'claude'; exit $LASTEXITCODE"],
+        ["-Command", "& 'bash' '-ic' 'claude'; exit $LASTEXITCODE"],
     ])
     func aPowerShellThatCanOutliveItsProgramGetsNothing(arguments: [String]) async throws {
         let terminal = Self.record(foreground: Self.foreground(argv: [Self.powerShell] + arguments))

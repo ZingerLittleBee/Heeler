@@ -74,9 +74,11 @@ struct HerdrCoreWindowsStagingTests {
         _ what: String, _ condition: @MainActor () async -> Bool,
         sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
-        for _ in 0..<2000 {
+        var budget = PollBudget(.seconds(10))
+        while budget.hasTimeLeft {
             if await condition() { return }
             try await Task.sleep(for: .milliseconds(5))
+            budget.charge()
         }
         Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
     }
@@ -189,6 +191,35 @@ struct HerdrCoreWindowsStagingTests {
         await fixture.finish()
     }
 
+    /// The limit is this Host's, and a file past it is not even copied here, whatever
+    /// the 64 MiB every other Host's Composer takes.
+    @Test(arguments: [9, 65])
+    func aFileOverTheLimitSaysThisHostsLimitBeforeItIsCopied(mebibytes: Int) async throws {
+        let fixture = try await Fixture()
+        let session = try fixture.session
+        try await Self.until("the Host's platform") {
+            fixture.console.capabilities(for: fixture.host.id).startsInWindowsDirectories
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("core-windows-staging-\(UUID().uuidString).bin")
+        #expect(FileManager.default.createFile(atPath: url.path, contents: nil))
+        defer { try? FileManager.default.removeItem(at: url) }
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.truncate(atOffset: UInt64(mebibytes * Self.mebibyte))
+        try handle.close()
+        let copies = try? FileManager.default.contentsOfDirectory(atPath: FilePreparer.defaultDirectory.path).count
+
+        try #require(session.staging.begin(.file(url)) != nil)
+        try await Self.until("the refusal") { Self.failure(session.staging) != nil }
+
+        #expect(
+            Self.failure(session.staging)?.message
+                == "This file is over the 8 MiB limit on a native Windows Host. Nothing was sent.")
+        #expect((try? FileManager.default.contentsOfDirectory(atPath: FilePreparer.defaultDirectory.path).count) == copies)
+        #expect(await putCount(fixture) == 0)
+        await fixture.finish()
+    }
+
     /// An ordinary photo comes out of `ImagePreparer` well under the limit, so this
     /// one comes from a preparer that hands over 9 MiB. The rest is the Composer's own.
     @Test func anImageOverTheLimitIsRefusedTheSameWay() async throws {
@@ -268,6 +299,27 @@ struct HerdrCoreWindowsStagingTests {
         try await Self.until("the refusal") { Self.failure(session.staging) != nil }
 
         #expect(Self.failure(session.staging)?.message == "The Host refused the file: machine_unknown")
+        await fixture.finish()
+    }
+
+    /// A core's own failure says what it is and whether Retry can help. A Herdr TUI
+    /// upload keeps its own words (`ComposerStagingStoreTests`).
+    @Test func aFailureOfTheTransportSpeaksInItsOwnWords() async throws {
+        let fixture = try await Fixture()
+        let session = try fixture.session
+        try await Self.until("the Host's core") { fixture.console.hostStatuses[fixture.host.id] == .connected }
+        await fixture.scripted.setWindowsLocator(
+            ScriptedCoreHost.windowsLocatorLines(lock: ScriptedCoreHost.windowsPipe, pipe: false))
+        let url = try Self.temporaryFile(contents: Data("notes".utf8))
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try #require(session.staging.begin(.file(url)) != nil)
+        try await Self.until("the failure") { Self.failure(session.staging) != nil }
+
+        let refusal = TransportError.herdrCoreNotRunning(
+            socketPath: ScriptedCoreHost.windowsPipe, socketFilePresent: false)
+        #expect(Self.failure(session.staging)?.message == refusal.presentation.message)
+        #expect(Self.failure(session.staging)?.isRetryable == refusal.isRetryable)
         await fixture.finish()
     }
 
@@ -352,6 +404,21 @@ struct HerdrCoreWindowsStagingTests {
         #expect(await upload.progress.reports == 0)
     }
 
+    /// A banner that does not say Windows leaves it to the home probe, and what that
+    /// probe found stops an upload the same way.
+    @Test func thatConnectionRefusesOnceItsProbeFoundWindows() async throws {
+        let refusal = TransportError.hostFeatureUnavailable(
+            feature: "File and image uploads is not yet supported on native Windows")
+        let upload = try UploadThroughSSH(banner: "SSH-2.0-OpenSSH_9.9")
+        defer { upload.cleanup() }
+
+        await upload.findWindows()
+
+        await #expect(throws: refusal) { try await upload.stageImage() }
+        await #expect(throws: refusal) { try await upload.stageFile() }
+        #expect(await upload.progress.reports == 0)
+    }
+
     @Test func thatConnectionWithAUnixBannerIsNotRefused() async throws {
         let upload = try UploadThroughSSH(banner: "SSH-2.0-OpenSSH_9.9")
         defer { upload.cleanup() }
@@ -383,6 +450,10 @@ private struct UploadThroughSSH {
         source = FileManager.default.temporaryDirectory
             .appendingPathComponent("upload-through-ssh-\(UUID().uuidString)")
         try Data("bytes".utf8).write(to: source)
+    }
+
+    func findWindows() async {
+        await transport.configureWindowsHost()
     }
 
     func stageImage() async throws {

@@ -47,6 +47,10 @@ the shell that stays behind, and a retry can deliver it twice.
   because an Agent that died leaves its flags behind and a shell reads no
   `CSI 99 ; 5 u`. The Composer keeps the draft and says whether the text may
   still be in the terminal.
+- Nothing long waits ahead of Enter on the link: a Staged file's `terminal.put` on
+  native Windows, one frame of up to about 11 MiB, goes on a link of its own
+  (ADR 0032), since what is queued on a link cannot be withdrawn, and Enter behind it
+  would go out long after this check.
 - A Send whose steps get no answer has an unknown outcome and is never
   repeated. The core holds a viewer's input while it types a note or stitches
   a long read, and writes it once it finishes, so a paste or Enter can still
@@ -197,8 +201,9 @@ confirm or refine these points with test clients, not the app.
   decision if that wrapper must have Send.
 - Ctrl+C on Windows still goes out when a read shows a plain PowerShell in the
   foreground, though the records have not shown that happen under Heeler's form.
-  `powershell` says the text is gone on the strength of the observation below (5.1,
-  PSReadLine 2.0.0, one machine), and `pwsh` says it may remain, since nobody tried it.
+  It says the text may remain under `powershell` too: the observation below is one
+  machine's (5.1, PSReadLine 2.0.0), and a wrong "gone" would leave text at the prompt.
+  `pwsh` says the same, since nobody tried it.
 - Stop on Windows reads the Terminal's state as well as its foreground, which stays
   the same to the end: a finished record takes the Agent off the list. Under `-NoExit`
   a Working status can outlast the Agent, so Stop's key can reach the prompt, where Esc

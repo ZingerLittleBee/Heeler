@@ -374,9 +374,93 @@ struct HerdrCoreWindowsChatTests {
         fixture.finish()
     }
 
+    // MARK: Grok Build
+
+    /// Its row gives the session, and its directory is no path the Host's file calls
+    /// take, so the listing finds the group (`GrokTranscriptLocatorTests`).
+    @Test func grokBuildsChatFollowsItsTranscriptFromTheOneRowThatMatches() async throws {
+        let fixture = try await Fixture(terminal: Self.record(program: "grok", app: "grok-build"), image: "grok.exe")
+        let row = #"{"session_id":"\#(Self.session)","pid":\#(Self.agentPid),"pid_start":\#(Self.agentStart),"cwd":"C:\\Users\\me\\proj"}"#
+        await fixture.files.write(Data("[\(row)]".utf8), at: "\(Self.home)/.grok/active_sessions.json")
+        let path = "\(Self.home)/.grok/sessions/C%3A%5CUsers%5Cme%5Cproj/\(Self.session)/updates.jsonl"
+        let head = #"{"method":"_x.ai/session/update","params":{"sessionId":"\#(Self.session)","update":{"sessionUpdate":"hook_execution"},"_meta":{"eventId":"\#(Self.session)-1"}}}"#
+        await fixture.files.write(Data((head + "\n").utf8), at: path)
+
+        let chat = try fixture.chat(as: .grok)
+
+        try await Self.until("the Transcript") {
+            if case .following(path) = chat.conversation.phase { return true }
+            return false
+        }
+        chat.end()
+        fixture.finish()
+    }
+
+    // MARK: Reading the Transcript over real SFTP
+
+    /// `ScriptedCoreHost` answers file calls itself, so this is what lets the real
+    /// connection read a Transcript on Windows at all (ADR 0034). A Herdr TUI Host
+    /// offers no Chat there.
+    @Test func theRealTransportsChatFileGateOpensOnWindowsForACoreHostAlone() async throws {
+        func transport(_ kind: ServerKind) -> HeelerSSHTransport {
+            var settings = SSHTransportSettings(
+                host: "win.example", port: 22, username: "me", credentials: .password("unused"),
+                hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in false },
+                socket: .absolutePath("/never/opened"))
+            settings.serverKind = kind
+            return HeelerSSHTransport(
+                connection: .neverConnectedForTesting(serverIdentification: "SSH-2.0-OpenSSH_for_Windows_9.5"),
+                settings: settings, routeID: nil)
+        }
+
+        try await transport(.herdrCore).requireChatFileHost()
+        await #expect(
+            throws: TransportError.hostFeatureUnavailable(feature: "Chat is not yet supported on native Windows")
+        ) {
+            try await transport(.herdrTUI).requireChatFileHost()
+        }
+    }
+
     // MARK: Writing the extension
 
     private static let bundlePath = HerdrCoreWindowsExtensions.bundlePath
+
+    /// The real detail: Chat's button opens the sheet, which names each folder before
+    /// anything is written, and only its own button writes.
+    @Test func chatsButtonOpensTheSheetThatNamesEachFolderBeforeAnyWrite() async throws {
+        let fixture = try await Fixture(terminal: Self.record(program: "pi", app: "pi"), image: "pi.exe")
+        let chat = try fixture.chat(as: .pi)
+        let suite = "core-windows-chat-sheet-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = UIHostingController(
+            rootView: HerdrCoreChatTests.chatDetail(of: fixture.agent, console: fixture.console, defaults: defaults))
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try await Self.until("the reason") {
+                chat.conversation.phase == .unavailable(.cannotTellSessionOnWindows(.pi))
+            }
+            try await HerdrCoreChatTests.opensASheet(from: "Add Heeler's Extension…", in: controller)
+            let sheet = try #require(controller.presentedViewController?.view)
+
+            let confirm = "Add to 2 Folders"
+            try await Self.until("the folders") {
+                !AccessibilityProbe.elements(labeled: confirm, in: sheet).isEmpty
+            }
+            let shown = AccessibilityProbe.labels(in: sheet)
+            #expect(shown.contains(#"C:\Users\me\.pi\agent\extensions"#), "\(shown)")
+            #expect(shown.contains(#"C:\Users\me\.omp\agent\extensions"#), "\(shown)")
+            #expect(await fixture.scripted.fileWrites.isEmpty)
+
+            AccessibilityProbe.elements(labeled: confirm, in: sheet).first?.accessibilityActivate()
+            try await Self.until("the writes") { await fixture.scripted.fileWrites.count == 2 }
+            controller.presentedViewController?.dismiss(animated: false)
+        }
+        chat.end()
+        fixture.finish()
+    }
 
     @Test func writingTheExtensionGoesOnlyToEachProgramsOwnFolder() async throws {
         let fixture = try await Fixture(terminal: Self.record(program: "pi", app: "pi"), image: "pi.exe")

@@ -269,7 +269,8 @@ enum HerdrCoreAgentRule {
     /// for its whole life, so a shell that outlives its program looks the same before
     /// and after (ADR 0035). A first process that is the program itself ends with it,
     /// as Heeler's form does, whose PowerShell has nothing left to run but its `exit`.
-    /// Any other shell's line or options could keep it at a prompt.
+    /// Any other shell's line or options could keep it at a prompt, and so could a
+    /// shell as that form's program, as `& 'cmd' '/k' 'claude'` would.
     static func windowsTerminalEndsWithItsProgram(_ foreground: HerdrCoreForeground) -> Bool {
         let arguments = foreground.argv.isEmpty ? [foreground.name] : foreground.argv
         guard let executable = arguments.first else { return false }
@@ -278,7 +279,9 @@ enum HerdrCoreAgentRule {
         guard name == "powershell" || name == "pwsh", arguments.count == 3,
             arguments[1].lowercased() == "-command", arguments[2].hasSuffix(powerShellExit)
         else { return false }
-        return powerShellWords(String(arguments[2].dropLast(powerShellExit.count))) != nil
+        guard let program = powerShellWords(String(arguments[2].dropLast(powerShellExit.count)))?.first
+        else { return false }
+        return !shells.contains(baseName(program))
     }
 
     private static let powerShellExit = "; exit $LASTEXITCODE"

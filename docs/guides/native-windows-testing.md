@@ -433,7 +433,9 @@ agent discovery and launch, and its `terminal.put` through sshd.
     character. It shows as an Agent of its kind, and the program receives the
     argument whole. Exit the agent: its Terminal ends and the Agent leaves the list.
     Note the exit code the core reports. A `.ps1` shim blocked by the machine's
-    execution policy shows as listed and ends at once; note that too.
+    execution policy shows as listed and ends at once; note that too. Start another
+    with an argument holding a double quote and with an empty one (`''`), and note
+    what the program receives: Windows PowerShell may not pass either whole.
 12. New Terminal opens a Terminal in the directory you picked, in a shell, and it
     is not listed as an Agent. Exit it: the Terminal ends.
 13. New Workspace at a picked directory, with the desktop app running on the
@@ -445,7 +447,10 @@ agent discovery and launch, and its `terminal.put` through sshd.
     on your machine, since the file goes only with `terminal.rm`.
 15. Add a 9 MiB file. Heeler says it is over the 8 MiB limit, the draft stays, and
     no file appears in that folder. Add one of exactly 8 MiB: it lands with the same
-    hash, and the Host stays connected while it crosses on a slow link.
+    hash, and the Host stays connected while it crosses on a slow link. While it
+    crosses, type in Direct Input and tap Stop on a working Agent: both should go out at
+    once, which nobody has seen yet on Windows, since the put's own SSH exec has to
+    interleave with the link's. Note what you see.
 16. In an Agent New Agent started, type a message and tap Send. It submits within
     about a second, and the draft empties. Whether an Agent's bracketed paste reaches
     Heeler through the pseudo console has not been seen on any machine. If Send says
@@ -466,10 +471,11 @@ agent discovery and launch, and its `terminal.put` through sshd.
 22. Bring an Agent to a question and Send: the text lands in its input unsubmitted.
     The tools keyboard submits it.
 23. Windows PowerShell 5.1 dropped a pending paste on one Ctrl+C in the runs recorded
-    in `docs/agents/herdr-compatibility.md`, so Send says the text is **no longer in
-    the terminal**. If your PowerShell or PSReadLine version keeps it, or PowerShell 7
-    is installed and acts otherwise, record the versions there, and ADR 0035 needs your
-    decision before Send ships on Windows.
+    in `docs/agents/herdr-compatibility.md`, on one machine with one PSReadLine, so Send
+    says the text **may still be in the terminal**. Record what your PowerShell and
+    PSReadLine versions do there. If they drop it too, Send can say it is gone once you
+    decide that in ADR 0035. If they keep it, ADR 0035 needs your decision before Send
+    ships on Windows.
 
 These steps are for Chat ([#590](https://github.com/ZingerLittleBee/Heeler/issues/590)).
 No lane runs them either. Nothing of the Windows process read has run on a Windows

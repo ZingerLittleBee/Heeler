@@ -81,8 +81,9 @@ struct HerdrCoreSessionBinder: Sendable {
     /// whose removal may not have reached the core.
     var isDroppedPick: @Sendable (String) async -> Bool = { _ in false }
     var now: @Sendable () -> Date = { Date() }
-    /// A native Windows Host, whose foreground is the Terminal's PowerShell and whose
-    /// processes go by their image's name (herdr compatibility). Only the programs in
+    /// A native Windows Host, whose foreground is the Terminal's first process, usually
+    /// PowerShell, and whose processes go by their image's name (herdr compatibility,
+    /// one machine's observation). Only the programs in
     /// `HostCapabilities.windowsCoreChatCandidates` are checked there.
     var isOnWindows = false
     /// A macOS Host, where Grok Build's start, Oh My Pi's terminal name and a Terminal
@@ -361,9 +362,10 @@ struct HerdrCoreTerminalProcesses: Sendable {
             && facts[pid]?.name == facts[agent]?.name
     }
 
-    /// On Windows the foreground is the Terminal's PowerShell, which is never the
-    /// Agent, and a program under npm goes by its runtime's image. So: the nearest
-    /// process named for the program, else the nearest runtime under the foreground,
+    /// On Windows the foreground is the Terminal's first process for its whole life,
+    /// usually a PowerShell that is never the Agent, and a program under npm goes by
+    /// its runtime's image. So: the nearest process named for the program, the
+    /// foreground included, else the nearest runtime under the foreground,
     /// with no following past it, since its children go by the same name whatever they
     /// are. What then proves it the Agent is its pid and start matching what the
     /// program recorded (ADR 0034).

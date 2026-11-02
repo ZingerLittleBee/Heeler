@@ -47,7 +47,7 @@ A session name there uses letters, digits, `-`, `_` and `.`, and does not start 
 
 The Console lists the core's Agents and Terminals, each in a card named for its directory or its space. A space nobody named takes its repository's folder when `git` is on the PATH of an SSH session there, and its directory's otherwise. Open one for its Agent detail with Direct Input, or as a Shell Terminal, and close it from there.
 
-**New Terminal** opens a Terminal as on any other core Host, in the shell the core runs. **New Agent** lists the agents Windows PowerShell can run, and starts the one you pick through it, so it has what your Windows PowerShell profile sets. PowerShell 7's profile is not read. When the agent exits, its Terminal ends and it leaves the list. Anything PowerShell can run counts, a script or an alias included. A program PowerShell cannot find over SSH is missing from the list even if a Terminal can run it, which can happen with an install under a junction, such as fnm's. Put it on the `PATH` of a plain SSH session to see it there.
+**New Terminal** opens a Terminal as on any other core Host, in the shell the core runs. **New Agent** lists the agents Windows PowerShell can run, and starts the one you pick through it, so it has what your Windows PowerShell profile sets. PowerShell 7's profile is not read. When the agent exits, its Terminal ends and it leaves the list. Anything PowerShell can run counts, a script or an alias included. A program PowerShell cannot find over SSH is missing from the list even if a Terminal can run it, which can happen with an install under a junction, such as fnm's. Put it on the `PATH` of a plain SSH session to see it there. Windows PowerShell may not pass an argument holding a double quote, or an empty one, whole to a program, so put those in a config file or the agent's own settings.
 
 **New Workspace** creates a space at the directory you pick, which a running desktop app can show. It has no name field: the space takes its Checkout's folder or its directory's name until the desktop app names it. Worktrees are not offered there.
 
@@ -113,7 +113,7 @@ The submit goes out within two seconds of the paste or not at all, so a slow lin
 | --- | --- | --- |
 | **stayed in the Agent's input unsubmitted** | The Agent still holds the terminal, and the check took longer than two seconds | Finish it in the terminal, or clear it there before you send again |
 | **no longer in the terminal** | The Agent left and a shell took over. Send pressed Ctrl+C once, which made the shell drop the text unrun | Send again once the Agent is back |
-| **may still be in the terminal** | The Agent left and something else holds the terminal. Under a shell Send pressed Ctrl+C once, and what zsh or PowerShell 7 does with that is not confirmed yet | Check the terminal before you press anything there |
+| **may still be in the terminal** | The Agent left and something else holds the terminal. Under a shell Send pressed Ctrl+C once, and what zsh or PowerShell does with that is not confirmed yet | Check the terminal before you press anything there |
 | **not accepting a paste** | The program has bracketed paste off, so nothing was written | Send again when it is back at its input |
 | **keeps a shell open** | On Windows, this terminal's shell stays after its Agent exits, so Send cannot tell which would get your message. Nothing was written | Type it with Direct Input |
 
@@ -295,7 +295,7 @@ On a native Windows core Host, each program's Chat turns on only once it has pas
 
 A native Windows Herdr TUI Host offers no Chat for any Agent.
 
-Once a program's Chat is on, Heeler finds its conversation the same way: from the Agent's own process, here a child of the Terminal's PowerShell, and its creation time. Send, Stop and Blocked answers work as above, with the limit [Send](#send) describes for a Terminal that keeps a shell open.
+Once a program's Chat is on, Heeler finds its conversation the same way: from the Agent's own process, here usually a child of the Terminal's PowerShell, and its creation time. Send, Stop and Blocked answers work as above, with the limit [Send](#send) describes for a Terminal that keeps a shell open.
 
 Windows has no Host Helper, so **Can't Tell the Conversation** never points you to one. Pi and Oh My Pi name their conversation through Heeler's extension, which you add from there:
 
@@ -303,7 +303,7 @@ Windows has no Host Helper, so **Can't Tell the Conversation** never points you 
 2. Tap **Add to … Folders**. Heeler writes one file, `heeler-session.js`, into each folder, through the core.
 3. Start the Agent again, and Chat follows its conversation.
 
-Add it again for a profile you created later, or after updating Heeler. To remove it, delete `heeler-session.js` from those folders.
+Chat offers this again whenever it can't tell the conversation, for example for a profile you created later, and adding it replaces the copy in every folder. A copy that still names its conversation stays as it is after you update Heeler. To replace it, delete `heeler-session.js` from those folders and start the Agent again, and Chat offers **Add Heeler's Extension…**. To remove it, delete the same file.
 
 When Heeler can't read the Agent's process at all, **Can't Tell the Conversation** says that, and the extension wouldn't help, so it isn't offered. This happens when herdr-core and your SSH session run at different elevation, or when PowerShell runs in constrained language mode. Tap **Check Again** once that's changed.
 

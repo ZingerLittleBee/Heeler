@@ -35,16 +35,27 @@ function outputOf(start) {
   });
 }
 
+/**
+ * The system's own PowerShell, or null where Windows does not say where it is. A
+ * bare name is looked for first in the working folder, which is the Agent's project.
+ */
+function windowsPowerShell() {
+  const root = process.env.SystemRoot;
+  return root ? `${root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe` : null;
+}
+
 /** What the app's process reader reads for this process, or null. */
 async function processStart(pid) {
   try {
     if (process.platform === "linux") return startTimeFromStat(await readFile(`/proc/${pid}/stat`, "utf8"));
     if (process.platform === "win32") {
+      const powerShell = windowsPowerShell();
+      if (!powerShell) return null;
       // Windows has no file to read it from. The creation FILETIME, which is what
       // the app's read prints too (ADR 0034).
       const output = await outputOf((finish) =>
         execFile(
-          "powershell.exe",
+          powerShell,
           [
             "-NoLogo",
             "-NoProfile",
@@ -105,10 +116,15 @@ function holdsTheTerminal(context) {
 // One after another, so a slow answer cannot let an older session land last.
 let labels = Promise.resolve();
 
-function sendSessionLabel(socket, terminal, session, file) {
+/** A process's creation time never changes, and on Windows each read starts a PowerShell. */
+let ownStart = null;
+
+function sendSessionLabel(socket, terminal, session, file, notSent) {
   labels = labels.then(async () => {
-    const start = await processStart(process.pid);
-    const value = { session, ...(file ? { file } : {}), pid: process.pid, ...(start ? { start } : {}) };
+    ownStart ??= await processStart(process.pid);
+    // Windows has no other evidence, and Chat drops a label with no start for good.
+    if (!ownStart && process.platform === "win32") return notSent();
+    const value = { session, ...(file ? { file } : {}), pid: process.pid, ...(ownStart ? { start: ownStart } : {}) };
     const request = {
       jsonrpc: "2.0",
       id: 1,
@@ -130,10 +146,13 @@ export default async function heelerSession(program) {
       if (!socket || !holdsTheTerminal(context)) return;
       const session = context.sessionManager.getSessionId();
       const file = context.sessionManager.getSessionFile();
-      if (reported === `${session}\n${file}`) return;
-      reported = `${session}\n${file}`;
+      const current = `${session}\n${file}`;
+      if (reported === current) return;
+      reported = current;
       // Not returned: the program awaits its handlers, and a socket must never hold it up.
-      sendSessionLabel(socket, terminal, session, file);
+      sendSessionLabel(socket, terminal, session, file, () => {
+        if (reported === current) reported = undefined;
+      });
     } catch {
       // Nothing here is worth disturbing the program for.
     }

@@ -214,7 +214,10 @@ that Heeler can read from outside the process.
   for every session on the machine (#590). Node has no creation time of its own, so
   on Windows the extension's label takes its `start` from one hidden `powershell.exe`
   child reading `StartTime.ToFileTimeUtc()`, which the program does not wait on and
-  which gives up after 5 seconds. A label with no `start` is never adopted.
+  which gives up after 5 seconds. It starts the system's copy by its full path under
+  `SystemRoot`, since a bare name is looked for first in the Agent's project, and
+  keeps the first answer for the process's life. A label with no `start` is never
+  adopted, so on Windows none is sent, and the next session event tries again.
 
 This amends ADR 0024's "nothing is installed on the Host", and ADR 0025's
 rejection of a Heeler OpenCode plugin, for herdr-core Hosts only; Herdr TUI

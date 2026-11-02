@@ -578,7 +578,7 @@ actor HeelerSSHTransport: Transport {
         channelAdmission = SSHChannelAdmission()
     }
 
-    private init(connection: SSHConnection, settings: SSHTransportSettings, routeID: UUID?) {
+    init(connection: SSHConnection, settings: SSHTransportSettings, routeID: UUID?) {
         self.connection = connection
         self.routeID = routeID
         socketLocation = settings.socket
@@ -1003,8 +1003,7 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.invalidDirectoryPath(path: path)
         }
         _ = try await hostFileEnvironment()
-        // A core's Chat reads Transcripts over SFTP on native Windows too (ADR 0034).
-        if !readsChatFilesOnWindows { try await requirePOSIXHost(feature: "Chat") }
+        try await requireChatFileHost()
         if hostFileSFTPUnavailable {
             throw TransportError.hostFeatureUnavailable(feature: "Chat needs SFTP on the Host")
         }
@@ -1027,6 +1026,11 @@ actor HeelerSSHTransport: Transport {
             }
             throw mapped
         }
+    }
+
+    /// A core's Chat reads Transcripts over SFTP on native Windows too (ADR 0034).
+    func requireChatFileHost() async throws {
+        if !readsChatFilesOnWindows { try await requirePOSIXHost(feature: "Chat") }
     }
 
     /// The remote environment, resolved at most once per connection. A Host
@@ -2668,7 +2672,7 @@ actor HeelerSSHTransport: Transport {
         detectedWindows || connection.serverIdentification?.contains("Windows") == true
     }
 
-    private func configureWindowsHost() async {
+    func configureWindowsHost() async {
         detectedWindows = true
         await channelAdmission.useWindowsSessionBudget()
     }
@@ -3839,11 +3843,24 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
             throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
         }
         return try await channelAdmission.admitCoreExec {
-            do {
-                return try await self.connection.openExec(command: command, timeout: self.requestTimeout)
-            } catch {
-                throw await self.mapOperationError(error)
-            }
+            try await self.openCoreExec(command: command)
+        }
+    }
+
+    func openCoreCallExec(command: String) async throws -> any WindowsTerminalExecChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+        }
+        return try await channelAdmission.admitCoreCallExec {
+            try await self.openCoreExec(command: command)
+        }
+    }
+
+    private func openCoreExec(command: String) async throws -> any WindowsTerminalExecChannel {
+        do {
+            return try await connection.openExec(command: command, timeout: requestTimeout)
+        } catch {
+            throw await mapOperationError(error)
         }
     }
 

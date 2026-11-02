@@ -70,8 +70,8 @@ final class ConsoleStore {
     private(set) var removedWorktreesByAgent: [
         ConsoleAgent.ID: WorktreeRemovalReceipt
     ] = [:]
-    /// Each Host's platform as its connection reported it; Chat, and a core
-    /// Host's uploads, offer themselves only on a Host known to be POSIX. Kept
+    /// Each Host's platform as its connection reported it; a core Host's Chat and
+    /// uploads wait for it, and what they offer then follows `HostCapabilities`. Kept
     /// across reconnects of one catalog entry, so a reconnect does not take an
     /// open Chat away, and asked again on each new connection.
     private(set) var hostPlatforms: [Host.ID: HostPlatform] = [:]
@@ -798,7 +798,11 @@ final class ConsoleStore {
             composer: composer,
             stageImage: imageStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
             stageFile: fileStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
-            corePin: corePin)
+            corePin: corePin,
+            isOnCoreHost: coreSend != nil,
+            filePreparer: WindowsCoreFilePreparer(isOnWindows: { [weak self] in
+                self?.capabilities(for: hostID).startsInWindowsDirectories == true
+            }))
         composerSessions[agent.id] = session
         requestHostPlatforms(Array(projections.values))
         return session
@@ -1945,8 +1949,6 @@ final class ConsoleStore {
             })
     }
 
-    /// The OpenCode edit a Chat that can't bind offers. It keeps to `corePin`, as
-    /// anything a detail does: past that core there is no Agent left to do it for.
     /// Heeler's extension on a native Windows core Host (ADR 0033). A detail keeps to
     /// its own core: a Host that has moved on writes nothing more, even part way.
     func windowsExtensionFlow(
@@ -1976,6 +1978,8 @@ final class ConsoleStore {
             })
     }
 
+    /// The OpenCode edit a Chat that can't bind offers. It keeps to `corePin`, as
+    /// anything a detail does: past that core there is no Agent left to do it for.
     func openCodePluginEditFlow(
         for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
     ) -> HarnessConfigEditFlow {

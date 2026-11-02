@@ -109,12 +109,12 @@ suite("Host Helper closure", () => {
     // `executable` is a Usage Limits request's recorded program, or the zstd on the
     // recorded PATH. Naming a new program here is a decision, not a test to update.
     const started = new Set(helperModules().flatMap((path) => programsStarted(readFileSync(path, "utf8"))));
-    // `powershell.exe` is the session extension's on native Windows, pinned below.
+    // `powerShell` is the session extension's on native Windows, pinned below.
     assert.deepEqual([...started].sort(), [
       '"/bin/ps"',
-      '"powershell.exe"',
       '"security"',
       "executable",
+      "powerShell",
       "runtime.claude",
       "runtime.node",
     ]);
@@ -147,7 +147,9 @@ suite("Host Helper closure", () => {
 
   test("on Windows the session extension starts PowerShell for that read and nothing else", () => {
     const source = readFileSync(SESSION_EXTENSION, "utf8");
-    assert.match(source, /\bexecFile\(\s*"powershell\.exe",/);
+    assert.match(source, /\bexecFile\(\s*powerShell,/);
+    // By its full path: a bare name is looked for in the Agent's project first.
+    assert.match(source, /`\$\{root\}\\\\System32\\\\WindowsPowerShell\\\\v1\.0\\\\powershell\.exe`/);
     // The whole command, with the pid a number: it is the only thing PowerShell runs.
     assert.match(source, /`\(Get-Process -Id \$\{Number\(pid\)\}\)\.StartTime\.ToFileTimeUtc\(\)`/);
     assert.equal([...source.matchAll(/powershell\.exe/gi)].length, 1);
