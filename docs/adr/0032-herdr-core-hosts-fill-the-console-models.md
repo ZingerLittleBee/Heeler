@@ -96,7 +96,9 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   amends ADR 0018's refusal of uploads for herdr-core Hosts only, since no SFTP
   mode bits are involved. A file over the 8 MiB one put takes is refused before
   anything is sent, and the put is an action on an address, so it keeps to a
-  detail's core (ADR 0031). A launch goes through `powershell.exe -Command`, and
+  detail's core (ADR 0031). Each put takes a one-shot `connect` exec of its own, with
+  any link's pipe check and core id, closed when the call ends, so its one long frame
+  never sits ahead of Terminal input, a Send's Enter or Stop (ADR 0035). A launch goes through `powershell.exe -Command`, and
   discovery through one exec of the same program, with its profile, counting any
   command type `&` can run. New Workspace is offered, with no name field. Rename
   and Worktrees stay off until each passes a test on a Windows Host. A space nobody named still takes its Checkout's folder: one

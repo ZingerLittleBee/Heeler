@@ -47,6 +47,10 @@ the shell that stays behind, and a retry can deliver it twice.
   because an Agent that died leaves its flags behind and a shell reads no
   `CSI 99 ; 5 u`. The Composer keeps the draft and says whether the text may
   still be in the terminal.
+- Nothing long waits ahead of Enter on the link: a Staged file's `terminal.put` on
+  native Windows, one frame of up to about 11 MiB, goes on a link of its own
+  (ADR 0032), since what is queued on a link cannot be withdrawn, and Enter behind it
+  would go out long after this check.
 - A Send whose steps get no answer has an unknown outcome and is never
   repeated. The core holds a viewer's input while it types a note or stitches
   a long read, and writes it once it finishes, so a paste or Enter can still

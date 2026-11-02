@@ -527,6 +527,174 @@ struct HerdrCoreWindowsTransportTests {
         #expect(await admission.snapshot().events == 0)
     }
 
+    // MARK: A put's own link
+
+    private static func stagedFile() throws -> (source: HerdrCoreStaging.Source, url: URL) {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("core-put-\(UUID().uuidString).txt")
+        try Data("notes".utf8).write(to: url)
+        return (HerdrCoreStaging.Source(PreparedFile(fileURL: url, fileExtension: "txt", byteCount: 5)), url)
+    }
+
+    /// One frame of up to about 11 MiB holds its link's writer for as long as the uplink
+    /// takes. On the shared link a late Enter or Stop would wait behind it (ADR 0035).
+    @Test func withAPutsWriteHeldAnAttachWriteAndACallOnTheSharedLinkStillGoOut() async throws {
+        let host = Self.runningHost()
+        let transport = host.transport()
+        let stream = try await transport.subscribeEvents()
+        let attach = try await transport.attachTerminal(
+            TerminalAttachRequest(target: .terminal("t1"), cols: 90, rows: 25))
+        let (channel, _, shared) = try #require(await host.attaches.first)
+        let file = try Self.stagedFile()
+        defer { try? FileManager.default.removeItem(at: file.url) }
+        await host.holdWritesOnNextLink()
+
+        let putting = Task { try await transport.putFile(file.source, terminal: "t1", coreID: nil) }
+        await host.waitForSockets(count: 2)
+        let own = try #require(await host.sockets.last)
+        await own.waitForHeldWrite()
+
+        attach.send(Data("typed".utf8))
+        await shared.waitForData(channel: channel, count: 1)
+        #expect(await shared.dataWritten(channel: channel) == ["typed"])
+        #expect(try await transport.serverStatus().pid == 4242)
+        #expect(await host.puts.isEmpty)
+
+        await own.releaseWrites()
+        #expect(try await putting.value.hasSuffix(#"\t1\file.txt"#))
+        #expect(await host.puts.map(\.contents) == [Data("notes".utf8)])
+        await own.waitUntilClosed()
+        #expect(await !shared.isClosed)
+        await attach.end()
+        await stream.end()
+        try await transport.close()
+    }
+
+    /// A pipe is checked before every `connect`, since an exec of one starts a core
+    /// that stopped (ADR 0031), and a put's link is no exception.
+    @Test func aPutChecksThePipeAgainAndAStoppedCoreSendsNothing() async throws {
+        let host = Self.runningHost()
+        let transport = host.transport()
+        _ = try await transport.hello()
+        let file = try Self.stagedFile()
+        defer { try? FileManager.default.removeItem(at: file.url) }
+
+        _ = try await transport.putFile(file.source, terminal: "t1", coreID: nil)
+        #expect(await host.log.suffix(2) == ["windows-probe", "connect-for-one-call"])
+        #expect(await host.connectCommands.count == 2)
+
+        await host.setWindowsLocator(ScriptedCoreHost.windowsLocatorLines(lock: ScriptedCoreHost.windowsPipe, pipe: false))
+        await #expect(throws: Self.notRunning) {
+            _ = try await transport.putFile(file.source, terminal: "t1", coreID: nil)
+        }
+
+        #expect(await host.connectCommands.count == 2)
+        #expect(await host.puts.count == 1)
+        try await transport.close()
+    }
+
+    /// The address means another Terminal on any other core (ADR 0031), and this link
+    /// is opened fresh, so a core that restarted is exactly what it can reach.
+    @Test func aPutsLinkThatReachedAnotherCoreSendsNothingAndCloses() async throws {
+        let host = Self.runningHost(.init(id: "first"))
+        let transport = host.transport()
+        let stream = try await transport.subscribeEvents()
+        let file = try Self.stagedFile()
+        defer { try? FileManager.default.removeItem(at: file.url) }
+        await host.setChannel(.core(.init(id: "second")))
+
+        for coreID in [nil, "first"] {
+            await #expect(throws: TransportError.herdrCoreInventoryStale) {
+                _ = try await transport.putFile(file.source, terminal: "t1", coreID: coreID)
+            }
+            let own = try #require(await host.sockets.last)
+            await own.waitUntilClosed()
+        }
+
+        #expect(await host.puts.isEmpty)
+        #expect(await host.methods == ["events.subscribe"])
+        await stream.end()
+        try await transport.close()
+    }
+
+    @Test func closingTheTransportEndsAPutOnItsLink() async throws {
+        let host = Self.runningHost()
+        let transport = host.transport()
+        _ = try await transport.hello()
+        let file = try Self.stagedFile()
+        defer { try? FileManager.default.removeItem(at: file.url) }
+        await host.holdWritesOnNextLink()
+        let putting = Task { try await transport.putFile(file.source, terminal: "t1", coreID: nil) }
+        await host.waitForSockets(count: 2)
+        let own = try #require(await host.sockets.last)
+        await own.waitForHeldWrite()
+
+        try await transport.close()
+
+        await #expect(throws: TransportError.coreMutationOutcomeUnknown) { _ = try await putting.value }
+        #expect(await own.isClosed)
+    }
+
+    @Test func cancellingAPutClosesItsLinkAndLeavesTheSharedOneUp() async throws {
+        let host = Self.runningHost()
+        let transport = host.transport()
+        _ = try await transport.hello()
+        let shared = try #require(await host.sockets.first)
+        let file = try Self.stagedFile()
+        defer { try? FileManager.default.removeItem(at: file.url) }
+        await host.holdWritesOnNextLink()
+        let putting = Task { try await transport.putFile(file.source, terminal: "t1", coreID: nil) }
+        await host.waitForSockets(count: 2)
+        let own = try #require(await host.sockets.last)
+        await own.waitForHeldWrite()
+
+        putting.cancel()
+
+        await own.waitUntilClosed()
+        await #expect(throws: (any Error).self) { _ = try await putting.value }
+        #expect(await !shared.isClosed)
+        #expect(try await transport.serverStatus().pid == 4242)
+        try await transport.close()
+    }
+
+    /// The shared link holds the one events slot for as long as it lives, so an exec
+    /// waiting for that slot would wait forever. Nothing a put's link waits for can
+    /// be held by something waiting for the put.
+    @Test func aPutsExecTakesNeitherTheEventsSlotNorASessionSlot() async throws {
+        let admission = SSHChannelAdmission()
+        await admission.useWindowsSessionBudget()
+        let link = try await admission.admitCoreExec { FakeCoreSocket() }
+        var leases: [SSHChannelAdmissionLease] = []
+        for _ in 0..<4 { leases.append(try await admission.acquire(.ordinarySession)) }
+
+        let own = try await admission.admitCoreCallExec { FakeCoreSocket() }
+
+        #expect(await admission.snapshot().attach == 1)
+        #expect(await admission.snapshot().events == 1)
+        #expect(await admission.snapshot().ordinarySession == 4)
+        try await own.close(timeout: .seconds(1))
+        #expect(await admission.snapshot().attach == 0)
+        for lease in leases { await lease.release() }
+        try await link.close(timeout: .seconds(1))
+    }
+
+    /// With the events slot held, as the shared link holds it, the real transport's
+    /// exec goes straight on to find this connection never connected.
+    @Test func theRealTransportsCallExecDoesNotWaitForTheEventsSlot() async throws {
+        let transport = HeelerSSHTransport(
+            connection: .neverConnectedForTesting(serverIdentification: "SSH-2.0-OpenSSH_for_Windows_9.5"),
+            socketPath: "/never/opened")
+        let admission = transport.channelAdmission
+        let held = try await admission.admitCoreExec { FakeCoreSocket() }
+
+        await #expect(throws: (any Error).self) {
+            _ = try await transport.openCoreCallExec(command: "connect")
+        }
+
+        #expect(await admission.waitingRequests() == 0)
+        #expect(await admission.snapshot().attach == 0)
+        try await held.close(timeout: .seconds(1))
+    }
+
     private func waitForParkedRequest(on admission: SSHChannelAdmission) async {
         while await admission.waitingRequests() == 0, !Task.isCancelled { await Task.yield() }
     }

@@ -3839,11 +3839,24 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
             throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
         }
         return try await channelAdmission.admitCoreExec {
-            do {
-                return try await self.connection.openExec(command: command, timeout: self.requestTimeout)
-            } catch {
-                throw await self.mapOperationError(error)
-            }
+            try await self.openCoreExec(command: command)
+        }
+    }
+
+    func openCoreCallExec(command: String) async throws -> any WindowsTerminalExecChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+        }
+        return try await channelAdmission.admitCoreCallExec {
+            try await self.openCoreExec(command: command)
+        }
+    }
+
+    private func openCoreExec(command: String) async throws -> any WindowsTerminalExecChannel {
+        do {
+            return try await connection.openExec(command: command, timeout: requestTimeout)
+        } catch {
+            throw await mapOperationError(error)
         }
     }
 

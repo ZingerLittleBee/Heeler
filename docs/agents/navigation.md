@@ -248,7 +248,7 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   through the core's `terminal.put` instead, by the Terminal's address and the
   detail's core pin
   ([HerdrCoreStaging](../../Sources/Heeler/Transport/HerdrCore/HerdrCoreStaging.swift),
-  `HerdrCoreSSHTransport.putFile`); `HerdrCoreWindowsStagingTests` covers them.
+  `HerdrCoreSSHTransport.putFile`, on a one-shot link beside the shared one); `HerdrCoreWindowsStagingTests` and `HerdrCoreWindowsTransportTests` cover them.
   Read [ADR 0005](../adr/0005-keep-staged-image-cleanup-outside-mobile.md) and
   [ADR 0006](../adr/0006-stage-images-over-sftp.md); start with
   [ComposerStagingStoreTests](../../Tests/HeelerTests/ComposerStagingStoreTests.swift)

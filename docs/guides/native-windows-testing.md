@@ -445,7 +445,10 @@ agent discovery and launch, and its `terminal.put` through sshd.
     on your machine, since the file goes only with `terminal.rm`.
 15. Add a 9 MiB file. Heeler says it is over the 8 MiB limit, the draft stays, and
     no file appears in that folder. Add one of exactly 8 MiB: it lands with the same
-    hash, and the Host stays connected while it crosses on a slow link.
+    hash, and the Host stays connected while it crosses on a slow link. While it
+    crosses, type in Direct Input and tap Stop on a working Agent: both should go out at
+    once, which nobody has seen yet on Windows, since the put's own SSH exec has to
+    interleave with the link's. Note what you see.
 16. In an Agent New Agent started, type a message and tap Send. It submits within
     about a second, and the draft empties. Whether an Agent's bracketed paste reaches
     Heeler through the pseudo console has not been seen on any machine. If Send says

@@ -230,6 +230,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var holdsOnlyViewerAttaches = false
     private var heldTerminalReads: [(socket: FakeCoreSocket, id: String)] = []
     private var isHoldingHellos = false
+    private var holdsWritesOnNextLink = false
+    private var socketWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
     private var heldHellos: [CheckedContinuation<Void, Never>] = []
     private var heldInterrupts: [(socket: FakeCoreSocket, id: String)] = []
     /// The params of every `terminal.interrupt`, oldest first.
@@ -417,6 +419,15 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         return channel
     }
 
+    /// The same exec, under another slot: only the real admission tells them apart.
+    func openCoreCallExec(command: String) async throws -> any WindowsTerminalExecChannel {
+        log.append("connect-for-one-call")
+        connectCommands.append(command)
+        let channel = try linkChannel(onPath: command)
+        await channel.deliver(connectBanner + Data("\(PowerShellCommand.streamMarker)\r\n".utf8))
+        return channel
+    }
+
     func corePlatform() async throws -> HostPlatform {
         if let corePlatformFailure { throw corePlatformFailure }
         return windowsLocator == nil ? .posix : .nativeWindows
@@ -596,8 +607,12 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             let socket = FakeCoreSocket()
             self.socket = socket
             sockets.append(socket)
+            resumeSocketWaiters()
+            let holdsWrites = holdsWritesOnNextLink
+            holdsWritesOnNextLink = false
             Task {
                 _ = await socket.nextWrittenLine()
+                if holdsWrites { await socket.holdWrites() }
                 await self.waitOutHelloHold()
                 await socket.deliver(core.helloReply)
                 await self.answer(on: socket, core: core)
@@ -742,6 +757,24 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// The next `terminal.put` answers with this error kind.
     func refuseNextPut(kind: String) {
         putRefusals.append(kind)
+    }
+
+    /// The next link's writes after its `hello` stop before the wire, as one long
+    /// frame on a slow link does.
+    func holdWritesOnNextLink() {
+        holdsWritesOnNextLink = true
+    }
+
+    /// Returns once the core has answered this many channels in all.
+    func waitForSockets(count: Int) async {
+        if sockets.count >= count { return }
+        await withCheckedContinuation { socketWaiters.append((count, $0)) }
+    }
+
+    private func resumeSocketWaiters() {
+        let met = socketWaiters.filter { $0.count <= sockets.count }
+        socketWaiters.removeAll { $0.count <= sockets.count }
+        for waiter in met { waiter.continuation.resume() }
     }
 
     /// The next `terminal.put` is received and never answered.

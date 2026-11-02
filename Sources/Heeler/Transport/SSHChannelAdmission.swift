@@ -150,7 +150,23 @@ actor SSHChannelAdmission {
     func admitCoreExec(
         open: @escaping @Sendable () async throws -> any WindowsTerminalExecChannel
     ) async throws -> any WindowsTerminalExecChannel {
-        let lease = try await acquire(.events)
+        try await admitCoreExec(.events, open: open)
+    }
+
+    /// One long call's own exec beside that link. A core Host's Terminals ride the
+    /// link, so the attach slots are free there: waiting for the events slot would
+    /// never end while the link lives, and the session slots are for Chat and reads.
+    func admitCoreCallExec(
+        open: @escaping @Sendable () async throws -> any WindowsTerminalExecChannel
+    ) async throws -> any WindowsTerminalExecChannel {
+        try await admitCoreExec(.attach, open: open)
+    }
+
+    private func admitCoreExec(
+        _ channelClass: ChannelClass,
+        open: @escaping @Sendable () async throws -> any WindowsTerminalExecChannel
+    ) async throws -> any WindowsTerminalExecChannel {
+        let lease = try await acquire(channelClass)
         do {
             return AdmittedCoreLinkExec(channel: try await open(), lease: lease)
         } catch {
