@@ -805,6 +805,7 @@ struct ConsoleView: View {
                     // (Changes over an Agent) with the system's Back and swipe.
                     NavigationStack {
                         detail(in: tab)
+                            .readsVerticalToolbar()
                             .environment(
                                 \.detailTopChromeInset,
                                 horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)

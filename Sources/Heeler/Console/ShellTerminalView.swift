@@ -55,6 +55,7 @@ struct ShellTerminalView: View {
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackButton) private var showsBackButton
+    @Environment(\.usesVerticalToolbar) private var usesVerticalToolbar
     /// Shared with Agent detail's header: folding it is one reading
     /// preference across both kinds of terminal.
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
@@ -261,7 +262,7 @@ struct ShellTerminalView: View {
                 AgentDetailHeader(
                     palette: themePalette,
                     isExpanded: $isBackHeaderExpanded,
-                    onBack: showsBackButton
+                    onBack: showsBackButton && !usesVerticalToolbar
                         ? {
                             guard !isReturning else { return }
                             Task { await goBack() }
@@ -320,7 +321,12 @@ struct ShellTerminalView: View {
             .toolbar(.visible, for: .navigationBar)
             .detailHeaderBarControls(
                 headerSharesBar, palette: themePalette, isExpanded: $isBackHeaderExpanded,
-                actions: backHeaderActions)
+                actions: backHeaderActions,
+                onBack: showsBackButton && usesVerticalToolbar
+                    ? {
+                        guard !isReturning else { return }
+                        Task { await goBack() }
+                    } : nil)
             .sheet(
                 isPresented: Binding(
                     get: { store.pendingPaste != nil },
