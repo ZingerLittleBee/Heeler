@@ -731,9 +731,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         return installed.kinds
     }
 
-    /// OpenCode's own words for its version, asked of the Host when nothing has yet.
-    func probedOpenCodeVersion() async throws -> String? {
-        if let openCodeVersion { return openCodeVersion }
+    /// OpenCode's own words for its version, asked of the Host now. A version kept
+    /// from an earlier discovery may have been upgraded away, and a list in that
+    /// release's file does nothing, and looks as if it did.
+    func currentOpenCodeVersion() async throws -> String? {
         _ = try await availableAgentKinds()
         return openCodeVersion
     }

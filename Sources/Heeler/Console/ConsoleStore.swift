@@ -2015,7 +2015,7 @@ final class ConsoleStore {
         guard let core = projections[hostID] as? HerdrCoreConsoleProjection else {
             throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
         }
-        guard let form = OpenCodePluginEdit.ConfigForm.of(version: try await core.probedOpenCodeVersion()) else {
+        guard let form = OpenCodePluginEdit.ConfigForm.of(version: try await core.currentOpenCodeVersion()) else {
             throw HarnessConfigEditError.openCodeVersionUnknown
         }
         // Only an environment that was read can say a variable is unset.
