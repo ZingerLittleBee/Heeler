@@ -566,11 +566,14 @@ suite("Heeler's Pi and Oh My Pi extension", () => {
     let folder;
     let asked;
 
-    /** Stands in for `powershell.exe`, and keeps the arguments it was given. */
+    /**
+     * Stands in for the system's `powershell.exe`, and keeps the arguments it was
+     * given. Outside Windows the backslashes are one file's name beside this root.
+     */
     function fakePowerShell(body) {
-      const path = join(folder, "powershell.exe");
+      process.env.SystemRoot = join(folder, "Windows");
+      const path = `${process.env.SystemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
       writeFileSync(path, `#!/bin/sh\nprintf '%s\\n' "$@" > '${asked}'\n${body}\n`, { mode: 0o755 });
-      process.env.PATH = `${folder}:${process.env.PATH}`;
     }
 
     beforeEach(() => {
@@ -587,6 +590,7 @@ suite("Heeler's Pi and Oh My Pi extension", () => {
     afterEach(() => {
       Object.defineProperty(process, "platform", savedPlatform);
       process.chdir(savedDirectory);
+      delete process.env.SystemRoot;
     });
 
     /** A terminal socket at the pipe's own name. */
@@ -703,6 +707,42 @@ suite("Heeler's Pi and Oh My Pi extension", () => {
         await pipe.close();
       });
     }
+
+    test("a powershell.exe in the project or on PATH is not what runs", async () => {
+      fakePowerShell(`echo ${FILETIME}`);
+      const ran = join(folder, "planted-ran");
+      // The working folder is the Agent's project, which a bare name finds first.
+      writeFileSync(join(folder, "powershell.exe"), `#!/bin/sh\ntouch '${ran}'\necho 1\n`, { mode: 0o755 });
+      const savedPath = process.env.PATH;
+      process.env.PATH = `${folder}:${savedPath}`;
+      const pipe = await fakePipe();
+      const program = await started();
+
+      await program.emit("session_start");
+      await until(() => pipe.lines.length === 1);
+      process.env.PATH = savedPath;
+
+      assert.equal(existsSync(ran), false);
+      assert.equal(JSON.parse(pipe.lines[0].params.labels["heeler.session"]).start, FILETIME);
+      await pipe.close();
+    });
+
+    test("with no SystemRoot to find PowerShell by, nothing starts", async () => {
+      const ran = join(folder, "planted-ran");
+      writeFileSync(join(folder, "powershell.exe"), `#!/bin/sh\ntouch '${ran}'\necho ${FILETIME}\n`, { mode: 0o755 });
+      const savedPath = process.env.PATH;
+      process.env.PATH = `${folder}:${savedPath}`;
+      const pipe = await fakePipe();
+      const program = await started();
+
+      await program.emit("session_start");
+      await until(() => pipe.lines.length === 1);
+      process.env.PATH = savedPath;
+
+      assert.equal(existsSync(ran), false);
+      assert.equal("start" in JSON.parse(pipe.lines[0].params.labels["heeler.session"]), false);
+      await pipe.close();
+    });
 
     test("without HC_TERMINAL_ID it does nothing, and starts nothing", async () => {
       fakePowerShell(`echo ${FILETIME}`);
