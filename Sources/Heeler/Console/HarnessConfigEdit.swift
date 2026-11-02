@@ -10,7 +10,9 @@ struct HarnessConfigEdit: Sendable {
     enum Transform: Equatable, Sendable {
         case change(to: Data)
         case alreadyApplied
-        case refused(reason: String)
+        /// `manualInstruction` says what to do by hand when this file's case differs
+        /// from the edit's own.
+        case refused(reason: String, manualInstruction: String? = nil)
     }
 
     /// Stable across launches, for what the Host's detail lists.
@@ -245,8 +247,9 @@ struct HarnessConfigEditor: Sendable {
         switch edit.transform(before) {
         case .alreadyApplied:
             return .alreadyApplied(path: edit.path)
-        case .refused(let reason):
-            return .refused(path: edit.path, reason: reason, manualInstruction: edit.manualInstruction)
+        case .refused(let reason, let manualInstruction):
+            return .refused(
+                path: edit.path, reason: reason, manualInstruction: manualInstruction ?? edit.manualInstruction)
         case .change(let after):
             return .change(
                 HarnessConfigPendingChange(

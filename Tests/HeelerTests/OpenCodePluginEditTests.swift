@@ -14,7 +14,7 @@ import Testing
     }
 
     private func transformed(_ before: String?, _ form: OpenCodePluginEdit.ConfigForm) -> HarnessConfigEdit.Transform {
-        OpenCodePluginEdit.transform(form: form, folderPath: Self.folder)(before.map { Data($0.utf8) })
+        OpenCodePluginEdit.transform(form: form, folderPath: Self.folder, fileName: "tui.json")(before.map { Data($0.utf8) })
     }
 
     private func changed(
@@ -219,7 +219,7 @@ import Testing
     }
 
     @Test func invalidUTF8IsRefused() {
-        let edit = OpenCodePluginEdit.transform(form: .tuiConfig, folderPath: Self.folder)
+        let edit = OpenCodePluginEdit.transform(form: .tuiConfig, folderPath: Self.folder, fileName: "tui.json")
         guard case .refused = edit(Data([0x7B, 0xFF, 0x7D])) else {
             Issue.record("expected a refusal")
             return

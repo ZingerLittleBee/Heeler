@@ -21,6 +21,13 @@ enum OpenCodePluginEdit {
         "Add \"\(entryValue)\" to \(form.listKey) in \(fileName), \(pluginCopy)."
     }
 
+    /// A top-level list flattens over the one inside this section, so the entry has
+    /// to go inside it (herdr compatibility, OpenCode 1.19.5).
+    static func manualInstruction(fileName: String, form: ConfigForm, inside section: String) -> String {
+        "Add \"\(entryValue)\" to \(form.listKey) inside \(section) in \(fileName), not at the top of the file, "
+            + "where a list would replace the one inside \(section), \(pluginCopy)."
+    }
+
     /// For a Host whose release Heeler can't read.
     static var manualInstructionForEitherRelease: String {
         let (tui, cli) = (ConfigForm.tuiConfig, ConfigForm.cliConfig)
@@ -98,7 +105,7 @@ enum OpenCodePluginEdit {
         let folderPath = RemoteFilePath.join(configDirectory, folderName)
         return HarnessConfigEdit(
             id: id, harness: harness, path: RemoteFilePath.join(configDirectory, fileName),
-            transform: transform(form: form, folderPath: folderPath),
+            transform: transform(form: form, folderPath: folderPath, fileName: fileName),
             folder: HarnessConfigFolder(path: folderPath, files: files),
             listEntry: HarnessConfigListEntry(key: form.listKey, value: entryValue),
             manualInstruction: manualInstruction(fileName: fileName, form: form))
@@ -109,7 +116,9 @@ enum OpenCodePluginEdit {
     private static let notAListReason =
         "This file sets OpenCode's plugin list in a form Heeler won't change."
 
-    static func transform(form: ConfigForm, folderPath: String) -> @Sendable (Data?) -> HarnessConfigEdit.Transform {
+    static func transform(
+        form: ConfigForm, folderPath: String, fileName: String
+    ) -> @Sendable (Data?) -> HarnessConfigEdit.Transform {
         { file in
             // OpenCode reads an empty file as no configuration at all.
             guard let file, !file.allSatisfy({ [0x20, 0x09, 0x0A, 0x0D].contains($0) }) else {
@@ -122,7 +131,11 @@ enum OpenCodePluginEdit {
             case .changed(let after): return .change(to: after)
             case .alreadyThere: return .alreadyApplied
             case .unreadable: return .refused(reason: unreadableReason)
-            case .notAList, .keyInTheWay: return .refused(reason: notAListReason)
+            case .notAList: return .refused(reason: notAListReason)
+            case .keyInTheWay(let section):
+                return .refused(
+                    reason: notAListReason,
+                    manualInstruction: manualInstruction(fileName: fileName, form: form, inside: section))
             }
         }
     }
