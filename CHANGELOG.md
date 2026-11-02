@@ -15,7 +15,7 @@ Entries reference the pull request that made the change.
 - The Shell Terminal can show the shortcut row from Direct Input (Esc, Tab,
   arrows, Backspace and Enter) above its input row, so you can reach those
   keys while typing on the iOS keyboard. Turn it on with the new button beside
-  Paste. It's off by default and hides in Keys mode. (#PR)
+  Paste. It's off by default and hides in Keys mode. (#611)
 - New Agent opens on the Agent you started last, when the Host has it
   installed. (#608)
 - Chat shows the images Agents read or make as thumbnails under their rows;
