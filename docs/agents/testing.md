@@ -14,12 +14,18 @@ Makefile, or the two scripts it executes. It compiles the committed app,
 extensions and HeelerTests bundle once with `make build-ci-app`
 (`build-for-testing` against the generic Simulator SDK, stable paths and
 compiler caching), so an app change that breaks test sources fails before
-merge. It never boots a Simulator or runs a test. Other script and
-`ci-full.yml` changes skip the app build; [the script self-tests](../../.github/workflows/ci-scripts.yml)
-run `make test-ci-watchdog`, `make test-ci-guards` and
-`make test-ci-diagnostic-controls` on macOS, under the `/bin/bash` 3.2 that
-full verification executes. Documentation-only edits get the Ubuntu tooling
-checks; Node and site checks keep their own path filters.
+merge. It never boots a Simulator or runs a test. That build compiles
+HeelerSSH only as a library, so [the HeelerSSH build](../../.github/workflows/ci-package.yml)
+runs `make build-ci-package` (the package and its tests, not run) when
+`Packages/HeelerSSH` changes. Other script and `ci-full.yml` changes skip both
+builds; [the script self-tests](../../.github/workflows/ci-scripts.yml) run
+`scripts/test-vps-ssh-access-scripts.sh`, `make test-ci-watchdog`,
+`make test-ci-guards` and `make test-ci-diagnostic-controls` on macOS, under
+the `/bin/bash` 3.2 that full verification executes.
+`make test-ci-diagnostic-controls`, which Agent tooling runs on Ubuntu for
+every PR, pins each fast workflow's trigger paths and commands.
+Documentation-only edits get the Ubuntu tooling checks; Node and site checks
+keep their own path filters.
 
 Run focused behavior tests for the feature being changed. The
 [full native workflow](../../.github/workflows/ci-full.yml) retains all app,
@@ -78,6 +84,7 @@ preparation and can miss SwiftUI labels on a clean Simulator (#339).
 | Change | Entry point | What it establishes |
 | --- | --- | --- |
 | App and test compilation | `make build-ci-app` | Committed app, extensions and test bundle compile; no tests executed |
+| HeelerSSH and test compilation | `make build-ci-package` | HeelerSSH and its tests compile for the Simulator SDK; no tests executed |
 | App stores, parsers, SwiftUI hosting | `make test-app TEST_SELECTOR='HeelerTests/<Suite>'` | Selected app behavior on the named candidate and Simulator |
 | Full local app and SSH package suites | `make test` or `make test-ipad` | App tests followed by the separate HeelerSSH test plan |
 | `Packages/HeelerSSH` | `make test-ci-package` | Committed-project package CI lane with disposable SSH fixtures and count gates |

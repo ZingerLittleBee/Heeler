@@ -73,41 +73,78 @@ require_line(alert, "if: ${{ github.event.workflow_run.event == 'schedule' && gi
 if re.search(r"(?m)^\s+[\w-]+: write\s*$", workflow):
     raise SystemExit("ci-full.yml must stay read-only for release.yml")
 
-fast = workflows.joinpath("ci.yml").read_text()
-if events(fast) != {"workflow_dispatch", "pull_request", "push"}:
-    raise SystemExit("The fast build must run on PR/push and support manual runs")
-if re.findall(r"(?m)^  ([\w-]+):", fast.split("\njobs:\n", 1)[1]) != ["app-build"]:
-    raise SystemExit("The fast build must have one build-only job")
-require_line(job("app-build", fast), "name: Build app and tests (not run)")
-# Script self-tests build nothing, so a script-only change never starts ci.yml.
-scripts = workflows.joinpath("ci-scripts.yml").read_text()
-if events(scripts) != {"workflow_dispatch", "pull_request", "push"}:
-    raise SystemExit("Script self-tests must run on PR/push and support manual runs")
-if re.findall(r"(?m)^  ([\w-]+):", scripts.split("\njobs:\n", 1)[1]) != ["gate-scripts"]:
-    raise SystemExit("Script self-tests must have one job")
-if re.findall(r"(?m)^\s+run: (.+)$", scripts) != [
-        "make test-ci-watchdog", "make test-ci-guards", "make test-ci-diagnostic-controls"]:
-    raise SystemExit("Script self-tests must not build the app or run native tests")
+def trigger_paths(source, name):
+    block = re.search(r"(?m)^on:\n(.*?)(?=^[^\s#]|\Z)", source, re.DOTALL).group(1)
+    if "paths-ignore:" in block:
+        raise SystemExit(f"{name} must use positive paths, not paths-ignore")
+    lists = []
+    for event in ("pull_request", "push"):
+        match = re.search(rf"(?m)^  {event}:\n(.*?)(?=^  \S|\Z)", block, re.DOTALL)
+        lists.append(re.findall(r"(?m)^      - (.+)$", match.group(1)) if match else [])
+    if lists[0] != lists[1]:
+        raise SystemExit(f"{name} must list the same paths for pull_request and push")
+    return set(lists[0])
+
+# Each fast workflow starts only for what it compiles or executes: a
+# script-only change never builds the app, and exports or the marketing site
+# never spend a macOS worker. This runs on Ubuntu for every PR, so a trigger
+# edit cannot slip past the workflow it changes.
+fast_workflows = {
+    "ci.yml": ("app-build", "Build app and tests (not run)", {
+        "Sources/**", "Tests/**", "Packages/**", "Heeler.xcodeproj/**", "project.yml",
+        "Makefile", "scripts/run-ci-background-build.py",
+        "scripts/ci-compilation-cache-prefix.sh", "plugin/test-vectors/**",
+        ".github/workflows/ci.yml"}),
+    "ci-scripts.yml": ("gate-scripts", "CI and VPS scripts (macOS)", {
+        "scripts/**", "Makefile", ".github/workflows/ci-full.yml",
+        ".github/workflows/ci-scripts.yml"}),
+    "ci-package.yml": ("package-build", "Build HeelerSSH and tests (not run)", {
+        "Packages/HeelerSSH/**", ".github/workflows/ci-package.yml"}),
+}
+sources = {}
+for name, (job_id, display, expected) in fast_workflows.items():
+    source = sources[name] = workflows.joinpath(name).read_text()
+    if events(source) != {"workflow_dispatch", "pull_request", "push"}:
+        raise SystemExit(f"{name} must run on PR/push and support manual runs")
+    if re.findall(r"(?m)^  ([\w-]+):", source.split("\njobs:\n", 1)[1]) != [job_id]:
+        raise SystemExit(f"{name} must have the single job {job_id}")
+    require_line(job(job_id, source), "name: " + display)
+    paths = trigger_paths(source, name)
+    if paths != expected:
+        raise SystemExit(f"{name} trigger paths differ: missing {sorted(expected - paths)}, extra {sorted(paths - expected)}")
+    if any("name: " + full in source for full in names.values()):
+        raise SystemExit("Only full verification may publish full coverage check names")
+fast = sources["ci.yml"]
 if ("ios-ci-evidence-" in fast or "verify-ci-ios-evidence" in fast or "simctl" in fast
         or re.search(r"\bmake test-ci-(?:app|package|diagnostics)\b", fast)):
     raise SystemExit("The fast build must not execute or claim native tests")
-for source in [fast, scripts, diagnostics]:
-    if any("name: " + display in source for display in names.values()):
-        raise SystemExit("Only full verification may publish full coverage check names")
+if re.findall(r"(?m)^\s+run: (.+)$", sources["ci-scripts.yml"]) != [
+        "scripts/test-vps-ssh-access-scripts.sh", "make test-ci-watchdog",
+        "make test-ci-guards", "make test-ci-diagnostic-controls"]:
+    raise SystemExit("Script self-tests must not build the app or run native tests")
+if re.findall(r"(?m)^\s+run: (.+)$", sources["ci-package.yml"]) != ["make build-ci-package"]:
+    raise SystemExit("The HeelerSSH build must only compile the package and its tests")
+if any("name: " + full in diagnostics for full in names.values()):
+    raise SystemExit("Only full verification may publish full coverage check names")
+
 # Compare whole tokens: the checkout path may contain words such as `test`.
-command = subprocess.check_output(
-    ["make", "--no-print-directory", "-n", "build-ci-app"],
-    cwd=workflows.resolve().parents[1], text=True)
-tokens = shlex.split(command.replace("\\\n", " "))
 actions = {"build", "build-for-testing", "test", "test-without-building", "analyze", "archive", "clean"}
-if tokens[:1] != ["xcodebuild"] or [token for token in tokens if token in actions] != ["build-for-testing"]:
-    raise SystemExit("The fast build entrypoint must compile the app and tests without running them")
-if any(Path(token).name in {"xcodegen", "simctl"} for token in tokens):
-    raise SystemExit("The fast build must use the committed project without a Simulator")
-if "-destination" not in tokens or tokens[tokens.index("-destination") + 1] != "generic/platform=iOS Simulator":
-    raise SystemExit("The fast build must not need a booted Simulator destination")
-if "-arch" in tokens:
-    raise SystemExit("The generic destination conflicts with -arch; use the ARCHS build setting")
+for target, scheme in [("build-ci-app", "Heeler"), ("build-ci-package", "HeelerSSH")]:
+    command = subprocess.check_output(
+        ["make", "--no-print-directory", "-n", target],
+        cwd=workflows.resolve().parents[1], text=True)
+    tokens = shlex.split(command.replace("\\\n", " "))
+    if any(Path(token).name in {"xcodegen", "simctl"} for token in tokens) or "xcodebuild" not in tokens:
+        raise SystemExit(f"{target} must run xcodebuild on the committed project without a Simulator")
+    tokens = tokens[tokens.index("xcodebuild"):]
+    if [token for token in tokens if token in actions] != ["build-for-testing"]:
+        raise SystemExit(f"{target} must compile {scheme} and its tests without running them")
+    if "-scheme" not in tokens or tokens[tokens.index("-scheme") + 1] != scheme:
+        raise SystemExit(f"{target} must build the {scheme} scheme")
+    if "-destination" not in tokens or tokens[tokens.index("-destination") + 1] != "generic/platform=iOS Simulator":
+        raise SystemExit(f"{target} must not need a booted Simulator destination")
+    if "-arch" in tokens:
+        raise SystemExit("The generic destination conflicts with -arch; use the ARCHS build setting")
 
 require_line(diagnostics, "workflow_dispatch:")
 if events(diagnostics) != {"workflow_dispatch"}:

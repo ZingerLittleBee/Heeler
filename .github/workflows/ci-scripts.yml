@@ -1,8 +1,8 @@
-# macOS self-tests of the full verification scripts (refs #23).
+# macOS self-tests of CI and VPS scripts (refs #23).
 #
-# Agent tooling covers the same contracts on Ubuntu for every PR, but only
+# Agent tooling covers the workflow contracts on Ubuntu for every PR, but only
 # macOS has the /bin/bash 3.2 that ci-full.yml executes. These checks build
-# nothing: a script-only change never starts the app build in ci.yml.
+# nothing; only the two scripts ci.yml executes also start the app build.
 # ci-full.yml repeats them so the release gate stays self-contained.
 
 name: iOS CI scripts
@@ -36,7 +36,7 @@ concurrency:
 
 jobs:
   gate-scripts:
-    name: Full verification scripts (macOS)
+    name: CI and VPS scripts (macOS)
     runs-on: macos-26
     timeout-minutes: 15
     env:
@@ -46,6 +46,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - name: Test VPS SSH access scripts
+        run: scripts/test-vps-ssh-access-scripts.sh
       - name: Test CI watchdog
         run: make test-ci-watchdog
       - name: Test CI gate guards

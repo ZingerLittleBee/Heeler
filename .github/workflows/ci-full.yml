@@ -21,11 +21,12 @@
 #   real-password fixture needs sudo, because macOS cannot verify an account
 #   password without root.
 #
-# The fast build (ci.yml) compiles the app and tests on every PR without
-# running them, ci-scripts.yml self-tests these scripts on macOS, and
-# isolated repetitions live in ci-diagnostics.yml. None of them claims the
-# complete coverage produced here. ci-full-alert.yml tracks failed
-# scheduled runs, because this workflow stays read-only for release.yml.
+# The fast builds (ci.yml, ci-package.yml) compile the app, HeelerSSH and
+# their tests on PRs that change them without running them, ci-scripts.yml
+# self-tests these scripts on macOS, and isolated repetitions live in
+# ci-diagnostics.yml. None of them claims the complete coverage produced
+# here. ci-full-alert.yml tracks failed scheduled runs, because this workflow
+# stays read-only for release.yml.
 
 name: iOS full verification
 run-name: ${{ format('iOS full verification ({0}, {1})', inputs.layout || 'sharded', inputs.cache_mode || 'warm') }}
@@ -138,9 +139,9 @@ jobs:
         run: xcodebuild -version
 
       - name: Compute compilation cache key
-        id: toolchain
+        id: cache-key
         if: ${{ env.HEELER_CI_DISABLE_COMPILATION_CACHE != '1' }}
-        run: scripts/ci-compilation-cache-prefix.sh ios-app-cas-v1
+        run: scripts/ci-compilation-cache-prefix.sh ios-full-cas-v1
 
       # Only content-addressed compiler objects cross runs. Source changes
       # remain eligible for reuse; the compiler validates their dependencies.
@@ -150,9 +151,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.HEELER_CI_COMPILATION_CACHE_DIR }}
-          key: ${{ steps.toolchain.outputs.cache-prefix }}${{ github.sha }}
+          key: ${{ steps.cache-key.outputs.cache-prefix }}${{ github.sha }}
           restore-keys: |
-            ${{ steps.toolchain.outputs.cache-prefix }}
+            ${{ steps.cache-key.outputs.cache-prefix }}
 
       - name: Record cache and checkout identity
         env:
@@ -194,7 +195,7 @@ jobs:
         timeout-minutes: ${{ inputs.layout == 'serial' && 60 || 55 }}
         # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
         # privileged part (the real-password sshd) a hard requirement here
-        # rather than something merge CI may quietly run without.
+        # rather than something full verification may quietly run without.
         env:
           HEELER_CI_LANE: app
           APP_SHARD: ${{ matrix.shard }}

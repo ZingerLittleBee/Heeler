@@ -1,6 +1,7 @@
-# Fast feedback on every PR and push to main (refs #23). Full Swift/UI/SSH
-# verification lives in ci-full.yml, which runs daily, manually and before
-# every release.
+# Fast feedback on PRs and pushes to main that change build inputs (refs #23).
+# Full Swift/UI/SSH verification lives in ci-full.yml, which runs daily,
+# manually and before every release. ci-package.yml compiles HeelerSSH's own
+# tests, which this app build compiles only as a library.
 #
 # app-build compiles the committed app, extensions and HeelerTests bundle with
 # build-for-testing against the generic Simulator SDK. It never boots a
@@ -78,10 +79,10 @@ jobs:
       - name: Verify HeelerSSH native artifacts
         run: make verify-ssh-artifacts
       - name: Record build identity
-        id: toolchain
+        id: cache-key
         run: |
           mkdir -p .ci/build-evidence
-          scripts/ci-compilation-cache-prefix.sh ios-build-cas-v1 .ci/build-evidence/toolchain.txt
+          scripts/ci-compilation-cache-prefix.sh ios-fast-cas-v1 .ci/build-evidence/toolchain.txt
           printf 'checkout_sha=%s\nimage_version=%s\ntests_executed=0\n' \
             "$(git rev-parse HEAD)" "${ImageVersion:-unknown}" > .ci/build-evidence/run-settings.txt
       # Cache compiler objects, never DerivedData, products or test results.
@@ -94,9 +95,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .ci/app-compilation-cache
-          key: ${{ steps.toolchain.outputs.cache-prefix }}${{ github.sha }}
+          key: ${{ steps.cache-key.outputs.cache-prefix }}${{ github.sha }}
           restore-keys: |
-            ${{ steps.toolchain.outputs.cache-prefix }}
+            ${{ steps.cache-key.outputs.cache-prefix }}
       - name: Build app, extensions and tests without launching a Simulator
         timeout-minutes: 20
         run: |

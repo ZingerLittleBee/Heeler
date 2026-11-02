@@ -29,6 +29,9 @@ fi
         Heeler.xcodeproj/xcshareddata/xcschemes/Heeler.xcscheme \
         Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved \
         ':(glob)Packages/**/Package.swift'
+    # The build-setting profile both lanes pass. Bump it after changing those
+    # settings to start fresh caches; compiled objects stay correct either
+    # way because the CAS is content-addressed.
     echo 'Debug-no-symbols-no-index-v1'
 } > "$identity_file"
 cat "$identity_file"

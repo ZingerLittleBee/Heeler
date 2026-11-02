@@ -65,6 +65,14 @@ build-ci-app: ## Compile the committed app, extensions and test bundle without r
 		COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS=YES \
 		GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO
 
+.PHONY: build-ci-package
+build-ci-package: ## Compile HeelerSSH and its tests without running tests or booting a Simulator
+	cd Packages/HeelerSSH && xcodebuild build-for-testing -scheme HeelerSSH \
+		-destination 'generic/platform=iOS Simulator' ARCHS="$$(uname -m)" \
+		-derivedDataPath '$(CURDIR)/.ci/package-derived' \
+		COMPILATION_CACHE_ENABLE_CACHING=NO \
+		GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO
+
 test-app: generate ## Run app tests and verify execution (SIM_DESTINATION, TEST_SELECTOR, TEST_FLAGS)
 	python3 scripts/run-app-simulator-tests.py -project $(PROJECT) -scheme $(SCHEME) \
 		-destination '$(SIM_DESTINATION)' -derivedDataPath $(DERIVED) \
