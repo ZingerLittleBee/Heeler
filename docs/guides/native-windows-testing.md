@@ -537,22 +537,23 @@ Code's `.key` files.
 
 The acceptance scope is manual SSH access to existing native Windows herdr
 sessions, API/event synchronization, live terminal control, and foreground
-Live Activity synchronization.
+Live Activity synchronization. Section 9 has its own scope: herdr-core Hosts.
 
 The Windows pairing plugin, its Bootstrap Key forced command, and automatic
 Device Key enrollment are excluded. The plugin manifest still excludes
 Windows, so `heeler.pair` returning `platform_unsupported` is not a failure of
 the manual connection path.
 
-Changes, Skills, uploads/file staging, and notification registration are
-explicitly unavailable on Windows in this implementation. Their app guards
-must return an unavailable result instead of running POSIX remote scripts or
+On a native Windows Herdr TUI Host, Changes, Skills, uploads/file staging, and
+notification registration are explicitly unavailable in this implementation.
+Their app guards must return an unavailable result instead of running POSIX remote scripts or
 writing unsupported remote files. Agent Notifications and background Live
 Activity push updates are unsupported because the Windows plugin is excluded.
-Foreground Live Activity updates remain in scope through API events.
+Foreground Live Activity updates remain in scope through API events. A herdr-core
+Host stages files through `terminal.put` (ADR 0032, section 9 steps 14 and 15).
 
-As a final boundary check, try each unavailable feature and record its app
-message. It must fail promptly without disconnecting the Host or preventing
+As a final boundary check, try each unavailable feature on a Herdr TUI Host and
+record its app message. It must fail promptly without disconnecting the Host or preventing
 later Console refreshes and terminal input.
 
 Record each result separately:
