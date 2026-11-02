@@ -407,6 +407,13 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                         tool.preview?.isTruncated = true
                         tool.note = "Output exceeds the preview limit."
                     }
+                    if tool.kind == .fileRead, tool.status == .succeeded {
+                        tool.imagePath = Self.imagePath(
+                            details: message["details"], callPath: callPaths[callID], directory: directory,
+                            readImage: (tool.preview?.imageCount ?? 0) > 0
+                                || resultText.hasPrefix(Self.imageReadPrefix),
+                            isTruncated: record.isTruncated)
+                    }
                     tool.output = writtenBy ?? ChatOutputReference(offset: record.offset, length: record.length)
                     if let index {
                         transcript.entries[index].content = .tool(tool)
@@ -515,6 +522,23 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
 
     /// Oh My Pi's scheme for the session's own planning files.
     private static let localScheme = "local://"
+
+    /// How Pi and Oh My Pi begin a read's result when the file is an image,
+    /// including one they could not attach (Pi 0.85.1 `read.js`).
+    private static let imageReadPrefix = "Read image file ["
+
+    /// The file a read showed as an image. Oh My Pi names it in the
+    /// result's `details.mediaPath` (18.12.1); Pi records only the image,
+    /// and the path in the call, relative to the session's directory
+    /// (0.85.1). A result cut short may have lost its content; its path's
+    /// extension decides then.
+    private static func imagePath(
+        details: JSONValue?, callPath: String?, directory: String?, readImage: Bool, isTruncated: Bool
+    ) -> String? {
+        let media = details?["mediaPath"]?.stringValue.flatMap { RemoteHostPath.isAbsolute($0) ? $0 : nil }
+        guard let path = media ?? ChatImagePath.resolve(callPath, cwd: directory) else { return nil }
+        return readImage || (isTruncated && ChatImagePath.hasImageExtension(path)) ? path : nil
+    }
 
     private static func tool(
         name: String, arguments: JSONValue?, callID: String, activity: ChatAgentActivity, directory: String?

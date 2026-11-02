@@ -59,7 +59,14 @@ branch. Incremental append and earlier-history prepend converge by file offset.
 may be a string or blocks. Assistant blocks include `text`, `thinking`, and
 `toolCall` (`id`, `name`, `arguments`). Results pair by `toolCallId`, carry
 `isError`, and expose capped text previews; an expanded result re-reads its
-exact line. Images are counted, not decoded from base64. Tool calls without
+exact line. Images are counted, not decoded from base64. A `read` of an
+image file begins its result text with `Read image file [<mime>]`, then an
+`image` block unless the image could not be attached; Pi 0.85.1 records the
+path only in the call's `path` argument, relative to the session's `cwd` when
+not absolute (`dist/core/tools/read.js`), and Oh My Pi 18.12.1 also names the
+resolved file in the result's `details.mediaPath` and stores the image as
+`blob:sha256:<hash>` (live 2026-10-18; 18.12.3 the same on 2026-11-02, the
+image re-encoded as `image/webp`). Tool calls without
 results retain activity-derived running/blocked/interrupted status. Assistant
 `stopReason` ends turns; `aborted` and `error` show notices.
 

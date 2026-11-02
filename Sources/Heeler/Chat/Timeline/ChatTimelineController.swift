@@ -17,6 +17,8 @@ struct ChatTimelineActions {
     /// Shown in an expanded tool row whose output was never read.
     var missingOutputText: String = "Output is available when connected."
     var loadImage: ChatImagePreviewController.Loader = { _ in throw ChatImagePreviewError.unavailable }
+    /// The pictures image rows show; nil without a conversation store.
+    var thumbnails: ChatImageThumbnails?
     /// An open trajectory intersects the reading viewport.
     var collapseAvailabilityChanged: @MainActor (Bool) -> Void = { _ in }
 }
@@ -36,6 +38,11 @@ struct ChatRowActions {
     var retryOutput: @MainActor (ChatRowID) -> Void = { _ in }
     /// How far a pull past the top has gone, for the Load Earlier row.
     var olderPull: ChatOlderPull?
+    /// The pictures image rows show.
+    var thumbnails: ChatImageThumbnails?
+    /// Opens an image row's file in the zoomable sheet, showing the
+    /// thumbnail, when there is one, until the file is read.
+    var previewImage: @MainActor (String, UIImage?) -> Void = { _, _ in }
 }
 
 /// A pull past the timeline's top, as the Load Earlier row shows it.
@@ -266,7 +273,14 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             toggleFile: { [weak self] id, path in self?.toggleFile(id, path: path) },
             showFile: { [weak self] id, path in self?.showFile(id, path: path) },
             retryOutput: { [weak self] id in self?.retryOutput(id) },
-            olderPull: olderPull)
+            olderPull: olderPull,
+            thumbnails: actions.thumbnails,
+            previewImage: { [weak self] path, thumbnail in self?.previewImage(path, thumbnail: thumbnail) })
+    }
+
+    private func previewImage(_ path: String, thumbnail: UIImage?) {
+        ChatImagePreviewController(path: path, placeholder: thumbnail, loadImage: actions.loadImage)
+            .present(from: self)
     }
 
     // MARK: Updates
@@ -1070,15 +1084,15 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         else { return nil }
         let path = row.imagePath
         let loader = actions.loadImage
+        let thumbnail = path.flatMap { actions.thumbnails?.image(of: $0) }
         let preview: UIContextMenuContentPreviewProvider? = path.map { path in
-            { ChatImagePreviewController(path: path, loadImage: loader) }
+            { ChatImagePreviewController(path: path, placeholder: thumbnail, loadImage: loader) }
         }
         return UIContextMenuConfiguration(identifier: path as NSString?, previewProvider: preview) { [weak self] _ in
             var items: [UIMenuElement] = []
             if let path {
                 items.append(UIAction(title: "Preview Image", image: UIImage(systemName: "photo")) { [weak self] _ in
-                    guard let self else { return }
-                    ChatImagePreviewController(path: path, loadImage: loader).present(from: self)
+                    self?.previewImage(path, thumbnail: thumbnail)
                 })
             }
             items += [

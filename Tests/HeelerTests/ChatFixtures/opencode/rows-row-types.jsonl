@@ -1,4 +1,4 @@
-{"k":"session","id":"ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9","parent":null,"title":"Row types","version":"2.0.32","revertMessage":null,"revertFiles":null,"revertSeq":null,"updated":1800000003000}
+{"k":"session","id":"ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9","parent":null,"title":"Row types","version":"2.0.32","directory":"/Users/developer/work/heeler-tmp-chat/opencode-a/project","revertMessage":null,"revertFiles":null,"revertSeq":null,"updated":1800000003000}
 {"k":"inbox","items":[],"more":0}
 {"k":"row","id":"msg_0a1b2c3d4e10L2z3X4c5V6b7N8","type":"shell","seq":4,"tc":1800000000000,"tu":1800000000400,"f":true,"d":{"command":"git status","status":"completed","exit":128,"output":"fatal: not a git repository\n","n":28,"time":{"created":1800000000000,"completed":1800000000400}}}
 {"k":"row","id":"msg_0a1b2c3d4e20U6i7O8p9A0s1D2","type":"shell","seq":6,"tc":1800000000500,"tu":1800000000500,"f":false,"d":{"command":"sleep 60","status":"running","exit":null,"output":null,"n":null,"time":{"created":1800000000500}}}

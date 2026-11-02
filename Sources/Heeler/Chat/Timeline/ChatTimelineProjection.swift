@@ -372,9 +372,11 @@ enum ChatTimelineProjection {
     }
 
     /// Calls a group can hold: not Subagents, questions or calls waiting on
-    /// the user, nor a command the user ran in Codex's shell.
+    /// the user, nor a command the user ran in Codex's shell, nor a call
+    /// whose image the row shows.
     static func isGroupable(_ row: ChatRow) -> Bool {
-        guard case .tool(let tool) = row.content, tool.status != .awaitingApproval, tool.name != "user_shell"
+        guard case .tool(let tool) = row.content, tool.status != .awaitingApproval, tool.name != "user_shell",
+            tool.imagePath == nil
         else { return false }
         switch tool.kind {
         case .agent, .question: return false
