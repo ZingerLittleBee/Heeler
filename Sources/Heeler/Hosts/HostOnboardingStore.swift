@@ -39,6 +39,9 @@ struct HostOnboardingDependencies: Sendable {
     var hostHelperDidChange: @MainActor @Sendable () -> Void = {}
     /// What this device applied, for removing the Helper to undo what goes with it.
     var harnessEdits: HarnessConfigEditStore?
+    /// Add Host's detection found a native Windows machine behind this Host, which
+    /// its first connection may never reach to say.
+    var noteWindowsCore: @MainActor @Sendable (Host.ID) -> Void = { _ in }
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
@@ -117,6 +120,7 @@ final class HostOnboardingStore {
     /// Identifies the run whose trust prompts may still be shown.
     @ObservationIgnored private var currentRun = UUID()
     @ObservationIgnored private let hostHelperDidChange: @MainActor () -> Void
+    @ObservationIgnored private let noteWindowsCore: @MainActor (Host.ID) -> Void
     @ObservationIgnored private let hostHelperHealthGap: @Sendable () async throws -> Void
     @ObservationIgnored private let harnessEdits: HarnessConfigEditStore?
     /// A Mac's second health read, which outlives the run that began it and owns
@@ -136,8 +140,10 @@ final class HostOnboardingStore {
         hostHelperHealthGap: @escaping @Sendable () async throws -> Void = {
             try await Task.sleep(for: HostHelperLaunchAgent.healthGap)
         },
-        harnessEdits: HarnessConfigEditStore? = nil
+        harnessEdits: HarnessConfigEditStore? = nil,
+        noteWindowsCore: @escaping @MainActor (Host.ID) -> Void = { _ in }
     ) {
+        self.noteWindowsCore = noteWindowsCore
         self.hostHelperHealthGap = hostHelperHealthGap
         self.harnessEdits = harnessEdits
         self.coreHolderRestart = coreHolderRestart
@@ -466,6 +472,7 @@ final class HostOnboardingStore {
                 TransportError.herdrCoreSocketPathTooLong(path: path, limit: limit).presentation.message
             return
         }
+        if kind == .herdrCore, detection?.isNativeWindows == true { noteWindowsCore(host.id) }
         do {
             host = try catalog.confirmServerKind(kind, for: host.id)
         } catch HostStoreError.sessionNameRefused(let reason) {

@@ -655,6 +655,30 @@ struct HostOnboardingStoreTests {
         #expect(await core.log == ["windows-detection", "close"])
     }
 
+    /// The Console's first attempt may never reach the Host, and it already knows
+    /// what this one is. Nothing about a Unix Host's first attempt changes.
+    @Test(arguments: [true, false])
+    func confirmingACoreHostRemembersOnlyThatItIsWindows(isWindows: Bool) async throws {
+        let core = isWindows
+            ? ScriptedCoreHost(
+                windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .refused)
+            : ScriptedCoreHost(channel: .refused)
+        let host = Host(
+            address: "box.example", username: "dev", serverKind: .unconfirmed, sessionName: "work")
+        let catalog = HostStore(volatileHosts: [host])
+        let connector = FakeTransportConnector(
+            outcome: .connects(pingResult: Self.healthyPing), presentedKeyBlob: nil, core: core)
+        var noted: [Host.ID] = []
+        let store = HostOnboardingStore(
+            host: host, connector: connector, noteWindowsCore: { noted.append($0) })
+        await store.runChecks()
+
+        await store.confirmServerKind(.herdrCore, in: catalog)
+
+        #expect(store.host.serverKind == .herdrCore)
+        #expect(noted == (isWindows ? [host.id] : []))
+    }
+
     @Test func theConfirmationSaysWhatTheFindingsLeaveOpen() async throws {
         let absent = ScriptedCoreHost.locatorLines(executable: nil)
         let found = HostOnboardingStoreTests.sessionsJSON

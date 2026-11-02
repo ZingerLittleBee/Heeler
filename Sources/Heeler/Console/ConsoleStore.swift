@@ -1911,6 +1911,13 @@ final class ConsoleStore {
             isLocatingCore: hostStatuses[hostID] == .connecting)
     }
 
+    /// Add Host found a native Windows machine here. A Unix Host says nothing until
+    /// its first attempt has, as nothing could start before that attempt. This one's
+    /// first attempt may never reach it, and offers must not wait.
+    func noteWindowsCore(on hostID: Host.ID) {
+        coreHostMemory.noteKernel(HerdrCoreLocator.windowsKernel, for: hostID)
+    }
+
     // MARK: Harness configuration edits
 
     /// The Grok Build edit an Unknown Grok Build Agent offers. `process` is the

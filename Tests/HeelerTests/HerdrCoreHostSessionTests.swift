@@ -426,6 +426,41 @@ struct HerdrCoreHostSessionTests {
         await session.end()
     }
 
+    @Test func eachStatusArrivesWithTheKernelItsAttemptFound() async throws {
+        let running = ScriptedCoreHost(locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .core(.init()))
+        let connected = session(on: running)
+        let connectedReader = Reader(connected)
+        await connected.resume()
+        #expect(await connectedReader.nextStatus() == .connecting)
+        #expect(await connectedReader.nextStatus() == .connected)
+        #expect(connected.currentKernel == "Linux")
+        await connected.end()
+
+        let stopped = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .core(.init()))
+        let reconnecting = session(on: stopped)
+        let reconnectingReader = Reader(reconnecting)
+        await reconnecting.resume()
+        #expect(await reconnectingReader.nextStatus() == .connecting)
+        guard case .reconnecting = await reconnectingReader.nextStatus() else {
+            Issue.record("expected reconnecting")
+            await reconnecting.end()
+            return
+        }
+        #expect(reconnecting.currentKernel == HerdrCoreLocator.windowsKernel)
+        await reconnecting.end()
+
+        let notInstalled = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(executable: nil), channel: .core(.init()))
+        let failed = session(on: notInstalled)
+        let failedReader = Reader(failed)
+        await failed.resume()
+        #expect(await failedReader.nextStatus() == .connecting)
+        #expect(await failedReader.nextStatus() == .failed(.herdrCoreNotInstalled))
+        #expect(failed.currentKernel == HerdrCoreLocator.windowsKernel)
+        await failed.end()
+    }
+
     @Test func anUnknownEventKindNeedsNoNewSnapshot() async throws {
         let host = ScriptedCoreHost(channel: .core(.init(id: "c1", sequence: 1)))
         let session = session(on: host)

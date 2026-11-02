@@ -112,7 +112,9 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   show there as on any other Host that is not connected, and read not connected
   if tried. A core Host offers no New while its first attempt runs with nothing
   known of its platform, and this device remembers the kernel a locator last
-  found, so that a relaunch knows before the Host answers.
+  found, so that a relaunch knows before the Host answers. Add Host's detection
+  notes a native Windows machine there too, since that Host's first attempt may
+  never reach it. A Host that gets a status gets what that attempt found with it.
 
 ## Why
 

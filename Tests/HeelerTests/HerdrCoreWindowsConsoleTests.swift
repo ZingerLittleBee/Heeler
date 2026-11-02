@@ -270,6 +270,37 @@ struct HerdrCoreWindowsConsoleTests {
         await finish(store)
     }
 
+    /// Add Host read the machine, so a first attempt that never reaches it knows too.
+    @Test func aHostAddHostFoundOnWindowsHidesWhatWindowsLacksFromTheStart() async throws {
+        let scripted = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .core(.init()))
+        let store = storeOnScripted(scripted, before: { throw TransportError.sshUnreachable(detail: "gone") })
+        store.noteWindowsCore(on: host.id)
+        store.setHosts([host])
+        expectWindowsOffers(store.capabilities(for: host.id))
+        await store.resume()
+        try await waitUntil("the failed attempt") {
+            if case .reconnecting = store.hostStatuses[host.id] { return true }
+            return false
+        }
+        expectWindowsOffers(store.capabilities(for: host.id))
+        await finish(store)
+    }
+
+    /// A status arrives with what its attempt learned of the Host, so nothing reads
+    /// a Host it has reached as still unknown.
+    @Test func aHostsFirstStatusArrivesKnowingItsKernel() async throws {
+        let scripted = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: true), channel: .core(.init()))
+        let store = storeOnScripted(scripted)
+        store.setHosts([host])
+        await store.resume()
+
+        try await waitUntil("the connection") { store.hostStatuses[host.id] == .connected }
+        expectWindowsOffers(store.capabilities(for: host.id))
+        await finish(store)
+    }
+
     @Test func aConnectedWindowsCoreHostOffersWhatItsTicketsTurnedOn() async throws {
         let store = try await started(
             [Self.record("t1", cwd: #"C:\work"#)], services: ScriptedCoreServices(platform: .nativeWindows))
