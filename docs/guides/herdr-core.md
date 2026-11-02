@@ -171,6 +171,8 @@ If the Host does not confirm a close, Heeler says so and does not send it again,
 
 A core started from inside another program can inherit variables that change how its programs behave. Host detail then shows **Core Environment**, naming each variable and what it breaks, never its value. Restarting the core from your own terminal fixes it. Heeler does not restart it.
 
+On native Windows Heeler reads the core process's environment the same way, by name only, and it says nothing when it cannot read it. This read has not run on a Windows machine yet, so no **Core Environment** there does not prove the core is clean.
+
 ## New Agent and New Terminal
 
 **New Agent** lists the agents your own shell can run, and starts the one you pick through that shell, so it has the `PATH` and variables your startup files set. An alias or a shell function does not count, since a start runs a program on that `PATH`. That shell is your login shell on the Host, bash, zsh and fish alike. Arguments you type stay whole, however many spaces, quotes or `$` they hold.

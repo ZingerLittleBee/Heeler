@@ -407,7 +407,8 @@ agent discovery and launch, and its `terminal.put` through sshd.
    the Host shows. Within its retry, the Host connects by itself.
 3. The Console lists the core's Terminals and Agents, each in a card named for
    its directory. Rename and Worktrees are not offered, and neither is Chat until
-   a build lists a program (step 24).
+   a build lists a program (step 24). An Agent with a directory offers neither
+   Changes nor Skills, under More, in the header or on its status line.
 4. Open an Agent. Direct Input types into it and its output follows.
 5. Open a Shell Terminal. Rotate or resize it, run a full-screen program, and
    scroll back.
@@ -511,6 +512,11 @@ Code's `.key` files.
     `docs/agents/herdr-compatibility.md`, here, and by adding it to
     `HostCapabilities.confirmedWindowsCoreChatPrograms`. One that fails stays off, with
     its observation saying why.
+34. Stop the core. In your desktop session run `$env:CLAUDECODE='1'; $env:HERDR_CHECK='1'`,
+    then start the core there. Host detail shows **Core Environment** naming both, with
+    no value. Start the core from a clean window and it goes. This is the first run of
+    the check on Windows: if nothing appears, record that here and in
+    `docs/agents/herdr-compatibility.md`, since a read that failed also shows nothing.
 
 ## Scope and results
 

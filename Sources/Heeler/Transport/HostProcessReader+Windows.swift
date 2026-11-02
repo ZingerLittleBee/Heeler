@@ -22,11 +22,10 @@ extension HostProcessReader {
         guard request.pids.count <= processCap else { throw Refusal.tooManyProcesses(request.pids.count) }
         if let root = request.descendantsOf, !request.pids.contains(root) { throw Refusal.descendantRoot(root) }
         // The script prints a name in upper case, whatever case the block holds.
-        for name in request.valuesOf + request.namesOf where !isVariableName(name) || name != name.uppercased() {
+        for name in request.valuesOf + request.namesOf + request.namesWithPrefix
+        where !isVariableName(name) || name != name.uppercased() {
             throw Refusal.variableName(name)
         }
-        // Nothing asks this on Windows yet, and it would widen what the script may print.
-        if let prefix = request.namesWithPrefix.first { throw Refusal.variableName(prefix) }
         for argument in request.argumentsAmong where !isArgumentWord(argument) { throw Refusal.argument(argument) }
 
         func list(_ names: [String]) -> String {
@@ -43,6 +42,7 @@ extension HostProcessReader {
             "$root=\(request.descendantsOf ?? "0")",
             "$want=\(list(wanted))",
             "$names=\(list(request.namesOf))",
+            "$pre='\(prefixPattern(request.namesWithPrefix))'",
             windowsBody,
             "say '\(endMarker(nonce))'",
             "exit 0",
@@ -69,6 +69,13 @@ extension HostProcessReader {
             }
             return facts
         }
+    }
+
+    /// A whole name in upper case that starts with one of these, empty for none.
+    /// Each is a checked variable name, so none of them is regex syntax, and a name
+    /// that could not stand as one word on a line is not printed at all.
+    private static func prefixPattern(_ prefixes: [String]) -> String {
+        prefixes.isEmpty ? "" : "^(?:\(prefixes.joined(separator: "|")))[A-Z0-9_]*$"
     }
 
     private static let windowsHomeAlias = "HOME"
@@ -106,7 +113,7 @@ extension HostProcessReader {
         function startOf($p){try{[Diagnostics.Process]::GetProcessById($p).StartTime.ToFileTimeUtc()}catch{0}}
         function readOne($p){
         $t=startOf $p;say "S $p $(if($t){$t}else{'-'})"
-        if($want.Count+$names.Count){
+        if($want.Count+$names.Count+$pre.Length){
         $b=[HeelerProc]::Env($p)
         if($b){
         foreach($e in $b.Split([char]0)){
@@ -114,7 +121,7 @@ extension HostProcessReader {
         $at=$e.IndexOf('=',1);if($at -lt 1){continue}
         $n=$e.Substring(0,$at);$v=$e.Substring($at+1)
         if($want -contains $n){say "V $p $($n.ToUpper()-replace'^\(windowsHomeVariable)$','\(windowsHomeAlias)') $(if($v){hexOf $v}else{'-'})"}
-        if($v -and $names -contains $n){say "N $p $($n.ToUpper())"}
+        if($v -and ($names -contains $n -or ($pre -and $n.ToUpper()-cmatch$pre))){say "N $p $($n.ToUpper())"}
         }
         say "E $p ok"
         }else{say "E $p -"}

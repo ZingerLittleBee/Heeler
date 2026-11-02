@@ -83,6 +83,59 @@ struct HerdrCoreWindowsTransportTests {
         try await transport.close()
     }
 
+    // MARK: The core's environment
+
+    private static func runningHost(pid: Int, environment: [String: String]?) async -> ScriptedCoreHost {
+        let host = runningHost(.init(pid: pid))
+        await host.setWindowsProcesses([
+            .init(pid: pid, image: "herdr-core.exe", start: "1", environment: environment)
+        ])
+        return host
+    }
+
+    @Test func aWindowsCoresLeakedVariablesAreReadByNameOnly() async throws {
+        let host = await Self.runningHost(pid: 9001, environment: [
+            "TMUX": "/tmp/secret-value",
+            "herdr_pane": "secret-value-too",
+            "HERDR_BLANK": "",
+            "HERDR_A B": "not a name this read prints",
+            "CLAUDECODE": "1",
+            "PATH": #"C:\Windows"#,
+        ])
+        let transport = host.transport()
+        _ = try await transport.hello()
+
+        #expect(await transport.leakedEnvironmentNames() == ["TMUX", "HERDR_PANE", "CLAUDECODE"])
+
+        #expect(await host.log.filter { $0 == "windows-process-read" }.count == 1)
+        #expect(!(await host.log.contains("process-read")))
+        let script = try #require(await host.scripts.last)
+        #expect(script.contains("$ids=@(9001)"))
+        #expect(script.contains("$want=@()"))
+        try await transport.close()
+    }
+
+    /// Every failure reads as no names: the check says nothing it could not read.
+    @Test func aWindowsCoreWhoseEnvironmentCannotBeReadNamesNothing() async throws {
+        let unreadable = await Self.runningHost(pid: 9001, environment: nil)
+        let unreadableTransport = unreadable.transport()
+        _ = try await unreadableTransport.hello()
+        #expect(await unreadableTransport.leakedEnvironmentNames() == [])
+        try await unreadableTransport.close()
+
+        for answer in [
+            GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 1),
+            GitExecResult(stdout: Data("Add-Type is not allowed here\n".utf8), stderr: Data(), exitStatus: 0),
+        ] {
+            let host = await Self.runningHost(pid: 9001, environment: ["TMUX": "x"])
+            await host.setWindowsProcessAnswer(answer)
+            let transport = host.transport()
+            _ = try await transport.hello()
+            #expect(await transport.leakedEnvironmentNames() == [])
+            try await transport.close()
+        }
+    }
+
     // MARK: Checkouts
 
     @Test func aWindowsHostsCheckoutsComeFromItsOwnReadNotTheGitScript() async throws {

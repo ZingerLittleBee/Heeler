@@ -425,8 +425,12 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         do {
             let pid = try await link.serverStatus(deadline: Self.callDeadline).pid
             let nonce = nonce()
-            let script = try HerdrCoreEnvironmentCheck.script(pid: pid, nonce: nonce)
-            let result = try await connection.runHostProcessRead(script)
+            let result =
+                try await resolvedPlatform() == .nativeWindows
+                ? try await connection.runWindowsProcessRead(
+                    try HerdrCoreEnvironmentCheck.windowsCommand(pid: pid, nonce: nonce))
+                : try await connection.runHostProcessRead(
+                    try HerdrCoreEnvironmentCheck.script(pid: pid, nonce: nonce))
             guard result.exitStatus == 0 else { return [] }
             return HerdrCoreEnvironmentCheck.leakedNames(stdout: result.stdout, nonce: nonce, pid: pid)
         } catch {

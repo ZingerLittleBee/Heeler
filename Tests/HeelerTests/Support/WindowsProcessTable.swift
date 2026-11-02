@@ -3,7 +3,7 @@ import Foundation
 @testable import Heeler
 
 /// What a native Windows Host's process read prints, from the facts the
-/// read's own script names: its `$ids`, `$root`, `$want` and `$names`.
+/// read's own script names: its `$ids`, `$root`, `$want`, `$names` and `$pre`.
 /// `say` and CIM are the Host's, so this prints the lines the script's body prints.
 struct WindowsProcessTable: Sendable {
     struct Process: Sendable {
@@ -29,6 +29,8 @@ struct WindowsProcessTable: Sendable {
         let root = Self.value(of: "$root=", in: lines).flatMap { Int($0) } ?? 0
         let wanted = Self.names(of: "$want=@", in: lines)
         let named = Self.names(of: "$names=@", in: lines)
+        let prefixPattern = Self.value(of: "$pre=", in: lines)?.dropFirst().dropLast() ?? ""
+        let prefixed = prefixPattern.isEmpty ? nil : try? Regex(String(prefixPattern))
         let nonce = lines.compactMap { line -> String? in
             guard line.hasPrefix("say '__HEELER_PROC_END_") else { return nil }
             return String(line.dropFirst("say '__HEELER_PROC_END_".count).dropLast())
@@ -38,7 +40,7 @@ struct WindowsProcessTable: Sendable {
             let process = processes[pid]
             var out: [String] = []
             out.append("S \(pid) \(process?.start ?? "-")")
-            if !wanted.isEmpty || !named.isEmpty {
+            if !wanted.isEmpty || !named.isEmpty || prefixed != nil {
                 if let environment = process?.environment {
                     for (name, value) in environment.sorted(by: { $0.key < $1.key }) {
                         let key = name.uppercased()
@@ -46,7 +48,11 @@ struct WindowsProcessTable: Sendable {
                             let hex = value.utf8.map { String(format: "%02x", $0) }.joined()
                             out.append("V \(pid) \(key == "USERPROFILE" ? "HOME" : key) \(hex.isEmpty ? "-" : hex)")
                         }
-                        if !value.isEmpty, named.contains(key) { out.append("N \(pid) \(key)") }
+                        if !value.isEmpty,
+                            named.contains(key) || prefixed.map({ key.wholeMatch(of: $0) != nil }) == true
+                        {
+                            out.append("N \(pid) \(key)")
+                        }
                     }
                     out.append("E \(pid) ok")
                 } else {
