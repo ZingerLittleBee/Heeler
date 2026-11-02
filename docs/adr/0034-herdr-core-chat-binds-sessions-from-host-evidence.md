@@ -137,7 +137,9 @@ never show or send into a conversation it has guessed.
   that was down through that gap cannot tell the two apart and removes the label
   once more; having seen that removal, the device adopts the next confirmation.
   The guard judges only after a turn the core reported: a read must start at
-  least two seconds after the turn ends, a `/` command does not arm it, and a
+  least two seconds after the turn ends and reach the end of what the source holds,
+  a message read past by a source reopened at its tail proves nothing, a `/`
+  command does not arm it, and a
   message the program put back or refused proves nothing. Neither does one the
   Composer cannot say went, because it stayed in the input box or a step got no
   answer, unless the program's own log says another session took it. A program

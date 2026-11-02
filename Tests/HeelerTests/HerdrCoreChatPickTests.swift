@@ -1220,6 +1220,116 @@ struct HerdrCoreChatPickTests {
         rig.store.setHosts([])
     }
 
+    // MARK: What a read can prove
+
+    /// Lines the reducer takes for nothing, enough to pass one poll's budget of 2 MiB.
+    private static func backlog(lines: Int = 48) -> Data {
+        let filler = String(repeating: "x", count: 64 << 10)
+        return Data(String(repeating: #"{"method":"noise","text":"\#(filler)"}"# + "\n", count: lines).utf8)
+    }
+
+    /// Lines 4 to 7 of `grokTranscript`: the prompt `grokPrompt`, and its answer.
+    private static func grokReply(session: String) throws -> Data {
+        let whole = try grokTranscript(session: session, lines: 7)
+        return whole.dropFirst(try grokTranscript(session: session).count)
+    }
+
+    /// A poll stops at its budget. The prompt behind that is not missing, only unread.
+    @Test func aMessageBehindAnUnreadBacklogKeepsThePick() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let id = UUID()
+        chat.updateSends([Self.sent(id, Self.grokPrompt, delivered: false)])
+        chat.updateSends([Self.sent(id, Self.grokPrompt)])
+
+        try await rig.runTurn {
+            await rig.files.append(
+                Self.backlog() + (try Self.grokReply(session: Self.grokHeld)), to: Self.grokFile(Self.grokHeld))
+        }
+        await rig.passGuardSettle(chat)
+        await Self.expectPickKept(rig, chat)
+
+        try await rig.stepUntil(chat, "the read to reach it") { chat.sendStatuses[id] == .recorded }
+        await rig.passGuardSettle(chat)
+        await Self.expectPickKept(rig, chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A rewritten file reopens at its tail, so a prompt before that window cannot
+    /// match. What that window leaves out says nothing about the pick.
+    @Test func aMessageLeftBeforeARewrittenFilesTailKeepsThePick() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let id = UUID()
+        chat.updateSends([Self.sent(id, Self.grokPrompt, delivered: false)])
+        chat.updateSends([Self.sent(id, Self.grokPrompt)])
+
+        try await rig.runTurn {
+            var rewritten = try Self.grokTranscript(session: Self.grokHeld, lines: 7)
+            rewritten.append(Self.backlog(lines: 24))
+            guard let shifted = String(data: rewritten, encoding: .utf8) else { return }
+            await rig.files.write(
+                shifted.replacingOccurrences(of: "1792421826", with: "1792421827"), at: Self.grokFile(Self.grokHeld))
+        }
+        await rig.passGuardSettle(chat)
+
+        #expect(chat.sendStatuses[id] != .recorded)
+        await Self.expectPickKept(rig, chat)
+
+        // The next message that goes missing still says the pick is wrong.
+        Self.send("this never reaches the bound conversation", on: chat)
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    // MARK: Which turn judges
+
+    /// A queued message: the turn that ended was not the one that took it, and the next
+    /// one starting inside the settle time says so.
+    @Test func aNewTurnCancelsAPendingJudgement() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let id = UUID()
+        chat.updateSends([Self.sent(id, Self.grokPrompt, delivered: false)])
+        chat.updateSends([Self.sent(id, Self.grokPrompt)])
+
+        try await rig.runTurn()
+        try await rig.runTurn {
+            await rig.passGuardSettle(chat)
+            await Self.expectPickKept(rig, chat)
+            await rig.files.append(try Self.grokReply(session: Self.grokHeld), to: Self.grokFile(Self.grokHeld))
+        }
+        await rig.passGuardSettle(chat)
+
+        #expect(chat.sendStatuses[id] == .recorded)
+        await Self.expectPickKept(rig, chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A message delivered after the turn ended is the next turn's to judge.
+    @Test func aSendAfterTheTurnEndedIsNotJudgedByIt() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let id = UUID()
+        chat.updateSends([Self.sent(id, Self.grokPrompt, delivered: false)])
+        chat.updateSends([Self.sent(id, Self.grokPrompt)])
+        try await rig.runTurn {
+            await rig.files.append(try Self.grokReply(session: Self.grokHeld), to: Self.grokFile(Self.grokHeld))
+        }
+
+        rig.clock.advance(AgentChatStore.Timing().pickGuardSettle / 2)
+        Self.send("this never reaches the bound conversation", on: chat)
+        await rig.passGuardSettle(chat)
+        await Self.expectPickKept(rig, chat)
+
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     /// Exact evidence needs no guard: a send it does not find proves nothing about
     /// which conversation the Agent is in.
     @Test func anExactBindingHasNoSendGuard() async throws {

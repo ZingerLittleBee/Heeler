@@ -245,6 +245,9 @@ final class AgentChatStore {
     /// Sends made on the pick, until a turn's end says whether each arrived.
     @ObservationIgnored private var pickGuardSends: Set<UUID> = []
     @ObservationIgnored private var pickGuardTurnEnd: Date?
+    /// When the last read began that reached the end of what the source holds. Only
+    /// such a read shows a message is not there.
+    @ObservationIgnored private var pickGuardReadStart: Date?
     /// Candidates the user has read, the only ones a confirmation may name.
     @ObservationIgnored private var previewedCandidates: Set<String> = []
     /// Why the last check of the Agent's process bound nothing.
@@ -866,6 +869,7 @@ final class AgentChatStore {
         apply(snapshot, from: engine)
         if polled || opened, case .following = snapshot.phase, snapshot.readFailure == nil {
             lastReadStartedAt = readStart
+            if !snapshot.hasUnreadRecords { pickGuardReadStart = readStart }
         }
         matchSends()
         // Persist the transcript before optional journal requests can wait
@@ -1282,6 +1286,7 @@ final class AgentChatStore {
         // the one the Agent is in now.
         sessionConcern = nil
         lastReadStartedAt = nil
+        pickGuardReadStart = nil
         engine = target.map(makeEngine)
         restored = false
         appliedRevision = nil
@@ -1464,10 +1469,12 @@ final class AgentChatStore {
     /// pick is wrong, and Chat stops showing it. A message the program put back or
     /// refused went nowhere, and one left in the input box or with no answer may not
     /// have gone at all, so those prove nothing, unless the program's own log says
-    /// another session took it (ADR 0034).
+    /// another session took it (ADR 0034). The read has to prove it too: one stopped
+    /// by its budget has not reached the message, and a source reopened at a tail short
+    /// of its start since the send may have left it before the window.
     private func judgePickGuard() {
         guard followsPick, let turnEnd = pickGuardTurnEnd, !pickGuardSends.isEmpty,
-            let read = lastReadStartedAt, read >= turnEnd.addingTimeInterval(timing.pickGuardSettle)
+            let read = pickGuardReadStart, read >= turnEnd.addingTimeInterval(timing.pickGuardSettle)
         else { return }
         var missing = false
         for send in sends where pickGuardSends.contains(send.id) {
@@ -1475,7 +1482,9 @@ final class AgentChatStore {
             pickGuardSends.remove(send.id)
             switch sendStatuses[send.id] {
             case .misdirected?: missing = true
-            case .awaiting?, .overdue?: missing = missing || !send.mayNotHaveGone
+            case .awaiting?, .overdue?:
+                let isInReadWindow = send.layout == conversation.layoutGeneration || conversation.readsFromStart
+                missing = missing || (!send.mayNotHaveGone && isInReadWindow)
             default: break
             }
         }

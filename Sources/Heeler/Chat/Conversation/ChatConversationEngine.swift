@@ -182,6 +182,11 @@ struct ChatConversationSnapshot: Equatable, Sendable {
     /// How far the transcript has been read. A prompt the program records
     /// after a send lands at or after the offset read when it was sent.
     var readOffset: UInt64 = 0
+    /// The last read stopped at its budget, short of what the source holds.
+    var hasUnreadRecords = false
+    /// The live window starts at the source's first record, so nothing it holds is
+    /// before what was read.
+    var readsFromStart = false
     /// Bumped when offsets read before may now locate other records: the
     /// file was rewritten, replaced or moved, or is shorter than the saved
     /// document read it to.
@@ -421,6 +426,7 @@ actor ChatConversationEngine {
         } catch {
             recordFailure(error)
         }
+        noteReadProgress()
         projectIfNeeded()
         return snapshot
     }
@@ -453,8 +459,16 @@ actor ChatConversationEngine {
                 recordFailure(error)
             }
         }
+        noteReadProgress()
         projectIfNeeded()
         return snapshot
+    }
+
+    private func noteReadProgress() {
+        update {
+            $0.hasUnreadRecords = source?.hasUnreadRecords ?? false
+            $0.readsFromStart = source?.windowStart == 0
+        }
     }
 
     /// Looks for the transcript again, then reads it: a Codex undo

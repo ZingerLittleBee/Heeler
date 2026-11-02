@@ -16,6 +16,10 @@ import Foundation
 /// A read whose output was cut reads again at half its budget, twice at
 /// most.
 struct OpenCodeRecordSource: ChatTranscriptSource {
+    /// A look past its budget starts over at the newest records, so what it did not
+    /// read is before the window, not ahead of it.
+    var hasUnreadRecords: Bool { false }
+
     /// Bytes of slimmed JSON each read asks for.
     struct Budgets: Sendable {
         /// An open, or a poll that starts over.
