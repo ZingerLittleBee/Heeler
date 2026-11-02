@@ -97,7 +97,7 @@ struct HerdrCoreMacOSSessionBinderTests {
                 processes: { try await table.read($0) },
                 files: files.hostFiles(),
                 clearLabels: { await log.clear($0.keys.sorted()) })
-            binder.isOnMacOS = true
+            binder.hostSystem = .macOS
             binder.macOSExactPrograms = exact
             return binder
         }
@@ -581,7 +581,7 @@ struct HerdrCoreMacOSSessionBinderTests {
         let table = rig.table
         await table.withholdEnvironment(of: 1059)
         var binder = rig.binder(.claude)
-        binder.isOnMacOS = false
+        binder.hostSystem = .other
 
         #expect(try await binder.check(try rig.record()) == Self.cannotTell(.claude))
         #expect(await rig.files.reads.isEmpty)

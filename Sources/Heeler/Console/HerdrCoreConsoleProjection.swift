@@ -35,7 +35,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private(set) var latency: Duration?
     private(set) var routeID: UUID?
     private(set) var leakedEnvironmentNames: Set<String> = []
-    /// As `uname -s` prints it: what a locator last found, this connection's once
+    /// As `HerdrCoreLocator.Location.kernel`: what a locator last found, this connection's once
     /// it has run. What a Host offers does not wait for a core to answer.
     private(set) var kernel: String?
     /// Why each Agent reading Unknown does, by Terminal address.
@@ -1520,7 +1520,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     /// What Chat says when nothing names the session, in this Host's form.
     func chatCannotTell(_ program: ChatProgram) -> ChatUnavailableReason {
-        kernel == HerdrCoreLocator.windowsKernel ? .cannotTellSessionOnWindows(program) : .cannotTellSession(program)
+        HerdrCoreHostSystem(kernel: kernel).cannotTellSession(program)
     }
 
     private func chatBinder(paneID: String, program: ChatProgram, core: String?) -> HerdrCoreSessionBinder {
@@ -1540,8 +1540,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             isDroppedPick: { value in
                 await self.droppedPicks[paneID]?.contains(value) ?? false
             },
-            isOnWindows: kernel == HerdrCoreLocator.windowsKernel,
-            isOnMacOS: kernel == HerdrCoreLocator.macOSKernel)
+            hostSystem: HerdrCoreHostSystem(kernel: kernel))
     }
 
     /// What the user could confirm for this Agent, on request (ADR 0034).

@@ -65,7 +65,7 @@ struct HerdrCoreWindowsSessionBinderTests {
                 },
                 files: files.hostFiles(),
                 clearLabels: { await labels.clear($0.keys.sorted()) },
-                isOnWindows: true)
+                hostSystem: .windows)
         }
 
         var execCount: Int {

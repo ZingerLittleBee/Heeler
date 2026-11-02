@@ -97,7 +97,7 @@ extension HostCapabilities {
     ) {
         let offered = serverKind == .herdrTUI
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
-        let coreChat = coreOnPosix && (coreKernel == "Linux" || coreKernel == HerdrCoreLocator.macOSKernel)
+        let coreChat = coreOnPosix && (coreKernel == HerdrCoreLocator.linuxKernel || coreKernel == HerdrCoreLocator.macOSKernel)
         let coreOnWindows =
             serverKind == .herdrCore
             && (platform == .nativeWindows || coreKernel == HerdrCoreLocator.windowsKernel)

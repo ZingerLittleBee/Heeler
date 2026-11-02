@@ -77,7 +77,7 @@ final class ConsoleStore {
     private(set) var hostPlatforms: [Host.ID: HostPlatform] = [:]
     /// What each core Host's desktop app can name right now.
     private(set) var hostDesktopAppNaming: [Host.ID: HerdrAppNaming] = [:]
-    /// Each core Host's `uname -s`, once a link has located its core.
+    /// Each core Host's kernel, as its locator prints it, once a link has located its core.
     private(set) var hostCoreKernels: [Host.ID: String] = [:]
     /// The core each core Host's inventory comes from. A detail reads it, so it
     /// redraws once the Host no longer serves the core it opened on.

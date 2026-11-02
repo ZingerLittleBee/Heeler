@@ -415,7 +415,7 @@ struct HostHelperProbe: Sendable, Equatable {
 
     struct Unreadable: Error, Equatable {}
 
-    var manager: HostHelperServiceManager { kernel == "Darwin" ? .launchd : .systemd }
+    var manager: HostHelperServiceManager { kernel == HerdrCoreLocator.macOSKernel ? .launchd : .systemd }
 
     /// Reads the bytes between the script's markers, so shell startup output
     /// around them is ignored.

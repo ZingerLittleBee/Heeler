@@ -52,6 +52,27 @@ struct HerdrCoreSessionHint: Equatable, Sendable {
     }
 }
 
+/// Which machine a core Host is, where its binder and Chat read differently: from the
+/// kernel its locator printed, nil or any other reading as neither.
+enum HerdrCoreHostSystem: Equatable, Sendable {
+    case windows
+    case macOS
+    case other
+
+    init(kernel: String?) {
+        switch kernel {
+        case HerdrCoreLocator.windowsKernel: self = .windows
+        case HerdrCoreLocator.macOSKernel: self = .macOS
+        default: self = .other
+        }
+    }
+
+    /// What Chat says when nothing names the session, in this Host's form.
+    func cannotTellSession(_ program: ChatProgram) -> ChatUnavailableReason {
+        self == .windows ? .cannotTellSessionOnWindows(program) : .cannotTellSession(program)
+    }
+}
+
 /// Binds a herdr-core Agent's Chat from what the Host shows about the Agent's own
 /// process, never from a guess (ADR 0034). A check is one exec and at most one
 /// SFTP read, past a Codex holding several rollouts, and the app makes it only
@@ -81,14 +102,7 @@ struct HerdrCoreSessionBinder: Sendable {
     /// whose removal may not have reached the core.
     var isDroppedPick: @Sendable (String) async -> Bool = { _ in false }
     var now: @Sendable () -> Date = { Date() }
-    /// A native Windows Host, whose foreground is the Terminal's first process, usually
-    /// PowerShell, and whose processes go by their image's name (herdr compatibility,
-    /// one machine's observation). Only the programs in
-    /// `HostCapabilities.windowsCoreChatCandidates` are checked there.
-    var isOnWindows = false
-    /// A macOS Host, where Grok Build's start, Oh My Pi's terminal name and a Terminal
-    /// that runs one of Apple's own binaries each read differently (herdr compatibility).
-    var isOnMacOS = false
+    var hostSystem = HerdrCoreHostSystem.other
     /// The programs a macOS Host binds exactly. Any other reads as cannot tell there,
     /// which leaves it to the candidate list and one confirmation.
     var macOSExactPrograms = HostCapabilities.macOSExactCoreChatPrograms
@@ -135,8 +149,18 @@ struct HerdrCoreSessionBinder: Sendable {
     }
 
     var cannotTell: ChatSessionEvidence {
-        .unavailable(isOnWindows ? .cannotTellSessionOnWindows(program) : .cannotTellSession(program))
+        .unavailable(hostSystem.cannotTellSession(program))
     }
+
+    /// A native Windows Host, whose foreground is the Terminal's first process, usually
+    /// PowerShell, and whose processes go by their image's name (herdr compatibility,
+    /// one machine's observation). Only the programs in
+    /// `HostCapabilities.windowsCoreChatCandidates` are checked there.
+    var isOnWindows: Bool { hostSystem == .windows }
+
+    /// A macOS Host, where Grok Build's start, Oh My Pi's terminal name and a Terminal
+    /// that runs one of Apple's own binaries each read differently (herdr compatibility).
+    var isOnMacOS: Bool { hostSystem == .macOS }
 
     /// Where a program says its session started, in the form the Host writes paths.
     func startDirectory(_ directory: String?) -> String? {
