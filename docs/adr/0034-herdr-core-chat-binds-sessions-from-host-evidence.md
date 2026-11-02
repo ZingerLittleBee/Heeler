@@ -129,8 +129,10 @@ never show or send into a conversation it has guessed.
   Terminal's session (herdr compatibility), which is why the user reads it first.
   A confirmation needs a candidate whose conversation was read, goes through the
   mutation dispatch to the core its list came from, and is not repeated when no
-  answer comes. A device the guard has dropped a pick on remembers that value, so
-  a label whose removal failed, reported again, is removed again and not adopted.
+  answer comes. A device the guard has dropped a pick on remembers that value, also
+  when the verdict lands between links and only the last inventory held it, so a
+  label whose removal failed is removed again at that device's next check, or when
+  it is reported again, and not adopted.
   It remembers only until the core reports the label gone or holding another
   value, in an event or a fresh inventory. After that the same value is the same
   conversation confirmed again, here or on another device, and is adopted. A link

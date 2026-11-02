@@ -1208,13 +1208,9 @@ struct HerdrCoreChatPickTests {
         try await rig.stepUntil(chat, "Chat to follow it again") { chat.conversation.phase == following }
 
         await answer.open()
+        await core.pickRemoval?.value
+        await chat.step()
 
-        // Nothing says this answer has landed: long enough that a label it took away
-        // would have reached a check, and a pass does not depend on how long.
-        for _ in 0..<30 {
-            await chat.step()
-            try await Task.sleep(for: .milliseconds(10))
-        }
         #expect(chat.conversation.phase == following)
         chat.end()
         rig.store.setHosts([])
@@ -1325,6 +1321,70 @@ struct HerdrCoreChatPickTests {
 
         try await rig.runTurn()
         await rig.passGuardSettle(chat)
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    // MARK: Between links
+
+    /// A verdict can land where the core has no record to read the label from. It
+    /// holds once the snapshot brings the label back, which goes again.
+    @Test func aVerdictReachedBetweenLinksOutlastsTheSnapshot() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        Self.send("this never reaches the bound conversation", on: chat)
+        try await rig.runTurn()
+        await rig.transport.holdSubscribes()
+        await rig.store.suspend()
+        await rig.store.resume()
+        await rig.transport.waitForSubscribe(count: 2)
+        try await rig.waitUntil("the link, with no snapshot yet") {
+            rig.store.hostStatuses[self.host.id] == .connected && rig.store.hostsAwaitingSnapshot.contains(self.host.id)
+        }
+
+        await rig.passGuardSettle(chat)
+        rig.expectLeftConversation(chat)
+
+        await rig.transport.releaseSubscribes()
+        try await rig.waitUntil("the snapshot") { !rig.store.hostsAwaitingSnapshot.contains(self.host.id) }
+        var budget = PollBudget(.seconds(5))
+        while budget.hasTimeLeft, await !rig.pickWrites.contains("") {
+            await chat.step()
+            await Task.yield()
+            budget.charge()
+        }
+        #expect(await rig.pickWrites == [""])
+        await chat.step()
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    // MARK: A removal that fails
+
+    /// With the link up nothing reports the label again, so this device's next check
+    /// is what removes it.
+    @Test func aRemovalTheCoreRefusedGoesAgainAtTheNextCheck() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        await rig.transport.setLabelFailure(HerdrAPIError(code: "internal", message: "refused"))
+        Self.send("this never reaches the bound conversation", on: chat)
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+        try await Self.waitForClear(rig)
+        let core = try #require(rig.store.coreProjection(on: host.id))
+        await core.pickRemoval?.value
+        let attempts = await rig.pickWrites.count
+
+        await rig.transport.setLabelFailure(nil)
+        await rig.nudgeCheck()
+        var budget = PollBudget(.seconds(5))
+        while budget.hasTimeLeft, await rig.pickWrites.count == attempts {
+            await chat.step()
+            await Task.yield()
+            budget.charge()
+        }
+
+        #expect(await rig.pickWrites.dropFirst(attempts).first == "")
         rig.expectLeftConversation(chat)
         chat.end()
         rig.store.setHosts([])

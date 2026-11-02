@@ -70,6 +70,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// reports anything else the value is forgotten, and that value arriving again
     /// is someone confirming it again (ADR 0034).
     private var droppedPicks: [String: Set<String>] = [:]
+    /// Each Terminal's pick label when the last inventory went, for a guard's verdict
+    /// reached before the next one comes (ADR 0034).
+    private var pickLabelsBetweenLinks: [String: String] = [:]
     private var inventoryReplacements: UInt64 = 0
     /// Leak checks that found a variable, which a Chat's reason depends on.
     private var leakAnswers: UInt64 = 0
@@ -276,6 +279,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     private func invalidateInventory() {
+        if !records.isEmpty {
+            pickLabelsBetweenLinks = records.reduce(into: [:]) { held, record in
+                held[record.address] = record.labels[HerdrCoreSessionHint.pickLabel]
+            }
+        }
         isAwaitingSnapshot = true
         hasInventory = false
         records = []
@@ -309,6 +317,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             let held = terminalRecord(at: terminal)?.labels[HerdrCoreSessionHint.pickLabel]
             forgetDroppedPicks(at: terminal, except: held)
         }
+        pickLabelsBetweenLinks = [:]
         for record in records {
             noteTurns(of: record.address) { state, kind in
                 state.noteSnapshot(
@@ -379,10 +388,14 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             noteTurns(of: terminal) { state, _ in state.noteTurn(turn) }
         case .labels(let terminal, let labels):
             // A plugin names a new conversation with no other event: OpenCode 1.x
-            // reports no status at all. A choice made on another device has none either.
+            // reports no status at all. A choice made on another device has none either,
+            // and a dropped pick reported again wants its removal to go again.
             let held = records.first { $0.address == terminal }?.labels
             let names = [HerdrCoreSessionHint.sessionLabel, HerdrCoreSessionHint.pickLabel]
-            if names.contains(where: { held?[$0] != labels[$0] }) {
+            let holdsADroppedPick = labels[HerdrCoreSessionHint.pickLabel].map {
+                droppedPicks[terminal]?.contains($0) == true
+            }
+            if names.contains(where: { held?[$0] != labels[$0] }) || holdsADroppedPick == true {
                 sessionEventCounts[terminal, default: 0] += 1
             }
             update(terminal) { $0.labels = labels }
@@ -1569,16 +1582,25 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         setPickLabel(value, at: paneID, on: list.core)
     }
 
+    /// The removal a send guard's verdict started last.
+    private(set) var pickRemoval: Task<Void, Never>?
+
     /// A send guard's verdict: this device stops adopting the label at once, whether
-    /// or not the removal gets through, and a later check removes it again if not.
+    /// or not the removal gets through, and a later check removes it again if not. A
+    /// removal that failed leaves the label in the record for that check to find. Between
+    /// links there is no record, and the value the last one held is what the next
+    /// inventory is held against.
     func dropChatPick(paneID: String, scope: String?) {
-        guard chatCacheScope == scope, let value = terminalRecord(at: paneID)?.labels[HerdrCoreSessionHint.pickLabel]
+        guard chatCacheScope == scope,
+            let value = terminalRecord(at: paneID)?.labels[HerdrCoreSessionHint.pickLabel]
+                ?? pickLabelsBetweenLinks[paneID]
         else { return }
         droppedPicks[paneID, default: []].insert(value)
         let core = inventoryCore
-        Task { [weak self] in
+        pickRemoval = Task { [weak self] in
             guard let self else { return }
-            try? await self.clearStaleLabels([HerdrCoreSessionHint.pickLabel: value], at: paneID, on: core)
+            guard (try? await self.clearStaleLabels([HerdrCoreSessionHint.pickLabel: value], at: paneID, on: core)) != nil
+            else { return }
             // A value no longer remembered was reported gone or confirmed here since,
             // so the label held now is newer than this removal.
             if self.droppedPicks[paneID]?.contains(value) == true,
