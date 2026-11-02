@@ -9,6 +9,8 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- New Agent opens on the Agent you started last, when the Host has it
+  installed. (#608)
 - Chat shows the images Agents read or make as thumbnails under their rows;
   tap one to open it with zoom. Claude Code, Codex, Grok Build, Pi, Oh My Pi
   and OpenCode are covered, and image rows no longer fold into tool groups.

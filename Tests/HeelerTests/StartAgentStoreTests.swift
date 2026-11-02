@@ -43,13 +43,13 @@ struct StartAgentStoreTests {
         }
     }
 
-    /// A throwaway defaults domain per test, so the remembered-workspace
+    /// A throwaway defaults domain per test, so the remembered-launch
     /// persistence is real but isolated.
-    private func makeRecents() -> RecentWorkspaceStore {
-        let name = "recent-workspace-test-\(UUID().uuidString)"
+    private func makeRecents() -> RecentLaunchStore {
+        let name = "recent-launch-test-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
-        return RecentWorkspaceStore(defaults: defaults)
+        return RecentLaunchStore(defaults: defaults)
     }
 
     private func makeStore(
@@ -62,7 +62,7 @@ struct StartAgentStoreTests {
         remoteHome: @escaping (Host.ID) async throws -> String = { _ in "/home/you" },
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void = { _ in },
         origin: StartAgentStore.LaunchOrigin? = nil,
-        recents: RecentWorkspaceStore? = nil,
+        recents: RecentLaunchStore? = nil,
         recorder: StartRecorder
     ) -> StartAgentStore {
         StartAgentStore(
@@ -757,16 +757,63 @@ struct StartAgentStoreTests {
         let workspaces: (Host.ID) -> [ConsoleWorkspace] = { _ in
             [ConsoleWorkspace(id: "w1", label: "Proj"), ConsoleWorkspace(id: "w2", label: "Other")]
         }
+        let kinds: (Host.ID) async throws -> [SupportedAgentKind] = { _ in [.pi, .codex] }
         let store = makeStore(
-            hosts: [host], workspaces: workspaces, recents: recents, recorder: recorder)
+            hosts: [host], workspaces: workspaces, agentKinds: kinds, recents: recents,
+            recorder: recorder)
         store.selectedWorkspaceID = "w2"
         store.name = "reviewer"
         await store.discoverAgents()
+        store.selectedAgentKind = .codex
         await store.submit()
 
         let next = makeStore(
-            hosts: [host], workspaces: workspaces, recents: recents, recorder: StartRecorder())
+            hosts: [host], workspaces: workspaces, agentKinds: kinds, recents: recents,
+            recorder: StartRecorder())
+        await next.discoverAgents()
         #expect(next.selectedWorkspaceID == "w1")
+        #expect(next.selectedAgentKind == .pi)
+    }
+
+    /// One preference across Hosts (#601): the kind started last is the
+    /// default wherever the Host has it installed.
+    @Test func defaultsToTheAgentKindLastStartedOnAnyHost() async {
+        let host = Host.fixture()
+        let other = Host.fixture(address: "b.example")
+        let recents = makeRecents()
+        let workspaces: (Host.ID) -> [ConsoleWorkspace] = { _ in
+            [ConsoleWorkspace(id: "w1", label: "Proj")]
+        }
+
+        let first = makeStore(
+            hosts: [host], workspaces: workspaces,
+            agentKinds: { _ in [.pi, .claude, .codex] },
+            recents: recents, recorder: StartRecorder())
+        await first.discoverAgents()
+        #expect(first.selectedAgentKind == .pi)
+        first.selectedAgentKind = .codex
+        await first.submit()
+        #expect(first.state == started(on: host))
+
+        let elsewhere = makeStore(
+            hosts: [other], workspaces: workspaces,
+            agentKinds: { _ in [.pi, .codex] },
+            recents: recents, recorder: StartRecorder())
+        await elsewhere.discoverAgents()
+        #expect(elsewhere.selectedAgentKind == .codex)
+    }
+
+    @Test func aHostWithoutTheRememberedKindSelectsItsFirst() async {
+        let host = Host.fixture()
+        let recents = makeRecents()
+        recents.rememberAgentKind(.codex)
+        let store = makeStore(
+            hosts: [host], agentKinds: { _ in [.pi, .claude] }, recents: recents,
+            recorder: StartRecorder())
+
+        await store.discoverAgents()
+
+        #expect(store.selectedAgentKind == .pi)
     }
 
     @Test func submitForwardsTheAssembledParamsAndSucceeds() async {
@@ -1097,7 +1144,7 @@ struct StartAgentStoreTests {
     @Test func originWorkspaceOutranksTheRememberedAndReportedOnes() async {
         let host = Host.fixture()
         let recents = makeRecents()
-        recents.remember("w7", for: host.id)
+        recents.rememberWorkspace("w7", for: host.id)
         let recorder = StartRecorder()
         let store = makeStore(
             hosts: [host],
