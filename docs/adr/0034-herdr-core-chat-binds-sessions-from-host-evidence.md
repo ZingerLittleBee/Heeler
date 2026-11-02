@@ -227,7 +227,16 @@ herdr-core Hosts only.
   shows, so it binds nothing and Chat says so until the program is started again.
 - OpenCode has no row for its id until the first prompt, which Heeler knows the id
   before. A core's store with no such row, on a Chat that has followed nothing yet,
-  waits for the first message rather than reading as a session gone.
+  waits for the first message rather than reading as a session gone. Chat's query
+  sees only the exec's environment, so an OpenCode whose `OPENCODE_DB` or
+  `XDG_DATA_HOME` is set only where it runs, on a Host that also has the default
+  database, looks the same: Chat waits until a message from Chat goes unrecorded past
+  its echo timeout, then says ADR 0025's Conversation Not Found. A message sent only
+  from the terminal does not end the wait, and a Send after it is refused on the
+  terminal's title, which then names this very conversation.
+- Grok Build writes its row and session folder as it starts, and `updates.jsonl` with
+  the first message, so a Chat that has followed nothing waits for that message too.
+  A search cut short by a listing limit reads the same way.
 - Ending the Terminal that started Codex's shared daemon ends the daemon, and
   every other default-mode Codex on the same `CODEX_HOME` loses its backend
   while it keeps reporting its last status, such as Idle or Done.

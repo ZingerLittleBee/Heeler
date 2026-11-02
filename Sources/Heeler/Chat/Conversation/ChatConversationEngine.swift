@@ -782,8 +782,14 @@ actor ChatConversationEngine {
     /// prompt makes the row, so a store without it has a conversation to start, not
     /// one that went missing (ADR 0034). Herdr TUI reports only ids that exist.
     private func isConversationStillToStart(_ reason: ChatUnavailableReason) -> Bool {
-        sessionMayPrecedeItsStore && !hasFollowed && cached == nil
-            && reason == .sessionStore(.opencode, .sessionMissing(otherStores: []))
+        mayStillBeToStart && reason == .sessionStore(.opencode, .sessionMissing(otherStores: []))
+    }
+
+    /// Whether nothing found under an id Host evidence named can mean its first message
+    /// is still to come. Once Chat has shown it, or the device kept it, it went missing.
+    /// A message that went in and never showed says Chat looks in the wrong place.
+    private var mayStillBeToStart: Bool {
+        sessionMayPrecedeItsStore && !hasFollowed && cached == nil && !lostAMessage
     }
 
     // MARK: Locating
@@ -866,6 +872,10 @@ actor ChatConversationEngine {
                 return .unavailable(.notFound(searchedAll: searchedAll))
             case .failure(.mismatched): return .unavailable(.mismatched)
             }
+            case .failure(.notFound(searchedAll: false)) where mayStillBeToStart:
+                // Its row and folder come as it starts, and `updates.jsonl` with
+                // the first message.
+                return .unavailable(.awaitingFirstMessage(reference.program))
         case .opencode:
             // Its store is read by query, so `open` never looks for a file.
             return .unavailable(.unsupportedSession)

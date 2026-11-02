@@ -44,6 +44,10 @@ private actor OpenCodeStoreStub {
         hasRow = true
     }
 
+    func loseRow() {
+        hasRow = false
+    }
+
     func response(_ query: OpenCodeQuery) throws -> OpenCodeQueryResponse {
         hasRow ? try harness.response(query) : .sessionMissing(otherStores: [])
     }
@@ -448,6 +452,30 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
+    /// Grok Build writes its row and its folder as it starts, and `updates.jsonl` only
+    /// with the first message (recording `grok/s-flag.json`).
+    @Test func aNewGrokBuildChatWaitsForItsFirstMessageThenFollowsIt() async throws {
+        let rig = Rig(host: host, record: Self.record(foreground: ["grok"], name: "grok", app: "grok-build"))
+        let folder = "\(Self.accountRoot)/sessions/%2Fwork%2Fapp/\(Self.grokSession)"
+        await rig.files.write(Self.activeSessions(), at: "\(Self.accountRoot)/active_sessions.json")
+        await rig.files.makeDirectory(folder)
+        try await rig.start([Self.process(name: "grok", environment: ["GROK_HOME": Self.accountRoot])])
+        let chat = try rig.chat(.grok)
+
+        chat.show()
+        try await rig.waitUntil("the new conversation's wait") {
+            chat.conversation.phase == .unavailable(.awaitingFirstMessage(.grok))
+        }
+
+        await rig.files.write(try Self.grokTranscript(), at: "\(folder)/updates.jsonl")
+        chat.retry()
+        try await rig.waitUntil("Chat to follow it") {
+            chat.conversation.phase == .following(path: "\(folder)/updates.jsonl")
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     @Test func aGrokBuildAfterNewCannotTell() async throws {
         let rig = Rig(host: host, record: Self.record(foreground: ["grok"], name: "grok", app: "grok-build"))
         await rig.files.write(Self.activeSessions(rows: 2), at: "\(Self.home)/.grok/active_sessions.json")
@@ -582,23 +610,96 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
-    /// A conversation that went missing from the store is not one still to start.
-    @Test func aConversationThatLeftTheStoreIsNotStillToStart() async throws {
-        let engine = ChatConversationEngine(
-            reference: ConversationReference(program: .opencode, sessionID: "ses_e6a000000001Abcdefghijklmn"),
-            cacheKey: ChatCacheKey(
-                hostID: UUID(), herdrSession: "", program: .opencode,
-                conversationID: "ses_e6a000000001Abcdefghijklmn"),
+    private static let storeMissing = ChatUnavailableReason.sessionStore(.opencode, .sessionMissing(otherStores: []))
+
+    /// An engine on `pong` as a core binds it, from Host evidence (ADR 0034), or as
+    /// Herdr TUI does, from an id herdr reported.
+    private func pongEngine(
+        store: OpenCodeStoreStub, cache: any ChatTranscriptCache = VolatileChatTranscriptCache(),
+        cacheKey: ChatCacheKey? = nil, fromEvidence: Bool = true
+    ) throws -> ChatConversationEngine {
+        let session = try #require(try OpenCodeStoreFixture.named("pong").sessionID).rawValue
+        return ChatConversationEngine(
+            reference: ConversationReference(program: .opencode, sessionID: session),
+            cacheKey: cacheKey
+                ?? ChatCacheKey(hostID: UUID(), herdrSession: "", program: .opencode, conversationID: session),
             files: ChatHostFiles(
                 status: { _ in nil }, list: { _ in nil }, read: { _ in throw TransportError.cancelled },
                 home: { "/home/dev" },
-                queryOpenCode: { _ in .sessionMissing(otherStores: []) }),
-            cache: VolatileChatTranscriptCache(), adapter: try #require(ChatTranscriptAdapter.standard(for: .opencode)))
+                queryOpenCode: { try await store.response($0) }),
+            cache: cache, adapter: try #require(ChatTranscriptAdapter.standard(for: .opencode)),
+            sessionMayPrecedeItsStore: fromEvidence)
+    }
 
-        // Herdr TUI reports only ids that exist.
-        let snapshot = await engine.open(directories: [], context: ChatProjectionContext(activity: .idle))
+    private func pongStore() throws -> OpenCodeStoreStub {
+        OpenCodeStoreStub(harness: try OpenCodeSQLiteHarness(try OpenCodeStoreFixture.named("pong")))
+    }
 
-        #expect(snapshot.phase == .unavailable(.sessionStore(.opencode, .sessionMissing(otherStores: []))))
+    private static let idle = ChatProjectionContext(activity: .idle)
+
+    /// Herdr TUI reports only ids that exist.
+    @Test func onHerdrTUIAStoreWithoutTheIDIsNotAConversationStillToStart() async throws {
+        let engine = try pongEngine(store: try pongStore(), fromEvidence: false)
+
+        let snapshot = await engine.open(directories: [], context: Self.idle)
+
+        #expect(snapshot.phase == .unavailable(Self.storeMissing))
+    }
+
+    @Test func aConversationChatHasNotSeenWaitsForItsFirstPrompt() async throws {
+        let engine = try pongEngine(store: try pongStore())
+
+        let snapshot = await engine.open(directories: [], context: Self.idle)
+
+        #expect(snapshot.phase == .unavailable(.awaitingFirstMessage(.opencode)))
+    }
+
+    @Test func aConversationThatLeftTheStoreAfterChatFollowedItIsGone() async throws {
+        let store = try pongStore()
+        await store.takeFirstPrompt()
+        let engine = try pongEngine(store: store)
+        guard case .following = await engine.open(directories: [], context: Self.idle).phase else {
+            Issue.record("The row should read")
+            return
+        }
+
+        await store.loseRow()
+        let snapshot = await engine.open(directories: [], context: Self.idle)
+
+        #expect(snapshot.phase == .unavailable(Self.storeMissing))
+    }
+
+    @Test func aConversationSavedOnTheDeviceThatLeftTheStoreIsGone() async throws {
+        let store = try pongStore()
+        await store.takeFirstPrompt()
+        let cache = VolatileChatTranscriptCache()
+        let session = try #require(try OpenCodeStoreFixture.named("pong").sessionID).rawValue
+        let key = ChatCacheKey(hostID: UUID(), herdrSession: "", program: .opencode, conversationID: session)
+        let earlier = try pongEngine(store: store, cache: cache, cacheKey: key)
+        _ = await earlier.open(directories: [], context: Self.idle)
+        await earlier.save(force: true)
+
+        await store.loseRow()
+        let engine = try pongEngine(store: store, cache: cache, cacheKey: key)
+        _ = await engine.restore()
+        let snapshot = await engine.open(directories: [], context: Self.idle)
+
+        #expect(snapshot.phase == .unavailable(Self.storeMissing))
+    }
+
+    /// `OPENCODE_DB` set only where the Agent runs: the query reads the default
+    /// database, which never gets the row. A message that went in and never showed
+    /// says this store is not where the conversation is, so the explanation of that
+    /// comes back in place of the wait.
+    @Test func aMessageThatNeverShowedEndsTheWaitForTheFirstPrompt() async throws {
+        let engine = try pongEngine(store: try pongStore())
+        #expect(
+            await engine.open(directories: [], context: Self.idle).phase
+                == .unavailable(.awaitingFirstMessage(.opencode)))
+
+        let snapshot = await engine.open(directories: [], context: Self.idle, lostAMessage: true)
+
+        #expect(snapshot.phase == .unavailable(Self.storeMissing))
     }
 
     // MARK: OpenCode's title before a Send
