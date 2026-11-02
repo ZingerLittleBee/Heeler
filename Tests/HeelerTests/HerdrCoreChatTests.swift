@@ -185,18 +185,22 @@ struct HerdrCoreChatTests {
             _ what: String, _ condition: @MainActor () -> Bool,
             sourceLocation: SourceLocation = #_sourceLocation
         ) async throws {
-            for _ in 0..<500 {
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft {
                 if condition() { return }
                 try await Task.sleep(for: .milliseconds(10))
             }
+                budget.charge()
             Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
         }
 
         func waitForChecks(_ count: Int, sourceLocation: SourceLocation = #_sourceLocation) async throws {
-            for _ in 0..<500 {
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft {
                 if await checks >= count { return }
                 try await Task.sleep(for: .milliseconds(10))
             }
+                budget.charge()
             Issue.record("Timed out waiting for check \(count)", sourceLocation: sourceLocation)
         }
     }
@@ -407,6 +411,77 @@ struct HerdrCoreChatTests {
     }
 
     // MARK: When it checks
+    // MARK: Choosing a conversation
+
+    /// The list opens from what Chat shows when it cannot tell: its screen, and the
+    /// banner over a conversation it keeps showing (ADR 0034).
+    @Test func aChatThatCannotTellOpensTheListFromItsScreenAndItsBanner() async throws {
+        let rig = Rig(host: host)
+        try await rig.start()
+        let chat = try rig.chat()
+        let agent = try #require(rig.agent)
+        let suite = "core-chat-choose-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let surface = AgentDetailSurfaceSettings(defaults: defaults)
+        surface.select(.chat)
+        let controller = UIHostingController(
+            rootView: AgentDetailView(
+                agent: agent,
+                console: rig.store,
+                terminal: TerminalSettings(
+                    themes: TerminalThemeSettings(defaults: defaults),
+                    zoom: TerminalZoomSettings(defaults: defaults),
+                    fonts: TerminalFontSettings(defaults: defaults),
+                    snippets: SnippetStore(defaults: defaults)),
+                inputMode: AgentInputModeSettings(defaults: defaults),
+                detailSurface: surface,
+                hosts: [],
+                activity: AppActivityCoordinator(),
+                keyboardHandoff: TerminalKeyboardHandoff(),
+                keyboardInset: TerminalKeyboardInset(),
+                stage: AgentDetailStage(isVisible: { true }, terminalAccess: { .holds }),
+                onSwitch: { _ in },
+                onClosed: {}))
+        let cannotTell = ChatConversationSnapshot.Phase.unavailable(.cannotTellSession(.claude))
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try await rig.waitUntil("Chat to say it cannot tell") { chat.conversation.phase == cannotTell }
+            #expect(chat.conversation.transcript.entries.isEmpty)
+            try await Self.opensTheList(in: controller)
+
+            // The conversation arrives, and then the Host stops showing it.
+            await rig.files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+            await rig.files.write(try Self.transcript(), at: Self.transcriptPath())
+            chat.retry()
+            try await rig.waitUntil("the conversation") { !chat.conversation.transcript.entries.isEmpty }
+            await rig.files.remove("\(Self.home)/.claude/sessions/\(Self.pid).json")
+            chat.retry()
+            try await rig.waitUntil("Chat to say it cannot tell") { chat.conversation.phase == cannotTell }
+            #expect(!chat.conversation.transcript.entries.isEmpty)
+            try await Self.opensTheList(in: controller)
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// Activates Choose a Conversation, sees its sheet come up, and closes it.
+    private static func opensTheList(
+        in controller: UIViewController, sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        var budget = PollBudget(.seconds(10))
+        while budget.hasTimeLeft, controller.presentedViewController == nil {
+            AccessibilityProbe.elements(labeled: ChatCandidatePickerView.title, in: controller.view)
+                .first?.accessibilityActivate()
+            try await Task.sleep(for: .milliseconds(50))
+            budget.charge()
+        }
+        #expect(controller.presentedViewController != nil, sourceLocation: sourceLocation)
+        await controller.dismiss(animated: false)
+    }
+
 
     @Test func openingChatChecksOnceAndFollowsTheConversation() async throws {
         let rig = Rig(host: host)

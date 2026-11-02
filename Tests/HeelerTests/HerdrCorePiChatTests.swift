@@ -162,17 +162,21 @@ struct HerdrCorePiChatTests {
         func waitUntil(
             _ what: String, _ condition: @MainActor () -> Bool, sourceLocation: SourceLocation = #_sourceLocation
         ) async throws {
-            for _ in 0..<500 {
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft {
                 if condition() { return }
                 try await Task.sleep(for: .milliseconds(10))
+                budget.charge()
             }
             Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
         }
 
         func waitForChecks(_ count: Int, sourceLocation: SourceLocation = #_sourceLocation) async throws {
-            for _ in 0..<500 {
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft {
                 if await checks >= count { return }
                 try await Task.sleep(for: .milliseconds(10))
+                budget.charge()
             }
             Issue.record("Timed out waiting for check \(count)", sourceLocation: sourceLocation)
         }
@@ -443,8 +447,6 @@ struct HerdrCorePiChatTests {
         rig.store.setHosts([])
     }
 
-    @Test(arguments: programs)
-    func withNoEvidenceChatSaysItCannotTellAndOffersTheHelper(_ program: ChatProgram) async throws {
     /// Nothing here is written until the first message, and a wait looks on every
     /// pass: its own folders each time, every project's once per activity, as Claude
     /// Code's does.
@@ -481,6 +483,10 @@ struct HerdrCorePiChatTests {
         #expect(await engine.open(directories: ["/work/app"], context: working).phase == .following(path: file))
     }
 
+    // MARK: Without exact evidence
+
+    @Test(arguments: programs)
+    func withNoEvidenceChatSaysItCannotTellAndOffersTheHelper(_ program: ChatProgram) async throws {
         let rig = Rig(host: host, program: program, record: Self.record(program))
         try await rig.start()
         // The newest Transcript in the Agent's directory, for the taking.
