@@ -92,9 +92,11 @@ struct HerdrCoreWindowsLaunchTests {
             _ what: String, _ condition: @MainActor () async -> Bool,
             sourceLocation: SourceLocation = #_sourceLocation
         ) async throws {
-            for _ in 0..<500 {
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft {
                 if await condition() { return }
                 try await Task.sleep(for: .milliseconds(10))
+                budget.charge()
             }
             Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
         }
