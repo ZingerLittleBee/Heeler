@@ -70,7 +70,9 @@ Entries reference the pull request that made the change.
 - Give the website and bilingual docs clean search URLs, sitemaps, app metadata,
   browser icons, landscape sharing cards, and permanent canonical redirects.
   Keep error pages, raw guides, and search data out of search results, and add
-  direct App Store links to both docs home pages. (#605)
+  direct App Store links to both docs home pages. Explain remote Claude Code
+  and Codex use on iPhone and iPad, with setup, Chat, notification, and Usage
+  widget guidance on the existing pages. (#605)
 - Chat fills in earlier messages page by page and keeps up with the Agent while
   it does, so returning to a long conversation no longer shows a few old rows
   under a spinner and a blank screen until a whole turn has loaded. Messages

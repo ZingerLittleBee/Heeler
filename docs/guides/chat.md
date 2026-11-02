@@ -1,6 +1,6 @@
 # Chat with an Agent
 
-Chat shows an Agent's conversation as messages instead of a terminal screen. Read what the Agent did, reply, and answer its questions with buttons.
+Use Claude Code and Codex in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
 You need a macOS or Linux Host running herdr, and an Agent there running Claude Code, Codex, Pi, Oh My Pi, Grok Build, or OpenCode.
 
