@@ -13,7 +13,7 @@
 #
 # Positive `paths`: one matching path starts every job here. Ubuntu is cheap,
 # so a plugin-only PR may also run relay + codegen. plugin/test-vectors/**
-# is under plugin/**; its Swift consumers are checked by manual/release
+# is under plugin/**; its Swift consumers are checked by daily/manual/release
 # ci-full.yml runs. A change to this file always runs.
 
 name: CI (Node)

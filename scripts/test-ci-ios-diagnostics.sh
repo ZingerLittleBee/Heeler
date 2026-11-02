@@ -41,8 +41,9 @@ release_test = job("test", release)
 require_line(release_test, "uses: ./.github/workflows/ci-full.yml")
 require_line(release_test, "contents: read")
 require_line(release_test, "actions: read")
-if events(workflow) != {"workflow_dispatch", "workflow_call"}:
-    raise SystemExit("Full native verification must be manual or release-only")
+if events(workflow) != {"schedule", "workflow_dispatch", "workflow_call"}:
+    raise SystemExit("Full native verification must run daily, manually or before release")
+require_line(workflow, "- cron: '17 20 * * *'")
 names = {
     "app-tests": "App tests (${{ matrix.shard }})",
     "heelerssh-package-e2e": "HeelerSSH package E2E (iOS Simulator)",
@@ -99,7 +100,7 @@ if "ios-ci-evidence-" in reusable or re.search(r"\bmake test-ci-(?:app|package)\
     raise SystemExit("Diagnostic workflow publishes or runs the complete merge gate")
 if not any(line.strip().startswith("name: ios-diagnostic-") for line in reusable.splitlines()):
     raise SystemExit("Diagnostic workflow has no distinct artifact name")
-print("Passed daily build, full release verification and diagnostic isolation contracts.")
+print("Passed fast build, daily/release full verification and diagnostic isolation contracts.")
 PYWORKFLOW
 
 python3 - "$repo_root/Tests/HeelerTests/FileDiffLayoutViewTests.swift" <<'PYLAYOUT'

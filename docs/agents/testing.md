@@ -17,9 +17,14 @@ tooling checks. Node and site checks retain their own path filters.
 
 Run focused behavior tests for the feature being changed. The
 [full native workflow](../../.github/workflows/ci-full.yml) retains all app,
-UI, real-SSH and weak-network tests, package E2E and coverage checks. Run it
-manually for broader acceptance; `release.yml` requires it before signing a
-release. Daily build success cannot substitute for that result.
+UI, real-SSH and weak-network tests, package E2E and coverage checks. It runs
+daily on the latest `main` commit at 20:17 UTC (04:17 UTC+8), using the sharded
+layout and warm caches. The schedule takes effect only after the workflow is
+merged into the default branch; GitHub may delay its start under load. PRs and
+pushes retain fast feedback without starting this full native workflow.
+Run it manually for broader acceptance of a candidate branch; `release.yml`
+still requires it against the release tag before signing a release. A scheduled
+run or daily build cannot substitute for verifying a different candidate.
 
 ```sh
 gh workflow run ci-full.yml --ref <candidate-branch>

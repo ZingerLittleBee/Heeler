@@ -1,4 +1,4 @@
-# Full native verification, run manually or by release.yml (refs #23).
+# Full native verification, run daily, manually or by release.yml (refs #23).
 #
 # Runs the complete app and SSH package suites on isolated iOS simulators.
 # No signing certificates, archive, or xcodegen. Simulator builds use free
@@ -28,6 +28,10 @@ name: iOS full verification
 run-name: ${{ format('iOS full verification ({0}, {1})', inputs.layout || 'sharded', inputs.cache_mode || 'warm') }}
 
 on:
+  # Default branch only, at 04:17 China Standard Time (UTC+8).
+  # Avoid the busy start of the hour; use the sharded, warm-cache defaults.
+  schedule:
+    - cron: '17 20 * * *'
   workflow_dispatch:
     inputs:
       layout:
