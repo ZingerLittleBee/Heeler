@@ -18,6 +18,7 @@ struct TransportErrorPresentationTests {
         let notInstalled = TransportError.herdrCoreNotInstalled.presentation
         #expect(notInstalled.summary == "herdr-core is not installed")
         #expect(notInstalled.detail?.contains("~/.local/bin/herdr-core") == true)
+        #expect(notInstalled.detail?.contains("native Windows") == true)
         #expect(notInstalled.recoverySuggestion?.contains("Install") == true)
 
         let stopped = TransportError.herdrCoreNotRunning(
