@@ -256,8 +256,9 @@ struct HostHelperHealth: Sendable, Equatable {
     /// Nil under systemd.
     var launchd: Launchd?
 
-    /// What only launchd's answer has. launchd never reports a failed state, and
-    /// one read can catch a run that is about to die (ADR 0033).
+    /// What only launchd's answer has. In a VM of macOS 26.5 launchd reported no
+    /// failed state in the longest watch, about five minutes, and one read could
+    /// catch a run about to die (ADR 0033).
     struct Launchd: Sendable, Equatable {
         var pid: Int?
         /// Whether two reads over ten seconds apart found one run. Nil until asked.
