@@ -277,6 +277,15 @@ Hosts are unchanged.
   back alone once the path did, but with nobody logged in it was still down
   after almost five minutes, and `launchctl kickstart` blocked until the service
   was booted out. So a repair uses `bootout` then `bootstrap`, in a bounded exec.
+- A process goes on running the code it loaded, so an install that replaces the
+  Helper's files stops the service first, once the upload has passed its check
+  and only if the service is loaded. If the install is cut short after that,
+  launchd holding no agent loads the new code at the next read, and a stopped unit
+  offers Repair. Otherwise the old process would run beside new files, and every
+  later read would call it the new version with nothing to offer. The Helper is
+  down from there until the service starts again. A removal boots the agent out
+  and deletes its property list in one exec, so that a read on another connection
+  cannot load it back with no record left to clean up after it.
 - A Helper already running outlives the Node.js it started from, so neither
   service manager reports anything when an upgrade removes a versioned path, as
   Homebrew's and nvm's are, though a restart would fail and Usage, which runs the
