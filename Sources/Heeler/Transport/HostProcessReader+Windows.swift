@@ -26,7 +26,6 @@ extension HostProcessReader {
         where !isVariableName(name) || name != name.uppercased() {
             throw Refusal.variableName(name)
         }
-        for argument in request.argumentsAmong where !isArgumentWord(argument) { throw Refusal.argument(argument) }
 
         func list(_ names: [String]) -> String {
             "@(\(names.map { "'\($0)'" }.joined(separator: ",")))"
