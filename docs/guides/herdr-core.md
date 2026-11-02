@@ -301,7 +301,7 @@ A macOS core Host offers Chat for the same programs as a Linux one, and each wai
 
 Anything Heeler can't read on that Mac leaves the program to **Choose a Conversation**. An Agent started through a script that Apple's own `/bin/sh` or `/bin/zsh` keeps running has neither: macOS hides those programs' variables, so Chat says it can't tell and offers no list, however often you try. Start the Agent directly in the Terminal instead. A shell that hands the terminal to the Agent is fine.
 
-These rows come from a macOS 26.5 virtual machine with no signed-in account. A Mac with signed-in programs has not been checked yet.
+These rows come from a macOS 26.5 virtual machine with SIP off and no signed-in account. It did not run OpenCode 2.1 or later, Heeler's OpenCode plugin, a Pi Heeler started or Grok Build's `/new`, and a Pi reply never finished there, so only its label was seen. A Mac with SIP on or with signed-in programs has not been checked yet.
 
 ### Chat on Windows
 
