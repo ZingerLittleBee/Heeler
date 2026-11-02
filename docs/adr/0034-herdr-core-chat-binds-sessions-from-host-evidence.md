@@ -83,10 +83,10 @@ never show or send into a conversation it has guessed.
   program in the Terminal does not count. On a core a Grok Build id may be the UUIDv4
   Heeler started it with, where Herdr TUI's reference takes only the UUIDv7 Grok
   Build creates itself.
-- An OpenCode's argv keeps the id it started with when `/new` and a prompt, or a
-  pick in its list, move the screen, so a check of its process still binds the old
-  conversation. Its terminal title does change, so a Send compares it as ADR 0025
-  does, after the check, and reads it from the core's title events. It refuses on
+- An OpenCode's argv keeps the id it started with when `/new` and a prompt move the
+  screen, and a pick in its list is expected to do the same, so a check of its process
+  still binds the old conversation. By a source review of 2.2.5, which ran nothing, its
+  terminal title changes, so a Send compares it as ADR 0025 does, after the check, and reads it from the core's title events. It refuses on
   another `OC | ` title. It also refuses on `OpenCode` over a conversation with a
   title of its own, which ADR 0025 lets through because herdr reports the
   conversation that title may stand for, and a core reports none. The screen read
@@ -282,7 +282,11 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   changes any of the evidence below, which never saw one; whether Claude Code's
   `procStart` on a real Mac equals the start `ps -o lstart=` prints in UTC, which
   it did for native 2.1.316 in a macOS 26.5 VM with SIP off, the owner's check of
-  it being still to run; whether a Host
+  it being still to run; whether OpenCode's terminal title moves on `/new` and on a
+  pick as 2.2.5's source says and equals its conversation's title, since the recording
+  scrubs each title and holds no `/new`; whether a pick keeps the argv as `/new` does,
+  which no run recorded, and whether the home screen check, from 2.0.32's screen, holds
+  on 2.2.5; whether a Host
   can work out an Oh My Pi lock's name without running its code, since the hash is not
   identified; and whether Heeler's OpenCode store query reads what OpenCode 2.2.5
   really writes. It runs against both recorded schemas, on rows of 2.0.32's shape
