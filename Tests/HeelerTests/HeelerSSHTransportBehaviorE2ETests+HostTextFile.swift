@@ -136,7 +136,9 @@ extension HeelerSSHTransportBehaviorE2ETests {
         #expect(try await host.entries() == ["tui.json"])
         #expect(try await host.contents("tui.json") == original)
 
-        // A file changed between the first comparison and the file's write takes the folder back.
+        // A file changed before apply's first comparison is refused with no folder placed.
+        // The later window, where the folder comes back out, is
+        // `aFileChangedWhileTheFolderWentInTakesTheFolderBack` over in-memory files.
         let stale = try await host.pendingChange(editor, edit)
         let theirs = Data("{ \"theme\": \"light\" }\n".utf8)
         try await host.seed("tui.json", theirs, mode: "640")
