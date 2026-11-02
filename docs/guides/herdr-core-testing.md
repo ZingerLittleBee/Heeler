@@ -316,7 +316,7 @@ On a Mac Host with signed-in harnesses and the Host Helper installed as a Launch
 | Codex | `codex --no-daemon`, before and after the first message. Then plain `codex` | Can't tell, then it binds. Plain `codex` shows only the reopen message and no list |
 | Pi | Start Pi with the Helper's extension, and take a reply | It binds through `heeler.session`, whose `start` equals the same read. The VM's Pi never finished a reply |
 | Grok Build | Start `grok`, then read `active_sessions.json` | It binds. `pid_start` divided by a million is the second of that read. The VM saw one sample |
-| OpenCode, Oh My Pi | OpenCode 2.x from New Agent. Oh My Pi before and after the first message | OpenCode binds. Oh My Pi can't tell until the first reply, then binds |
+| OpenCode, Oh My Pi | OpenCode 2.1 or later from New Agent. Oh My Pi before and after the first message | OpenCode binds. Oh My Pi can't tell until the first reply, then binds |
 | Moved on | After Use This Conversation on any Agent, exit it and start another program in the same Terminal, then check Chat | The choice is dropped, and no banner stays. Under a shell with withheld variables too |
 | Any read that failed | Note which row above could not bind | That program shows **Can't Tell the Conversation** and **Choose a Conversation**. Take it out of `HostCapabilities.macOSExactCoreChatPrograms` and note why |
 

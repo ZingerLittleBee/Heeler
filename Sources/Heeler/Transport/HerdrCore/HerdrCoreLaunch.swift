@@ -148,9 +148,9 @@ enum HerdrCoreLaunch {
         UUID().uuidString.lowercased()
     }
 
-    /// `-s` names a new session from 2.1, the oldest release observed doing so;
-    /// on 1.x it only continues one that exists. Anything unreadable is the safe
-    /// side, which starts without it.
+    /// Heeler names a new session only from 2.1, the line ADR 0034 draws: 2.0.32 and
+    /// 2.2.5 were recorded creating the given id, and on 1.x `-s` only continues one
+    /// that exists. Anything unreadable is the safe side, which starts without it.
     static func openCodeNamesNewSessions(version: String?) -> Bool {
         guard let (major, minor) = openCodeRelease(version: version) else { return false }
         return major > 2 || (major == 2 && minor >= 1)

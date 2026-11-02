@@ -56,7 +56,7 @@ never show or send into a conversation it has guessed.
   | Codex | in embedded mode only, the rollouts the process holds open, exactly one of them a root thread by `session_meta`, and no thread-writer lock held without its thread's rollout |
   | Oh My Pi | Heeler's extension (ADR 0033); without it, `<agent dir>/terminal-sessions/<tty>`, confirmed by the process holding that file open |
   | Grok Build | the one `active_sessions.json` row whose pid and process start match |
-  | OpenCode | from 2.x, the `ses` id Heeler started it with; otherwise none, and the plugin on the user's word (ADR 0033) |
+  | OpenCode | from 2.1, the `ses` id Heeler started it with; otherwise none, and the plugin on the user's word (ADR 0033) |
   | Pi | none; Heeler's extension (ADR 0033) |
 
 - Claude Code's registry entry appears only at its prompt. Before that, during
