@@ -374,6 +374,28 @@ struct HerdrCoreWindowsChatTests {
         fixture.finish()
     }
 
+    // MARK: Grok Build
+
+    /// Its row gives the session, and its directory is no path the Host's file calls
+    /// take, so the listing finds the group (`GrokTranscriptLocatorTests`).
+    @Test func grokBuildsChatFollowsItsTranscriptFromTheOneRowThatMatches() async throws {
+        let fixture = try await Fixture(terminal: Self.record(program: "grok", app: "grok-build"), image: "grok.exe")
+        let row = #"{"session_id":"\#(Self.session)","pid":\#(Self.agentPid),"pid_start":\#(Self.agentStart),"cwd":"C:\\Users\\me\\proj"}"#
+        await fixture.files.write(Data("[\(row)]".utf8), at: "\(Self.home)/.grok/active_sessions.json")
+        let path = "\(Self.home)/.grok/sessions/C%3A%5CUsers%5Cme%5Cproj/\(Self.session)/updates.jsonl"
+        let head = #"{"method":"_x.ai/session/update","params":{"sessionId":"\#(Self.session)","update":{"sessionUpdate":"hook_execution"},"_meta":{"eventId":"\#(Self.session)-1"}}}"#
+        await fixture.files.write(Data((head + "\n").utf8), at: path)
+
+        let chat = try fixture.chat(as: .grok)
+
+        try await Self.until("the Transcript") {
+            if case .following(path) = chat.conversation.phase { return true }
+            return false
+        }
+        chat.end()
+        fixture.finish()
+    }
+
     // MARK: Reading the Transcript over real SFTP
 
     /// `ScriptedCoreHost` answers file calls itself, so this is what lets the real

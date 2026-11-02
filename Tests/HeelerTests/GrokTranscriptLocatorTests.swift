@@ -46,6 +46,30 @@ struct GrokTranscriptLocatorTests {
         return try await locator.locate(sessionID: sessionID, directories: directories)
     }
 
+    // MARK: A native Windows directory
+
+    /// `C:\proj` is no path the Host's file calls take, so its group is not worked out
+    /// from it: every group is looked into, within the budget, and the file's head
+    /// says which is the session's.
+    @Test func aWindowsDirectoryIsFoundThroughTheListingWithinTheBudget() async throws {
+        let files = VirtualHostFiles()
+        let grokHome = "/C:/Users/me/.grok"
+        let path = "\(grokHome)/sessions/C%3A%5Cproj/\(Self.startedID)/updates.jsonl"
+        await files.write(Self.record(sessionID: Self.startedID), at: path)
+        await files.makeDirectory("\(grokHome)/sessions/C%3A%5Cother")
+
+        let locator = GrokTranscriptLocator(files: files.hostFiles())
+        let found = try await locator.locate(
+            sessionID: Self.startedID, directories: [#"C:\proj"#], configRoot: grokHome)
+        #expect(found == .success(path))
+
+        var spent = GrokTranscriptLocator(files: files.hostFiles())
+        spent.groupBudget = 0
+        let unfound = try await spent.locate(
+            sessionID: Self.startedID, directories: [#"C:\proj"#], configRoot: grokHome)
+        #expect(unfound == .failure(.notFound(searchedAll: false)))
+    }
+
     // MARK: The Agent's own root
 
     private static let startedID = "00000000-0000-4000-8000-000000000001"
