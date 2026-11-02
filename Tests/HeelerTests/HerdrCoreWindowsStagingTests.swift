@@ -404,6 +404,21 @@ struct HerdrCoreWindowsStagingTests {
         #expect(await upload.progress.reports == 0)
     }
 
+    /// A banner that does not say Windows leaves it to the home probe, and what that
+    /// probe found stops an upload the same way.
+    @Test func thatConnectionRefusesOnceItsProbeFoundWindows() async throws {
+        let refusal = TransportError.hostFeatureUnavailable(
+            feature: "File and image uploads is not yet supported on native Windows")
+        let upload = try UploadThroughSSH(banner: "SSH-2.0-OpenSSH_9.9")
+        defer { upload.cleanup() }
+
+        await upload.findWindows()
+
+        await #expect(throws: refusal) { try await upload.stageImage() }
+        await #expect(throws: refusal) { try await upload.stageFile() }
+        #expect(await upload.progress.reports == 0)
+    }
+
     @Test func thatConnectionWithAUnixBannerIsNotRefused() async throws {
         let upload = try UploadThroughSSH(banner: "SSH-2.0-OpenSSH_9.9")
         defer { upload.cleanup() }
@@ -435,6 +450,10 @@ private struct UploadThroughSSH {
         source = FileManager.default.temporaryDirectory
             .appendingPathComponent("upload-through-ssh-\(UUID().uuidString)")
         try Data("bytes".utf8).write(to: source)
+    }
+
+    func findWindows() async {
+        await transport.configureWindowsHost()
     }
 
     func stageImage() async throws {

@@ -2668,7 +2668,7 @@ actor HeelerSSHTransport: Transport {
         detectedWindows || connection.serverIdentification?.contains("Windows") == true
     }
 
-    private func configureWindowsHost() async {
+    func configureWindowsHost() async {
         detectedWindows = true
         await channelAdmission.useWindowsSessionBudget()
     }
