@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -358,11 +359,11 @@ struct HerdrCoreChatPickTests {
     }
 
     /// OpenCode 2.x started without a launch id.
-    private func openCodeRig(labels: [String: String] = [:]) async throws -> Rig {
+    private func openCodeRig(labels: [String: String] = [:], store: PickOpenCodeStore? = nil) async throws -> Rig {
         let rig = Rig(
             host: host, program: .opencode,
             record: Self.record(.opencode, labels: labels, children: [Self.openCodeChild]),
-            openCodeStore: try Self.openCodeStore())
+            openCodeStore: try store ?? Self.openCodeStore())
         try await rig.start([
             Self.process(
                 .opencode, files: ["\(Self.home)/.local/share/opencode/sessions/\(Self.openCodeHeld).json"],
@@ -428,6 +429,21 @@ struct HerdrCoreChatPickTests {
         #expect(chat.conversation.phase == .unavailable(.cannotTellSession(.opencode)))
         #expect(await rig.transport.mutations.isEmpty)
         #expect(await chat.confirmSessionBeforeSend() != nil)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A store Heeler can't read isn't a directory with no conversations, so the list
+    /// says what the store's other readers say.
+    @Test func anOpenCodeStoreItCantReadSaysSoRatherThanListingNothing() async throws {
+        let harness = try OpenCodeSQLiteHarness(try OpenCodeStoreFixture.named("pong"))
+        // OpenCode 1.x's own tables, with no `session_v2`.
+        try harness.execute("ALTER TABLE session_v2 RENAME TO gone; CREATE TABLE session (id TEXT)")
+        let rig = try await openCodeRig(store: PickOpenCodeStore(harness: harness))
+
+        let chat = try await listing(rig)
+
+        #expect(chat.candidates == .unavailable(ChatSessionStoreProblem.olderOpenCode.explanation))
         chat.end()
         rig.store.setHosts([])
     }
@@ -1535,6 +1551,42 @@ struct HerdrCoreChatPickTests {
                 ChatCandidatePickerView(chat: chat, corePin: pin)
             }
         }
+    }
+
+    /// Chat keeps a conversation it can no longer place, and the one edit that settles
+    /// that stays on offer, from the banner over it (ADR 0033).
+    @Test func anOpenCodeThatCannotTellOverItsConversationOffersTheEditFromItsBanner() async throws {
+        let rig = try await openCodeRig()
+        let chat = try await confirmed(rig, session: try Self.pongSession)
+        try await rig.waitUntil("its rows") { !chat.conversation.transcript.entries.isEmpty }
+        let suite = "core-chat-edit-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = UIHostingController(
+            rootView: HerdrCoreChatTests.chatDetail(
+                of: try #require(rig.store.agents.first), console: rig.store, defaults: defaults))
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            await rig.hideTerminalProcess()
+            await rig.nudgeCheck()
+            try await rig.waitUntilCannotTell(chat)
+            #expect(!chat.conversation.transcript.entries.isEmpty)
+            let choose = ChatCandidatePickerView.title
+            try await rig.waitUntil("the banner's list") {
+                !AccessibilityProbe.elements(labeled: choose, in: controller.view).isEmpty
+            }
+
+            try await HerdrCoreChatTests.opensASheet(from: "Let Chat Follow OpenCode…", in: controller)
+
+            let sheet = try #require(controller.presentedViewController)
+            try await rig.waitUntil("the offer") {
+                AccessibilityProbe.labels(in: sheet.view).contains("Review the Change")
+            }
+        }
+        chat.end()
+        rig.store.setHosts([])
     }
 
     /// The write that says confirmed also empties the list, which takes the preview
