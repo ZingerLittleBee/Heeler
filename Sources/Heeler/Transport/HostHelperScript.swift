@@ -415,7 +415,9 @@ struct HostHelperProbe: Sendable, Equatable {
 
     struct Unreadable: Error, Equatable {}
 
-    var manager: HostHelperServiceManager { kernel == HerdrCoreLocator.macOSKernel ? .launchd : .systemd }
+    /// The word this file's script tests `uname -s` against. It stays a literal
+    /// because scripts/test-host-helper-scripts.py compiles this file without the locator.
+    var manager: HostHelperServiceManager { kernel == "Darwin" ? .launchd : .systemd }
 
     /// Reads the bytes between the script's markers, so shell startup output
     /// around them is ignored.
