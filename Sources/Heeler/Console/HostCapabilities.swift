@@ -173,7 +173,7 @@ extension Collection<Host> {
     /// Terminals on the Terminals tab. With none, it is not offered. What a
     /// connection has learned of a Host comes through `capabilities`.
     func offeringNewItem(
-        listsTerminals: Bool, capabilities: (Host) -> HostCapabilities = \.capabilities
+        listsTerminals: Bool, capabilities: (Host) -> HostCapabilities
     ) -> [Host] {
         filter { host in
             let offers = capabilities(host)
@@ -184,7 +184,7 @@ extension Collection<Host> {
     /// Whether a list offers New at all: it does with no Hosts, and stops only
     /// when every Host it has cannot start the item.
     func offersNewItem(
-        listsTerminals: Bool, capabilities: (Host) -> HostCapabilities = \.capabilities
+        listsTerminals: Bool, capabilities: (Host) -> HostCapabilities
     ) -> Bool {
         isEmpty || !offeringNewItem(listsTerminals: listsTerminals, capabilities: capabilities).isEmpty
     }

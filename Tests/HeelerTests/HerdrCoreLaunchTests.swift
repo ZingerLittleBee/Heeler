@@ -1341,8 +1341,8 @@ struct HerdrCoreLaunchTests {
         #expect(capabilities.startsTerminals)
         #expect(!capabilities.tabNames)
         #expect(!capabilities.worktrees)
-        #expect([host].offeringNewItem(listsTerminals: false) == [host])
-        #expect([host].offeringNewItem(listsTerminals: true) == [host])
+        #expect([host].offeringNewItem(listsTerminals: false, capabilities: \.capabilities) == [host])
+        #expect([host].offeringNewItem(listsTerminals: true, capabilities: \.capabilities) == [host])
         #expect(
             capabilities.newTerminalRequest(workspaceID: "w1", cwd: "/srv/app")
                 == ShellTerminalCreationRequest(workspaceID: "w1", cwd: "/srv/app"))
