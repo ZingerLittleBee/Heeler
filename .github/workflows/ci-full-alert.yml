@@ -1,0 +1,60 @@
+# Tracks scheduled full native verification on one issue (refs #23).
+#
+# Tests run after merge, so a failed scheduled run opens (or comments on) the
+# tracking issue, and the next passing scheduled run closes it. ci-full.yml
+# cannot do this itself: release.yml calls it with read-only permissions, and
+# a called workflow cannot request more than its caller grants. This listener
+# owns the only write permission and reads nothing from the repository.
+#
+# `workflows` must match ci-full.yml's `name`; test-ci-ios-diagnostics.sh
+# checks that. Manual, release and cancelled runs are ignored.
+
+name: iOS full verification alert
+
+on:
+  workflow_run:
+    workflows: [iOS full verification]
+    types: [completed]
+
+permissions:
+  issues: write
+
+# Explicit bash adds pipefail, so a failed lookup cannot open a duplicate.
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ci-full-alert
+  cancel-in-progress: false
+
+jobs:
+  track:
+    name: Track scheduled result
+    if: ${{ github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion != 'cancelled' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      TITLE: Scheduled full iOS verification is failing
+    steps:
+      - name: Open, update or close the tracking issue
+        run: |
+          number=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title \
+            | jq -r --arg title "$TITLE" 'map(select(.title == $title)) | first | .number // empty')
+          if [[ "$CONCLUSION" == success ]]; then
+            if [[ -n "$number" ]]; then
+              gh issue close "$number" --comment "Scheduled full verification passed on $HEAD_SHA: $RUN_URL"
+            fi
+            exit 0
+          fi
+          report="Scheduled full verification of \`main\` concluded \`$CONCLUSION\` on $HEAD_SHA: $RUN_URL"
+          if [[ -n "$number" ]]; then
+            gh issue comment "$number" --body "$report"
+          else
+            gh issue create --title "$TITLE" --label bug --body "$report"$'\n\n'"Pull requests compile the tests without running them, so this run is the first native test result after merge. Fix the failure or revert its cause; the next passing scheduled run closes this issue."
+          fi

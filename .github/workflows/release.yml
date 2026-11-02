@@ -3,7 +3,7 @@
 #
 #   meta     resolves the tag: format, annotated, on main, versions in project.yml
 #            and the committed project, release notes from CHANGELOG.md.
-#   test     runs ci.yml's two lanes against the tag.
+#   test     runs ci-full.yml's two lanes against the tag.
 #   archive  in the `release` environment, archives the committed project with
 #            manual App Store signing, exports and checks the IPA, validates it
 #            with App Store Connect, and uploads it.
@@ -18,7 +18,7 @@
 # and `main`. There is no approval step: the tag ruleset lets only admins
 # create `v*` tags, so pushing the tag is the decision to release. No other
 # job sees a secret. The archive job restores no cache and resolves packages itself, so
-# the test gate's SwiftPM cache (from ci.yml) never reaches the signed build.
+# the test gate's SwiftPM cache (from ci-full.yml) never reaches the signed build.
 
 name: Release
 
@@ -142,7 +142,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: ./.github/workflows/ci.yml
+    uses: ./.github/workflows/ci-full.yml
 
   archive:
     name: Archive, sign and upload
