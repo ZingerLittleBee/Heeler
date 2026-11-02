@@ -346,7 +346,7 @@ The install also places Heeler's extension for Pi in `~/.pi/agent/extensions` an
 
 On Linux, without systemd linger, the Helper stops about ten seconds after your last login to the Host ends. The sheet checks it and offers **Turn On Linger**. Some Hosts ask for an administrator instead: the sheet shows the Host's reason, and an administrator can run `loginctl enable-linger <your-user>` there.
 
-On macOS there is no linger to turn on: the Helper keeps running after your SSH session and a desktop logout. It writes its log to `helper.log` in its directory. macOS may notify you that `node` can run in the background and list it under Login Items, because that is the program the Helper runs on.
+On macOS there is no linger to turn on. In a macOS 26.5 virtual machine the Helper kept running after an SSH session and a desktop logout, and a real Mac has not been checked yet. It writes its log to `helper.log` in its directory. macOS may notify you that `node` can run in the background and list it under Login Items, because that is the program the Helper runs on.
 
 After a restart of the Mac the Helper may not be running until Heeler next reads it, when it starts it again without asking: when you open the Host's detail, or as the Host connects on a device that allows Heeler's notifications. No notification goes out in between.
 
@@ -407,7 +407,7 @@ To count more Claude Code sign-ins, open **Claude Code Accounts**. Heeler sugges
 | **The Node.js the Host Helper was set up with has gone from this Host** | Tap **Repair** on the Host's detail, which sets it up with the Node.js the Host has now. Usage then waits for the Helper to reach the core again |
 | **Usage comes with the Host Helper, which is not available on native Windows yet** | Nothing for now |
 
-On macOS, Claude Code keeps its sign-in in the login keychain, which neither the Helper nor SSH can reach, so its Usage Limits read **need your own login on this Mac**. Token Usage still counts.
+On macOS, Claude Code keeps its sign-in in the login keychain. In a macOS 26.5 virtual machine with a dummy credential, neither the Helper nor SSH could reach it, and a real Mac has not been checked yet. When they can't, its Usage Limits read **need your own login on this Mac**. Token Usage still counts.
 
 Usage reaches the Helper over its own SSH connection when the Host's session has none, so these read the same whether the core is running or not. **Not connected** in the Usage tab and the widgets means SSH itself could not reach the Host.
 
