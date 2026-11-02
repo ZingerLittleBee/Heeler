@@ -8,7 +8,7 @@ protocol ServerKindDetectionConnection: Sendable {
     func runServerKindDetection(_ script: Data) async throws -> GitExecResult
 
     /// A native Windows Host's, a whole command line.
-    func runWindowsServerKindDetection(_ command: String) async throws -> GitExecResult
+    func runWindowsCommand(_ command: String, for purpose: WindowsHostExec) async throws -> GitExecResult
 
     func close() async throws
 }
@@ -55,8 +55,8 @@ struct ServerKindDetection: Equatable, Sendable {
         let platform = try await connection.corePlatform()
         let result =
             platform == .nativeWindows
-            ? try await connection.runWindowsServerKindDetection(
-                ServerKindDetectionScript.windowsCommand(session: session, nonce: nonce))
+            ? try await connection.runWindowsCommand(
+                ServerKindDetectionScript.windowsCommand(session: session, nonce: nonce), for: .serverKindDetection)
             : try await connection.runServerKindDetection(script(session: session, nonce: nonce))
         guard result.exitStatus == 0 else {
             throw TransportError.malformedResponse(

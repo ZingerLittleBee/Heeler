@@ -211,6 +211,19 @@ extension HerdrCoreTransport {
     }
 }
 
+/// What a whole command line on a native Windows Host is for, which sets how long it
+/// gets. Unlike the POSIX scripts, none of these needs a marker of its own: SSH reaps
+/// the channel when the time is up.
+enum WindowsHostExec: Sendable {
+    case locator, checkoutRead, processRead, serverKindDetection, agentDiscovery
+
+    /// PowerShell's own start takes a few seconds on a slow machine. Discovery also
+    /// loads the user's profile, as its POSIX script runs startup files.
+    var bound: Duration {
+        self == .agentDiscovery ? .seconds(25) : .seconds(20)
+    }
+}
+
 /// The parts of an SSH connection a herdr-core transport uses. Real SSH is
 /// `HeelerSSHTransport`; tests script the exec and hand over a fake socket.
 protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
@@ -226,16 +239,8 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     /// Runs the locator's script in one bounded exec.
     func runCoreLocator(_ script: Data) async throws -> GitExecResult
 
-    /// Runs a native Windows Host's locator, a whole command line, in one bounded exec.
-    func runWindowsCoreProbe(_ command: String) async throws -> GitExecResult
-
-    /// Runs a native Windows Host's checkout read, a whole command line, in one
-    /// bounded exec.
-    func runWindowsCheckoutRead(_ command: String) async throws -> GitExecResult
-
-    /// Runs a native Windows Host's process read, a whole command line, in one
-    /// bounded exec.
-    func runWindowsProcessRead(_ command: String) async throws -> GitExecResult
+    /// Runs a whole command line on a native Windows Host in one bounded exec.
+    func runWindowsCommand(_ command: String, for purpose: WindowsHostExec) async throws -> GitExecResult
 
     /// Runs the confirmed Start's script in one bounded exec.
     func runCoreStart(_ script: Data) async throws -> GitExecResult
@@ -246,10 +251,6 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     /// Runs a script that goes through the user's interactive shell, with room
     /// for its startup files, in one bounded exec.
     func runAgentDiscovery(_ script: Data) async throws -> GitExecResult
-
-    /// Runs a native Windows Host's agent discovery, a whole command line, in one
-    /// bounded exec with room for the user's PowerShell profile.
-    func runWindowsAgentDiscovery(_ command: String) async throws -> GitExecResult
 
     /// Runs a `HerdrAppControl` script in one bounded exec, with room for the
     /// five seconds the app's control socket gives its window to answer.
@@ -343,8 +344,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private func runLocator(nonce: String) async throws -> GitExecResult {
         if try await resolvedPlatform() == .nativeWindows {
             do {
-                return try await connection.runWindowsCoreProbe(
-                    try HerdrCoreLocator.windowsProbe(session: session, nonce: nonce))
+                return try await connection.runWindowsCommand(
+                    try HerdrCoreLocator.windowsProbe(session: session, nonce: nonce), for: .locator)
             } catch is HerdrCoreLocator.SessionRefused {
                 throw TransportError.hostFeatureUnavailable(
                     feature: HerdrCoreSessionName.windowsRefusal(session) ?? "")
@@ -433,8 +434,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             let nonce = nonce()
             let result =
                 try await resolvedPlatform() == .nativeWindows
-                ? try await connection.runWindowsProcessRead(
-                    try HerdrCoreEnvironmentCheck.windowsCommand(pid: pid, nonce: nonce))
+                ? try await connection.runWindowsCommand(
+                    try HerdrCoreEnvironmentCheck.windowsCommand(pid: pid, nonce: nonce), for: .processRead)
                 : try await connection.runHostProcessRead(
                     try HerdrCoreEnvironmentCheck.script(pid: pid, nonce: nonce))
             guard result.exitStatus == 0 else { return [] }
@@ -463,8 +464,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     ) async throws -> [String: HostProcessReader.Facts] {
         let nonce = nonce()
         if try await resolvedPlatform() == .nativeWindows {
-            let result = try await connection.runWindowsProcessRead(
-                try HostProcessReader.windowsCommand(request, nonce: nonce))
+            let result = try await connection.runWindowsCommand(
+                try HostProcessReader.windowsCommand(request, nonce: nonce), for: .processRead)
             guard result.exitStatus == 0 else { return [:] }
             return (try? HostProcessReader.parseWindows(stdout: result.stdout, nonce: nonce, request: request)) ?? [:]
         }
@@ -513,7 +514,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
 
     func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
         if try await resolvedPlatform() == .nativeWindows {
-            return try await connection.runWindowsAgentDiscovery(String(decoding: script, as: UTF8.self))
+            return try await connection.runWindowsCommand(String(decoding: script, as: UTF8.self), for: .agentDiscovery)
         }
         return try await connection.runAgentDiscovery(script)
     }
@@ -600,8 +601,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         let nonce = nonce()
         var checkouts: [String: HostCheckout] = [:]
         for batch in GitProbe.windowsCheckoutRootBatches(directories, nonce: nonce) {
-            let result = try await connection.runWindowsCheckoutRead(
-                GitProbe.windowsCheckoutRootsCommand(directories: batch, nonce: nonce))
+            let result = try await connection.runWindowsCommand(
+                GitProbe.windowsCheckoutRootsCommand(directories: batch, nonce: nonce), for: .checkoutRead)
             checkouts.merge(
                 try GitProbe.parseWindowsCheckoutRoots(stdout: result.stdout, nonce: nonce, directories: batch)
             ) { _, answer in answer }
