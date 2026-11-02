@@ -141,8 +141,10 @@ struct HerdrCoreWindowsChatTests {
             return chat
         }
 
+        /// A binder's, not the link's own check of the core's environment, the one read
+        /// that asks by prefix.
         var processReads: Int {
-            get async { await scripted.log.filter { $0 == "windows-process-read" }.count }
+            get async { await scripted.scripts.filter { $0.contains("$pre=''") }.count }
         }
 
         func entry(start: String = HerdrCoreWindowsChatTests.agentStart) async {
