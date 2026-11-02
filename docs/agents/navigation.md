@@ -106,7 +106,7 @@ Agent detail swaps the Agent terminal for
 [AgentChatSurfaceView](../../Sources/Heeler/Console/AgentChatSurfaceView.swift) through
 [AgentDetailSurfaceSettings](../../Sources/Heeler/Settings/AgentDetailSurfaceSettings.swift);
 [AgentChatAvailability](../../Sources/Heeler/Console/AgentChatAvailability.swift) decides which Agents offer it:
-a POSIX Host and a program with a transcript adapter.
+a POSIX Host, or a native Windows core Host for the programs `HostCapabilities.chatPrograms` lists, and a program with a transcript adapter.
 `ConsoleStore` keeps an [AgentChatStore](../../Sources/Heeler/Chat/Conversation/AgentChatStore.swift) per Agent,
 whose single loop drives a [ChatConversationEngine](../../Sources/Heeler/Chat/Conversation/ChatConversationEngine.swift)
 over the session herdr reports. Host files come through
