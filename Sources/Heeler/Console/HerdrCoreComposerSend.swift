@@ -131,7 +131,7 @@ final class HerdrCoreComposerSend {
         projection: @escaping @MainActor () -> HerdrCoreConsoleProjection?,
         corePin: TerminalCorePin = TerminalCorePin(),
         clock: BlockedCardClock = .live,
-        isOnWindows: @escaping @MainActor () -> Bool = { false }
+        isOnWindows: @escaping @MainActor () -> Bool
     ) {
         self.address = address
         self.projection = projection
