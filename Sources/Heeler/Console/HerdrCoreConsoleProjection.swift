@@ -660,12 +660,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             checkoutTask = nil
             return
         }
-        let services = transport.hostServices
         if !hasAskedHome {
             hasAskedHome = true
-            home = try? await services.hostHomeDirectory()
-            // That read is Chat's, and it refuses native Windows; the locator knows.
-            if home == nil { home = (try? await session.withTransport { await $0.lastLocation() })?.home }
+            home = try? await transport.homeDirectory()
             guard !Task.isCancelled else { return }
             // The desktop app does not ask git about the home folder either.
             queuedCheckouts.removeAll { $0 == home }
@@ -1659,7 +1656,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// listing, for Oh My Pi's profiles (ADR 0033).
     func windowsExtensionFolders() async throws -> [String] {
         let transport = try await session.withTransport { $0 }
-        guard let location = await transport.lastLocation(), location.isNativeWindows, let home = location.home else {
+        guard let home = await transport.locatedWindowsHome() else {
             throw TransportError.hostFeatureUnavailable(feature: "Heeler's extension on this Host")
         }
         let services = transport.hostServices
@@ -1699,24 +1696,17 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             read: { range in
                 try await session.withTransport { $0.hostServices }.readHostFileRange(range)
             },
+            // Chat reads over SFTP, in the form that opens.
             home: {
-                // A native Windows Host's locator already said, and that read refuses it.
-                let transport = try await session.withTransport { $0 }
-                if let location = await transport.lastLocation(), location.isNativeWindows, let home = location.home {
-                    return RemoteFilePath.windowsForSFTP(home)
-                }
-                return try await transport.hostServices.hostHomeDirectory()
+                RemoteFilePath.windowsForSFTP(try await session.withTransport { $0 }.homeDirectory())
             },
             queryOpenCode: { query in
                 try await session.withTransport { $0.hostServices }.queryOpenCode(query)
             })
     }
 
-    /// A native Windows Host's locator already said, and that read refuses it.
     func remoteHomeDirectory() async throws -> String {
-        let transport = try await session.withTransport { $0 }
-        if let home = await transport.lastLocation()?.home { return home }
-        return try await transport.hostServices.hostHomeDirectory()
+        try await session.withTransport { $0 }.homeDirectory()
     }
 
     func listRemoteDirectories(at path: String) async throws -> RemoteDirectoryListing {

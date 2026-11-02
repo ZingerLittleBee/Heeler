@@ -124,6 +124,20 @@ extension HerdrCoreTransport {
         await lastLocation()?.kernel
     }
 
+    /// The home folder a native Windows Host's locator reported, as that machine writes
+    /// it, nil anywhere else. `RemoteFilePath.windowsForSFTP` gives the form SFTP opens.
+    func locatedWindowsHome() async -> String? {
+        guard let location = await lastLocation(), location.isNativeWindows else { return nil }
+        return location.home
+    }
+
+    /// The Host's home folder as it writes it: the locator's on native Windows, where
+    /// `HostServices.hostHomeDirectory` refuses to answer.
+    func homeDirectory() async throws -> String {
+        if let home = await locatedWindowsHome() { return home }
+        return try await hostServices.hostHomeDirectory()
+    }
+
     /// The core's `hello`. A channel refused with the socket file present may be
     /// a core its holder is about to restart, so it is polled before the failure
     /// is believed, without running the locator again. A missing socket file
