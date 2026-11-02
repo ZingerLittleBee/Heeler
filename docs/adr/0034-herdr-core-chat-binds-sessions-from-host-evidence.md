@@ -183,9 +183,15 @@ never show or send into a conversation it has guessed.
   later. Native
   Windows Herdr TUI Hosts stay without Chat. Codex, Grok Build, OpenCode from 2.x, Pi
   and Oh My Pi are built for Linux and macOS core Hosts from the recordings below,
-  which never saw a signed-in account. Each stays off in `HostCapabilities.confirmedCoreChatPrograms` until its check with a harness
-  the owner signs in to passes, and one that fails stays off with its observation
-  saying why.
+  which never saw a signed-in account. Each kernel keeps its own list,
+  `HostCapabilities.confirmedLinuxCoreChatPrograms` and
+  `confirmedMacOSCoreChatPrograms`, and a program joins one only once its check
+  with a harness the owner signs in to passes on that kernel. One that fails stays
+  off there with its observation saying why. On 2026-11-02 the owner's Mac passed
+  Codex, Grok Build, Pi and Oh My Pi, and the owner turned them on for macOS only:
+  Linux keeps Claude Code alone until hc-lab checks the rest. OpenCode 2.0.32 from
+  New Agent reached only candidates on that Mac, and 2.1 or later was not run, so
+  OpenCode stays off on both.
 
 This amends ADR 0024, and ADR 0025's source of the OpenCode session id, its
 start-screen watch, what its confirmation makes of the title `OpenCode` and its
@@ -281,11 +287,8 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   The two differ when the user's shell rc sets the variable.
 - Unverified: whether Oh My Pi's security scan leaves the breadcrumb rewritten,
   since the scan needs a stored OAuth account; whether a signed-in account
-  changes any of the evidence below, which never saw one; whether Claude Code's
-  `procStart` on a real Mac equals the start `ps -o lstart=` prints in UTC, which
-  it did for native 2.1.316 in a macOS 26.5 VM with SIP off, the owner's check of
-  it being still to run; whether OpenCode's terminal title moves on `/new` and on a
-  pick as 2.2.5's source says and equals its conversation's title, since the recording
+  changes any of the evidence below, which never saw one; whether OpenCode's
+  terminal title moves on `/new` and on a pick as 2.2.5's source says and equals its conversation's title, since the recording
   scrubs each title and holds no `/new`; whether a pick keeps the argv as `/new` does,
   which no run recorded, and whether the home screen check, from 2.0.32's screen, holds
   on 2.2.5; whether a Host
@@ -368,13 +371,20 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   a confirmation binds to has no such fallback: a start that cannot be read, or an
   environment withheld between the foreground and the Agent, reads as cannot tell
   with no list, because a list would bind to no process or to the launcher's pid.
+  On the owner's Mac, macOS 27.0.1 with SIP on and a clock eight hours ahead of UTC,
+  native Claude Code 2.1.316's `procStart` equalled that start read in UTC with its
+  trailing spaces trimmed, started from New Agent and by hand under `/bin/zsh -l`,
+  as it had in a macOS 26.5 VM with SIP off.
 - Chat on a macOS core Host binds as on Linux, through the macOS forms of the same
-  reads, for the same `confirmedCoreChatPrograms`: a program waiting on its owner
-  check waits on both. Each of the six was seen through those reads in a macOS 26.5
-  VM with SIP off and no sign-in (`host-evidence/macos`,
-  [herdr compatibility](../agents/herdr-compatibility.md)). A program taken out of
-  `macOSExactCoreChatPrograms` reads as cannot tell there and goes through its
-  candidate list with one confirmation, and binds as before on Linux. Three things
+  reads, for the programs in `confirmedMacOSCoreChatPrograms`. Each of the six was
+  seen through those reads in a macOS 26.5 VM with SIP off and no sign-in
+  (`host-evidence/macos`, [herdr compatibility](../agents/herdr-compatibility.md)).
+  On the owner's Mac, macOS 27.0.1 with SIP on and signed-in harnesses, Claude
+  Code, Codex with `--no-daemon`, Grok Build, and Pi and Oh My Pi through Heeler's
+  extension each bound exactly. A program taken out of `macOSExactCoreChatPrograms`
+  reads as cannot tell there and goes through its candidate list with one
+  confirmation, and binds as before on Linux. OpenCode is out of it, since 2.0.32
+  from New Agent reached only candidates on that Mac. Three things
   differ. The walk's `W ok` says the tree is whole, so a pick's process it no longer
   lists has left. Grok Build's `pid_start` is microseconds, compared to the second
   the start read gives. Oh My Pi's breadcrumb goes by `ttys006`. A Mac with SIP on
