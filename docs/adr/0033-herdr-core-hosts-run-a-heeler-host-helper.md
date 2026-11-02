@@ -270,7 +270,8 @@ Hosts are unchanged.
   before each death, which only growing counters show. A first read that finds
   no such run gets one more read, so a Helper that has just restarted is not
   called failed. Host detail takes these reads, about eleven seconds beside the
-  core's own checks. The notification switch and its gates read once, and so can
+  core's own checks, which finish first and leave the Helper's row checking. The
+  notification switch and its gates read once, and so can
   be wrong about a Helper between runs or caught mid-loop. A move of Node.js
   shows exit 78 and stops the run count; with someone logged in the agent came
   back alone once the path did, but with nobody logged in it was still down

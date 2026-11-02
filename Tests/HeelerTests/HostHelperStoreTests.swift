@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import os
 
 @testable import Heeler
 
@@ -204,7 +205,7 @@ struct HostHelperStoreTests {
         await store.turnOnLinger()
         #expect(store.failure != nil)
 
-        await store.refresh(over: core.transport())
+        _ = await store.beginRefresh(over: core.transport())
         #expect(store.failure == nil)
     }
 
@@ -222,7 +223,7 @@ struct HostHelperStoreTests {
         let core = ScriptedCoreHost(helper: helper, channel: .refused)
         let bundle = bundle
         let store = HostHelperStore(connect: { throw TransportError.timedOut }, bundle: { bundle })
-        await store.refresh(over: core.transport())
+        _ = await store.beginRefresh(over: core.transport())
         #expect(store.plan != nil)
 
         await store.refresh()
@@ -506,41 +507,123 @@ struct HostHelperOnboardingTests {
 
     /// A Mac's Helper takes over ten seconds to read (ADR 0033). The core's own
     /// checks are not held up by it.
-    @Test func theChecksDoNotWaitForAMacsSecondHealthRead() async throws {
+    /// A Mac whose Helper is installed and running, with a store whose second
+    /// health read waits for `gate`, and whose first gap says it has begun.
+    private func macOnboarding(
+        locator: [String] = ScriptedCoreHost.locatorLines(), channel: ScriptedCoreHost.Channel,
+        gate: AsyncStream<Void>, started: AsyncStream<Void>.Continuation
+    ) async -> (HostOnboardingStore, ScriptedCoreHost) {
         let helper = await ScriptedHelperHost.macOS()
-        let core = ScriptedCoreHost(helper: helper, channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let core = ScriptedCoreHost(locator: locator, helper: helper, channel: channel)
         let installing = HostHelperStore(
             connect: { core.transport() }, bundle: { HostHelperFixture.bundle() }, healthGap: {})
         await installing.refresh()
         await installing.install()
         #expect(installing.failure == nil)
-
-        let gate = AsyncStream<Void>.makeStream()
-        let started = AsyncStream<Void>.makeStream()
         let store = HostOnboardingStore(
             host: Host(address: "box.example", username: "dev", serverKind: .herdrCore, sessionName: "work"),
             connector: reaching(core),
             knownHosts: InMemoryKnownHostsStore(),
             credentials: credentials,
             hostHelperHealthGap: {
-                started.continuation.yield()
-                for await _ in gate.stream { return }
+                started.yield()
+                for await _ in gate { return }
             })
+        return (store, core)
+    }
+
+    private func waitUntilFinished(_ store: HostOnboardingStore) async throws {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while store.phase != .finished, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(store.phase == .finished)
+    }
+
+    @Test func theChecksDoNotWaitForAMacsSecondHealthRead() async throws {
+        let gate = AsyncStream<Void>.makeStream()
+        let started = AsyncStream<Void>.makeStream()
+        let (store, core) = await macOnboarding(
+            channel: .answersHello(ScriptedCoreHost.helloReply()), gate: gate.stream, started: started.continuation)
+        let closes = await core.log.filter { $0 == "close" }.count
         let run = Task { await store.runChecks() }
         for await _ in started.stream { break }
 
-        let deadline = ContinuousClock.now + .seconds(5)
-        while store.report == nil, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(5))
-        }
+        try await waitUntilFinished(store)
         #expect(store.report == .allPassed)
         #expect(store.hostHelper?.reading == .checking)
+        // The second read still needs the connection.
+        #expect(await core.log.filter { $0 == "close" }.count == closes)
 
         gate.continuation.yield()
         await run.value
+        await store.hostHelperConfirmation?.value
         #expect(store.hostHelper?.status == .installed(
             version: HostHelperCompatibility.bundled, updateAvailable: false))
         #expect(await core.log.last == "close")
+    }
+
+    /// The core's answer is all a stopped core's instructions need.
+    @Test func aMacsStoppedCoreSaysHowToStartItBeforeTheSecondHealthRead() async throws {
+        let gate = AsyncStream<Void>.makeStream()
+        let started = AsyncStream<Void>.makeStream()
+        let (store, _) = await macOnboarding(
+            locator: ScriptedCoreHost.locatorLines(
+                executable: "/Users/me/.local/bin/herdr-core", kernel: "Darwin", shell: "/bin/zsh"),
+            channel: .refused, gate: gate.stream, started: started.continuation)
+        let run = Task { await store.runChecks() }
+        for await _ in started.stream { break }
+
+        try await waitUntilFinished(store)
+        guard case .instructions = store.coreStartOffer else {
+            Issue.record("\(String(describing: store.coreStartOffer))")
+            gate.continuation.yield()
+            return
+        }
+
+        gate.continuation.yield()
+        await run.value
+        await store.hostHelperConfirmation?.value
+        #expect(store.hostHelper?.status == .installed(
+            version: HostHelperCompatibility.bundled, updateAvailable: false))
+    }
+
+    /// Only the newest run says how the Helper is, and the older one's connection
+    /// still closes.
+    @Test func checkingAgainDuringASecondHealthReadDropsTheOlderOne() async throws {
+        let helper = await ScriptedHelperHost.macOS()
+        let core = ScriptedCoreHost(helper: helper, channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let installing = HostHelperStore(
+            connect: { core.transport() }, bundle: { HostHelperFixture.bundle() }, healthGap: {})
+        await installing.refresh()
+        await installing.install()
+        let gaps = OSAllocatedUnfairLock(initialState: 0)
+        let store = HostOnboardingStore(
+            host: Host(address: "box.example", username: "dev", serverKind: .herdrCore, sessionName: "work"),
+            connector: reaching(core),
+            knownHosts: InMemoryKnownHostsStore(),
+            credentials: credentials,
+            hostHelperHealthGap: {
+                let gap = gaps.withLock { gaps in
+                    gaps += 1
+                    return gaps
+                }
+                // The first run's wait ends only by being cancelled.
+                if gap == 1 { try await Task.sleep(for: .seconds(600)) }
+            })
+        let closes = await core.log.filter { $0 == "close" }.count
+
+        await store.runChecks()
+        let first = try #require(store.hostHelperConfirmation)
+        #expect(store.hostHelper?.reading == .checking)
+
+        await store.runChecks()
+        await first.value
+        await store.hostHelperConfirmation?.value
+
+        #expect(store.hostHelper?.status == .installed(
+            version: HostHelperCompatibility.bundled, updateAvailable: false))
+        #expect(await core.log.filter { $0 == "close" }.count == closes + 2)
     }
 
     @Test func theHelperReadsWhileNoCoreRuns() async throws {

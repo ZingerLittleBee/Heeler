@@ -125,12 +125,38 @@ final class HostHelperStore {
         if reading == .checking { forgetReading(.unavailable(message: reason)) }
     }
 
+    /// What a Mac's check still has to do once the Host has been read, over the
+    /// connection the caller still owns.
+    typealias HealthConfirmation = @MainActor @Sendable () async -> Void
+
     /// Checks the Host over a connection the caller owns, such as the preflight's.
     /// A new check answers for the Host as it is now, so the last action's failure
-    /// goes, unless that action is still running and has yet to report.
-    func refresh(over transport: any HerdrCoreTransport) async {
+    /// goes, unless that action is still running and has yet to report. The second
+    /// health read a LaunchAgent takes comes back for the caller to run, as it is
+    /// over ten seconds away, and until it has run nothing has been concluded.
+    func beginRefresh(over transport: any HerdrCoreTransport) async -> HealthConfirmation? {
         if running == nil { failure = nil }
-        await read(over: transport)
+        let began = actionsDone
+        let installer = installer(transport)
+        do {
+            let first = try await installer.readLoadingAgent()
+            guard first.awaitsSecondHealthRead else {
+                if answers(began) { adopt(first) }
+                return nil
+            }
+            guard answers(began) else { return nil }
+            return { [self] in
+                do {
+                    let read = try await installer.confirmingHealth(of: first)
+                    if answers(began) { adopt(read) }
+                } catch {
+                    if answers(began) { forgetReading(.unavailable(message: Self.message(for: error))) }
+                }
+            }
+        } catch {
+            if answers(began) { forgetReading(.unavailable(message: Self.message(for: error))) }
+            return nil
+        }
     }
 
     /// Checks the Host over a connection of its own.

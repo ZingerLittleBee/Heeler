@@ -106,7 +106,7 @@ struct HostHelperInstaller: Sendable {
     /// LaunchAgent running (ADR 0033). A first read caught between two runs says
     /// nothing against the two after it, so a run that has only just begun gets
     /// one more. Anything that dies at start never gets that pair.
-    private func confirmingHealth(of reading: HostHelperReading) async throws -> HostHelperReading {
+    func confirmingHealth(of reading: HostHelperReading) async throws -> HostHelperReading {
         guard reading.awaitsSecondHealthRead, var probe = reading.probe, var health = probe.health else {
             return reading
         }
