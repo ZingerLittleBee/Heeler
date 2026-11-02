@@ -70,8 +70,8 @@ final class ConsoleStore {
     private(set) var removedWorktreesByAgent: [
         ConsoleAgent.ID: WorktreeRemovalReceipt
     ] = [:]
-    /// Each Host's platform as its connection reported it; Chat, and a core
-    /// Host's uploads, offer themselves only on a Host known to be POSIX. Kept
+    /// Each Host's platform as its connection reported it; a core Host's Chat and
+    /// uploads wait for it, and what they offer then follows `HostCapabilities`. Kept
     /// across reconnects of one catalog entry, so a reconnect does not take an
     /// open Chat away, and asked again on each new connection.
     private(set) var hostPlatforms: [Host.ID: HostPlatform] = [:]
