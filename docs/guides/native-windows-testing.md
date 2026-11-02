@@ -444,7 +444,8 @@ agent discovery and launch, and its `terminal.put` through sshd.
     names a file in `%LOCALAPPDATA%\herdr-core\<session>\files\<address>\`, and
     a program in that Terminal reads it by that path with the same hash. Close the
     Terminal: the file stays (recorded for `terminal.kill`). Note what removes it
-    on your machine, since the file goes only with `terminal.rm`.
+    on your machine: it goes with `terminal.rm` and, by the core's source and not
+    yet run, about a day after the Terminal ended.
 15. Add a 9 MiB file. Heeler says it is over the 8 MiB limit, the draft stays, and
     no file appears in that folder. Add one of exactly 8 MiB: it lands with the same
     hash, and the Host stays connected while it crosses on a slow link. While it

@@ -92,7 +92,8 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
 - Native Windows herdr-core Hosts get the same Console, with these
   differences. Staged Images and Files are written by the core's
   `terminal.put` into its state directory beside the Terminal, which the core
-  removes with the Terminal's record (`terminal.rm`, not `terminal.kill`); this
+  removes with the Terminal's record (`terminal.rm` or its retention, not
+  `terminal.kill`); this
   amends ADR 0018's refusal of uploads for herdr-core Hosts only, since no SFTP
   mode bits are involved. A file over the 8 MiB one put takes is refused before
   anything is sent, and the put is an action on an address, so it keeps to a
@@ -307,4 +308,7 @@ with test clients, not the app.
   profile, with the inherited access of SYSTEM, Administrators and the account
   ([observation](../agents/herdr-compatibility.md)). A program in the Terminal
   reads them by that path. The folder outlives `terminal.kill` and goes with
-  `terminal.rm`, so a kept Terminal's files stay until it is removed.
+  `terminal.rm`. By the core's source at v0.1.16, which was not run, an ended
+  Terminal's record also goes once it passes the core's retention, about a day, or
+  a cap on finished records, and its folder goes with it. The inherited access was
+  seen on one machine, and the core sets none.
