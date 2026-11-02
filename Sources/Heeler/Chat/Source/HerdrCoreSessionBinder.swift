@@ -59,9 +59,10 @@ struct HerdrCoreSessionHint: Equatable, Sendable {
 ///
 /// It starts from the Terminal's foreground process, and goes through descendants
 /// that share the Terminal's `HC_SCOPE` to reach the process behind a launcher.
-/// The scope is the Terminal's own process's: the core keeps it out of the
-/// Terminal's record. Only the variables named here are read, on the Host, and
-/// `HERDR_*` is never among them.
+/// The scope is the Terminal's own process's, since the core keeps it out of the
+/// Terminal's record. On a Mac that withholds that process's environment the
+/// foreground's stands in, or there is none (`readTerminalProcesses`). Only the
+/// variables named here are read, on the Host, and `HERDR_*` is never among them.
 ///
 /// Claude Code's `<config dir>/sessions/<pid>.json` is read by name, so the
 /// `<pid>.<hash>.key` beside it before the prompt is never read or listed.
@@ -93,7 +94,6 @@ struct HerdrCoreSessionBinder: Sendable {
 
     /// What an npm install runs as on Windows, where a program cannot retitle itself.
     static let windowsRuntimes: Set<String> = ["node", "bun"]
-    static let scopeVariable = HerdrCoreTerminalProcesses.scopeVariable
     static let homeVariable = "HOME"
     private static let configVariable = "CLAUDE_CONFIG_DIR"
     /// Past this no registry entry was ever this long, so it is not one.
@@ -227,8 +227,8 @@ struct HerdrCoreSessionBinder: Sendable {
 
     /// One exec's facts about a Terminal: its own process and the foreground's
     /// descendants. Nil when it shows no scope to follow, which on macOS takes more:
-    /// the Terminal's own process is usually `/bin/zsh`, whose environment macOS
-    /// withholds, so the foreground's scope stands in for it. With both withheld, a
+    /// the Terminal's own process is usually `/bin/zsh`, whose environment a Mac with
+    /// SIP on withholds, so the foreground's scope stands in for it. With both withheld, a
     /// walk that answered still says which processes are there, and no process is the
     /// Agent (herdr compatibility).
     func readTerminalProcesses(
