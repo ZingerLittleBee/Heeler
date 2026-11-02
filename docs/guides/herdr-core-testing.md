@@ -344,6 +344,8 @@ conversation before choosing, in light and dark, and attach them to the run's no
 | Codex behind a wrapper | A second default `codex` on that daemon, from a Template and from the desktop app under fish | No list, only `codex resume --no-daemon`. The same with `--no-daemon` on the Template's line says it can't tell, and does not ask to reopen |
 | Herdr TUI | Any Chat on a Herdr TUI Host | No list, whatever it says |
 
+A Mac run of 2026-11-02 with OpenCode 2.0.32 and Pi 1.4.0 passed OpenCode by hand, Read first, One label, Process change, Session switch, Send guard, The in-process limit and Codex by default ([herdr compatibility](../agents/herdr-compatibility.md)). A second device, Grok Build's `/new`, a wrapper and Herdr TUI were not run there, and this box's run is still to come.
+
 ## Pi and Oh My Pi Chat
 
 Each program's Chat on a Linux core Host stays off until its check here passes: add it
