@@ -5,6 +5,7 @@ import Foundation
 /// OpenCode's config directory, and that folder added to OpenCode's plugin list.
 enum OpenCodePluginEdit {
     static let id = "opencode.plugin"
+    static let offerTitle = "Let Chat Follow OpenCode…"
     static let harness = "OpenCode"
     static let folderName = "heeler-opencode"
     /// Relative to the file that lists it, as OpenCode resolves it in both forms.

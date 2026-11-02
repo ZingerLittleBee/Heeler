@@ -475,7 +475,7 @@ struct ChatUnavailableView: View {
                     .accessibilityIdentifier("chat.chooseConversation")
             }
             if let reviewEdit, reason.offersOpenCodePluginEdit {
-                let edit = Button("Let Chat Follow OpenCode…", action: reviewEdit)
+                let edit = Button(OpenCodePluginEdit.offerTitle, action: reviewEdit)
                     .accessibilityIdentifier("chat.unavailable.openCodeEdit")
                 if chooseConversation == nil {
                     edit.buttonStyle(.borderedProminent)
@@ -533,29 +533,58 @@ struct ChatBanner: View {
     var showsProgress = false
     var actionTitle: String?
     var action: (() -> Void)?
+    /// A second way out. The two go on a row of their own, each its own element.
+    var secondaryActionTitle: String?
+    var secondaryAction: (() -> Void)?
+
+    private var hasSecondaryAction: Bool { secondaryActionTitle != nil && secondaryAction != nil }
 
     var body: some View {
-        HStack(spacing: 8) {
-            if showsProgress {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                Image(systemName: systemImage)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                if showsProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: systemImage)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+                Text(text)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !hasSecondaryAction {
+                    primaryAction
+                }
             }
-            Text(text)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .font(.footnote.weight(.semibold))
+            if hasSecondaryAction {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 16) { actions }
+                    VStack(alignment: .leading, spacing: 6) { actions }
+                }
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.regularMaterial, in: .rect(cornerRadius: 12, style: .continuous))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: hasSecondaryAction ? .contain : .combine)
+    }
+
+    @ViewBuilder
+    private var primaryAction: some View {
+        if let actionTitle, let action {
+            Button(actionTitle, action: action)
+                .font(.footnote.weight(.semibold))
+        }
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        primaryAction
+        if let secondaryActionTitle, let secondaryAction {
+            Button(secondaryActionTitle, action: secondaryAction)
+                .font(.footnote.weight(.semibold))
+        }
     }
 }

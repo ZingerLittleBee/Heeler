@@ -1578,7 +1578,7 @@ struct HerdrCoreChatPickTests {
                 !AccessibilityProbe.elements(labeled: choose, in: controller.view).isEmpty
             }
 
-            try await HerdrCoreChatTests.opensASheet(from: "Let Chat Follow OpenCode…", in: controller)
+            try await HerdrCoreChatTests.opensASheet(from: OpenCodePluginEdit.offerTitle, in: controller)
 
             let sheet = try #require(controller.presentedViewController)
             try await rig.waitUntil("the offer") {

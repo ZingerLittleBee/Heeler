@@ -183,6 +183,11 @@ struct AgentChatSurfaceView: View {
             toggleInputMode: nil,
             inputMode: .composer))
         .task { composer.open() }
+        // The screen in the conversation's place offers it, and so does the banner
+        // over a conversation Chat keeps.
+        .sheet(item: $openCodeEditFlow) { flow in
+            OpenCodePluginEditSheet(flow: flow)
+        }
     }
 
     private var presentedSurface: some View {
@@ -617,11 +622,8 @@ struct AgentChatSurfaceView: View {
                 retry: { chat?.retry() },
                 showAgentTerminal: { showAgentTerminal() },
                 chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
-                reviewEdit: { openCodeEditFlow = console.openCodePluginEditFlow(for: agent.id, keepingTo: session.corePin) },
+                reviewEdit: reviewOpenCodeEdit,
                 addExtension: { windowsExtensionFlow = console.windowsExtensionFlow(for: agent.id, keepingTo: session.corePin) })
-            .sheet(item: $openCodeEditFlow) { flow in
-                OpenCodePluginEditSheet(flow: flow)
-            }
             .sheet(item: $windowsExtensionFlow) { flow in
                 HerdrCoreWindowsExtensionSheet(flow: flow)
             }
@@ -630,6 +632,10 @@ struct AgentChatSurfaceView: View {
                 "Not Connected", systemImage: "wifi.slash",
                 description: Text("Chat shows the conversation once this Agent's Host connects."))
         }
+    }
+
+    private func reviewOpenCodeEdit() {
+        openCodeEditFlow = console.openCodePluginEditFlow(for: agent.id, keepingTo: session.corePin)
     }
 
     /// Listing keeps to this detail's core, as everything it does on an address does.
@@ -647,7 +653,8 @@ struct AgentChatSurfaceView: View {
                     ChatBanner(
                         systemImage: banner.systemImage, text: banner.text,
                         showsProgress: banner.showsProgress, actionTitle: banner.actionTitle,
-                        action: banner.action)
+                        action: banner.action, secondaryActionTitle: banner.secondaryActionTitle,
+                        secondaryAction: banner.secondaryAction)
                 }
             }
         }
@@ -666,6 +673,8 @@ struct AgentChatSurfaceView: View {
         var showsProgress = false
         var actionTitle: String?
         var action: (() -> Void)?
+        var secondaryActionTitle: String?
+        var secondaryAction: (() -> Void)?
     }
 
     private var bannerContent: [Banner] {
@@ -692,6 +701,10 @@ struct AgentChatSurfaceView: View {
                 } else if !reason.isWaiting {
                     banner.actionTitle = AgentDetailSurface.terminal.showTitle
                     banner.action = { showAgentTerminal() }
+                }
+                if reason.offersOpenCodePluginEdit {
+                    banner.secondaryActionTitle = OpenCodePluginEdit.offerTitle
+                    banner.secondaryAction = reviewOpenCodeEdit
                 }
             case .departure:
                 banner.actionTitle = AgentDetailSurface.terminal.showTitle
