@@ -1,6 +1,8 @@
-<!-- Translated from docs/guides/pairing.md at ed1e9e66 -->
+<!-- Translated from docs/guides/pairing.md at 371b84c8 -->
 
 # 扫码配对 Host
+
+扫描配对码，通过 SSH 将 iPhone 或 iPad 连接到 herdr Host，随后就能在 Heeler 中查看 Claude Code、Codex 和其他编程 Agent 的状态。
 
 在运行 herdr 的机器上显示配对码（Pairing Code），再用 Heeler 扫描。Host 添加后，密钥和指纹都已配置好，无需填写任何表单。
 
@@ -79,10 +81,11 @@ herdr plugin action invoke heeler.pair
 
 ## 配对之后
 
+- 打开 **Agents** 查看已连接 Host 上的编程 Agent，再打开某个 Agent 使用它的终端或 [Chat](chat.md)。
 - Host 会以你的用户名和这台机器的地址命名。如需重命名，请从 **Hosts** 中打开它并轻点 **Edit**。
 - Heeler 使用这台设备的 Device Key（设备密钥）登录。如需配对另一台 iPhone 或 iPad，请在那台设备上重复步骤 3 和步骤 4。
 - 如果这台机器已经在 **Hosts** 中，再次配对会新增一个条目。在不再需要的条目上向左轻扫并轻点 **Remove** 即可移除。
-- 如需在 Agent 需要你处理或完成任务时收到提醒，请前往 **Settings > Notifications**，依次轻点 **Enable Notifications** 和 **Continue**，并在 iOS 询问时允许通知。然后为该 Host 开启 **Notifications**。
+- 如需在 iPhone 或 iPad 上收到 Agent 等待处理（**Blocked**）或任务完成（**Done**）的通知，请前往 **Settings > Notifications**，依次轻点 **Enable Notifications** 和 **Continue**，并在 iOS 询问时允许通知。然后为该 Host 开启 **Notifications**。
 
 ## 外出时使用
 
