@@ -14,7 +14,9 @@ per pass against primary sources, and a cross-report critique: of 224 checked cl
 were confirmed as written and 134 were corrected, refuted, or unverifiable. Round two
 asked how shipped iOS apps deliver speech to text: four research passes, 81 checked
 claims with 47 not confirmed as written, a survey of hosted Qwen models, and a costed
-comparison of who provides the API. Only surviving facts appear below. **No candidate has
+comparison of who provides the API. Round three asked which integration options are popular:
+four research passes, then adversarial checks in which most checked claims needed correction
+or were refuted. Only surviving facts appear below. **No candidate has
 been tested with real Heeler speech on an iPhone, and no vendor API has been called with
 a real key.** Every ranking here is a hypothesis for the checks in
 [Evaluation before picking defaults](#evaluation-before-picking-defaults).
@@ -200,8 +202,8 @@ separate mode, off by default.
 
 Why DeepInfra and SiliconFlow: they are the only pay-per-use, single-key hosts found for the open 1.7B
 family the owner likes, and each also sells a cleanup model on the same key (see
-[Cleanup](#cleanup)). OpenRouter's 1.7B only forwards to DeepInfra, with a 60 s upstream
-timeout and a minimum top-up. Baseten and FriendliAI are dedicated GPU deployments, which
+[Cleanup](#cleanup)). OpenRouter's 1.7B only forwards to DeepInfra at the same list price, adding a
+5.5% credit fee, a $5 minimum top-up, and another party that sees the audio. Baseten and FriendliAI are dedicated GPU deployments, which
 do not suit a single user's key. fal and Replicate's official organization have no listing
 found, and Together and Fireworks list none on their pricing pages.
 
@@ -214,7 +216,9 @@ Known problems with the choice:
 - Hosts do not disclose quantization, and the owner's Mac runs a 6-bit MLX build, so the
   hosted result may differ from what they use today.
 - If SiliconFlow fails, the mainland fallback is Bailian Beijing `qwen3-asr-flash` at the
-  same price. It uses `chat/completions` with `input_audio`, so it needs a second adapter.
+  same price. It uses `chat/completions` with `input_audio`, so it needs a second adapter, but one
+  request carrying a Base64 data URI is enough: 120 s of WAV is about 5.12 MB after encoding, under its
+  10 MB limit, and no object storage is needed. This adapter comes before any Doubao WebSocket work.
 
 ### API format and custom endpoints
 
@@ -241,7 +245,10 @@ Tencent, and iFlytek have their own routes, and several need extra credentials o
 Bailian and Gemini need `chat/completions` with audio content, plus a region and workspace on Bailian.
 Live streaming has no common protocol at all, so Custom stays upload only. OpenRouter is a partial way
 around this: its catalog lists `elevenlabs/scribe-v2`, `deepgram/nova-3`, and others behind OpenAI-style
-multipart, at the cost of another third party and a 60 s upstream timeout. Per-model behavior is unverified.
+multipart, at the cost of another third party. Its 60 s limit is on processing time, not audio length, so a
+120 s clip needs at least 2x real time. `prompt` is ignored; a `keyterms[]` field exists in its OpenAPI but not
+its guide, and returns 400 on models that lack support. Per-model behavior is unverified. See
+[Popular options](#popular-options).
 
 **Build both.** A Custom entry costs no second adapter, but presets are still needed: they spare people
 from finding a URL, encode the differences above, and name a vendor in the consent. OpenRouter, Groq,
@@ -303,6 +310,39 @@ models.
 | `qwen3-asr-flash` | Upload, up to 5 min and 10 MB | $0.0021 / about $0.0019 per min | Mainland fallback |
 | `qwen3-asr-flash-realtime` | WebSocket, PCM or Opus | $0.0054 / about $0.0028 per min | If live text becomes a hard requirement |
 | `qwen-audio-3.1-asr-flash-message` | WebSocket, 16 kHz only | Token priced, about $0.0014 to $0.0023/min input by estimate, plus output | Alibaba's recommendation for input methods; has `disfluency_removal_enabled`, off by default, and hotwords; furthest from the Qwen3-ASR behavior the owner likes |
+
+### Popular options
+
+Checked on 2026-11-02. Ratings, stars, and gateway rankings are snapshots: none measures voice use, none
+gives a trend, and none shows quality on mixed Chinese and English. Nothing found replaces the plan.
+
+| Option | Evidence | Verdict for Heeler |
+| --- | --- | --- |
+| Vendor-run cloud dictation (Wispr Flow, Willow, Superwhisper, Typeless, Monologue, Aqua) | US ratings: Wispr 18,634, Willow 1,080, Superwhisper 849, Typeless 798 | Reference. No integrable interface. It shows that no-setup is the mass-market norm, which the proxy conditions below cover |
+| BYOK plus Custom (OpenWhispr, VoiceInk, Spokenly, Moshi, FreeFlow, OpenLess) | OpenWhispr 10,522 stars, VoiceInk 6,997, OpenLess 4,024, FreeFlow 3,028; Moshi 591 ratings, Spokenly 68 | Adopt. Peer practice among developer tools rather than mass-market proof, and most stars come from desktop |
+| Chinese input method voice (Sogou, Baidu, WeChat, iFlytek, Doubao) | China store ratings: Sogou about 8.47M, Baidu about 420K, WeChat 130,966, iFlytek 64,520, Doubao 19,109 | Reference. Not an integration layer, usable in the Composer as a suggestion to users |
+| Desktop local dictation (whisper.cpp, Handy, Hex, Parakeet) | whisper.cpp 54,849 stars, Handy about 36,700; Parakeet leads HN dictation comment hits in 2026 (37 vs Wispr 27) | Exclude. Requires a model on a computer or the phone |
+| OpenRouter speech | 29 transcription models; requests to 2026-11-01: Whisper Large V3 Turbo 13.7M, V3 9.78M, MAI-Transcribe 2 5.86M, Scribe v2 2.01M | Custom and evaluation channel, see below |
+| Self-hosted gateways (LiteLLM, New API, One API) | 62,509, 51,163, and 37,306 stars, mostly from LLM use | Exclude. They need a server, and pull requests adding Bailian, Doubao, and MiMo to New API are unmerged |
+| Swift SDKs (MacPaw/OpenAI, SwiftOpenAI, AIProxySwift, swift-ai-sdk) | MacPaw 2,958 stars; swift-ai-sdk 156 stars, largely one maintainer | Exclude. One multipart POST does not justify a dependency |
+| Doubao and Fun-ASR APIs | One person's test of about 10 zh + en clips: Fun-ASR 6.03% CER vs Doubao streaming 13.07%, on realtime interfaces | Evaluate by script, no early adapter. Input method praise does not transfer: API users report mixed results on zh + en |
+| Borrowed subscriptions | Sign in with ChatGPT does not cover the transcription API, and Anthropic prohibits third parties from using subscription credentials | Exclude. Do not borrow Host Codex credentials through undocumented endpoints either |
+
+**Models missing from earlier lists.** `microsoft/mai-transcribe-2` leads OpenRouter's character ranking, and its
+catalog entry claims 60 languages with code switching, at $0.10/hour (about $0.0033 per 120 s, a price Microsoft
+limits to the end of 2026). Its docs do not state Chinese support. `openai/whisper-large-v3-turbo` tops the request
+ranking at $0.00000333/s, under half of Qwen's $0.0000075/s, and FreeFlow and OpenTypeless default to it through Groq.
+The Whisper exclusion was never tested on Heeler speech, so both enter the evaluation.
+
+**OpenRouter stays behind Custom.** For Qwen it is strictly worse than DeepInfra: same upstream, same list price,
+plus the fee and a hop. It cannot back up DeepInfra or replace SiliconFlow in mainland China, and pasting its key
+takes the same steps. OAuth removes only the paste: custom schemes are not accepted as callbacks, so HTTPS needs
+associated domains, and login and top-up remain. Its value is one key reaching Scribe, MAI, Nova-3, and chat models.
+It becomes a preset, pinned to one model and naming the upstream in consent, if either holds:
+
+- A non-Qwen model beats Qwen on the corpus by at least 5 points of identifier retention without worse negation
+  retention (a judgment threshold), and the smoke test passes through OpenRouter.
+- Chinese-speaking TestFlight users cannot pay DeepInfra while OpenRouter's Alipay works.
 
 ### Who provides the API
 
@@ -497,7 +537,8 @@ Do not take:
   today. Add `NSSpeechRecognitionUsageDescription` only if a device test of the Apple engine
   shows it is required (the earlier `SpeechTranscriber` branch omitted it, though Apple's key
   page says to include it for Speech framework use). Keep no "never leaves your phone" wording.
-- Consent screen on first use and on any preset or Custom origin change (5.1.2(i)); a visible recording
+- Consent screen on first use and on any preset or Custom origin change (5.1.2(i)); a gateway's single origin
+  can reach different upstreams by model, so its consent binds to origin and model; a visible recording
   indicator (2.5.14); Review Notes with a limited test key (2.3.1(a)); no
   hidden remote toggle (2.5.19).
 - App Privacy label for BYOK audio is undefined by Apple's text. Declare conservatively or
@@ -523,17 +564,20 @@ No engine choice is final until this runs. The owner records the corpus and prov
 - **Smoke test first, about half a day:** one real key on each preset, plus one Custom endpoint
   through OpenRouter. Confirm SiliconFlow serves 1.7B and honors `language`, WAV upload and file limits,
   the built-in test clip's acceptance and billing, cold starts, and the median time from
-  a 15 s clip to its result. Run both presets on an iPhone on a mainland SIM with no proxy; earlier
+  a 15 s clip and a full 120 s clip to its result, sending the same audio through DeepInfra directly and through
+  OpenRouter to isolate the extra hop. Run both presets on an iPhone on a mainland SIM with no proxy; earlier
   probes went through a proxy and prove nothing about direct access.
 - **Corpus:** 40 to 60 real sentences recorded on an iPhone, by at least the owner, in quiet and
   noisy settings and with AirPods. Cover zh + en with identifiers, paths, and negations, plus
   self-corrections and its counterexamples, and instruction-shaped sentences. The owner's praise for
   Qwen came from a Hollyland wireless USB mic, so the iPhone mic is the real question.
-- **Engines:** both presets with `language=zh` and with it omitted, Alibaba `qwen3-asr-flash` as a
-  reference, Scribe v2 as the strongest alternative, Apple zh-CN with both modules, and keyboard
-  dictation as the baseline.
-- **Metrics:** identifier retention, negation retention, CER, time to final, and retry behavior on a
-  weak network.
+- **Engines:** both presets with `language=zh` and with it omitted; through one OpenRouter key, Scribe v2,
+  MAI-Transcribe 2, Whisper Large V3 Turbo, and Nova-3 once a real key shows `multi` reaches it; by script
+  outside the app, Alibaba `qwen3-asr-flash` and Doubao streaming 2.0; Apple zh-CN with both modules; and
+  keyboard dictation as the baseline.
+- **Metrics:** identifier retention, negation retention, CER, time to final, retry behavior on a
+  weak network, and whether vocabulary reaches the vendor. Score per route, since one model can behave
+  differently through a gateway.
 - **Switch vendors, not the decision, if:** DeepInfra's median for a 15 s clip exceeds about 3 s, or it
   has visible cold starts; the Mac result does not reproduce on hosted 1.7B; or Flash or Scribe clearly
   keeps identifiers and negations better.
@@ -571,6 +615,8 @@ No engine choice is final until this runs. The owner records the corpus and prov
 - Any engine's accuracy on Heeler-style speech. No official or independent same-sentence zh + en ASR data
   exists for Qwen3-ASR.
 - All usage, conversion, and proxy numbers, which are our assumptions.
+- Multipart, `language`, WAV, `keyterms[]`, and latency for each model through OpenRouter, and whether its prompt
+  sampling covers transcription content.
 - ATS and redirect behavior on devices and on iOS 18 to 26; Local Network prompts for custom endpoints.
 - Two concurrent recognizers on an iPhone, and microphone behavior with two foreground iPad apps.
 - OpenAI usage terms and Codex help pages (HTTP 403 during checking).
