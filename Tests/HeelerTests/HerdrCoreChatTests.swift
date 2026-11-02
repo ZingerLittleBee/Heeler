@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Heeler
@@ -189,8 +190,8 @@ struct HerdrCoreChatTests {
             while budget.hasTimeLeft {
                 if condition() { return }
                 try await Task.sleep(for: .milliseconds(10))
-            }
                 budget.charge()
+            }
             Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
         }
 
@@ -199,8 +200,8 @@ struct HerdrCoreChatTests {
             while budget.hasTimeLeft {
                 if await checks >= count { return }
                 try await Task.sleep(for: .milliseconds(10))
-            }
                 budget.charge()
+            }
             Issue.record("Timed out waiting for check \(count)", sourceLocation: sourceLocation)
         }
     }
@@ -410,7 +411,6 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
-    // MARK: When it checks
     // MARK: Choosing a conversation
 
     /// The list opens from what Chat shows when it cannot tell: its screen, and the
@@ -482,6 +482,7 @@ struct HerdrCoreChatTests {
         await controller.dismiss(animated: false)
     }
 
+    // MARK: When it checks
 
     @Test func openingChatChecksOnceAndFollowsTheConversation() async throws {
         let rig = Rig(host: host)
