@@ -543,6 +543,7 @@
 		A643E2BC7BBDD0B7AE75E3DE /* GrokPromptHistoryWitnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5B92065BE7F11009B4284CD /* GrokPromptHistoryWitnessTests.swift */; };
 		A65D5B9E1A885A8287AD762C /* SolvingOrbRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F979754410821940D0C4DEC /* SolvingOrbRendererTests.swift */; };
 		A6747734905576A8861C945A /* AgentFocusCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 370A6461E16FB281B88126B4 /* AgentFocusCoordinator.swift */; };
+		A710DC772852F8D909370ADB /* RecentLaunchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D94843B584DE447215D8DF /* RecentLaunchStore.swift */; };
 		A7C2C6945D44E8693FDFA13C /* GitProbePatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ADBC931C815068BD91E9850 /* GitProbePatchTests.swift */; };
 		A7DC2698D649E2E1571BFB7F /* ConsoleWorkspaceCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6DD633965A760453A3B42F /* ConsoleWorkspaceCards.swift */; };
 		A851F188DFDAA3BA3DF3A430 /* BlockedCardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98E879CB1A1456EE04976137 /* BlockedCardViewTests.swift */; };
@@ -629,7 +630,6 @@
 		C1B2B4664800E7E80FB02EBD /* TerminalFontSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB08528C0328AA9AFE358CE /* TerminalFontSettings.swift */; };
 		C1B5D5204EE37B50D3D42984 /* TerminalZoomSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1187933BD5FAA5064BBF856F /* TerminalZoomSettingsTests.swift */; };
 		C1DF8525317E02A30B73CED0 /* HeelerSSHTransportBehaviorE2ETests+Usage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3825C2BAB7FA5205341073 /* HeelerSSHTransportBehaviorE2ETests+Usage.swift */; };
-		C1F06F7588D4713392223CC5 /* RecentWorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7BD377C8BB7AA8205DD8AFC /* RecentWorkspaceStore.swift */; };
 		C200B60773A2E4E079E08ECF /* DiffPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30E56DB306F9C1F8C537EF3D /* DiffPalette.swift */; };
 		C20F68B0734D7CD413EBB70E /* OverlayPeerChoiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2853DC5E61CF2FC065B82335 /* OverlayPeerChoiceTests.swift */; };
 		C30EE891E4215D9F2D3B7821 /* DeviceKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 016BA41A48C6D6CCCEB10A47 /* DeviceKeyTests.swift */; };
@@ -1295,6 +1295,7 @@
 		764EB7D298185F64BA26C8B2 /* HerdrEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEvents.swift; sourceTree = "<group>"; };
 		768235F2FBD7790800281BC3 /* PinnedAgentsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedAgentsStoreTests.swift; sourceTree = "<group>"; };
 		7683DF30B1A0E9FA0064AAA2 /* HeelerSSHTransportBehaviorE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHTransportBehaviorE2ETests.swift; sourceTree = "<group>"; };
+		76D94843B584DE447215D8DF /* RecentLaunchStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentLaunchStore.swift; sourceTree = "<group>"; };
 		76FEA2FB18C10525E4B4F1D8 /* ConsoleListPresentationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleListPresentationStore.swift; sourceTree = "<group>"; };
 		772B52761FEDCED5A3F0E633 /* ChatTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTimelineView.swift; sourceTree = "<group>"; };
 		775417BCAF4E4110FDEF5A75 /* AgentListFieldsPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentListFieldsPreview.swift; sourceTree = "<group>"; };
@@ -1558,7 +1559,6 @@
 		C681336687D32709DA583BCC /* TerminalByteFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalByteFeed.swift; sourceTree = "<group>"; };
 		C74A32020C9520EB5629B071 /* ConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleView.swift; sourceTree = "<group>"; };
 		C74CE585C09A319294FB635B /* TransportErrorPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportErrorPresentationTests.swift; sourceTree = "<group>"; };
-		C7BD377C8BB7AA8205DD8AFC /* RecentWorkspaceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentWorkspaceStore.swift; sourceTree = "<group>"; };
 		C82C6169E59B0000AA3FF5CC /* RenameSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameSheetView.swift; sourceTree = "<group>"; };
 		C85214981DECFA178F08F06F /* ConsoleHostSectionHeaderPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleHostSectionHeaderPresentation.swift; sourceTree = "<group>"; };
 		C872F1F1C02B1E6609EA94A3 /* NewTerminalStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewTerminalStoreTests.swift; sourceTree = "<group>"; };
@@ -2476,7 +2476,7 @@
 				6CA18FC9DB67FF92D19A1C29 /* NewTerminalView.swift */,
 				B2437B1D6B97638031514C0F /* PinnedAgentsStore.swift */,
 				1A44408BB54B5BE039E49A39 /* PinnedPasteControl.swift */,
-				C7BD377C8BB7AA8205DD8AFC /* RecentWorkspaceStore.swift */,
+				76D94843B584DE447215D8DF /* RecentLaunchStore.swift */,
 				F0D5F47AF6EF0F3C7F789894 /* RemoteDirectoryBrowser.swift */,
 				0CF5CC35768C765BC278C61E /* RemoteDirectoryBrowserView.swift */,
 				C82C6169E59B0000AA3FF5CC /* RenameSheetView.swift */,
@@ -3558,7 +3558,7 @@
 				5B6B840B0B23627A73B482C7 /* RSAKey.swift in Sources */,
 				6DF78601300724A7AD79B882 /* RSAKeyStore.swift in Sources */,
 				C704DD32F915E3C827356276 /* ReadableColumn.swift in Sources */,
-				C1F06F7588D4713392223CC5 /* RecentWorkspaceStore.swift in Sources */,
+				A710DC772852F8D909370ADB /* RecentLaunchStore.swift in Sources */,
 				5CC29F5B93D5BCB828F6D921 /* RemoteDirectoryBrowser.swift in Sources */,
 				230251332943F84DEE2CBFA8 /* RemoteDirectoryBrowserView.swift in Sources */,
 				88084FF5E3CBAF501DAFEF44 /* RemoteFiles+HeelerSSH.swift in Sources */,

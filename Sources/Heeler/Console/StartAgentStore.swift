@@ -143,7 +143,9 @@ final class StartAgentStore {
     /// the form: empty falls back to a kind-derived name (`claude`,
     /// `claude-2`, …), mirroring how the herdr TUI labels unnamed agents.
     var name: String = ""
-    /// The canonical kind selected from the Host availability probe.
+    /// The canonical kind selected from the Host availability probe. Each
+    /// probe defaults it to the kind last started, when this Host has it,
+    /// else the Host's first.
     var selectedAgentKind: SupportedAgentKind?
     /// Optional native arguments, parsed into argv without invoking a shell.
     /// The editor disables smart punctuation at the UIKit input-trait layer;
@@ -228,7 +230,7 @@ final class StartAgentStore {
     /// lands; waiting here keeps the opened detail from flashing its
     /// missing-Agent placeholder over a launch that just succeeded.
     private let awaitAgentVisible: (ConsoleAgent.ID) async -> Void
-    @ObservationIgnored private let recents: RecentWorkspaceStore
+    @ObservationIgnored private let recents: RecentLaunchStore
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
     /// before `state == .starting` disables the button.
@@ -243,7 +245,7 @@ final class StartAgentStore {
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
         origin: LaunchOrigin? = nil,
-        recents: RecentWorkspaceStore = RecentWorkspaceStore()
+        recents: RecentLaunchStore = RecentLaunchStore()
     ) {
         self.hosts = hosts
         self.origin = origin
@@ -357,7 +359,11 @@ final class StartAgentStore {
             let kinds = try await discoverAgentKinds(hostID)
             guard selectedHostID == hostID else { return }
             availableAgentKinds = kinds
-            selectedAgentKind = kinds.first
+            if let remembered = recents.agentKind, kinds.contains(remembered) {
+                selectedAgentKind = remembered
+            } else {
+                selectedAgentKind = kinds.first
+            }
             agentDiscoveryState = .loaded
         } catch is CancellationError {
             guard selectedHostID == hostID else { return }
@@ -437,10 +443,11 @@ final class StartAgentStore {
         do {
             let agent = try await start(request, destination, hostID)
             if case .newWorkspace = destination {
-                recents.remember(agent.workspaceID, for: hostID)
+                recents.rememberWorkspace(agent.workspaceID, for: hostID)
             } else if let workspaceID {
-                recents.remember(workspaceID, for: hostID)
+                recents.rememberWorkspace(workspaceID, for: hostID)
             }
+            recents.rememberAgentKind(kind)
             let startedID = ConsoleAgent.ID(hostID: hostID, paneID: agent.paneID)
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.

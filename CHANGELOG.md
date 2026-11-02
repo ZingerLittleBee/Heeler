@@ -9,6 +9,8 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- New Agent opens on the Agent you started last, when the Host has it
+  installed. (#601)
 - Turn Usage off in Settings to hide its tab and each Host's Usage section and
   stop reading usage from your Hosts. Usage widgets clear their figures and say
   so until you turn it back on. (#597)
