@@ -52,6 +52,11 @@ final class RemoteDirectoryBrowser: Identifiable {
         symbolicLinks.contains(name)
     }
 
+    /// The current folder's own name, by the Host's separators. A root keeps its path.
+    var currentFolderName: String? {
+        currentPath.map(RemoteHostPath.lastComponent(of:))
+    }
+
     /// Whether Back has a parent to return to. The filesystem root has none.
     var canGoBack: Bool {
         guard let currentPath else { return false }

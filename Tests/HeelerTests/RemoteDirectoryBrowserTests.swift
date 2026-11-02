@@ -107,12 +107,14 @@ struct RemoteDirectoryBrowserTests {
         try await waitUntil("Windows home loaded") { browser.currentPath == #"C:\Users\dev"# }
         browser.enter("src")
         try await waitUntil("Windows child loaded") { browser.currentPath == #"C:\Users\dev\src"# }
+        #expect(browser.currentFolderName == "src")
         browser.goBack()
         try await waitUntil("Windows home restored") { browser.currentPath == #"C:\Users\dev"# }
         browser.goBack()
         try await waitUntil("Windows parent loaded") { browser.currentPath == #"C:\Users"# }
         browser.goBack()
         try await waitUntil("Windows drive root loaded") { browser.currentPath == #"C:\"# }
+        #expect(browser.currentFolderName == #"C:\"#)
         #expect(!browser.canGoBack)
         #expect(fake.calls == [#"C:\Users\dev"#, #"C:\Users\dev\src"#,
             #"C:\Users\dev"#, #"C:\Users"#, #"C:\"#])

@@ -183,7 +183,7 @@ struct RemoteDirectoryBrowserView: View {
     private func locationRow(_ path: String) -> some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(path.split(separator: "/").last.map(String.init) ?? "/")
+                Text(browser.currentFolderName ?? path)
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
                 Text(path)
