@@ -89,8 +89,7 @@ struct HerdrCoreMacOSSessionBinderTests {
                 HerdrCoreTerminalRecord.self, from: JSONEncoder().encode(JSONValue.object(fields)))
         }
 
-        /// `exact` nil keeps the list the app ships.
-        func binder(_ program: ChatProgram, exact: Set<ChatProgram>? = Set(ChatProgram.allCases)) -> HerdrCoreSessionBinder {
+        func binder(_ program: ChatProgram, exact: Set<ChatProgram> = Set(ChatProgram.allCases)) -> HerdrCoreSessionBinder {
             let table = table
             let log = log
             var binder = HerdrCoreSessionBinder(
@@ -99,7 +98,7 @@ struct HerdrCoreMacOSSessionBinderTests {
                 files: files.hostFiles(),
                 clearLabels: { await log.clear($0.keys.sorted()) })
             binder.hostSystem = .macOS
-            if let exact { binder.macOSExactPrograms = exact }
+            binder.macOSExactPrograms = exact
             return binder
         }
 
@@ -485,19 +484,6 @@ struct HerdrCoreMacOSSessionBinderTests {
 
         let linux = await rig.linuxBinder(entry.program, startOverride: Self.linuxStarts[entry.program])
         #expect(try await linux.check(try rig.record()) == entry.evidence)
-    }
-
-    /// OpenCode 2.0 from New Agent reached only candidates on the owner's Mac, so as
-    /// shipped its launch label binds nothing there and the list still offers it.
-    @Test func openCodeIsLeftToTheListOnMacOS() async throws {
-        let rig = try await Rig("opencode")
-
-        #expect(try await rig.binder(.opencode, exact: nil).check(try rig.record()) == Self.cannotTell(.opencode))
-        let answer = try await rig.binder(.opencode, exact: nil).candidates(of: try rig.record())
-        guard case .listed = answer else {
-            Issue.record("Expected a list, got \(answer)")
-            return
-        }
     }
 
     /// The one confirmation still works there.

@@ -149,11 +149,9 @@ extension HostCapabilities {
     static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp]
 
     /// The programs a macOS core Host binds exactly, each from reads the macOS
-    /// recordings saw it through (ADR 0034, `host-evidence/macos`) that also bound it
-    /// on the owner's Mac. Any other is left to the candidate list on macOS, and
-    /// binds as before on Linux: OpenCode 2.0 from New Agent reached only candidates
-    /// on that Mac.
-    static let macOSExactCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp]
+    /// recordings saw it through (ADR 0034, `host-evidence/macos`). Taking one out
+    /// leaves it to the candidate list on macOS, and changes nothing on Linux.
+    static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases)
 }
 
 extension Host {
