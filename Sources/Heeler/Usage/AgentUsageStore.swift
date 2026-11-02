@@ -10,6 +10,8 @@ enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
     case outdated
     /// The Helper holds no record of this session's core yet.
     case waitingForCore
+    /// The record and the service both name a Node.js that has gone.
+    case nodeGone
     case notOnWindows
 
     var message: String {
@@ -18,6 +20,8 @@ enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
         case .outdated: "Usage needs a newer Host Helper. Update it from this Host's details."
         case .waitingForCore:
             "The Host Helper has not reached this session's core yet. Start the core if it is not running."
+        case .nodeGone:
+            "The Node.js the Host Helper was set up with has gone from this Host. Repair it from this Host's details."
         case .notOnWindows: "Usage comes with the Host Helper, which is not available on native Windows yet."
         }
     }
@@ -28,6 +32,7 @@ enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
         case .notInstalled: "Needs the Host Helper"
         case .outdated: "Update the Host Helper"
         case .waitingForCore: "Waiting for the core"
+        case .nodeGone: "Repair the Host Helper"
         case .notOnWindows: "Comes with the Host Helper, not available yet"
         }
     }

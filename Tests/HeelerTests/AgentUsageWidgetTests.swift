@@ -55,6 +55,7 @@ struct AgentUsageWidgetTests {
         (AgentUsageHostHelperNeed.notInstalled, "Needs the Host Helper"),
         (AgentUsageHostHelperNeed.outdated, "Update the Host Helper"),
         (AgentUsageHostHelperNeed.waitingForCore, "Waiting for the core"),
+        (AgentUsageHostHelperNeed.nodeGone, "Repair the Host Helper"),
         (AgentUsageHostHelperNeed.notOnWindows, "Comes with the Host Helper, not available yet"),
     ])
     func aCoreHostDropsOldFiguresAndSaysWhatItsHelperNeeds(need: AgentUsageHostHelperNeed, reason: String) throws {

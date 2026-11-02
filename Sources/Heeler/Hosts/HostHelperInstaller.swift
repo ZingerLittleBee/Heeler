@@ -106,7 +106,7 @@ struct HostHelperInstaller: Sendable {
     /// LaunchAgent running (ADR 0033). A first read caught between two runs says
     /// nothing against the two after it, so a run that has only just begun gets
     /// one more. Anything that dies at start never gets that pair.
-    private func confirmingHealth(of reading: HostHelperReading) async throws -> HostHelperReading {
+    func confirmingHealth(of reading: HostHelperReading) async throws -> HostHelperReading {
         guard reading.awaitsSecondHealthRead, var probe = reading.probe, var health = probe.health else {
             return reading
         }
@@ -124,7 +124,7 @@ struct HostHelperInstaller: Sendable {
     }
 
     private func readLaunchdHealth(uid: String) async throws -> HostHelperHealth {
-        let script = HostHelperScript(.launchctl(["print", HostHelperLaunchAgent.service(uid: uid)]), nonce: nonce())
+        let script = HostHelperScript(.launchdHealth(service: HostHelperLaunchAgent.service(uid: uid)), nonce: nonce())
         let result = try await host.runHostHelperScript(script)
         guard let lines = try? HostHelperProbe.framedLines(stdout: result.stdout, nonce: script.nonce) else {
             throw HostHelperError.unreadableHost
@@ -192,7 +192,7 @@ struct HostHelperInstaller: Sendable {
         }
 
         if plan.replacesHelper {
-            try await placeHelper(bundle, layout: layout)
+            try await placeHelper(bundle, plan: plan, over: reading)
         }
         for file in plan.extensionFiles {
             try await write(extensionText, to: file, in: nil, step: "Placing the Pi and Oh My Pi extensions")
@@ -241,7 +241,12 @@ struct HostHelperInstaller: Sendable {
                 _ = try await run(.systemctl(["reset-failed", HostHelperScript.unitName]))
             }
         case .launchd:
-            try await bootOutLaunchAgent(label: record.launchAgentLabel, uid: probe.uid)
+            guard !probe.uid.isEmpty else { throw HostHelperError.unreadableHost }
+            let label = record.launchAgentLabel ?? HostHelperLaunchAgent.label
+            try await checkBootOut(
+                .bootOutAndRemove(
+                    service: "\(HostHelperLaunchAgent.domain(uid: probe.uid))/\(label)",
+                    propertyList: layout.launchAgent))
             try await check(.removeFiles(record.safeFiles), step: "Deleting the files")
         }
         let folders = record.safeFolders.sorted(by: Self.deepestFirst)
@@ -289,9 +294,12 @@ struct HostHelperInstaller: Sendable {
         _ = try? await run(.removeEmptyFolders(folders.sorted(by: Self.deepestFirst)))
     }
 
-    /// Uploads into a staging directory, checks the manifest there, and renames
-    /// into place, so a Host never runs a half-written Helper.
-    private func placeHelper(_ bundle: HostHelperBundle, layout: HostHelperLayout) async throws {
+    /// Uploads into a staging directory, checks the manifest there, stops what is
+    /// running and renames into place, so a Host never runs a half-written Helper.
+    private func placeHelper(
+        _ bundle: HostHelperBundle, plan: HostHelperInstallPlan, over reading: HostHelperReading
+    ) async throws {
+        let layout = plan.layout
         let staging = "\(layout.directory)/\(HostHelperScript.stagingPrefix)\(nonce())"
         try await check(
             .prepareStaging(
@@ -316,11 +324,26 @@ struct HostHelperInstaller: Sendable {
             }
             guard let hashes else { throw HostHelperError.noHashTool }
             guard bundle.manifest.matches(hashes) else { throw HostHelperError.verificationFailed }
+            try await stopRunningCopy(plan, over: reading)
         } catch {
             _ = try? await run(.removeTree(staging))
             throw error
         }
         try await check(.promote(staging: staging, app: layout.app), step: "Putting the Host Helper in place")
+    }
+
+    /// A process goes on running the code it loaded, and the next read would call
+    /// the new files on disk its version. Stopped before they land, whatever cuts
+    /// this install short leaves a state with a way out: launchd holding no agent
+    /// loads the new code at the next read, and a stopped unit offers Repair.
+    private func stopRunningCopy(_ plan: HostHelperInstallPlan, over reading: HostHelperReading) async throws {
+        guard reading.probe?.health?.isLoaded == true else { return }
+        switch plan.layout.manager {
+        case .systemd:
+            try await systemctl(["stop", HostHelperScript.unitName], step: "Stopping the service")
+        case .launchd:
+            try await checkBootOut(.launchctl(["bootout", HostHelperLaunchAgent.service(uid: plan.uid)]))
+        }
     }
 
     private func startService() async throws {
@@ -359,22 +382,18 @@ struct HostHelperInstaller: Sendable {
         }
     }
 
-    /// A LaunchAgent already gone is what this asked for. Other answers stop the
-    /// removal before it deletes anything, since launchd would go on restarting
-    /// an agent whose files have gone.
-    private func bootOutLaunchAgent(label: String?, uid: String) async throws {
-        guard !uid.isEmpty else { throw HostHelperError.unreadableHost }
-        let service = "\(HostHelperLaunchAgent.domain(uid: uid))/\(label ?? HostHelperLaunchAgent.label)"
-        let result = try await run(.launchctl(["bootout", service]))
-        guard Self.bootoutDone.contains(result.exitStatus) else {
+    /// A LaunchAgent already gone is what this asked for. Other answers stop before
+    /// anything is replaced or deleted, since launchd would go on restarting an
+    /// agent whose files have gone.
+    private func checkBootOut(_ step: HostHelperScript.Step) async throws {
+        let result = try await run(step)
+        guard HostHelperLaunchAgent.bootoutDone.contains(result.exitStatus) else {
             throw HostHelperError.stepFailed(step: "Stopping the service", detail: Self.detail(of: result))
         }
     }
 
     /// `launchctl bootstrap`'s "Input/output error", which has several causes.
     private static let bootstrapRefused: Int32 = 5
-    /// Stopped now, or nothing to stop.
-    private static let bootoutDone: Set<Int32> = [0, 3, HostHelperHealth.launchctlNotLoadedStatus]
 
     private func systemctl(_ arguments: [String], step: String) async throws {
         try await check(.systemctl(arguments), step: step)

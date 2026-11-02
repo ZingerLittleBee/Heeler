@@ -404,6 +404,83 @@ struct HostHelperServiceTests {
         #expect(after.status == .installed(version: HostHelperCompatibility.bundled, updateAvailable: false))
     }
 
+    /// An Update from `0.0.1`, ready to run.
+    private func olderHelper() async throws -> HostHelperReading {
+        _ = try await installer.install(
+            over: try await installer.read(), bundle: HostHelperFixture.bundle(version: "0.0.1"))
+        await host.configure { $0.clearLog() }
+        return try await installer.read()
+    }
+
+    /// The stopped service is a state the status shows and Repair can leave,
+    /// where a running one on replaced files would read as healthy.
+    @Test func anUpdateCutOffAfterTheNewFilesAreInPlaceReadsAsStoppedWithRepair() async throws {
+        let older = try await olderHelper()
+        await host.configure { $0.failUploadsNamed = HostHelperScript.unitName }
+        await #expect(throws: HostHelperError.self) {
+            _ = try await installer.install(over: older, bundle: bundle)
+        }
+        await host.configure { $0.failUploadsNamed = nil }
+
+        let reading = try await installer.check()
+
+        guard case .serviceFailed = reading.status else {
+            Issue.record("\(reading.status)")
+            return
+        }
+        #expect(reading.installAction == .repair)
+        #expect(await host.runningCode == nil)
+        _ = try await installer.install(over: reading, bundle: bundle)
+        #expect(await host.runningCode == bundle.manifestData)
+    }
+
+    @Test func anUpdateStopsTheRunningCopyOnlyOnceItsFilesAreChecked() async throws {
+        let older = try await olderHelper()
+
+        _ = try await installer.install(over: older, bundle: bundle)
+
+        let journal = await host.journal
+        let hashed = try #require(journal.firstIndex(of: "hashTree"))
+        let stopped = try #require(journal.firstIndex(of: "systemctl stop \(HostHelperScript.unitName)"))
+        let promoted = try #require(journal.firstIndex(of: "promote"))
+        #expect(hashed < stopped)
+        #expect(stopped < promoted)
+    }
+
+    @Test func aCopyThatWillNotStopKeepsItsFilesAndAnswersTheUpdate() async throws {
+        let older = try await olderHelper()
+        let manifestPath = "\(ScriptedHelperHost.helperDirectory)/app/manifest.json"
+        let manifest = await host.files[manifestPath]
+        await host.configure { $0.systemctlFailure = "Access denied" }
+
+        await #expect(throws: HostHelperError.stepFailed(step: "Stopping the service", detail: "Access denied")) {
+            _ = try await installer.install(over: older, bundle: bundle)
+        }
+
+        #expect(await host.files[manifestPath] == manifest)
+        #expect(await !host.journal.contains("promote"))
+        #expect(await !host.filePaths().contains { $0.contains("/staging-") })
+    }
+
+    @Test func aRunningServiceWhoseNodeHasGoneOffersARepairThatRestartsIt() async throws {
+        _ = try await install()
+        await host.configure {
+            $0.serviceNodeGone = true
+            $0.node = .found(path: "/usr/bin/node")
+            $0.clearLog()
+        }
+        let reading = try await installer.check()
+        #expect(reading.status == .serviceNodeGone)
+        #expect(reading.installAction == .repair)
+
+        let after = try await installer.install(over: reading, bundle: bundle)
+
+        let unit = try #require(await host.files[ScriptedHelperHost.unit]?.contents)
+        #expect(String(decoding: unit, as: UTF8.self).contains("ExecStart=\"/usr/bin/node\""))
+        #expect(await host.journal.contains("systemctl restart \(HostHelperScript.unitName)"))
+        #expect(after.status == .installed(version: HostHelperCompatibility.bundled, updateAvailable: false))
+    }
+
     @Test func aRefusedSystemctlShowsWhatItSaid() async throws {
         await host.configure { $0.systemctlFailure = "Failed to connect to bus: No medium found" }
         await #expect(

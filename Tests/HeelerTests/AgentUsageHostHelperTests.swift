@@ -140,6 +140,42 @@ struct AgentUsageHostHelperTests {
         #expect(await helper.folders["\(Self.directory)/sessions/work"] == 0o700)
     }
 
+    @Test func aRecordAndAServiceOnANodeThatHasGoneAskForRepair() async throws {
+        let helper = ScriptedHelperHost()
+        await helper.installApp()
+        await helper.seedUsage(try AgentUsageFixture.data(), session: "work")
+        await helper.configure {
+            $0.recordNodeGone = true
+            $0.serviceNodeGone = true
+        }
+        let (console, host, _) = console(helper, session: "work")
+        defer { console.setHosts([]) }
+
+        let store = console.agentUsageStore(for: host.id)
+        await store.pullToRefresh()
+
+        #expect(store.state == .hostHelper(.nodeGone))
+        #expect(AgentUsageHostHelperNeed.nodeGone.message.contains("Repair"))
+        #expect(!AgentUsageHostHelperNeed.nodeGone.message.contains("core"))
+        #expect(AgentUsageScope.reason(for: store.state) == "Repair the Host Helper")
+    }
+
+    /// Repaired while no core runs: the record is rewritten at the Helper's next
+    /// connection, so there is nothing more to repair.
+    @Test func aRepairedServiceWaitsForTheCoreToRewriteTheRecord() async throws {
+        let helper = ScriptedHelperHost()
+        await helper.installApp()
+        await helper.seedUsage(try AgentUsageFixture.data(), session: "work")
+        await helper.configure { $0.recordNodeGone = true }
+        let (console, host, _) = console(helper, session: "work")
+        defer { console.setHosts([]) }
+
+        let store = console.agentUsageStore(for: host.id)
+        await store.pullToRefresh()
+
+        #expect(store.state == .hostHelper(.waitingForCore))
+    }
+
     @Test func waitingKeepsReadingWithABackoffUntilTheHelperHasARecord() async throws {
         let report = try AgentUsageFixture.report()
         let reads = OSAllocatedUnfairLock(initialState: 0)
@@ -601,6 +637,9 @@ struct HostHelperUsageAnswerTests {
         }
         #expect(throws: AgentUsageHostHelperNeed.outdated) {
             try AgentUsageProbe.parseHelper(stdout: answer("helper-outdated"), nonce: "n")
+        }
+        #expect(throws: AgentUsageHostHelperNeed.nodeGone) {
+            try AgentUsageProbe.parseHelper(stdout: answer("helper-node-gone"), nonce: "n")
         }
         #expect(AgentUsageStore.state(for: AgentUsageHostHelperNeed.outdated) == .hostHelper(.outdated))
     }

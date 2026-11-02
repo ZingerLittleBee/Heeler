@@ -24,6 +24,11 @@ struct HostHelperScript: Sendable, Equatable {
         case promote(staging: String, app: String)
         case systemctl([String])
         case launchctl([String])
+        /// A LaunchAgent's own fields from `launchctl print`, and its exit status.
+        case launchdHealth(service: String)
+        /// Boots a LaunchAgent out and, once it is gone, deletes its property list
+        /// in the same exec, so no read in between finds a list to load back.
+        case bootOutAndRemove(service: String, propertyList: String)
         case enableLinger(user: String)
         case removeFiles([String])
         /// Removes each folder that is empty, in the order given.
@@ -113,6 +118,23 @@ struct HostHelperScript: Sendable, Equatable {
             lines = ["LC_ALL=C; export LC_ALL", systemctlCommand(arguments)]
         case .launchctl(let arguments):
             lines = ["LC_ALL=C; export LC_ALL", "launchctl \(arguments.map(quote).joined(separator: " "))"]
+        case .launchdHealth(let service):
+            lines = [
+                "LC_ALL=C; export LC_ALL",
+                "__h_print=$(launchctl print \(quote(service)))",
+                "__h_print_status=$?",
+                ownFieldsOfPrint(prefix: ""),
+                "(exit \"$__h_print_status\")",
+            ]
+        case .bootOutAndRemove(let service, let propertyList):
+            let done = HostHelperLaunchAgent.bootoutDone.map(String.init).joined(separator: "|")
+            lines = [
+                "LC_ALL=C; export LC_ALL",
+                "launchctl bootout \(quote(service))",
+                "__h_bootout=$?",
+                "case \"$__h_bootout\" in \(done)) rm -f -- \(quote(propertyList)) ;; esac",
+                "(exit \"$__h_bootout\")",
+            ]
         case .enableLinger(let user):
             // Never waits on an administrator's password: a refusal comes back.
             lines = ["LC_ALL=C; export LC_ALL", "loginctl --no-ask-password enable-linger \(quote(user))"]
@@ -157,6 +179,7 @@ struct HostHelperScript: Sendable, Equatable {
             "__h_dir=\"$__h_data\"/\(quote(helperDirectorySuffix))",
             "__h_app=\"$__h_dir\"/\(quote(appFolderName))",
             "__h_session=\"$__h_dir\"/sessions/\(quote(session))",
+            nodeGoneFunction,
             "__h_usage() {",
             "  [ -f \"$__h_app/main.js\" ] || { printf 'helper-absent\\n'; return 0; }",
             "  [ -f \"$__h_app/usage-query.js\" ] || { printf 'helper-outdated\\n'; return 0; }",
@@ -165,7 +188,16 @@ struct HostHelperScript: Sendable, Equatable {
             "  case \"$__h_node\" in /*) ;; *) \(missing); return 0 ;; esac",
             "  \"$__h_node\" \"$__h_app/usage-query.js\" --tz \(quote(timeZone)) --session \(quote(session))\(flags)",
             "  __h_result=$?",
-            "  case \"$__h_result\" in 126|127) \(missing); return 0 ;; *) return \"$__h_result\" ;; esac",
+            "  case \"$__h_result\" in 126|127) ;; *) return \"$__h_result\" ;; esac",
+            // A service on a Node.js that runs rewrites this record when it next
+            // reaches the core. One on the same lost Node.js never will.
+            "  case \"$(uname -s)\" in",
+            "  Darwin) __h_service_node=$(launchctl print \"user/$(id -u)/\(HostHelperLaunchAgent.label)\" 2>/dev/null | \(programOfPrint)) ;;",
+            "  *) case \"$XDG_CONFIG_HOME\" in /*) __h_config=\"$XDG_CONFIG_HOME\";; *) __h_config=\"$HOME/.config\";; esac",
+            "     __h_service_node=$(\(programOfUnit)) ;;",
+            "  esac",
+            "  if __h_node_gone \"$__h_service_node\"; then printf '\(serviceNodeGoneLine)\\n'; else \(missing); fi",
+            "  return 0",
             "}",
             "__h_usage",
             "__h_result=$?",
@@ -173,6 +205,28 @@ struct HostHelperScript: Sendable, Equatable {
             ") | head -c 1048576",
         ]
     }
+
+    /// What the probe and a Usage read say of a service whose Node.js has gone.
+    static let serviceNodeGoneLine = "helper-node-gone"
+
+    /// Prints `$__h_print` without its nested dictionaries, whose values, the
+    /// service's environment among them, never leave the Host.
+    private static func ownFieldsOfPrint(prefix: String) -> String {
+        "printf '%s\\n' \"$__h_print\" | while IFS= read -r __h_line; do "
+            + "case \"$__h_line\" in \"\t\t\"*) ;; *) printf '\(prefix)%s\\n' \"$__h_line\" ;; esac; done"
+    }
+
+    /// The Node.js a loaded LaunchAgent would start next, from `launchctl print`.
+    private static let programOfPrint = "sed -n 's/^\tprogram = //p'"
+    /// The same from the unit as `HostHelperUnit` wrote it. `__h_node_gone` reads
+    /// nothing into a path that still holds a backslash, which this does not undo.
+    private static let programOfUnit =
+        "sed -n 's/^ExecStart=\"\\(.*\\)\" \".*$/\\1/p' \"$__h_config/systemd/user/\(unitName)\" 2>/dev/null "
+        + "| sed 's/%%/%/g; s/\\$\\$/$/g'"
+    /// True for a path a service names that cannot run now.
+    private static let nodeGoneFunction =
+        "__h_node_gone() { case \"$1\" in *\\\\*) return 1 ;; /*) "
+        + "if [ -f \"$1\" ] && [ -x \"$1\" ]; then return 1; fi; return 0 ;; esac; return 1; }"
 
     /// A tree's hashes as `hash <sum> <path under root>` lines, or one
     /// `hash-tool-missing` line on a Host with neither tool.
@@ -197,13 +251,15 @@ struct HostHelperScript: Sendable, Equatable {
         "printf 'user %s\\n' \"$__h_user\"",
     ] + locations + [
         "( \(NodeToolchainProbe.nodeOnlyScript) )",
+        nodeGoneFunction,
         "if [ \"$__h_kernel\" = Darwin ]; then",
         "__h_uid=$(id -u)",
         "printf 'uid %s\\n' \"$__h_uid\"",
         "if [ -f \"$HOME/Library/LaunchAgents/\(HostHelperLaunchAgent.fileName)\" ]; then printf 'launch-agent-file\\n'; fi",
         "__h_print=$(launchctl print \"user/$__h_uid/\(HostHelperLaunchAgent.label)\" 2>&1)",
         "printf 'launchd-exit %s\\n' \"$?\"",
-        "printf '%s\\n' \"$__h_print\" | while IFS= read -r __h_line; do printf 'launchd %s\\n' \"$__h_line\"; done",
+        ownFieldsOfPrint(prefix: "launchd "),
+        "__h_service_node=$(printf '%s\\n' \"$__h_print\" | \(programOfPrint))",
         "else",
         // A user who has never logged in through logind has no record to show,
         // and the file is what logind itself keeps.
@@ -215,7 +271,9 @@ struct HostHelperScript: Sendable, Equatable {
             + "if __h_unit=$(\(systemctlCommand(["show", unitName, "-p", "LoadState", "-p", "ActiveState", "-p", "Result", "-p", "NRestarts"])) 2>/dev/null); then "
             + "printf '%s\\n' \"$__h_unit\" | while IFS= read -r __h_line; do printf 'unit %s\\n' \"$__h_line\"; done; "
             + "else printf 'unit-unreachable\\n'; fi; else printf 'no-systemd\\n'; fi",
+        "__h_service_node=$(\(programOfUnit))",
         "fi",
+        "if __h_node_gone \"$__h_service_node\"; then printf '\(serviceNodeGoneLine)\\n'; fi",
         "__h_dir=\"$__h_data/\(helperDirectorySuffix)\"",
         "__h_app=\"$__h_dir/\(appFolderName)\"",
         "__h_hex() { od -An -v -tx1 \"$1\" | tr -d ' \\n'; }",
@@ -244,8 +302,9 @@ struct HostHelperHealth: Sendable, Equatable {
     /// Nil under systemd.
     var launchd: Launchd?
 
-    /// What only launchd's answer has. launchd never reports a failed state, and
-    /// one read can catch a run that is about to die (ADR 0033).
+    /// What only launchd's answer has. In a VM of macOS 26.5 launchd reported no
+    /// failed state in the longest watch, about five minutes, and one read could
+    /// catch a run about to die (ADR 0033).
     struct Launchd: Sendable, Equatable {
         var pid: Int?
         /// Whether two reads over ten seconds apart found one run. Nil until asked.
@@ -299,7 +358,7 @@ struct HostHelperHealth: Sendable, Equatable {
             loadState: exitStatus == Self.launchctlNotLoadedStatus ? Self.launchdNotFound : (state == nil ? "unknown" : "loaded"),
             activeState: state ?? "inactive",
             result: result,
-            restarts: max(runs - 1, 0),
+            restarts: max(runs, 1) - 1,
             launchd: Launchd(pid: Int(fields["pid"] ?? "")))
     }
 
@@ -330,6 +389,9 @@ struct HostHelperProbe: Sendable, Equatable {
     var health: HostHelperHealth?
     /// Whether the LaunchAgent's property list is in the user's LaunchAgents folder.
     var launchAgentFilePresent = false
+    /// The Node.js the service names cannot run now. A process already running on
+    /// it carries on, so nothing else about the service shows this.
+    var serviceNodeGone = false
     var appPresent = false
     var manifest: Data?
     var record: Data?
@@ -412,6 +474,7 @@ struct HostHelperProbe: Sendable, Equatable {
                 unitReachable = true
                 let pair = value.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
                 if pair.count == 2 { unit[String(pair[0])] = String(pair[1]) }
+            case HostHelperScript.serviceNodeGoneLine: serviceNodeGone = true
             case "app-present": appPresent = true
             case "manifest": manifest = Self.bytes(hex: value)
             case "record": record = Self.bytes(hex: value)
@@ -479,8 +542,9 @@ struct HostHelperProbe: Sendable, Equatable {
 }
 
 /// The Helper as a LaunchAgent (ADR 0033): one per SSH user, in `user/<uid>`, the
-/// only domain a plain SSH exec can use with or without a desktop login. That
-/// domain refuses a property list without `LimitLoadToSessionType`.
+/// only domain a plain SSH exec could use with or without a desktop login in a VM
+/// of macOS 26.5. There that domain refused a property list without
+/// `LimitLoadToSessionType`.
 enum HostHelperLaunchAgent {
     static let label = "dev.bybee.heeler.host-helper"
     static let fileName = "\(label).plist"
@@ -490,6 +554,10 @@ enum HostHelperLaunchAgent {
     /// not restarted before it has passed, so two reads this far apart cannot
     /// meet the same pid in a Helper that dies at start.
     static let healthGap = Duration.seconds(11)
+    /// `bootout`'s answers for stopped now, or nothing to stop. A VM of macOS 26.5
+    /// answered 3 for a label it did not hold. 113, `launchctl print`'s answer for
+    /// that, was not seen here, and can only mean the same.
+    static let bootoutDone: [Int32] = [0, 3, HostHelperHealth.launchctlNotLoadedStatus]
 
     static func domain(uid: String) -> String { "user/\(uid)" }
     static func service(uid: String) -> String { "\(domain(uid: uid))/\(label)" }

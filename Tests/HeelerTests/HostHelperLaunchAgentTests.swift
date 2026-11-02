@@ -101,6 +101,14 @@ struct LaunchctlPrintParserTests {
         #expect(recovered.isUp)
     }
 
+    /// The Host writes this text, so no number in it may trap.
+    @Test(arguments: ["-9223372036854775808", "-1", "0"])
+    func aRunCountBelowOneCountsNoRestarts(runs: String) {
+        let health = HostHelperHealth(
+            launchctlPrint: "\tstate = running\n\truns = \(runs)\n\tpid = 1", exitStatus: 0)
+        #expect(health.restarts == 0)
+    }
+
     @Test func anAgentTheDomainDoesNotHold() throws {
         let health = HostHelperHealth(
             launchctlPrint: try LaunchctlFixture.text("not-loaded"), exitStatus: 113)
@@ -177,10 +185,14 @@ struct HostHelperMacOSTests {
         #expect(await !host.steps.contains { if case .systemctl = $0 { true } else { false } })
     }
 
-    @Test func theLogIsPrivateAndInTheHelperDirectory() async throws {
-        let host = try await installed()
-        #expect(await host.files["\(directory)/helper.log"]?.mode == 0o600)
-        #expect(await host.folders[directory] == 0o700)
+    /// The write through this seam keeps the directory private. Its 0600 comes
+    /// from the SFTP path, which only a real Host runs.
+    @Test func theLogGoesThroughThePrivateWriteIntoTheHelperDirectory() async throws {
+        let host = await ScriptedHelperHost.macOS()
+        let installer = installer(host)
+        _ = try await installer.install(over: try await installer.read(), bundle: bundle)
+        let log = try #require(await host.writes.first { $0.path == "\(directory)/helper.log" })
+        #expect(log.privateDirectory == directory)
     }
 
     @Test func anUpdateReplacesARunningCopy() async throws {
@@ -199,6 +211,71 @@ struct HostHelperMacOSTests {
         let bootstrap = try #require(journal.firstIndex(of: "launchctl bootstrap user/501 \(agent)"))
         #expect(bootout < bootstrap)
         #expect(await host.agentLoaded)
+    }
+
+    /// An Update from `0.0.1`, ready to run.
+    private func olderHelper() async throws -> (ScriptedHelperHost, HostHelperInstaller, HostHelperReading) {
+        let host = await ScriptedHelperHost.macOS()
+        let installer = installer(host)
+        _ = try await installer.install(
+            over: try await installer.read(), bundle: HostHelperFixture.bundle(version: "0.0.1"))
+        await host.configure { $0.clearLog() }
+        return (host, installer, try await installer.read())
+    }
+
+    /// Past the promote the files are new, so what still ran the old code must
+    /// have stopped: one look at launchd then loads the new code.
+    @Test func anUpdateCutOffAfterTheNewFilesAreInPlaceNeverLeavesTheOldCodeRunning() async throws {
+        let (host, installer, older) = try await olderHelper()
+        await host.configure { $0.failUploadsNamed = HostHelperLaunchAgent.fileName }
+        await #expect(throws: HostHelperError.self) {
+            _ = try await installer.install(over: older, bundle: bundle)
+        }
+        await host.configure { $0.failUploadsNamed = nil }
+
+        let reading = try await installer.check()
+
+        #expect(reading.status == current)
+        #expect(await host.runningCode == bundle.manifestData)
+    }
+
+    @Test func anUpdateStopsTheRunningCopyOnlyOnceItsFilesAreChecked() async throws {
+        let (host, installer, older) = try await olderHelper()
+
+        _ = try await installer.install(over: older, bundle: bundle)
+
+        let journal = await host.journal
+        let hashed = try #require(journal.firstIndex(of: "hashTree"))
+        let stopped = try #require(journal.firstIndex(of: "launchctl bootout \(service)"))
+        let promoted = try #require(journal.firstIndex(of: "promote"))
+        #expect(hashed < stopped)
+        #expect(stopped < promoted)
+    }
+
+    @Test func aCopyThatWillNotStopKeepsItsFilesAndAnswersTheUpdate() async throws {
+        let (host, installer, older) = try await olderHelper()
+        let manifest = await host.files["\(directory)/app/manifest.json"]
+        await host.configure { $0.bootoutRefusal = (1, "Boot-out failed: 1: Operation not permitted") }
+
+        await #expect(throws: HostHelperError.stepFailed(
+            step: "Stopping the service", detail: "Boot-out failed: 1: Operation not permitted")
+        ) {
+            _ = try await installer.install(over: older, bundle: bundle)
+        }
+
+        #expect(await host.files["\(directory)/app/manifest.json"] == manifest)
+        #expect(await !host.journal.contains("promote"))
+        #expect(await !host.filePaths().contains { $0.contains("/staging-") })
+    }
+
+    @Test func aFirstInstallHasNothingToStopBeforeItsFilesGoInPlace() async throws {
+        let host = await ScriptedHelperHost.macOS()
+        let installer = installer(host)
+        await host.configure { $0.bootoutRefusal = (1, "Boot-out failed: 1: Operation not permitted") }
+
+        _ = try await installer.install(over: try await installer.read(), bundle: bundle)
+
+        #expect(await host.runningCode == bundle.manifestData)
     }
 
     @Test func refusesToReplaceANewerHelper() async throws {
@@ -292,12 +369,30 @@ struct HostHelperMacOSTests {
         #expect(await host.filePaths().isEmpty)
     }
 
-    @Test func aBootoutThatFindsNoProcessDoesNotStopTheRemoval() async throws {
+    /// Only `launchctl print` has been seen to answer this, which still can only
+    /// mean launchd holds nothing to stop.
+    @Test func aBootoutAnsweringThatItFindsNoServiceDoesNotStopTheRemoval() async throws {
         let host = try await installed()
-        await host.configure { $0.bootoutRefusal = (3, "Boot-out failed: 3: No such process") }
+        await host.configure { $0.bootoutRefusal = (HostHelperHealth.launchctlNotLoadedStatus, "Could not find service") }
         let installer = installer(host)
         try await installer.remove(over: try await installer.read())
         #expect(await host.files[agent] == nil)
+    }
+
+    /// Another connection reading the Helper in that moment finds no property
+    /// list to load, so nothing outlives the removal in launchd with no record.
+    @Test func aReadRightAfterTheRemovalsBootoutLoadsNothing() async throws {
+        let host = try await installed()
+        let installer = installer(host)
+        let other = HostHelperInstaller(host: host, bundle: { HostHelperFixture.bundle() }, healthGap: {})
+        await host.configure {
+            $0.afterBootout = { _ = try? await other.readLoadingAgent() }
+        }
+
+        try await installer.remove(over: try await installer.read())
+
+        #expect(await !host.agentLoaded)
+        #expect(await !host.journal.contains("launchctl bootstrap user/501 \(agent)"))
     }
 
     @Test func turningOnLingerIsNotAThingOnAMac() async throws {
@@ -326,7 +421,7 @@ struct HostHelperMacOSTests {
             try LaunchctlFixture.text("running"), try LaunchctlFixture.text("running"),
         ])
         #expect(status == current)
-        #expect(await host.steps.filter { if case .launchctl = $0 { true } else { false } }.count == 1)
+        #expect(await host.steps.filter { if case .launchdHealth = $0 { true } else { false } }.count == 1)
     }
 
     @Test func aRestartedAgentThatStaysUpReadsAsRunning() async throws {
@@ -393,7 +488,7 @@ struct HostHelperMacOSTests {
         let host = await ScriptedHelperHost.macOS()
         let reading = try await installer(host).check()
         #expect(reading.status == .notInstalled)
-        #expect(await host.steps.filter { if case .launchctl = $0 { true } else { false } }.isEmpty)
+        #expect(await host.steps.filter { if case .launchdHealth = $0 { true } else { false } }.isEmpty)
     }
 
     @Test func aFailedHelperOffersRepairAndSaysWhatItRead() async throws {
@@ -428,6 +523,75 @@ struct HostHelperMacOSTests {
         #expect(journal.contains("launchctl bootout \(service)"))
         #expect(journal.contains("launchctl bootstrap user/501 \(agent)"))
         #expect(!journal.contains { $0.contains("kickstart") })
+    }
+
+    // MARK: Node.js gone from under a running Helper
+
+    @Test func aRunningHelperWhoseNodeHasGoneOffersRepairAndKeepsNotifying() async throws {
+        let host = try await installed()
+        await host.configure { $0.serviceNodeGone = true }
+        let reading = try await installer(host).check()
+        #expect(reading.status == .serviceNodeGone)
+        #expect(reading.installAction == .repair)
+        let presentation = reading.presentation
+        #expect(presentation.value == "Node.js Moved")
+        #expect(presentation.detail.contains("Repair"))
+        #expect(presentation.needsAttention)
+        let standing = reading.notificationStanding
+        #expect(standing.canRegister)
+        #expect(standing.drivesLiveActivity)
+        #expect(standing.requirement?.hasPrefix("Host Helper: Node.js Moved.") == true)
+    }
+
+    @Test func aRepairSetsTheServiceUpOnTheNodeTheHostHasNow() async throws {
+        let host = try await installed()
+        await host.configure {
+            $0.serviceNodeGone = true
+            $0.node = .found(path: "/opt/homebrew/Cellar/node/25.0.0/bin/node")
+        }
+        let installer = installer(host)
+        let after = try await installer.install(over: try await installer.check(), bundle: bundle)
+        let list = try #require(await host.files[agent]?.contents)
+        let parsed = try #require(try PropertyListSerialization.propertyList(from: list, format: nil) as? [String: Any])
+        #expect((parsed["ProgramArguments"] as? [String])?.first == "/opt/homebrew/Cellar/node/25.0.0/bin/node")
+        #expect(after.status == current)
+        #expect(after.installAction == nil)
+    }
+
+    /// Repair names what is wrong first: a Helper not staying up says so.
+    @Test func aFailedHelperStillReadsAsFailedWhenItsNodeHasGone() async throws {
+        let host = try await installed()
+        let failing = try LaunchctlFixture.text("failed-node-missing")
+        await host.configure {
+            $0.serviceNodeGone = true
+            $0.launchctlPrints = [failing, failing]
+        }
+        guard case .serviceFailed = try await installer(host).check().status else {
+            Issue.record("expected Service Failed")
+            return
+        }
+    }
+
+    @Test func anOlderHelperOffersItsUpdateWhichAlsoFixesTheNode() async throws {
+        let host = await ScriptedHelperHost.macOS()
+        let installer = installer(host)
+        _ = try await installer.install(
+            over: try await installer.read(), bundle: HostHelperFixture.bundle(version: "0.0.1"))
+        await host.configure { $0.serviceNodeGone = true }
+        let reading = try await installer.check()
+        #expect(reading.installAction == .update)
+        #expect(reading.status == .installed(version: PluginVersion(0, 0, 1), updateAvailable: true))
+    }
+
+    @Test func noNodeOnTheHostSaysThatRatherThanOfferARepairItCannotDo() async throws {
+        let host = try await installed()
+        await host.configure {
+            $0.serviceNodeGone = true
+            $0.node = .missing
+        }
+        let reading = try await installer(host).check()
+        #expect(reading.status == .nodeMissing(tooOld: nil))
+        #expect(reading.installAction == nil)
     }
 
     // MARK: A restart of the Mac
@@ -489,7 +653,8 @@ struct HostHelperMacOSTests {
 
     // MARK: Files and notifications
 
-    @Test func registrationsAndUsageReadFromApplicationSupport() async throws {
+    /// Usage's own path is the script's, which test-host-helper-scripts.py runs.
+    @Test func registrationsGoToApplicationSupport() async throws {
         let host = try await installed()
         let files = HostHelperFiles(host: host, session: "default")
         try await files.replaceNotificationRegistration(Data("{}".utf8))
@@ -583,6 +748,39 @@ struct HostHelperStoreMacOSTests {
         #expect(store.failure?.contains("more than one cause") == true)
     }
 
+    /// A check that began before the removal holds a probe of a Helper that has
+    /// gone. The removal's own read back is what the Host now says, however that
+    /// check ends.
+    @Test(arguments: [false, true])
+    func aCheckBegunBeforeARemovalDoesNotOverwriteItsReadBack(checkFails: Bool) async throws {
+        let helper = await ScriptedHelperHost.macOS()
+        let plain = store(helper)
+        await plain.refresh()
+        await plain.install()
+
+        let gate = AsyncStream<Void>.makeStream()
+        let started = AsyncStream<Void>.makeStream()
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let bundle = bundle
+        let store = HostHelperStore(
+            connect: { core.transport() }, bundle: { bundle },
+            healthGap: {
+                started.continuation.yield()
+                for await _ in gate.stream { break }
+                if checkFails { throw ScriptedHelperHost.Failure() }
+            })
+        let check = Task { await store.refresh() }
+        for await _ in started.stream { break }
+
+        await store.remove()
+        #expect(store.status == .notInstalled)
+
+        gate.continuation.yield()
+        await check.value
+        #expect(store.status == .notInstalled)
+        #expect(store.installAction == .install)
+    }
+
     @Test func aHostStillReadsAsCheckingUntilTheSecondRead() async throws {
         let helper = await ScriptedHelperHost.macOS()
         let plain = store(helper)
@@ -643,9 +841,12 @@ struct HostHelperKeychainWordingTests {
         #expect(plugin.readThroughHostHelper() == plugin)
     }
 
+    /// The same answer through the plugin's parser, which a Herdr TUI Host reads.
     @Test func aHerdrTuiHostKeepsItsWords() throws {
-        let plugin = try AgentUsageLimitFixture.report(state: "unavailable", reason: "keychainUnavailable")
-        let limits = try #require(plugin.programs?.last?.usageLimits)
-        #expect(AgentUsageLimitsView.unavailableMessage(limits, program: "claude").contains("Start herdr"))
+        let report = try AgentUsageProbe.parse(stdout: try helperAnswer(), nonce: "n")
+        let program = try #require(report.programs?.first)
+        #expect(AgentUsageLimitsView.unavailableMessage(program.usageLimits, program: "claude").contains("Start herdr"))
+        let account = try #require(program.accounts?.first?.usageLimits)
+        #expect(AgentUsageLimitsView.unavailableMessage(account, program: "claude").contains("Start herdr"))
     }
 }

@@ -270,12 +270,34 @@ Hosts are unchanged.
   before each death, which only growing counters show. A first read that finds
   no such run gets one more read, so a Helper that has just restarted is not
   called failed. Host detail takes these reads, about eleven seconds beside the
-  core's own checks. The notification switch and its gates read once, and so can
+  core's own checks, which finish first and leave the Helper's row checking. The
+  notification switch and its gates read once, and so can
   be wrong about a Helper between runs or caught mid-loop. A move of Node.js
   shows exit 78 and stops the run count; with someone logged in the agent came
   back alone once the path did, but with nobody logged in it was still down
   after almost five minutes, and `launchctl kickstart` blocked until the service
   was booted out. So a repair uses `bootout` then `bootstrap`, in a bounded exec.
+- A process goes on running the code it loaded, so an install that replaces the
+  Helper's files stops the service first, once the upload has passed its check
+  and only if the service is loaded. If the install is cut short after that,
+  launchd holding no agent loads the new code at the next read, and a stopped unit
+  offers Repair. Otherwise the old process would run beside new files, and every
+  later read would call it the new version with nothing to offer. The Helper is
+  down from there until the service starts again. A removal boots the agent out
+  and deletes its property list in one exec, so that a read on another connection
+  cannot load it back with no record left to clean up after it.
+- A Helper already running outlives the Node.js it started from, so neither
+  service manager reports anything when an upgrade removes a versioned path, as
+  Homebrew's and nvm's are, though a restart would fail and Usage, which runs the
+  path the session's record names, cannot read. The probe therefore checks the
+  path the service would start next: `program` in `launchctl print` on a Mac, and
+  `ExecStart` in the unit it wrote on Linux. A path that cannot run reads as
+  **Node.js Moved** with Repair. The Helper is not made to exit over this: it still
+  sends notifications, and nothing else about it is wrong until it stops. Usage
+  asks for the Repair only when the service's path has gone too. When only the
+  record's has, the Helper rewrites that record at its next connection to the
+  core, so Usage waits for the core. The check has run against scripts and fake
+  service managers, and not yet on a Host where Node.js went away.
 - The VM showed a notification that `node` can run in the background and listed
   it under Login Items, with no mention of Heeler. What the list does when the
   user turns it off has not been tried.

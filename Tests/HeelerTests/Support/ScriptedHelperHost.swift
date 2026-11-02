@@ -38,6 +38,12 @@ actor ScriptedHelperHost: HostHelperHost {
     var bootstrapRefusal: (status: Int32, message: String)?
     /// `bootout` answers this, whatever launchd holds.
     var bootoutRefusal: (status: Int32, message: String)?
+    /// Runs once, right after a `bootout` that stopped the agent, as another
+    /// connection reading the Helper at that moment would.
+    var afterBootout: (@Sendable () async -> Void)?
+    /// The manifest of the Helper the service last started, which stays as it was
+    /// until something starts it again. Nil while the service is stopped.
+    private(set) var runningCode: Data?
 
     var platform = HostPlatform.posix
     var kernel = "Linux"
@@ -64,6 +70,13 @@ actor ScriptedHelperHost: HostHelperHost {
     var hashToolMissing = false
     /// Fails the Node.js run that finds the extension folders, with this message.
     var extensionFoldersFailure: String?
+
+    /// The Node.js the service names has gone. Setting the service up again with
+    /// the Host's current Node.js clears it.
+    var serviceNodeGone = false
+    /// The Node.js a session's record names has gone, which only the Helper's next
+    /// connection to that session's core rewrites.
+    var recordNodeGone = false
 
     /// What the Helper's Usage query prints, per session.
     private var usageAnswers: [String: Data] = [:]
@@ -253,6 +266,20 @@ actor ScriptedHelperHost: HostHelperHost {
             lines = answer.lines
             status = answer.status
             stderr = answer.stderr
+        case .launchdHealth:
+            let read = printAnswer()
+            if read.status == 0 {
+                lines = Self.ownFields(ofPrint: read.text)
+            } else {
+                status = read.status
+                stderr = read.text
+            }
+        case .bootOutAndRemove(let service, let propertyList):
+            let answer = applyLaunchctl(["bootout", service])
+            lines = answer.lines
+            status = answer.status
+            stderr = answer.stderr
+            if HostHelperLaunchAgent.bootoutDone.contains(status) { files[propertyList] = nil }
         case .enableLinger:
             if let lingerRefusal {
                 status = 1
@@ -269,8 +296,20 @@ actor ScriptedHelperHost: HostHelperHost {
         case .usageQuery(_, _, let session):
             lines = ["__HEELER_USAGE_BEGIN_\(script.nonce)", usageBody(session: session), "__HEELER_USAGE_END_\(script.nonce):0"]
         }
+        if let afterBootout, isStoppedByBootout(script.step) {
+            self.afterBootout = nil
+            await afterBootout()
+        }
         let framed = (["\(script.nonce) begin"] + lines + ["\(script.nonce) end"]).joined(separator: "\n") + "\n"
         return GitExecResult(stdout: Data(framed.utf8), stderr: Data(stderr.utf8), exitStatus: status)
+    }
+
+    private func isStoppedByBootout(_ step: HostHelperScript.Step) -> Bool {
+        switch step {
+        case .launchctl(let arguments): arguments.first == "bootout" && !agentLoaded
+        case .bootOutAndRemove: !agentLoaded
+        default: false
+        }
     }
 
     /// Acts as the Usage script does: it checks the Helper's files, makes the
@@ -282,6 +321,9 @@ actor ScriptedHelperHost: HostHelperHost {
         folders["\(directory)/sessions"] = 0o700
         folders["\(directory)/sessions/\(session)"] = 0o700
         let missing = #"{"version":1,"runtime":"missing"}"#
+        if recordNodeGone, files["\(directory)/sessions/\(session)/runtime-node"] != nil {
+            return serviceNodeGone ? "helper-node-gone" : missing
+        }
         guard files["\(directory)/sessions/\(session)/runtime-node"] != nil, let report = usageAnswers[session]
         else { return missing }
         return String(decoding: report, as: UTF8.self)
@@ -313,10 +355,18 @@ actor ScriptedHelperHost: HostHelperHost {
             files[Self.unitLink] = File(contents: Data(), mode: 0o777)
         case "disable":
             files[Self.unitLink] = nil
-            if arguments.contains("--now") { activeState = "inactive" }
+            if arguments.contains("--now") {
+                activeState = "inactive"
+                runningCode = nil
+            }
+        case "stop":
+            activeState = "inactive"
+            runningCode = nil
         case "restart":
             activeState = "active"
             result = "success"
+            runningCode = files["\(helperDirectory)/app/manifest.json"]?.contents
+            serviceNodeGone = false
         default:
             break
         }
@@ -324,11 +374,7 @@ actor ScriptedHelperHost: HostHelperHost {
 
     /// launchd's answers, by the spike's records (`docs/agents/herdr-compatibility.md`).
     private func applyLaunchctl(_ arguments: [String]) -> (lines: [String], status: Int32, stderr: String) {
-        let notFound = "Bad request.\nCould not find service"
         switch arguments.first {
-        case "print":
-            let read = printAnswer()
-            return read.status == 0 ? (read.text.components(separatedBy: "\n"), 0, "") : ([], read.status, read.text)
         case "bootstrap":
             if let bootstrapRefusal { return ([], bootstrapRefusal.status, bootstrapRefusal.message) }
             guard arguments.count == 3, arguments[1] == Self.macDomain, let list = files[arguments[2]]?.contents,
@@ -336,17 +382,25 @@ actor ScriptedHelperHost: HostHelperHost {
                 agent["LimitLoadToSessionType"] as? String == "Background"
             else { return ([], 5, "Bootstrap failed: 5: Input/output error") }
             agentLoaded = true
+            runningCode = files["\(helperDirectory)/app/manifest.json"]?.contents
+            serviceNodeGone = false
             return ([], 0, "")
         case "bootout":
             if let bootoutRefusal { return ([], bootoutRefusal.status, bootoutRefusal.message) }
             guard agentLoaded, arguments.count == 2, arguments[1] == Self.macService else {
-                return ([], HostHelperHealth.launchctlNotLoadedStatus, notFound)
+                return ([], 3, "Boot-out failed: 3: No such process")
             }
             agentLoaded = false
+            runningCode = nil
             return ([], 0, "")
         default:
             return ([], 64, "Unrecognized subcommand")
         }
+    }
+
+    /// The script leaves a nested dictionary's values on the Host.
+    private static func ownFields(ofPrint text: String) -> [String] {
+        text.components(separatedBy: "\n").filter { !$0.hasPrefix("\t\t") }
     }
 
     private func printAnswer() -> (text: String, status: Int32) {
@@ -399,7 +453,7 @@ actor ScriptedHelperHost: HostHelperHost {
             if files[Self.launchAgent] != nil { lines.append("launch-agent-file") }
             let read = printAnswer()
             lines.append("launchd-exit \(read.status)")
-            lines += read.text.components(separatedBy: "\n").map { "launchd \($0)" }
+            lines += Self.ownFields(ofPrint: read.text).map { "launchd \($0)" }
         } else if !hasSystemd {
             lines += ["linger \(lingerOn ? "yes" : "no")", "no-systemd"]
         } else if !userManagerReachable {
@@ -412,6 +466,7 @@ actor ScriptedHelperHost: HostHelperHost {
                 "unit Result=\(result)", "unit NRestarts=\(restarts)",
             ]
         }
+        if serviceNodeGone { lines.append("helper-node-gone") }
         let directory = helperDirectory
         if let record = files["\(directory)/installed.json"] { lines.append("record \(Self.hex(record.contents))") }
         let app = "\(directory)/app"
@@ -438,6 +493,8 @@ actor ScriptedHelperHost: HostHelperHost {
         case .promote: "promote"
         case .systemctl(let arguments): "systemctl \(arguments.joined(separator: " "))"
         case .launchctl(let arguments): "launchctl \(arguments.joined(separator: " "))"
+        case .launchdHealth(let service): "launchctl print \(service)"
+        case .bootOutAndRemove(let service, _): "launchctl bootout \(service)"
         case .enableLinger: "enableLinger"
         case .removeFiles(let paths): "removeFiles \(paths.joined(separator: " "))"
         case .removeEmptyFolders(let paths): "removeEmptyFolders \(paths.joined(separator: " "))"

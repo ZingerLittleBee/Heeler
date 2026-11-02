@@ -119,6 +119,9 @@ final class HostOnboardingStore {
     @ObservationIgnored private let hostHelperDidChange: @MainActor () -> Void
     @ObservationIgnored private let hostHelperHealthGap: @Sendable () async throws -> Void
     @ObservationIgnored private let harnessEdits: HarnessConfigEditStore?
+    /// A Mac's second health read, which outlives the run that began it and owns
+    /// that run's connection until it ends.
+    @ObservationIgnored private(set) var hostHelperConfirmation: Task<Void, Never>?
 
     init(
         host: Host,
@@ -154,6 +157,7 @@ final class HostOnboardingStore {
     /// has just said it runs, which a refused channel then cannot contradict.
     func runChecks(coreReportedRunning: Bool = false) async {
         guard phase != .running, pluginAction != .running, coreStart != .running else { return }
+        cancelHostHelperConfirmation()
         phase = .running
         pluginAction = .idle
         report = nil
@@ -196,8 +200,14 @@ final class HostOnboardingStore {
     /// What a finished run never got to read is unknown, not still being checked.
     private func settleUnreadStatuses() {
         if pluginStatus == .checking { pluginStatus = .unavailable }
+        guard hostHelperConfirmation == nil else { return }
         hostHelper?.checkEnded(
             unreadBecause: report?.failureHint ?? "The checks ended before reading this Host.")
+    }
+
+    private func cancelHostHelperConfirmation() {
+        hostHelperConfirmation?.cancel()
+        hostHelperConfirmation = nil
     }
 
     /// Stops a preflight still connecting — through an Overlay Network
@@ -216,6 +226,7 @@ final class HostOnboardingStore {
         resolveFingerprint(false)
         report = .failure(TransportError.cancelled, authMethod: host.authMethod)
         overlayLoginURL = nil
+        cancelHostHelperConfirmation()
         settleUnreadStatuses()
         phase = .finished
     }
@@ -325,10 +336,10 @@ final class HostOnboardingStore {
                 return
             }
             // The Helper does not need a core, so it reads whether one runs or not.
-            // Beside the core's checks, as a Mac's Helper takes over ten seconds
-            // to read and the checks should not wait for it.
+            // Beside the core's checks, and a Mac's second health read, over ten
+            // seconds away, goes on after them: they should not wait for it.
             let helper = hostHelper
-            async let helperRead: Void? = helper?.refresh(over: transport)
+            async let helperRead = helper?.beginRefresh(over: transport)
             do {
                 // Straight after a Start nothing is on its way back: the core
                 // said it runs, so a refused channel is SSH's refusal.
@@ -352,8 +363,14 @@ final class HostOnboardingStore {
                     report = failureReport(error)
                 }
             }
-            _ = await helperRead
-            try? await transport.close()
+            guard let confirmation = await helperRead, !Task.isCancelled else {
+                try? await transport.close()
+                return
+            }
+            hostHelperConfirmation = Task {
+                await confirmation()
+                try? await transport.close()
+            }
         } catch {
             guard !Task.isCancelled else { return }
             captureHostKeyReplacement(error)
