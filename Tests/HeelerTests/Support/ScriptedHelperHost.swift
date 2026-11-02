@@ -266,6 +266,14 @@ actor ScriptedHelperHost: HostHelperHost {
             lines = answer.lines
             status = answer.status
             stderr = answer.stderr
+        case .launchdHealth:
+            let read = printAnswer()
+            if read.status == 0 {
+                lines = Self.ownFields(ofPrint: read.text)
+            } else {
+                status = read.status
+                stderr = read.text
+            }
         case .bootOutAndRemove(let service, let propertyList):
             let answer = applyLaunchctl(["bootout", service])
             lines = answer.lines
@@ -367,9 +375,6 @@ actor ScriptedHelperHost: HostHelperHost {
     /// launchd's answers, by the spike's records (`docs/agents/herdr-compatibility.md`).
     private func applyLaunchctl(_ arguments: [String]) -> (lines: [String], status: Int32, stderr: String) {
         switch arguments.first {
-        case "print":
-            let read = printAnswer()
-            return read.status == 0 ? (read.text.components(separatedBy: "\n"), 0, "") : ([], read.status, read.text)
         case "bootstrap":
             if let bootstrapRefusal { return ([], bootstrapRefusal.status, bootstrapRefusal.message) }
             guard arguments.count == 3, arguments[1] == Self.macDomain, let list = files[arguments[2]]?.contents,
@@ -391,6 +396,11 @@ actor ScriptedHelperHost: HostHelperHost {
         default:
             return ([], 64, "Unrecognized subcommand")
         }
+    }
+
+    /// The script leaves a nested dictionary's values on the Host.
+    private static func ownFields(ofPrint text: String) -> [String] {
+        text.components(separatedBy: "\n").filter { !$0.hasPrefix("\t\t") }
     }
 
     private func printAnswer() -> (text: String, status: Int32) {
@@ -443,7 +453,7 @@ actor ScriptedHelperHost: HostHelperHost {
             if files[Self.launchAgent] != nil { lines.append("launch-agent-file") }
             let read = printAnswer()
             lines.append("launchd-exit \(read.status)")
-            lines += read.text.components(separatedBy: "\n").map { "launchd \($0)" }
+            lines += Self.ownFields(ofPrint: read.text).map { "launchd \($0)" }
         } else if !hasSystemd {
             lines += ["linger \(lingerOn ? "yes" : "no")", "no-systemd"]
         } else if !userManagerReachable {
@@ -483,6 +493,7 @@ actor ScriptedHelperHost: HostHelperHost {
         case .promote: "promote"
         case .systemctl(let arguments): "systemctl \(arguments.joined(separator: " "))"
         case .launchctl(let arguments): "launchctl \(arguments.joined(separator: " "))"
+        case .launchdHealth(let service): "launchctl print \(service)"
         case .bootOutAndRemove(let service, _): "launchctl bootout \(service)"
         case .enableLinger: "enableLinger"
         case .removeFiles(let paths): "removeFiles \(paths.joined(separator: " "))"

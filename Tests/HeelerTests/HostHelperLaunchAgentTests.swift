@@ -421,7 +421,7 @@ struct HostHelperMacOSTests {
             try LaunchctlFixture.text("running"), try LaunchctlFixture.text("running"),
         ])
         #expect(status == current)
-        #expect(await host.steps.filter { if case .launchctl = $0 { true } else { false } }.count == 1)
+        #expect(await host.steps.filter { if case .launchdHealth = $0 { true } else { false } }.count == 1)
     }
 
     @Test func aRestartedAgentThatStaysUpReadsAsRunning() async throws {
@@ -488,7 +488,7 @@ struct HostHelperMacOSTests {
         let host = await ScriptedHelperHost.macOS()
         let reading = try await installer(host).check()
         #expect(reading.status == .notInstalled)
-        #expect(await host.steps.filter { if case .launchctl = $0 { true } else { false } }.isEmpty)
+        #expect(await host.steps.filter { if case .launchdHealth = $0 { true } else { false } }.isEmpty)
     }
 
     @Test func aFailedHelperOffersRepairAndSaysWhatItRead() async throws {

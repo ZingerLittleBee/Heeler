@@ -77,6 +77,7 @@ case "hashTree": step = .hashTree(root: input.path ?? "")
 case "promote": step = .promote(staging: input.staging ?? "", app: input.app ?? "")
 case "systemctl": step = .systemctl(input.arguments ?? [])
 case "launchctl": step = .launchctl(input.arguments ?? [])
+case "launchdHealth": step = .launchdHealth(service: input.service ?? "")
 case "bootOutAndRemove":
     step = .bootOutAndRemove(service: input.service ?? "", propertyList: input.path ?? "")
 case "enableLinger": step = .enableLinger(user: input.user ?? "")
@@ -591,6 +592,30 @@ class MacOSTests(HelperScriptCase):
                 self.assertIn("launchd \tenvironment = {", stdout)
                 self.assertNotIn("OSLogRateLimit", stdout)
                 self.assertNotIn("PATH =>", stdout)
+
+    def test_a_second_health_read_leaves_the_environment_on_the_host_too(self) -> None:
+        self.use_fixture("running.txt")
+        service = f"user/501/{self.LABEL}"
+        for shell in shells():
+            with self.subTest(shell=shell):
+                result = self.run_script(shell, step="launchdHealth", service=service)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("\tstate = running\n", result.stdout)
+                self.assertIn("\tpid = 1116\n", result.stdout)
+                self.assertIn("\tenvironment = {\n", result.stdout)
+                self.assertNotIn("OSLogRateLimit", result.stdout)
+                self.assertNotIn("PATH =>", result.stdout)
+                self.assertIn(f"{NONCE} end", result.stdout)
+
+    def test_a_second_health_read_keeps_launchctls_answer(self) -> None:
+        service = f"user/501/{self.LABEL}"
+        for shell in shells():
+            with self.subTest(shell=shell):
+                result = self.run_script(shell, step="launchdHealth", service=service)
+                self.assertEqual(result.returncode, 113, result.stderr)
+                self.assertIn("Could not find service", result.stderr)
+                self.assertIn(f"{NONCE} end", result.stdout)
+        self.assertIn(f"launchctl print {service}", self.log.read_text())
 
     def test_an_agent_launchd_does_not_hold_reads_as_not_loaded(self) -> None:
         probe = self.probe()

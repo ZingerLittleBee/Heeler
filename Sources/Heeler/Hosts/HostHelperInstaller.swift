@@ -124,7 +124,7 @@ struct HostHelperInstaller: Sendable {
     }
 
     private func readLaunchdHealth(uid: String) async throws -> HostHelperHealth {
-        let script = HostHelperScript(.launchctl(["print", HostHelperLaunchAgent.service(uid: uid)]), nonce: nonce())
+        let script = HostHelperScript(.launchdHealth(service: HostHelperLaunchAgent.service(uid: uid)), nonce: nonce())
         let result = try await host.runHostHelperScript(script)
         guard let lines = try? HostHelperProbe.framedLines(stdout: result.stdout, nonce: script.nonce) else {
             throw HostHelperError.unreadableHost

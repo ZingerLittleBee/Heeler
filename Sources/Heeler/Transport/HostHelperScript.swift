@@ -24,6 +24,8 @@ struct HostHelperScript: Sendable, Equatable {
         case promote(staging: String, app: String)
         case systemctl([String])
         case launchctl([String])
+        /// A LaunchAgent's own fields from `launchctl print`, and its exit status.
+        case launchdHealth(service: String)
         /// Boots a LaunchAgent out and, once it is gone, deletes its property list
         /// in the same exec, so no read in between finds a list to load back.
         case bootOutAndRemove(service: String, propertyList: String)
@@ -116,6 +118,14 @@ struct HostHelperScript: Sendable, Equatable {
             lines = ["LC_ALL=C; export LC_ALL", systemctlCommand(arguments)]
         case .launchctl(let arguments):
             lines = ["LC_ALL=C; export LC_ALL", "launchctl \(arguments.map(quote).joined(separator: " "))"]
+        case .launchdHealth(let service):
+            lines = [
+                "LC_ALL=C; export LC_ALL",
+                "__h_print=$(launchctl print \(quote(service)))",
+                "__h_print_status=$?",
+                ownFieldsOfPrint(prefix: ""),
+                "(exit \"$__h_print_status\")",
+            ]
         case .bootOutAndRemove(let service, let propertyList):
             let done = HostHelperLaunchAgent.bootoutDone.map(String.init).joined(separator: "|")
             lines = [
@@ -199,6 +209,13 @@ struct HostHelperScript: Sendable, Equatable {
     /// What the probe and a Usage read say of a service whose Node.js has gone.
     static let serviceNodeGoneLine = "helper-node-gone"
 
+    /// Prints `$__h_print` without its nested dictionaries, whose values, the
+    /// service's environment among them, never leave the Host.
+    private static func ownFieldsOfPrint(prefix: String) -> String {
+        "printf '%s\\n' \"$__h_print\" | while IFS= read -r __h_line; do "
+            + "case \"$__h_line\" in \"\t\t\"*) ;; *) printf '\(prefix)%s\\n' \"$__h_line\" ;; esac; done"
+    }
+
     /// The Node.js a loaded LaunchAgent would start next, from `launchctl print`.
     private static let programOfPrint = "sed -n 's/^\tprogram = //p'"
     /// The same from the unit as `HostHelperUnit` wrote it. `__h_node_gone` reads
@@ -241,10 +258,7 @@ struct HostHelperScript: Sendable, Equatable {
         "if [ -f \"$HOME/Library/LaunchAgents/\(HostHelperLaunchAgent.fileName)\" ]; then printf 'launch-agent-file\\n'; fi",
         "__h_print=$(launchctl print \"user/$__h_uid/\(HostHelperLaunchAgent.label)\" 2>&1)",
         "printf 'launchd-exit %s\\n' \"$?\"",
-        // Only the service's own fields leave the Host: the values of its nested
-        // dictionaries, its environment among them, are never read.
-        "printf '%s\\n' \"$__h_print\" | while IFS= read -r __h_line; do "
-            + "case \"$__h_line\" in \"\t\t\"*) ;; *) printf 'launchd %s\\n' \"$__h_line\" ;; esac; done",
+        ownFieldsOfPrint(prefix: "launchd "),
         "__h_service_node=$(printf '%s\\n' \"$__h_print\" | \(programOfPrint))",
         "else",
         // A user who has never logged in through logind has no record to show,
