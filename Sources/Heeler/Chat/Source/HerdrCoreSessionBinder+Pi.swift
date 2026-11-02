@@ -56,22 +56,10 @@ extension HerdrCoreSessionBinder {
     /// equally near. Oh My Pi's own broker and worker sit further from the foreground
     /// than it, and a worker takes the same name.
     func piFamilyAgent(in tree: HerdrCoreTerminalProcesses) -> String? {
-        if isOnWindows {
-            return tree.agentOnWindows(isAgent: { $0?.name == program.rawValue }, runtimes: Self.windowsRuntimes)
-        }
-        guard tree.sharesScope(tree.root) else { return nil }
-        var children: [String: [String]] = [:]
-        for pid in tree.descendants where tree.sharesScope(pid) {
-            if let parent = tree.facts[pid]?.parent { children[parent, default: []].append(pid) }
-        }
-        var level = [tree.root]
-        while !level.isEmpty {
-            let named = level.filter { tree.facts[$0]?.name == program.rawValue }
-            if named.count > 1 { return nil }
-            if let found = named.first { return found }
-            level = level.flatMap { children[$0] ?? [] }
-        }
-        return nil
+        let isNamedForIt: (HostProcessReader.Facts?) -> Bool = { $0?.name == program.rawValue }
+        return isOnWindows
+            ? tree.agentOnWindows(isAgent: isNamedForIt, runtimes: Self.windowsRuntimes)
+            : tree.nearestAgent(isAgent: isNamedForIt)
     }
 
     /// The session file `<agent dir>/terminal-sessions/<tty>` names, when this

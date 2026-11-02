@@ -373,15 +373,21 @@ struct HerdrCoreTerminalProcesses: Sendable {
         isAgent: (HostProcessReader.Facts?) -> Bool, followsLauncher: Bool = false,
         isTool: (HostProcessReader.Facts?) -> Bool = { _ in false }, runtimes: Set<String> = []
     ) -> String? {
-        if let found = agent(isAgent: isAgent, followsLauncher: followsLauncher, isTool: isTool),
-            isAgent(facts[found])
-        {
+        if let found = nearestAgent(isAgent: isAgent, followsLauncher: followsLauncher, isTool: isTool) {
             return found
         }
-        func isRuntime(_ process: HostProcessReader.Facts?) -> Bool {
-            process?.name.map(runtimes.contains) ?? false
+        return nearestAgent(isAgent: { $0?.name.map(runtimes.contains) ?? false })
+    }
+
+    /// As ``agent(isAgent:followsLauncher:isTool:skips:)``, without its fallback to the
+    /// foreground: only a process `isAgent` itself says is one.
+    func nearestAgent(
+        isAgent: (HostProcessReader.Facts?) -> Bool, followsLauncher: Bool = false,
+        isTool: (HostProcessReader.Facts?) -> Bool = { _ in false }
+    ) -> String? {
+        agent(isAgent: isAgent, followsLauncher: followsLauncher, isTool: isTool).flatMap {
+            isAgent(facts[$0]) ? $0 : nil
         }
-        return agent(isAgent: isRuntime).flatMap { isRuntime(facts[$0]) ? $0 : nil }
     }
 
     /// The foreground's descendants, whatever scope they carry.
