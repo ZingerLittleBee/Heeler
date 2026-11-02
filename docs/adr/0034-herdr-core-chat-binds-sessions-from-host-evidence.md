@@ -96,7 +96,7 @@ never show or send into a conversation it has guessed.
   `title` event would say the screen left with neither, pushed and with no exec, but
   Chat does not act on it, so Chat keeps showing the conversation OpenCode started
   with until the program is started again, and only a Send says the screen left.
-  This is the product's choice for now, open to review.
+  On 2026-11-02 the owner kept it this way for now.
 - Some variables break session records or Program Status when the core leaks
   them (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SKIP_PROMPT_HISTORY`,
   `CLAUDECODE`, `HERDR_*`, `TMUX`, `STY`, `ZELLIJ`, `CURSOR_TRACE_ID`,
@@ -267,7 +267,9 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   the next Agent wrote in the same moment. Heeler judges labels after its exec
   and compares again before clearing. That leaves one round trip, and a Pi or
   Oh My Pi Agent caught in it reads as cannot tell until its extension next
-  writes, at the next session.
+  writes, at the next session. Closing it needs a compare in the core, or the
+  extension writing its label every turn, a Helper change with a version bump.
+  On 2026-11-02 the owner left it open for now.
 - A confirmed pick for a Pi without the extension, or an OpenCode without the
   plugin, cannot see an in-process `/new`: nothing on the Host changes. Chat shows
   the old conversation until the send guard drops it, and the user guide says so.

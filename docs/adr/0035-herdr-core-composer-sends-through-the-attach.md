@@ -197,8 +197,9 @@ confirm or refine these points with test clients, not the app.
   it). `-NoExit`, `cmd /k` and any other shell line or option get nothing, until
   there is another check before submitting, such as a read of PowerShell's children.
   The button stays, because it is Stop's place too and the notice gives the reason.
-  This narrows #589's Ctrl+C on the `-NoExit` wrapper, and it needs the owner's
-  decision if that wrapper must have Send.
+  This narrows #589's Ctrl+C on the `-NoExit` wrapper. On 2026-11-02 the owner
+  kept the refusal until the Windows check, and accepted Send for a first process
+  that is no shell.
 - Ctrl+C on Windows still goes out when a read shows a plain PowerShell in the
   foreground, though the records have not shown that happen under Heeler's form.
   It says the text may remain under `powershell` too: the observation below is one
