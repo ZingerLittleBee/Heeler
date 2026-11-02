@@ -358,6 +358,11 @@ struct HerdrCoreWindowsComposerTests {
         ["-NoExit", "-Command", "& 'claude'; exit $LASTEXITCODE"],
         ["-Command", "& 'claude'; Read-Host; exit $LASTEXITCODE"],
         ["-NoLogo", "-Command", "& 'claude'; exit $LASTEXITCODE"],
+        ["-Command", "& 'cmd' '/k' 'claude'; exit $LASTEXITCODE"],
+        ["-Command", #"& 'C:\WINDOWS\system32\cmd.exe' '/k' 'claude'; exit $LASTEXITCODE"#],
+        ["-Command", "& 'powershell.exe' '-NoExit' '-Command' 'claude'; exit $LASTEXITCODE"],
+        ["-Command", "& 'pwsh' '-NoExit' 'claude'; exit $LASTEXITCODE"],
+        ["-Command", "& 'bash' '-i'; exit $LASTEXITCODE"],
     ])
     func aPowerShellThatCanOutliveItsProgramGetsNothing(arguments: [String]) async throws {
         let terminal = Self.record(foreground: Self.foreground(argv: [Self.powerShell] + arguments))
