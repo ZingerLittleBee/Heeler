@@ -181,9 +181,9 @@ never show or send into a conversation it has guessed.
   tested on a Windows Host and listed in
   `HostCapabilities.confirmedWindowsCoreChatPrograms`; Codex and OpenCode follow
   later. Native
-  Windows Herdr TUI Hosts stay without Chat. Codex, Grok Build and OpenCode from 2.x
-  are built for Linux from the recordings below, which never saw a signed-in
-  account. Each stays off in `HostCapabilities.confirmedCoreChatPrograms` until its check with a harness
+  Windows Herdr TUI Hosts stay without Chat. Codex, Grok Build, OpenCode from 2.x, Pi
+  and Oh My Pi are built for Linux and macOS core Hosts from the recordings below,
+  which never saw a signed-in account. Each stays off in `HostCapabilities.confirmedCoreChatPrograms` until its check with a harness
   the owner signs in to passes, and one that fails stays off with its observation
   saying why.
 
