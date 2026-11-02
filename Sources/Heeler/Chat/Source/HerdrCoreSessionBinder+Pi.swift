@@ -14,7 +14,7 @@ extension HerdrCoreSessionBinder {
             case .value(let start) = process.start
         else { return cannotTell }
 
-        let hints = await readHints(in: record, pid: pid, start: start)
+        let hints = await readHints(in: record, tree: tree, pid: pid, start: start)
         let places = PiSessionLayout(program: program).places(in: process.variables)
         for hint in hints {
             guard let session = hint.piSession(onWindows: isOnWindows) else { continue }

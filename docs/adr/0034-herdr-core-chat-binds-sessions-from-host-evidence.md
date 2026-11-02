@@ -255,6 +255,13 @@ herdr-core Hosts only.
   only while it is still the Terminal's own process, so a launcher in front of
   it needs the extension. That binding names the launch's session, so it is the
   in-process `/new` case above.
+- A `pi` wrapper script around a real `pi` reads as the Agent, being the nearest of
+  that name, and its child might be a subagent, so nothing tells them apart. Such a
+  Terminal says can't tell, and a label from the child stays, since it would never be
+  written again. Only a process of the Agent's name below the foreground keeps a label
+  this way. No recording shows this tree.
+- A launch's id and the file a label names for it are one conversation, so the label's
+  arrival neither rebuilds what Chat reads nor refuses a Send.
 - `terminal.label` has no compare, so clearing a stale label can remove the one
   the next Agent wrote in the same moment. Heeler judges labels after its exec
   and compares again before clearing. That leaves one round trip, and a Pi or

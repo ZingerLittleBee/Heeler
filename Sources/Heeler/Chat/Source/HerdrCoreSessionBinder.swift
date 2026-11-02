@@ -203,7 +203,7 @@ struct HerdrCoreSessionBinder: Sendable {
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid], case .value(let start) = process.start
         else { return cannotTell }
 
-        let hints = await readHints(in: record, pid: pid, start: start)
+        let hints = await readHints(in: record, tree: tree, pid: pid, start: start)
 
         if case .value(let names) = process.nonEmptyNames {
             for variable in ChatTranscriptOffVariable.allCases where names.contains(variable.rawValue) {
@@ -321,14 +321,18 @@ struct HerdrCoreSessionBinder: Sendable {
     /// The session hint for this process, after clearing one for another. The labels
     /// are read after the exec, not taken from the record the check began on: a
     /// process writes its label once, as its session starts, which may be while the
-    /// exec runs. A failure to clear leaves it for the next check.
+    /// exec runs. A failure to clear leaves it for the next check. For that reason a
+    /// label from a process of the Agent's own name still running below the foreground
+    /// stays and binds nothing: under a wrapper of that name it may be the real Agent,
+    /// or a subagent, and the real one would not write the label again (ADR 0034).
     func readHints(
-        in record: HerdrCoreTerminalRecord, pid: String, start: String
+        in record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses, pid: String, start: String
     ) async -> [HerdrCoreSessionHint] {
         let labels = await currentLabels() ?? record.labels
         guard let value = labels[HerdrCoreSessionHint.sessionLabel] else { return [] }
-        if let hint = HerdrCoreSessionHint(label: value), String(hint.pid) == pid, hint.start == start {
-            return [hint]
+        if let hint = HerdrCoreSessionHint(label: value) {
+            if String(hint.pid) == pid, hint.start == start { return [hint] }
+            if tree.isRunning(String(hint.pid), from: hint.start, underTheNameOf: pid) { return [] }
         }
         try? await clearLabels([HerdrCoreSessionHint.sessionLabel: value])
         return []
@@ -348,6 +352,13 @@ struct HerdrCoreTerminalProcesses: Sendable {
     func sharesScope(_ pid: String) -> Bool {
         guard let scope else { return false }
         return facts[pid]?.variables[Self.scopeVariable] == .value(scope)
+    }
+
+    /// Whether this process, from this start, runs below the foreground under the
+    /// name `agent` goes by.
+    func isRunning(_ pid: String, from start: String, underTheNameOf agent: String) -> Bool {
+        descendants.contains(pid) && sharesScope(pid) && facts[pid]?.start == .value(start)
+            && facts[pid]?.name == facts[agent]?.name
     }
 
     /// On Windows the foreground is the Terminal's PowerShell, which is never the

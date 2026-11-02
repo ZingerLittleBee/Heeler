@@ -252,7 +252,7 @@ extension HerdrCoreSessionBinder {
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "opencode",
             case .value(let start) = process.start
         else { return cannotTell }
-        for hint in await readHints(in: record, pid: pid, start: start) {
+        for hint in await readHints(in: record, tree: tree, pid: pid, start: start) {
             if let session = OpenCodeSessionID(hint.session) {
                 return .bound(sessionID: session.rawValue, transcriptRoot: nil, directory: nil)
             }
