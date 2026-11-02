@@ -53,7 +53,9 @@ The Console lists the core's Agents and Terminals, each in a card named for its 
 
 **Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stage through the core, not over SFTP, one file of up to 8 MiB at a time. Heeler refuses a larger one before sending anything, and your draft stays as it was. The path the core gives goes in your draft and on the clipboard, and a program in that Terminal can read it. Nothing reaches the Agent until you [send](#send). The file is in `%LOCALAPPDATA%\herdr-core\<session>\files\<terminal>\`. It inherits its access from your profile, since the core sets none: on the one Windows machine checked so far, that was SYSTEM, Administrators and your account, and no one else. It stays after the Terminal is closed, and goes when the core removes the Terminal's record: with `terminal.rm`, and by the core's source, not yet run, about a day after the Terminal ended.
 
-[Send](#send) and [Stop](#stop) work there too, with one limit Send describes. [Chat](#chat-on-windows) opens only for programs that have passed their check there, and so far none has. Not offered there yet, whatever the Host reads: Rename, Worktrees, Changes and Skills. The Host Helper reads **Not Available**.
+[Send](#send) and [Stop](#stop) are built for there too, with the limits Send describes. [Chat](#chat-on-windows) opens only for programs that have passed their check there, and so far none has. Not offered there yet, whatever the Host reads: Rename, Worktrees, Changes and Skills. The Host Helper reads **Not Available**.
+
+Heeler's own connection, launch, staging and Composer on Windows have not yet run on a real machine, so this section says what they are built to do.
 
 ## Console
 
@@ -114,7 +116,7 @@ The submit goes out within two seconds of the paste or not at all, so a slow lin
 | **stayed in the Agent's input unsubmitted** | The Agent still holds the terminal, and the check took longer than two seconds | Finish it in the terminal, or clear it there before you send again |
 | **no longer in the terminal** | The Agent left and a shell took over. Send pressed Ctrl+C once, which made the shell drop the text unrun | Send again once the Agent is back |
 | **may still be in the terminal** | The Agent left and something else holds the terminal. Under a shell Send pressed Ctrl+C once, and what zsh or PowerShell does with that is not confirmed yet | Check the terminal before you press anything there |
-| **not accepting a paste** | The program has bracketed paste off, so nothing was written | Send again when it is back at its input |
+| **not accepting a paste** | The program has bracketed paste off, so nothing was written | Send again when it is back at its input. On Windows, if this repeats at the Agent's own input, type it with Direct Input |
 | **keeps a shell open** | On Windows, this terminal's shell stays after its Agent exits, so Send cannot tell which would get your message. Nothing was written | Type it with Direct Input |
 
 While the Agent is **Blocked**, Send only pastes. Use the tools keyboard to submit or cancel.
@@ -124,6 +126,8 @@ If the Host does not answer a step, Send cannot tell what reached the program. T
 Send appears once the connection has told Heeler the Host's platform, a moment after the detail opens.
 
 On a Windows Host, an Agent Heeler started runs under Windows PowerShell, and when it exits its Terminal ends, so nothing stays behind to take Enter. A Terminal that keeps a shell open after its Agent exits, as one the Herdr desktop app started does, looks the same to Heeler before and after, so Send pastes nothing there.
+
+Whether an Agent's bracketed paste reaches Heeler through Windows' pseudo console has not been seen yet. If it does not, every Send there reads **not accepting a paste**, the draft stays, and sending again will not help.
 
 ## Images and files
 
@@ -295,7 +299,7 @@ On a native Windows core Host, each program's Chat turns on only once it has pas
 
 A native Windows Herdr TUI Host offers no Chat for any Agent.
 
-Once a program's Chat is on, Heeler finds its conversation the same way: from the Agent's own process, here usually a child of the Terminal's PowerShell, and its creation time. Send, Stop and Blocked answers work as above, with the limit [Send](#send) describes for a Terminal that keeps a shell open.
+Once a program's Chat is on, Heeler finds its conversation the same way: from the Agent's own process, here usually a child of the Terminal's PowerShell, and its creation time. Send, Stop and Blocked answers work as above, with the limits [Send](#send) describes.
 
 Windows has no Host Helper, so **Can't Tell the Conversation** never points you to one. Pi and Oh My Pi name their conversation through Heeler's extension, which you add from there:
 
