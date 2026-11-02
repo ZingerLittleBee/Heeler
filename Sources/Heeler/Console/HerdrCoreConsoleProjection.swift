@@ -1582,6 +1582,17 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         setPickLabel(value, at: paneID, on: list.core)
     }
 
+    /// An Agent that left for a shell ends its Chat in the pass that would have asked
+    /// for a check, so its pick's label gets one of its own. The check judges it: a
+    /// suspended Agent also hands the shell the foreground, and its process still
+    /// holds the pick.
+    func settleChatPick(paneID: String, program: ChatProgram) {
+        guard terminalRecord(at: paneID)?.labels[HerdrCoreSessionHint.pickLabel] != nil else { return }
+        Task { [weak self] in
+            _ = try? await self?.checkChatSession(paneID: paneID, program: program)
+        }
+    }
+
     /// The removal a send guard's verdict started last.
     private(set) var pickRemoval: Task<Void, Never>?
 

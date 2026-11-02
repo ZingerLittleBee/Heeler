@@ -2188,6 +2188,7 @@ final class ConsoleStore {
                 store.end()
                 chatStores[id] = nil
                 chatSessionEventRevisions[id] = nil
+                core?.settleChatPick(paneID: id.paneID, program: store.program)
             }
         }
     }

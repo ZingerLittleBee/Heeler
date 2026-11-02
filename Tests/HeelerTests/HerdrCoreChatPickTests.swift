@@ -1390,6 +1390,50 @@ struct HerdrCoreChatPickTests {
         rig.store.setHosts([])
     }
 
+    // MARK: An Agent that quits to its shell
+
+    private static func shellForeground() -> Data {
+        event(
+            sequence: 60, type: "foreground",
+            data: foreground(argv: [.string("bash")], name: "bash", pid: shell))
+    }
+
+    /// The Agent leaves the list in the pass that would have asked for a check, and its
+    /// store ends with it. The label does not stay behind for the Terminal's life.
+    @Test func quittingToTheShellRemovesThePicksLabel() async throws {
+        let (rig, chat) = try await following()
+
+        await rig.transport.processTable.remove(Self.pid)
+        await rig.transport.deliver(Self.shellForeground())
+
+        try await Self.waitForClear(rig)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// Ctrl-Z also hands the shell the foreground, with the Agent's process still under
+    /// it, and that process is what the pick names.
+    @Test func aSuspendedAgentKeepsThePicksLabel() async throws {
+        let (rig, chat) = try await following()
+        let checks = await rig.transport.processTable.requests.count
+
+        await rig.transport.deliver(Self.shellForeground())
+
+        try await rig.waitUntil("the Agent to leave the list") { rig.store.agents.isEmpty }
+        var budget = PollBudget(.seconds(5))
+        while budget.hasTimeLeft, await rig.transport.processTable.requests.count == checks {
+            await Task.yield()
+            budget.charge()
+        }
+        let core = try #require(rig.store.coreProjection(on: host.id))
+        #expect(
+            try await core.checkChatSession(paneID: "t1", program: .grok)
+                == .picked(sessionID: Self.grokHeld, transcriptRoot: "\(Self.home)/.grok"))
+        #expect(await rig.pickWrites.isEmpty)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     /// Exact evidence needs no guard: a send it does not find proves nothing about
     /// which conversation the Agent is in.
     @Test func anExactBindingHasNoSendGuard() async throws {
