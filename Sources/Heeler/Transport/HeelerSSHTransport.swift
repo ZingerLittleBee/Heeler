@@ -347,7 +347,7 @@ actor HeelerSSHTransport: Transport {
     private let herdrLauncher: HerdrLauncher?
     /// A herdr-core Host's connection, whose Chat also reads on native Windows.
     private let readsChatFilesOnWindows: Bool
-    private let channelAdmission: SSHChannelAdmission
+    nonisolated let channelAdmission: SSHChannelAdmission
     private let environment = SharedAsyncOperation<RemoteHostEnvironment>(cachesSuccess: true)
     private let windowsBridgeCheck = SharedAsyncOperation<Void>(cachesSuccess: true)
     private var detectedWindows = false

@@ -500,7 +500,7 @@ struct HerdrCoreWindowsTransportTests {
 
         // A second link would be a mistake here, and it would wait for the slot.
         let second = Task { try await admission.admitCoreExec { FakeCoreSocket() } }
-        await Task.yield()
+        await waitForParkedRequest(on: admission)
         #expect(await admission.snapshot().connection == 1)
 
         try await exec.close(timeout: .seconds(1))
@@ -508,6 +508,27 @@ struct HerdrCoreWindowsTransportTests {
         #expect(await admission.snapshot().connection == 1)
         try await reopened.close(timeout: .seconds(1))
         #expect(await admission.snapshot().connection == 0)
+    }
+
+    /// The real transport's link takes that slot: with it held, the exec waits
+    /// instead of opening, and only then finds this connection never connected.
+    @Test func theRealTransportsLinkExecWaitsForTheEventsSlot() async throws {
+        let transport = HeelerSSHTransport(
+            connection: .neverConnectedForTesting(serverIdentification: "SSH-2.0-OpenSSH_for_Windows_9.5"),
+            socketPath: "/never/opened")
+        let admission = transport.channelAdmission
+        let held = try await admission.admitCoreExec { FakeCoreSocket() }
+
+        let link = Task { try await transport.openCoreLinkExec(command: "connect") }
+        await waitForParkedRequest(on: admission)
+
+        try await held.close(timeout: .seconds(1))
+        await #expect(throws: (any Error).self) { _ = try await link.value }
+        #expect(await admission.snapshot().events == 0)
+    }
+
+    private func waitForParkedRequest(on admission: SSHChannelAdmission) async {
+        while await admission.waitingRequests() == 0, !Task.isCancelled { await Task.yield() }
     }
 
     /// Its budget leaves the other eight slots for what really is a session.
