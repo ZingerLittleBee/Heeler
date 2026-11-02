@@ -1506,7 +1506,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         memory.coreID(for: host.id).map { ChatCacheKey.coreScope(session: host.sessionName, coreID: $0) }
     }
 
-    /// One check of the Agent's process: one exec and at most one SFTP read.
+    /// One check of the Agent's process: one exec and at most one SFTP read, past a
+    /// Codex holding several rollouts (ADR 0034).
     func checkChatSession(paneID: String, program: ChatProgram) async throws -> ChatSessionEvidence {
         // No inventory is no evidence either way: a Chat keeps what it shows and
         // the snapshot's fresh inventory asks again. A Send here says it couldn't
