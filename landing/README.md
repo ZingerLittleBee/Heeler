@@ -107,9 +107,13 @@ and embedded figures are `noindex`. Canonical URLs match Workers' clean paths.
 The homepage's JSON-LD uses the same FAQ answers as its visible content, with
 no invented ratings, price, company identity, or macOS app support.
 
-Sharing still uses the existing 1024-square logo and Twitter's `summary` card.
-A designed 1200×630 card remains a separate asset task; only switch to
-`summary_large_image` when that asset exists, and update its dimensions and alt.
+Sharing uses `public/social-card.jpg`, a 1200×630 card with the Heeler mark,
+iPhone/iPad product description, and the real Agent List screenshot, and
+Twitter's `summary_large_image` card. The screenshot comes from
+`src/assets/screens/console-iphone.png`: crop 1206×1690 from the top-left,
+resize to 398×558, and place at (750, 36), without redrawing the UI. The docs
+site has an identical copy. When replacing it, update both copies together
+and keep the metadata dimensions and alt accurate.
 
 Browser icons are resized from `public/logo.png`: PNG at 48 (`favicon`), 180
 (`apple-touch-icon`), 192 and 512 (`icon-192`, `icon-512`) pixels, plus an ICO
@@ -119,9 +123,14 @@ favicon.ico`, then copy them to `docs-site/public/`. The manifest uses browser
 display mode, not an offline/PWA promise.
 
 `public/_headers` caches only fingerprinted `/_astro/*` assets immutably.
+The build writes `_redirects` from the published HTML pages, making their
+`.html`, trailing-slash, and `/index` aliases permanent 301 redirects to the
+clean canonical URLs. Unknown paths and the noindex 404 page are not redirected.
 Use `npx wrangler dev --local` to verify headers and clean-URL routing without
-deploying. Managed robots rules, HTTP-to-HTTPS redirects, and the platform's
-307 HTML normalization are hosting policy, not controlled by the page metadata.
+deploying. Managed robots rules and HTTP-to-HTTPS redirects still require
+Cloudflare review. Direct `/404` access remains a 200 asset with noindex;
+unmatched paths return 404. Changing that direct asset's status would require
+Worker runtime logic, not a static redirect rule.
 
 ## Deployment
 

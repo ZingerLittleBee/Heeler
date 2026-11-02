@@ -263,9 +263,15 @@ which would hide that directive. Its `/*.md` splat includes `/zh/` paths.
 Only fingerprinted `/_astro/*` assets get immutable caching. Verify these
 rules with `pnpm exec wrangler dev --local`, not Astro preview.
 
+The build writes `_redirects` from published HTML pages in both languages.
+Their `.html`, trailing-slash, and `/index` aliases redirect directly to the
+clean canonical URL with status 301. Unknown paths keep their 404 status.
+Direct `/404` access remains a 200 asset with noindex; static redirect rules
+cannot change that response to 404 without introducing Worker runtime logic.
+
 `rehypeGuideImages` uses real screenshot dimensions from `astro.config.mjs`
 to reserve their aspect ratios and add lazy loading without changing the
-GitHub guides or full-resolution lightbox links. Icons and the square sharing
+GitHub guides or full-resolution lightbox links. Icons and the 1200×630 sharing
 image follow [the landing site's asset notes](../landing/README.md#search-and-sharing).
 Managed robots and HTTPS redirect policy still require Cloudflare review.
 

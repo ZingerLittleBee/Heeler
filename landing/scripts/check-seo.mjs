@@ -8,6 +8,11 @@ const origin = 'https://heeler.bybee.dev';
 for (const [file, route] of [['index.html', '/'], ['ipad.html', '/ipad'], ['404.html', '/404']]) {
   const html = read(file);
   assert.match(html, /name="apple-itunes-app" content="app-id=6797263135"/);
+  assert.ok(html.includes(`property="og:image" content="${origin}/social-card.jpg"`), file);
+  assert.match(html, /property="og:image:width" content="1200"/);
+  assert.match(html, /property="og:image:height" content="630"/);
+  assert.match(html, /name="twitter:card" content="summary_large_image"/);
+  assert.ok(html.includes(`name="twitter:image" content="${origin}/social-card.jpg"`), file);
   assert.equal([...html.matchAll(/<h1\b/g)].length, 1, file);
   const canonicals = [...html.matchAll(/<link rel="canonical" href="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(canonicals, route === '/404' ? [] : [`${origin}${route}`], file);
@@ -36,7 +41,13 @@ const sitemap = read('sitemap-0.xml');
 assert.deepEqual([...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]).sort(), [`${origin}/`, `${origin}/ipad`]);
 assert.ok(read('sitemap-index.xml').includes(`${origin}/sitemap-0.xml`));
 assert.ok(read('robots.txt').includes(`Sitemap: ${origin}/sitemap-index.xml`));
+assert.ok(existsSync(new URL('social-card.jpg', dist)));
+assert.deepEqual(new Set(read('_redirects').trim().split('\n')), new Set([
+  '/index / 301', '/index.html / 301',
+  '/ipad.html /ipad 301', '/ipad/ /ipad 301',
+  '/ipad/index /ipad 301', '/ipad/index.html /ipad 301',
+]));
 for (const icon of JSON.parse(read('site.webmanifest')).icons) {
   assert.ok(existsSync(new URL(icon.src.slice(1), dist)), icon.src);
 }
-console.log('check-seo: 3 pages, 2 canonical sitemap URLs, app metadata, FAQ, and linked assets passed.');
+console.log('check-seo: 3 pages, 2 canonical sitemap URLs, permanent redirects, social cards, app metadata, FAQ, and linked assets passed.');

@@ -163,6 +163,9 @@ const origin = 'https://docs.heeler.bybee.dev';
 const sitemap = readFileSync(join(dist, 'sitemap-0.xml'), 'utf8');
 const sitemapURLs = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]);
 const indexable = [...expected].filter((route) => route !== '/404').map((route) => `${origin}${route}`);
+const redirects = new Set(readFileSync(join(dist, '_redirects'), 'utf8').trim().split('\n'));
+if (!existsSync(join(dist, 'social-card.jpg'))) failures.push('missing social sharing image');
+if (redirects.size !== indexable.length * 4 - 2) failures.push('redirects must cover only published indexable page aliases');
 if (JSON.stringify([...sitemapURLs].sort()) !== JSON.stringify(indexable.sort())) {
   failures.push('sitemap must contain exactly the clean canonical URLs, without 404 or non-HTML endpoints');
 }
@@ -175,6 +178,21 @@ for (const [route, { html }] of pages) {
   }
   if (noindex || canonical.length !== 1 || canonical[0] !== `${origin}${route}`) failures.push(`${route}: incorrect canonical or indexing directive`);
   if (!html.includes('name="apple-itunes-app" content="app-id=6797263135"')) failures.push(`${route}: missing Smart App Banner`);
+  for (const metadata of [
+    `property="og:image" content="${origin}/social-card.jpg"`,
+    'property="og:image:width" content="1200"',
+    'property="og:image:height" content="630"',
+    'name="twitter:card" content="summary_large_image"',
+    `name="twitter:image" content="${origin}/social-card.jpg"`,
+  ]) {
+    if (!html.includes(metadata)) failures.push(`${route}: missing social metadata ${metadata}`);
+  }
+  const aliases = route === '/'
+    ? ['/index', '/index.html']
+    : [`${route}.html`, `${route}/`, `${route}/index`, `${route}/index.html`];
+  for (const alias of aliases) {
+    if (!redirects.has(`${alias} ${route} 301`)) failures.push(`${alias}: missing permanent redirect to ${route}`);
+  }
   const en = route === '/zh' ? '/' : route.replace(/^\/zh\//, '/');
   const zh = en === '/' ? '/zh' : `/zh${en}`;
   for (const [lang, target] of [['en', en], ['zh-CN', zh], ['x-default', en]]) {

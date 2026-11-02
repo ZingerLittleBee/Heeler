@@ -23,8 +23,10 @@ const ogAlternateLocale = locale === 'zh' ? 'en_US' : 'zh_CN';
 const canonical = new URL(path, Astro.site);
 const enUrl = new URL(localePath(path, 'en'), Astro.site);
 const zhUrl = new URL(localePath(path, 'zh'), Astro.site);
-const ogImage = new URL('/logo.png', Astro.site);
-const imageAlt = locale === 'zh' ? 'Heeler 应用图标' : 'Heeler app icon';
+const ogImage = new URL('/social-card.jpg', Astro.site);
+const imageAlt = locale === 'zh'
+  ? 'Heeler 的 iPhone Agent List 截图。通过 SSH 在 iPhone 和 iPad 上使用 Claude Code 和 Codex。'
+  : 'Heeler Agent List on iPhone. Your agents. On iPhone and iPad. Claude Code, Codex, SSH.';
 const homeUrl = new URL(localePath('/', locale), Astro.site).href;
 const structuredData = {
   '@context': 'https://schema.org',
@@ -92,10 +94,11 @@ const structuredData = {
     <meta property="og:description" content={description} />
     {!noindex && <meta property="og:url" content={canonical} />}
     <meta property="og:image" content={ogImage} />
-    <meta property="og:image:width" content="1024" />
-    <meta property="og:image:height" content="1024" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content={imageAlt} />
-    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={fullTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
