@@ -29,6 +29,9 @@ struct HarnessConfigEdit: Sendable {
     /// What to do by hand where Heeler won't change this file. It says what this
     /// edit would have written, so it goes with the edit.
     var manualInstruction: String? = nil
+    /// What the edit still won't bring on the release it's for, said before the user
+    /// agrees and after.
+    var limitation: String? = nil
 }
 
 /// A folder of Heeler's own beside a harness's configuration, with what goes in it.

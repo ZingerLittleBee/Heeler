@@ -438,7 +438,7 @@ extension ChatProgram {
         case .grok:
             "Grok Build lists its conversation while it runs. After /new it lists both, so Chat can't tell until you start Grok Build again."
         case .opencode:
-            "OpenCode shows its conversation when Heeler starts OpenCode 2.1 or later from New Agent, or through Heeler's plugin, which takes one change to its configuration."
+            "OpenCode says which conversation it shows when Heeler starts OpenCode 2.1 or later from New Agent, or through Heeler's plugin, which takes one change to its configuration. Chat shows conversations from OpenCode 2.x."
         case .claude, .pi, .omp:
             "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal."
         }

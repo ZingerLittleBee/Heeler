@@ -44,10 +44,16 @@ enum OpenCodePluginEdit {
         let schema: String
         /// Set beside the list, it would take the list's meaning from it.
         let refusingKeys: Set<String>
+        /// What the plugin can't bring on this release: 1.x's store has no
+        /// `session_v2`, which is the table Chat reads (ADR 0025).
+        var limitation: String? = nil
 
         static let tuiConfig = ConfigForm(
             fileNames: ["tui.json", "tui.jsonc"], listKey: "plugin", schema: "https://opencode.ai/tui.json",
-            refusingKeys: ["tui"])
+            refusingKeys: ["tui"],
+            limitation:
+                "OpenCode 1.x keeps conversations in a format Chat doesn't read, so Chat can name this conversation but can't show it. Chat shows conversations from OpenCode 2.x."
+        )
         static let cliConfig = ConfigForm(
             fileNames: ["cli.json"], listKey: "plugins", schema: "https://opencode.ai/v2/cli.json",
             refusingKeys: [])
@@ -108,7 +114,8 @@ enum OpenCodePluginEdit {
             transform: transform(form: form, folderPath: folderPath, fileName: fileName),
             folder: HarnessConfigFolder(path: folderPath, files: files),
             listEntry: HarnessConfigListEntry(key: form.listKey, value: entryValue),
-            manualInstruction: manualInstruction(fileName: fileName, form: form))
+            manualInstruction: manualInstruction(fileName: fileName, form: form),
+            limitation: form.limitation)
     }
 
     private static let unreadableReason =
