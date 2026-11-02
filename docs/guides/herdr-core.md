@@ -16,7 +16,7 @@ Agents started by the Herdr desktop app belong to herdr-core, a server of their 
    | Both | Both choices. A Host is one kind: confirm one, then add the machine again for the other |
    | Neither | Both choices. The one you confirm then says how to set it up |
 
-A session name the server refuses leaves the Host unconfirmed and says why. The checks run after you confirm. A Host keeps its kind, so a Host you added before stays what it is.
+A session name the server refuses, or one native Windows cannot carry, leaves the Host unconfirmed and says why. The checks run after you confirm. A Host keeps its kind, so a Host you added before stays what it is.
 
 ## Not running and Start
 
