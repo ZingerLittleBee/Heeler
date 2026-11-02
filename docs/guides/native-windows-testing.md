@@ -433,7 +433,9 @@ agent discovery and launch, and its `terminal.put` through sshd.
     character. It shows as an Agent of its kind, and the program receives the
     argument whole. Exit the agent: its Terminal ends and the Agent leaves the list.
     Note the exit code the core reports. A `.ps1` shim blocked by the machine's
-    execution policy shows as listed and ends at once; note that too.
+    execution policy shows as listed and ends at once; note that too. Start another
+    with an argument holding a double quote and with an empty one (`''`), and note
+    what the program receives: Windows PowerShell may not pass either whole.
 12. New Terminal opens a Terminal in the directory you picked, in a shell, and it
     is not listed as an Agent. Exit it: the Terminal ends.
 13. New Workspace at a picked directory, with the desktop app running on the
