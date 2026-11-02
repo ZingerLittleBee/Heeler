@@ -209,6 +209,71 @@ struct HostHelperMacOSTests {
         #expect(await host.agentLoaded)
     }
 
+    /// An Update from `0.0.1`, ready to run.
+    private func olderHelper() async throws -> (ScriptedHelperHost, HostHelperInstaller, HostHelperReading) {
+        let host = await ScriptedHelperHost.macOS()
+        let installer = installer(host)
+        _ = try await installer.install(
+            over: try await installer.read(), bundle: HostHelperFixture.bundle(version: "0.0.1"))
+        await host.configure { $0.clearLog() }
+        return (host, installer, try await installer.read())
+    }
+
+    /// Past the promote the files are new, so what still ran the old code must
+    /// have stopped: one look at launchd then loads the new code.
+    @Test func anUpdateCutOffAfterTheNewFilesAreInPlaceNeverLeavesTheOldCodeRunning() async throws {
+        let (host, installer, older) = try await olderHelper()
+        await host.configure { $0.failUploadsNamed = HostHelperLaunchAgent.fileName }
+        await #expect(throws: HostHelperError.self) {
+            _ = try await installer.install(over: older, bundle: bundle)
+        }
+        await host.configure { $0.failUploadsNamed = nil }
+
+        let reading = try await installer.check()
+
+        #expect(reading.status == current)
+        #expect(await host.runningCode == bundle.manifestData)
+    }
+
+    @Test func anUpdateStopsTheRunningCopyOnlyOnceItsFilesAreChecked() async throws {
+        let (host, installer, older) = try await olderHelper()
+
+        _ = try await installer.install(over: older, bundle: bundle)
+
+        let journal = await host.journal
+        let hashed = try #require(journal.firstIndex(of: "hashTree"))
+        let stopped = try #require(journal.firstIndex(of: "launchctl bootout \(service)"))
+        let promoted = try #require(journal.firstIndex(of: "promote"))
+        #expect(hashed < stopped)
+        #expect(stopped < promoted)
+    }
+
+    @Test func aCopyThatWillNotStopKeepsItsFilesAndAnswersTheUpdate() async throws {
+        let (host, installer, older) = try await olderHelper()
+        let manifest = await host.files["\(directory)/app/manifest.json"]
+        await host.configure { $0.bootoutRefusal = (1, "Boot-out failed: 1: Operation not permitted") }
+
+        await #expect(throws: HostHelperError.stepFailed(
+            step: "Stopping the service", detail: "Boot-out failed: 1: Operation not permitted")
+        ) {
+            _ = try await installer.install(over: older, bundle: bundle)
+        }
+
+        #expect(await host.files["\(directory)/app/manifest.json"] == manifest)
+        #expect(await !host.journal.contains("promote"))
+        #expect(await !host.filePaths().contains { $0.contains("/staging-") })
+    }
+
+    @Test func aFirstInstallHasNothingToStopBeforeItsFilesGoInPlace() async throws {
+        let host = await ScriptedHelperHost.macOS()
+        let installer = installer(host)
+        await host.configure { $0.bootoutRefusal = (1, "Boot-out failed: 1: Operation not permitted") }
+
+        _ = try await installer.install(over: try await installer.read(), bundle: bundle)
+
+        #expect(await host.runningCode == bundle.manifestData)
+    }
+
     @Test func refusesToReplaceANewerHelper() async throws {
         let host = await ScriptedHelperHost.macOS()
         let installer = installer(host)

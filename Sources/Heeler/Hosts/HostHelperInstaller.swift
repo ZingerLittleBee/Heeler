@@ -192,7 +192,7 @@ struct HostHelperInstaller: Sendable {
         }
 
         if plan.replacesHelper {
-            try await placeHelper(bundle, layout: layout)
+            try await placeHelper(bundle, plan: plan, over: reading)
         }
         for file in plan.extensionFiles {
             try await write(extensionText, to: file, in: nil, step: "Placing the Pi and Oh My Pi extensions")
@@ -294,9 +294,12 @@ struct HostHelperInstaller: Sendable {
         _ = try? await run(.removeEmptyFolders(folders.sorted(by: Self.deepestFirst)))
     }
 
-    /// Uploads into a staging directory, checks the manifest there, and renames
-    /// into place, so a Host never runs a half-written Helper.
-    private func placeHelper(_ bundle: HostHelperBundle, layout: HostHelperLayout) async throws {
+    /// Uploads into a staging directory, checks the manifest there, stops what is
+    /// running and renames into place, so a Host never runs a half-written Helper.
+    private func placeHelper(
+        _ bundle: HostHelperBundle, plan: HostHelperInstallPlan, over reading: HostHelperReading
+    ) async throws {
+        let layout = plan.layout
         let staging = "\(layout.directory)/\(HostHelperScript.stagingPrefix)\(nonce())"
         try await check(
             .prepareStaging(
@@ -321,11 +324,26 @@ struct HostHelperInstaller: Sendable {
             }
             guard let hashes else { throw HostHelperError.noHashTool }
             guard bundle.manifest.matches(hashes) else { throw HostHelperError.verificationFailed }
+            try await stopRunningCopy(plan, over: reading)
         } catch {
             _ = try? await run(.removeTree(staging))
             throw error
         }
         try await check(.promote(staging: staging, app: layout.app), step: "Putting the Host Helper in place")
+    }
+
+    /// A process goes on running the code it loaded, and the next read would call
+    /// the new files on disk its version. Stopped before they land, whatever cuts
+    /// this install short leaves a state with a way out: launchd holding no agent
+    /// loads the new code at the next read, and a stopped unit offers Repair.
+    private func stopRunningCopy(_ plan: HostHelperInstallPlan, over reading: HostHelperReading) async throws {
+        guard reading.probe?.health?.isLoaded == true else { return }
+        switch plan.layout.manager {
+        case .systemd:
+            try await systemctl(["stop", HostHelperScript.unitName], step: "Stopping the service")
+        case .launchd:
+            try await checkBootOut(.launchctl(["bootout", HostHelperLaunchAgent.service(uid: plan.uid)]))
+        }
     }
 
     private func startService() async throws {
@@ -376,8 +394,6 @@ struct HostHelperInstaller: Sendable {
 
     /// `launchctl bootstrap`'s "Input/output error", which has several causes.
     private static let bootstrapRefused: Int32 = 5
-    /// Stopped now, or nothing to stop.
-    private static let bootoutDone: Set<Int32> = [0, 3, HostHelperHealth.launchctlNotLoadedStatus]
 
     private func systemctl(_ arguments: [String], step: String) async throws {
         try await check(.systemctl(arguments), step: step)
