@@ -53,7 +53,7 @@ The Console lists the core's Agents and Terminals, each in a card named for its 
 
 **Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stage through the core, not over SFTP, one file of up to 8 MiB at a time. Heeler refuses a larger one before sending anything, and your draft stays as it was. The path the core gives goes in your draft and on the clipboard, and a program in that Terminal can read it. Nothing reaches the Agent until you [send](#send). The file is in `%LOCALAPPDATA%\herdr-core\<session>\files\<terminal>\`, which SYSTEM, Administrators and your account can read, and no one else. It stays after the Terminal is closed and goes only when the core removes the Terminal's record, with `terminal.rm`.
 
-[Send](#send) and [Stop](#stop) work there too, with one limit Send describes. [Chat](#chat-on-windows) opens only for programs that have passed their check there, and so far none has. Not offered there yet, whatever the Host reads: Rename and Worktrees. Changes and Skills read as unavailable, and the Host Helper reads **Not Available**.
+[Send](#send) and [Stop](#stop) work there too, with one limit Send describes. [Chat](#chat-on-windows) opens only for programs that have passed their check there, and so far none has. Not offered there yet, whatever the Host reads: Rename, Worktrees, Changes and Skills. The Host Helper reads **Not Available**.
 
 ## Console
 
@@ -101,7 +101,7 @@ Every terminal is a channel on the Host's one connection, so opening more costs 
 
 Every key reaches the program, Ctrl+\ included. Heeler reserves no detach key.
 
-In an Agent detail, Direct Input types into the terminal, and Changes and Skills work as on any other Host.
+In an Agent detail, Direct Input types into the terminal. On macOS and Linux, Changes and Skills work as on any other Host.
 
 ## Send
 

@@ -187,6 +187,12 @@ struct AgentDetailView: View {
                     }))
     }
 
+    /// Any Agent with a directory, whatever its worktree metadata: git resolves
+    /// the Checkout on the Host, where this Host can run it.
+    private var offersChanges: Bool {
+        console.capabilities(for: agent.hostID).offersChanges(directory: agent.directory)
+    }
+
     private var terminalAccess: HostTerminalAccess {
         console.capabilities(for: agent.hostID)
             .terminalAccess(sceneRouting?.terminalAccess(for: agent.hostID))
@@ -413,7 +419,7 @@ struct AgentDetailView: View {
                     canOpenTerminal: canOpenTerminal,
                     isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
                     openTerminal: { openWorkspaceTerminal() },
-                    showChanges: agent.directory == nil ? nil : { changes.open() },
+                    showChanges: offersChanges ? { changes.open() } : nil,
                     workspaceDrawer: workspaceDrawer,
                     selectSurface: { selectSurface($0) })
             } else {
@@ -439,9 +445,7 @@ struct AgentDetailView: View {
                     canOpenTerminal: canOpenTerminal,
                     isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
                     openTerminal: { openWorkspaceTerminal() },
-                    // Any Agent with a directory, whatever its worktree
-                    // metadata: git resolves the Checkout on the Host.
-                    showChanges: agent.directory == nil ? nil : { changes.open() },
+                    showChanges: offersChanges ? { changes.open() } : nil,
                     showWorktreeChanges: { directory in
                         changes.open(directory: directory)
                     },

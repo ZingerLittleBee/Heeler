@@ -230,6 +230,23 @@ struct HerdrCoreWindowsConsoleTests {
         #expect(offers.composerSend, sourceLocation: sourceLocation)
         #expect(offers.composerStop, sourceLocation: sourceLocation)
         #expect(!offers.chat, sourceLocation: sourceLocation)
+        #expect(!offers.hostScripts, sourceLocation: sourceLocation)
+        #expect(!offers.offersChanges(directory: #"C:\work"#), sourceLocation: sourceLocation)
+    }
+
+    /// An Agent with a directory there: its detail's Changes, More menu and status
+    /// line read one answer, and so do its Skills, since nothing could serve either.
+    @Test func changesAndSkillsAreOfferedWhereTheHostCanRunTheirScripts() {
+        let posixCore = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Linux")
+        #expect(posixCore.hostScripts)
+        #expect(posixCore.offersChanges(directory: "/work"))
+        #expect(!posixCore.offersChanges(directory: nil))
+        // Not known yet reads as any Host that has not said.
+        #expect(HostCapabilities(serverKind: .herdrCore).hostScripts)
+        // A native Windows Herdr TUI Host keeps what it had.
+        let windowsTUI = HostCapabilities(serverKind: .herdrTUI, platform: .nativeWindows)
+        #expect(windowsTUI.hostScripts)
+        #expect(windowsTUI.offersChanges(directory: #"C:\work"#))
     }
 
     @Test func aConnectedWindowsCoreHostOffersWhatItsTicketsTurnedOn() async throws {

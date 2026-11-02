@@ -33,6 +33,15 @@ struct HostCapabilities: Equatable, Sendable {
     var chatPrograms: Set<ChatProgram>?
     /// A core runs what it is given in a directory of its own machine's form.
     var startsInWindowsDirectories = false
+    /// Changes and Skills run POSIX scripts on the Host. A native Windows core
+    /// Host offers neither, rather than failing once opened; a native Windows
+    /// Herdr TUI Host keeps what it has always shown.
+    var hostScripts = true
+
+    /// Whether an Agent in this directory offers Changes, wherever it does.
+    func offersChanges(directory: String?) -> Bool {
+        hostScripts && directory != nil
+    }
 
     func offersChat(for program: ChatProgram) -> Bool {
         chat && chatPrograms?.contains(program) != false
@@ -107,7 +116,8 @@ extension HostCapabilities {
             composerStop: offered || coreOnPosix || coreOnWindows,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatPrograms: coreChat ? coreChatPrograms : coreOnWindows ? windowsChatPrograms : nil,
-            startsInWindowsDirectories: coreOnWindows)
+            startsInWindowsDirectories: coreOnWindows,
+            hostScripts: !coreOnWindows)
     }
 
     /// What Chat on a native Windows core Host can ever open (ADR 0034). Codex and
