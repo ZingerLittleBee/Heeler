@@ -185,7 +185,7 @@ struct HerdrCoreChatPickTests {
                         keepalive: nil)
                 },
                 makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) },
-                coreChatPrograms: Set(ChatProgram.allCases),
+                coreLinuxChatPrograms: Set(ChatProgram.allCases),
                 chatTiming: timing,
                 chatNow: { steppedByTheTest ? clock.now : Date() })
         }

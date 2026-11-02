@@ -250,11 +250,16 @@ struct HerdrCoreChatTests {
         #expect(!HostCapabilities(serverKind: .herdrCore, coreKernel: "Linux").chat)
         #expect(!HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows, coreKernel: "Linux").chat)
         #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "FreeBSD").chat)
-        for kernel in ["Linux", "Darwin"] {
+        // Each kernel offers what passed its owner's check there: Claude Code alone on
+        // Linux until hc-lab, and on macOS each program the owner's Mac bound exactly.
+        let shipped: [(kernel: String, offered: Set<ChatProgram>)] = [
+            ("Linux", [.claude]), ("Darwin", [.claude, .codex, .grok, .pi, .omp]),
+        ]
+        for (kernel, offered) in shipped {
             let capabilities = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: kernel)
             #expect(capabilities.chat)
             for program in ChatProgram.allCases {
-                #expect(capabilities.offersChat(for: program) == (program == .claude))
+                #expect(capabilities.offersChat(for: program) == offered.contains(program), "\(program) on \(kernel)")
                 #expect(HostCapabilities(serverKind: .herdrTUI).offersChat(for: program))
             }
         }
@@ -271,6 +276,23 @@ struct HerdrCoreChatTests {
         let agent = try #require(rig.agent)
         #expect(agent.agent.kind == ChatProgram(rawValue: agent.agent.kind)?.rawValue)
         #expect(rig.store.chatProgram(for: agent) == nil)
+        rig.store.setHosts([])
+    }
+
+    /// The same Agents on a macOS core Host: the programs whose Chat passed on the
+    /// owner's Mac open, and OpenCode, which reached only candidates there, does not.
+    @Test(arguments: [
+        (["codex"], "codex", "codex", true), (["opencode"], "opencode", "opencode", false),
+        (["pi"], "pi", "pi", true), (["omp"], "omp", "omp", true), (["grok"], "grok", "grok-build", true),
+    ])
+    func programsThatPassedOnAMacOpenThere(_ argv: [String], _ name: String, _ app: String, _ opens: Bool)
+        async throws
+    {
+        let rig = Rig(host: host, record: Self.record(foreground: argv, name: name, app: app))
+        try await rig.start(kernel: "Darwin")
+
+        let agent = try #require(rig.agent)
+        #expect((rig.store.chatProgram(for: agent) != nil) == opens)
         rig.store.setHosts([])
     }
 

@@ -85,19 +85,27 @@ extension HostCapabilities {
     /// shell can outlive its Agent (ADRs 0032 and 0035). `coreKernel` is the core
     /// Host's `uname -s`, known once its locator ran with or without a core: its Chat
     /// opens on Linux and macOS, whose process reads a check of an Agent's session uses,
-    /// for `coreChatPrograms`, and on native Windows for `coreWindowsChatPrograms`, within
-    /// `windowsCoreChatCandidates`. `isLocatingCore` is a connection on its way: nothing could
-    /// start on a core Host before that attempt says what it is.
+    /// for `coreLinuxChatPrograms` and `coreMacOSChatPrograms`, and on native Windows for
+    /// `coreWindowsChatPrograms`, within `windowsCoreChatCandidates`. `isLocatingCore` is a
+    /// connection on its way: nothing could start on a core Host before that attempt says
+    /// what it is.
     init(
         serverKind: ServerKind, platform: HostPlatform? = nil,
         desktopAppNaming: HerdrAppNaming? = nil, coreKernel: String? = nil,
-        coreChatPrograms: Set<ChatProgram> = confirmedCoreChatPrograms,
+        coreLinuxChatPrograms: Set<ChatProgram> = confirmedLinuxCoreChatPrograms,
+        coreMacOSChatPrograms: Set<ChatProgram> = confirmedMacOSCoreChatPrograms,
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
         isLocatingCore: Bool = false
     ) {
         let offered = serverKind == .herdrTUI
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
-        let coreChat = coreOnPosix && (coreKernel == HerdrCoreLocator.linuxKernel || coreKernel == HerdrCoreLocator.macOSKernel)
+        let coreChatPrograms: Set<ChatProgram>? =
+            switch coreKernel {
+            case HerdrCoreLocator.linuxKernel where coreOnPosix: coreLinuxChatPrograms
+            case HerdrCoreLocator.macOSKernel where coreOnPosix: coreMacOSChatPrograms
+            default: nil
+            }
+        let coreChat = coreChatPrograms != nil
         let coreOnWindows =
             serverKind == .herdrCore
             && (platform == .nativeWindows || coreKernel == HerdrCoreLocator.windowsKernel)
@@ -115,7 +123,7 @@ extension HostCapabilities {
             syncLayoutFromPlugin: offered, takeOver: offered,
             composerStop: offered || coreOnPosix || coreOnWindows,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
-            chatPrograms: coreChat ? coreChatPrograms : coreOnWindows ? windowsChatPrograms : nil,
+            chatPrograms: coreChatPrograms ?? (coreOnWindows ? windowsChatPrograms : nil),
             isNativeWindowsCore: coreOnWindows,
             hostScripts: !coreOnWindows)
     }
@@ -129,12 +137,16 @@ extension HostCapabilities {
     /// acceptance checklist (`docs/guides/native-windows-testing.md`). None has yet.
     static let confirmedWindowsCoreChatPrograms: Set<ChatProgram> = []
 
-    /// The programs whose Chat a Linux or macOS core Host opens. Binding works for
-    /// Codex, Grok Build, OpenCode, Pi and Oh My Pi, from recordings with no sign-in.
-    /// Each joins this list only once the owner's signed-in check of that program
-    /// passes and is recorded, and one that fails stays off with its observation saying
-    /// why (ADR 0034).
-    static let confirmedCoreChatPrograms: Set<ChatProgram> = [.claude]
+    /// The programs whose Chat a Linux core Host opens. Binding works for Codex, Grok
+    /// Build, OpenCode, Pi and Oh My Pi, from recordings with no sign-in. Each joins
+    /// only once the owner's signed-in check of that program on hc-lab passes and is
+    /// recorded, and one that fails stays off with its observation saying why (ADR 0034).
+    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude]
+
+    /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in
+    /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New
+    /// Agent reached only candidates there and 2.1 or later was not run, so it stays off.
+    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp]
 
     /// The programs a macOS core Host binds exactly, each from reads the macOS
     /// recordings saw it through (ADR 0034, `host-evidence/macos`). Taking one out

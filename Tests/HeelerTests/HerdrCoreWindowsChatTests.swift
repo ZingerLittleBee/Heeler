@@ -204,7 +204,7 @@ struct HerdrCoreWindowsChatTests {
 
     @Test func aLinuxCoresListIsNotAWindowsCoresList() {
         let linux = HostCapabilities(
-            serverKind: .herdrCore, platform: .posix, coreKernel: "Linux", coreChatPrograms: [.claude],
+            serverKind: .herdrCore, platform: .posix, coreKernel: "Linux", coreLinuxChatPrograms: [.claude],
             coreWindowsChatPrograms: [.pi])
         #expect(linux.offersChat(for: .claude))
         #expect(!linux.offersChat(for: .pi))

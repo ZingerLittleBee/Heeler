@@ -134,7 +134,7 @@ struct HerdrCoreProgramChatTests {
                         keepalive: nil)
                 },
                 makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) },
-                coreChatPrograms: programs)
+                coreLinuxChatPrograms: programs, coreMacOSChatPrograms: programs)
         }
 
         func start(_ rows: [ScriptedProcessTable.Process], kernel: String = "Linux") async throws {
@@ -223,12 +223,12 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
-    /// None of them has passed its owner check yet. Turning one on changes this,
-    /// which is the point: the list is the whole switch.
+    /// None of them has passed its owner check on Linux yet. Turning one on changes
+    /// this, which is the point: the list is the whole switch.
     @Test(arguments: [ChatProgram.codex, .grok, .opencode])
     func chatStaysOffUntilTheOwnerCheckPasses(_ program: ChatProgram) async throws {
-        #expect(!HostCapabilities.confirmedCoreChatPrograms.contains(program))
-        let (rig, rows) = try offerRig(program, offering: HostCapabilities.confirmedCoreChatPrograms)
+        #expect(!HostCapabilities.confirmedLinuxCoreChatPrograms.contains(program))
+        let (rig, rows) = try offerRig(program, offering: HostCapabilities.confirmedLinuxCoreChatPrograms)
         try await rig.start(rows)
 
         #expect(rig.store.chatProgram(for: try #require(rig.agent)) == nil)
@@ -261,16 +261,6 @@ struct HerdrCoreProgramChatTests {
         let agent = try #require(rig.agent)
         #expect(rig.store.chatProgram(for: agent) == entry.program)
         #expect(rig.store.chatStore(for: agent, program: entry.program) != nil)
-        rig.store.setHosts([])
-    }
-
-    /// One list says what a core Host's Chat offers: a program waiting on its owner
-    /// check waits on macOS too.
-    @Test func aMacOSHostOffersTheSameProgramsAsLinux() async throws {
-        let (rig, scene) = try macOSRig("grok", offering: [.claude])
-        try await rig.start((scene.processes ?? []).map(\.process), kernel: "Darwin")
-
-        #expect(rig.store.chatProgram(for: try #require(rig.agent)) == nil)
         rig.store.setHosts([])
     }
 
@@ -308,17 +298,24 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
-    @Test func capabilitiesFollowTheProgramsTurnedOn() {
-        for kernel in ["Linux", "Darwin"] {
+    /// Each kernel offers its own list: a program turned on for one waits on the other.
+    @Test func capabilitiesFollowTheProgramsTurnedOnForEachKernel() {
+        let expected: [(kernel: String, offered: Set<ChatProgram>)] = [
+            ("Linux", [.claude, .grok]), ("Darwin", [.claude, .pi]),
+        ]
+        for (kernel, offered) in expected {
             let on = HostCapabilities(
-                serverKind: .herdrCore, platform: .posix, coreKernel: kernel, coreChatPrograms: [.claude, .grok])
+                serverKind: .herdrCore, platform: .posix, coreKernel: kernel,
+                coreLinuxChatPrograms: [.claude, .grok], coreMacOSChatPrograms: [.claude, .pi])
             #expect(on.chat)
             for program in ChatProgram.allCases {
-                #expect(on.offersChat(for: program) == [.claude, .grok].contains(program))
+                #expect(on.offersChat(for: program) == offered.contains(program))
             }
         }
         // Herdr TUI has no such list.
-        #expect(HostCapabilities(serverKind: .herdrTUI, coreChatPrograms: []).chatPrograms == nil)
+        #expect(
+            HostCapabilities(serverKind: .herdrTUI, coreLinuxChatPrograms: [], coreMacOSChatPrograms: []).chatPrograms
+                == nil)
     }
 
     // MARK: Codex
