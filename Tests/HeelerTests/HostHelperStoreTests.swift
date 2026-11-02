@@ -511,7 +511,7 @@ struct HostHelperOnboardingTests {
     /// health read waits for `gate`, and whose first gap says it has begun.
     private func macOnboarding(
         locator: [String] = ScriptedCoreHost.locatorLines(), channel: ScriptedCoreHost.Channel,
-        gate: AsyncStream<Void>, started: AsyncStream<Void>.Continuation
+        gate: AsyncStream<Void>, started: AsyncStream<Void>.Continuation, gapFails: Bool = false
     ) async -> (HostOnboardingStore, ScriptedCoreHost) {
         let helper = await ScriptedHelperHost.macOS()
         let core = ScriptedCoreHost(locator: locator, helper: helper, channel: channel)
@@ -527,7 +527,8 @@ struct HostHelperOnboardingTests {
             credentials: credentials,
             hostHelperHealthGap: {
                 started.yield()
-                for await _ in gate { return }
+                for await _ in gate { break }
+                if gapFails { throw ScriptedHelperHost.Failure() }
             })
         return (store, core)
     }
@@ -624,6 +625,29 @@ struct HostHelperOnboardingTests {
         #expect(store.hostHelper?.status == .installed(
             version: HostHelperCompatibility.bundled, updateAvailable: false))
         #expect(await core.log.filter { $0 == "close" }.count == closes + 2)
+    }
+
+    /// The read back says how the Host is after a removal, which the preflight's
+    /// second health read began before, however that read ends.
+    @Test(arguments: [false, true])
+    func aRemovalDuringASecondHealthReadKeepsItsReadBack(gapFails: Bool) async throws {
+        let gate = AsyncStream<Void>.makeStream()
+        let started = AsyncStream<Void>.makeStream()
+        let (store, _) = await macOnboarding(
+            channel: .answersHello(ScriptedCoreHost.helloReply()), gate: gate.stream,
+            started: started.continuation, gapFails: gapFails)
+        await store.runChecks()
+        for await _ in started.stream { break }
+        let helper = try #require(store.hostHelper)
+        #expect(helper.reading == .checking)
+
+        await helper.remove()
+        #expect(helper.status == .notInstalled)
+
+        gate.continuation.yield()
+        await store.hostHelperConfirmation?.value
+        #expect(helper.status == .notInstalled)
+        #expect(helper.installAction == .install)
     }
 
     @Test func theHelperReadsWhileNoCoreRuns() async throws {
