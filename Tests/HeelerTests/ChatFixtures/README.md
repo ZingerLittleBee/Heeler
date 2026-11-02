@@ -36,10 +36,15 @@ None came from a personal session.
 | `grok/failed-tools.jsonl` | Written for the test, not captured: one turn of failed calls, a `tool_execution_failed` error, the tagged failures `FileNotFound`, `FileTooLarge`, `NotADirectory`, `NotFound`, `NoMatchesFound`, `MultipleMatchesFound` and `InvalidInput`, and an MCP call that returned an error. The records take the shapes a census of real failures found; some carry no content |
 
 `host-evidence/` is a separate recording, for the herdr-core session binding of
-ADR 0034. `HerdrCoreProgramBinderTests` reads `codex/`, `grok/` and `opencode/`,
-`OpenCodeStoreQueryTests` the schemas, and the Pi and Oh My Pi binder tests its `pi`
-and `omp` folders through `PiHostEvidence`. No test reads `reply-held.json` or the core
-event streams yet. It came from a throwaway Linux VM on
+ADR 0034. `HerdrCoreProgramBinderTests` reads the `.json` scenes of `codex/`, `grok/`
+and `opencode/`, `OpenCodeStoreQueryTests` the schemas, and the Pi and Oh My Pi binder
+tests the scenes and core event streams of `pi/` and `omp/` through `PiHostEvidence`.
+No test reads `reply-held.json`, `omp/session-lock-by-id.json`, since no check reads a
+lock, or the Codex, Grok Build and OpenCode core event streams, whose captures start
+after a Terminal's `created` or scrub the argv a record needs, so those tests build
+their records from the scene's rows and write OpenCode's title events by hand. An
+extension's label is also written by hand there, not by `heeler-session.js`, whose
+output `plugin/test/helper-extensions.test.js` holds on its side. It came from a throwaway Linux VM on
 2026-11-01 with herdr-core 0.1.13 and a local fake model behind a dummy key.
 Nothing was signed in and it is not from hc-lab, so an account could change
 what it shows; `docs/agents/herdr-compatibility.md` says how for each program.

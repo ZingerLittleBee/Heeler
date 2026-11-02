@@ -92,7 +92,8 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
 - Native Windows herdr-core Hosts get the same Console, with these
   differences. Staged Images and Files are written by the core's
   `terminal.put` into its state directory beside the Terminal, which the core
-  removes with the Terminal's record (`terminal.rm`, not `terminal.kill`); this
+  removes with the Terminal's record (`terminal.rm` or its retention, not
+  `terminal.kill`); this
   amends ADR 0018's refusal of uploads for herdr-core Hosts only, since no SFTP
   mode bits are involved. A file over the 8 MiB one put takes is refused before
   anything is sent, and the put is an action on an address, so it keeps to a
@@ -107,7 +108,8 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   PATH the space takes its directory's name. Until a later ticket turns them on,
   what a Windows core Host cannot do stays hidden whatever its connection reads,
   stopped, update required, not installed or a refused session name included:
-  Send, Stop, Chat, Rename and Worktrees. Changes and Skills, which run POSIX
+  Rename, Worktrees and Chat for a program not confirmed there. Send and Stop are
+  on (ADR 0035). Changes and Skills, which run POSIX
   scripts on the Host, and Grok Build's status edit, which reads and writes through
   them, are not offered there either, so a native Windows Herdr TUI Host differs: it
   keeps showing the first two as ADR 0018 left them. New Agent, New Terminal and New Workspace
@@ -235,7 +237,9 @@ with test clients, not the app.
   showed the exit, and the attach stream later carried PowerShell's prompt; the
   screen and the other event types were not compared as signals. Heeler's launch
   does not use `-NoExit`, so this reaches only a Terminal the desktop app started.
-  Until #590 adds a check, that staleness stands.
+  No ticket adds a check: #590's read of PowerShell's children serves Chat's
+  binding only (ADR 0034), so that staleness stands, and Send refuses such a
+  Terminal (ADR 0035).
 - The same `choice.exe` runs through `connect` over one SSH exec gave the same
   foreground and finishes, 2 under Heeler's form and the shell's `exit 5` under
   `-NoExit`. On that machine the exec refused a program on a path through fnm's
@@ -304,4 +308,7 @@ with test clients, not the app.
   profile, with the inherited access of SYSTEM, Administrators and the account
   ([observation](../agents/herdr-compatibility.md)). A program in the Terminal
   reads them by that path. The folder outlives `terminal.kill` and goes with
-  `terminal.rm`, so a kept Terminal's files stay until it is removed.
+  `terminal.rm`. By the core's source at v0.1.16, which was not run, an ended
+  Terminal's record also goes once it passes the core's retention, about a day, or
+  a cap on finished records, and its folder goes with it. The inherited access was
+  seen on one machine, and the core sets none.

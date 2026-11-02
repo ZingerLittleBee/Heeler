@@ -550,9 +550,9 @@ enum HostHelperLaunchAgent {
     static let fileName = "\(label).plist"
     /// Beside the Helper's other files, and not in the `app` folder an update replaces.
     static let logFileName = "helper.log"
-    /// launchd's minimum runtime is ten seconds, and a run that dies sooner is
-    /// not restarted before it has passed, so two reads this far apart cannot
-    /// meet the same pid in a Helper that dies at start.
+    /// In a VM of macOS 26.5, launchd's minimum runtime was ten seconds and a run
+    /// that died sooner was not restarted before it had passed, so two reads this
+    /// far apart should not meet the same pid in a Helper that dies at start (ADR 0033).
     static let healthGap = Duration.seconds(11)
     /// `bootout`'s answers for stopped now, or nothing to stop. A VM of macOS 26.5
     /// answered 3 for a label it did not hold. 113, `launchctl print`'s answer for

@@ -105,8 +105,8 @@ final class ConsoleStore {
         makeChangesStore(
             agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
     }
-    /// Composer ownership sits above the detail branch so a transient
-    /// missing-Agent placeholder during reconnect cannot destroy a draft, and
+    /// Composer ownership sits above the detail branch so a failed Host's
+    /// missing-Agent placeholder cannot destroy a draft, and
     /// no view's lifetime decides an upload's.
     @ObservationIgnored private var composerSessions: [
         ConsoleAgent.ID: AgentComposerSession
@@ -761,9 +761,8 @@ final class ConsoleStore {
     }
 
     /// One Composer and staging per selected Agent for the lifetime of its
-    /// Host catalog entry. The Console detail may be replaced by a reconnect
-    /// placeholder; retaining the session here keeps its entirely local draft
-    /// intact.
+    /// Host catalog entry. A failed Host's placeholder may replace the Console
+    /// detail; retaining the session here keeps its entirely local draft intact.
     func composerSession(for agent: ConsoleAgent) -> AgentComposerSession {
         let hostID = agent.hostID
         // Another core's Agent is another Agent. A detail still open on the old

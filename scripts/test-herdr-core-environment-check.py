@@ -27,6 +27,12 @@ NONCE = "0123456789abcdef01234567"
 MAIN = """
 import Foundation
 
+// The Windows read pulls in the transport, and HostProcessReaderWindowsTests covers
+// it. This script runs only the POSIX one.
+extension HostProcessReader {
+    static func windowsCommand(_ request: Request, nonce: String) throws -> String { "" }
+}
+
 let arguments = CommandLine.arguments
 guard arguments.count >= 3, let pid = Int(arguments[2]) else { exit(64) }
 switch arguments[1] {

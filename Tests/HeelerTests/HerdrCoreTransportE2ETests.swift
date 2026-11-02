@@ -47,7 +47,7 @@ struct HerdrCoreTransportE2ETests {
         }
     }
 
-    @Test("a framed hello reports the features and core id, and hc is never called")
+    @Test("a framed hello reports the features and core id, the extension's write lands, and hc is never called")
     func helloFeaturesCoreIDAndNoHC() async throws {
         try await CoreSSHFixture.with { fixture in
             try await fixture.startCore()
@@ -72,6 +72,19 @@ struct HerdrCoreTransportE2ETests {
                 #expect(status.coreID == info.coreID)
                 #expect(status.pid == HerdrCoreWire.integer(viaHelper["pid"]))
                 #expect(status.live == 0)
+
+                // The extension's write makes the folder it needs and answers with
+                // its size. On this POSIX core the Windows separator is part of the
+                // file's name, so the file lands beside the last folder the path names.
+                let parent = "\(fixture.configuration.homePath)/\(fixture.session)-extension/agent"
+                let contents = Data("export default () => {}\n".utf8)
+                #expect(try await !fixture.exists(parent))
+                let written = try await transport.call(
+                    "file.write",
+                    params: HerdrCoreWindowsExtensions.writeParams(folder: "\(parent)/extensions", contents: contents),
+                    isMutation: true)
+                #expect(written["bytes"] == .number(Double(contents.count)))
+                #expect(try await fixture.contents(of: #"\#(parent)/extensions\heeler-session.js"#) == contents)
                 try await transport.close()
             } catch {
                 try? await transport.close()
@@ -179,33 +192,6 @@ struct HerdrCoreTransportE2ETests {
                 #expect(first.how == "screen")
                 #expect(second.how == "screen")
                 #expect(first.text == second.text)
-                try await transport.close()
-            } catch {
-                try? await transport.close()
-                throw error
-            }
-            #expect(try await fixture.tripwireCalls().isEmpty)
-        }
-    }
-
-    @Test("the extension's write reaches a real core, makes the folder it needs, and answers with its size")
-    func extensionWrite() async throws {
-        try await CoreSSHFixture.with { fixture in
-            try await fixture.startCore()
-            let transport = try await fixture.connectCore()
-            do {
-                _ = try await transport.hello()
-                // On this POSIX core the Windows separator is part of the file's name,
-                // so the file lands beside the last folder the path names.
-                let parent = "\(fixture.configuration.homePath)/\(fixture.session)-extension/agent"
-                let contents = Data("export default () => {}\n".utf8)
-                #expect(try await !fixture.exists(parent))
-                let result = try await transport.call(
-                    "file.write",
-                    params: HerdrCoreWindowsExtensions.writeParams(folder: "\(parent)/extensions", contents: contents),
-                    isMutation: true)
-                #expect(result["bytes"] == .number(Double(contents.count)))
-                #expect(try await fixture.contents(of: #"\#(parent)/extensions\heeler-session.js"#) == contents)
                 try await transport.close()
             } catch {
                 try? await transport.close()

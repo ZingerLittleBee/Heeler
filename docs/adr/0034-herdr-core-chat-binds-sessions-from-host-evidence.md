@@ -54,9 +54,9 @@ never show or send into a conversation it has guessed.
   | --- | --- |
   | Claude Code | `<config dir>/sessions/<pid>.json`, read by name once Claude Code reaches its prompt, whose process start matches |
   | Codex | in embedded mode only, the rollouts the process holds open, exactly one of them a root thread by `session_meta`, and no thread-writer lock held without its thread's rollout |
-  | Oh My Pi | Heeler's extension (ADR 0033); without it, `<agent dir>/terminal-sessions/<tty>`, confirmed by the process's own session lock or open file |
+  | Oh My Pi | Heeler's extension (ADR 0033); without it, `<agent dir>/terminal-sessions/<tty>`, confirmed by the process holding that file open |
   | Grok Build | the one `active_sessions.json` row whose pid and process start match |
-  | OpenCode | from 2.x, the `ses` id Heeler started it with; otherwise none, and the plugin on the user's word (ADR 0033) |
+  | OpenCode | from 2.1, the `ses` id Heeler started it with; otherwise none, and the plugin on the user's word (ADR 0033) |
   | Pi | none; Heeler's extension (ADR 0033) |
 
 - Claude Code's registry entry appears only at its prompt. Before that, during
@@ -83,10 +83,10 @@ never show or send into a conversation it has guessed.
   program in the Terminal does not count. On a core a Grok Build id may be the UUIDv4
   Heeler started it with, where Herdr TUI's reference takes only the UUIDv7 Grok
   Build creates itself.
-- An OpenCode's argv keeps the id it started with when `/new` and a prompt, or a
-  pick in its list, move the screen, so a check of its process still binds the old
-  conversation. Its terminal title does change, so a Send compares it as ADR 0025
-  does, after the check, and reads it from the core's title events. It refuses on
+- An OpenCode's argv keeps the id it started with when `/new` and a prompt move the
+  screen, and a pick in its list is expected to do the same, so a check of its process
+  still binds the old conversation. By a source review of 2.2.5, which ran nothing, its
+  terminal title changes, so a Send compares it as ADR 0025 does, after the check, and reads it from the core's title events. It refuses on
   another `OC | ` title. It also refuses on `OpenCode` over a conversation with a
   title of its own, which ADR 0025 lets through because herdr reports the
   conversation that title may stand for, and a core reports none. The screen read
@@ -181,9 +181,9 @@ never show or send into a conversation it has guessed.
   tested on a Windows Host and listed in
   `HostCapabilities.confirmedWindowsCoreChatPrograms`; Codex and OpenCode follow
   later. Native
-  Windows Herdr TUI Hosts stay without Chat. Codex, Grok Build and OpenCode from 2.x
-  are built for Linux from the recordings below, which never saw a signed-in
-  account. Each stays off in `HostCapabilities.confirmedCoreChatPrograms` until its check with a harness
+  Windows Herdr TUI Hosts stay without Chat. Codex, Grok Build, OpenCode from 2.x, Pi
+  and Oh My Pi are built for Linux and macOS core Hosts from the recordings below,
+  which never saw a signed-in account. Each stays off in `HostCapabilities.confirmedCoreChatPrograms` until its check with a harness
   the owner signs in to passes, and one that fails stays off with its observation
   saying why.
 
@@ -282,7 +282,11 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   changes any of the evidence below, which never saw one; whether Claude Code's
   `procStart` on a real Mac equals the start `ps -o lstart=` prints in UTC, which
   it did for native 2.1.316 in a macOS 26.5 VM with SIP off, the owner's check of
-  it being still to run; whether a Host
+  it being still to run; whether OpenCode's terminal title moves on `/new` and on a
+  pick as 2.2.5's source says and equals its conversation's title, since the recording
+  scrubs each title and holds no `/new`; whether a pick keeps the argv as `/new` does,
+  which no run recorded, and whether the home screen check, from 2.0.32's screen, holds
+  on 2.2.5; whether a Host
   can work out an Oh My Pi lock's name without running its code, since the hash is not
   identified; and whether Heeler's OpenCode store query reads what OpenCode 2.2.5
   really writes. It runs against both recorded schemas, on rows of 2.0.32's shape
@@ -336,13 +340,14 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
 - The rules hold on Windows in the same costs: one exec, here
   `HostProcessReader.windowsCommand`, and at most one read, named variables only,
   never a `.key` file. Windows names a process by its image and a program cannot
-  retitle itself, so under npm the Agent is a `node.exe` or `bun.exe`: the binder
+  retitle itself, so under npm the Agent should be a `node.exe` or `bun.exe`, which
+  no run has shown: the binder
   takes the nearest process named for the program, else for Claude Code, Pi and
   Oh My Pi the nearest runtime, with no following past it, and never the PowerShell.
   A wrong pick binds nothing, because what proves the Agent is still its pid and
   start against what the program recorded, and Grok Build gets no runtime rule since
-  it is a native binary. Under `npx` the nearest runtime is the launcher, so Chat
-  says it can't tell. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the
+  it is a native binary. Under `npx` the nearest runtime should be the launcher, so
+  Chat would say it can't tell; no Agent has run that way on Windows. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the
   launch runs under PowerShell, and open files are not read. Chat's cannot-tell there
   is its own reason, `cannotTellSessionOnWindows`, which never offers the Helper,
   and offers no candidates yet: open files are not read there, and no listing of a

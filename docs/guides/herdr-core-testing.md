@@ -316,7 +316,7 @@ On a Mac Host with signed-in harnesses and the Host Helper installed as a Launch
 | Codex | `codex --no-daemon`, before and after the first message. Then plain `codex` | Can't tell, then it binds. Plain `codex` shows only the reopen message and no list |
 | Pi | Start Pi with the Helper's extension, and take a reply | It binds through `heeler.session`, whose `start` equals the same read. The VM's Pi never finished a reply |
 | Grok Build | Start `grok`, then read `active_sessions.json` | It binds. `pid_start` divided by a million is the second of that read. The VM saw one sample |
-| OpenCode, Oh My Pi | OpenCode 2.x from New Agent. Oh My Pi before and after the first message | OpenCode binds. Oh My Pi can't tell until the first reply, then binds |
+| OpenCode, Oh My Pi | OpenCode 2.1 or later from New Agent. Oh My Pi before and after the first message | OpenCode binds. Oh My Pi can't tell until the first reply, then binds |
 | Moved on | After Use This Conversation on any Agent, exit it and start another program in the same Terminal, then check Chat | The choice is dropped, and no banner stays. Under a shell with withheld variables too |
 | Any read that failed | Note which row above could not bind | That program shows **Can't Tell the Conversation** and **Choose a Conversation**. Take it out of `HostCapabilities.macOSExactCoreChatPrograms` and note why |
 
@@ -331,7 +331,7 @@ conversation before choosing, in light and dark, and attach them to the run's no
 | OpenCode by hand | Start `opencode` by hand, send a prompt, open Chat, tap **Choose a Conversation** | The list holds the store's newest conversations in that directory, and any Status child. Nothing shows as bound and a Send from Chat sends nothing until you confirm. Record the process's open files |
 | Grok Build's `/new` | In an open Chat, run `/new`, then choose | The list holds the session the process holds open and the folder's newest, and `s0`-style Status keys are not listed. Record each row |
 | Read first | Open each kind of candidate | Its conversation shows, and **Use This Conversation** is only offered on one that reads |
-| One label | Confirm one, then read the Terminal's labels with `hc` on the box | `heeler.chat` holds the session, pid and process start, equal to field 22 of `/proc/<pid>/stat` |
+| One label | Confirm one, then read the Terminal's labels with `terminal.get` through `scripts/fixtures/herdr-core-rpc.py` for your session | `heeler.chat` holds the session, pid and process start, equal to field 22 of `/proc/<pid>/stat` |
 | Second device | Open the same Agent's Chat on a second Simulator | It shows the same conversation. With Chat open there, confirm on the first and clear on the box: it follows both, with no Retry |
 | Process change | Quit the program and start it again in that Terminal | Chat says it cannot tell and the label is gone |
 | Session switch | On a Pi with the extension, confirm from before it wrote, then run `/new` | The session label wins and `heeler.chat` is gone |
