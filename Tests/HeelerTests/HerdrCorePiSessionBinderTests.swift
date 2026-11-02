@@ -427,6 +427,20 @@ struct HerdrCorePiSessionBinderTests {
         #expect(evidence == .unavailable(.cannotTellSession(.pi)))
     }
 
+    /// Pi takes a relative folder from its working directory and still writes an
+    /// absolute file. A label naming that file needs no root to read it.
+    @Test(arguments: [["HOME": "/home/agent", "PI_CODING_AGENT_DIR": ".pi-local"], [:]])
+    func aLabelWithItsFileBindsWithNoRootToFindIt(_ environment: [String: String]) async throws {
+        let run = try PiRun(version: "1.4.0")
+        let rig = Rig()
+        await rig.add(try run.evidence.scene("at-prompt"), environment: environment)
+        let label = Self.label(session: run.id, file: run.file, pid: run.process.pid, start: run.process.start)
+
+        let evidence = try await rig.binder(.pi).check(try run.record(labels: ["heeler.session": label]))
+
+        #expect(evidence == .bound(sessionID: run.file, transcriptRoot: nil, directory: nil))
+    }
+
     @Test(arguments: [
         ([String: String](), "/home/agent/.omp/agent/sessions"),
         (["PI_CONFIG_DIR": ".config/omp"], "/home/agent/.config/omp/agent/sessions"),

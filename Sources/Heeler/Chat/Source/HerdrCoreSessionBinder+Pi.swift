@@ -15,12 +15,18 @@ extension HerdrCoreSessionBinder {
         else { return cannotTell }
 
         let hints = await readHints(in: record, pid: pid, start: start)
-        guard let places = PiSessionLayout(program: program).places(in: process.variables) else { return cannotTell }
+        let places = PiSessionLayout(program: program).places(in: process.variables)
+        for hint in hints {
+            guard let session = hint.piSession(onWindows: isOnWindows) else { continue }
+            // A file reads with no root, which an id cannot: it would look under the
+            // Host's default, and only the Agent's own environment says where (ADR 0034).
+            if places != nil || session.hasPrefix("/") {
+                return .bound(sessionID: session, transcriptRoot: places?.sessions, directory: nil)
+            }
+        }
+        guard let places else { return cannotTell }
         func bound(_ session: String) -> ChatSessionEvidence {
             .bound(sessionID: session, transcriptRoot: places.sessions, directory: nil)
-        }
-        for hint in hints {
-            if let session = hint.piSession(onWindows: isOnWindows) { return bound(session) }
         }
         // On Windows only the extension's label counts: Heeler's launch runs under
         // PowerShell, and open files are not read there.
