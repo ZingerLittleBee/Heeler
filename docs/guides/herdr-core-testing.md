@@ -337,6 +337,7 @@ conversation before choosing, in light and dark, and attach them to the run's no
 | Send guard | Choose the conversation on screen and Send from Chat. Switch the program to another session inside it, Send from Chat again and let that turn end | After the first Send the pick stays. Within a few seconds of the second turn's end, Chat says it cannot tell in place of the conversation, with none of its messages left, and the label is gone |
 | The in-process limit | On a Pi without the extension, confirm, then run `/new` in the terminal | Chat keeps the old conversation until a Send from Chat fails the guard, as the guide says. Record that OpenCode's title refuses the Send instead |
 | Codex by default | Plain `codex` on the shared daemon | No list, only `codex resume --no-daemon` |
+| Codex behind a wrapper | A second default `codex` on that daemon, from a Template and from the desktop app under fish | No list, only `codex resume --no-daemon`. The same with `--no-daemon` on the Template's line says it can't tell, and does not ask to reopen |
 | Herdr TUI | Any Chat on a Herdr TUI Host | No list, whatever it says |
 
 ## Pi and Oh My Pi Chat

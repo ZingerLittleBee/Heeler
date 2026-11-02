@@ -87,6 +87,20 @@ enum HerdrCoreAgentRule {
         case other(String)
     }
 
+    /// What a command line comes to: its program, and the arguments that program got.
+    private struct Reading {
+        let program: Program
+        var arguments: [String] = []
+    }
+
+    /// The arguments of the program `kind` this foreground runs, once its wrappers,
+    /// `sh -c` line or interpreter are read away. Nil when its words name no such
+    /// program, which a process's own name can still make it.
+    static func arguments(of foreground: HerdrCoreForeground, runningKind kind: String) -> [String]? {
+        let reading = read(foreground.argv)
+        return reading.program == .known(kind) ? reading.arguments : nil
+    }
+
     /// The shell a foreground names, as its program's own word. Read it only of
     /// one the rule reads as `.shell`.
     static func shellName(of foreground: HerdrCoreForeground) -> String {
@@ -99,9 +113,9 @@ enum HerdrCoreAgentRule {
     static func program(of record: HerdrCoreTerminalRecord) -> Program {
         guard let foreground = record.foreground else { return readLaunch(record.argv) }
         guard !foreground.argv.isEmpty else {
-            return foreground.name.isEmpty ? readLaunch(record.argv) : read([foreground.name])
+            return foreground.name.isEmpty ? readLaunch(record.argv) : read([foreground.name]).program
         }
-        let program = read(foreground.argv)
+        let program = read(foreground.argv).program
         if case .other = program, let kind = knownKind(baseName(foreground.name)) {
             return .known(kind)
         }
@@ -112,7 +126,7 @@ enum HerdrCoreAgentRule {
     /// cleared one, so this can also be long after the launch. One that continues
     /// as a shell may have outlived its command, so only a sample can name it.
     private static func readLaunch(_ arguments: [String]) -> Program {
-        continuesAsShell(arguments) ? .shell : read(arguments)
+        continuesAsShell(arguments) ? .shell : read(arguments).program
     }
 
     private static func continuesAsShell(_ arguments: [String]) -> Bool {
@@ -126,13 +140,14 @@ enum HerdrCoreAgentRule {
 
     private static let maximumDepth = 8
 
-    private static func read(_ arguments: [String], depth: Int = 0) -> Program {
-        guard depth < maximumDepth, let executable = arguments.first else { return .shell }
+    private static func read(_ arguments: [String], depth: Int = 0) -> Reading {
+        guard depth < maximumDepth, let executable = arguments.first else { return Reading(program: .shell) }
         let name = baseName(executable)
         if shells.contains(name) { return readShell(arguments, name: name, depth: depth) }
         if interpreters.contains(name) { return readInterpreter(arguments, name: name) }
-        if let kind = knownKind(name) { return .known(kind) }
-        return .other(name)
+        let rest = Array(arguments.dropFirst())
+        if let kind = knownKind(name) { return Reading(program: .known(kind), arguments: rest) }
+        return Reading(program: .other(name), arguments: rest)
     }
 
     /// The last path component, in lower case, with a login shell's `-` and a
@@ -193,7 +208,7 @@ enum HerdrCoreAgentRule {
 
     /// A wrapper, a line or a script is what the shell runs. A shell with
     /// options alone is the prompt, which ends the Agent.
-    private static func readShell(_ arguments: [String], name: String, depth: Int) -> Program {
+    private static func readShell(_ arguments: [String], name: String, depth: Int) -> Reading {
         if name == "pwsh" || name == "powershell" {
             return readPowerShell(arguments, name: name, depth: depth)
         }
@@ -204,7 +219,7 @@ enum HerdrCoreAgentRule {
                 return read(Array(arguments.dropFirst(index + 1)), depth: depth + 1)
             }
             if isCommandOption(argument) {
-                guard index + 1 < arguments.count else { return .shell }
+                guard index + 1 < arguments.count else { return Reading(program: .shell) }
                 let body = arguments[index + 1]
                 if wrapperBodies.contains(body) {
                     // After the body comes `$0`, then the command.
@@ -217,10 +232,10 @@ enum HerdrCoreAgentRule {
             } else if argument.hasPrefix("-") || argument.hasPrefix("+") {
                 index += 1
             } else {
-                return scriptProgram(argument)
+                return Reading(program: scriptProgram(argument), arguments: Array(arguments.dropFirst(index + 1)))
             }
         }
-        return .shell
+        return Reading(program: .shell)
     }
 
     /// `-c`, or several short options ending in it, as `-ic` and `-lc`.
@@ -233,19 +248,19 @@ enum HerdrCoreAgentRule {
 
     /// `pwsh -NoExit -Command "& 'prog' 'arg'"`, as the desktop app runs it, and
     /// `-Command "& 'prog' 'arg'; exit $LASTEXITCODE"`, as Heeler does.
-    private static func readPowerShell(_ arguments: [String], name: String, depth: Int) -> Program {
+    private static func readPowerShell(_ arguments: [String], name: String, depth: Int) -> Reading {
         guard
             let option = arguments.firstIndex(where: {
                 let option = $0.lowercased()
                 return option == "-command" || option == "-c"
             })
         else {
-            return arguments.dropFirst().contains { !$0.hasPrefix("-") } ? .other(name) : .shell
+            return Reading(program: arguments.dropFirst().contains { !$0.hasPrefix("-") } ? .other(name) : .shell)
         }
-        guard option + 1 < arguments.count else { return .shell }
+        guard option + 1 < arguments.count else { return Reading(program: .shell) }
         var line = arguments[option + 1]
         if line.hasSuffix(powerShellExit) { line.removeLast(powerShellExit.count) }
-        guard let words = powerShellWords(line) else { return .other(name) }
+        guard let words = powerShellWords(line) else { return Reading(program: .other(name)) }
         return read(words, depth: depth + 1)
     }
 
@@ -317,13 +332,13 @@ enum HerdrCoreAgentRule {
 
     /// The program of a `sh -c` line: its first command past any setup. Only
     /// command positions count: `echo claude` is `echo`.
-    private static func readLine(_ line: String, depth: Int) -> Program {
+    private static func readLine(_ line: String, depth: Int) -> Reading {
         let commands = shellCommands(in: line).map(commandWords).filter { !$0.isEmpty }
         for (position, words) in commands.enumerated() {
             if setupCommands.contains(words[0]), position < commands.count - 1 { continue }
             return read(words, depth: depth)
         }
-        return .shell
+        return Reading(program: .shell)
     }
 
     /// One command's words without assignments, prefixes and `env`'s own.
@@ -425,7 +440,7 @@ enum HerdrCoreAgentRule {
     /// Only the script position counts: `node server.js claude` is `server`.
     /// An option this does not know may take a value, and evaluated source is
     /// no script's name, so either leaves the interpreter as the program.
-    private static func readInterpreter(_ arguments: [String], name: String) -> Program {
+    private static func readInterpreter(_ arguments: [String], name: String) -> Reading {
         var index = 1
         if name == "bun" || name == "deno", arguments.count > 1, arguments[1] == "run" { index = 2 }
         while index < arguments.count {
@@ -440,11 +455,11 @@ enum HerdrCoreAgentRule {
             } else if interpreterValueOptions.contains(argument) {
                 index += 2
             } else {
-                return .other(name)
+                return Reading(program: .other(name))
             }
         }
-        guard index < arguments.count else { return .other(name) }
-        return scriptProgram(arguments[index])
+        guard index < arguments.count else { return Reading(program: .other(name)) }
+        return Reading(program: scriptProgram(arguments[index]), arguments: Array(arguments.dropFirst(index + 1)))
     }
 
     private static func scriptProgram(_ path: String) -> Program {

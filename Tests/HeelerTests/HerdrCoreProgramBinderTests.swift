@@ -348,6 +348,70 @@ struct HerdrCoreProgramBinderTests {
         #expect(evidence == .unavailable(.codexSharedDaemon))
     }
 
+    /// A second default Codex's process tree, with `foreground` as the words of the
+    /// process that started it. The daemon's socket exists. The rows are the
+    /// recording's, and the wrappers around them are the forms the Agent rule's
+    /// vectors read as Codex (herdr compatibility).
+    private static func joiningCodex(
+        foreground argv: [String], holds files: [String] = []
+    ) async throws -> (Rig, HerdrCoreTerminalRecord) {
+        let scene = try HostEvidenceFixture.named("codex/default-daemon").scene("second-terminal-joined")
+        let rows = try #require(scene.secondTerminal)
+        let home = "/home/user/lab/iso/codexd/codex-home"
+        let rig = Rig(program: .codex)
+        await rig.add(rows, environment: ["CODEX_HOME": home])
+        var native = try #require(rows.last).process
+        native.environment["CODEX_HOME"] = home
+        native.openFiles = files
+        await rig.table.add(native)
+        await rig.files.write(Data(), at: "\(home)/app-server-control/app-server-control.sock")
+        return (rig, try record(pid: try #require(rows.first).pid, argv: argv, name: "sh"))
+    }
+
+    private nonisolated static let fishWrapper = [
+        "/usr/bin/fish", "-ic", "command $argv[2..]; exec $argv[1] -i", "/usr/bin/fish",
+    ]
+
+    /// A Template's `sh -c` line stays the foreground on Debian, as the desktop app's
+    /// fish wrapper does, and the Console calls each of these Codex.
+    @Test(arguments: [
+        ["/bin/sh", "-c", "codex"],
+        fishWrapper + ["codex"],
+        ["node", "/usr/lib/node_modules/@openai/codex/bin/codex.js"],
+        ["/bin/sh", "/home/user/bin/codex.sh"],
+    ])
+    func aCodexJoiningTheDaemonBehindAWrapperGetsOnlyTheMessage(foreground: [String]) async throws {
+        let (rig, record) = try await Self.joiningCodex(foreground: foreground)
+
+        #expect(try await rig.binder.check(record) == .unavailable(.codexSharedDaemon))
+        #expect(try await rig.binder.candidates(of: record) == .sharedDaemon)
+    }
+
+    /// Codex's own arguments still keep it off the daemon behind a wrapper, and a
+    /// subcommand with no terminal UI says nothing about it.
+    @Test(arguments: [
+        ["/bin/sh", "-c", "codex --no-daemon"],
+        ["/bin/sh", "-c", "cd /work/app && exec codex --no-daemon"],
+        fishWrapper + ["codex", "--no-daemon"],
+        ["node", "/usr/lib/node_modules/@openai/codex/bin/codex.js", "--no-daemon"],
+        ["/bin/sh", "-c", "codex exec hello"],
+    ])
+    func aCodexBehindAWrapperThatKeepsOffTheDaemonIsNotToldToReopen(foreground: [String]) async throws {
+        let (rig, record) = try await Self.joiningCodex(foreground: foreground)
+
+        #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.codex)))
+    }
+
+    /// A script's arguments are not Codex's, so `--no-daemon` inside it does not show.
+    /// Its native child's thread-writer lock does (`codex/no-daemon` at its prompt).
+    @Test func aThreadLockSaysAScriptsCodexIsNotOnTheDaemon() async throws {
+        let (rig, record) = try await Self.joiningCodex(
+            foreground: ["/bin/sh", "/home/user/bin/codex.sh"],
+            holds: ["/home/user/lab/iso/codexd/codex-home/thread-writer-locks/\(Self.firstThread).lock"])
+
+        #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.codex)))
+    }
+
     @Test func withNoSocketThatCodexIsNotOnTheDaemon() async throws {
         let scene = try HostEvidenceFixture.named("codex/default-daemon").scene("second-terminal-joined")
         let rows = try #require(scene.secondTerminal)
