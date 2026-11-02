@@ -249,6 +249,27 @@ struct HerdrCoreWindowsConsoleTests {
         #expect(windowsTUI.offersChanges(directory: #"C:\work"#))
     }
 
+    /// The edit reads the Agent's environment and writes a POSIX path, which Windows refuses.
+    @Test func anUnknownGrokBuildAgentIsExplainedWithoutOfferingTheEdit() async throws {
+        let grok: JSONValue = .object([
+            "address": .string("t1"), "cwd": .string(#"C:\work"#), "state": .string("live"),
+            "argv": .array([.string("powershell.exe"), .string("-Command"), .string("& 'grok'; exit $LASTEXITCODE")]),
+            "cols": .number(80), "rows": .number(24), "pid": .number(7), "keep": .bool(false),
+            "foreground": .object([
+                "pid": .number(7), "name": .string("powershell.exe"), "cwd": .string(#"C:\work"#),
+                "argv": .array([.string("powershell.exe"), .string("-Command"), .string("& 'grok'; exit $LASTEXITCODE")]),
+            ]),
+        ])
+        let store = try await started([grok], services: ScriptedCoreServices(platform: .nativeWindows))
+        try await waitUntil("the kernel") { store.hostCoreKernels[host.id] == HerdrCoreLocator.windowsKernel }
+
+        let explanation = try #require(
+            store.coreStatusExplanations[ConsoleAgent.ID(hostID: host.id, paneID: "t1")])
+        #expect(explanation.text == "Grok Build hasn't reported a status.")
+        #expect(store.grokBuildEditFlow(for: explanation, on: host.id) == nil)
+        await finish(store)
+    }
+
     @Test func aConnectedWindowsCoreHostOffersWhatItsTicketsTurnedOn() async throws {
         let store = try await started(
             [Self.record("t1", cwd: #"C:\work"#)], services: ScriptedCoreServices(platform: .nativeWindows))

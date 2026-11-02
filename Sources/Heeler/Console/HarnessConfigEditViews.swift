@@ -150,9 +150,7 @@ struct HerdrCoreStatusExplanationSheet: View {
     init(console: ConsoleStore, hostID: Host.ID, explanation: HerdrCoreStatusExplanation) {
         self.explanation = explanation
         self.hostID = hostID
-        _flow = State(
-            initialValue: explanation.offersGrokBuildEdit
-                ? console.grokBuildEditFlow(on: hostID, process: explanation.agentProcess) : nil)
+        _flow = State(initialValue: console.grokBuildEditFlow(for: explanation, on: hostID))
     }
 
     var body: some View {

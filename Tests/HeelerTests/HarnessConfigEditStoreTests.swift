@@ -96,6 +96,10 @@ import UIKit
         #expect(store.coreStatusExplanations[id(host, "reporting-grok")] == nil)
         #expect(store.coreStatusExplanations[id(host, "silent-claude")]?.offersGrokBuildEdit == false)
         #expect(store.coreStatusExplanations[id(host, "reporting-claude")] == nil)
+        let grok = try #require(store.coreStatusExplanations[id(host, "silent-grok")])
+        #expect(store.grokBuildEditFlow(for: grok, on: host.id) != nil)
+        let claude = try #require(store.coreStatusExplanations[id(host, "silent-claude")])
+        #expect(store.grokBuildEditFlow(for: claude, on: host.id) == nil)
     }
 
     @Test func aShellTerminalHasNoExplanation() async throws {

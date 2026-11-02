@@ -1915,6 +1915,16 @@ final class ConsoleStore {
 
     /// The Grok Build edit an Unknown Grok Build Agent offers. `process` is the
     /// Agent's, whose `GROK_HOME` says which file its program reads.
+    /// The edit this explanation may offer, where its Host can make it: it reads
+    /// the Agent's environment and writes a POSIX path, neither of which a native
+    /// Windows core Host serves (ADR 0033).
+    func grokBuildEditFlow(
+        for explanation: HerdrCoreStatusExplanation, on hostID: Host.ID
+    ) -> HarnessConfigEditFlow? {
+        guard explanation.offersGrokBuildEdit, capabilities(for: hostID).hostScripts else { return nil }
+        return grokBuildEditFlow(on: hostID, process: explanation.agentProcess)
+    }
+
     func grokBuildEditFlow(on hostID: Host.ID, process: Int?) -> HarnessConfigEditFlow {
         HarnessConfigEditFlow(
             hostID: hostID, editID: GrokBuildProgramStatusEdit.id, store: harnessEdits,

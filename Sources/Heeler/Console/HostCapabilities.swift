@@ -33,9 +33,9 @@ struct HostCapabilities: Equatable, Sendable {
     var chatPrograms: Set<ChatProgram>?
     /// A core runs what it is given in a directory of its own machine's form.
     var startsInWindowsDirectories = false
-    /// Changes and Skills run POSIX scripts on the Host. A native Windows core
-    /// Host offers neither, rather than failing once opened; a native Windows
-    /// Herdr TUI Host keeps what it has always shown.
+    /// Changes, Skills and Grok Build's status edit run POSIX scripts on the Host.
+    /// A native Windows core Host offers none of them, rather than failing once
+    /// opened; a native Windows Herdr TUI Host keeps what it has always shown.
     var hostScripts = true
 
     /// Whether an Agent in this directory offers Changes, wherever it does.
