@@ -380,11 +380,11 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   seen through those reads in a macOS 26.5 VM with SIP off and no sign-in
   (`host-evidence/macos`, [herdr compatibility](../agents/herdr-compatibility.md)).
   On the owner's Mac, macOS 27.0.1 with SIP on and signed-in harnesses, Claude
-  Code, Codex with `--no-daemon`, Grok Build, and Pi and Oh My Pi through Heeler's
-  extension each bound exactly. A program taken out of `macOSExactCoreChatPrograms`
-  reads as cannot tell there and goes through its candidate list with one
-  confirmation, and binds as before on Linux. OpenCode is out of it, since 2.0.32
-  from New Agent reached only candidates on that Mac. Three things
+  Code, Codex with `--no-daemon`, Grok Build, Pi and Oh My Pi through Heeler's
+  extension, and OpenCode 2.0.32 through Heeler's plugin each bound exactly. A
+  program taken out of `macOSExactCoreChatPrograms` reads as cannot tell there and
+  goes through its candidate list with one confirmation, and binds as before on
+  Linux. Only a read that fails on a Mac takes one out; none has. Three things
   differ. The walk's `W ok` says the tree is whole, so a pick's process it no longer
   lists has left. Grok Build's `pid_start` is microseconds, compared to the second
   the start read gives. Oh My Pi's breadcrumb goes by `ttys006`. A Mac with SIP on

@@ -312,7 +312,7 @@ shows.
 
 On a Mac Host with signed-in harnesses and the Host Helper installed as a LaunchAgent. Temporarily turn on each program in `HostCapabilities.confirmedMacOSCoreChatPrograms` that has not passed yet. A program that passes joins that list, and Linux's list waits for this box. Record each result as a versioned observation in `docs/agents/herdr-compatibility.md`.
 
-The run of 2026-11-02, on macOS 27.0.1 with herdr-core 0.1.13, passed the Claude Code, SIP on, Codex, Pi and Grok Build rows, Oh My Pi with the extension, and Moved on under zsh. OpenCode 2.0.32 from New Agent could only be chosen, so it stays off on macOS and out of `macOSExactCoreChatPrograms`, and 2.1 or later was not run.
+The run of 2026-11-02, on macOS 27.0.1 with herdr-core 0.1.13, Claude Code 2.1.316, codex-cli 0.165.0, Grok Build 1.0.70, Pi 1.4.0 and Oh My Pi 18.12.3, passed the Claude Code, SIP on, Codex, Pi and Grok Build rows, Oh My Pi with the extension, and Moved on under zsh ([herdr compatibility](../agents/herdr-compatibility.md)). OpenCode 2.0.32 from New Agent could only be chosen and 2.1 or later was not run, so it stays off on macOS. It stays in `macOSExactCoreChatPrograms`, since no read failed and Heeler's plugin label bound it exactly in the same run.
 
 | Check | Do | Expect |
 | --- | --- | --- |
@@ -346,7 +346,7 @@ conversation before choosing, in light and dark, and attach them to the run's no
 | Codex behind a wrapper | A second default `codex` on that daemon, from a Template and from the desktop app under fish | No list, only `codex resume --no-daemon`. The same with `--no-daemon` on the Template's line says it can't tell, and does not ask to reopen |
 | Herdr TUI | Any Chat on a Herdr TUI Host | No list, whatever it says |
 
-A Mac run of 2026-11-02 with OpenCode 2.0.32 and Pi 1.4.0 passed OpenCode by hand, One label, Process change, Session switch, Send guard, The in-process limit and Codex by default ([herdr compatibility](../agents/herdr-compatibility.md)). Read first passed only in part: both of OpenCode's store rows and the one Pi transcript opened showed their conversation with **Use This Conversation**, but no candidate failed to read and none was held open or a Status child, so withholding the offer on one that doesn't read was not exercised. A second device, Grok Build's `/new`, a wrapper and Herdr TUI were not run there, and this box's run is still to come.
+A Mac run of 2026-11-02 with OpenCode 2.0.32 and Pi 1.4.0 passed OpenCode by hand, One label, Process change, Session switch, Send guard, The in-process limit and Codex by default ([herdr compatibility](../agents/herdr-compatibility.md)). Read first passed only in part: both of OpenCode's store rows and the one Pi transcript opened showed their conversation with **Use This Conversation**, but no candidate failed to read and none was held open or a Status child, so withholding the offer on one that doesn't read was not exercised. For Session switch, the extension labels Pi as it starts, so the pick from before it wrote came after clearing that label by hand with `terminal.label`. A second device, Grok Build's `/new`, a wrapper and Herdr TUI were not run there, and this box's run is still to come.
 
 ## Pi and Oh My Pi Chat
 
