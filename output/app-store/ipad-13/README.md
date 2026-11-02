@@ -24,12 +24,13 @@ exports and is excluded from Git.
 ## Source preservation
 
 - The sources are real captures from the iPad Pro 13-inch (M5) (16GB) simulator
-  on iOS 27.0, UDID `A993BBE0-BD87-4807-8541-34A23C15C6A9`, taken on 2026-09-28
-  against a live herdr on this Mac. They show the iPad sidebar console. The
-  console, windowed, and Changes captures were retaken on 2026-10-02.
+  on iOS 27.0, UDID `A993BBE0-BD87-4807-8541-34A23C15C6A9`, taken on 2026-11-01.
+  The app connected over SSH to an isolated herdr backend on this Mac
+  (`scripts/isolated-herdr-backend.py`), not demo fixtures. Claude Code and Codex
+  ran real sessions on small demo repositories, so the conversations, approval
+  prompt, Changes, diffs, Skills, and shell output are their real output.
 - The same captures are copied to `docs/images/*-ipad.png` for the README and to
   `landing/src/assets/screens/*-ipad.png` for the landing page.
-- The session titles in the captures remain in Chinese, as captured.
 - Source captures are copied unchanged. The renderer scales each 4:3 capture
   uniformly to 2112 × 1584, with a small rounded corner mask. It does not redraw,
   rearrange, stretch, or replace any application content.

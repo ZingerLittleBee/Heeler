@@ -264,6 +264,13 @@ actor ChatConversationEngine {
         var isUnreadable = false
     }
 
+    /// One request for older history, across the calls that read its pages.
+    private struct OlderSearch {
+        var pageLength: Int
+        /// What a bounded automatic request may still read.
+        var allowance: Int?
+    }
+
     let reference: ConversationReference
     let cacheKey: ChatCacheKey
     private let files: ChatHostFiles
@@ -295,6 +302,8 @@ actor ChatConversationEngine {
     private var cached: ChatCacheDocument?
     /// The line before the window is too long to page past.
     private var olderUnreadable = false
+    /// The request for older history still reading, between its pages.
+    private var olderSearch: OlderSearch?
     private var context = ChatProjectionContext()
     private var needsProjection = false
     private var snapshot = ChatConversationSnapshot()
@@ -456,79 +465,100 @@ actor ChatConversationEngine {
         }
     }
 
-    /// Reads history above the oldest line read, a page at a time, until
-    /// it brings the opener of a turn not shown before, the file's head or
-    /// the saved entries are reached, or the source has spent the request's
-    /// search. A turn's steps fold under its header, so pages that end
-    /// inside a turn would add nothing to see. A request the timeline makes
-    /// by itself (`automatic`) reads as the user's does, unless the source
-    /// bounds it (`automaticOlderSearch`): then it reads at most that many
-    /// bytes, and one that reads them all inside a turn leaves earlier
-    /// history to the user's requests (`olderAwaitsUser`).
+    /// Reads one page of history above the oldest line read. A request goes
+    /// on, with `older` staying `.loading`, until it brings the opener of a
+    /// turn not shown before, the file's head or the saved entries are
+    /// reached, or the source has spent the request's search; the owner calls
+    /// again for each page. A long turn can span tens of MiB, so each page
+    /// shows as it comes and the owner may poll between pages, as what the
+    /// Agent writes meanwhile matters more than what it wrote before.
+    ///
+    /// A request the timeline makes by itself (`automatic`) reads as the
+    /// user's does, unless the source bounds it (`automaticOlderSearch`): then
+    /// it reads at most that many bytes, and one that reads them all inside a
+    /// turn leaves earlier history to the user's requests (`olderAwaitsUser`).
+    /// A cancelled read costs the request nothing: the next call reads the
+    /// page again.
     func loadOlder(context: ChatProjectionContext, automatic: Bool = false) async -> ChatConversationSnapshot {
         setContext(context)
-        guard var first = source, first.hasOlder, !olderUnreadable, !(automatic && snapshot.olderAwaitsUser)
-        else { return snapshot }
-        update { $0.older = .loading }
+        // So the opener compared below can only come from this page.
+        projectIfNeeded()
+        if olderSearch == nil {
+            guard var first = source, first.hasOlder, !olderUnreadable, !(automatic && snapshot.olderAwaitsUser)
+            else { return snapshot }
+            first.beginOlderSearch()
+            source = first
+            // Each page projects everything loaded again, so a long search
+            // reads larger pages.
+            olderSearch = OlderSearch(
+                pageLength: first.olderPageLengths.first, allowance: automatic ? first.automaticOlderSearch : nil)
+            update { $0.older = .loading }
+        }
+        guard var source, var search = olderSearch else { return snapshot }
         let oldestOpener = snapshot.transcript.turns.first?.firstEntryID
-        first.beginOlderSearch()
-        source = first
-        // Each page projects everything loaded again, so a long search
-        // reads larger pages.
-        let pageLengths = first.olderPageLengths
-        var pageLength = pageLengths.first
-        // What a bounded automatic request may still read. Its pages read
-        // no more than their length, so this counts every byte, the lines
-        // page boundaries cut and read again included.
-        var allowance = automatic ? first.automaticOlderSearch : nil
-        while var source {
-            let limit = allowance.map { min(pageLength, $0) }
-            allowance = allowance.map { $0 - (limit ?? 0) }
-            do {
-                switch try await source.loadOlder(files, length: limit ?? pageLength, limit: limit) {
-                case .lines(let lines):
-                    self.source = source
-                    reducer?.prepend(lines)
-                case .headReached:
-                    self.source = source
-                case .unreadable:
-                    olderUnreadable = true
-                case .beyondLimit:
-                    // A line longer than this page; the next is larger.
-                    break
-                case .missing, .rewritten:
-                    return await open(directories: directories, context: context)
-                }
-                needsProjection = true
-                update { $0.readFailure = nil }
-            } catch let unavailable as ChatSourceUnavailable {
-                stop(unavailable.reason)
-                update { if $0.older == .loading { $0.older = .available } }
+        // A bounded request's pages read no more than their length, so this
+        // counts every byte, the lines page boundaries cut and read again
+        // included.
+        let limit = search.allowance.map { min(search.pageLength, $0) }
+        search.allowance = search.allowance.map { $0 - (limit ?? 0) }
+        do {
+            switch try await source.loadOlder(files, length: limit ?? search.pageLength, limit: limit) {
+            case .lines(let lines):
+                self.source = source
+                reducer?.prepend(lines)
+            case .headReached:
+                self.source = source
+            case .unreadable:
+                olderUnreadable = true
+            case .beyondLimit:
+                // A line longer than this page; the next is larger.
                 break
-            } catch {
-                recordFailure(error)
-                let message =
-                    (error as? TransportError)?.presentation.summary
-                    ?? "Earlier messages could not be read"
-                update { $0.older = .failed(message) }
-                break
+            case .missing, .rewritten:
+                endOlderSearch()
+                return await open(directories: directories, context: context)
             }
+            needsProjection = true
+            update { $0.readFailure = nil }
+        } catch let unavailable as ChatSourceUnavailable {
+            stop(unavailable.reason)
+            return snapshot
+        } catch {
+            guard !Self.isCancellation(error) else { return snapshot }
+            recordFailure(error)
+            let message =
+                (error as? TransportError)?.presentation.summary
+                ?? "Earlier messages could not be read"
+            olderSearch = nil
+            update { $0.older = .failed(message) }
             projectIfNeeded()
-            pageLength = min(pageLength * 2, pageLengths.maximum)
-            guard snapshot.transcript.turns.first?.firstEntryID == oldestOpener, snapshot.older != .reachedStart,
-                self.source?.hasOlder == true, !olderUnreadable, self.source?.olderSearchExhausted == false
-            else { break }
-            if allowance == 0 {
-                // Further pages would only grow the turn's run of steps.
-                update { $0.olderAwaitsUser = true }
-                break
-            }
+            return snapshot
+        }
+        search.pageLength = min(search.pageLength * 2, source.olderPageLengths.maximum)
+        olderSearch = search
+        projectIfNeeded()
+        // Reopened, the window starts over at the tail below the saved rows
+        // it reads again. Those bring nothing new, so they spend no search.
+        if let current = self.source, joinedCache(windowStart: current.windowStart ?? current.readOffset) != nil {
+            self.source?.beginOlderSearch()
         }
         if snapshot.transcript.turns.first?.firstEntryID != oldestOpener {
             update { $0.olderAwaitsUser = false }
+            endOlderSearch()
+        } else if snapshot.older == .reachedStart || self.source?.hasOlder != true || olderUnreadable
+            || self.source?.olderSearchExhausted != false
+        {
+            endOlderSearch()
+        } else if search.allowance == 0 {
+            // Further pages would only grow the turn's run of steps.
+            update { $0.olderAwaitsUser = true }
+            endOlderSearch()
         }
-        projectIfNeeded()
         return snapshot
+    }
+
+    private func endOlderSearch() {
+        olderSearch = nil
+        update { if $0.older == .loading { $0.older = .available } }
     }
 
     /// Projects again without reading, for a change only the context
@@ -628,7 +658,7 @@ actor ChatConversationEngine {
                     if !running.contains(id) { followed.isSettled = true }
                 }
             } catch {
-                if error is CancellationError || error as? TransportError == .cancelled { return workflowProgress }
+                if Self.isCancellation(error) { return workflowProgress }
                 if case .hostFileUnreadable? = error as? TransportError {
                     followed.isUnreadable = true
                 } else {
@@ -806,6 +836,7 @@ actor ChatConversationEngine {
         self.reducer = reducer
         hasFollowed = true
         olderUnreadable = false
+        olderSearch = nil
         needsProjection = true
         update {
             $0.phase = .following(path: source.path)
@@ -829,6 +860,7 @@ actor ChatConversationEngine {
 
     /// Stops following, keeping whatever shows.
     private func stop(_ reason: ChatUnavailableReason) {
+        endOlderSearch()
         source = nil
         reducer = nil
         update {
@@ -904,6 +936,7 @@ actor ChatConversationEngine {
             switch (reachedStart, snapshot.older) {
             case (true, _): .reachedStart
             case (false, .failed(let message)): .failed(message)
+            case (false, .loading) where olderSearch != nil: .loading
             case (false, _): .available
             }
         update {
@@ -914,14 +947,15 @@ actor ChatConversationEngine {
     }
 
     private func recordFailure(_ error: any Error) {
-        if error is CancellationError || error as? TransportError == .cancelled { return }
+        if Self.isCancellation(error) { return }
         let failure =
             error as? TransportError
             ?? .channelFailed(detail: String(describing: type(of: error)))
-        update {
-            $0.readFailure = failure
-            if $0.older == .loading { $0.older = .available }
-        }
+        update { $0.readFailure = failure }
+    }
+
+    private static func isCancellation(_ error: any Error) -> Bool {
+        error is CancellationError || error as? TransportError == .cancelled
     }
 
     private func update(_ change: (inout ChatConversationSnapshot) -> Void) {

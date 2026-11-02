@@ -8,7 +8,7 @@ Agent Console, Direct Input, Skills, Terminals, Changes, and windowed presentati
 
 Keep the Agent list visible alongside the selected conversation.
 
-![Agent sidebar beside a Claude Code conversation and the Composer on iPad](images/console-ipad.png)
+![Agent sidebar beside a Claude Code conversation waiting on a command approval on iPad](images/console-ipad.png)
 
 ## Terminal keyboard
 
@@ -32,13 +32,13 @@ Open a plain shell in any Workspace, with Text and Keys modes.
 
 See everything uncommitted in the Agent's Checkout, beside the Agent list.
 
-![Changes listing a Checkout's staged, unstaged, and untracked files beside the Agent sidebar on iPad](images/changes-ipad.png)
+![Changes listing a Checkout's modified and untracked files beside the Agent sidebar on iPad](images/changes-ipad.png)
 
 ## File diff
 
 Read any changed file side by side or unified, with edited words marked.
 
-![A Swift file compared side by side with its edited words highlighted on iPad](images/diff-ipad.png)
+![A JavaScript file compared side by side with its edited words highlighted on iPad](images/diff-ipad.png)
 
 ## Windowed presentation
 

@@ -234,6 +234,57 @@ struct ClaudeChainResolverTests {
         ])
     }
 
+    /// A boundary whose logical parent no record in the file holds, as
+    /// Claude Code 2.1.296 and later can write. `metadata` names the messages
+    /// it preserved, or nothing.
+    private static func boundaryWithAnAbsentLogicalParent(_ metadata: String) -> String {
+        #"""
+        {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"First question"},"promptSource":"typed","origin":{"kind":"human"}}
+        {"type":"assistant","uuid":"a1","parentUuid":"p1","message":{"id":"m1","role":"assistant","content":[{"type":"text","text":"First answer"}]},"apiBlockIndex":0}
+        {"type":"system","subtype":"turn_duration","uuid":"t1","parentUuid":"a1","durationMs":900}
+        {"type":"user","uuid":"p2","parentUuid":"t1","message":{"role":"user","content":"Second question"},"promptSource":"typed","origin":{"kind":"human"}}
+        {"type":"assistant","uuid":"a2","parentUuid":"p2","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"Second answer"}]},"apiBlockIndex":0}
+        {"type":"system","subtype":"compact_boundary","uuid":"b1","parentUuid":null,"logicalParentUuid":"never-written","content":"Conversation compacted","compactMetadata":\#(metadata)}
+        {"type":"user","uuid":"s1","parentUuid":"b1","isCompactSummary":true,"isVisibleInTranscriptOnly":true,"message":{"role":"user","content":"Summary"}}
+        {"type":"user","uuid":"p3","parentUuid":"s1","message":{"role":"user","content":"Third question"},"promptSource":"typed","origin":{"kind":"human"}}
+        {"type":"assistant","uuid":"a3","parentUuid":"p3","message":{"id":"m3","role":"assistant","content":[{"type":"text","text":"Third answer"}]},"apiBlockIndex":0}
+        """#
+    }
+
+    /// Waiting for such a parent would hide everything above the boundary
+    /// until the file's head loads, which took 85 MiB in a real session.
+    @Test("In a tail window, history continues past an absent logical parent from the preserved messages")
+    func absentLogicalParentInATailWindow() {
+        let lines = ClaudeSample.lines(
+            Self.boundaryWithAnAbsentLogicalParent(
+                #"{"trigger":"auto","preservedMessages":{"anchorUuid":"s1","uuids":["p2","a2"]}}"#))
+        let reducer = ClaudeSample.reducer(Array(lines.dropFirst(2)))
+
+        let window = reducer.transcript(ChatProjectionContext(windowStart: lines[2].offset, activity: .idle))
+
+        #expect(window.entries.map(\.id.rawValue) == ["user:p2", "text:a2", "compact:b1", "user:p3", "text:a3"])
+        let earlier = ClaudeSample.reducer(Array(lines.dropFirst(1)))
+            .transcript(ChatProjectionContext(windowStart: lines[1].offset, activity: .idle))
+        #expect(earlier.entries.map(\.id.rawValue).first == "text:a1")
+        let whole = ClaudeSample.reducer(lines).transcript(ChatProjectionContext(activity: .idle))
+        #expect(whole.entries.map(\.id.rawValue).first == "user:p1")
+        #expect(whole.entries.map(\.id.rawValue).last == "text:a3")
+    }
+
+    /// Without preserved messages the tail window has only a guess at the
+    /// branch, so it waits for the file's head before making one.
+    @Test("In a tail window, an absent logical parent with nothing preserved stops the walk")
+    func absentLogicalParentWithNothingPreserved() {
+        let lines = ClaudeSample.lines(Self.boundaryWithAnAbsentLogicalParent(#"{"trigger":"auto"}"#))
+        let reducer = ClaudeSample.reducer(Array(lines.dropFirst(1)))
+
+        let window = reducer.transcript(ChatProjectionContext(windowStart: lines[1].offset, activity: .idle))
+
+        #expect(window.entries.map(\.id.rawValue) == ["compact:b1", "user:p3", "text:a3"])
+        let whole = ClaudeSample.reducer(lines).transcript(ChatProjectionContext(activity: .idle))
+        #expect(whole.entries.map(\.id.rawValue).first == "user:p1")
+    }
+
     // MARK: - Branches and damage
 
     @Test("A rewind hides the old branch; its prompt stays recorded without an entry")

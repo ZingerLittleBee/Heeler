@@ -55,6 +55,8 @@ uses the user's live server needs authorization for its writes.
 prints the Host settings and `knownHostFingerprints` entry to seed; `stop`
 removes it. See its `--help`.
 
+For App Store and README images, follow [the store screenshot runbook](store-screenshots.md).
+
 ## Capture and inspect
 
 Capture requires the selected simulator to be available and already Booted:

@@ -69,8 +69,13 @@ struct ChatConversationEngineTests {
             await engine.poll(context: ChatProjectionContext(activity: .idle))
         }
 
+        /// One whole request for older history, page by page.
         func loadOlder(_ engine: ChatConversationEngine, automatic: Bool = false) async -> ChatConversationSnapshot {
-            await engine.loadOlder(context: ChatProjectionContext(activity: .idle), automatic: automatic)
+            var snapshot: ChatConversationSnapshot
+            repeat {
+                snapshot = await engine.loadOlder(context: ChatProjectionContext(activity: .idle), automatic: automatic)
+            } while snapshot.older == .loading
+            return snapshot
         }
 
         /// The bytes read from the Host since the records were cleared.
@@ -608,6 +613,28 @@ struct ChatConversationEngineTests {
         #expect(snapshot.older == .available)
     }
 
+    /// The Agent starting a turn while Chat looks for the prompt above the
+    /// window brings a turn opener, but not the one the search is after.
+    @Test func aTurnStartedDuringAnOlderSearchDoesNotEndIt() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(NumberedChatReducer.prompt("a") + Self.lines(0..<20), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        var snapshot = await fixture.open(engine)
+        try #require(snapshot.transcript.turns.isEmpty)
+
+        snapshot = await engine.loadOlder(context: ChatProjectionContext(activity: .idle))
+        #expect(snapshot.older == .loading)
+
+        await fixture.files.append(NumberedChatReducer.prompt("b") + Self.lines(20..<22), to: Self.claudePath)
+        snapshot = await fixture.poll(engine)
+        #expect(snapshot.transcript.turns.count == 1)
+        #expect(snapshot.older == .loading)
+
+        snapshot = await fixture.loadOlder(engine)
+        #expect(snapshot.transcript.turns.first?.firstEntryID.rawValue == "p-0")
+        #expect(snapshot.older == .reachedStart)
+    }
+
     /// Short turns bring an opener within what a bounded request Chat
     /// makes by itself may read, so it reads and shows what the user's
     /// would.
@@ -846,6 +873,47 @@ struct ChatConversationEngineTests {
         #expect(!snapshot.olderAwaitsUser)
     }
 
+    /// Reopened, the window starts over at the tail while the saved rows show
+    /// from further up, so a request first reads what already shows. However
+    /// far those rows reach, it costs the request nothing: one request brings
+    /// the turn above them.
+    @Test func aRequestReadsPastSavedRowsLongerThanItsSearch() async throws {
+        let claude = try #require(ChatTranscriptAdapter.standard(for: .claude))
+        var limits = claude.limits
+        limits.olderSearch = 1 << 20
+        let fixture = Fixture(limits: limits)
+        // A 64 KiB line no program reads.
+        let filler = String(repeating: "x", count: (64 << 10) - 1) + "\n"
+        func turn(_ name: String, kib: Int) -> String {
+            NumberedChatReducer.prompt(name) + String(repeating: filler, count: kib / 64) + NumberedChatReducer.turnEnd
+        }
+        let early = turn("a", kib: 512)
+        await fixture.files.write(early + (0..<8).map { turn("b\($0)", kib: 768) }.joined(), at: Self.claudePath)
+        let first = fixture.makeEngine()
+        var snapshot = await fixture.open(first)
+        let oldestSaved = ChatEntryID("p-\(early.utf8.count)")
+        var requests = 0
+        while snapshot.transcript.turns.first?.firstEntryID != oldestSaved, requests < 20 {
+            snapshot = await fixture.loadOlder(first)
+            requests += 1
+        }
+        try #require(snapshot.transcript.turns.first?.firstEntryID == oldestSaved)
+        await first.save(force: true)
+        let saved = try #require(await fixture.savedDocument())
+
+        await fixture.files.append(turn("c", kib: 256), to: Self.claudePath)
+        let size = UInt64(await fixture.files.contents(of: Self.claudePath)?.count ?? 0)
+        try #require(size - UInt64(limits.tailWindow) - saved.coverageStart > UInt64(limits.olderSearch))
+        let reopened = fixture.makeEngine()
+        _ = await reopened.restore()
+        snapshot = await fixture.open(reopened)
+        try #require(snapshot.transcript.turns.first?.firstEntryID == oldestSaved)
+
+        snapshot = await fixture.loadOlder(reopened)
+
+        #expect(snapshot.transcript.turns.first?.firstEntryID == ChatEntryID("p-0"))
+    }
+
     @Test func savedEntriesShowBeforeTheHostAnswers() async throws {
         let fixture = Fixture()
         await fixture.cache.save(
@@ -1076,8 +1144,13 @@ struct ChatConversationEngineTests {
             await engine.poll(context: ChatProjectionContext(activity: .idle))
         }
 
+        /// One whole request for older records, page by page.
         func loadOlder(_ engine: ChatConversationEngine) async -> ChatConversationSnapshot {
-            await engine.loadOlder(context: ChatProjectionContext(activity: .idle))
+            var snapshot: ChatConversationSnapshot
+            repeat {
+                snapshot = await engine.loadOlder(context: ChatProjectionContext(activity: .idle))
+            } while snapshot.older == .loading
+            return snapshot
         }
 
         func savedDocument() async -> ChatCacheDocument? {

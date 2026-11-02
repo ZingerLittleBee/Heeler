@@ -52,7 +52,7 @@ Each line is one JSON object with a `type`. Chain records carry `uuid` and
 | Envelope field | Meaning |
 | --- | --- |
 | `uuid`, `parentUuid` | The tree edge. `parentUuid` is null at the root (`probe2-transcript.jsonl:5`) and on `compact_boundary`. |
-| `logicalParentUuid` | Only on `compact_boundary`: the last message before the compaction (CLI `chunk-v1gtm86q.js`). In 2.1.291 transcripts it names the preserved run's tail instead, a record written after the boundary whose parents lead back to it. |
+| `logicalParentUuid` | Only on `compact_boundary`: the last message before the compaction (CLI `chunk-v1gtm86q.js`). In 2.1.291 transcripts it names the preserved run's tail instead, a record written after the boundary whose parents lead back to it. From 2.1.296 it can name a record the file never holds: 29 of 233 boundaries in a local scan of 400 transcripts on 2026-11-01, most of them 2.1.312. |
 | `isSidechain` | True on every record of a subagent file (`probe2-subagent.jsonl`). Sidechain records never join the main conversation. |
 | `isMeta` | Model-only input, such as skill bodies, caveats and reminders. |
 | `sessionId` | The file's session id. In a subagent file it is the parent session's id (`probe2-subagent.jsonl:1`). A `session_id` field, where present, differs from it in 9,834 user records of the local scan and is not an identity. |
@@ -186,7 +186,9 @@ with one extension so history before a compaction stays reachable:
    otherwise from the newest `preservedMessages` entry (or the
    `preservedSegment` head) positioned before it, which continues the branch
    it was copied from; otherwise from the newest unvisited eligible terminal
-   positioned before it. The walk-up follows written parents and stops at
+   positioned before it. In a tail window, a logical parent not yet read waits
+   for older pages only when no preserved message has been read either, since
+   the file may never hold it. The walk-up follows written parents and stops at
    visited records. Over 159 transcripts in the
    local scan, this reached 98.0% of non-sidechain user and assistant records
    with no duplicates. Boundary geometry in a capture is Not verified.
