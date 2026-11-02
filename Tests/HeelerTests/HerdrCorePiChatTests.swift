@@ -131,7 +131,7 @@ struct HerdrCorePiChatTests {
                         keepalive: nil)
                 },
                 makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) },
-                coreChatPrograms: offered)
+                coreLinuxChatPrograms: offered)
         }
 
         func start(environment: [String: String] = [:], openFiles: [String] = []) async throws {

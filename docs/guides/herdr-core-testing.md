@@ -228,6 +228,8 @@ Run this once with OpenCode 1.x and once with 2.x, each signed in with the lab's
 | Others untouched | Compare `opencode.json` and every other OpenCode setting before and after | No change |
 | Herdr TUI | Open Chat for OpenCode on a Herdr TUI Host | Its session comes from herdr, with no offer |
 
+A Mac run of 2026-11-02 with OpenCode 2.0.32 passed Offer by hand, Shown change, Apply, Binds by hand and with `hc run`, `/new`, Wrong list, Host detail, Undo, Apply again, Remove the Helper, and Others untouched within `~/.config/opencode` ([herdr compatibility](../agents/herdr-compatibility.md)). OpenCode 1.x, Changed under it, Undo a changed file, No edit and Herdr TUI were not run there.
+
 ## Composer Send
 
 `composerPasteThenSubmit` holds the bytes against a stub on the scripted check's real
@@ -281,7 +283,8 @@ the facts they took on trust, so correct
 ### Codex, Grok Build and OpenCode
 
 These are the owner's checks on hc-lab, with a harness you sign in to, that decide
-whether a program joins `HostCapabilities.confirmedCoreChatPrograms`. For each program that passes, add it
+whether a program joins `HostCapabilities.confirmedLinuxCoreChatPrograms`. A Mac has
+its own list, from [Chat on a Mac](#chat-on-a-mac). For each program that passes, add it
 there and record the versions in
 [herdr compatibility](../agents/herdr-compatibility.md), and for one that fails, record
 what differed and leave it off. The binder's tests read recordings made with a fake
@@ -303,11 +306,13 @@ shows.
 | OpenCode's title off | Turn `terminal.title` off in OpenCode, then Send after `/new` and a prompt | The known limit: the title is empty, and the Send lands in the conversation on screen, not the one Chat shows |
 | OpenCode unconfirmed | Start `opencode` by hand, then OpenCode 2.0 and 1.x from New Agent, then set a stale `heeler.session` label on one | **Can't Tell the Conversation**, each time, and the stale label is gone |
 | Home folders | Start Codex and Grok Build with `CODEX_HOME` and `GROK_HOME` naming scratch folders, with other sessions in `~/.codex` and `~/.grok` | Chat reads from the scratch folders |
-| Off until passed | Before adding a program to `HostCapabilities.confirmedCoreChatPrograms`, on this box and on a macOS core Host | It offers the terminal alone on both |
+| Off until passed | Before adding a program to `HostCapabilities.confirmedLinuxCoreChatPrograms` on this box, or to `confirmedMacOSCoreChatPrograms` on a macOS core Host | It offers the terminal alone there |
 
 ### Chat on a Mac
 
-On a Mac Host with signed-in harnesses and the Host Helper installed as a LaunchAgent. Temporarily turn on each program in `HostCapabilities.confirmedCoreChatPrograms` that has not passed yet. Record each result as a versioned observation in `docs/agents/herdr-compatibility.md`.
+On a Mac Host with signed-in harnesses and the Host Helper installed as a LaunchAgent. Temporarily turn on each program in `HostCapabilities.confirmedMacOSCoreChatPrograms` that has not passed yet. A program that passes joins that list, and Linux's list waits for this box. Record each result as a versioned observation in `docs/agents/herdr-compatibility.md`.
+
+The run of 2026-11-02, on macOS 27.0.1 with herdr-core 0.1.13, passed the Claude Code, SIP on, Codex, Pi and Grok Build rows, Oh My Pi with the extension, and Moved on under zsh. OpenCode 2.0.32 from New Agent could only be chosen, so it stays off on macOS and out of `macOSExactCoreChatPrograms`, and 2.1 or later was not run.
 
 | Check | Do | Expect |
 | --- | --- | --- |
@@ -316,7 +321,7 @@ On a Mac Host with signed-in harnesses and the Host Helper installed as a Launch
 | Codex | `codex --no-daemon`, before and after the first message. Then plain `codex` | Can't tell, then it binds. Plain `codex` shows only the reopen message and no list |
 | Pi | Start Pi with the Helper's extension, and take a reply | It binds through `heeler.session`, whose `start` equals the same read. The VM's Pi never finished a reply |
 | Grok Build | Start `grok`, then read `active_sessions.json` | It binds. `pid_start` divided by a million is the second of that read. The VM saw one sample |
-| OpenCode, Oh My Pi | OpenCode 2.1 or later from New Agent. Oh My Pi before and after the first message | OpenCode binds. Oh My Pi can't tell until the first reply, then binds |
+| OpenCode, Oh My Pi | OpenCode 2.1 or later from New Agent. Oh My Pi before and after the first message, with the extension and without it | OpenCode binds. Oh My Pi with the extension shows **No Messages Yet** until the first reply, without it can't tell, and then binds |
 | Moved on | After Use This Conversation on any Agent, exit it and start another program in the same Terminal, then check Chat | The choice is dropped, and no banner stays. Under a shell with withheld variables too |
 | Any read that failed | Note which row above could not bind | That program shows **Can't Tell the Conversation** and **Choose a Conversation**. Take it out of `HostCapabilities.macOSExactCoreChatPrograms` and note why |
 
@@ -341,10 +346,13 @@ conversation before choosing, in light and dark, and attach them to the run's no
 | Codex behind a wrapper | A second default `codex` on that daemon, from a Template and from the desktop app under fish | No list, only `codex resume --no-daemon`. The same with `--no-daemon` on the Template's line says it can't tell, and does not ask to reopen |
 | Herdr TUI | Any Chat on a Herdr TUI Host | No list, whatever it says |
 
+A Mac run of 2026-11-02 with OpenCode 2.0.32 and Pi 1.4.0 passed OpenCode by hand, One label, Process change, Session switch, Send guard, The in-process limit and Codex by default ([herdr compatibility](../agents/herdr-compatibility.md)). Read first passed only in part: both of OpenCode's store rows and the one Pi transcript opened showed their conversation with **Use This Conversation**, but no candidate failed to read and none was held open or a Status child, so withholding the offer on one that doesn't read was not exercised. A second device, Grok Build's `/new`, a wrapper and Herdr TUI were not run there, and this box's run is still to come.
+
 ## Pi and Oh My Pi Chat
 
-Each program's Chat stays off until its check here passes: add it to
-`HostCapabilities.confirmedCoreChatPrograms` only then. Until then, use a debug build
+Each program's Chat on a Linux core Host stays off until its check here passes: add it
+to `HostCapabilities.confirmedLinuxCoreChatPrograms` only then. Both are on for macOS
+since the [Mac run](#chat-on-a-mac). Until then, use a debug build
 with that set widened for the run, and do not commit that edit. Sign Pi and Oh My Pi in
 on hc-lab, and install the Host Helper first unless a step says otherwise. Record each
 program's version and result as a versioned observation in
@@ -607,6 +615,8 @@ as the agent.
 | Background notice | Read the desktop's notifications and Login Items | Write down what it says, and what turning the entry off does (not tried yet) |
 | Usage Limits | With Claude Code signed in with an account of the Mac's own, turn on Usage Limits for the Host | They read that they need your own login on this Mac, with Token Usage still counting |
 | Remove | Tap **Remove** and confirm | `launchctl print` answers 113, no agent process is left, and the saved listing matches again |
+
+A run of 2026-11-02 on macOS 27.0.1 passed Install, Privacy, Kill, Usage Limits and Remove ([herdr compatibility](../agents/herdr-compatibility.md)). Its Usage Limits read ran from the SSH exec, not from the agent. The other steps were not run there.
 
 ### The Helper and the core
 

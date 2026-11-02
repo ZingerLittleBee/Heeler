@@ -131,7 +131,8 @@ final class ConsoleStore {
     @ObservationIgnored private let coreSendClock: BlockedCardClock
     @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
     @ObservationIgnored private let coreStopClock: BlockedCardClock
-    @ObservationIgnored private let coreChatPrograms: Set<ChatProgram>
+    @ObservationIgnored private let coreLinuxChatPrograms: Set<ChatProgram>
+    @ObservationIgnored private let coreMacOSChatPrograms: Set<ChatProgram>
     @ObservationIgnored private let chatTiming: AgentChatStore.Timing
     @ObservationIgnored private let chatNow: @Sendable () -> Date
     @ObservationIgnored private let coreWindowsChatPrograms: Set<ChatProgram>
@@ -218,12 +219,14 @@ final class ConsoleStore {
         hostHelperBundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
         herdrAppRename: Bool = HerdrAppControl.isRenameOn,
         coreSendClock: BlockedCardClock = .live,
-        coreChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedCoreChatPrograms,
+        coreLinuxChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedLinuxCoreChatPrograms,
+        coreMacOSChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedMacOSCoreChatPrograms,
         coreWindowsChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedWindowsCoreChatPrograms,
         chatTiming: AgentChatStore.Timing = AgentChatStore.Timing(),
         chatNow: @escaping @Sendable () -> Date = { Date() }
     ) {
-        self.coreChatPrograms = coreChatPrograms
+        self.coreLinuxChatPrograms = coreLinuxChatPrograms
+        self.coreMacOSChatPrograms = coreMacOSChatPrograms
         self.coreWindowsChatPrograms = coreWindowsChatPrograms
         self.chatTiming = chatTiming
         self.chatNow = chatNow
@@ -1909,7 +1912,8 @@ final class ConsoleStore {
             platform: hostPlatforms[hostID],
             desktopAppNaming: hostDesktopAppNaming[hostID],
             coreKernel: hostCoreKernels[hostID],
-            coreChatPrograms: coreChatPrograms,
+            coreLinuxChatPrograms: coreLinuxChatPrograms,
+            coreMacOSChatPrograms: coreMacOSChatPrograms,
             coreWindowsChatPrograms: coreWindowsChatPrograms,
             isLocatingCore: hostStatuses[hostID] == .connecting)
     }

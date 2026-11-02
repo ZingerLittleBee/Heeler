@@ -225,7 +225,7 @@ If the connection drops with **Worktree Details** open, the sheet goes with the 
 
 ## Chat
 
-Chat opens for a Claude Code Agent on a Linux or [macOS](#chat-on-macos) core Host, where you can read its conversation, send to it, stop it and answer its questions. Chat for Codex, Grok Build and OpenCode 2.x on those Hosts is built and turned on one program at a time, each once it has passed a check with a signed-in account. Until then, those Agents offer the terminal alone. The rows below say what to expect from each.
+In Chat you can read an Agent's conversation, send to it, stop it and answer its questions. On a Linux core Host it opens for Claude Code, and on a [macOS](#chat-on-macos) one also for Codex, Grok Build, Pi and Oh My Pi. Each other program is turned on for a kind of Host once it has passed a check there with a signed-in account. Until then, those Agents offer the terminal alone. The rows below say what to expect from each.
 
 - **Send** checks the Agent's input box and which conversation it shows, pastes the message, and submits it only if the same Agent still holds the terminal within two seconds. Otherwise nothing is submitted, the draft stays in the Composer, and a notice says whether the text may still be in the terminal. A Send the Host did not answer is never sent again, so check the terminal before sending it yourself. Its message says it **may or may not have reached the Agent**, until the conversation shows it arrived. The next Send pastes nothing until the Host answers, then says the last message **may still be in the Agent's input**.
 - **Stop** presses the program's stop keys: Esc, Esc twice on OpenCode, or Ctrl+C on Grok Build. Grok Build and OpenCode check the screen first, and if pressing could act on something else, Stop presses nothing and says why. On a Template's Terminal it presses the Template's stop key, after the same check.
@@ -276,7 +276,7 @@ The plugin does nothing outside a herdr-core Terminal. It only tells the core wh
 
 ### Pi and Oh My Pi
 
-Chat for Pi and Oh My Pi stays off until each program passes a check with a signed-in account, so for now both offer the terminal alone. Once a program's Chat is on, it works like this:
+Chat for Pi and Oh My Pi is on for a [macOS](#chat-on-macos) core Host, where each passed its check with a signed-in account. On a Linux one it stays off until each passes its check there, so both offer the terminal alone. Where a program's Chat is on, it works like this:
 
 - **With the [Host Helper](#host-helper)**, Heeler's extension names the conversation, however the Agent started: New Agent, a Template, `hc run` or a shell. Chat follows `/new` at its next check. An Agent already running when you install the Helper needs starting again.
 - **Pi without the Helper** opens only if Heeler started it, from the session id Heeler gave it. Chat waits for the first message, and keeps showing that conversation after a `/new`, which it cannot notice. Sending still reaches the session the program shows.
@@ -288,20 +288,20 @@ Heeler looks for the sessions where the Agent's own environment says: `PI_CODING
 
 ### Chat on macOS
 
-A macOS core Host offers Chat for the same programs as a Linux one, and each waits for the same check. Once a program's Chat is on, this is how Heeler finds its conversation there:
+A macOS core Host offers Chat for Claude Code, Codex, Grok Build, Pi and Oh My Pi, each of which passed a check on a Mac with a signed-in account. OpenCode stays off there until it passes, so an OpenCode Agent offers the terminal alone. This is how Heeler finds each conversation on a Mac:
 
 | Program | Chat on a macOS core Host |
 | --- | --- |
 | Claude Code | Binds exactly once it reaches its prompt |
-| Codex | Binds exactly once your first message makes it hold its conversation file, when started with `--no-daemon`. On its shared background server it offers no list, only `codex resume --no-daemon` |
+| Codex | Binds exactly once your first message makes it hold its conversation file, when started with `--no-daemon`, as New Agent starts it. On its shared background server it offers no list, only `codex resume --no-daemon` |
 | Grok Build | Binds exactly while it lists one conversation. After `/new` it lists both, so Choose a Conversation |
-| OpenCode 2.x | Binds exactly when Heeler starts OpenCode 2.1 or later from New Agent, or with [Heeler's plugin](#let-chat-follow-opencode). Otherwise Choose a Conversation |
+| OpenCode | Off until it passes its check. In the check, OpenCode 2.0 from New Agent could only be chosen with Choose a Conversation, and OpenCode 2.1 or later was not tried |
 | Pi | Binds exactly with Heeler's extension from the [Host Helper](#host-helper), or when Heeler started it. Otherwise Choose a Conversation |
-| Oh My Pi | Binds exactly with Heeler's extension, or once your first message makes it hold its session file. Before that, Choose a Conversation |
+| Oh My Pi | Binds exactly with Heeler's extension, and shows **No Messages Yet** until the first reply. Without the extension, it binds once your first message makes it hold its session file, and before that Choose a Conversation |
 
 Anything Heeler can't read on that Mac leaves the program to **Choose a Conversation**. An Agent started through a script that Apple's own `/bin/sh` or `/bin/zsh` keeps running has neither: macOS hides those programs' variables, so Chat says it can't tell and offers no list, however often you try. Start the Agent directly in the Terminal instead. A shell that hands the terminal to the Agent is fine.
 
-These rows come from a macOS 26.5 virtual machine with SIP off and no signed-in account. It did not run OpenCode 2.1 or later, Heeler's OpenCode plugin, a Pi Heeler started or Grok Build's `/new`, and a Pi reply never finished there, so only its label was seen. A Mac with SIP on or with signed-in programs has not been checked yet.
+These rows come from a Mac with macOS 27, SIP on and signed-in programs, and from a macOS 26.5 virtual machine with SIP off. Neither ran OpenCode 2.1 or later, a Template, `/new` in Codex or Grok Build, or a Pi Heeler started without the extension.
 
 ### Chat on Windows
 
@@ -331,7 +331,7 @@ When Heeler can't read the Agent's process at all, **Can't Tell the Conversation
 ## Known limits
 
 - Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.
-- Chat opens for Claude Code on Linux and [macOS](#chat-on-macos), and for Codex, Grok Build, OpenCode 2.x, [Pi and Oh My Pi](#pi-and-oh-my-pi) once each has passed its check, and on native Windows as [Chat on Windows](#chat-on-windows) lists. Until then those Agents offer the terminal alone.
+- Chat opens for Claude Code on Linux and [macOS](#chat-on-macos), and on macOS also for Codex, Grok Build, [Pi and Oh My Pi](#pi-and-oh-my-pi). On Linux those, and OpenCode 2.x on either, open once each has passed its check there, and native Windows opens what [Chat on Windows](#chat-on-windows) lists. Until then those Agents offer the terminal alone.
 - After you choose a conversation for a Pi without the [Host Helper](#host-helper) or an OpenCode without its plugin, an in-process `/new` changes nothing Heeler can see. Chat keeps showing the old conversation until a message you send from Chat fails to appear in it, and only then drops your choice. A program that reports no status never ends a turn, so that check waits until it does.
 - Right after `/new` in Codex, before any message there, nothing on the Host has changed. Chat keeps showing the old conversation, and a Send goes to the new one. After `/new`, keep to the terminal until you have exited Codex and run `codex resume --no-daemon`.
 - After `/new` or a pick in OpenCode's list, Chat keeps showing the conversation OpenCode started with until you start OpenCode again, unless OpenCode has [Heeler's plugin](#let-chat-follow-opencode), which Chat follows. Its terminal title is what says the screen moved, so a Send sends nothing and says why. With OpenCode's `terminal.title` setting off, or while Chat's conversation has no title of its own, the title can't tell, and a Send goes to whatever conversation is on screen. Only OpenCode's home screen still holds it.
@@ -352,7 +352,7 @@ The install also places Heeler's extension for Pi in `~/.pi/agent/extensions` an
 
 On Linux, without systemd linger, the Helper stops about ten seconds after your last login to the Host ends. The sheet checks it and offers **Turn On Linger**. Some Hosts ask for an administrator instead: the sheet shows the Host's reason, and an administrator can run `loginctl enable-linger <your-user>` there.
 
-On macOS there is no linger to turn on. In a macOS 26.5 virtual machine the Helper kept running after an SSH session and a desktop logout, and a real Mac has not been checked yet. It writes its log to `helper.log` in its directory. macOS may notify you that `node` can run in the background and list it under Login Items, because that is the program the Helper runs on.
+On macOS there is no linger to turn on. In a macOS 26.5 virtual machine the Helper kept running after an SSH session and a desktop logout, which a real Mac has not been checked for yet. On a Mac with macOS 27 it came back by itself after it was killed. It writes its log to `helper.log` in its directory. macOS may notify you that `node` can run in the background and list it under Login Items, because that is the program the Helper runs on.
 
 After a restart of the Mac the Helper may not be running until Heeler next reads it, when it starts it again without asking: when you open the Host's detail, or as the Host connects on a device that allows Heeler's notifications. No notification goes out in between.
 
@@ -413,7 +413,7 @@ To count more Claude Code sign-ins, open **Claude Code Accounts**. Heeler sugges
 | **The Node.js the Host Helper was set up with has gone from this Host** | Tap **Repair** on the Host's detail, which sets it up with the Node.js the Host has now. Usage then waits for the Helper to reach the core again |
 | **Usage comes with the Host Helper, which is not available on native Windows yet** | Nothing for now |
 
-On macOS, Claude Code keeps its sign-in in the login keychain. In a macOS 26.5 virtual machine with a dummy credential, neither the Helper nor SSH could reach it, and a real Mac has not been checked yet. When they can't, its Usage Limits read **need your own login on this Mac**. Token Usage still counts.
+On macOS, Claude Code keeps its sign-in in the login keychain. In a macOS 26.5 virtual machine with a dummy credential, neither the Helper nor SSH could reach it. On a Mac with Claude Code signed in, SSH could not either, and whether the Helper's own service can there has not been checked. When they can't, its Usage Limits read **need your own login on this Mac**. Token Usage still counts.
 
 Usage reaches the Helper over its own SSH connection when the Host's session has none, so these read the same whether the core is running or not. **Not connected** in the Usage tab and the widgets means SSH itself could not reach the Host.
 
