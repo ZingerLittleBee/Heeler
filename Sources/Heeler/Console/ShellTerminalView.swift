@@ -761,19 +761,17 @@ struct ShellTerminalInputRow: View {
         .background(Color(uiColor: .secondarySystemBackground))
     }
 
-    /// Shows or hides the shortcut row with Agent detail's mode glyphs: the
-    /// Direct Input glyph while the row is off, the Composer glyph while it
-    /// is on, both in the row's label color, as Agent detail's switcher. In
-    /// Keys mode the row stays hidden either way, but the toggle still sets
-    /// what Text mode will show.
+    /// Shows or hides the shortcut row with Agent detail's Direct Input
+    /// glyph, in the row's label color in both states: the row itself shows
+    /// whether it is on. In Keys mode the row stays hidden either way, but
+    /// the toggle still sets what Text mode will show.
     private var shortcutRowToggle: some View {
         Button {
             isShortcutRowEnabled.toggle()
         } label: {
-            Image(systemName: Self.shortcutRowToggleSystemImage(isEnabled: isShortcutRowEnabled))
+            Image(systemName: "rectangle.bottomhalf.inset.filled")
                 .font(.system(size: Self.glyphPointSize))
                 .foregroundStyle(Color(uiColor: .label))
-                .contentTransition(.symbolEffect(.replace))
                 .frame(
                     width: InputChromeLayout.shellAccessoryButtonWidth,
                     height: InputChromeLayout.shortcutRowHeight)
@@ -782,11 +780,6 @@ struct ShellTerminalInputRow: View {
         .buttonStyle(.plain)
         .accessibilityLabel(isShortcutRowEnabled ? "Hide shortcut row" : "Show shortcut row")
         .accessibilityHint("Puts Esc, Tab and arrow keys above the input row")
-    }
-
-    /// Matches Agent detail's switcher mode button in each state.
-    static func shortcutRowToggleSystemImage(isEnabled: Bool) -> String {
-        isEnabled ? "square.and.pencil" : "rectangle.bottomhalf.inset.filled"
     }
 
     private var keyboardToggle: some View {

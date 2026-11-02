@@ -134,14 +134,6 @@ struct TerminalKeysKeyboardTests {
         #expect(!ShellTerminalView.showsShortcutRow(isEnabled: false, keyboardMode: .controls))
     }
 
-    /// The toggle borrows Agent detail's mode glyphs rather than a tint.
-    @Test func shortcutRowToggleUsesAgentDetailModeGlyphs() {
-        #expect(ShellTerminalInputRow.shortcutRowToggleSystemImage(isEnabled: false)
-            == "rectangle.bottomhalf.inset.filled")
-        #expect(ShellTerminalInputRow.shortcutRowToggleSystemImage(isEnabled: true)
-            == "square.and.pencil")
-    }
-
     /// Keys suppresses the system keyboard, so its will-hide is a real
     /// dismissal and gets confirmed while the dock is up. Switching back to
     /// Text must restore the pre-show pin before UIKit's frame arrives, or

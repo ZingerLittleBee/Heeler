@@ -379,7 +379,7 @@ full Terminal keyboard from Agent tools, including characters, modifiers,
 symbols, and function keys, inside the measured iOS keyboard footprint.
 In Text mode the input row can also show Direct Input's shortcut row (keys
 only: the input row already holds Paste and More), toggled by a button
-showing Agent detail's mode glyphs. It is its own app-wide preference, default
+with Direct Input's glyph. It is its own app-wide preference, default
 off, separate from Agent detail's input mode.
 _Avoid_: Attach (that's the Agent-specific display surface), shell console,
 terminal pane view
