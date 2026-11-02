@@ -119,9 +119,9 @@ extension HerdrCoreSessionHint {
         guard let file = file.map({ onWindows ? RemoteFilePath.windowsForSFTP($0) : $0 }) else {
             return ConversationReference.canonicalUUID(session)
         }
-        guard RemoteFilePath.isAcceptable(file), let name = file.split(separator: "/").last,
-            name == "\(session).jsonl" || name.hasSuffix("_\(session).jsonl")
-        else { return nil }
+        guard RemoteFilePath.isAcceptable(file), ConversationReference.file(file, isNamedFor: session) else {
+            return nil
+        }
         return file
     }
 }

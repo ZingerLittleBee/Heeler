@@ -1145,10 +1145,17 @@ final class AgentChatStore {
     private func adoptBinding(sessionID: String, transcriptRoot: String?, directory: String?) {
         evidenceReason = nil
         evidenceDirectory = directory
+        let reference = ConversationReference(program: program, sessionID: sessionID)
+        // Its id and its file, in either order, are the conversation Chat is reading.
+        if case .following = conversation.phase, let followed, resolution == .bound(followed),
+            followed != reference, followed.namesSameSession(as: reference)
+        {
+            return
+        }
         // The same id under another root is another file.
         let movedRoot = followed != nil && evidenceRoot != transcriptRoot
         evidenceRoot = transcriptRoot
-        adopt(.bound(ConversationReference(program: program, sessionID: sessionID)), replacingAgent: movedRoot)
+        adopt(.bound(reference), replacingAgent: movedRoot)
     }
 
     /// Due while Chat shows the conversation, after anything that may mean
@@ -1635,7 +1642,12 @@ final class AgentChatStore {
         case .bound, .picked:
             break
         }
-        if followed != shown {
+        let isSameConversation =
+            switch (followed, shown) {
+            case (let followed?, let shown?): followed.namesSameSession(as: shown)
+            default: followed == shown
+            }
+        if !isSameConversation {
             return "\(name) now shows another conversation. Chat is switching to it; check it, then send again."
         }
         return program.confirmsSessionBeforeSend ? coreTitleConcern : nil

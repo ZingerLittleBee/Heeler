@@ -384,7 +384,64 @@ struct HerdrCorePiChatTests {
         rig.store.setHosts([])
     }
 
-    // MARK: Without exact evidence
+    /// The launch id and the extension's file name one conversation, and a label comes
+    /// after the check that reached it by id. Chat reads on, and a Send goes.
+    @Test func aLabelNamingTheFileChatFollowsIsTheSameConversation() async throws {
+        let rig = Rig(
+            host: host, program: .pi,
+            record: Self.record(
+                .pi, argv: ["pi", "--session-id", Self.first], labels: [HerdrCoreLaunch.sessionHintLabel: Self.first]))
+        let file = Self.sessionFile(root: Self.defaultRoot(.pi), session: Self.first)
+        await rig.files.write(try Self.transcript(.pi, session: Self.first), at: file)
+        try await rig.start()
+        let chat = try rig.chat()
+        chat.show()
+        try await rig.waitUntil("the Transcript") { Self.following(chat) == file }
+        let core = try #require(rig.store.coreProjection(on: host.id))
+        let generation = chat.conversationGeneration
+
+        let own = Self.label(session: Self.first, file: file)
+        await rig.transport.deliver(Self.labelsEvent(sequence: 2, labels: ["heeler.session": own]))
+        try await rig.waitUntil("the label") { core.terminalRecord(at: "t1")?.labels["heeler.session"] == own }
+
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        #expect(chat.conversationGeneration == generation)
+        #expect(Self.following(chat) == file)
+
+        // Another session's file is still another conversation.
+        let otherFile = Self.sessionFile(root: Self.defaultRoot(.pi), session: Self.second)
+        await rig.files.write(try Self.transcript(.pi, session: Self.second), at: otherFile)
+        let other = Self.label(session: Self.second, file: otherFile)
+        await rig.transport.deliver(Self.labelsEvent(sequence: 3, labels: ["heeler.session": other]))
+        try await rig.waitUntil("the other label") { core.terminalRecord(at: "t1")?.labels["heeler.session"] == other }
+        _ = await chat.confirmSessionBeforeSend()
+        try await rig.waitUntil("the other conversation") { Self.following(chat) == otherFile }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// While it waits, the file comes in place of the id, and a Send is not told that
+    /// the Agent moved.
+    @Test func aLabelNamingTheFileOfAConversationStillToStartIsNotAnotherOne() async throws {
+        let rig = Rig(
+            host: host, program: .pi,
+            record: Self.record(
+                .pi, argv: ["pi", "--session-id", Self.first], labels: [HerdrCoreLaunch.sessionHintLabel: Self.first]))
+        try await rig.start()
+        let chat = try rig.chat()
+        chat.show()
+        try await rig.waitUntil("the wait") { chat.conversation.phase == .unavailable(.awaitingFirstMessage(.pi)) }
+        let core = try #require(rig.store.coreProjection(on: host.id))
+
+        let file = Self.sessionFile(root: Self.defaultRoot(.pi), session: Self.first)
+        let own = Self.label(session: Self.first, file: file)
+        await rig.transport.deliver(Self.labelsEvent(sequence: 2, labels: ["heeler.session": own]))
+        try await rig.waitUntil("the label") { core.terminalRecord(at: "t1")?.labels["heeler.session"] == own }
+
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        chat.end()
+        rig.store.setHosts([])
+    }
 
     @Test(arguments: programs)
     func withNoEvidenceChatSaysItCannotTellAndOffersTheHelper(_ program: ChatProgram) async throws {
