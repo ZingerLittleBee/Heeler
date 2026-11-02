@@ -301,6 +301,8 @@ extension HerdrCoreSessionBinder {
             switch try await query(request) {
             case .records(let answer): records = answer
             case .unavailable(let problem): throw OpenCodeRecordSource.unavailable(problem)
+            // Only a poll hears this: a listing has no cursor to be unchanged from.
+            case .unchanged: continue
             }
             for row in records.recentSessions {
                 guard let session = OpenCodeSessionID(row.id) else { continue }
