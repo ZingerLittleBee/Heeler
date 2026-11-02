@@ -7,14 +7,17 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-diagnostic-controls.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-# A skipped required check succeeds on GitHub, so manual diagnostics must not
-# publish the full gate's check names or artifacts, even as skipped jobs.
-python3 - "$repo_root/.github/workflows/ci.yml" "$repo_root/.github/workflows/ci-diagnostics.yml" <<'PYWORKFLOW'
+# Fast builds and manual diagnostics must not publish full-coverage check
+# names or artifacts, even as skipped jobs. Releases always call full CI.
+python3 - "$repo_root/.github/workflows/ci-full.yml" "$repo_root/.github/workflows/ci-diagnostics.yml" <<'PYWORKFLOW'
 from pathlib import Path
 import re
+import shlex
+import subprocess
 import sys
 
-workflow, reusable = (Path(path).read_text() for path in sys.argv[1:])
+workflow, diagnostics = (Path(path).read_text() for path in sys.argv[1:])
+workflows = Path(sys.argv[1]).parent
 
 def require_line(body, expected):
     if [line.strip() for line in body.splitlines()].count(expected) != 1:
@@ -27,49 +30,135 @@ def job(name, source=workflow):
         raise SystemExit(f"Missing CI job: {name}")
     return match.group(1)
 
+def events(source):
+    block = re.search(r"(?m)^on:\n(.*?)(?=^[^\s#]|\Z)", source, re.DOTALL)
+    if block is None:
+        raise SystemExit("Missing workflow triggers")
+    return set(re.findall(r"(?m)^  ([\w_]+):", block.group(1)))
+
 require_line(workflow, "workflow_dispatch:")
 require_line(workflow, "workflow_call:")
-release = Path(sys.argv[1]).with_name("release.yml").read_text()
+release = workflows.joinpath("release.yml").read_text()
 release_test = job("test", release)
-require_line(release_test, "uses: ./.github/workflows/ci.yml")
+require_line(release_test, "uses: ./.github/workflows/ci-full.yml")
 require_line(release_test, "contents: read")
 require_line(release_test, "actions: read")
-require_line(workflow, "diagnostic_target:")
-require_line(workflow, "options: [none, all, ssh-jump, staging, staging-method, weak, layout]")
-require_line(workflow, "default: none")
-require_line(workflow, "pull_request:")
-diagnostics = job("diagnostics")
-require_line(diagnostics, "if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' }}")
-require_line(diagnostics, "uses: ./.github/workflows/ci-diagnostics.yml")
-require_line(diagnostics, "target: ${{ inputs.diagnostic_target }}")
-require_line(diagnostics, "iterations: ${{ inputs.diagnostic_iterations }}")
-
-diagnostic = "inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none'"
-normal = "inputs.diagnostic_target == '' || inputs.diagnostic_target == 'none'"
+if events(workflow) != {"schedule", "workflow_dispatch", "workflow_call"}:
+    raise SystemExit("Full native verification must run daily, manually or before release")
+require_line(workflow, "- cron: '17 20 * * *'")
+# A manual run must not cancel the scheduled run on the same ref.
+require_line(workflow, "group: ci-ios-full-${{ github.ref }}-${{ github.event_name }}")
+# Release tags compile without cross-run compiler objects.
+app_tests = job("app-tests")
+require_line(app_tests, "HEELER_CI_DISABLE_COMPILATION_CACHE: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '0' }}")
+require_line(app_tests, "if: ${{ env.HEELER_CI_DISABLE_COMPILATION_CACHE != '1' && (github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm') }}")
 names = {
-    "app-tests": ("Diagnostic mode (app coverage not run)", "format('App tests ({0})', matrix.shard)"),
-    "heelerssh-package-e2e": ("Diagnostic mode (package coverage not run)", "'HeelerSSH package E2E (iOS Simulator)'"),
-    "build-test": ("Diagnostic mode (full coverage not run)", "'Build & test (iOS Simulator)'"),
+    "app-tests": "App tests (${{ matrix.shard }})",
+    "heelerssh-package-e2e": "HeelerSSH package E2E (iOS Simulator)",
+    "build-test": "Build & test (iOS Simulator)",
 }
-for name, (diagnostic_name, normal_name) in names.items():
+for name, display in names.items():
     body = job(name)
-    require_line(body, "name: ${{ " + diagnostic + " && '" + diagnostic_name + "' || " + normal_name + " }}")
-    condition = f"always() && ({normal})" if name == "build-test" else normal
-    require_line(body, "if: ${{ " + condition + " }}")
+    require_line(body, "name: " + display)
+    if name != "build-test" and re.search(r"(?m)^    if:", body):
+        raise SystemExit(f"Full verification must not skip {name}")
+require_line(job("build-test"), "if: ${{ always() }}")
 require_line(job("build-test"), "needs: [app-tests, heelerssh-package-e2e]")
 
-require_line(reusable, "workflow_call:")
-require_line(reusable, "workflow_dispatch:")
-require_line(reusable, "options: [all, ssh-jump, staging, staging-method, weak, layout]")
-require_line(reusable, "default: all")
-require_line(reusable, "target: ${{ fromJSON(inputs.target == 'all' && '[\"ssh-jump\",\"staging\",\"weak\"]' || format('[\"{0}\"]', inputs.target)) }}")
-require_line(reusable, "HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '1800'")
-require_line(reusable, "run: make test-ci-diagnostics")
-if "ios-ci-evidence-" in reusable or re.search(r"\bmake test-ci-(?:app|package)\b|verify-ci-ios-evidence\.py complete", reusable):
+# release.yml grants read-only permissions, so only the listener may write.
+alert = workflows.joinpath("ci-full-alert.yml").read_text()
+full_name = re.search(r"(?m)^name: (.+)$", workflow).group(1)
+require_line(alert, f"workflows: [{full_name}]")
+require_line(alert, "if: ${{ github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion != 'cancelled' }}")
+if re.search(r"(?m)^\s+[\w-]+: write\s*$", workflow):
+    raise SystemExit("ci-full.yml must stay read-only for release.yml")
+
+def trigger_paths(source, name):
+    block = re.search(r"(?m)^on:\n(.*?)(?=^[^\s#]|\Z)", source, re.DOTALL).group(1)
+    if "paths-ignore:" in block:
+        raise SystemExit(f"{name} must use positive paths, not paths-ignore")
+    lists = []
+    for event in ("pull_request", "push"):
+        match = re.search(rf"(?m)^  {event}:\n(.*?)(?=^  \S|\Z)", block, re.DOTALL)
+        lists.append(re.findall(r"(?m)^      - (.+)$", match.group(1)) if match else [])
+    if lists[0] != lists[1]:
+        raise SystemExit(f"{name} must list the same paths for pull_request and push")
+    return set(lists[0])
+
+# Each fast workflow starts only for what it compiles or executes: a
+# script-only change never builds the app, and exports or the marketing site
+# never spend a macOS worker. This runs on Ubuntu for every PR, so a trigger
+# edit cannot slip past the workflow it changes.
+fast_workflows = {
+    "ci.yml": ("app-build", "Build app and tests (not run)", {
+        "Sources/**", "Tests/**", "Packages/**", "Heeler.xcodeproj/**", "project.yml",
+        "Makefile", "scripts/run-ci-background-build.py",
+        "scripts/ci-compilation-cache-prefix.sh", "plugin/test-vectors/**",
+        ".github/workflows/ci.yml"}),
+    "ci-scripts.yml": ("gate-scripts", "CI and VPS scripts (macOS)", {
+        "scripts/**", "Makefile", ".github/workflows/ci-full.yml",
+        ".github/workflows/ci-scripts.yml"}),
+    "ci-package.yml": ("package-build", "Build HeelerSSH and tests (not run)", {
+        "Packages/HeelerSSH/**", ".github/workflows/ci-package.yml"}),
+}
+sources = {}
+for name, (job_id, display, expected) in fast_workflows.items():
+    source = sources[name] = workflows.joinpath(name).read_text()
+    if events(source) != {"workflow_dispatch", "pull_request", "push"}:
+        raise SystemExit(f"{name} must run on PR/push and support manual runs")
+    if re.findall(r"(?m)^  ([\w-]+):", source.split("\njobs:\n", 1)[1]) != [job_id]:
+        raise SystemExit(f"{name} must have the single job {job_id}")
+    require_line(job(job_id, source), "name: " + display)
+    paths = trigger_paths(source, name)
+    if paths != expected:
+        raise SystemExit(f"{name} trigger paths differ: missing {sorted(expected - paths)}, extra {sorted(paths - expected)}")
+    if any("name: " + full in source for full in names.values()):
+        raise SystemExit("Only full verification may publish full coverage check names")
+fast = sources["ci.yml"]
+if ("ios-ci-evidence-" in fast or "verify-ci-ios-evidence" in fast or "simctl" in fast
+        or re.search(r"\bmake test-ci-(?:app|package|diagnostics)\b", fast)):
+    raise SystemExit("The fast build must not execute or claim native tests")
+if re.findall(r"(?m)^\s+run: (.+)$", sources["ci-scripts.yml"]) != [
+        "scripts/test-vps-ssh-access-scripts.sh", "make test-ci-watchdog",
+        "make test-ci-guards", "make test-ci-diagnostic-controls"]:
+    raise SystemExit("Script self-tests must not build the app or run native tests")
+if re.findall(r"(?m)^\s+run: (.+)$", sources["ci-package.yml"]) != ["make build-ci-package"]:
+    raise SystemExit("The HeelerSSH build must only compile the package and its tests")
+if any("name: " + full in diagnostics for full in names.values()):
+    raise SystemExit("Only full verification may publish full coverage check names")
+
+# Compare whole tokens: the checkout path may contain words such as `test`.
+actions = {"build", "build-for-testing", "test", "test-without-building", "analyze", "archive", "clean"}
+for target, scheme in [("build-ci-app", "Heeler"), ("build-ci-package", "HeelerSSH")]:
+    command = subprocess.check_output(
+        ["make", "--no-print-directory", "-n", target],
+        cwd=workflows.resolve().parents[1], text=True)
+    tokens = shlex.split(command.replace("\\\n", " "))
+    if any(Path(token).name in {"xcodegen", "simctl"} for token in tokens) or "xcodebuild" not in tokens:
+        raise SystemExit(f"{target} must run xcodebuild on the committed project without a Simulator")
+    tokens = tokens[tokens.index("xcodebuild"):]
+    if [token for token in tokens if token in actions] != ["build-for-testing"]:
+        raise SystemExit(f"{target} must compile {scheme} and its tests without running them")
+    if "-scheme" not in tokens or tokens[tokens.index("-scheme") + 1] != scheme:
+        raise SystemExit(f"{target} must build the {scheme} scheme")
+    if "-destination" not in tokens or tokens[tokens.index("-destination") + 1] != "generic/platform=iOS Simulator":
+        raise SystemExit(f"{target} must not need a booted Simulator destination")
+    if "-arch" in tokens:
+        raise SystemExit("The generic destination conflicts with -arch; use the ARCHS build setting")
+
+require_line(diagnostics, "workflow_dispatch:")
+if events(diagnostics) != {"workflow_dispatch"}:
+    raise SystemExit("Repeated diagnostics must remain manual")
+require_line(diagnostics, "options: [all, ssh-jump, staging, staging-method, weak, layout]")
+require_line(diagnostics, "default: all")
+require_line(diagnostics, "target: ${{ fromJSON(inputs.target == 'all' && '[\"ssh-jump\",\"staging\",\"weak\"]' || format('[\"{0}\"]', inputs.target)) }}")
+require_line(diagnostics, "HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '1800'")
+require_line(diagnostics, "run: make test-ci-diagnostics")
+if "ios-ci-evidence-" in diagnostics or re.search(r"\bmake test-ci-(?:app|package)\b|verify-ci-ios-evidence\.py complete", diagnostics):
     raise SystemExit("Diagnostic workflow publishes or runs the complete merge gate")
-if not any(line.strip().startswith("name: ios-diagnostic-") for line in reusable.splitlines()):
+if not any(line.strip().startswith("name: ios-diagnostic-") for line in diagnostics.splitlines()):
     raise SystemExit("Diagnostic workflow has no distinct artifact name")
-print("Passed workflow dispatch, reusable entrypoint and full-gate isolation contracts.")
+print("Passed fast build, full verification, scheduled alert and diagnostic isolation contracts.")
 PYWORKFLOW
 
 python3 - "$repo_root/Tests/HeelerTests/FileDiffLayoutViewTests.swift" <<'PYLAYOUT'

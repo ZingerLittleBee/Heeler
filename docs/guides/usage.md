@@ -1,6 +1,8 @@
 # See Usage and Usage Limits
 
-Usage shows how close your Claude Code and Codex accounts are to their Usage Limits, and how many tokens each Host's Agents used over the last 30 days, with what those tokens would cost at API list prices. Widgets keep the same figures on your Home Screen and Lock Screen.
+Check Claude Code and Codex Usage Limits on iPhone or iPad, with Home Screen and Lock Screen widgets for account limits and reset times.
+
+Usage also shows how many tokens each Host's Agents used over the last 30 days, with what those tokens would cost at API list prices. The estimated cost is not your subscription bill.
 
 You need a macOS or Linux Host with the Heeler plugin 0.7.0 or newer.
 

@@ -195,6 +195,46 @@ export function remarkGuideLinks({ repoRoot, isDirectory }: GuidePluginOptions) 
 }
 
 // ---------------------------------------------------------------------------
+// Screenshot loading and layout
+
+/** Reserves a local screenshot's aspect ratio and defers its offscreen download. */
+export function rehypeGuideImages(images: Record<string, { width: number; height: number }>) {
+  const sizeImage = (properties: Element['properties']) => {
+    const image = images[String(properties.src)];
+    if (!image) return;
+    const width = Number(properties.width) || (Number(properties.height) ? Math.round(Number(properties.height) * image.width / image.height) : image.width);
+    properties.width ??= width;
+    properties.height ??= Math.round(width * image.height / image.width);
+    properties.loading ??= 'lazy';
+    properties.decoding ??= 'async';
+  };
+
+  return (tree: HastRoot) => {
+    const visit = (parent: HastParent) => {
+      for (const child of parent.children) {
+        if (child.type === 'element' && child.tagName === 'img') sizeImage(child.properties);
+        if (child.type === 'raw') {
+          // Raw guide HTML is parsed only after user rehype plugins. Preserve
+          // its authored markup and add only missing image attributes.
+          child.value = child.value.replace(/<img\b(?:[^"'<>]|"[^"]*"|'[^']*')*\/?>/gi, (tag) => {
+            const properties: Element['properties'] = {};
+            for (const [, name, , value] of tag.matchAll(/\s(src|width|height|loading|decoding)\s*=\s*(["'])(.*?)\2/gi)) {
+              properties[name.toLowerCase()] = value;
+            }
+            const existing = new Set(Object.keys(properties));
+            sizeImage(properties);
+            const added = Object.entries(properties).filter(([name]) => !existing.has(name));
+            return tag.replace(/\/?>(?=$)/, (end) => `${added.map(([name, value]) => ` ${name}="${value}"`).join('')}${end}`);
+          });
+        }
+        if ('children' in child) visit(child);
+      }
+    };
+    visit(tree);
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Title and description
 
 /** Plain text of a node: link and emphasis syntax drops away, code keeps its text. */
