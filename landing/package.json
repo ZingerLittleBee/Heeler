@@ -13,10 +13,12 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
+    "check:seo": "node scripts/check-seo.mjs",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.5",
+    "@astrojs/sitemap": "3.7.4",
     "astro": "^7.2.1",
     "typescript": "^5.9.3",
     "wrangler": "^4.122.0"

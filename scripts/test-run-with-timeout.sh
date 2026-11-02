@@ -5,7 +5,8 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 runner="$repo_root/scripts/run-with-timeout.py"
 gate_script="$repo_root/scripts/run-ci-ios-tests.sh"
-workflow="$repo_root/.github/workflows/ci.yml"
+workflow="$repo_root/.github/workflows/ci-full.yml"
+build_workflow="$repo_root/.github/workflows/ci.yml"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-timeout-test.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
@@ -209,41 +210,9 @@ fi
     exit 1
 }
 
-# iOS CI uses positive `paths`, not all-or-nothing `paths-ignore`. The old
-# pin required `output/**` on both ignore lists; omitting it from a positive
-# list is what keeps screenshot export material off macos-26 (#286).
-if grep -qE '^[[:space:]]+paths-ignore:' "$workflow"; then
-    echo "ci.yml must use positive paths, not paths-ignore" >&2
-    exit 1
-fi
-for required in \
-    'Sources/**' \
-    'Tests/**' \
-    'Heeler.xcodeproj/**' \
-    'Packages/**' \
-    'project.yml' \
-    'Makefile' \
-    'scripts/**' \
-    'plugin/test-vectors/**' \
-    '.github/workflows/ci.yml'
-do
-    # The sed character class includes a literal dollar sign.
-    # shellcheck disable=SC2016
-    escaped="$(printf '%s' "$required" | sed 's/[.[*^$()+?{|]/\\&/g')"
-    [[ "$(grep -cE "^[[:space:]]+- ${escaped}$" "$workflow")" == 2 ]] || {
-        echo "pull_request and push paths must both include $required" >&2
-        exit 1
-    }
-done
-if grep -qE '^[[:space:]]+- output/\*\*' "$workflow"; then
-    echo "output/** must not be an iOS trigger path" >&2
-    exit 1
-fi
-if grep -qE '^[[:space:]]+- landing/\*\*' "$workflow"; then
-    echo "landing/** must not be an iOS trigger path" >&2
-    exit 1
-fi
-if grep -qE '^  (plugin-test|relay-test|codegen-drift):' "$workflow"; then
+# Trigger paths of the fast workflows are pinned by test-ci-ios-diagnostics.sh,
+# which Agent tooling runs on every PR.
+if grep -qE '^  (plugin-test|relay-test|codegen-drift):' "$build_workflow"; then
     echo "plugin, relay, and codegen jobs belong in ci-node.yml" >&2
     exit 1
 fi

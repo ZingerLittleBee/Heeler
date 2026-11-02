@@ -12,7 +12,7 @@ import StepFigure, { type FigureStep } from '../components/home/StepFigure.astro
 import WordReveal from '../components/home/WordReveal.astro';
 import AddSteps from '../components/home/AddSteps.astro';
 import CodeCard from '../components/home/CodeCard.astro';
-import { connect, consoleCopy, hero, pairLines, steerCopy } from '../components/home/content';
+import { connect, consoleCopy, faq, hero, links, pairLines, steerCopy } from '../components/home/content';
 import FaqList from '../components/home/FaqList.astro';
 import { figures } from '../components/home/figures';
 import HopPath from '../components/home/HopPath.astro';
@@ -28,7 +28,38 @@ import widgetsLockShot from '../assets/screens/widgets-lock-iphone.png';
 import widgetsShot from '../assets/screens/widgets-iphone.png';
 
 const description =
-  'Heeler is a native iOS companion for herdr: every coding agent on your machines in one status-sorted console, steered over plain SSH.';
+  'Heeler is an independent herdr mobile client for iPhone and iPad. Control Claude Code and Codex over SSH, with encrypted alerts and Usage widgets.';
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${Astro.site}#website`,
+      name: 'Heeler',
+      url: Astro.site?.href,
+      inLanguage: 'en',
+    },
+    {
+      '@type': 'MobileApplication',
+      name: 'Heeler',
+      url: Astro.site?.href,
+      description,
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'iOS, iPadOS',
+      downloadUrl: links.appStore,
+      image: new URL('/logo.png', Astro.site).href,
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: faq.map(({ q, a }) => ({
+        '@type': 'Question',
+        name: q,
+        acceptedAnswer: { '@type': 'Answer', text: a },
+      })),
+    },
+  ],
+};
 
 const chapters = [
   { id: 'pair', label: 'Pair' },
@@ -173,13 +204,14 @@ const awaySteps: FigureStep[] = [
 ];
 ---
 
-<Layout title="Heeler — an agent console for herdr" description={description}>
+<Layout title="Heeler — Claude Code & Codex on iPhone and iPad" description={description}>
+  <script is:inline slot="head" type="application/ld+json" set:html={JSON.stringify(structuredData).replace(/</g, '\\u003c')} />
   <section class="hero" id="top">
     <HeroWall />
     <div class="hero-fade" aria-hidden="true"></div>
     <div class="container hero-shift">
       <div class="hero-copy">
-        <p class="mono-eyebrow"><span class="dot" aria-hidden="true"></span>For herdr</p>
+        <p class="mono-eyebrow"><span class="dot" aria-hidden="true"></span>herdr mobile client</p>
         <h1 class="hero-title">
           Every coding agent on your machines, <span class="rest">sorted by who needs you.</span>
         </h1>
@@ -281,7 +313,7 @@ const awaySteps: FigureStep[] = [
           label="While you’re away"
           lead="Leave Heeler."
           rest="The Lock Screen keeps watch."
-          body="Heeler keeps SSH open for a short grace after you leave, then closes it. From then on, Blocked and Done alerts and Live Activity updates reach you as sealed pushes."
+          body="Get encrypted notifications when Claude Code, Codex, or another Agent goes Blocked or Done. After Heeler closes SSH in the background, alerts and Live Activity updates arrive as sealed pushes. <a class='text-link' href='https://docs.heeler.bybee.dev/pairing#after-pairing'>Enable Agent notifications</a>."
         />
         <StepFigure figure={figures.away} steps={awaySteps} />
       </section>
@@ -293,7 +325,7 @@ const awaySteps: FigureStep[] = [
           lead="Know your limits"
           rest="before an Agent runs into them."
           bar="Usage Limits per Host"
-          body="Claude Code and Codex Usage Limits with their reset times, and up to 30 days of Token Usage with its estimated API cost, on every Host or one. Widgets keep them on the Home Screen and Lock Screen."
+          body="Check Claude Code and Codex Usage Limits and reset times with Home Screen and Lock Screen widgets. In Usage, see up to 30 days of Token Usage and estimated API cost across Hosts. <a class='text-link' href='https://docs.heeler.bybee.dev/usage#add-a-widget'>Set up Usage widgets</a>."
         />
         <div data-rv><PhoneScreens screens={usageScreens} /></div>
       </section>

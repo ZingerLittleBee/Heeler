@@ -143,7 +143,8 @@ struct AgentListFieldsSettingsTests {
     @Test func rowSlotCopyNamesHerdrRowsAndHeelersRow() {
         #expect(AgentListFieldsCopy.rowSlots.contains("Row 1 and Row 2 start from herdr"))
         #expect(AgentListFieldsCopy.rowSlots.contains("Any row can use herdr and Heeler fields"))
-        #expect(AgentListFieldsCopy.rowSlots.contains("The status ends Row 1"))
+        #expect(AgentListFieldsCopy.rowSlots.contains("ring around each Agent's mark shows its status"))
+        #expect(AgentListFieldsCopy.rowSlots.contains("status_badge adds it in a capsule"))
         #expect(AgentListFieldsCopy.rowSlots.contains("right side end its line"))
         #expect(AgentListFieldsRowLabel.emptyText(slot: .herdr) == "No fields")
         #expect(AgentListFieldsRowLabel.emptyText(slot: .heeler) == "Not configured")

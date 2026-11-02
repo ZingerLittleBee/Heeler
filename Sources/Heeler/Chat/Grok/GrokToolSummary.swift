@@ -334,7 +334,20 @@ struct GrokToolCall: Sendable {
             tool.preview?.isTruncated = true
             if tool.note == nil { tool.note = "Output exceeds the preview limit." }
         }
+        if summary.kind == .fileRead, status == .succeeded { tool.imagePath = imagePath(directory: directory) }
         return tool
+    }
+
+    /// The file a read showed as an image: Grok records the image in the
+    /// result's content and the path only in the call (Grok Build 1.0.70).
+    /// A result cut short may have lost its content; its path's extension
+    /// decides then.
+    private func imagePath(directory: String?) -> String? {
+        guard let path = ChatImagePath.resolve(location ?? input?.filePath ?? input?.path, cwd: directory) else {
+            return nil
+        }
+        let showedImage = (output?.preview?.imageCount ?? 0) > 0
+        return showedImage || (outputIsTruncated && ChatImagePath.hasImageExtension(path)) ? path : nil
     }
 
     /// The changes the input update previews. A write's preview never

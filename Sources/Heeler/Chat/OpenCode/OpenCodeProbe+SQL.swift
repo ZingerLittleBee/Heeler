@@ -98,7 +98,7 @@ extension OpenCodeProbe {
     static let layoutStatement = """
         WITH need(t, c) AS (VALUES
           ('session_v2','id'),('session_v2','parent_id'),('session_v2','title'),('session_v2','version'),
-          ('session_v2','revert'),('session_v2','time_updated'),
+          ('session_v2','directory'),('session_v2','revert'),('session_v2','time_updated'),
           ('session_message','id'),('session_message','session_id'),('session_message','type'),
           ('session_message','seq'),('session_message','time_created'),('session_message','time_updated'),
           ('session_message','data'),('event_sequence','aggregate_id'),('event_sequence','seq'),
@@ -113,11 +113,12 @@ extension OpenCodeProbe {
     // MARK: Session, first row and inbox
 
     /// A staged revert's patches stay in the store: the line carries only
-    /// the boundary message, its `seq` and a file count.
+    /// the boundary message, its `seq` and a file count. `directory` is
+    /// where the session is now; a move rewrites it.
     private static func sessionStatement(_ session: String, changed: String) -> String {
         """
         SELECT 'S ' || json_object('k','session','id',id,'parent',parent_id,'title',substr(title,1,512),
-          'version',version,
+          'version',version,'directory',directory,
           'revertMessage', json_extract(CASE WHEN json_valid(revert) THEN revert END, '$.messageID'),
           'revertFiles', json_array_length(CASE WHEN json_valid(revert) THEN revert END, '$.files'),
           'revertSeq', (SELECT m.seq FROM session_message m WHERE m.session_id = \(session)
@@ -201,7 +202,8 @@ extension OpenCodeProbe {
 
     /// The CTEs that slim the rows `rows` selects from `session_message`:
     /// `m` holds those rows; `items` each step's content items, with a tool
-    /// call's output text and changed files read out; `slim_items` each item
+    /// call's output text, the image it returned and its changed files read
+    /// out; `slim_items` each item
     /// as Chat reads it; and `r` each row as Chat reads it, as `f` and `d`.
     ///
     /// SQLite before 3.46 parses on a fixed stack of 100 entries and fails
@@ -213,7 +215,7 @@ extension OpenCodeProbe {
         """
         m AS (\(rows)),
         items AS (SELECT m.seq, c.key AS i, CASE WHEN c.type = 'object' THEN c.value END AS v,
-                         \(toolOutput) AS out, \(changedFiles) AS files
+                         \(toolOutput) AS out, \(toolImage) AS image, \(changedFiles) AS files
                     FROM m, json_each(CASE WHEN m.type = 'assistant' AND json_valid(m.data) THEN m.data END,
                                       '$.content') c),
         slim_items AS (SELECT seq, i, \(item(outputLimit: outputLimit)) AS item FROM items),
@@ -310,6 +312,7 @@ extension OpenCodeProbe {
             'meta', json(\(toolMetadata)),
             'out', substr(out, 1, \(outputLimit)),
             'outN', length(out),
+            'image', image,
             'time', json_extract(v, '$.time'))
           ELSE json_object('_i', i, 'type', json_extract(v, '$.type')) END END
         """
@@ -320,6 +323,16 @@ extension OpenCodeProbe {
         (SELECT group_concat(json_extract(o.value, '$.text'), char(10))
            FROM json_each(CASE WHEN c.type = 'object' THEN c.value END, '$.state.content') o
           WHERE o.type = 'object')
+        """
+
+    /// The path of the first image a tool call returned, from an `items` row.
+    /// OpenCode 2.0.32's read returns an image as a `file` item named with
+    /// the path it read, which may differ from its input's in case.
+    private static let toolImage = """
+        (SELECT json_extract(o.value, '$.name')
+           FROM json_each(CASE WHEN c.type = 'object' THEN c.value END, '$.state.content') o
+          WHERE o.type = 'object' AND json_extract(o.value, '$.type') = 'file'
+            AND json_extract(o.value, '$.mime') LIKE 'image/%' LIMIT 1)
         """
 
     /// The files a tool call changed, from an `items` row, each patch cut at

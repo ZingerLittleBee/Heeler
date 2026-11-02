@@ -827,6 +827,45 @@ struct OpenCodeTranscriptReducerTests {
         #expect(image.entries.map(\.content) == [.user(ChatUserMessage(text: "", attachmentLabels: ["shot.png"]))])
     }
 
+    // MARK: Images
+
+    /// OpenCode 2.0.32 resolves a relative read against the session's folder
+    /// at the time, and names the image it returned with the path it read.
+    @Test func imageReadsRecordTheFileTheyShowed() {
+        func read(_ seq: Int64, input: String, output: String, image: String? = nil) -> ChatLine {
+            Self.step(
+                seq, items: [Self.tool(0, name: "read", status: "completed", input: input, output: output, image: image)])
+        }
+        let moved = Self.row(
+            "msg_m3", "location-switched", seq: 3,
+            #"{"location":{"directory":"/work/b"},"previous":{"location":{"directory":"/work/a"}}}"#)
+        let transcript = Self.project([
+            Self.session(directory: "/work/b"),
+            read(1, input: #"{"path":"shots/a.png"}"#, output: "Image read successfully", image: "shots/a.png"),
+            moved,
+            // Read under another case: the image names the file it found.
+            read(4, input: #"{"path":"shots/B.PNG"}"#, output: "Image read successfully", image: "shots/b.png"),
+            read(5, input: #"{"path":"notes.txt"}"#, output: "Read file notes.txt, lines 1-2"),
+            read(6, input: #"{"path":"guide.pdf"}"#, output: "PDF read successfully"),
+            // A session imported from 1.x records absolute paths and no image.
+            read(7, input: #"{"filePath":"/work/b/old.png"}"#, output: "Image read successfully"),
+        ])
+        #expect(
+            Self.tools(transcript).map(\.imagePath) == [
+                "/work/a/shots/a.png", "/work/b/shots/b.png", nil, nil, "/work/b/old.png",
+            ])
+
+        // A move that names no earlier folder leaves the reads before it
+        // unplaced rather than guessed.
+        let unplaced = Self.project([
+            Self.session(directory: "/work/b"),
+            read(1, input: #"{"path":"a.png"}"#, output: "Image read successfully", image: "a.png"),
+            Self.row("msg_m2", "location-switched", seq: 2, #"{"time":{"created":1800000100002}}"#),
+            read(3, input: #"{"path":"b.png"}"#, output: "Image read successfully", image: "b.png"),
+        ])
+        #expect(Self.tools(unplaced).map(\.imagePath) == [nil, "/work/b/b.png"])
+    }
+
     // MARK: Other rows
 
     @Test func otherRowTypesShowAsNotices() throws {
@@ -1145,22 +1184,24 @@ struct OpenCodeTranscriptReducerTests {
 
     private static func tool(
         _ index: Int, name: String, status: String, input: String = "{}", error: String = "null",
-        meta: String = "null", output: String? = nil, outputLength: Int? = nil
+        meta: String = "null", output: String? = nil, outputLength: Int? = nil, image: String? = nil
     ) -> String {
         let length = outputLength ?? output?.unicodeScalars.count
         return
-            #"{"_i":\#(index),"type":"tool","id":"call_\#(index)","name":"\#(name)","status":"\#(status)","input":\#(input),"error":\#(error),"meta":\#(meta),"out":\#(output.map(json) ?? "null"),"outN":\#(length.map(String.init) ?? "null")}"#
+            #"{"_i":\#(index),"type":"tool","id":"call_\#(index)","name":"\#(name)","status":"\#(status)","input":\#(input),"error":\#(error),"meta":\#(meta),"out":\#(output.map(json) ?? "null"),"outN":\#(length.map(String.init) ?? "null"),"image":\#(image.map(json) ?? "null")}"#
     }
 
     private static func inbox(_ items: String...) -> ChatLine {
         ChatLine(offset: 100, data: Data(#"{"k":"inbox","items":[\#(items.joined(separator: ","))],"more":0}"#.utf8))
     }
 
-    private static func session(title: String = "Pong", version: String = "2.0.32") -> ChatLine {
+    private static func session(
+        title: String = "Pong", version: String = "2.0.32", directory: String? = nil
+    ) -> ChatLine {
         ChatLine(
             offset: 100,
             data: Data(
-                #"{"k":"session","id":"ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9","parent":null,"title":\#(json(title)),"version":"\#(version)","revertMessage":null,"revertFiles":null,"revertSeq":null,"updated":1800000000000}"#
+                #"{"k":"session","id":"ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9","parent":null,"title":\#(json(title)),"version":"\#(version)","directory":\#(directory.map(json) ?? "null"),"revertMessage":null,"revertFiles":null,"revertSeq":null,"updated":1800000000000}"#
                     .utf8))
     }
 

@@ -2,7 +2,7 @@
 # relay, and wire-type codegen drift (refs #286).
 #
 # Split out so a plugin/relay/LICENSE change cannot start the macos-26
-# simulator jobs. iOS CI stays in ci.yml; the marketing site stays in
+# build job. The fast iOS build stays in ci.yml; the marketing site stays in
 # landing.yml.
 #
 # Wire-type codegen drift is checked against a committed schema snapshot
@@ -13,8 +13,8 @@
 #
 # Positive `paths`: one matching path starts every job here. Ubuntu is cheap,
 # so a plugin-only PR may also run relay + codegen. plugin/test-vectors/**
-# is under plugin/**, so those edits also start ci.yml (the Swift suites
-# consume the same vectors). A change to this file always runs.
+# is under plugin/**, so those edits also start ci.yml, which compiles their
+# Swift consumers; ci-full.yml runs them. A change to this file always runs.
 
 name: CI (Node)
 

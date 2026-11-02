@@ -1,10 +1,13 @@
 import UIKit
 
-/// The long-press preview also becomes the zoomable sheet when committed.
+/// The zoomable sheet a row's thumbnail opens. A long press previews it
+/// and becomes the sheet when committed.
 @MainActor
 final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
     typealias Loader = @MainActor (String) async throws -> Data
     let path: String
+    /// The row's thumbnail, shown until the file is read.
+    private let placeholder: UIImage?
     private let loadImage: Loader
     private let scroll = UIScrollView()
     private let imageView = UIImageView()
@@ -15,8 +18,9 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
     private var lastSize = CGSize.zero
     private(set) var isLoaded = false
 
-    init(path: String, loadImage: @escaping Loader) {
+    init(path: String, placeholder: UIImage? = nil, loadImage: @escaping Loader) {
         self.path = path
+        self.placeholder = placeholder
         self.loadImage = loadImage
         super.init(nibName: nil, bundle: nil)
         title = (path as NSString).lastPathComponent
@@ -86,6 +90,7 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
         loadTask?.cancel()
         message.text = nil
         retry.isHidden = true
+        if !isLoaded { imageView.image = placeholder }
         spinner.startAnimating()
         loadTask = Task { [weak self, path, loadImage] in
             do {
@@ -101,6 +106,7 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
             } catch {
                 guard !Task.isCancelled, let self else { return }
                 spinner.stopAnimating()
+                imageView.image = nil
                 message.text = error.localizedDescription
                 retry.isHidden = false
                 loadTask = nil

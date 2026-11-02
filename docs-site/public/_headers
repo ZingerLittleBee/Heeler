@@ -1,0 +1,14 @@
+# Splats match slashes too, including /zh/<guide>.md.
+# Keep these crawlable so search engines can read the noindex directive.
+/*.md
+  X-Robots-Tag: noindex
+
+/api/search.json
+  X-Robots-Tag: noindex
+
+/zh/api/search.json
+  X-Robots-Tag: noindex
+
+# Only fingerprinted assets can be cached across deployments.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
