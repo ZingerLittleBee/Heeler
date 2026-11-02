@@ -217,6 +217,17 @@ struct HerdrCoreWindowsTransportTests {
         try await transport.close()
     }
 
+    /// A Windows Host whose probe failed is not a Unix Host: the POSIX locator is
+    /// refused there, which would stop the Host for good.
+    @Test func aWindowsHostWhoseHomeCannotBeReadRetriesAndAUnixHostStillRunsItsLocator() throws {
+        #expect(try HeelerSSHTransport.platformWithUnreadableHome(isWindowsHost: false) == .posix)
+        #expect {
+            _ = try HeelerSSHTransport.platformWithUnreadableHome(isWindowsHost: true)
+        } throws: { error in
+            (error as? TransportError)?.isRetryable == true
+        }
+    }
+
     // MARK: The pipe check
 
     @Test func withThePipeAbsentNoConnectRunsOnTheFirstConnect() async throws {

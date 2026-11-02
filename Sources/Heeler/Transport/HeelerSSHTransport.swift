@@ -3786,14 +3786,21 @@ extension HeelerSSHTransport: HostHelperHost {
 
 // MARK: - What the framed herdr-core transport uses of this connection
 extension HeelerSSHTransport: HerdrCoreHostConnection {
+    /// A Unix Host whose home cannot be read still has its locator to run, which needs
+    /// none. A Windows Host's does: answering POSIX would run a script that Host refuses,
+    /// which stops it for good, so its probe gets another try.
+    static func platformWithUnreadableHome(isWindowsHost: Bool) throws -> HostPlatform {
+        guard isWindowsHost else { return .posix }
+        throw TransportError.channelFailed(detail: "herdr-core: This Windows Host's home folder could not be read.")
+    }
+
     /// The same answer the Herdr TUI path acts on (ADR 0018), and reading it turns on
-    /// the Windows session budget. A Unix Host whose home cannot be read still has
-    /// its locator to run, which needs none.
+    /// the Windows session budget.
     func corePlatform() async throws -> HostPlatform {
         do {
             return try await hostPlatform()
         } catch TransportError.homeDirectoryUnresolvable {
-            return .posix
+            return try Self.platformWithUnreadableHome(isWindowsHost: isWindowsHost)
         } catch TransportError.hostFileTimedOut {
             throw TransportError.timedOut
         }
