@@ -77,6 +77,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Put Back with the system controls along an iPhone Duo's side on Agent Chat,
+  Agent Terminal and Shell Terminal details, instead of leaving it floating at
+  the opposite top corner. (#610)
 - Give the website and bilingual docs clean search URLs, sitemaps, app metadata,
   browser icons, landscape sharing cards, and permanent canonical redirects.
   Keep error pages, raw guides, and search data out of search results, and add
