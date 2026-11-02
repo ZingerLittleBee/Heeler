@@ -374,6 +374,31 @@ struct HerdrCoreWindowsChatTests {
         fixture.finish()
     }
 
+    // MARK: Reading the Transcript over real SFTP
+
+    /// `ScriptedCoreHost` answers file calls itself, so this is what lets the real
+    /// connection read a Transcript on Windows at all (ADR 0034). A Herdr TUI Host
+    /// offers no Chat there.
+    @Test func theRealTransportsChatFileGateOpensOnWindowsForACoreHostAlone() async throws {
+        func transport(_ kind: ServerKind) -> HeelerSSHTransport {
+            var settings = SSHTransportSettings(
+                host: "win.example", port: 22, username: "me", credentials: .password("unused"),
+                hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in false },
+                socket: .absolutePath("/never/opened"))
+            settings.serverKind = kind
+            return HeelerSSHTransport(
+                connection: .neverConnectedForTesting(serverIdentification: "SSH-2.0-OpenSSH_for_Windows_9.5"),
+                settings: settings, routeID: nil)
+        }
+
+        try await transport(.herdrCore).requireChatFileHost()
+        await #expect(
+            throws: TransportError.hostFeatureUnavailable(feature: "Chat is not yet supported on native Windows")
+        ) {
+            try await transport(.herdrTUI).requireChatFileHost()
+        }
+    }
+
     // MARK: Writing the extension
 
     private static let bundlePath = HerdrCoreWindowsExtensions.bundlePath
