@@ -404,6 +404,63 @@ struct HerdrCoreHostSessionTests {
         await session.end()
     }
 
+    /// A Windows process ended from outside exits with an NTSTATUS, which a signed
+    /// read gives as a negative number. It says nothing of the core.
+    @Test func aWindowsLocatorKilledWithAnNTStatusRetries() async throws {
+        let host = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(), channel: .core(.init(id: "c1")))
+        await host.answerNextLocator(GitExecResult(stdout: Data(), stderr: Data(), exitStatus: -1_073_741_510))
+        let session = session(on: host)
+        let reader = Reader(session)
+        await session.resume()
+        #expect(await reader.nextStatus() == .connecting)
+        guard case .reconnecting(let attempt, let delay, _) = await reader.nextStatus() else {
+            Issue.record("expected reconnecting")
+            await session.end()
+            return
+        }
+        #expect(attempt == 1)
+        await clock.untilParked(1)
+        clock.advance(delay)
+        #expect(await reader.nextStatus() == .connected)
+        await session.end()
+    }
+
+    @Test func eachStatusArrivesWithTheKernelItsAttemptFound() async throws {
+        let running = ScriptedCoreHost(locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .core(.init()))
+        let connected = session(on: running)
+        let connectedReader = Reader(connected)
+        await connected.resume()
+        #expect(await connectedReader.nextStatus() == .connecting)
+        #expect(await connectedReader.nextStatus() == .connected)
+        #expect(connected.currentKernel == "Linux")
+        await connected.end()
+
+        let stopped = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .core(.init()))
+        let reconnecting = session(on: stopped)
+        let reconnectingReader = Reader(reconnecting)
+        await reconnecting.resume()
+        #expect(await reconnectingReader.nextStatus() == .connecting)
+        guard case .reconnecting = await reconnectingReader.nextStatus() else {
+            Issue.record("expected reconnecting")
+            await reconnecting.end()
+            return
+        }
+        #expect(reconnecting.currentKernel == HerdrCoreLocator.windowsKernel)
+        await reconnecting.end()
+
+        let notInstalled = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(executable: nil), channel: .core(.init()))
+        let failed = session(on: notInstalled)
+        let failedReader = Reader(failed)
+        await failed.resume()
+        #expect(await failedReader.nextStatus() == .connecting)
+        #expect(await failedReader.nextStatus() == .failed(.herdrCoreNotInstalled))
+        #expect(failed.currentKernel == HerdrCoreLocator.windowsKernel)
+        await failed.end()
+    }
+
     @Test func anUnknownEventKindNeedsNoNewSnapshot() async throws {
         let host = ScriptedCoreHost(channel: .core(.init(id: "c1", sequence: 1)))
         let session = session(on: host)

@@ -267,4 +267,14 @@ struct PreflightReportTests {
         #expect(report[.connection] == .failed(hint: "no password saved"))
         #expect(report[.herdrInstalled] == .blocked)
     }
+
+    /// That refusal is a whole sentence already.
+    @Test func aFeatureThatEndsItsOwnSentenceGetsNoSecondPeriod() throws {
+        let refusal = try #require(HerdrCoreSessionName.windowsRefusal("my work"))
+        let report = PreflightReport.failure(.hostFeatureUnavailable(feature: refusal), authMethod: .deviceKey)
+        #expect(report[.remoteEnvironment] == .failed(hint: refusal))
+        #expect(
+            PreflightReport.failure(.hostFeatureUnavailable(feature: "Uploads"), authMethod: .deviceKey)[.remoteEnvironment]
+                == .failed(hint: "Uploads."))
+    }
 }

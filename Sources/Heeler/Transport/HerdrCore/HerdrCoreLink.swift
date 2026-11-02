@@ -445,7 +445,7 @@ actor HerdrCoreLink {
                 return
             }
             guard let chunk else {
-                tearDown(.failed(TransportError.channelFailed(detail: "The herdr-core link closed.")))
+                tearDown(.failed(TransportError.channelFailed(detail: Self.closedDetail)))
                 return
             }
             ingest(chunk)
@@ -613,6 +613,9 @@ actor HerdrCoreLink {
         writerTask?.cancel()
         closeTask = Task { [channel] in try? await channel.close(timeout: Self.closeTimeout) }
     }
+
+    /// What a link says when its channel reached the end of its stream.
+    static let closedDetail = "The herdr-core link closed."
 
     private static func linkFailure(_ error: any Error) -> any Error {
         if error is TransportError { return error }

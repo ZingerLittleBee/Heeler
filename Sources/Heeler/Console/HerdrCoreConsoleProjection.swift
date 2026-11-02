@@ -236,13 +236,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             latency = session.currentLatency
             routeID = session.currentRouteID
             leakedEnvironmentNames = session.currentLeakedEnvironment
+            adoptKernel()
             switch status {
             case .failed(let failure):
                 standingFailure = failure
-                readKernel()
             case .connected, .reconnecting:
                 standingFailure = nil
-                readKernel()
             case .connecting, .suspended, .ended:
                 break
             }
@@ -255,7 +254,6 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 chatTypings = [:]
             }
             memory.noteCore(coreID, for: host.id)
-            readKernel()
             replaceInventory(with: snapshot)
         case .event(let event):
             if case .labels(let terminal, let labels) = event {
@@ -265,17 +263,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
     }
 
-    /// The locator already ran on this connection, if it got that far, so this
-    /// reads no Host. A stopped or refused core has no snapshot to read this at.
-    private func readKernel() {
-        Task { [weak self, session] in
-            let kernel = try? await session.withTransport { await $0.lastKernel() }
-            guard let self, let kernel, !self.hasEnded else { return }
-            self.memory.noteKernel(kernel, for: self.host.id)
-            guard self.kernel != kernel else { return }
-            self.kernel = kernel
-            self.publish()
-        }
+    /// What the attempt behind this status found, published with the status, so a
+    /// Host it reached never reads as unknown in between.
+    private func adoptKernel() {
+        guard let found = session.currentKernel else { return }
+        memory.noteKernel(found, for: host.id)
+        kernel = found
     }
 
     private func invalidateInventory() {

@@ -83,6 +83,85 @@ struct HerdrCoreWindowsTransportTests {
         try await transport.close()
     }
 
+    // MARK: The core's environment
+
+    private static func runningHost(pid: Int, environment: [String: String]?) async -> ScriptedCoreHost {
+        let host = runningHost(.init(pid: pid))
+        await host.setWindowsProcesses([
+            .init(pid: pid, image: "herdr-core.exe", start: "1", environment: environment)
+        ])
+        return host
+    }
+
+    @Test func aWindowsCoresLeakedVariablesAreReadByNameOnly() async throws {
+        let host = await Self.runningHost(pid: 9001, environment: [
+            "TMUX": "/tmp/secret-value",
+            "herdr_pane": "secret-value-too",
+            "HERDR_BLANK": "",
+            "HERDR_A B": "not a name this read prints",
+            "CLAUDECODE": "1",
+            "PATH": #"C:\Windows"#,
+        ])
+        let transport = host.transport()
+        _ = try await transport.hello()
+
+        #expect(await transport.leakedEnvironmentNames() == ["TMUX", "HERDR_PANE", "CLAUDECODE"])
+
+        #expect(await host.log.filter { $0 == "windows-process-read" }.count == 1)
+        #expect(!(await host.log.contains("process-read")))
+        let script = try #require(await host.scripts.last)
+        #expect(script.contains("$ids=@(9001)"))
+        #expect(script.contains("$want=@()"))
+        try await transport.close()
+    }
+
+    /// Every failure reads as no names: the check says nothing it could not read.
+    @Test func aWindowsCoreWhoseEnvironmentCannotBeReadNamesNothing() async throws {
+        let unreadable = await Self.runningHost(pid: 9001, environment: nil)
+        let unreadableTransport = unreadable.transport()
+        _ = try await unreadableTransport.hello()
+        #expect(await unreadableTransport.leakedEnvironmentNames() == [])
+        try await unreadableTransport.close()
+
+        for answer in [
+            GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 1),
+            GitExecResult(stdout: Data("Add-Type is not allowed here\n".utf8), stderr: Data(), exitStatus: 0),
+        ] {
+            let host = await Self.runningHost(pid: 9001, environment: ["TMUX": "x"])
+            await host.setWindowsProcessAnswer(answer)
+            let transport = host.transport()
+            _ = try await transport.hello()
+            #expect(await transport.leakedEnvironmentNames() == [])
+            try await transport.close()
+        }
+    }
+
+    // MARK: A `connect` that does not last
+
+    /// The marker is `cmd`'s, printed before `connect` runs.
+    @Test func aConnectThatExitsAfterTheMarkerSaysSo() async throws {
+        let host = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(), channel: .execEnds(afterMarker: true))
+        let transport = host.transport()
+
+        await #expect(
+            throws: TransportError.channelFailed(detail: "herdr-core connect exited before answering hello.")
+        ) { _ = try await transport.hello() }
+        try await transport.close()
+    }
+
+    /// With no marker, `cmd` never got as far as `connect`.
+    @Test func aCommandThatEndsBeforeTheMarkerSaysConnectDidNotStart() async throws {
+        let host = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(), channel: .execEnds(afterMarker: false))
+        let transport = host.transport()
+
+        await #expect(
+            throws: TransportError.channelFailed(detail: "The command that runs herdr-core connect did not start.")
+        ) { _ = try await transport.hello() }
+        try await transport.close()
+    }
+
     // MARK: Checkouts
 
     @Test func aWindowsHostsCheckoutsComeFromItsOwnReadNotTheGitScript() async throws {
@@ -136,6 +215,17 @@ struct HerdrCoreWindowsTransportTests {
         _ = try await transport.hello()
         #expect(await host.log == ["windows-probe", "connect"])
         try await transport.close()
+    }
+
+    /// A Windows Host whose probe failed is not a Unix Host: the POSIX locator is
+    /// refused there, which would stop the Host for good.
+    @Test func aWindowsHostWhoseHomeCannotBeReadRetriesAndAUnixHostStillRunsItsLocator() throws {
+        #expect(try HeelerSSHTransport.platformWithUnreadableHome(isWindowsHost: false) == .posix)
+        #expect {
+            _ = try HeelerSSHTransport.platformWithUnreadableHome(isWindowsHost: true)
+        } throws: { error in
+            (error as? TransportError)?.isRetryable == true
+        }
     }
 
     // MARK: The pipe check
@@ -243,7 +333,7 @@ struct HerdrCoreWindowsTransportTests {
         #expect(await host.connectCommands.count == 1)
         let log = await host.log
         #expect(log.filter { $0 == "windows-probe" }.count >= 3)
-        #expect(log.allSatisfy { ["windows-probe", "connect", "close"].contains($0) })
+        #expect(log.allSatisfy { ["windows-probe", "windows-process-read", "connect", "close"].contains($0) })
     }
 
     // MARK: Not installed and update required
@@ -410,7 +500,7 @@ struct HerdrCoreWindowsTransportTests {
 
         // A second link would be a mistake here, and it would wait for the slot.
         let second = Task { try await admission.admitCoreExec { FakeCoreSocket() } }
-        await Task.yield()
+        await waitForParkedRequest(on: admission)
         #expect(await admission.snapshot().connection == 1)
 
         try await exec.close(timeout: .seconds(1))
@@ -418,6 +508,27 @@ struct HerdrCoreWindowsTransportTests {
         #expect(await admission.snapshot().connection == 1)
         try await reopened.close(timeout: .seconds(1))
         #expect(await admission.snapshot().connection == 0)
+    }
+
+    /// The real transport's link takes that slot: with it held, the exec waits
+    /// instead of opening, and only then finds this connection never connected.
+    @Test func theRealTransportsLinkExecWaitsForTheEventsSlot() async throws {
+        let transport = HeelerSSHTransport(
+            connection: .neverConnectedForTesting(serverIdentification: "SSH-2.0-OpenSSH_for_Windows_9.5"),
+            socketPath: "/never/opened")
+        let admission = transport.channelAdmission
+        let held = try await admission.admitCoreExec { FakeCoreSocket() }
+
+        let link = Task { try await transport.openCoreLinkExec(command: "connect") }
+        await waitForParkedRequest(on: admission)
+
+        try await held.close(timeout: .seconds(1))
+        await #expect(throws: (any Error).self) { _ = try await link.value }
+        #expect(await admission.snapshot().events == 0)
+    }
+
+    private func waitForParkedRequest(on admission: SSHChannelAdmission) async {
+        while await admission.waitingRequests() == 0, !Task.isCancelled { await Task.yield() }
     }
 
     /// Its budget leaves the other eight slots for what really is a session.

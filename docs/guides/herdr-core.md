@@ -16,7 +16,7 @@ Agents started by the Herdr desktop app belong to herdr-core, a server of their 
    | Both | Both choices. A Host is one kind: confirm one, then add the machine again for the other |
    | Neither | Both choices. The one you confirm then says how to set it up |
 
-A session name the server refuses leaves the Host unconfirmed and says why. The checks run after you confirm. A Host keeps its kind, so a Host you added before stays what it is.
+A session name the server refuses, or one native Windows cannot carry, leaves the Host unconfirmed and says why. The checks run after you confirm. A Host keeps its kind, so a Host you added before stays what it is.
 
 ## Not running and Start
 
@@ -53,7 +53,7 @@ The Console lists the core's Agents and Terminals, each in a card named for its 
 
 **Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stage through the core, not over SFTP, one file of up to 8 MiB at a time. Heeler refuses a larger one before sending anything, and your draft stays as it was. The path the core gives goes in your draft and on the clipboard, and a program in that Terminal can read it. Nothing reaches the Agent until you [send](#send). The file is in `%LOCALAPPDATA%\herdr-core\<session>\files\<terminal>\`, which SYSTEM, Administrators and your account can read, and no one else. It stays after the Terminal is closed and goes only when the core removes the Terminal's record, with `terminal.rm`.
 
-[Send](#send) and [Stop](#stop) work there too, with one limit Send describes. [Chat](#chat-on-windows) opens only for programs that have passed their check there, and so far none has. Not offered there yet, whatever the Host reads: Rename and Worktrees. Changes and Skills read as unavailable, and the Host Helper reads **Not Available**.
+[Send](#send) and [Stop](#stop) work there too, with one limit Send describes. [Chat](#chat-on-windows) opens only for programs that have passed their check there, and so far none has. Not offered there yet, whatever the Host reads: Rename, Worktrees, Changes and Skills. The Host Helper reads **Not Available**.
 
 ## Console
 
@@ -83,7 +83,7 @@ Done is per device. An Agent shows Done when it finished a turn this device was 
 
 Tap **Unknown** on an Agent's status line to see why it reads that way. Each program reports its status from a release on: Claude Code 2.1.295, Codex 0.163, OpenCode 2.1, Pi 1.1.0 (earlier releases report through the [Host Helper](#host-helper)) and Oh My Pi 18.8.7, so an older one stays Unknown. No such release is known for Grok Build or for a program Heeler does not recognize. A Terminal that has reported but holds no state reads as not having reported a state yet. Heeler never works out a status from the screen.
 
-**Grok Build's status.** Grok Build's automatic check leaves its status off where its query cannot run, such as under a core started with `TMUX` set. On a Grok Build Agent with no status, that same sheet offers **Turn On Grok Build's Status**. It shows the file and the exact lines, `program_status = "on"` under `[ui.notifications]` in `$GROK_HOME/config.toml` or `~/.grok/config.toml`, and writes nothing until you tap **Apply This Change**. Start Grok Build again to see its status. A managed configuration or a `GROK_CONFIG` overlay can still override this file.
+**Grok Build's status.** Grok Build's automatic check leaves its status off where its query cannot run, such as under a core started with `TMUX` set. On a Grok Build Agent with no status, that same sheet offers **Turn On Grok Build's Status**. It shows the file and the exact lines, `program_status = "on"` under `[ui.notifications]` in `$GROK_HOME/config.toml` or `~/.grok/config.toml`, and writes nothing until you tap **Apply This Change**. Start Grok Build again to see its status. A managed configuration or a `GROK_CONFIG` overlay can still override this file. Native Windows does not offer this edit.
 
 If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler cannot read the Agent's environment, it cannot tell which file that Agent uses, so it writes nothing and says so. If Heeler cannot be sure how to change a file, it writes nothing and tells you what to add by hand.
 
@@ -101,7 +101,7 @@ Every terminal is a channel on the Host's one connection, so opening more costs 
 
 Every key reaches the program, Ctrl+\ included. Heeler reserves no detach key.
 
-In an Agent detail, Direct Input types into the terminal, and Changes and Skills work as on any other Host.
+In an Agent detail, Direct Input types into the terminal. On macOS and Linux, Changes and Skills work as on any other Host.
 
 ## Send
 
@@ -170,6 +170,8 @@ If the Host does not confirm a close, Heeler says so and does not send it again,
 ## Core Environment
 
 A core started from inside another program can inherit variables that change how its programs behave. Host detail then shows **Core Environment**, naming each variable and what it breaks, never its value. Restarting the core from your own terminal fixes it. Heeler does not restart it.
+
+On native Windows Heeler reads the core process's environment the same way, by name only, and it says nothing when it cannot read it. This read has not run on a Windows machine yet, so no **Core Environment** there does not prove the core is clean.
 
 ## New Agent and New Terminal
 

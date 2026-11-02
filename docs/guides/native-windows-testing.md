@@ -404,10 +404,13 @@ agent discovery and launch, and its `terminal.put` through sshd.
    **herdr-core is not running** with the start command, and on the machine no
    `herdr-core` process appears.
 2. In your desktop session, in PowerShell, not as administrator, run the command
-   the Host shows. Within its retry, the Host connects by itself.
+   the Host shows. Within its retry, the Host connects by itself. With a plain
+   Session name this is the first run of `$env:HC_SESSION` with `server start` on
+   Windows, which no observation has covered: record that the core took the name.
 3. The Console lists the core's Terminals and Agents, each in a card named for
    its directory. Rename and Worktrees are not offered, and neither is Chat until
-   a build lists a program (step 24).
+   a build lists a program (step 24). An Agent with a directory offers neither
+   Changes nor Skills, under More, in the header or on its status line.
 4. Open an Agent. Direct Input types into it and its output follows.
 5. Open a Shell Terminal. Rotate or resize it, run a full-screen program, and
    scroll back.
@@ -511,6 +514,17 @@ Code's `.key` files.
     `docs/agents/herdr-compatibility.md`, here, and by adding it to
     `HostCapabilities.confirmedWindowsCoreChatPrograms`. One that fails stays off, with
     its observation saying why.
+34. Stop the core. In your desktop session run `$env:CLAUDECODE='1'; $env:HERDR_CHECK='1'`,
+    then start the core there. Host detail shows **Core Environment** naming both, with
+    no value. Start the core from a clean window and it goes. This is the first run of
+    the check on Windows: if nothing appears, record that here and in
+    `docs/agents/herdr-compatibility.md`, since a read that failed also shows nothing.
+35. Record this machine's `DefaultShell`. Steps 1 to 7 prove the link only under that
+    shell: repeat connect, attach and reconnect under the other one, restoring the value
+    after, with one run under PowerShell 7 whose profile prints output and calls
+    `Set-Location`. The link's frames arrive whole and the Host does not read
+    **herdr-core is not installed**, since the probe finds the core from the folder an
+    exec starts in. Record the result in `docs/agents/herdr-compatibility.md`.
 
 ## Scope and results
 

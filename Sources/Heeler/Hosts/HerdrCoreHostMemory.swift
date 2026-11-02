@@ -4,13 +4,15 @@ import Foundation
 /// to, the kernel a locator last found, the directory it first saw each Terminal launched in, which decides that
 /// Terminal's derived Workspace (ADR 0032), and each Terminal's turns and seen
 /// mark, which decide Done on this device (ADR 0033). None of it is a secret or
-/// shared with the Host. It goes with the Host, and starts over when the Host's
-/// core id changes, since addresses belong to one core.
+/// shared with the Host. It goes with the Host. When the Host's core id changes it
+/// starts over, since addresses belong to one core, all but the kernel, which
+/// belongs to the machine.
 @MainActor
 final class HerdrCoreHostMemory {
     private struct Entry: Codable, Equatable {
         var coreID: String?
-        /// As `uname -s` prints it, for a Host whose connection has yet to say.
+        /// What the locator prints as `kernel` (`uname -s` on Unix, `Windows` on
+        /// native Windows), for a Host whose connection has yet to say.
         var kernel: String?
         var directories: [String: String] = [:]
         var turns: [String: HerdrCoreTurnState] = [:]

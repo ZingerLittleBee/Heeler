@@ -129,6 +129,9 @@ actor SSHChannelAdmission {
 
     func snapshot() -> Snapshot { counts }
 
+    /// Requests waiting for a slot.
+    func waitingRequests() -> Int { waiters.count }
+
     /// Opens a herdr-core link's channel under the long-lived events slot, one
     /// per connection. The slot stays taken until the channel closes.
     func admitCoreLink(

@@ -32,6 +32,12 @@ enum HerdrCoreEnvironmentCheck {
         try HostProcessReader.script(request(pid: pid), nonce: nonce, platform: platform)
     }
 
+    /// The same names on a native Windows Host, from the block in the core's own
+    /// memory. No value leaves the Host there either. It has not run on Windows.
+    static func windowsCommand(pid: Int, nonce: String) throws -> String {
+        try HostProcessReader.windowsCommand(request(pid: pid), nonce: nonce)
+    }
+
     static func leakedNames(stdout: Data, nonce: String, pid: Int) -> Set<String> {
         let request = request(pid: pid)
         guard let facts = try? HostProcessReader.parse(stdout: stdout, nonce: nonce, request: request),

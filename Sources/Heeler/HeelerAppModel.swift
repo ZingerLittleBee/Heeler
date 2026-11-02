@@ -101,7 +101,8 @@ final class HeelerAppModel {
             hostHelperDidChange: { [weak notificationPreferences] in
                 Task { await notificationPreferences?.refresh() }
             },
-            harnessEdits: console.harnessEdits)
+            harnessEdits: console.harnessEdits,
+            noteWindowsCore: { [weak console] in console?.noteWindowsCore(on: $0) })
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on

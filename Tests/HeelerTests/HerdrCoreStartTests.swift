@@ -97,6 +97,11 @@ import Testing
                 == #"HC_SESSION='it'\''s' '/my apps/herdr-core' server start"#)
     }
 
+    @Test func theUpdateCommandQuotesAPathTheShellWouldSplit() {
+        #expect(HerdrCoreStart.updateCommand(executablePath: "/opt/hc/herdr-core") == "/opt/hc/herdr-core update")
+        #expect(HerdrCoreStart.updateCommand(executablePath: "/my apps/herdr-core") == "'/my apps/herdr-core' update")
+    }
+
     // MARK: The result
 
     private static let statusLine = #"{"core":{"id":"c1","name":"lab"},"pid":7,"uptime_ms":1200}"#

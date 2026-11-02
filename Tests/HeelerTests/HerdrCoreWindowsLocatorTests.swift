@@ -198,4 +198,21 @@ import Testing
         #expect(HerdrCoreStart.windowsUpdateCommand(executablePath: spaced) == "& '\(spaced)' update")
         #expect(HerdrCoreStart.windowsUpdateCommand(executablePath: Self.executable) == "\(Self.executable) update")
     }
+
+    /// A Windows account name may hold any of these, and PowerShell reads each one
+    /// as syntax in a bare word.
+    @Test(arguments: ["O'Neil", "R&D", "a(b)", "a$b", "a`b", "a{b}", "a#b", "a@b", "a%b", "a~b", "a!b", "张三", "O’Neil"])
+    func aPathPowerShellWouldReadAsSyntaxIsQuoted(account: String) {
+        let path = #"C:\Users\"# + account + #"\AppData\Local\Programs\herdr-core\herdr-core.exe"#
+        let literal = PowerShellCommand.literal(path)
+        #expect(HerdrCoreStart.windowsUpdateCommand(executablePath: path) == "& \(literal) update")
+        #expect(
+            HerdrCoreStart.windowsManualCommand(executablePath: path, session: "default")
+                == "& \(literal) server start")
+    }
+
+    @Test func aQuoteInThePathIsDoubledInTheCommand() {
+        let path = #"C:\Users\O'Neil\herdr-core.exe"#
+        #expect(HerdrCoreStart.windowsUpdateCommand(executablePath: path) == #"& 'C:\Users\O''Neil\herdr-core.exe' update"#)
+    }
 }

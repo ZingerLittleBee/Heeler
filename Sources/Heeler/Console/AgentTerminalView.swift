@@ -224,9 +224,8 @@ struct AgentTerminalView: View {
     @State private var sessionUsage = AgentSessionUsageStore()
     @State private var attach: AgentAttachStore
 
-    /// Nil for agent kinds without a skills source catalog; the Keys
-    /// keyboard hides the Skills tab in that case.
-    @State private var skills: SkillsPaneStore?
+    /// Nil for agent kinds without a skills source catalog.
+    @State private var skillsStore: SkillsPaneStore?
     @State private var keyboardControl = TerminalKeyboardControl()
     @State private var messageJump: AgentMessageJumpWiring
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
@@ -375,10 +374,17 @@ struct AgentTerminalView: View {
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID, keepingTo: session.corePin)
             })
-        _skills = State(initialValue: Self.makeSkillsStore(for: agent, console: console))
+        _skillsStore = State(initialValue: Self.makeSkillsStore(for: agent, console: console))
         _messageJump = State(
             initialValue: AgentMessageJumpWiring(
                 profile: .forAgentKind(agent.agent.kind)))
+    }
+
+    /// What every Skills entry here reads: nil hides them, the Keys keyboard's
+    /// tab included. Read here because this Host's platform may be unknown when
+    /// the store is made.
+    private var skills: SkillsPaneStore? {
+        console.capabilities(for: agent.hostID).hostScripts ? skillsStore : nil
     }
 
     /// The Skills pane's store, or nil when this agent's kind has no skills

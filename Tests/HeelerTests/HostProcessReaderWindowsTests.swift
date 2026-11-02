@@ -27,9 +27,9 @@ struct HostProcessReaderWindowsTests {
     func fitsTheCommandLine() throws {
         let command = try HostProcessReader.windowsCommand(Self.binderRequest, nonce: Self.nonce)
         #expect(command.utf8.count <= HostProcessReader.windowsCommandLimit)
+        let pids = (1...HostProcessReader.processCap).map { String(4_000_000_000 + $0) }
         let tooMany = HostProcessReader.Request(
-            pids: (1...HostProcessReader.processCap).map { String(4_000_000_000 + $0) }, readsStart: true,
-            valuesOf: Self.binderRequest.valuesOf)
+            pids: pids, readsStart: true, valuesOf: Self.binderRequest.valuesOf, descendantsOf: pids[0])
         #expect(throws: HostProcessReader.Refusal.self) {
             _ = try HostProcessReader.windowsCommand(tooMany, nonce: Self.nonce)
         }
@@ -48,10 +48,34 @@ struct HostProcessReaderWindowsTests {
         #expect(!script.contains("say $e"))
     }
 
+    @Test("A prefix prints a whole plain name and never a value, and a read with none matches nothing")
+    func namesWithAPrefix() throws {
+        let check = try decoded(HerdrCoreEnvironmentCheck.request(pid: 7868))
+        let lines = check.split(separator: "\n").map(String.init)
+        #expect(lines.contains("$pre='^(?:HERDR_)[A-Z0-9_]*$'"))
+        #expect(lines.contains("$want=@()"))
+        // The one line that names a variable by a prefix prints what `N` prints.
+        let naming = try #require(lines.first { $0.contains("-cmatch$pre") })
+        #expect(naming.contains(#"say "N $p $($n.ToUpper())""#))
+        #expect(!naming.contains("$v)"))
+        #expect(!naming.contains("hexOf"))
+
+        let without = try decoded(Self.binderRequest).split(separator: "\n").map(String.init)
+        #expect(without.contains("$pre=''"))
+    }
+
+    @Test("The core's environment check fits the command line")
+    func theEnvironmentCheckFits() throws {
+        let command = try HostProcessReader.windowsCommand(
+            HerdrCoreEnvironmentCheck.request(pid: 4_294_967_295), nonce: Self.nonce)
+        #expect(command.utf8.count <= HostProcessReader.windowsCommandLimit)
+    }
+
     @Test("A read with no walk asks for no tree")
     func noWalkNoList() throws {
         let script = try decoded(.init(pids: ["7868"], readsStart: true))
         #expect(script.split(separator: "\n").map(String.init).contains("$root=0"))
+        #expect(!script.contains("gcim"))
     }
 
     @Test("A process's memory and times are opened for reading only")
@@ -89,7 +113,8 @@ struct HostProcessReaderWindowsTests {
             .init(pids: ["1"], valuesOf: ["A'B"]),
             .init(pids: ["1"], valuesOf: ["lower"]),
             .init(pids: ["1"], namesOf: ["A B"]),
-            .init(pids: ["1"], namesWithPrefix: ["HERDR_"]),
+            .init(pids: ["1"], namesWithPrefix: ["HERDR'"]),
+            .init(pids: ["1"], namesWithPrefix: ["herdr_"]),
             .init(pids: ["1"], argumentsAmong: ["'x"]),
             .init(pids: ["1"], descendantsOf: "2"),
         ]

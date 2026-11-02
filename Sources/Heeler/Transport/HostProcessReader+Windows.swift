@@ -22,11 +22,10 @@ extension HostProcessReader {
         guard request.pids.count <= processCap else { throw Refusal.tooManyProcesses(request.pids.count) }
         if let root = request.descendantsOf, !request.pids.contains(root) { throw Refusal.descendantRoot(root) }
         // The script prints a name in upper case, whatever case the block holds.
-        for name in request.valuesOf + request.namesOf where !isVariableName(name) || name != name.uppercased() {
+        for name in request.valuesOf + request.namesOf + request.namesWithPrefix
+        where !isVariableName(name) || name != name.uppercased() {
             throw Refusal.variableName(name)
         }
-        // Nothing asks this on Windows yet, and it would widen what the script may print.
-        if let prefix = request.namesWithPrefix.first { throw Refusal.variableName(prefix) }
         for argument in request.argumentsAmong where !isArgumentWord(argument) { throw Refusal.argument(argument) }
 
         func list(_ names: [String]) -> String {
@@ -43,7 +42,11 @@ extension HostProcessReader {
             "$root=\(request.descendantsOf ?? "0")",
             "$want=\(list(wanted))",
             "$names=\(list(request.namesOf))",
+            "$pre='\(prefixPattern(request.namesWithPrefix))'",
             windowsBody,
+            // The command line's budget goes further without a walk nobody asked for.
+            request.descendantsOf == nil ? "" : windowsWalk,
+            "say ''",
             "say '\(endMarker(nonce))'",
             "exit 0",
         ]
@@ -69,6 +72,13 @@ extension HostProcessReader {
             }
             return facts
         }
+    }
+
+    /// A whole name in upper case that starts with one of these, empty for none.
+    /// Each is a checked variable name, so none of them is regex syntax, and a name
+    /// that could not stand as one word on a line is not printed at all.
+    private static func prefixPattern(_ prefixes: [String]) -> String {
+        prefixes.isEmpty ? "" : "^(?:\(prefixes.joined(separator: "|")))[A-Z0-9_]*$"
     }
 
     private static let windowsHomeAlias = "HOME"
@@ -97,16 +107,14 @@ extension HostProcessReader {
         '@
         """
 
-    /// A process's start is 0 when it cannot be read, so it prints `-`. A child older
-    /// than its parent is under a pid that was reused, so it is not one. Past the cap
-    /// only the root's own line prints, as on POSIX. Open files and argv always read
-    /// as unavailable, and the parser takes an answer nobody asked for.
+    /// A process's start is 0 when it cannot be read, so it prints `-`. Open files and
+    /// argv always read as unavailable, and the parser takes an answer nobody asked for.
     private static let windowsBody = """
         function hexOf($v){-join([Text.Encoding]::UTF8.GetBytes($v)|%{$_.ToString('x2')})}
         function startOf($p){try{[Diagnostics.Process]::GetProcessById($p).StartTime.ToFileTimeUtc()}catch{0}}
         function readOne($p){
         $t=startOf $p;say "S $p $(if($t){$t}else{'-'})"
-        if($want.Count+$names.Count){
+        if($want.Count+$names.Count+$pre.Length){
         $b=[HeelerProc]::Env($p)
         if($b){
         foreach($e in $b.Split([char]0)){
@@ -114,17 +122,22 @@ extension HostProcessReader {
         $at=$e.IndexOf('=',1);if($at -lt 1){continue}
         $n=$e.Substring(0,$at);$v=$e.Substring($at+1)
         if($want -contains $n){say "V $p $($n.ToUpper()-replace'^\(windowsHomeVariable)$','\(windowsHomeAlias)') $(if($v){hexOf $v}else{'-'})"}
-        if($v -and $names -contains $n){say "N $p $($n.ToUpper())"}
+        if($v -and ($names -contains $n -or ($pre -and $n.ToUpper()-cmatch$pre))){say "N $p $($n.ToUpper())"}
         }
         say "E $p ok"
         }else{say "E $p -"}
         }
         say "O $p -";say "B $p -"
         }
-        function imageOf($c){if($c.Name -cmatch '^[A-Za-z0-9._-]+$'){$c.Name}else{'-'}}
         say ''
         say '\(windowsBeginPlaceholder)'
         foreach($p in $ids){readOne $p}
+        """
+
+    /// A child older than its parent is under a pid that was reused, so it is not one.
+    /// Past the cap only the root's own line prints, as on POSIX.
+    private static let windowsWalk = """
+        function imageOf($c){if($c.Name -cmatch '^[A-Za-z0-9._-]+$'){$c.Name}else{'-'}}
         if($root){
         $all=@{};$kids=@{}
         foreach($c in gcim Win32_Process -Property ProcessId,ParentProcessId,Name){
@@ -146,6 +159,5 @@ extension HostProcessReader {
         foreach($y in $tail){readOne $y}
         }
         }
-        say ''
         """
 }

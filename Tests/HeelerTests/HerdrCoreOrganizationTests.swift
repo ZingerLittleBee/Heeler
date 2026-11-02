@@ -225,6 +225,39 @@ struct HerdrCoreOrganizationTests {
         #expect(HerdrCoreOrganization.folderName(path, home: home) == name)
     }
 
+    /// A backslash is an ordinary character in a Unix folder's name.
+    @Test(arguments: [
+        (#"/home/me/foo\bar"#, #"foo\bar"#),
+        ("/home/me/app/", "app"),
+        (#"C:\Users\me\api"#, "api"),
+        ("C:/Users/me/web", "web"),
+    ])
+    func aDerivedWorkspaceReadsItsDirectoryByThatDirectorysOwnForm(directory: String, name: String) throws {
+        let result = Self.build([try Self.record("t1", cwd: directory)])
+        #expect(result.snapshot.workspaces.map(\.label) == [name])
+    }
+
+    @Test(arguments: [
+        (#"/opt/foo\bar"#, #"foo\bar"#),
+        (#"C:\Program Files\PowerShell\7\pwsh.exe"#, "pwsh.exe"),
+        ("/usr/bin/zsh", "zsh"),
+    ])
+    func aTerminalsProgramReadsByItsPathsOwnForm(program: String, name: String) throws {
+        let record: HerdrCoreTerminalRecord = try HerdrCoreWire.typed(.object([
+            "address": .string("t1"), "cwd": .string("/work"), "state": .string("live"),
+            "argv": .array([.string(program)]),
+        ]))
+        #expect(Self.build([record]).snapshot.panes.first?.title == name)
+    }
+
+    @Test func aTerminalWithAnEmptyProgramIsNotNamedForTheHomeFolder() throws {
+        let record: HerdrCoreTerminalRecord = try HerdrCoreWire.typed(.object([
+            "address": .string("t1"), "cwd": .string("/work"), "state": .string("live"),
+            "argv": .array([.string("")]),
+        ]))
+        #expect(Self.build([record]).snapshot.panes.first?.title != "~")
+    }
+
     @Test func aSpaceInTheHomeDirectoryReadsTilde() throws {
         let result = Self.build(
             [try Self.record("t1", cwd: "/home/can", labels: Self.desktop("lonely"))],

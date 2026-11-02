@@ -298,7 +298,7 @@ enum HerdrCoreOrganization {
     }
 
     private static func label(directory: String) -> String {
-        directory.isEmpty ? "No directory" : folderName(directory, home: nil)
+        directory.isEmpty ? "No directory" : RemoteHostPath.lastComponent(of: directory)
     }
 
     /// Where the desktop app looks for a Terminal's folder: what runs there
@@ -355,6 +355,6 @@ enum HerdrCoreOrganization {
     /// What runs in the Terminal now, else what it launched.
     private static func programName(_ record: HerdrCoreTerminalRecord) -> String? {
         if let foreground = record.foreground?.name, !foreground.isEmpty { return foreground }
-        return record.argv.first.map { folderName($0, home: nil) }
+        return record.argv.first.flatMap { $0.isEmpty ? nil : RemoteHostPath.lastComponent(of: $0) }
     }
 }

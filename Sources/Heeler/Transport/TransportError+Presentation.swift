@@ -163,7 +163,7 @@ extension TransportError {
         case .herdrCoreNotInstalled:
             TransportErrorPresentation(
                 summary: "herdr-core is not installed",
-                detail: "It is not where this Host's installer puts it, or on the SSH PATH of a Unix Host",
+                detail: "It is not on the SSH PATH or at ~/.local/bin/herdr-core, or where its installer puts it on native Windows",
                 recoverySuggestion: "Install herdr-core on the Host, then check again.")
         case .herdrCoreNotRunning(let socketPath, _) where HerdrCoreLocator.isWindowsPipe(socketPath):
             TransportErrorPresentation(

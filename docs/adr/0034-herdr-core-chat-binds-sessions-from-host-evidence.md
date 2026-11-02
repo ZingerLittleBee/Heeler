@@ -330,6 +330,9 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
 - Under PowerShell the foreground's pid is never the Agent's, so #590 binds
   through PowerShell's children, not through the foreground's pid. A session
   registry entry on Windows has not been read.
+- The check of a core's own leaked variables reads the same way on Windows: one
+  `HostProcessReader.windowsCommand` per link, names only, and any failure reads as
+  no names. It has not run on Windows, so no notice there proves nothing yet.
 - The rules hold on Windows in the same costs: one exec, here
   `HostProcessReader.windowsCommand`, and at most one read, named variables only,
   never a `.key` file. Windows names a process by its image and a program cannot

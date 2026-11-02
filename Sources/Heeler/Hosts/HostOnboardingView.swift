@@ -93,7 +93,8 @@ struct HostOnboardingView: View {
             knownHosts: dependencies.knownHosts,
             credentials: dependencies.credentials,
             hostHelperDidChange: dependencies.hostHelperDidChange,
-            harnessEdits: dependencies.harnessEdits)
+            harnessEdits: dependencies.harnessEdits,
+            noteWindowsCore: dependencies.noteWindowsCore)
     }
 
     /// The page with its Edit sheet, outside `page`'s modifier chain, which

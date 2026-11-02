@@ -56,6 +56,11 @@ actor HerdrCoreHostSession {
     private nonisolated let latencyBox = Mutex<Duration?>(nil)
     nonisolated var currentRouteID: UUID? { routeIDBox.withLock { $0 } }
     private nonisolated let routeIDBox = Mutex<UUID?>(nil)
+    /// The Host's kernel, the last an attempt found. Written before the status of
+    /// that attempt, so whoever reads the status knows what the attempt learned, and
+    /// kept past it: a Host that stopped answering is still that machine.
+    nonisolated var currentKernel: String? { kernelBox.withLock { $0 } }
+    private nonisolated let kernelBox = Mutex<String?>(nil)
     /// Advances with each new SSH connection, not with each link on one.
     nonisolated var currentConnectionGeneration: UInt64 { generationBox.withLock { $0 } }
     private nonisolated let generationBox = Mutex<UInt64>(0)
@@ -381,6 +386,8 @@ actor HerdrCoreHostSession {
                 if !isAnnouncedConnected {
                     let latency = try await measureLatency(on: transport)
                     guard activationIsCurrent(generation) else { break }
+                    await noteKernel()
+                    guard activationIsCurrent(generation) else { break }
                     latencyBox.withLock { $0 = latency }
                     latencyContinuation.yield()
                     routeIDBox.withLock { $0 = transport.routeID }
@@ -389,6 +396,7 @@ actor HerdrCoreHostSession {
                 checkLeakedEnvironment(on: transport, generation: generation)
                 stream = try await transport.subscribeEvents()
             } catch {
+                await noteKernel()
                 guard activationIsCurrent(generation) else { break }
                 let failure = Self.transportFailure(error)
                 if failure == .timedOut { transportSuspect = true }
@@ -462,6 +470,13 @@ actor HerdrCoreHostSession {
             attempt += 1
             await emitReconnectingAndBackOff(attempt: attempt, failure: failure, generation: generation)
         }
+    }
+
+    /// The locator already ran on this connection, if it got that far, so this reads
+    /// no Host. A stopped or refused core has no snapshot to read this at.
+    private func noteKernel() async {
+        guard let kernel = await currentTransport?.lastKernel() else { return }
+        kernelBox.withLock { $0 = kernel }
     }
 
     /// Asked after every `hello`; the transport runs the exec once per link. The

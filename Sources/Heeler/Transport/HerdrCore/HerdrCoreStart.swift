@@ -28,6 +28,11 @@ enum HerdrCoreStart {
         return Data("\"$SHELL\" -lic \(HerdrCoreLocator.quoted(command))".utf8)
     }
 
+    /// `herdr-core update` by the probed path, for a terminal on a Unix Host.
+    static func updateCommand(executablePath: String) -> String {
+        "\(shellWord(executablePath)) update"
+    }
+
     /// What to run in a terminal on a machine where the app starts no core.
     static func manualCommand(executablePath: String, session: String) -> String {
         let name = HerdrCoreSessionName.normalized(session)
@@ -48,10 +53,11 @@ enum HerdrCoreStart {
     }
 
     /// A path that needs quoting needs `&` to run: PowerShell reads a bare quoted
-    /// word as a string.
+    /// word as a string. An account name can hold what PowerShell reads as syntax,
+    /// so only a path of plain characters goes bare.
     private static func windowsProgramWord(_ path: String) -> String {
-        path.unicodeScalars.contains(where: CharacterSet.whitespaces.contains)
-            ? "& \(PowerShellCommand.literal(path))" : path
+        let plain = CharacterSet(charactersIn: #"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\:._-"#)
+        return path.unicodeScalars.allSatisfy(plain.contains) ? path : "& \(PowerShellCommand.literal(path))"
     }
 
     /// Judges by exit status and by the uptime the core prints as its last line.

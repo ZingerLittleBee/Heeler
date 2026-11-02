@@ -425,8 +425,12 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         do {
             let pid = try await link.serverStatus(deadline: Self.callDeadline).pid
             let nonce = nonce()
-            let script = try HerdrCoreEnvironmentCheck.script(pid: pid, nonce: nonce)
-            let result = try await connection.runHostProcessRead(script)
+            let result =
+                try await resolvedPlatform() == .nativeWindows
+                ? try await connection.runWindowsProcessRead(
+                    try HerdrCoreEnvironmentCheck.windowsCommand(pid: pid, nonce: nonce))
+                : try await connection.runHostProcessRead(
+                    try HerdrCoreEnvironmentCheck.script(pid: pid, nonce: nonce))
             guard result.exitStatus == 0 else { return [] }
             return HerdrCoreEnvironmentCheck.leakedNames(stdout: result.stdout, nonce: nonce, pid: pid)
         } catch {
@@ -660,6 +664,10 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             return Opened(link: link, info: info, executablePath: executablePath)
         } catch is HerdrCoreUpdateRequired {
             throw TransportError.herdrCoreUpdateRequired(command: Self.updateCommand(executablePath))
+        } catch TransportError.channelFailed(detail: HerdrCoreLink.closedDetail) where location.isNativeWindows {
+            // `cmd` prints the marker before it runs `connect`, so this is `connect`
+            // itself ending. Its stderr does not reach here, so why stays unknown.
+            throw TransportError.channelFailed(detail: "herdr-core connect exited before answering hello.")
         }
     }
 
@@ -672,7 +680,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             let exec = try await connection.openCoreLinkExec(
                 command: try HerdrCoreLocator.windowsConnectCommand(session: session))
             return BootstrappedExecChannel(
-                channel: exec, startupFailure: "herdr-core connect exited before its stream started.")
+                channel: exec, startupFailure: "The command that runs herdr-core connect did not start.")
         }
         do {
             return try await connection.openCoreLinkChannel(socketPath: location.socketPath)
@@ -685,6 +693,6 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private static func updateCommand(_ executablePath: String) -> String {
         RemoteHostPath.isWindowsAbsolute(executablePath)
             ? HerdrCoreStart.windowsUpdateCommand(executablePath: executablePath)
-            : "\(executablePath) update"
+            : HerdrCoreStart.updateCommand(executablePath: executablePath)
     }
 }

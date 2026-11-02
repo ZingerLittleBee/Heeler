@@ -105,11 +105,16 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   PATH the space takes its directory's name. Until a later ticket turns them on,
   what a Windows core Host cannot do stays hidden whatever its connection reads,
   stopped, update required, not installed or a refused session name included:
-  Send, Stop, Chat, Rename and Worktrees. New Agent, New Terminal and New Workspace
+  Send, Stop, Chat, Rename and Worktrees. Changes and Skills, which run POSIX
+  scripts on the Host, and Grok Build's status edit, which reads and writes through
+  them, are not offered there either, so a native Windows Herdr TUI Host differs: it
+  keeps showing the first two as ADR 0018 left them. New Agent, New Terminal and New Workspace
   show there as on any other Host that is not connected, and read not connected
   if tried. A core Host offers no New while its first attempt runs with nothing
   known of its platform, and this device remembers the kernel a locator last
-  found, so that a relaunch knows before the Host answers.
+  found, so that a relaunch knows before the Host answers. Add Host's detection
+  notes a native Windows machine there too, since that Host's first attempt may
+  never reach it. A Host that gets a status gets what that attempt found with it.
 
 ## Why
 

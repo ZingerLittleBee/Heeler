@@ -230,6 +230,75 @@ struct HerdrCoreWindowsConsoleTests {
         #expect(offers.composerSend, sourceLocation: sourceLocation)
         #expect(offers.composerStop, sourceLocation: sourceLocation)
         #expect(!offers.chat, sourceLocation: sourceLocation)
+        #expect(!offers.hostScripts, sourceLocation: sourceLocation)
+        #expect(!offers.offersChanges(directory: #"C:\work"#), sourceLocation: sourceLocation)
+    }
+
+    /// An Agent with a directory there: its detail's Changes, More menu and status
+    /// line read one answer, and so do its Skills, since nothing could serve either.
+    @Test func changesAndSkillsAreOfferedWhereTheHostCanRunTheirScripts() {
+        let posixCore = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Linux")
+        #expect(posixCore.hostScripts)
+        #expect(posixCore.offersChanges(directory: "/work"))
+        #expect(!posixCore.offersChanges(directory: nil))
+        // Not known yet reads as any Host that has not said.
+        #expect(HostCapabilities(serverKind: .herdrCore).hostScripts)
+        // A native Windows Herdr TUI Host keeps what it had.
+        let windowsTUI = HostCapabilities(serverKind: .herdrTUI, platform: .nativeWindows)
+        #expect(windowsTUI.hostScripts)
+        #expect(windowsTUI.offersChanges(directory: #"C:\work"#))
+    }
+
+    /// The edit reads the Agent's environment and writes a POSIX path, which Windows refuses.
+    @Test func anUnknownGrokBuildAgentIsExplainedWithoutOfferingTheEdit() async throws {
+        let grok: JSONValue = .object([
+            "address": .string("t1"), "cwd": .string(#"C:\work"#), "state": .string("live"),
+            "argv": .array([.string("powershell.exe"), .string("-Command"), .string("& 'grok'; exit $LASTEXITCODE")]),
+            "cols": .number(80), "rows": .number(24), "pid": .number(7), "keep": .bool(false),
+            "foreground": .object([
+                "pid": .number(7), "name": .string("powershell.exe"), "cwd": .string(#"C:\work"#),
+                "argv": .array([.string("powershell.exe"), .string("-Command"), .string("& 'grok'; exit $LASTEXITCODE")]),
+            ]),
+        ])
+        let store = try await started([grok], services: ScriptedCoreServices(platform: .nativeWindows))
+        try await waitUntil("the kernel") { store.hostCoreKernels[host.id] == HerdrCoreLocator.windowsKernel }
+
+        let explanation = try #require(
+            store.coreStatusExplanations[ConsoleAgent.ID(hostID: host.id, paneID: "t1")])
+        #expect(explanation.text == "Grok Build hasn't reported a status.")
+        #expect(store.grokBuildEditFlow(for: explanation, on: host.id) == nil)
+        await finish(store)
+    }
+
+    /// Add Host read the machine, so a first attempt that never reaches it knows too.
+    @Test func aHostAddHostFoundOnWindowsHidesWhatWindowsLacksFromTheStart() async throws {
+        let scripted = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .core(.init()))
+        let store = storeOnScripted(scripted, before: { throw TransportError.sshUnreachable(detail: "gone") })
+        store.noteWindowsCore(on: host.id)
+        store.setHosts([host])
+        expectWindowsOffers(store.capabilities(for: host.id))
+        await store.resume()
+        try await waitUntil("the failed attempt") {
+            if case .reconnecting = store.hostStatuses[host.id] { return true }
+            return false
+        }
+        expectWindowsOffers(store.capabilities(for: host.id))
+        await finish(store)
+    }
+
+    /// A status arrives with what its attempt learned of the Host, so nothing reads
+    /// a Host it has reached as still unknown.
+    @Test func aHostsFirstStatusArrivesKnowingItsKernel() async throws {
+        let scripted = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: true), channel: .core(.init()))
+        let store = storeOnScripted(scripted)
+        store.setHosts([host])
+        await store.resume()
+
+        try await waitUntil("the connection") { store.hostStatuses[host.id] == .connected }
+        expectWindowsOffers(store.capabilities(for: host.id))
+        await finish(store)
     }
 
     @Test func aConnectedWindowsCoreHostOffersWhatItsTicketsTurnedOn() async throws {

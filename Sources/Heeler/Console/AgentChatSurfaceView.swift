@@ -34,7 +34,7 @@ struct AgentChatSurfaceView: View {
     private let selectSurface: (AgentDetailSurface) -> Void
 
     @State private var timeline = ChatTimelineModel()
-    @State private var skills: SkillsPaneStore?
+    @State private var skillsStore: SkillsPaneStore?
     @State private var closer: ClosePaneStore
     /// This view's token with the Chat store, which follows the
     /// conversation while any window shows it.
@@ -138,7 +138,7 @@ struct AgentChatSurfaceView: View {
         self.selectSurface = selectSurface
         // Chat lists only the skills its `/` menu sends, in the menu, the
         // Skills sheet and the tools keyboard alike.
-        _skills = State(
+        _skillsStore = State(
             initialValue: AgentTerminalView.makeSkillsStore(for: agent, console: console) {
                 ChatCommandMenu.offers($0, for: program)
             })
@@ -800,6 +800,11 @@ struct AgentChatSurfaceView: View {
     }
 
     // MARK: Composer
+
+    /// What every Skills entry here reads: nil hides them, the `/` menu's included.
+    private var skills: SkillsPaneStore? {
+        console.capabilities(for: agent.hostID).hostScripts ? skillsStore : nil
+    }
 
     /// The `/` menu: the Host's skills once loaded, plus `/compact`.
     private var commands: [ChatCommand] {

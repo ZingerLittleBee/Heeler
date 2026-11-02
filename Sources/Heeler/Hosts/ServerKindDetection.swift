@@ -23,7 +23,8 @@ struct ServerKindDetection: Equatable, Sendable {
     /// What the locator says of the typed session's core. Only `hello` can prove
     /// a core answers, so a socket file is all it can report of a running one.
     enum CoreFinding: Equatable, Sendable {
-        /// hc refuses the session's name, so the locator did not run.
+        /// hc refuses the session's name, or a native Windows Host cannot carry it, so
+        /// the locator did not run.
         case sessionRefused(reason: String)
         case notInstalled
         case notRunning(version: String, socketPath: String)
@@ -33,6 +34,8 @@ struct ServerKindDetection: Equatable, Sendable {
 
     let herdrTUI: HerdrTUIFinding
     let herdrCore: CoreFinding
+    /// The one fact a refused session name still leaves: which exec this Host took.
+    let isNativeWindows: Bool
 
     /// `herdr session list --json`, as a bare exec of it runs. It only looks at
     /// each session's socket (docs/agents/herdr-compatibility.md).
@@ -63,13 +66,14 @@ struct ServerKindDetection: Equatable, Sendable {
             return ServerKindDetection(
                 try ServerKindDetectionScript.parse(
                     stdout: result.stdout, session: session, nonce: nonce, platform: platform),
-                session: session)
+                session: session, isNativeWindows: platform == .nativeWindows)
         } catch {
             throw TransportError.malformedResponse("Server Kind detection's output is unreadable.")
         }
     }
 
-    init(_ output: ServerKindDetectionScript.Output, session: String) {
+    init(_ output: ServerKindDetectionScript.Output, session: String, isNativeWindows: Bool = false) {
+        self.isNativeWindows = isNativeWindows
         herdrTUI = Self.herdrTUI(status: output.herdrStatus, output: output.herdrOutput)
         herdrCore = Self.herdrCore(output.location, session: session)
     }
@@ -113,9 +117,9 @@ struct ServerKindDetection: Equatable, Sendable {
     }
 
     /// What the user may confirm. A target running nothing yet offers every kind:
-    /// the user may be about to install one, and its preflight says how. A session
-    /// name hc refuses keeps herdr-core on offer, since only the name stands in its
-    /// way and confirming says why.
+    /// the user may be about to install one, and its preflight says how. A refused
+    /// session name keeps herdr-core on offer, since only the name stands in its way
+    /// and confirming says why.
     var offeredKinds: [ServerKind] {
         if case .sessionRefused = herdrCore { return Self.offeredWithoutFindings }
         return foundKinds.isEmpty ? Self.offeredWithoutFindings : foundKinds

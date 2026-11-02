@@ -39,6 +39,9 @@ struct HostOnboardingDependencies: Sendable {
     var hostHelperDidChange: @MainActor @Sendable () -> Void = {}
     /// What this device applied, for removing the Helper to undo what goes with it.
     var harnessEdits: HarnessConfigEditStore?
+    /// Add Host's detection found a native Windows machine behind this Host, which
+    /// its first connection may never reach to say.
+    var noteWindowsCore: @MainActor @Sendable (Host.ID) -> Void = { _ in }
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
@@ -117,6 +120,7 @@ final class HostOnboardingStore {
     /// Identifies the run whose trust prompts may still be shown.
     @ObservationIgnored private var currentRun = UUID()
     @ObservationIgnored private let hostHelperDidChange: @MainActor () -> Void
+    @ObservationIgnored private let noteWindowsCore: @MainActor (Host.ID) -> Void
     @ObservationIgnored private let hostHelperHealthGap: @Sendable () async throws -> Void
     @ObservationIgnored private let harnessEdits: HarnessConfigEditStore?
     /// A Mac's second health read, which outlives the run that began it and owns
@@ -136,8 +140,10 @@ final class HostOnboardingStore {
         hostHelperHealthGap: @escaping @Sendable () async throws -> Void = {
             try await Task.sleep(for: HostHelperLaunchAgent.healthGap)
         },
-        harnessEdits: HarnessConfigEditStore? = nil
+        harnessEdits: HarnessConfigEditStore? = nil,
+        noteWindowsCore: @escaping @MainActor (Host.ID) -> Void = { _ in }
     ) {
+        self.noteWindowsCore = noteWindowsCore
         self.hostHelperHealthGap = hostHelperHealthGap
         self.harnessEdits = harnessEdits
         self.coreHolderRestart = coreHolderRestart
@@ -452,15 +458,21 @@ final class HostOnboardingStore {
             : nil
     }
 
-    /// Confirms the Host's kind, once, then runs that kind's checks. A name the
-    /// kind's server refuses leaves the Host as it was and says why.
+    /// Confirms the Host's kind, once, then runs that kind's checks. A name refused
+    /// for that kind, by its server or by what this Host's platform can carry, leaves
+    /// the Host as it was and says why.
     func confirmServerKind(_ kind: ServerKind, in catalog: HostStore) async {
         guard phase != .running, offeredKinds.contains(kind) else { return }
+        if kind == .herdrCore, case .sessionRefused(let reason) = detection?.herdrCore {
+            confirmationRefusal = reason
+            return
+        }
         if kind == .herdrCore, case .socketPathTooLong(_, let path, let limit) = detection?.herdrCore {
             confirmationRefusal =
                 TransportError.herdrCoreSocketPathTooLong(path: path, limit: limit).presentation.message
             return
         }
+        if kind == .herdrCore, detection?.isNativeWindows == true { noteWindowsCore(host.id) }
         do {
             host = try catalog.confirmServerKind(kind, for: host.id)
         } catch HostStoreError.sessionNameRefused(let reason) {
