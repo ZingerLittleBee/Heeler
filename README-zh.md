@@ -24,7 +24,7 @@
 
 ---
 
-Heeler 是 iPhone 和 iPad 上的 **Agent 控制台**，用于远程操作 Claude Code、Codex 和其他编程 Agent。Agent 在你自己的 Host 上通过 herdr 运行，Heeler 通过 SSH 连接。跨机器查看多个 Agent，按「谁需要你」排序，再打开实时终端或支持的 Chat 对话发送指令。
+Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控制台，用于远程操作 Claude Code、Codex 和其他编程 Agent。Agent 在你自己的 Host 上通过 herdr 运行，Heeler 通过 SSH 连接。跨机器查看多个 Agent，按「谁需要你」排序，再打开实时终端或支持的 Chat 对话发送指令。
 
 ## 截图
 

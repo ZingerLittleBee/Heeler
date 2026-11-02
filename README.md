@@ -24,7 +24,7 @@ English | [简体中文](./README-zh.md)
 
 ---
 
-Heeler is an **agent console** for Claude Code, Codex, and other coding Agents on iPhone and iPad. Agents run on your own Hosts with herdr; Heeler connects over SSH. Monitor multiple Agents across machines, sorted by who needs you, then open a live terminal or supported Chat conversation to send instructions.
+Heeler is an independent **herdr mobile client** and agent console for Claude Code, Codex, and other coding Agents on iPhone and iPad. Agents run on your own Hosts with herdr; Heeler connects over SSH. Monitor multiple Agents across machines, sorted by who needs you, then open a live terminal or supported Chat conversation to send instructions.
 
 ## Screenshots
 
