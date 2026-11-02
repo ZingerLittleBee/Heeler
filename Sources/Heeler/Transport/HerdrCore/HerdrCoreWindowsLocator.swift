@@ -76,10 +76,13 @@ extension HerdrCoreLocator {
             """
     }
 
-    /// The link's exec, by the path the probe checked. `cmd /d /c` reads the same
-    /// under a `cmd` or PowerShell DefaultShell and skips AutoRun, and `connect` stays
-    /// its direct child on the exec's own stdio, where every byte crossed unchanged.
-    /// No PowerShell sits on this stream: what it does to one was never measured.
+    /// The link's exec, by the path the probe checked. `cmd /d /c` skips AutoRun and,
+    /// by hc's own dialer source, reads the same under a `cmd` or PowerShell DefaultShell;
+    /// neither this line nor the probe has run through sshd (ADR 0031). `connect` stays
+    /// `cmd`'s direct child on the exec's own stdio, the form whose bytes were measured:
+    /// one machine, `cmd.exe` as sshd's shell, an elevated token, without this wrapper
+    /// (#586). Heeler adds no PowerShell of its own here. A PowerShell DefaultShell still
+    /// starts this line, and what it does to the stream was never measured.
     static func windowsConnectCommand(session: String) throws -> String {
         guard HerdrCoreSessionName.windowsRefusal(session) == nil else {
             throw SessionRefused(session: session)

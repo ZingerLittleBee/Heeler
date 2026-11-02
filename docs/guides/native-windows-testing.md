@@ -519,6 +519,12 @@ Code's `.key` files.
     no value. Start the core from a clean window and it goes. This is the first run of
     the check on Windows: if nothing appears, record that here and in
     `docs/agents/herdr-compatibility.md`, since a read that failed also shows nothing.
+35. Record this machine's `DefaultShell`. Steps 1 to 7 prove the link only under that
+    shell: repeat connect, attach and reconnect under the other one, restoring the value
+    after, with one run under PowerShell 7 whose profile prints output and calls
+    `Set-Location`. The link's frames arrive whole and the Host does not read
+    **herdr-core is not installed**, since the probe finds the core from the folder an
+    exec starts in. Record the result in `docs/agents/herdr-compatibility.md`.
 
 ## Scope and results
 
