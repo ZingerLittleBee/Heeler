@@ -14,7 +14,7 @@ import Testing
     }
 
     private func transformed(_ before: String?, _ form: OpenCodePluginEdit.ConfigForm) -> HarnessConfigEdit.Transform {
-        OpenCodePluginEdit.transform(form: form, folderPath: Self.folder)(before.map { Data($0.utf8) })
+        OpenCodePluginEdit.transform(form: form, folderPath: Self.folder, fileName: "tui.json")(before.map { Data($0.utf8) })
     }
 
     private func changed(
@@ -219,7 +219,7 @@ import Testing
     }
 
     @Test func invalidUTF8IsRefused() {
-        let edit = OpenCodePluginEdit.transform(form: .tuiConfig, folderPath: Self.folder)
+        let edit = OpenCodePluginEdit.transform(form: .tuiConfig, folderPath: Self.folder, fileName: "tui.json")
         guard case .refused = edit(Data([0x7B, 0xFF, 0x7D])) else {
             Issue.record("expected a refusal")
             return
@@ -535,6 +535,21 @@ import Testing
         try await HarnessConfigEditor(files: files).undo(record)
         #expect(await files.files == [Self.config: Self.original])
         #expect(await files.folders.isEmpty)
+    }
+
+    /// The entry comes out first, so a refusal in the folder can't say nothing was written.
+    @Test func aFolderFileChangedDuringUndoIsItsOwnRefusal() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let record = try await applied(files)
+        let plugin = Self.pluginPaths[1]
+        await files.onReplace(of: plugin) { await $0.set(plugin, Data("changed".utf8)) }
+
+        await #expect(throws: HarnessConfigEditError.folderChangedDuringUndo) {
+            try await HarnessConfigEditor(files: files).undo(record)
+        }
+
+        #expect(await files.files[Self.config] == Self.original)
+        #expect(await files.folders.contains(Self.folder))
     }
 
     /// A record from before folders existed, as this device may hold for Grok Build.

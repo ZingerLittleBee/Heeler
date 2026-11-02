@@ -10,7 +10,9 @@ struct HarnessConfigEdit: Sendable {
     enum Transform: Equatable, Sendable {
         case change(to: Data)
         case alreadyApplied
-        case refused(reason: String)
+        /// `manualInstruction` says what to do by hand when this file's case differs
+        /// from the edit's own.
+        case refused(reason: String, manualInstruction: String? = nil)
     }
 
     /// Stable across launches, for what the Host's detail lists.
@@ -27,6 +29,9 @@ struct HarnessConfigEdit: Sendable {
     /// What to do by hand where Heeler won't change this file. It says what this
     /// edit would have written, so it goes with the edit.
     var manualInstruction: String? = nil
+    /// What the edit still won't bring on the release it's for, said before the user
+    /// agrees and after.
+    var limitation: String? = nil
 }
 
 /// A folder of Heeler's own beside a harness's configuration, with what goes in it.
@@ -202,6 +207,8 @@ enum HarnessConfigEditError: Error, Equatable, LocalizedError {
     case unresolvedPath
     case agentEnvironmentUnavailable
     case openCodeVersionUnknown
+    /// The file no longer names the folder by then, so this can't say nothing was written.
+    case folderChangedDuringUndo
 
     var errorDescription: String? {
         switch self {
@@ -219,6 +226,8 @@ enum HarnessConfigEditError: Error, Equatable, LocalizedError {
             "Heeler couldn't read this Agent's environment, so it can't tell which file to change. Nothing was written."
         case .openCodeVersionUnknown:
             "Heeler couldn't read which OpenCode this Host runs, so it can't tell which file to change. Nothing was written. \(OpenCodePluginEdit.manualInstructionForEitherRelease)"
+        case .folderChangedDuringUndo:
+            "Heeler took its change out of the file, but a file in its folder changed while Heeler was removing it, so the folder stays. Undo again to finish."
         }
     }
 }
@@ -231,6 +240,9 @@ struct HarnessConfigEditor: Sendable {
     let files: any HostServices
     var now: @Sendable () -> Date = { Date() }
     var makeID: @Sendable () -> UUID = { UUID() }
+    /// Folders another applied edit's file still names, which this one leaves in
+    /// place: two files can name the one folder, after an upgrade for one.
+    var foldersInUse: Set<String> = []
 
     /// Reads the file and works out the change. Writes nothing.
     func propose(_ edit: HarnessConfigEdit) async throws -> HarnessConfigProposal {
@@ -238,8 +250,9 @@ struct HarnessConfigEditor: Sendable {
         switch edit.transform(before) {
         case .alreadyApplied:
             return .alreadyApplied(path: edit.path)
-        case .refused(let reason):
-            return .refused(path: edit.path, reason: reason, manualInstruction: edit.manualInstruction)
+        case .refused(let reason, let manualInstruction):
+            return .refused(
+                path: edit.path, reason: reason, manualInstruction: manualInstruction ?? edit.manualInstruction)
         case .change(let after):
             return .change(
                 HarnessConfigPendingChange(
@@ -287,6 +300,7 @@ struct HarnessConfigEditor: Sendable {
     /// Only for a folder this attempt placed and the file doesn't name. Whatever
     /// this can't remove stays, unnamed and doing nothing.
     private func takeBack(_ folder: HarnessConfigFolder) async {
+        guard !foldersInUse.contains(folder.path) else { return }
         try? await remove(HarnessConfigAppliedFolder(path: folder.path, fileNames: folder.files.map(\.name)))
     }
 
@@ -339,7 +353,12 @@ struct HarnessConfigEditor: Sendable {
         } catch HostTextFileError.changedSinceRead {
             throw HarnessConfigEditError.changedSinceWritten
         }
-        if let folder = applied.folder { try await remove(folder) }
+        guard let folder = applied.folder, !foldersInUse.contains(folder.path) else { return }
+        do {
+            try await remove(folder)
+        } catch HostTextFileError.changedSinceRead, HarnessConfigEditError.tooLarge, HarnessConfigEditError.unreadable {
+            throw HarnessConfigEditError.folderChangedDuringUndo
+        }
     }
 
     private func removeEntry(_ entry: HarnessConfigListEntry, of path: String, holding current: Data) async throws {

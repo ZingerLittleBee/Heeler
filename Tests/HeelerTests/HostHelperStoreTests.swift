@@ -71,6 +71,59 @@ struct HostHelperStoreTests {
         #expect(edits.edits(on: hostID).count == 1)
     }
 
+    /// The way production comes to it, from the app's dependencies through the page's
+    /// store to the Helper. Each link defaults to doing nothing, so one that was dropped
+    /// would skip the undo with no error.
+    @Test func removalFromHostDetailUndoesWhatTheAppsConsoleApplied() async throws {
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        let console = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not under test") },
+                    keepalive: nil)
+            },
+            harnessEdits: HarnessConfigEditStore())
+        let app = HeelerAppModel(
+            pushRegistration: PushRegistrationStore(
+                client: ScriptedPushRegistrationClient(), environment: .sandbox),
+            sceneDirectory: AgentSceneDirectory(),
+            hostStore: HostStore(volatileHosts: [host]), console: console)
+        var dependencies = app.hostOnboarding
+        dependencies.connector = FakeTransportConnector(
+            outcome: .connects(pingResult: .success(ServerInfo(version: "0.7.5", protocolVersion: 17))), core: core)
+        dependencies.knownHosts = InMemoryKnownHostsStore()
+        dependencies.credentials = HostCredentialsProvider(
+            deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
+            rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
+            secrets: InMemorySecretStore())
+        let onboarding = HostOnboardingView.makeStore(host, dependencies)
+        await onboarding.runChecks()
+        let store = try #require(onboarding.hostHelper)
+
+        let config = "/home/me/.config/opencode/tui.json"
+        let original = Data("{}\n".utf8)
+        await helper.seedFile(config, original)
+        let edit = OpenCodePluginEdit.edit(
+            configDirectory: "/home/me/.config/opencode", fileName: "tui.json", form: .tuiConfig,
+            files: OpenCodePluginEdit.fileNames.map { .init(name: $0, contents: Data($0.utf8)) })
+        let editor = HarnessConfigEditor(files: core)
+        guard case .change(let change) = try await editor.propose(edit) else {
+            Issue.record("expected a change")
+            return
+        }
+        console.harnessEdits.note(try await editor.apply(change), on: host.id)
+        #expect(await helper.files[config]?.contents != original)
+
+        await store.remove()
+
+        #expect(store.failure == nil, "\(store.failure ?? "")")
+        #expect(await helper.files[config]?.contents == original)
+        #expect(await helper.folders["/home/me/.config/opencode/heeler-opencode"] == nil)
+        #expect(console.harnessEdits.edits(on: host.id).isEmpty)
+    }
+
     @Test func readsAHostWithNoCoreRunning() async {
         let store = await refreshed()
         #expect(store.status == .notInstalled)

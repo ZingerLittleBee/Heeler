@@ -84,7 +84,7 @@ struct HostOnboardingView: View {
         _store = State(initialValue: Self.makeStore(host, dependencies))
     }
 
-    private static func makeStore(
+    static func makeStore(
         _ host: Host, _ dependencies: HostOnboardingDependencies
     ) -> HostOnboardingStore {
         HostOnboardingStore(

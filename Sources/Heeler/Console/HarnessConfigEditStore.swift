@@ -34,6 +34,11 @@ final class HarnessConfigEditStore {
         entries[hostID]?.first { $0.id == id }
     }
 
+    /// The folders this Host's edits name, but for `edit`, which is leaving.
+    func foldersInUse(on hostID: Host.ID, besides edit: HarnessConfigAppliedEdit.ID? = nil) -> Set<String> {
+        Set(edits(on: hostID).filter { $0.id != edit }.compactMap(\.folder?.path))
+    }
+
     /// An edit applied again to a file it left replaces what was known of it.
     func note(_ edit: HarnessConfigAppliedEdit, on hostID: Host.ID) {
         var edits = entries[hostID] ?? []
@@ -59,11 +64,15 @@ final class HarnessConfigEditStore {
         var refusal: String?
         for edit in edits(on: hostID) where edit.editID == OpenCodePluginEdit.id {
             do {
-                try await HarnessConfigEditor(files: services).undo(edit)
+                try await HarnessConfigEditor(
+                    files: services, foldersInUse: foldersInUse(on: hostID, besides: edit.id)
+                ).undo(edit)
                 forget(edit, on: hostID)
             } catch let error as HarnessConfigEditError {
-                refusal = "The Host Helper is gone, but its OpenCode edit stays in \(edit.path). "
-                    + (error.errorDescription ?? "")
+                let outcome =
+                    error == .folderChangedDuringUndo
+                    ? "The Host Helper is gone. " : "The Host Helper is gone, but its OpenCode edit stays in \(edit.path). "
+                refusal = outcome + (error.errorDescription ?? "")
             }
         }
         return refusal
@@ -112,6 +121,8 @@ final class HarnessConfigEditFlow: Identifiable {
     /// True when the last failure was the file changing under an undo, and so
     /// forgetting the edit is what is left to offer.
     private(set) var canForget = false
+    /// What the edit this offer found still won't bring, once it knows its edit.
+    private(set) var limitation: String?
 
     private let hostID: Host.ID
     private var subject: Subject
@@ -196,7 +207,9 @@ final class HarnessConfigEditFlow: Identifiable {
         do {
             let files = try await services()
             do {
-                let applied = try await HarnessConfigEditor(files: files).apply(change)
+                let applied = try await HarnessConfigEditor(
+                    files: files, foldersInUse: store.foldersInUse(on: hostID)
+                ).apply(change)
                 store.note(applied, on: hostID)
                 phase = .idle
             } catch let lost as TransportError {
@@ -213,8 +226,9 @@ final class HarnessConfigEditFlow: Identifiable {
     private func settleUnconfirmedWrite() async {
         guard let change = unconfirmedWrite else { return }
         do {
-            let written = try await HarnessConfigEditor(files: try await services())
-                .record(ofWritten: change)
+            let written = try await HarnessConfigEditor(
+                files: try await services(), foldersInUse: store.foldersInUse(on: hostID)
+            ).record(ofWritten: change)
             unconfirmedWrite = nil
             if let written { store.note(written, on: hostID) }
         } catch {
@@ -231,7 +245,9 @@ final class HarnessConfigEditFlow: Identifiable {
         guard let applied else { return }
         phase = .writing
         do {
-            try await HarnessConfigEditor(files: try await services()).undo(applied)
+            try await HarnessConfigEditor(
+                files: try await services(), foldersInUse: store.foldersInUse(on: hostID, besides: applied.id)
+            ).undo(applied)
             store.forget(applied, on: hostID)
             phase = .idle
         } catch {
@@ -250,6 +266,7 @@ final class HarnessConfigEditFlow: Identifiable {
     private func remember(_ edit: HarnessConfigEdit?) {
         guard let edit, case .offer(let editID, _) = subject else { return }
         subject = .offer(editID: editID, path: edit.path)
+        limitation = edit.limitation
     }
 }
 

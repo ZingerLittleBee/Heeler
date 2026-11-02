@@ -296,7 +296,14 @@ extension HerdrCoreSessionBinder {
         var found: [Found] = []
         for directory in directories {
             let request = OpenCodeQuery(session: nil, kind: .recentSessions(directory: directory, limit: Self.recentCandidateLimit))
-            guard case .records(let records) = try await query(request) else { continue }
+            // A store Heeler can't read isn't a directory with no conversations.
+            let records: OpenCodeRecords
+            switch try await query(request) {
+            case .records(let answer): records = answer
+            case .unavailable(let problem): throw OpenCodeRecordSource.unavailable(problem)
+            // A listing names no session and has no cursor, so these aren't its answers.
+            case .unchanged, .sessionMissing: continue
+            }
             for row in records.recentSessions {
                 guard let session = OpenCodeSessionID(row.id) else { continue }
                 found.append(

@@ -123,7 +123,7 @@ never show or send into a conversation it has guessed.
 - Candidates serve every program whose Chat binds on core, and only a Chat that
   already says it cannot tell offers them, on request. A list costs one exec, as
   a check does, then the listings it takes: a directory's folder, or for OpenCode
-  a read-only query of its roots there, and for Codex the heads of its newest
+  a read-only query of its roots there, whose store problem replaces the list, and for Codex the heads of its newest
   rollouts, up to 24, since Codex files by day. A process walk past its cap lists
   nothing, because a launcher would pass for the Agent and a daemon under it would
   go unseen. A Status child is listed only when
@@ -188,8 +188,9 @@ never show or send into a conversation it has guessed.
   saying why.
 
 This amends ADR 0024, and ADR 0025's source of the OpenCode session id, its
-start-screen watch and what its confirmation makes of the title `OpenCode`, for
-herdr-core Hosts only.
+start-screen watch, what its confirmation makes of the title `OpenCode` and its
+rule that every row read is filtered on one session id, which the candidate
+list's query of a directory's roots is not, for herdr-core Hosts only.
 
 ## Considered options
 

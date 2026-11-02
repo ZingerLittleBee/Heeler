@@ -414,7 +414,7 @@ struct HerdrCoreChatTests {
     // MARK: Choosing a conversation
 
     /// The Agent's detail on its Chat surface, as the Console builds it.
-    private static func chatDetail(of agent: ConsoleAgent, console: ConsoleStore, defaults: UserDefaults) -> some View {
+    static func chatDetail(of agent: ConsoleAgent, console: ConsoleStore, defaults: UserDefaults) -> some View {
         let surface = AgentDetailSurfaceSettings(defaults: defaults)
         surface.select(.chat)
         return AgentDetailView(
@@ -436,8 +436,8 @@ struct HerdrCoreChatTests {
             onClosed: {})
     }
 
-    /// Activates the element of this label, until the list's sheet comes up.
-    private static func opensTheList(
+    /// Activates the element of this label, until a sheet comes up.
+    static func opensASheet(
         from label: String, in controller: UIViewController, sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
         var budget = PollBudget(.seconds(10))
@@ -469,7 +469,7 @@ struct HerdrCoreChatTests {
         ) { _ in
             try await rig.waitUntil("Chat to say it cannot tell") { chat.conversation.phase == Self.cannotTell }
             #expect(chat.conversation.transcript.entries.isEmpty)
-            try await Self.opensTheList(from: ChatCandidatePickerView.title, in: controller)
+            try await Self.opensASheet(from: ChatCandidatePickerView.title, in: controller)
         }
         chat.end()
         rig.store.setHosts([])
@@ -498,7 +498,7 @@ struct HerdrCoreChatTests {
             #expect(!chat.conversation.transcript.entries.isEmpty)
             // The banner reads as one element, whose action is its button's.
             let banner = ChatBannerLine.unavailable(.cannotTellSession(.claude), showingSavedMessages: true).text
-            try await Self.opensTheList(from: banner, in: controller)
+            try await Self.opensASheet(from: banner, in: controller)
         }
         chat.end()
         rig.store.setHosts([])

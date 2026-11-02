@@ -5,6 +5,7 @@ import Foundation
 /// OpenCode's config directory, and that folder added to OpenCode's plugin list.
 enum OpenCodePluginEdit {
     static let id = "opencode.plugin"
+    static let offerTitle = "Let Chat Follow OpenCode…"
     static let harness = "OpenCode"
     static let folderName = "heeler-opencode"
     /// Relative to the file that lists it, as OpenCode resolves it in both forms.
@@ -19,6 +20,13 @@ enum OpenCodePluginEdit {
     /// does nothing, and looks as if it did.
     static func manualInstruction(fileName: String, form: ConfigForm) -> String {
         "Add \"\(entryValue)\" to \(form.listKey) in \(fileName), \(pluginCopy)."
+    }
+
+    /// A top-level list flattens over the one inside this section, so the entry has
+    /// to go inside it (herdr compatibility, OpenCode 1.19.5).
+    static func manualInstruction(fileName: String, form: ConfigForm, inside section: String) -> String {
+        "Add \"\(entryValue)\" to \(form.listKey) inside \(section) in \(fileName), not at the top of the file, "
+            + "where a list would replace the one inside \(section), \(pluginCopy)."
     }
 
     /// For a Host whose release Heeler can't read.
@@ -37,10 +45,16 @@ enum OpenCodePluginEdit {
         let schema: String
         /// Set beside the list, it would take the list's meaning from it.
         let refusingKeys: Set<String>
+        /// What the plugin can't bring on this release: 1.x's store has no
+        /// `session_v2`, which is the table Chat reads (ADR 0025).
+        var limitation: String? = nil
 
         static let tuiConfig = ConfigForm(
             fileNames: ["tui.json", "tui.jsonc"], listKey: "plugin", schema: "https://opencode.ai/tui.json",
-            refusingKeys: ["tui"])
+            refusingKeys: ["tui"],
+            limitation:
+                "OpenCode 1.x keeps conversations in a format Chat doesn't read, so Chat can name this conversation but can't show it. Chat shows conversations from OpenCode 2.x."
+        )
         static let cliConfig = ConfigForm(
             fileNames: ["cli.json"], listKey: "plugins", schema: "https://opencode.ai/v2/cli.json",
             refusingKeys: [])
@@ -98,10 +112,11 @@ enum OpenCodePluginEdit {
         let folderPath = RemoteFilePath.join(configDirectory, folderName)
         return HarnessConfigEdit(
             id: id, harness: harness, path: RemoteFilePath.join(configDirectory, fileName),
-            transform: transform(form: form, folderPath: folderPath),
+            transform: transform(form: form, folderPath: folderPath, fileName: fileName),
             folder: HarnessConfigFolder(path: folderPath, files: files),
             listEntry: HarnessConfigListEntry(key: form.listKey, value: entryValue),
-            manualInstruction: manualInstruction(fileName: fileName, form: form))
+            manualInstruction: manualInstruction(fileName: fileName, form: form),
+            limitation: form.limitation)
     }
 
     private static let unreadableReason =
@@ -109,7 +124,9 @@ enum OpenCodePluginEdit {
     private static let notAListReason =
         "This file sets OpenCode's plugin list in a form Heeler won't change."
 
-    static func transform(form: ConfigForm, folderPath: String) -> @Sendable (Data?) -> HarnessConfigEdit.Transform {
+    static func transform(
+        form: ConfigForm, folderPath: String, fileName: String
+    ) -> @Sendable (Data?) -> HarnessConfigEdit.Transform {
         { file in
             // OpenCode reads an empty file as no configuration at all.
             guard let file, !file.allSatisfy({ [0x20, 0x09, 0x0A, 0x0D].contains($0) }) else {
@@ -122,7 +139,11 @@ enum OpenCodePluginEdit {
             case .changed(let after): return .change(to: after)
             case .alreadyThere: return .alreadyApplied
             case .unreadable: return .refused(reason: unreadableReason)
-            case .notAList, .keyInTheWay: return .refused(reason: notAListReason)
+            case .notAList: return .refused(reason: notAListReason)
+            case .keyInTheWay(let section):
+                return .refused(
+                    reason: notAListReason,
+                    manualInstruction: manualInstruction(fileName: fileName, form: form, inside: section))
             }
         }
     }

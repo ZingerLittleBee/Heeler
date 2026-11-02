@@ -1438,6 +1438,7 @@ final class AgentChatStore {
     private static func message(for error: any Error) -> String {
         if let refusal = error as? HerdrAPIError { return refusal.message }
         if let failure = error as? TransportError { return failure.presentation.message }
+        if let failure = error as? ChatSourceUnavailable { return failure.reason.explanation }
         return "Heeler couldn't reach this Host. Try again."
     }
 

@@ -63,7 +63,9 @@ Cards and the cache work as described there.
   `sqlite_master`. Every row read is filtered on the one session id herdr
   reports: `ses_` followed by 12 hexadecimal digits and 14 letters or digits,
   checked before the id reaches a query. A session with a parent belongs to a
-  subagent and is not shown; Chat follows the root session herdr reports.
+  subagent and is not shown; Chat follows the root session herdr reports. On a
+  herdr-core Host the one exception is the candidate list ADR 0034 offers, which
+  reads the id, title and time of the root sessions in the Agent's directory.
 - Rows are slimmed in SQL before they leave the Host: provider state,
   snapshots, diagnostics, previews, before and after copies of files, and
   full revert patches are dropped. Text and reasoning keep 64 Ki characters,

@@ -2,7 +2,8 @@ import Foundation
 
 /// The SQL behind each query (ADR 0025). Every statement reads one session
 /// from `session_v2`, `session_message`, `event_sequence` or
-/// `session_inbox`, and nothing writes. The statements stay within SQLite
+/// `session_inbox`, but for `recentSessions`, which reads a directory's roots
+/// from `session_v2`, and nothing writes. The statements stay within SQLite
 /// 3.25 with JSON1: window functions and `pragma_table_info` are fine, while
 /// `->`, `iif`, `FILTER`, `NULLS FIRST`, `HAVING` without `GROUP BY` and
 /// `ORDER BY` inside an aggregate are newer. They also stay shallow: SQLite
@@ -108,8 +109,11 @@ extension OpenCodeProbe {
          WHERE m IS NOT NULL
         """
 
-    /// Every column the queries name, so a changed layout reads as one
-    /// problem rather than as the first statement that fails.
+    /// Every column reading a session names, so a changed layout reads as one
+    /// problem rather than as the first statement that fails. `directory` isn't
+    /// here: only `recentSessions` uses it, and a store without it shouldn't lose
+    /// Chat for that. That statement's "no such column" reads as a layout problem
+    /// too, through `OpenCodeProbe`'s reader failure.
     static let layoutStatement = """
         WITH need(t, c) AS (VALUES
           ('session_v2','id'),('session_v2','parent_id'),('session_v2','title'),('session_v2','version'),

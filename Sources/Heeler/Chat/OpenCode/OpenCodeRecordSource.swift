@@ -279,7 +279,7 @@ struct OpenCodeRecordSource: ChatTranscriptSource {
         throw ChatSourceUnavailable(reason: .sessionStore(.opencode, .subagentSession))
     }
 
-    private static func unavailable(_ problem: OpenCodeStoreProblem) -> ChatSourceUnavailable {
+    static func unavailable(_ problem: OpenCodeStoreProblem) -> ChatSourceUnavailable {
         let reason: ChatSessionStoreProblem =
             switch problem {
             case .noStore(let path): .noStore(path: path)
