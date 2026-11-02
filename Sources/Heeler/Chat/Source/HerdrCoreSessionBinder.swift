@@ -59,9 +59,10 @@ struct HerdrCoreSessionHint: Equatable, Sendable {
 ///
 /// It starts from the Terminal's foreground process, and goes through descendants
 /// that share the Terminal's `HC_SCOPE` to reach the process behind a launcher.
-/// The scope is the Terminal's own process's: the core keeps it out of the
-/// Terminal's record. Only the variables named here are read, on the Host, and
-/// `HERDR_*` is never among them.
+/// The scope is the Terminal's own process's, since the core keeps it out of the
+/// Terminal's record. On a Mac that withholds that process's environment the
+/// foreground's stands in, or there is none (`readTerminalProcesses`). Only the
+/// variables named here are read, on the Host, and `HERDR_*` is never among them.
 ///
 /// Claude Code's `<config dir>/sessions/<pid>.json` is read by name, so the
 /// `<pid>.<hash>.key` beside it before the prompt is never read or listed.
@@ -93,7 +94,6 @@ struct HerdrCoreSessionBinder: Sendable {
 
     /// What an npm install runs as on Windows, where a program cannot retitle itself.
     static let windowsRuntimes: Set<String> = ["node", "bun"]
-    static let scopeVariable = HerdrCoreTerminalProcesses.scopeVariable
     static let homeVariable = "HOME"
     private static let configVariable = "CLAUDE_CONFIG_DIR"
     /// Past this no registry entry was ever this long, so it is not one.
@@ -203,7 +203,7 @@ struct HerdrCoreSessionBinder: Sendable {
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid], case .value(let start) = process.start
         else { return cannotTell }
 
-        let hints = await readHints(in: record, pid: pid, start: start)
+        let hints = await readHints(in: record, tree: tree, pid: pid, start: start)
 
         if case .value(let names) = process.nonEmptyNames {
             for variable in ChatTranscriptOffVariable.allCases where names.contains(variable.rawValue) {
@@ -227,8 +227,8 @@ struct HerdrCoreSessionBinder: Sendable {
 
     /// One exec's facts about a Terminal: its own process and the foreground's
     /// descendants. Nil when it shows no scope to follow, which on macOS takes more:
-    /// the Terminal's own process is usually `/bin/zsh`, whose environment macOS
-    /// withholds, so the foreground's scope stands in for it. With both withheld, a
+    /// the Terminal's own process is usually `/bin/zsh`, whose environment a Mac with
+    /// SIP on withholds, so the foreground's scope stands in for it. With both withheld, a
     /// walk that answered still says which processes are there, and no process is the
     /// Agent (herdr compatibility).
     func readTerminalProcesses(
@@ -321,14 +321,18 @@ struct HerdrCoreSessionBinder: Sendable {
     /// The session hint for this process, after clearing one for another. The labels
     /// are read after the exec, not taken from the record the check began on: a
     /// process writes its label once, as its session starts, which may be while the
-    /// exec runs. A failure to clear leaves it for the next check.
+    /// exec runs. A failure to clear leaves it for the next check. For that reason a
+    /// label from a process of the Agent's own name still running below the foreground
+    /// stays and binds nothing: under a wrapper of that name it may be the real Agent,
+    /// or a subagent, and the real one would not write the label again (ADR 0034).
     func readHints(
-        in record: HerdrCoreTerminalRecord, pid: String, start: String
+        in record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses, pid: String, start: String
     ) async -> [HerdrCoreSessionHint] {
         let labels = await currentLabels() ?? record.labels
         guard let value = labels[HerdrCoreSessionHint.sessionLabel] else { return [] }
-        if let hint = HerdrCoreSessionHint(label: value), String(hint.pid) == pid, hint.start == start {
-            return [hint]
+        if let hint = HerdrCoreSessionHint(label: value) {
+            if String(hint.pid) == pid, hint.start == start { return [hint] }
+            if tree.isRunning(String(hint.pid), from: hint.start, underTheNameOf: pid) { return [] }
         }
         try? await clearLabels([HerdrCoreSessionHint.sessionLabel: value])
         return []
@@ -348,6 +352,13 @@ struct HerdrCoreTerminalProcesses: Sendable {
     func sharesScope(_ pid: String) -> Bool {
         guard let scope else { return false }
         return facts[pid]?.variables[Self.scopeVariable] == .value(scope)
+    }
+
+    /// Whether this process, from this start, runs below the foreground under the
+    /// name `agent` goes by.
+    func isRunning(_ pid: String, from start: String, underTheNameOf agent: String) -> Bool {
+        descendants.contains(pid) && sharesScope(pid) && facts[pid]?.start == .value(start)
+            && facts[pid]?.name == facts[agent]?.name
     }
 
     /// On Windows the foreground is the Terminal's PowerShell, which is never the
@@ -383,11 +394,12 @@ struct HerdrCoreTerminalProcesses: Sendable {
     }
 
     /// The nearest process to the foreground that calls itself the program, or
-    /// the foreground itself when nothing under it could be. Nil when two are
-    /// equally near. A process `skips` names counts for nothing, and neither do
-    /// those of another scope. `followsLauncher` goes on past a launcher into the
-    /// process it started under the same name, unless `isTool` says that one is
-    /// the program's own tool and its parent is not.
+    /// the foreground itself when nothing under it could be, which a process whose
+    /// environment cannot be read could. Nil when two are equally near. A process
+    /// `skips` names counts for nothing, and neither do those of another scope.
+    /// `followsLauncher` goes on past a launcher into the process it started under
+    /// the same name, unless `isTool` says that one is the program's own tool and its
+    /// parent is not.
     func agent(
         isAgent: (HostProcessReader.Facts?) -> Bool, followsLauncher: Bool = false,
         isTool: (HostProcessReader.Facts?) -> Bool = { _ in false },
@@ -415,6 +427,7 @@ struct HerdrCoreTerminalProcesses: Sendable {
             }
             level = level.flatMap { children[$0] ?? [] }
         }
-        return (children[root] ?? []).isEmpty ? root : nil
+        let isOutOfSight = descendants.contains { facts[$0]?.variables[Self.scopeVariable] == .unavailable }
+        return (children[root] ?? []).isEmpty && !isOutOfSight ? root : nil
     }
 }

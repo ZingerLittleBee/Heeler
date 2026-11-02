@@ -387,6 +387,38 @@ struct HerdrCorePiSessionBinderTests {
         #expect(evidence == .bound(sessionID: run.file, transcriptRoot: run.sessions, directory: nil))
     }
 
+    /// A wrapper script named `pi` is the nearest process of that name, so it reads as
+    /// the Agent, and its child of the same name might be a subagent. Nothing tells
+    /// them apart, so this binds nothing. But the label names a process still here,
+    /// whose extension never writes it again, so it stays.
+    @Test func aLabelFromAPiBelowAWrapperOfTheSameNameStays() async throws {
+        let run = try PiRun(version: "1.4.0")
+        let rig = Rig()
+        let environment = run.process.environment.merging(run.environment) { $1 }
+        await rig.table.add(.init(pid: run.process.pid, name: "pi", start: "1", environment: environment))
+        await rig.table.add(.init(pid: 501, parent: run.process.pid, name: "pi", start: "2", environment: environment))
+        let label = Self.label(session: run.id, file: run.file, pid: 501, start: "2")
+
+        let evidence = try await rig.binder(.pi).check(try run.record(labels: ["heeler.session": label]))
+
+        #expect(evidence == .unavailable(.cannotTellSession(.pi)))
+        #expect(await rig.labels.cleared.isEmpty)
+    }
+
+    /// The same pid under another start is a process that reused it.
+    @Test func aLabelFromAnEarlierProcessUnderAPidBelowTheAgentIsCleared() async throws {
+        let run = try PiRun(version: "1.4.0")
+        let rig = Rig()
+        let environment = run.process.environment.merging(run.environment) { $1 }
+        await rig.table.add(.init(pid: run.process.pid, name: "pi", start: "1", environment: environment))
+        await rig.table.add(.init(pid: 501, parent: run.process.pid, name: "pi", start: "2", environment: environment))
+        let label = Self.label(session: run.id, file: run.file, pid: 501, start: "9")
+
+        _ = try await rig.binder(.pi).check(try run.record(labels: ["heeler.session": label]))
+
+        #expect(await rig.labels.cleared == [["heeler.session"]])
+    }
+
     // MARK: Roots
 
     @Test(arguments: [
@@ -425,6 +457,20 @@ struct HerdrCorePiSessionBinderTests {
         let evidence = try await rig.binder(.pi).check(try run.record(labels: ["heeler.session": label]))
 
         #expect(evidence == .unavailable(.cannotTellSession(.pi)))
+    }
+
+    /// Pi takes a relative folder from its working directory and still writes an
+    /// absolute file. A label naming that file needs no root to read it.
+    @Test(arguments: [["HOME": "/home/agent", "PI_CODING_AGENT_DIR": ".pi-local"], [:]])
+    func aLabelWithItsFileBindsWithNoRootToFindIt(_ environment: [String: String]) async throws {
+        let run = try PiRun(version: "1.4.0")
+        let rig = Rig()
+        await rig.add(try run.evidence.scene("at-prompt"), environment: environment)
+        let label = Self.label(session: run.id, file: run.file, pid: run.process.pid, start: run.process.start)
+
+        let evidence = try await rig.binder(.pi).check(try run.record(labels: ["heeler.session": label]))
+
+        #expect(evidence == .bound(sessionID: run.file, transcriptRoot: nil, directory: nil))
     }
 
     @Test(arguments: [

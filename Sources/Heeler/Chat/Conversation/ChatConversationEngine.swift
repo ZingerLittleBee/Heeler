@@ -37,6 +37,9 @@ enum ChatUnavailableReason: Equatable, Sendable {
     case cannotTellSession(ChatProgram)
     /// The same on a native Windows Host, which has no Host Helper to offer.
     case cannotTellSessionOnWindows(ChatProgram)
+    /// The same because the read of the Agent's process failed on that Host, which
+    /// its extension would not change (ADR 0034).
+    case cannotReadProcessesOnWindows(ChatProgram)
     /// The Agent's process carries a variable that stops the program keeping
     /// a Transcript, so there is no file to wait for (ADR 0034).
     case transcriptOff(ChatTranscriptOffVariable, coreCarriesIt: Bool)
@@ -182,6 +185,11 @@ struct ChatConversationSnapshot: Equatable, Sendable {
     /// How far the transcript has been read. A prompt the program records
     /// after a send lands at or after the offset read when it was sent.
     var readOffset: UInt64 = 0
+    /// The last read stopped at its budget, short of what the source holds.
+    var hasUnreadRecords = false
+    /// The live window starts at the source's first record, so nothing it holds is
+    /// before what was read.
+    var readsFromStart = false
     /// Bumped when offsets read before may now locate other records: the
     /// file was rewritten, replaced or moved, or is shorter than the saved
     /// document read it to.
@@ -421,6 +429,7 @@ actor ChatConversationEngine {
         } catch {
             recordFailure(error)
         }
+        noteReadProgress()
         projectIfNeeded()
         return snapshot
     }
@@ -453,8 +462,16 @@ actor ChatConversationEngine {
                 recordFailure(error)
             }
         }
+        noteReadProgress()
         projectIfNeeded()
         return snapshot
+    }
+
+    private func noteReadProgress() {
+        update {
+            $0.hasUnreadRecords = source?.hasUnreadRecords ?? false
+            $0.readsFromStart = source?.windowStart == 0
+        }
     }
 
     /// Looks for the transcript again, then reads it: a Codex undo
@@ -765,8 +782,14 @@ actor ChatConversationEngine {
     /// prompt makes the row, so a store without it has a conversation to start, not
     /// one that went missing (ADR 0034). Herdr TUI reports only ids that exist.
     private func isConversationStillToStart(_ reason: ChatUnavailableReason) -> Bool {
-        sessionMayPrecedeItsStore && !hasFollowed && cached == nil
-            && reason == .sessionStore(.opencode, .sessionMissing(otherStores: []))
+        mayStillBeToStart && reason == .sessionStore(.opencode, .sessionMissing(otherStores: []))
+    }
+
+    /// Whether nothing found under an id Host evidence named can mean its first message
+    /// is still to come. Once Chat has shown it, or the device kept it, it went missing.
+    /// A message that went in and never showed says Chat looks in the wrong place.
+    private var mayStillBeToStart: Bool {
+        sessionMayPrecedeItsStore && !hasFollowed && cached == nil && !lostAMessage
     }
 
     // MARK: Locating
@@ -820,13 +843,17 @@ actor ChatConversationEngine {
             case .failure(.mismatched): return .unavailable(.mismatched)
             }
         case .pi, .omp:
+            let isNew = !lostAMessage && snapshot.phase == .unavailable(.awaitingFirstMessage(reference.program))
+            // Once per activity, as for Claude Code: a wait looks on every pass.
             switch try await PiTranscriptLocator(files: files).locate(
-                reference: reference, directories: directories, sessionsRoot: transcriptRoot)
+                reference: reference, directories: directories, sessionsRoot: transcriptRoot,
+                searchesEveryProject: !isNew || context.activity != newConversationActivity)
             {
             case .success(let path): return .found(path)
-            case .failure(.notFound) where transcriptRoot != nil && !hasFollowed && cached == nil:
+            case .failure(.notFound) where mayStillBeToStart:
                 // The Agent's own evidence names this id, and nothing is saved
                 // under it yet: a conversation still to start, as with a path.
+                newConversationActivity = context.activity
                 return .unavailable(.awaitingFirstMessage(reference.program))
             case .failure(.notFound(let searchedAll)): return .unavailable(.notFound(searchedAll: searchedAll))
             case .failure(.notWritten):
@@ -845,6 +872,10 @@ actor ChatConversationEngine {
                 sessionID: reference.sessionID, directories: directories, configRoot: transcriptRoot)
             {
             case .success(let path): return .found(path)
+            case .failure(.notFound(searchedAll: false)) where mayStillBeToStart:
+                // Its row and folder come as it starts, and `updates.jsonl` with
+                // the first message.
+                return .unavailable(.awaitingFirstMessage(reference.program))
             case .failure(.notFound(let searchedAll)):
                 return .unavailable(.notFound(searchedAll: searchedAll))
             case .failure(.mismatched): return .unavailable(.mismatched)

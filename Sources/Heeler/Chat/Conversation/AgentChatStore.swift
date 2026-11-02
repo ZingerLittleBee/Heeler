@@ -41,6 +41,8 @@ struct ChatPickIO: Sendable {
         @MainActor @Sendable (ChatSessionCandidate, ChatSessionCandidates, TerminalCorePin?) async throws -> Void
     /// The send guard failed: forgets the choice on this device and removes its label.
     var drop: @MainActor @Sendable () -> Void
+    /// What Chat says once the choice is gone, in this Host's form.
+    var cannotTell: @MainActor @Sendable () -> ChatUnavailableReason
 }
 
 /// Chat's candidate list on request.
@@ -245,6 +247,9 @@ final class AgentChatStore {
     /// Sends made on the pick, until a turn's end says whether each arrived.
     @ObservationIgnored private var pickGuardSends: Set<UUID> = []
     @ObservationIgnored private var pickGuardTurnEnd: Date?
+    /// When the last read began that reached the end of what the source holds. Only
+    /// such a read shows a message is not there.
+    @ObservationIgnored private var pickGuardReadStart: Date?
     /// Candidates the user has read, the only ones a confirmation may name.
     @ObservationIgnored private var previewedCandidates: Set<String> = []
     /// Why the last check of the Agent's process bound nothing.
@@ -866,6 +871,7 @@ final class AgentChatStore {
         apply(snapshot, from: engine)
         if polled || opened, case .following = snapshot.phase, snapshot.readFailure == nil {
             lastReadStartedAt = readStart
+            if !snapshot.hasUnreadRecords { pickGuardReadStart = readStart }
         }
         matchSends()
         // Persist the transcript before optional journal requests can wait
@@ -1139,10 +1145,17 @@ final class AgentChatStore {
     private func adoptBinding(sessionID: String, transcriptRoot: String?, directory: String?) {
         evidenceReason = nil
         evidenceDirectory = directory
+        let reference = ConversationReference(program: program, sessionID: sessionID)
+        // Its id and its file, in either order, are the conversation Chat is reading.
+        if case .following = conversation.phase, let followed, resolution == .bound(followed),
+            followed != reference, followed.namesSameSession(as: reference)
+        {
+            return
+        }
         // The same id under another root is another file.
         let movedRoot = followed != nil && evidenceRoot != transcriptRoot
         evidenceRoot = transcriptRoot
-        adopt(.bound(ConversationReference(program: program, sessionID: sessionID)), replacingAgent: movedRoot)
+        adopt(.bound(reference), replacingAgent: movedRoot)
     }
 
     /// Due while Chat shows the conversation, after anything that may mean
@@ -1228,7 +1241,8 @@ final class AgentChatStore {
     private var showsAwaitingReason: Bool {
         switch conversation.phase {
         case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
-            .unavailable(.cannotTellSessionOnWindows), .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
+            .unavailable(.cannotTellSessionOnWindows), .unavailable(.cannotReadProcessesOnWindows),
+            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
             true
         default: false
         }
@@ -1282,6 +1296,7 @@ final class AgentChatStore {
         // the one the Agent is in now.
         sessionConcern = nil
         lastReadStartedAt = nil
+        pickGuardReadStart = nil
         engine = target.map(makeEngine)
         restored = false
         appliedRevision = nil
@@ -1362,7 +1377,7 @@ final class AgentChatStore {
                 candidates = .unavailable(ChatUnavailableReason.codexSharedDaemon.explanation)
             case .noProcess:
                 candidates = .unavailable(
-                    "Heeler can't read this Agent's process now, and a choice needs it. Check that the program still runs in its terminal, then try again.")
+                    "Heeler can't read this Agent's process, and a choice needs it. Check that the program still runs in its terminal. On a Mac, a program started through a script that Apple's /bin/sh or /bin/zsh keeps running can't be read, so start it directly instead.")
             }
         } catch {
             candidates = .unavailable(Self.message(for: error))
@@ -1464,10 +1479,12 @@ final class AgentChatStore {
     /// pick is wrong, and Chat stops showing it. A message the program put back or
     /// refused went nowhere, and one left in the input box or with no answer may not
     /// have gone at all, so those prove nothing, unless the program's own log says
-    /// another session took it (ADR 0034).
+    /// another session took it (ADR 0034). The read has to prove it too: one stopped
+    /// by its budget has not reached the message, and a source reopened at a tail short
+    /// of its start since the send may have left it before the window.
     private func judgePickGuard() {
         guard followsPick, let turnEnd = pickGuardTurnEnd, !pickGuardSends.isEmpty,
-            let read = lastReadStartedAt, read >= turnEnd.addingTimeInterval(timing.pickGuardSettle)
+            let read = pickGuardReadStart, read >= turnEnd.addingTimeInterval(timing.pickGuardSettle)
         else { return }
         var missing = false
         for send in sends where pickGuardSends.contains(send.id) {
@@ -1475,7 +1492,9 @@ final class AgentChatStore {
             pickGuardSends.remove(send.id)
             switch sendStatuses[send.id] {
             case .misdirected?: missing = true
-            case .awaiting?, .overdue?: missing = missing || !send.mayNotHaveGone
+            case .awaiting?, .overdue?:
+                let isInReadWindow = send.layout == conversation.layoutGeneration || conversation.readsFromStart
+                missing = missing || (!send.mayNotHaveGone && isInReadWindow)
             default: break
             }
         }
@@ -1484,7 +1503,7 @@ final class AgentChatStore {
         // A check on its way read the label as it was.
         sessionRecordRevision += 1
         source.picks?.drop()
-        adoptEvidence(.unavailable(.cannotTellSession(program)))
+        adoptEvidence(.unavailable(source.picks?.cannotTell() ?? .cannotTellSession(program)))
     }
 
     // MARK: Start screen
@@ -1623,7 +1642,12 @@ final class AgentChatStore {
         case .bound, .picked:
             break
         }
-        if followed != shown {
+        let isSameConversation =
+            switch (followed, shown) {
+            case (let followed?, let shown?): followed.namesSameSession(as: shown)
+            default: followed == shown
+            }
+        if !isSameConversation {
             return "\(name) now shows another conversation. Chat is switching to it; check it, then send again."
         }
         return program.confirmsSessionBeforeSend ? coreTitleConcern : nil

@@ -34,7 +34,7 @@ never show or send into a conversation it has guessed.
   (`app-server --managed-daemon`) and the daemon's `app-server daemon
   pid-update-loop`, which keep the `HC_SCOPE` of the Terminal that started them
   while the daemon serves every window. It tells them by those exact arguments,
-  and learns nothing else of any argv. It reads only the variables it names from a
+  and learns nothing else of any argv, past a macOS name (below). It reads only the variables it names from a
   process environment, on the Host, because environments hold secrets. The core keeps a Terminal's scope out of its record, so the check
   reads `HC_SCOPE` from the Terminal's own process, in the same exec.
 - For Claude Code the agent is the nearest of those processes that calls itself
@@ -91,10 +91,12 @@ never show or send into a conversation it has guessed.
   title of its own, which ADR 0025 lets through because herdr reports the
   conversation that title may stand for, and a core reports none. The screen read
   before each Send still holds OpenCode's home screen.
-- ADR 0025's start-screen watch does not run on a core. A clock paces it and
-  herdr's report ends it, and a core has neither, so Chat keeps showing the
-  conversation OpenCode started with until the program is started again, and only a
-  Send says the screen left.
+- ADR 0025's start-screen watch does not run on a core. That watch reads the screen
+  on a clock and herdr's report ends it, and a core reports no such thing. A core's
+  `title` event would say the screen left with neither, pushed and with no exec, but
+  Chat does not act on it, so Chat keeps showing the conversation OpenCode started
+  with until the program is started again, and only a Send says the screen left.
+  This is the product's choice for now, open to review.
 - Some variables break session records or Program Status when the core leaks
   them (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SKIP_PROMPT_HISTORY`,
   `CLAUDECODE`, `HERDR_*`, `TMUX`, `STY`, `ZELLIJ`, `CURSOR_TRACE_ID`,
@@ -129,15 +131,19 @@ never show or send into a conversation it has guessed.
   Terminal's session (herdr compatibility), which is why the user reads it first.
   A confirmation needs a candidate whose conversation was read, goes through the
   mutation dispatch to the core its list came from, and is not repeated when no
-  answer comes. A device the guard has dropped a pick on remembers that value, so
-  a label whose removal failed, reported again, is removed again and not adopted.
+  answer comes. A device the guard has dropped a pick on remembers that value, also
+  when the verdict lands between links and only the last inventory held it, so a
+  label whose removal failed is removed again at that device's next check, or when
+  it is reported again, and not adopted.
   It remembers only until the core reports the label gone or holding another
   value, in an event or a fresh inventory. After that the same value is the same
   conversation confirmed again, here or on another device, and is adopted. A link
   that was down through that gap cannot tell the two apart and removes the label
   once more; having seen that removal, the device adopts the next confirmation.
   The guard judges only after a turn the core reported: a read must start at
-  least two seconds after the turn ends, a `/` command does not arm it, and a
+  least two seconds after the turn ends and reach the end of what the source holds,
+  a message read past by a source reopened at its tail proves nothing, a `/`
+  command does not arm it, and a
   message the program put back or refused proves nothing. Neither does one the
   Composer cannot say went, because it stayed in the input box or a step got no
   answer, unless the program's own log says another session took it. A program
@@ -223,7 +229,18 @@ herdr-core Hosts only.
   shows, so it binds nothing and Chat says so until the program is started again.
 - OpenCode has no row for its id until the first prompt, which Heeler knows the id
   before. A core's store with no such row, on a Chat that has followed nothing yet,
-  waits for the first message rather than reading as a session gone.
+  waits for the first message rather than reading as a session gone. Chat's query
+  sees only the exec's environment, so an OpenCode whose `OPENCODE_DB` or
+  `XDG_DATA_HOME` is set only where it runs, on a Host that also has the default
+  database, looks the same: Chat waits until a message from Chat goes unrecorded past
+  its echo timeout, then says ADR 0025's Conversation Not Found. A message sent only
+  from the terminal does not end the wait, and a Send after it is refused on the
+  terminal's title, which then names this very conversation.
+- Grok Build writes its row and session folder as it starts, and `updates.jsonl` with
+  the first message, so a Chat that has followed nothing waits for that message too.
+  A search cut short by a listing limit reads the same way. Pi and Oh My Pi wait on an
+  id the same way, searching their own folders on every pass and every project's once
+  per activity, as Claude Code does.
 - Ending the Terminal that started Codex's shared daemon ends the daemon, and
   every other default-mode Codex on the same `CODEX_HOME` loses its backend
   while it keeps reporting its last status, such as Idle or Done.
@@ -238,6 +255,13 @@ herdr-core Hosts only.
   only while it is still the Terminal's own process, so a launcher in front of
   it needs the extension. That binding names the launch's session, so it is the
   in-process `/new` case above.
+- A `pi` wrapper script around a real `pi` reads as the Agent, being the nearest of
+  that name, and its child might be a subagent, so nothing tells them apart. Such a
+  Terminal says can't tell, and a label from the child stays, since it would never be
+  written again. Only a process of the Agent's name below the foreground keeps a label
+  this way. No recording shows this tree.
+- A launch's id and the file a label names for it are one conversation, so the label's
+  arrival neither rebuilds what Chat reads nor refuses a Send.
 - `terminal.label` has no compare, so clearing a stale label can remove the one
   the next Agent wrote in the same moment. Heeler judges labels after its exec
   and compares again before clearing. That leaves one round trip, and a Pi or
@@ -318,15 +342,21 @@ herdr-core Hosts only.
   launch runs under PowerShell, and open files are not read. Chat's cannot-tell there
   is its own reason, `cannotTellSessionOnWindows`, which never offers the Helper,
   and offers no candidates yet: open files are not read there, and no listing of a
-  Windows directory's Transcripts has been checked against a real one.
+  Windows directory's Transcripts has been checked against a real one. A process read
+  that failed, as across an elevation mismatch or under constrained language mode,
+  reads as `cannotReadProcessesOnWindows`, which offers Check Again and not the
+  extension, since adding that would not change the read.
 - Confirmed on macOS 27.0.1, against processes the spike started
   ([herdr compatibility](../agents/herdr-compatibility.md)): process start from
   `ps -o lstart=`, named variables from `KERN_PROCARGS2`, open files from
   `lsof`. macOS withholds an Apple platform binary's environment, which reads
   as unavailable, and so does an asked name that a process's rewritten argv
   (Node's `process.title`) leaves indistinguishable from an argument; a title
-  shorter than argv still reads. Any of these that fails leaves the program to
-  its candidate list and the leak notice to show nothing.
+  shorter than argv still reads. Open files or an asked name that cannot be read
+  leave the program to its candidate list and the leak notice to show nothing. What
+  a confirmation binds to has no such fallback: a start that cannot be read, or an
+  environment withheld between the foreground and the Agent, reads as cannot tell
+  with no list, because a list would bind to no process or to the launcher's pid.
 - Chat on a macOS core Host binds as on Linux, through the macOS forms of the same
   reads, for the same `confirmedCoreChatPrograms`: a program waiting on its owner
   check waits on both. Each of the six was seen through those reads in a macOS 26.5
@@ -341,4 +371,11 @@ herdr-core Hosts only.
   so there alone the foreground's `HC_SCOPE` stands in for the Terminal's. With both
   withheld no process is the Agent, and a walk still drops a pick whose process left.
   An Apple binary between the foreground and the Agent therefore reads as cannot
-  tell with no list.
+  tell with no list, also under a launcher that can be read, which is not taken for
+  the Agent while something below it is out of sight. Asking again finds the same,
+  so the list's answer says to start the program directly and not to retry.
+  A process's name there comes from `ps -o comm=`, which is argv[0] and so a
+  program's title: a Node program names itself no other way. That is the one part of
+  an argv a check brings off the Host. Only its last path part leaves, only when it
+  holds nothing but `[A-Za-z0-9._-]`, which rules out `--token=x` but not a bare token
+  a process set as its argv[0], and it is only ever compared to a program's name.

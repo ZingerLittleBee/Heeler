@@ -487,7 +487,7 @@ Code's `.key` files.
 26. Note how long Chat takes to bind. Each check is one PowerShell exec with an
     `Add-Type` compile, bounded at 20 seconds. Run it from an SSH session that is not
     elevated against a core that is, and the other way round: a process Heeler cannot
-    read reads as **Can't Tell**.
+    read reads as **Can't Tell**, says the read failed, and offers no extension.
 27. Repeat step 25 with an npm-installed Claude Code, where the Agent's image is
     `node.exe`, and through `npx`. Under `npx` Chat may say it can't tell. Record the
     tree from `Get-CimInstance Win32_Process`.

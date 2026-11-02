@@ -20,6 +20,8 @@ import Foundation
 /// throws. The source's path is `memory:<session>`, and its head the
 /// session id.
 struct InMemoryRecordSource: ChatTranscriptSource {
+    var hasUnreadRecords: Bool { false }
+
     struct Limits: Sendable {
         var tail = 64
         var olderPage = 32

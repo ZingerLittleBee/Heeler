@@ -493,9 +493,10 @@ struct HerdrCoreMacOSSessionBinderTests {
             session: "ccfe7187-4ea6-468d-9555-83c3827f9cd0", file: Self.piFile, pid: 2009, start: "Sun Nov  1 22:42:44 2026")
 
         let evidence = try await rig.binder(.pi, exact: []).check(
-            try rig.record(labels: ["heeler.chat": label, "heeler.session": ""]))
+            try rig.record(labels: ["heeler.chat": label]))
 
         #expect(evidence == .picked(sessionID: Self.piFile, transcriptRoot: "\(Self.lab)/pi085/agent/sessions"))
+        #expect(await rig.log.cleared.isEmpty)
     }
 
     /// A Codex left unconfirmed still gets only the reopen message on the daemon.
@@ -549,6 +550,26 @@ struct HerdrCoreMacOSSessionBinderTests {
         let rig = try await Rig("claude-under-zsh")
         await rig.table.withholdEnvironment(of: 1059)
         let launcher = (pid: 1059, name: "sh", argv: ["/bin/sh", "launcher"])
+
+        #expect(try await rig.binder(.claude).check(try rig.record(foreground: launcher)) == Self.cannotTell(.claude))
+        #expect(try await rig.binder(.claude).candidates(of: try rig.record(foreground: launcher)) == .noProcess)
+    }
+
+    /// A launcher that can be read says the scope, and what it runs through one of
+    /// Apple's binaries is out of sight below it. It is not the Agent, so nothing can
+    /// bind to its pid.
+    @Test func anAppleBinaryBelowAReadableLauncherOffersNoList() async throws {
+        let rig = try await Rig("claude-direct")
+        let row = try #require(rig.scene.processes?.first)
+        var titled = row.process
+        titled.name = "node"
+        await rig.table.add(titled)
+        for (pid, parent, name) in [(77_001, row.pid, "sh"), (77_002, 77_001, "claude")] {
+            await rig.table.add(
+                ScriptedProcessTable.Process(pid: pid, parent: parent, name: name, start: row.start, environment: [:]))
+            await rig.table.withholdEnvironment(of: pid)
+        }
+        let launcher = (pid: row.pid, name: "node", argv: ["node", "/opt/claude/cli.js"])
 
         #expect(try await rig.binder(.claude).check(try rig.record(foreground: launcher)) == Self.cannotTell(.claude))
         #expect(try await rig.binder(.claude).candidates(of: try rig.record(foreground: launcher)) == .noProcess)

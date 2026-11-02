@@ -18,9 +18,12 @@ struct PiTranscriptLocator: Sendable {
     let files: ChatHostFiles
     var directoryBudget = 200
 
-    func locate(reference: ConversationReference, directories: [String], sessionsRoot: String? = nil) async throws
-        -> Result<String, PiTranscriptUnavailable>
-    {
+    /// `searchesEveryProject` false looks only where the Agent's directories and
+    /// `sessionsRoot` say.
+    func locate(
+        reference: ConversationReference, directories: [String], sessionsRoot: String? = nil,
+        searchesEveryProject: Bool = true
+    ) async throws -> Result<String, PiTranscriptUnavailable> {
         guard reference.program == .pi || reference.program == .omp else { return .failure(.mismatched) }
         if reference.sessionID.hasPrefix("/") {
             guard RemoteFilePath.isAcceptable(reference.sessionID), reference.sessionID.hasSuffix(".jsonl") else {
@@ -43,11 +46,14 @@ struct PiTranscriptLocator: Sendable {
                 queue.append(RemoteFilePath.join(root, Self.homeRelativeKey(relative)))
             }
         }
-        let projects = try await files.list(
-            RemoteFileListingRequest(directory: root, kinds: [.directory], maximumEntries: directoryBudget))
-        queue += (projects?.entries ?? []).map { RemoteFilePath.join(root, $0.name) }
+        var searchedAll = searchesEveryProject
+        if searchesEveryProject {
+            let projects = try await files.list(
+                RemoteFileListingRequest(directory: root, kinds: [.directory], maximumEntries: directoryBudget))
+            queue += (projects?.entries ?? []).map { RemoteFilePath.join(root, $0.name) }
+            searchedAll = !(projects?.truncated ?? false) && !(projects?.scanIncomplete ?? false)
+        }
         var visited = Set<String>()
-        var searchedAll = !(projects?.truncated ?? false) && !(projects?.scanIncomplete ?? false)
         var mismatch = false
         for directory in queue where visited.insert(directory).inserted {
             guard visited.count <= directoryBudget else {

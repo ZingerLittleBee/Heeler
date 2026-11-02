@@ -14,13 +14,19 @@ extension HerdrCoreSessionBinder {
             case .value(let start) = process.start
         else { return cannotTell }
 
-        let hints = await readHints(in: record, pid: pid, start: start)
-        guard let places = PiSessionLayout(program: program).places(in: process.variables) else { return cannotTell }
+        let hints = await readHints(in: record, tree: tree, pid: pid, start: start)
+        let places = PiSessionLayout(program: program).places(in: process.variables)
+        for hint in hints {
+            guard let session = hint.piSession(onWindows: isOnWindows) else { continue }
+            // A file reads with no root, which an id cannot: it would look under the
+            // Host's default, and only the Agent's own environment says where (ADR 0034).
+            if places != nil || session.hasPrefix("/") {
+                return .bound(sessionID: session, transcriptRoot: places?.sessions, directory: nil)
+            }
+        }
+        guard let places else { return cannotTell }
         func bound(_ session: String) -> ChatSessionEvidence {
             .bound(sessionID: session, transcriptRoot: places.sessions, directory: nil)
-        }
-        for hint in hints {
-            if let session = hint.piSession(onWindows: isOnWindows) { return bound(session) }
         }
         // On Windows only the extension's label counts: Heeler's launch runs under
         // PowerShell, and open files are not read there.
@@ -113,9 +119,9 @@ extension HerdrCoreSessionHint {
         guard let file = file.map({ onWindows ? RemoteFilePath.windowsForSFTP($0) : $0 }) else {
             return ConversationReference.canonicalUUID(session)
         }
-        guard RemoteFilePath.isAcceptable(file), let name = file.split(separator: "/").last,
-            name == "\(session).jsonl" || name.hasSuffix("_\(session).jsonl")
-        else { return nil }
+        guard RemoteFilePath.isAcceptable(file), ConversationReference.file(file, isNamedFor: session) else {
+            return nil
+        }
         return file
     }
 }

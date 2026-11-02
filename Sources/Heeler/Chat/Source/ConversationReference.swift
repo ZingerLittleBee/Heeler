@@ -17,6 +17,22 @@ struct ConversationReference: Hashable, Sendable {
     /// directly, never interpolated into an exec command.
     let sessionID: String
 
+    /// Whether the two name one conversation: the same reference, or Pi's or Oh My
+    /// Pi's id and the file named for it, which its extension's label gives once a
+    /// launch has given the id (ADR 0034).
+    func namesSameSession(as other: ConversationReference) -> Bool {
+        guard program == other.program else { return false }
+        if sessionID == other.sessionID { return true }
+        guard program.sessionNaming.acceptsTranscriptPath else { return false }
+        return Self.file(sessionID, isNamedFor: other.sessionID) || Self.file(other.sessionID, isNamedFor: sessionID)
+    }
+
+    /// Whether a Pi or Oh My Pi session file carries this session's name.
+    static func file(_ file: String, isNamedFor session: String) -> Bool {
+        guard let name = file.split(separator: "/").last else { return false }
+        return name == "\(session).jsonl" || name.hasSuffix("_\(session).jsonl")
+    }
+
     enum Resolution: Hashable, Sendable {
         case bound(ConversationReference)
         /// herdr has no session for the Agent yet. Codex reports one only

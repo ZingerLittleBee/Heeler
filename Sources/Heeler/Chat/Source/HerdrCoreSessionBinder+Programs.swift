@@ -42,12 +42,16 @@ extension HerdrCoreSessionBinder {
     }
 
     /// A daemon under the Agent, or a launch on the shared server, holding no
-    /// rollout of its own, while the server's socket exists.
+    /// rollout of its own, while the server's socket exists. A thread-writer lock is
+    /// a thread of its own, which a window on the daemon never holds (Codex CLI
+    /// 0.165.0, `host-evidence/codex/no-daemon.json` and `default-daemon.json`), and
+    /// which a script under Codex's name can hide `--no-daemon` from the arguments of.
     func isCodexOnSharedDaemon(
         _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses, process: HostProcessReader.Facts
     ) async throws -> Bool {
         if tree.descendants.contains(where: { Self.isManagedDaemon(tree.facts[$0]) }) { return true }
-        guard Self.rollouts(heldBy: process).isEmpty, let codexHome = codexHome(of: process),
+        guard Self.rollouts(heldBy: process).isEmpty, !Self.holdsAThreadLock(process),
+            let codexHome = codexHome(of: process),
             CodexLaunch.launchesOnSharedServer(foreground: record.foreground) == true
         else { return false }
         return try await files.status(CodexLaunch.controlSocketPath(codexHome: codexHome)) != nil
@@ -76,6 +80,11 @@ extension HerdrCoreSessionBinder {
         guard case .value(let arguments)? = process?.arguments else { return false }
         return arguments.contains("--managed-daemon")
             || (arguments.contains("app-server") && arguments.contains("pid-update-loop"))
+    }
+
+    private static func holdsAThreadLock(_ process: HostProcessReader.Facts) -> Bool {
+        guard case .value(let files) = process.openFiles else { return false }
+        return files.contains { $0.contains("/thread-writer-locks/") }
     }
 
     struct HeldRollout {
@@ -243,7 +252,7 @@ extension HerdrCoreSessionBinder {
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "opencode",
             case .value(let start) = process.start
         else { return cannotTell }
-        for hint in await readHints(in: record, pid: pid, start: start) {
+        for hint in await readHints(in: record, tree: tree, pid: pid, start: start) {
             if let session = OpenCodeSessionID(hint.session) {
                 return .bound(sessionID: session.rawValue, transcriptRoot: nil, directory: nil)
             }

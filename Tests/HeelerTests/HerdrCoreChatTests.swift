@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Heeler
@@ -185,17 +186,21 @@ struct HerdrCoreChatTests {
             _ what: String, _ condition: @MainActor () -> Bool,
             sourceLocation: SourceLocation = #_sourceLocation
         ) async throws {
-            for _ in 0..<500 {
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft {
                 if condition() { return }
                 try await Task.sleep(for: .milliseconds(10))
+                budget.charge()
             }
             Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
         }
 
         func waitForChecks(_ count: Int, sourceLocation: SourceLocation = #_sourceLocation) async throws {
-            for _ in 0..<500 {
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft {
                 if await checks >= count { return }
                 try await Task.sleep(for: .milliseconds(10))
+                budget.charge()
             }
             Issue.record("Timed out waiting for check \(count)", sourceLocation: sourceLocation)
         }
@@ -402,6 +407,99 @@ struct HerdrCoreChatTests {
         #expect(reason.contains("can't tell which conversation"), "\(reason)")
         #expect(composer.draft == "hello")
         #expect(order.steps == ["confirm"])
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    // MARK: Choosing a conversation
+
+    /// The Agent's detail on its Chat surface, as the Console builds it.
+    private static func chatDetail(of agent: ConsoleAgent, console: ConsoleStore, defaults: UserDefaults) -> some View {
+        let surface = AgentDetailSurfaceSettings(defaults: defaults)
+        surface.select(.chat)
+        return AgentDetailView(
+            agent: agent,
+            console: console,
+            terminal: TerminalSettings(
+                themes: TerminalThemeSettings(defaults: defaults),
+                zoom: TerminalZoomSettings(defaults: defaults),
+                fonts: TerminalFontSettings(defaults: defaults),
+                snippets: SnippetStore(defaults: defaults)),
+            inputMode: AgentInputModeSettings(defaults: defaults),
+            detailSurface: surface,
+            hosts: [],
+            activity: AppActivityCoordinator(),
+            keyboardHandoff: TerminalKeyboardHandoff(),
+            keyboardInset: TerminalKeyboardInset(),
+            stage: AgentDetailStage(isVisible: { true }, terminalAccess: { .holds }),
+            onSwitch: { _ in },
+            onClosed: {})
+    }
+
+    /// Activates the element of this label, until the list's sheet comes up.
+    private static func opensTheList(
+        from label: String, in controller: UIViewController, sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        var budget = PollBudget(.seconds(10))
+        while budget.hasTimeLeft, controller.presentedViewController == nil {
+            AccessibilityProbe.elements(labeled: label, in: controller.view).first?.accessibilityActivate()
+            try await Task.sleep(for: .milliseconds(50))
+            budget.charge()
+        }
+        #expect(
+            controller.presentedViewController != nil, "\(AccessibilityProbe.labels(in: controller.view))",
+            sourceLocation: sourceLocation)
+    }
+
+    private static let cannotTell = ChatConversationSnapshot.Phase.unavailable(.cannotTellSession(.claude))
+
+    /// With no conversation to show, the screen in Chat's place opens the list (ADR 0034).
+    @Test func aChatThatCannotTellOpensTheListFromItsScreen() async throws {
+        let rig = Rig(host: host)
+        try await rig.start()
+        let chat = try rig.chat()
+        let suite = "core-chat-choose-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = UIHostingController(
+            rootView: Self.chatDetail(of: try #require(rig.agent), console: rig.store, defaults: defaults))
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try await rig.waitUntil("Chat to say it cannot tell") { chat.conversation.phase == Self.cannotTell }
+            #expect(chat.conversation.transcript.entries.isEmpty)
+            try await Self.opensTheList(from: ChatCandidatePickerView.title, in: controller)
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// Over a conversation it keeps showing, the banner opens the list (ADR 0034).
+    @Test func aChatThatCannotTellOverItsConversationOpensTheListFromItsBanner() async throws {
+        let rig = Rig(host: host)
+        try await rig.start()
+        let chat = try rig.chat()
+        await rig.files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+        await rig.files.write(try Self.transcript(), at: Self.transcriptPath())
+        let suite = "core-chat-choose-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = UIHostingController(
+            rootView: Self.chatDetail(of: try #require(rig.agent), console: rig.store, defaults: defaults))
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try await rig.waitUntil("the conversation") { !chat.conversation.transcript.entries.isEmpty }
+            await rig.files.remove("\(Self.home)/.claude/sessions/\(Self.pid).json")
+            chat.retry()
+            try await rig.waitUntil("Chat to say it cannot tell") { chat.conversation.phase == Self.cannotTell }
+            #expect(!chat.conversation.transcript.entries.isEmpty)
+            // The banner reads as one element, whose action is its button's.
+            let banner = ChatBannerLine.unavailable(.cannotTellSession(.claude), showingSavedMessages: true).text
+            try await Self.opensTheList(from: banner, in: controller)
+        }
         chat.end()
         rig.store.setHosts([])
     }

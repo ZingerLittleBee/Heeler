@@ -276,7 +276,7 @@ A macOS core Host offers Chat for the same programs as a Linux one, and each wai
 | Pi | Binds exactly with Heeler's extension from the [Host Helper](#host-helper), or when Heeler started it. Otherwise Choose a Conversation |
 | Oh My Pi | Binds exactly with Heeler's extension, or once your first message makes it hold its session file. Before that, Choose a Conversation |
 
-Anything Heeler can't read on that Mac leaves the program to **Choose a Conversation**. An Agent started through a script that Apple's own `/bin/sh` or `/bin/zsh` keeps running has neither: macOS hides those programs' variables, so Chat says it can't tell and offers no list. Start the Agent directly in the Terminal instead. A shell that hands the terminal to the Agent is fine.
+Anything Heeler can't read on that Mac leaves the program to **Choose a Conversation**. An Agent started through a script that Apple's own `/bin/sh` or `/bin/zsh` keeps running has neither: macOS hides those programs' variables, so Chat says it can't tell and offers no list, however often you try. Start the Agent directly in the Terminal instead. A shell that hands the terminal to the Agent is fine.
 
 These rows come from a macOS 26.5 virtual machine with no signed-in account. A Mac with signed-in programs has not been checked yet.
 
@@ -303,6 +303,8 @@ Windows has no Host Helper, so **Can't Tell the Conversation** never points you 
 
 Add it again for a profile you created later, or after updating Heeler. To remove it, delete `heeler-session.js` from those folders.
 
+When Heeler can't read the Agent's process at all, **Can't Tell the Conversation** says that, and the extension wouldn't help, so it isn't offered. This happens when herdr-core and your SSH session run at different elevation, or when PowerShell runs in constrained language mode. Tap **Check Again** once that's changed.
+
 ## Known limits
 
 - Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.
@@ -310,6 +312,7 @@ Add it again for a profile you created later, or after updating Heeler. To remov
 - After you choose a conversation for a Pi without the [Host Helper](#host-helper) or an OpenCode without its plugin, an in-process `/new` changes nothing Heeler can see. Chat keeps showing the old conversation until a message you send from Chat fails to appear in it, and only then drops your choice. A program that reports no status never ends a turn, so that check waits until it does.
 - Right after `/new` in Codex, before any message there, nothing on the Host has changed. Chat keeps showing the old conversation, and a Send goes to the new one. After `/new`, keep to the terminal until you have exited Codex and run `codex resume --no-daemon`.
 - After `/new` or a pick in OpenCode's list, Chat keeps showing the conversation OpenCode started with until you start OpenCode again, unless OpenCode has [Heeler's plugin](#let-chat-follow-opencode), which Chat follows. Its terminal title is what says the screen moved, so a Send sends nothing and says why. With OpenCode's `terminal.title` setting off, or while Chat's conversation has no title of its own, the title can't tell, and a Send goes to whatever conversation is on screen. Only OpenCode's home screen still holds it.
+- If OpenCode keeps its database somewhere only its own shell knows, such as `OPENCODE_DB` set in a shell rc, and the Host also has the default database, Chat reads **No Messages Yet** even after you send from the terminal. A message sent from Chat ends the wait with **Conversation Not Found**. Set the variable where SSH commands see it too.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
 - If Heeler cannot read its saved herdr-core Hosts, the Hosts tab says so. Herdr TUI Hosts keep working and the saved data stays as it was, but no herdr-core Host can be added until it reads again.

@@ -162,17 +162,21 @@ struct HerdrCorePiChatTests {
         func waitUntil(
             _ what: String, _ condition: @MainActor () -> Bool, sourceLocation: SourceLocation = #_sourceLocation
         ) async throws {
-            for _ in 0..<500 {
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft {
                 if condition() { return }
                 try await Task.sleep(for: .milliseconds(10))
+                budget.charge()
             }
             Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
         }
 
         func waitForChecks(_ count: Int, sourceLocation: SourceLocation = #_sourceLocation) async throws {
-            for _ in 0..<500 {
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft {
                 if await checks >= count { return }
                 try await Task.sleep(for: .milliseconds(10))
+                budget.charge()
             }
             Issue.record("Timed out waiting for check \(count)", sourceLocation: sourceLocation)
         }
@@ -382,6 +386,101 @@ struct HerdrCorePiChatTests {
 
         chat.end()
         rig.store.setHosts([])
+    }
+
+    /// The launch id and the extension's file name one conversation, and a label comes
+    /// after the check that reached it by id. Chat reads on, and a Send goes.
+    @Test func aLabelNamingTheFileChatFollowsIsTheSameConversation() async throws {
+        let rig = Rig(
+            host: host, program: .pi,
+            record: Self.record(
+                .pi, argv: ["pi", "--session-id", Self.first], labels: [HerdrCoreLaunch.sessionHintLabel: Self.first]))
+        let file = Self.sessionFile(root: Self.defaultRoot(.pi), session: Self.first)
+        await rig.files.write(try Self.transcript(.pi, session: Self.first), at: file)
+        try await rig.start()
+        let chat = try rig.chat()
+        chat.show()
+        try await rig.waitUntil("the Transcript") { Self.following(chat) == file }
+        let core = try #require(rig.store.coreProjection(on: host.id))
+        let generation = chat.conversationGeneration
+
+        let own = Self.label(session: Self.first, file: file)
+        await rig.transport.deliver(Self.labelsEvent(sequence: 2, labels: ["heeler.session": own]))
+        try await rig.waitUntil("the label") { core.terminalRecord(at: "t1")?.labels["heeler.session"] == own }
+
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        #expect(chat.conversationGeneration == generation)
+        #expect(Self.following(chat) == file)
+
+        // Another session's file is still another conversation.
+        let otherFile = Self.sessionFile(root: Self.defaultRoot(.pi), session: Self.second)
+        await rig.files.write(try Self.transcript(.pi, session: Self.second), at: otherFile)
+        let other = Self.label(session: Self.second, file: otherFile)
+        await rig.transport.deliver(Self.labelsEvent(sequence: 3, labels: ["heeler.session": other]))
+        try await rig.waitUntil("the other label") { core.terminalRecord(at: "t1")?.labels["heeler.session"] == other }
+        _ = await chat.confirmSessionBeforeSend()
+        try await rig.waitUntil("the other conversation") { Self.following(chat) == otherFile }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// While it waits, the file comes in place of the id, and a Send is not told that
+    /// the Agent moved.
+    @Test func aLabelNamingTheFileOfAConversationStillToStartIsNotAnotherOne() async throws {
+        let rig = Rig(
+            host: host, program: .pi,
+            record: Self.record(
+                .pi, argv: ["pi", "--session-id", Self.first], labels: [HerdrCoreLaunch.sessionHintLabel: Self.first]))
+        try await rig.start()
+        let chat = try rig.chat()
+        chat.show()
+        try await rig.waitUntil("the wait") { chat.conversation.phase == .unavailable(.awaitingFirstMessage(.pi)) }
+        let core = try #require(rig.store.coreProjection(on: host.id))
+
+        let file = Self.sessionFile(root: Self.defaultRoot(.pi), session: Self.first)
+        let own = Self.label(session: Self.first, file: file)
+        await rig.transport.deliver(Self.labelsEvent(sequence: 2, labels: ["heeler.session": own]))
+        try await rig.waitUntil("the label") { core.terminalRecord(at: "t1")?.labels["heeler.session"] == own }
+
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// Nothing here is written until the first message, and a wait looks on every
+    /// pass: its own folders each time, every project's once per activity, as Claude
+    /// Code's does.
+    @Test func aWaitForAFirstMessageSearchesEveryProjectOncePerActivity() async throws {
+        let files = VirtualHostFiles(home: Self.hostHome)
+        let root = Self.defaultRoot(.pi)
+        await files.makeDirectory("\(root)/--elsewhere--")
+        let engine = ChatConversationEngine(
+            reference: ConversationReference(program: .pi, sessionID: Self.first),
+            cacheKey: ChatCacheKey(hostID: UUID(), herdrSession: "", program: .pi, conversationID: Self.first),
+            files: files.hostFiles(), cache: VolatileChatTranscriptCache(),
+            adapter: try #require(ChatTranscriptAdapter.standard(for: .pi)),
+            transcriptRoot: root, sessionMayPrecedeItsStore: true)
+        func projectSearches() async -> Int {
+            await files.listings.count { $0.directory == "\(root)/--elsewhere--" }
+        }
+        let idle = ChatProjectionContext(activity: .idle)
+        let working = ChatProjectionContext(activity: .working)
+
+        for _ in 0..<3 {
+            let snapshot = await engine.open(directories: ["/work/app"], context: idle)
+            #expect(snapshot.phase == .unavailable(.awaitingFirstMessage(.pi)))
+        }
+        #expect(await projectSearches() == 1)
+
+        for _ in 0..<3 {
+            _ = await engine.open(directories: ["/work/app"], context: working)
+        }
+        #expect(await projectSearches() == 2)
+
+        // Its own folder still shows the file on the next pass, with no new activity.
+        let file = Self.sessionFile(root: root, session: Self.first)
+        await files.write(try Self.transcript(.pi, session: Self.first), at: file)
+        #expect(await engine.open(directories: ["/work/app"], context: working).phase == .following(path: file))
     }
 
     // MARK: Without exact evidence

@@ -60,14 +60,15 @@ enum CodexLaunch {
         RemoteFilePath.join(codexHome, "app-server-control", "app-server-control.sock")
     }
 
-    /// `launchesOnSharedServer(_:)` for a herdr-core Terminal's foreground, whose
-    /// argv may start with the Node that runs npm's launcher.
+    /// `launchesOnSharedServer(_:)` for a herdr-core Terminal's foreground, which may
+    /// be what started Codex rather than Codex: a Template's `sh -c` line, the desktop
+    /// app's wrapper, or the Node that runs npm's launcher (ADR 0032). The Agent rule
+    /// reads those, so what the Console calls Codex is judged by Codex's own arguments.
     static func launchesOnSharedServer(foreground: HerdrCoreForeground?) -> Bool? {
         guard let foreground else { return nil }
-        var argv = foreground.argv
-        if argv.first.map(lastComponent) != "codex", argv.dropFirst().first.map(lastComponent) == "codex" {
-            argv.removeFirst()
-        }
+        let argv =
+            HerdrCoreAgentRule.arguments(of: foreground, runningKind: ChatProgram.codex.rawValue)
+            .map { [ChatProgram.codex.rawValue] + $0 } ?? foreground.argv
         return launchesOnSharedServer(
             PaneProcessInfo(
                 paneID: "",

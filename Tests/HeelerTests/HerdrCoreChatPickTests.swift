@@ -1208,14 +1208,228 @@ struct HerdrCoreChatPickTests {
         try await rig.stepUntil(chat, "Chat to follow it again") { chat.conversation.phase == following }
 
         await answer.open()
+        await core.pickRemoval?.value
+        await chat.step()
 
-        // Nothing says this answer has landed: long enough that a label it took away
-        // would have reached a check, and a pass does not depend on how long.
-        for _ in 0..<30 {
-            await chat.step()
-            try await Task.sleep(for: .milliseconds(10))
-        }
         #expect(chat.conversation.phase == following)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    // MARK: What a read can prove
+
+    /// Lines the reducer takes for nothing, enough to pass one poll's budget of 2 MiB.
+    private static func backlog(lines: Int = 48) -> Data {
+        let filler = String(repeating: "x", count: 64 << 10)
+        return Data(String(repeating: #"{"method":"noise","text":"\#(filler)"}"# + "\n", count: lines).utf8)
+    }
+
+    /// Lines 4 to 7 of `grokTranscript`: the prompt `grokPrompt`, and its answer.
+    private static func grokReply(session: String) throws -> Data {
+        let whole = try grokTranscript(session: session, lines: 7)
+        return whole.dropFirst(try grokTranscript(session: session).count)
+    }
+
+    /// A poll stops at its budget. The prompt behind that is not missing, only unread.
+    @Test func aMessageBehindAnUnreadBacklogKeepsThePick() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let id = UUID()
+        chat.updateSends([Self.sent(id, Self.grokPrompt, delivered: false)])
+        chat.updateSends([Self.sent(id, Self.grokPrompt)])
+
+        try await rig.runTurn {
+            await rig.files.append(
+                Self.backlog() + (try Self.grokReply(session: Self.grokHeld)), to: Self.grokFile(Self.grokHeld))
+        }
+        await rig.passGuardSettle(chat)
+        await Self.expectPickKept(rig, chat)
+
+        try await rig.stepUntil(chat, "the read to reach it") { chat.sendStatuses[id] == .recorded }
+        await rig.passGuardSettle(chat)
+        await Self.expectPickKept(rig, chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A rewritten file reopens at its tail, so a prompt before that window cannot
+    /// match. What that window leaves out says nothing about the pick.
+    @Test func aMessageLeftBeforeARewrittenFilesTailKeepsThePick() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let id = UUID()
+        chat.updateSends([Self.sent(id, Self.grokPrompt, delivered: false)])
+        chat.updateSends([Self.sent(id, Self.grokPrompt)])
+
+        try await rig.runTurn {
+            var rewritten = try Self.grokTranscript(session: Self.grokHeld, lines: 7)
+            rewritten.append(Self.backlog(lines: 24))
+            guard let shifted = String(data: rewritten, encoding: .utf8) else { return }
+            await rig.files.write(
+                shifted.replacingOccurrences(of: "1792421826", with: "1792421827"), at: Self.grokFile(Self.grokHeld))
+        }
+        await rig.passGuardSettle(chat)
+
+        #expect(chat.sendStatuses[id] != .recorded)
+        await Self.expectPickKept(rig, chat)
+
+        // The next message that goes missing still says the pick is wrong.
+        Self.send("this never reaches the bound conversation", on: chat)
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    // MARK: Which turn judges
+
+    /// A queued message: the turn that ended was not the one that took it, and the next
+    /// one starting inside the settle time says so.
+    @Test func aNewTurnCancelsAPendingJudgement() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let id = UUID()
+        chat.updateSends([Self.sent(id, Self.grokPrompt, delivered: false)])
+        chat.updateSends([Self.sent(id, Self.grokPrompt)])
+
+        try await rig.runTurn()
+        try await rig.runTurn {
+            await rig.passGuardSettle(chat)
+            await Self.expectPickKept(rig, chat)
+            await rig.files.append(try Self.grokReply(session: Self.grokHeld), to: Self.grokFile(Self.grokHeld))
+        }
+        await rig.passGuardSettle(chat)
+
+        #expect(chat.sendStatuses[id] == .recorded)
+        await Self.expectPickKept(rig, chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A message delivered after the turn ended is the next turn's to judge.
+    @Test func aSendAfterTheTurnEndedIsNotJudgedByIt() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let id = UUID()
+        chat.updateSends([Self.sent(id, Self.grokPrompt, delivered: false)])
+        chat.updateSends([Self.sent(id, Self.grokPrompt)])
+        try await rig.runTurn {
+            await rig.files.append(try Self.grokReply(session: Self.grokHeld), to: Self.grokFile(Self.grokHeld))
+        }
+
+        rig.clock.advance(AgentChatStore.Timing().pickGuardSettle / 2)
+        Self.send("this never reaches the bound conversation", on: chat)
+        await rig.passGuardSettle(chat)
+        await Self.expectPickKept(rig, chat)
+
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    // MARK: Between links
+
+    /// A verdict can land where the core has no record to read the label from. It
+    /// holds once the snapshot brings the label back, which goes again.
+    @Test func aVerdictReachedBetweenLinksOutlastsTheSnapshot() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        Self.send("this never reaches the bound conversation", on: chat)
+        try await rig.runTurn()
+        await rig.transport.holdSubscribes()
+        await rig.store.suspend()
+        await rig.store.resume()
+        await rig.transport.waitForSubscribe(count: 2)
+        try await rig.waitUntil("the link, with no snapshot yet") {
+            rig.store.hostStatuses[self.host.id] == .connected && rig.store.hostsAwaitingSnapshot.contains(self.host.id)
+        }
+
+        await rig.passGuardSettle(chat)
+        rig.expectLeftConversation(chat)
+
+        await rig.transport.releaseSubscribes()
+        try await rig.waitUntil("the snapshot") { !rig.store.hostsAwaitingSnapshot.contains(self.host.id) }
+        var budget = PollBudget(.seconds(5))
+        while budget.hasTimeLeft, await !rig.pickWrites.contains("") {
+            await chat.step()
+            await Task.yield()
+            budget.charge()
+        }
+        #expect(await rig.pickWrites == [""])
+        await chat.step()
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    // MARK: A removal that fails
+
+    /// With the link up nothing reports the label again, so this device's next check
+    /// is what removes it.
+    @Test func aRemovalTheCoreRefusedGoesAgainAtTheNextCheck() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        await rig.transport.setLabelFailure(HerdrAPIError(code: "internal", message: "refused"))
+        Self.send("this never reaches the bound conversation", on: chat)
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+        try await Self.waitForClear(rig)
+        let core = try #require(rig.store.coreProjection(on: host.id))
+        await core.pickRemoval?.value
+        let attempts = await rig.pickWrites.count
+
+        await rig.transport.setLabelFailure(nil)
+        await rig.nudgeCheck()
+        var budget = PollBudget(.seconds(5))
+        while budget.hasTimeLeft, await rig.pickWrites.count == attempts {
+            await chat.step()
+            await Task.yield()
+            budget.charge()
+        }
+
+        #expect(await rig.pickWrites.dropFirst(attempts).first == "")
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    // MARK: An Agent that quits to its shell
+
+    private static func shellForeground() -> Data {
+        event(
+            sequence: 60, type: "foreground",
+            data: foreground(argv: [.string("bash")], name: "bash", pid: shell))
+    }
+
+    /// The Agent leaves the list in the pass that would have asked for a check, and its
+    /// store ends with it. The label does not stay behind for the Terminal's life.
+    @Test func quittingToTheShellRemovesThePicksLabel() async throws {
+        let (rig, chat) = try await following()
+
+        await rig.transport.processTable.remove(Self.pid)
+        await rig.transport.deliver(Self.shellForeground())
+
+        try await Self.waitForClear(rig)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// Ctrl-Z also hands the shell the foreground, with the Agent's process still under
+    /// it, and that process is what the pick names.
+    @Test func aSuspendedAgentKeepsThePicksLabel() async throws {
+        let (rig, chat) = try await following()
+        let checks = await rig.transport.processTable.requests.count
+
+        await rig.transport.deliver(Self.shellForeground())
+
+        try await rig.waitUntil("the Agent to leave the list") { rig.store.agents.isEmpty }
+        var budget = PollBudget(.seconds(5))
+        while budget.hasTimeLeft, await rig.transport.processTable.requests.count == checks {
+            await Task.yield()
+            budget.charge()
+        }
+        let core = try #require(rig.store.coreProjection(on: host.id))
+        #expect(
+            try await core.checkChatSession(paneID: "t1", program: .grok)
+                == .picked(sessionID: Self.grokHeld, transcriptRoot: "\(Self.home)/.grok"))
+        #expect(await rig.pickWrites.isEmpty)
         chat.end()
         rig.store.setHosts([])
     }
