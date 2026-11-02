@@ -441,8 +441,12 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
 
     /// Prints as the real script does, with its nonce and whatever a startup
     /// file might print ahead of it.
-    func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
-        let body = String(decoding: script, as: UTF8.self)
+    func runAgentDiscovery(_ discovery: HerdrCoreAgentDiscovery) async throws -> GitExecResult {
+        let body =
+            switch discovery {
+            case .posixScript(let script): String(decoding: script, as: UTF8.self)
+            case .windowsCommand(let command): command
+            }
         discoveryScripts.append(body)
         let marker = "__HEELER_AGENTS_BEGIN_"
         let nonce =

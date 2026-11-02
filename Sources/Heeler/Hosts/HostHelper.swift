@@ -242,8 +242,8 @@ struct HostHelperReading: Sendable, Equatable {
     var unsupportedPlatform: HostHelperUnsupportedPlatform? {
         guard let probe else { return .nativeWindows }
         switch probe.kernel {
-        case "Linux": return probe.hasSystemd ? nil : .noSystemd
-        case "Darwin": return nil
+        case HerdrCoreLocator.linuxKernel: return probe.hasSystemd ? nil : .noSystemd
+        case HerdrCoreLocator.macOSKernel: return nil
         default: return .other(probe.kernel)
         }
     }

@@ -198,7 +198,7 @@ struct HerdrCoreWindowsStagingTests {
         let fixture = try await Fixture()
         let session = try fixture.session
         try await Self.until("the Host's platform") {
-            fixture.console.capabilities(for: fixture.host.id).startsInWindowsDirectories
+            fixture.console.capabilities(for: fixture.host.id).isNativeWindowsCore
         }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("core-windows-staging-\(UUID().uuidString).bin")

@@ -48,7 +48,7 @@ final class ConsoleStore {
     private(set) var coreStatusExplanations: [ConsoleAgent.ID: HerdrCoreStatusExplanation] = [:]
     /// The harness configuration edits this device applied (ADR 0033).
     let harnessEdits: HarnessConfigEditStore
-    private let openCodePluginBundle: @Sendable () throws -> HostHelperBundle
+    private let hostHelperBundle: @Sendable () throws -> HostHelperBundle
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
     /// Hosts whose current connection has not produced its first snapshot.
     /// Their empty Agent projection is loading state, not proof that a pane
@@ -77,7 +77,7 @@ final class ConsoleStore {
     private(set) var hostPlatforms: [Host.ID: HostPlatform] = [:]
     /// What each core Host's desktop app can name right now.
     private(set) var hostDesktopAppNaming: [Host.ID: HerdrAppNaming] = [:]
-    /// Each core Host's `uname -s`, once a link has located its core.
+    /// Each core Host's kernel, as its locator prints it, once a link has located its core.
     private(set) var hostCoreKernels: [Host.ID: String] = [:]
     /// The core each core Host's inventory comes from. A detail reads it, so it
     /// redraws once the Host no longer serves the core it opened on.
@@ -215,7 +215,7 @@ final class ConsoleStore {
         coreStopClock: BlockedCardClock = .live,
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore(),
-        openCodePluginBundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
+        hostHelperBundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
         herdrAppRename: Bool = HerdrAppControl.isRenameOn,
         coreSendClock: BlockedCardClock = .live,
         coreChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedCoreChatPrograms,
@@ -233,7 +233,7 @@ final class ConsoleStore {
         self.herdrAppRename = herdrAppRename
         self.coreHostMemory = coreHostMemory
         self.harnessEdits = harnessEdits
-        self.openCodePluginBundle = openCodePluginBundle
+        self.hostHelperBundle = hostHelperBundle
         self.chatCache = chatCache
         cachedChats = ConsoleChatCache(cache: chatCache)
         self.usageWidgets = usageWidgets
@@ -780,7 +780,7 @@ final class ConsoleStore {
                 corePin: corePin,
                 clock: coreSendClock,
                 isOnWindows: { [weak self] in
-                    self?.capabilities(for: hostID).startsInWindowsDirectories == true
+                    self?.capabilities(for: hostID).isNativeWindowsCore == true
                 })
             : nil
         let composer = AgentComposerStore(
@@ -800,7 +800,7 @@ final class ConsoleStore {
             corePin: corePin,
             isOnCoreHost: coreSend != nil,
             filePreparer: WindowsCoreFilePreparer(isOnWindows: { [weak self] in
-                self?.capabilities(for: hostID).startsInWindowsDirectories == true
+                self?.capabilities(for: hostID).isNativeWindowsCore == true
             }))
         composerSessions[agent.id] = session
         requestHostPlatforms(Array(projections.values))
@@ -1968,7 +1968,7 @@ final class ConsoleStore {
             },
             write: { [weak self] folders in
                 guard let self else { throw TransportError.cancelled }
-                guard let contents = try self.openCodePluginBundle().files[HerdrCoreWindowsExtensions.bundlePath] else {
+                guard let contents = try self.hostHelperBundle().files[HerdrCoreWindowsExtensions.bundlePath] else {
                     throw HostHelperBundle.LoadError.unreadable(HerdrCoreWindowsExtensions.bundlePath)
                 }
                 for folder in folders {
@@ -2061,7 +2061,7 @@ final class ConsoleStore {
         return OpenCodePluginEdit.edit(
             configDirectory: directory,
             fileName: try await OpenCodePluginEdit.fileName(in: directory, form: form, over: services),
-            form: form, files: try OpenCodePluginEdit.pluginFiles(from: try openCodePluginBundle()))
+            form: form, files: try OpenCodePluginEdit.pluginFiles(from: try hostHelperBundle()))
     }
 
     func chatProgram(for agent: ConsoleAgent, keepingTo corePin: TerminalCorePin? = nil) -> ChatProgram? {
@@ -2076,7 +2076,7 @@ final class ConsoleStore {
         let platform = hostPlatforms[agent.hostID]
         if let platform {
             return AgentChatAvailability.program(
-                for: agent.agent, platform: platform, opensOnWindows: capabilities.startsInWindowsDirectories,
+                for: agent.agent, platform: platform, isNativeWindowsCore: capabilities.isNativeWindowsCore,
                 hasAdapter: { chatAdapter($0) != nil })
         }
         guard let host = projections[agent.hostID]?.host,

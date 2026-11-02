@@ -1341,8 +1341,8 @@ struct HerdrCoreLaunchTests {
         #expect(capabilities.startsTerminals)
         #expect(!capabilities.tabNames)
         #expect(!capabilities.worktrees)
-        #expect([host].offeringNewItem(listsTerminals: false) == [host])
-        #expect([host].offeringNewItem(listsTerminals: true) == [host])
+        #expect([host].offeringNewItem(listsTerminals: false, capabilities: \.capabilities) == [host])
+        #expect([host].offeringNewItem(listsTerminals: true, capabilities: \.capabilities) == [host])
         #expect(
             capabilities.newTerminalRequest(workspaceID: "w1", cwd: "/srv/app")
                 == ShellTerminalCreationRequest(workspaceID: "w1", cwd: "/srv/app"))
@@ -1613,7 +1613,7 @@ struct HerdrCoreLaunchTransportTests {
         await host.setAgentDiscovery(stdout: "printed")
         let transport = host.transport()
 
-        let result = try await transport.runAgentDiscovery(Data("the script".utf8))
+        let result = try await transport.runAgentDiscovery(.posixScript(Data("the script".utf8)))
 
         #expect(result.stdout == Data("printed".utf8))
         #expect(await host.log == ["agent-discovery"])

@@ -524,8 +524,8 @@ extension HeelerPluginUnavailableError: Equatable {}
     private let tui = Host(address: "tui.example", username: "dev", serverKind: .herdrTUI)
 
     @Test func theNewButtonsOfferEveryKindOfHost() {
-        #expect([core, tui].offeringNewItem(listsTerminals: true) == [core, tui])
-        #expect([core, tui].offeringNewItem(listsTerminals: false) == [core, tui])
+        #expect([core, tui].offeringNewItem(listsTerminals: true, capabilities: \.capabilities) == [core, tui])
+        #expect([core, tui].offeringNewItem(listsTerminals: false, capabilities: \.capabilities) == [core, tui])
     }
 
     @Test func anEmptyDetailOffersNothingEveryHostCannotStart() {
@@ -539,10 +539,10 @@ extension HeelerPluginUnavailableError: Equatable {}
 
     @Test func aListOffersNewOnEveryKindOfHost() {
         for listsTerminals in [false, true] {
-            #expect([Host]().offersNewItem(listsTerminals: listsTerminals))
-            #expect([tui].offersNewItem(listsTerminals: listsTerminals))
-            #expect([core, tui].offersNewItem(listsTerminals: listsTerminals))
-            #expect([core].offersNewItem(listsTerminals: listsTerminals))
+            #expect([Host]().offersNewItem(listsTerminals: listsTerminals, capabilities: \.capabilities))
+            #expect([tui].offersNewItem(listsTerminals: listsTerminals, capabilities: \.capabilities))
+            #expect([core, tui].offersNewItem(listsTerminals: listsTerminals, capabilities: \.capabilities))
+            #expect([core].offersNewItem(listsTerminals: listsTerminals, capabilities: \.capabilities))
         }
     }
 

@@ -9,6 +9,13 @@ import Foundation
 /// other program owns the name, and every other subcommand can start a core.
 /// It keeps the exec's PATH as it is.
 enum HerdrCoreLocator {
+    /// What a Unix Host's `uname -s` prints as `kernel` on Linux.
+    static let linuxKernel = "Linux"
+    /// As `linuxKernel`, on macOS.
+    static let macOSKernel = "Darwin"
+    /// What the Windows probe prints as `kernel`, which no `uname -s` said.
+    static let windowsKernel = "Windows"
+
     /// hc refuses this session name, so no script exists for it.
     struct SessionRefused: Error, Equatable {
         let session: String
@@ -25,7 +32,7 @@ enum HerdrCoreLocator {
             case sessionDefault
         }
 
-        /// As `uname -s` prints it.
+        /// `uname -s` on Unix, `windowsKernel` on native Windows.
         let kernel: String
         /// Absolute. Nil when neither place holds a program that identifies
         /// itself as the core, which reads as not installed.
@@ -49,14 +56,14 @@ enum HerdrCoreLocator {
         var isStaleLock: Bool { socketSource == .lock && !socketFilePresent }
         /// Only on Linux can the app start a core: elsewhere one started over
         /// SSH would run outside the user's desktop login session.
-        var appMayStartCore: Bool { kernel == "Linux" }
+        var appMayStartCore: Bool { kernel == linuxKernel }
     }
 
     /// `sun_path` less its NUL: 107 bytes on Linux, 103 on macOS. A kernel the
     /// app has no record of gets the shorter limit. A Windows pipe name may run to 256.
     static func socketPathLimit(kernel: String) -> Int {
         switch kernel {
-        case "Linux": 107
+        case linuxKernel: 107
         case windowsKernel: 256
         default: 103
         }

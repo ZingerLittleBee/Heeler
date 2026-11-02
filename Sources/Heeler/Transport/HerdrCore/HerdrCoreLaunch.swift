@@ -195,17 +195,17 @@ enum HerdrCoreLaunch {
 
     // MARK: Discovery
 
-    static func discoveryScript(shell: String, nonce: String) -> Data {
+    static func discovery(shell: String, nonce: String) -> HerdrCoreAgentDiscovery {
         let executables = SupportedAgentKind.allCases.map(\.executable)
         let versioned = SupportedAgentKind.opencode.executable
         if shell == HerdrCoreShellLaunch.windowsShell {
-            return Data(
+            return .windowsCommand(
                 HerdrCoreShellLaunch.windowsDiscoveryCommand(
-                    executables: executables, versionOf: versioned, nonce: nonce
-                ).utf8)
+                    executables: executables, versionOf: versioned, nonce: nonce))
         }
-        return HerdrCoreShellLaunch.discoveryScript(
-            shell: shell, executables: executables, versionOf: versioned, nonce: nonce)
+        return .posixScript(
+            HerdrCoreShellLaunch.discoveryScript(
+                shell: shell, executables: executables, versionOf: versioned, nonce: nonce))
     }
 
     static func installedAgents(stdout: Data, nonce: String) throws -> InstalledAgents {

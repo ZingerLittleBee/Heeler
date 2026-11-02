@@ -27,8 +27,7 @@ extension ConsoleAgent {
 
     private func isAbsoluteNonEmptyPath(_ value: String) -> Bool {
         guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        return value.hasPrefix("/")
-            || (startsTerminalsInWindowsDirectories && RemoteHostPath.isWindowsAbsolute(value))
+        return RemoteHostPath.isStartDirectory(value, allowingWindows: startsTerminalsInWindowsDirectories)
     }
 }
 

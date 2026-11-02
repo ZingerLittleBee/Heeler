@@ -433,7 +433,17 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         return windowsLocator == nil ? .posix : .nativeWindows
     }
 
-    func runWindowsCoreProbe(_ command: String) async throws -> GitExecResult {
+    func runWindowsCommand(_ command: String, for purpose: WindowsHostExec) async throws -> GitExecResult {
+        switch purpose {
+        case .locator: try runWindowsCoreProbe(command)
+        case .checkoutRead: try runWindowsCheckoutRead(command)
+        case .processRead: try runWindowsProcessRead(command)
+        case .serverKindDetection: try runWindowsServerKindDetection(command)
+        case .agentDiscovery: try runWindowsAgentDiscovery(command)
+        }
+    }
+
+    private func runWindowsCoreProbe(_ command: String) throws -> GitExecResult {
         log.append("windows-probe")
         scripts.append(try HerdrCoreWindowsLocatorTests.decoded(command))
         if !nextLocatorAnswers.isEmpty { return nextLocatorAnswers.removeFirst() }
@@ -443,7 +453,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     /// Prints what its script would: one line for each directory git answers for.
-    func runWindowsCheckoutRead(_ command: String) async throws -> GitExecResult {
+    private func runWindowsCheckoutRead(_ command: String) throws -> GitExecResult {
         log.append("windows-checkouts")
         let body = try HerdrCoreWindowsLocatorTests.decoded(command)
         scripts.append(body)
@@ -456,7 +466,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     /// Prints what its script would for the processes set on this Host.
-    func runWindowsProcessRead(_ command: String) async throws -> GitExecResult {
+    private func runWindowsProcessRead(_ command: String) throws -> GitExecResult {
         log.append("windows-process-read")
         let body = try HerdrCoreWindowsLocatorTests.decoded(command)
         scripts.append(body)
@@ -500,7 +510,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
 
     /// Prints what its script would: the asked-for programs this machine has, with
     /// `version` the program's own words, or empty for one the exec could not run.
-    func runWindowsAgentDiscovery(_ command: String) async throws -> GitExecResult {
+    private func runWindowsAgentDiscovery(_ command: String) throws -> GitExecResult {
         log.append("windows-agent-discovery")
         windowsDiscoveryCommands.append(command)
         if let windowsDiscoveryAnswer { return windowsDiscoveryAnswer }
@@ -549,7 +559,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         throw ChangesReadError.unavailable
     }
 
-    func runWindowsServerKindDetection(_ command: String) async throws -> GitExecResult {
+    private func runWindowsServerKindDetection(_ command: String) throws -> GitExecResult {
         log.append("windows-detection")
         let body = try HerdrCoreWindowsLocatorTests.decoded(command)
         scripts.append(body)

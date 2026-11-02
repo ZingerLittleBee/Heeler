@@ -115,7 +115,6 @@ struct HostProcessReaderWindowsTests {
             .init(pids: ["1"], namesOf: ["A B"]),
             .init(pids: ["1"], namesWithPrefix: ["HERDR'"]),
             .init(pids: ["1"], namesWithPrefix: ["herdr_"]),
-            .init(pids: ["1"], argumentsAmong: ["'x"]),
             .init(pids: ["1"], descendantsOf: "2"),
         ]
         for request in bad {

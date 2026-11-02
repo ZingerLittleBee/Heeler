@@ -35,7 +35,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private(set) var latency: Duration?
     private(set) var routeID: UUID?
     private(set) var leakedEnvironmentNames: Set<String> = []
-    /// As `uname -s` prints it: what a locator last found, this connection's once
+    /// As `HerdrCoreLocator.Location.kernel`: what a locator last found, this connection's once
     /// it has run. What a Host offers does not wait for a core to answer.
     private(set) var kernel: String?
     /// Why each Agent reading Unknown does, by Terminal address.
@@ -660,12 +660,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             checkoutTask = nil
             return
         }
-        let services = transport.hostServices
         if !hasAskedHome {
             hasAskedHome = true
-            home = try? await services.hostHomeDirectory()
-            // That read is Chat's, and it refuses native Windows; the locator knows.
-            if home == nil { home = (try? await session.withTransport { await $0.lastLocation() })?.home }
+            home = try? await transport.homeDirectory()
             guard !Task.isCancelled else { return }
             // The desktop app does not ask git about the home folder either.
             queuedCheckouts.removeAll { $0 == home }
@@ -714,7 +711,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let shell = try await transport.launchShell()
         let nonce = HostProcessReader.makeNonce()
         let result = try await transport.runAgentDiscovery(
-            HerdrCoreLaunch.discoveryScript(shell: shell, nonce: nonce))
+            HerdrCoreLaunch.discovery(shell: shell, nonce: nonce))
         guard
             let installed = try? HerdrCoreLaunch.installedAgents(stdout: result.stdout, nonce: nonce)
         else {
@@ -1523,7 +1520,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     /// What Chat says when nothing names the session, in this Host's form.
     func chatCannotTell(_ program: ChatProgram) -> ChatUnavailableReason {
-        kernel == HerdrCoreLocator.windowsKernel ? .cannotTellSessionOnWindows(program) : .cannotTellSession(program)
+        HerdrCoreHostSystem(kernel: kernel).cannotTellSession(program)
     }
 
     private func chatBinder(paneID: String, program: ChatProgram, core: String?) -> HerdrCoreSessionBinder {
@@ -1543,8 +1540,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             isDroppedPick: { value in
                 await self.droppedPicks[paneID]?.contains(value) ?? false
             },
-            isOnWindows: kernel == HerdrCoreLocator.windowsKernel,
-            isOnMacOS: kernel == HerdrCoreLocator.macOSKernel)
+            hostSystem: HerdrCoreHostSystem(kernel: kernel))
     }
 
     /// What the user could confirm for this Agent, on request (ADR 0034).
@@ -1659,7 +1655,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// listing, for Oh My Pi's profiles (ADR 0033).
     func windowsExtensionFolders() async throws -> [String] {
         let transport = try await session.withTransport { $0 }
-        guard let location = await transport.lastLocation(), location.isNativeWindows, let home = location.home else {
+        guard let home = await transport.locatedWindowsHome() else {
             throw TransportError.hostFeatureUnavailable(feature: "Heeler's extension on this Host")
         }
         let services = transport.hostServices
@@ -1699,24 +1695,17 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             read: { range in
                 try await session.withTransport { $0.hostServices }.readHostFileRange(range)
             },
+            // Chat reads over SFTP, in the form that opens.
             home: {
-                // A native Windows Host's locator already said, and that read refuses it.
-                let transport = try await session.withTransport { $0 }
-                if let location = await transport.lastLocation(), location.isNativeWindows, let home = location.home {
-                    return RemoteFilePath.windowsForSFTP(home)
-                }
-                return try await transport.hostServices.hostHomeDirectory()
+                RemoteFilePath.windowsForSFTP(try await session.withTransport { $0 }.homeDirectory())
             },
             queryOpenCode: { query in
                 try await session.withTransport { $0.hostServices }.queryOpenCode(query)
             })
     }
 
-    /// A native Windows Host's locator already said, and that read refuses it.
     func remoteHomeDirectory() async throws -> String {
-        let transport = try await session.withTransport { $0 }
-        if let home = await transport.lastLocation()?.home { return home }
-        return try await transport.hostServices.hostHomeDirectory()
+        try await session.withTransport { $0 }.homeDirectory()
     }
 
     func listRemoteDirectories(at path: String) async throws -> RemoteDirectoryListing {

@@ -312,7 +312,7 @@ struct HerdrCoreTransportE2ETests {
                     shell: shell, executables: ["heeler-rc-stub", "heeler-no-such-program"],
                     versionOf: "heeler-rc-stub", nonce: nonce)
                 let answer = try await transport.runAgentDiscovery(
-                    Data("HOME=\(GitProbe.singleQuoted(launchHome)); export HOME\n".utf8) + discovery)
+                    .posixScript(Data("HOME=\(GitProbe.singleQuoted(launchHome)); export HOME\n".utf8) + discovery))
                 let found = try HerdrCoreShellLaunch.parseDiscovery(stdout: answer.stdout, nonce: nonce)
                 #expect(found.executables == ["heeler-rc-stub"])
                 #expect(found.version == "rc-stub")

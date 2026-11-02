@@ -19,10 +19,10 @@ enum AgentChatAvailability {
     }
 
     static func program(
-        for agent: Agent, platform: HostPlatform?, opensOnWindows: Bool = false,
+        for agent: Agent, platform: HostPlatform?, isNativeWindowsCore: Bool = false,
         hasAdapter: (ChatProgram) -> Bool = AgentChatAvailability.hasStandardAdapter
     ) -> ChatProgram? {
-        guard platform == .posix || (platform == .nativeWindows && opensOnWindows), let program = ChatProgram(rawValue: agent.kind), hasAdapter(program) else {
+        guard platform == .posix || (platform == .nativeWindows && isNativeWindowsCore), let program = ChatProgram(rawValue: agent.kind), hasAdapter(program) else {
             return nil
         }
         return program

@@ -31,8 +31,9 @@ struct HostCapabilities: Equatable, Sendable {
     var desktopAppNaming: HerdrAppNaming?
     /// The programs Chat opens for; nil for every one it can read.
     var chatPrograms: Set<ChatProgram>?
-    /// A core runs what it is given in a directory of its own machine's form.
-    var startsInWindowsDirectories = false
+    /// A core on a native Windows machine. Its Terminals start in directories of that
+    /// machine's form, and Send, staging and Chat each read it for their own rule.
+    var isNativeWindowsCore = false
     /// Changes, Skills and Grok Build's status edit run POSIX scripts on the Host.
     /// A native Windows core Host offers none of them, rather than failing once
     /// opened; a native Windows Herdr TUI Host keeps what it has always shown.
@@ -64,8 +65,7 @@ struct HostCapabilities: Equatable, Sendable {
 
     /// Whether a Terminal here can start in this directory.
     func startsIn(_ directory: String) -> Bool {
-        directory.hasPrefix("/")
-            || (startsInWindowsDirectories && RemoteHostPath.isWindowsAbsolute(directory))
+        RemoteHostPath.isStartDirectory(directory, allowingWindows: isNativeWindowsCore)
     }
 
     /// What a window may do with this Host's terminals. Windows only take
@@ -97,7 +97,7 @@ extension HostCapabilities {
     ) {
         let offered = serverKind == .herdrTUI
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
-        let coreChat = coreOnPosix && (coreKernel == "Linux" || coreKernel == HerdrCoreLocator.macOSKernel)
+        let coreChat = coreOnPosix && (coreKernel == HerdrCoreLocator.linuxKernel || coreKernel == HerdrCoreLocator.macOSKernel)
         let coreOnWindows =
             serverKind == .herdrCore
             && (platform == .nativeWindows || coreKernel == HerdrCoreLocator.windowsKernel)
@@ -116,7 +116,7 @@ extension HostCapabilities {
             composerStop: offered || coreOnPosix || coreOnWindows,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatPrograms: coreChat ? coreChatPrograms : coreOnWindows ? windowsChatPrograms : nil,
-            startsInWindowsDirectories: coreOnWindows,
+            isNativeWindowsCore: coreOnWindows,
             hostScripts: !coreOnWindows)
     }
 
@@ -148,7 +148,7 @@ extension Host {
     /// For a directory the Host reported, which says its own platform: a core
     /// Host's is a Windows path only on native Windows.
     func reportedDirectoryStartsTerminals(_ directory: String) -> Bool {
-        directory.hasPrefix("/") || (serverKind == .herdrCore && RemoteHostPath.isWindowsAbsolute(directory))
+        RemoteHostPath.isStartDirectory(directory, allowingWindows: serverKind == .herdrCore)
     }
 }
 
@@ -172,7 +172,7 @@ extension Collection<Host> {
     /// Terminals on the Terminals tab. With none, it is not offered. What a
     /// connection has learned of a Host comes through `capabilities`.
     func offeringNewItem(
-        listsTerminals: Bool, capabilities: (Host) -> HostCapabilities = \.capabilities
+        listsTerminals: Bool, capabilities: (Host) -> HostCapabilities
     ) -> [Host] {
         filter { host in
             let offers = capabilities(host)
@@ -183,7 +183,7 @@ extension Collection<Host> {
     /// Whether a list offers New at all: it does with no Hosts, and stops only
     /// when every Host it has cannot start the item.
     func offersNewItem(
-        listsTerminals: Bool, capabilities: (Host) -> HostCapabilities = \.capabilities
+        listsTerminals: Bool, capabilities: (Host) -> HostCapabilities
     ) -> Bool {
         isEmpty || !offeringNewItem(listsTerminals: listsTerminals, capabilities: capabilities).isEmpty
     }

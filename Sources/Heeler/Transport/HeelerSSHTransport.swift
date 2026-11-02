@@ -3732,15 +3732,11 @@ actor HeelerSSHTransport: Transport {
 // MARK: - What Server Kind detection uses of this connection
 extension HeelerSSHTransport: ServerKindDetectionConnection {
     /// One bounded exec, cut off on the Host if a read hangs. The POSIX script does
-    /// not go to native Windows, which runs `runWindowsServerKindDetection` instead.
+    /// not go to native Windows, which runs `runWindowsCommand` instead.
     func runServerKindDetection(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
             script, feature: "Server Kind detection", deadline: .seconds(16), remoteSeconds: 12,
             timeoutMarkerPrefix: "__HEELER_KIND_DETECTION_TIMEOUT_", timedOut: .timedOut)
-    }
-
-    func runWindowsServerKindDetection(_ command: String) async throws -> GitExecResult {
-        try await runWindowsProbe(command)
     }
 }
 
@@ -3810,28 +3806,8 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
         }
     }
 
-    /// One bounded exec. PowerShell's own start takes a few seconds on a slow
-    /// machine, and SSH reaps the channel if a `--version` hangs.
-    func runWindowsCoreProbe(_ command: String) async throws -> GitExecResult {
-        try await runWindowsProbe(command)
-    }
-
-    /// One bounded exec, for one or a few `git rev-parse` calls.
-    func runWindowsCheckoutRead(_ command: String) async throws -> GitExecResult {
-        try await runWindowsProbe(command)
-    }
-
-    /// One bounded exec, for one process read.
-    func runWindowsProcessRead(_ command: String) async throws -> GitExecResult {
-        try await runWindowsProbe(command)
-    }
-
-    /// With a profile to load, as `runAgentDiscovery` has startup files.
-    func runWindowsAgentDiscovery(_ command: String) async throws -> GitExecResult {
-        try await runWindowsProbe(command, bound: .seconds(25))
-    }
-
-    private func runWindowsProbe(_ command: String, bound: Duration = .seconds(20)) async throws -> GitExecResult {
+    func runWindowsCommand(_ command: String, for purpose: WindowsHostExec) async throws -> GitExecResult {
+        let bound = purpose.bound
         let result = try await withRequestDeadline(timeout: bound) {
             try await self.runExec(command, timeout: bound)
         }
