@@ -238,7 +238,9 @@ herdr-core Hosts only.
   terminal's title, which then names this very conversation.
 - Grok Build writes its row and session folder as it starts, and `updates.jsonl` with
   the first message, so a Chat that has followed nothing waits for that message too.
-  A search cut short by a listing limit reads the same way.
+  A search cut short by a listing limit reads the same way. Pi and Oh My Pi wait on an
+  id the same way, searching their own folders on every pass and every project's once
+  per activity, as Claude Code does.
 - Ending the Terminal that started Codex's shared daemon ends the daemon, and
   every other default-mode Codex on the same `CODEX_HOME` loses its backend
   while it keeps reporting its last status, such as Idle or Done.

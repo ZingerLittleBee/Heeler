@@ -843,13 +843,17 @@ actor ChatConversationEngine {
             case .failure(.mismatched): return .unavailable(.mismatched)
             }
         case .pi, .omp:
+            let isNew = !lostAMessage && snapshot.phase == .unavailable(.awaitingFirstMessage(reference.program))
+            // Once per activity, as for Claude Code: a wait looks on every pass.
             switch try await PiTranscriptLocator(files: files).locate(
-                reference: reference, directories: directories, sessionsRoot: transcriptRoot)
+                reference: reference, directories: directories, sessionsRoot: transcriptRoot,
+                searchesEveryProject: !isNew || context.activity != newConversationActivity)
             {
             case .success(let path): return .found(path)
-            case .failure(.notFound) where transcriptRoot != nil && !hasFollowed && cached == nil:
+            case .failure(.notFound) where mayStillBeToStart:
                 // The Agent's own evidence names this id, and nothing is saved
                 // under it yet: a conversation still to start, as with a path.
+                newConversationActivity = context.activity
                 return .unavailable(.awaitingFirstMessage(reference.program))
             case .failure(.notFound(let searchedAll)): return .unavailable(.notFound(searchedAll: searchedAll))
             case .failure(.notWritten):
@@ -868,14 +872,14 @@ actor ChatConversationEngine {
                 sessionID: reference.sessionID, directories: directories, configRoot: transcriptRoot)
             {
             case .success(let path): return .found(path)
-            case .failure(.notFound(let searchedAll)):
-                return .unavailable(.notFound(searchedAll: searchedAll))
-            case .failure(.mismatched): return .unavailable(.mismatched)
-            }
             case .failure(.notFound(searchedAll: false)) where mayStillBeToStart:
                 // Its row and folder come as it starts, and `updates.jsonl` with
                 // the first message.
                 return .unavailable(.awaitingFirstMessage(reference.program))
+            case .failure(.notFound(let searchedAll)):
+                return .unavailable(.notFound(searchedAll: searchedAll))
+            case .failure(.mismatched): return .unavailable(.mismatched)
+            }
         case .opencode:
             // Its store is read by query, so `open` never looks for a file.
             return .unavailable(.unsupportedSession)

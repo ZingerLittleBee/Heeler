@@ -388,6 +388,42 @@ struct HerdrCorePiChatTests {
 
     @Test(arguments: programs)
     func withNoEvidenceChatSaysItCannotTellAndOffersTheHelper(_ program: ChatProgram) async throws {
+    /// Nothing here is written until the first message, and a wait looks on every
+    /// pass: its own folders each time, every project's once per activity, as Claude
+    /// Code's does.
+    @Test func aWaitForAFirstMessageSearchesEveryProjectOncePerActivity() async throws {
+        let files = VirtualHostFiles(home: Self.hostHome)
+        let root = Self.defaultRoot(.pi)
+        await files.makeDirectory("\(root)/--elsewhere--")
+        let engine = ChatConversationEngine(
+            reference: ConversationReference(program: .pi, sessionID: Self.first),
+            cacheKey: ChatCacheKey(hostID: UUID(), herdrSession: "", program: .pi, conversationID: Self.first),
+            files: files.hostFiles(), cache: VolatileChatTranscriptCache(),
+            adapter: try #require(ChatTranscriptAdapter.standard(for: .pi)),
+            transcriptRoot: root, sessionMayPrecedeItsStore: true)
+        func projectSearches() async -> Int {
+            await files.listings.count { $0.directory == "\(root)/--elsewhere--" }
+        }
+        let idle = ChatProjectionContext(activity: .idle)
+        let working = ChatProjectionContext(activity: .working)
+
+        for _ in 0..<3 {
+            let snapshot = await engine.open(directories: ["/work/app"], context: idle)
+            #expect(snapshot.phase == .unavailable(.awaitingFirstMessage(.pi)))
+        }
+        #expect(await projectSearches() == 1)
+
+        for _ in 0..<3 {
+            _ = await engine.open(directories: ["/work/app"], context: working)
+        }
+        #expect(await projectSearches() == 2)
+
+        // Its own folder still shows the file on the next pass, with no new activity.
+        let file = Self.sessionFile(root: root, session: Self.first)
+        await files.write(try Self.transcript(.pi, session: Self.first), at: file)
+        #expect(await engine.open(directories: ["/work/app"], context: working).phase == .following(path: file))
+    }
+
         let rig = Rig(host: host, program: program, record: Self.record(program))
         try await rig.start()
         // The newest Transcript in the Agent's directory, for the taking.
