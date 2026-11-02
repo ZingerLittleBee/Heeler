@@ -584,7 +584,8 @@ struct HostHelperMacOSTests {
 
     // MARK: Files and notifications
 
-    @Test func registrationsAndUsageReadFromApplicationSupport() async throws {
+    /// Usage's own path is the script's, which test-host-helper-scripts.py runs.
+    @Test func registrationsGoToApplicationSupport() async throws {
         let host = try await installed()
         let files = HostHelperFiles(host: host, session: "default")
         try await files.replaceNotificationRegistration(Data("{}".utf8))
@@ -738,9 +739,12 @@ struct HostHelperKeychainWordingTests {
         #expect(plugin.readThroughHostHelper() == plugin)
     }
 
+    /// The same answer through the plugin's parser, which a Herdr TUI Host reads.
     @Test func aHerdrTuiHostKeepsItsWords() throws {
-        let plugin = try AgentUsageLimitFixture.report(state: "unavailable", reason: "keychainUnavailable")
-        let limits = try #require(plugin.programs?.last?.usageLimits)
-        #expect(AgentUsageLimitsView.unavailableMessage(limits, program: "claude").contains("Start herdr"))
+        let report = try AgentUsageProbe.parse(stdout: try helperAnswer(), nonce: "n")
+        let program = try #require(report.programs?.first)
+        #expect(AgentUsageLimitsView.unavailableMessage(program.usageLimits, program: "claude").contains("Start herdr"))
+        let account = try #require(program.accounts?.first?.usageLimits)
+        #expect(AgentUsageLimitsView.unavailableMessage(account, program: "claude").contains("Start herdr"))
     }
 }
