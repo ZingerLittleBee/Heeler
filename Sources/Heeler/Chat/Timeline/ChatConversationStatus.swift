@@ -426,8 +426,6 @@ extension ChatProgram {
         }
     }
 
-    /// When the program first saves a new conversation, after "saves this
-    /// conversation".
     /// What Chat's "can't tell" says about this program on herdr-core, where the
     /// evidence is what the Host shows of its process (ADR 0034).
     fileprivate var sessionEvidenceHelp: String {
@@ -443,6 +441,8 @@ extension ChatProgram {
         }
     }
 
+    /// When the program first saves a new conversation, after "saves this
+    /// conversation".
     fileprivate var firstSave: String {
         writesNewConversationWithFirstReply ? "after its first reply" : "once it has a first message"
     }
