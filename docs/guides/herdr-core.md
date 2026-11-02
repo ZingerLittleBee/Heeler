@@ -228,7 +228,7 @@ If the connection drops with **Worktree Details** open, the sheet goes with the 
 Chat opens for a Claude Code Agent on a Linux or [macOS](#chat-on-macos) core Host, where you can read its conversation, send to it, stop it and answer its questions. Chat for Codex, Grok Build and OpenCode 2.x on those Hosts is built and turned on one program at a time, each once it has passed a check with a signed-in account. Until then, those Agents offer the terminal alone. The rows below say what to expect from each.
 
 - **Send** checks the Agent's input box and which conversation it shows, pastes the message, and submits it only if the same Agent still holds the terminal within two seconds. Otherwise nothing is submitted, the draft stays in the Composer, and a notice says whether the text may still be in the terminal. A Send the Host did not answer is never sent again, so check the terminal before sending it yourself. Its message says it **may or may not have reached the Agent**, until the conversation shows it arrived. The next Send pastes nothing until the Host answers, then says the last message **may still be in the Agent's input**.
-- **Stop** presses Esc, or on a Template's Terminal the Template's stop key.
+- **Stop** presses the program's stop keys: Esc, Esc twice on OpenCode, or Ctrl+C on Grok Build. Grok Build and OpenCode check the screen first, and if pressing could act on something else, Stop presses nothing and says why. On a Template's Terminal it presses the Template's stop key.
 - A **Blocked card** answers only while the same dialog is on screen and the Agent still holds the terminal. If either changed, it sends nothing and says so.
 
 Typing from Chat does not change the terminal's size for anyone viewing it.
@@ -249,7 +249,7 @@ Codex on its shared background server offers no list, only `codex resume --no-da
 
 | Chat says | What it means |
 | --- | --- |
-| **Can't Tell the Conversation** | Claude Code names its conversation only once it reaches its prompt. Finish signing in or answer its question in the terminal, and Chat follows on the next status change. **Retry** checks at once |
+| **Can't Tell the Conversation** | Claude Code names its conversation only once it reaches its prompt. Finish signing in or answer its question in the terminal, and Chat follows on the next status change. **Check Again** checks at once |
 | **Can't Tell the Conversation**, on Codex | Codex shows its conversation with the first message, so send one in the terminal. Once a message follows `/new`, nothing says which conversation is on screen: exit Codex, run `codex resume --no-daemon` and pick the conversation |
 | **Can't Tell the Conversation**, on Grok Build | Grok Build lists its conversation while it runs. After `/new` it lists both, and Chat can't tell until you start Grok Build again |
 | **Can't Tell the Conversation**, on OpenCode | Heeler can name OpenCode's conversation by itself only when it starts OpenCode 2.1 or later, from New Agent. For a hand-started or older OpenCode, or a Template's, Chat offers [one edit](#let-chat-follow-opencode) that loads Heeler's plugin |
