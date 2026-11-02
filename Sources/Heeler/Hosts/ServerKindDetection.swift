@@ -23,7 +23,8 @@ struct ServerKindDetection: Equatable, Sendable {
     /// What the locator says of the typed session's core. Only `hello` can prove
     /// a core answers, so a socket file is all it can report of a running one.
     enum CoreFinding: Equatable, Sendable {
-        /// hc refuses the session's name, so the locator did not run.
+        /// hc refuses the session's name, or a native Windows Host cannot carry it, so
+        /// the locator did not run.
         case sessionRefused(reason: String)
         case notInstalled
         case notRunning(version: String, socketPath: String)
@@ -113,9 +114,9 @@ struct ServerKindDetection: Equatable, Sendable {
     }
 
     /// What the user may confirm. A target running nothing yet offers every kind:
-    /// the user may be about to install one, and its preflight says how. A session
-    /// name hc refuses keeps herdr-core on offer, since only the name stands in its
-    /// way and confirming says why.
+    /// the user may be about to install one, and its preflight says how. A refused
+    /// session name keeps herdr-core on offer, since only the name stands in its way
+    /// and confirming says why.
     var offeredKinds: [ServerKind] {
         if case .sessionRefused = herdrCore { return Self.offeredWithoutFindings }
         return foundKinds.isEmpty ? Self.offeredWithoutFindings : foundKinds

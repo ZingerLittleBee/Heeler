@@ -639,6 +639,22 @@ struct HostOnboardingStoreTests {
         #expect(store.confirmationRefusal == nil)
     }
 
+    /// Windows carries fewer names than hc, and the Host stays free to change kind.
+    @Test func confirmingHerdrCoreWithASessionNameWindowsRefusesSaysWhy() async throws {
+        let core = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .refused)
+        let (store, _, catalog) = try unconfirmedStore(core, session: "my work")
+        await store.runChecks()
+        #expect(store.offeredKinds == [.herdrTUI, .herdrCore])
+
+        await store.confirmServerKind(.herdrCore, in: catalog)
+
+        #expect(store.confirmationRefusal == HerdrCoreSessionName.windowsRefusal("my work"))
+        #expect(store.host.serverKind == .unconfirmed)
+        #expect(catalog.hosts.first?.serverKind == .unconfirmed)
+        #expect(await core.log == ["windows-detection", "close"])
+    }
+
     @Test func theConfirmationSaysWhatTheFindingsLeaveOpen() async throws {
         let absent = ScriptedCoreHost.locatorLines(executable: nil)
         let found = HostOnboardingStoreTests.sessionsJSON

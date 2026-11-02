@@ -452,10 +452,15 @@ final class HostOnboardingStore {
             : nil
     }
 
-    /// Confirms the Host's kind, once, then runs that kind's checks. A name the
-    /// kind's server refuses leaves the Host as it was and says why.
+    /// Confirms the Host's kind, once, then runs that kind's checks. A name refused
+    /// for that kind, by its server or by what this Host's platform can carry, leaves
+    /// the Host as it was and says why.
     func confirmServerKind(_ kind: ServerKind, in catalog: HostStore) async {
         guard phase != .running, offeredKinds.contains(kind) else { return }
+        if kind == .herdrCore, case .sessionRefused(let reason) = detection?.herdrCore {
+            confirmationRefusal = reason
+            return
+        }
         if kind == .herdrCore, case .socketPathTooLong(_, let path, let limit) = detection?.herdrCore {
             confirmationRefusal =
                 TransportError.herdrCoreSocketPathTooLong(path: path, limit: limit).presentation.message

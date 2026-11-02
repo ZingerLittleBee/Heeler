@@ -67,7 +67,7 @@ struct PreflightReport: Equatable, Sendable {
         switch error {
         case .hostFeatureUnavailable(let feature):
             check = .remoteEnvironment
-            hint = feature + "."
+            hint = feature.hasSuffix(".") ? feature : feature + "."
         case .sshUnreachable(let detail):
             check = .connection
             hint = "Could not reach the Host over SSH. Check the address and port. (\(detail))"
