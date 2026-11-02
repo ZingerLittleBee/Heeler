@@ -9,6 +9,9 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Browse Directories hides folders whose names start with a dot. Tap the eye
+  button beside Select to list them again; Heeler remembers the choice.
+  (#609)
 - New Agent opens on the Agent you started last, when the Host has it
   installed. (#608)
 - Chat shows the images Agents read or make as thumbnails under their rows;
