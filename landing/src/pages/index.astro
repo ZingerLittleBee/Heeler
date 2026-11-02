@@ -12,7 +12,7 @@ import StepFigure, { type FigureStep } from '../components/home/StepFigure.astro
 import WordReveal from '../components/home/WordReveal.astro';
 import AddSteps from '../components/home/AddSteps.astro';
 import CodeCard from '../components/home/CodeCard.astro';
-import { connect, consoleCopy, hero, pairLines, steerCopy } from '../components/home/content';
+import { connect, consoleCopy, faq, hero, links, pairLines, steerCopy } from '../components/home/content';
 import FaqList from '../components/home/FaqList.astro';
 import { figures } from '../components/home/figures';
 import HopPath from '../components/home/HopPath.astro';
@@ -28,7 +28,38 @@ import widgetsLockShot from '../assets/screens/widgets-lock-iphone.png';
 import widgetsShot from '../assets/screens/widgets-iphone.png';
 
 const description =
-  'Heeler is a native iOS companion for herdr: every coding agent on your machines in one status-sorted console, steered over plain SSH.';
+  'Monitor and steer Claude Code, Codex, and other herdr agents over SSH from your iPhone or iPad. Native terminals, Chat, code changes, and encrypted alerts.';
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${Astro.site}#website`,
+      name: 'Heeler',
+      url: Astro.site?.href,
+      inLanguage: 'en',
+    },
+    {
+      '@type': 'MobileApplication',
+      name: 'Heeler',
+      url: Astro.site?.href,
+      description,
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'iOS, iPadOS',
+      downloadUrl: links.appStore,
+      image: new URL('/logo.png', Astro.site).href,
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: faq.map(({ q, a }) => ({
+        '@type': 'Question',
+        name: q,
+        acceptedAnswer: { '@type': 'Answer', text: a },
+      })),
+    },
+  ],
+};
 
 const chapters = [
   { id: 'pair', label: 'Pair' },
@@ -173,7 +204,8 @@ const awaySteps: FigureStep[] = [
 ];
 ---
 
-<Layout title="Heeler — an agent console for herdr" description={description}>
+<Layout title="Heeler — SSH agent console for iPhone and iPad" description={description}>
+  <script is:inline slot="head" type="application/ld+json" set:html={JSON.stringify(structuredData).replace(/</g, '\\u003c')} />
   <section class="hero" id="top">
     <HeroWall />
     <div class="hero-fade" aria-hidden="true"></div>

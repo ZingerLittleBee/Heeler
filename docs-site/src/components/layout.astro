@@ -6,6 +6,7 @@ import '@/styles/global.css';
 interface Props {
   title: string;
   description: string;
+  isGuide?: boolean;
   /** For the 404 page: Workers also serves it with status 200 at /404, so keep it out of search engines. */
   noindex?: boolean;
 }
@@ -15,7 +16,7 @@ const path = Astro.url.pathname.replace(/(\/index)?\.html$/, '') || '/';
 const locale = localeFromPath(path);
 const lang = htmlLang(locale);
 const siteName = locale === 'zh' ? 'Heeler 文档' : 'Heeler Docs';
-const { title, description, noindex = false } = Astro.props;
+const { title, description, isGuide = false, noindex = false } = Astro.props;
 const fullTitle = title === siteName ? siteName : `${title} | ${siteName}`;
 const ogLocale = locale === 'zh' ? 'zh_CN' : 'en_US';
 const ogAlternateLocale = locale === 'zh' ? 'en_US' : 'zh_CN';
@@ -23,6 +24,38 @@ const canonical = new URL(path, Astro.site);
 const enUrl = new URL(localePath(path, 'en'), Astro.site);
 const zhUrl = new URL(localePath(path, 'zh'), Astro.site);
 const ogImage = new URL('/logo.png', Astro.site);
+const imageAlt = locale === 'zh' ? 'Heeler 应用图标' : 'Heeler app icon';
+const homeUrl = new URL(localePath('/', locale), Astro.site).href;
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${homeUrl}#website`,
+      name: siteName,
+      url: homeUrl,
+      inLanguage: lang,
+    },
+    ...(isGuide ? [
+      {
+        '@type': 'TechArticle',
+        headline: title,
+        description,
+        url: canonical.href,
+        mainEntityOfPage: canonical.href,
+        inLanguage: lang,
+        isPartOf: { '@id': `${homeUrl}#website` },
+      },
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: siteName, item: homeUrl },
+          { '@type': 'ListItem', position: 2, name: title, item: canonical.href },
+        ],
+      },
+    ] : []),
+  ],
+};
 ---
 
 <!doctype html>
@@ -44,10 +77,14 @@ const ogImage = new URL('/logo.png', Astro.site);
         </>
       )
     }
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/logo.png" />
+    <meta name="apple-itunes-app" content="app-id=6797263135" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <meta name="color-scheme" content="light dark" />
-    <meta property="og:type" content="article" />
+    <meta property="og:type" content={isGuide ? 'article' : 'website'} />
     <meta property="og:site_name" content={siteName} />
     <meta property="og:locale" content={ogLocale} />
     <meta property="og:locale:alternate" content={ogAlternateLocale} />
@@ -55,8 +92,16 @@ const ogImage = new URL('/logo.png', Astro.site);
     <meta property="og:description" content={description} />
     {!noindex && <meta property="og:url" content={canonical} />}
     <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1024" />
+    <meta property="og:image:height" content="1024" />
+    <meta property="og:image:alt" content={imageAlt} />
     <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content={imageAlt} />
     <meta name="generator" content={Astro.generator} />
+    {!noindex && <script type="application/ld+json" set:html={JSON.stringify(structuredData).replace(/</g, '\\u003c')} />}
     <ClientRouter />
     <script>
       // The theme script sets `dark`/`light` and color-scheme on <html>, but a

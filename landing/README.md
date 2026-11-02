@@ -17,7 +17,8 @@ npm install          # once
 npm run dev          # local dev server with hot reload
 npm run check        # astro check (typechecks .astro templates)
 npm run build        # static build into dist/
-npm run preview      # serve dist/ as Cloudflare will
+npm run check:seo    # check canonical URLs, sitemap, JSON-LD, and linked assets
+npm run preview      # Astro preview; use wrangler dev for Workers routing/headers
 npm run deploy       # wrangler deploy (needs Cloudflare credentials)
 ```
 
@@ -97,6 +98,30 @@ reading line. A new figure needs a hook whose beats match its steps.
 Each card fills its iframe, and `src/components/home/figures.ts` sizes the frame
 from the figure's viewBox ratio and card padding, wide and below 560px. A figure
 whose drawing or padding changes needs its numbers there updated too.
+
+## Search and sharing
+
+`@astrojs/sitemap` emits `sitemap-index.xml` and `sitemap-0.xml`, linked from
+`robots.txt` and the layout. Only `/` and `/ipad` are indexable; the 404 page
+and embedded figures are `noindex`. Canonical URLs match Workers' clean paths.
+The homepage's JSON-LD uses the same FAQ answers as its visible content, with
+no invented ratings, price, company identity, or macOS app support.
+
+Sharing still uses the existing 1024-square logo and Twitter's `summary` card.
+A designed 1200×630 card remains a separate asset task; only switch to
+`summary_large_image` when that asset exists, and update its dimensions and alt.
+
+Browser icons are resized from `public/logo.png`: PNG at 48 (`favicon`), 180
+(`apple-touch-icon`), 192 and 512 (`icon-192`, `icon-512`) pixels, plus an ICO
+with 16/32/48-pixel frames. Recreate them with ImageMagick `magick logo.png
+-resize NxN output.png` and `magick logo.png -define icon:auto-resize=48,32,16
+favicon.ico`, then copy them to `docs-site/public/`. The manifest uses browser
+display mode, not an offline/PWA promise.
+
+`public/_headers` caches only fingerprinted `/_astro/*` assets immutably.
+Use `npx wrangler dev --local` to verify headers and clean-URL routing without
+deploying. Managed robots rules, HTTP-to-HTTPS redirects, and the platform's
+307 HTML normalization are hosting policy, not controlled by the page metadata.
 
 ## Deployment
 
