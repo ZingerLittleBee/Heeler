@@ -32,6 +32,10 @@ final class HostHelperStore {
     @ObservationIgnored private var editsLeft: String?
     /// Why the reading offers an install it cannot list.
     @ObservationIgnored private var planFailure: String?
+    /// How many actions have finished their work. A read begun under an older
+    /// count may hold the Host as it was before that action, whose own read back
+    /// has the last word.
+    @ObservationIgnored private var actionsDone = 0
     /// An action has run and the Host has been read back: what else follows the
     /// Helper should look again.
     @ObservationIgnored var onChanged: (@MainActor () -> Void)?
@@ -132,12 +136,13 @@ final class HostHelperStore {
     /// Checks the Host over a connection of its own.
     func refresh() async {
         if running == nil { failure = nil }
+        let began = actionsDone
         do {
             let transport = try await connect()
-            await read(over: transport)
+            await read(over: transport, began: began)
             try? await transport.close()
         } catch {
-            if !Task.isCancelled { forgetReading(.unavailable(message: Self.message(for: error))) }
+            if answers(began) { forgetReading(.unavailable(message: Self.message(for: error))) }
         }
     }
 
@@ -188,13 +193,19 @@ final class HostHelperStore {
         }
     }
 
-    private func read(over transport: any HerdrCoreTransport) async {
+    private func read(over transport: any HerdrCoreTransport, began: Int? = nil) async {
+        let began = began ?? actionsDone
         do {
             let read = try await installer(transport).check()
-            if !Task.isCancelled { adopt(read) }
+            if answers(began) { adopt(read) }
         } catch {
-            if !Task.isCancelled { forgetReading(.unavailable(message: Self.message(for: error))) }
+            if answers(began) { forgetReading(.unavailable(message: Self.message(for: error))) }
         }
+    }
+
+    /// Whether a read that began at this count may still say how the Host is.
+    private func answers(_ began: Int) -> Bool {
+        !Task.isCancelled && began == actionsDone
     }
 
     private func adopt(_ read: HostHelperReading) {
@@ -242,6 +253,7 @@ final class HostHelperStore {
         } catch {
             failure = Self.message(for: error)
         }
+        actionsDone += 1
         await read(over: transport)
         try? await transport.close()
         onChanged?()

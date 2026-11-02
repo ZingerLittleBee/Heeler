@@ -679,6 +679,39 @@ struct HostHelperStoreMacOSTests {
         #expect(store.failure?.contains("more than one cause") == true)
     }
 
+    /// A check that began before the removal holds a probe of a Helper that has
+    /// gone. The removal's own read back is what the Host now says, however that
+    /// check ends.
+    @Test(arguments: [false, true])
+    func aCheckBegunBeforeARemovalDoesNotOverwriteItsReadBack(checkFails: Bool) async throws {
+        let helper = await ScriptedHelperHost.macOS()
+        let plain = store(helper)
+        await plain.refresh()
+        await plain.install()
+
+        let gate = AsyncStream<Void>.makeStream()
+        let started = AsyncStream<Void>.makeStream()
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let bundle = bundle
+        let store = HostHelperStore(
+            connect: { core.transport() }, bundle: { bundle },
+            healthGap: {
+                started.continuation.yield()
+                for await _ in gate.stream { break }
+                if checkFails { throw ScriptedHelperHost.Failure() }
+            })
+        let check = Task { await store.refresh() }
+        for await _ in started.stream { break }
+
+        await store.remove()
+        #expect(store.status == .notInstalled)
+
+        gate.continuation.yield()
+        await check.value
+        #expect(store.status == .notInstalled)
+        #expect(store.installAction == .install)
+    }
+
     @Test func aHostStillReadsAsCheckingUntilTheSecondRead() async throws {
         let helper = await ScriptedHelperHost.macOS()
         let plain = store(helper)
