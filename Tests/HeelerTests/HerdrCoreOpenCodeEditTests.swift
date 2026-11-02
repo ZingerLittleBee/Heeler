@@ -235,6 +235,18 @@ struct HerdrCoreOpenCodeEditTests {
         #expect(change.createsFile)
     }
 
+    /// An upgrade while the Console stays connected: under the old release's key the
+    /// entry would do nothing, and look as if it did.
+    @Test func anUpgradeSinceTheLastLookMovesTheFile() async throws {
+        let (store, transport, host) = try await started(version: "1.19.5")
+        defer { store.setHosts([]) }
+        #expect(try await reviewed(flow(store, host)).path == Self.tuiConfig)
+
+        await transport.setDiscovery(programs: ["opencode"], openCodeVersion: "opencode v2.2.5")
+
+        #expect(try await reviewed(flow(store, host)).path == Self.cliConfig)
+    }
+
     @Test func aJsoncFileThatExistsIsTheOneEdited() async throws {
         let files = InMemoryHostFiles(files: [Self.tuiConfigC: Data("{ // mine\n}\n".utf8)])
         let (store, _, host) = try await started(files: files)
@@ -316,6 +328,10 @@ struct HerdrCoreOpenCodeEditTests {
             #"Add "./heeler-opencode" to plugin in tui.jsonc, with a copy of Heeler's plugin in a folder of that name beside the file."#
         ),
         (
+            "1.19.5", "/home/dev/.config/opencode/tui.json", #"{"tui": {"plugin": ["a"]}}"#,
+            #"Add "./heeler-opencode" to plugin inside tui in tui.json, not at the top of the file, where a list would replace the one inside tui, with a copy of Heeler's plugin in a folder of that name beside the file."#
+        ),
+        (
             "opencode v2.2.5", "/home/dev/.config/opencode/cli.json", #"{"plugins": "a"}"#,
             #"Add "./heeler-opencode" to plugins in cli.json, with a copy of Heeler's plugin in a folder of that name beside the file."#
         ),
@@ -352,6 +368,202 @@ struct HerdrCoreOpenCodeEditTests {
 
         let shown = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: instruction)
         #expect(shown.contains { $0.contains(instruction) }, "\(shown)")
+    }
+
+    // MARK: What it can't do on a release
+
+    private static let olderReleaseLimit =
+        "OpenCode 1.x keeps conversations in a format Chat doesn't read, so Chat can name this conversation but can't show it. Chat shows conversations from OpenCode 2.x."
+
+    /// Whoever agrees to the edit on 1.x hears that first, and isn't promised otherwise after.
+    @Test func onOpenCode1xTheSheetSaysChatStillWontShowTheConversation() async throws {
+        let files = InMemoryHostFiles(files: [Self.tuiConfig: Self.original])
+        let (store, _, host) = try await started(version: "1.19.5", files: files)
+        defer { store.setHosts([]) }
+        let flow = flow(store, host)
+        await flow.locate()
+
+        let offered = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: Self.olderReleaseLimit)
+        #expect(offered.contains { $0.contains(Self.olderReleaseLimit) }, "\(offered)")
+
+        _ = try await reviewed(flow)
+        let reviewing = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: Self.olderReleaseLimit)
+        #expect(reviewing.contains { $0.contains(Self.olderReleaseLimit) }, "\(reviewing)")
+
+        await flow.accept()
+        let done = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: "Start OpenCode again")
+        #expect(done.contains { $0.contains(Self.olderReleaseLimit) }, "\(done)")
+        #expect(!done.contains { $0.contains("Chat then follows its conversation") }, "\(done)")
+    }
+
+    @Test func onOpenCode2xTheSheetPromisesTheConversation() async throws {
+        let (store, _, host) = try await started(version: "2.2.5")
+        defer { store.setHosts([]) }
+        let flow = flow(store, host)
+        _ = try await reviewed(flow)
+        await flow.accept()
+
+        let done = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: "Start OpenCode again")
+
+        #expect(done.contains { $0.contains("Chat then follows its conversation") }, "\(done)")
+        #expect(!done.contains { $0.contains(Self.olderReleaseLimit) }, "\(done)")
+    }
+
+    /// Chat doesn't know the release here, so it says what holds on every one.
+    @Test func theUnavailableTextSaysWhichConversationsChatShows() {
+        let text = ChatUnavailableReason.cannotTellSession(.opencode).explanation
+        #expect(text.contains("Heeler's plugin"), "\(text)")
+        #expect(text.contains("Chat shows conversations from OpenCode 2.x."), "\(text)")
+    }
+
+    // MARK: Two files, one folder
+
+    private static let edited = Data("{\n  \"plugin\": [\"./heeler-opencode\"],\n  \"theme\": \"dark\"\n}\n".utf8)
+
+    /// The same edit of `tui.jsonc`, and of `tui.json` once that exists: two records
+    /// of the one folder.
+    private func appliedToBothFiles() async throws -> (ConsoleStore, InMemoryHostFiles, Host) {
+        let files = InMemoryHostFiles(files: [Self.tuiConfigC: Self.original])
+        let (store, _, host) = try await started(files: files)
+        let first = flow(store, host)
+        _ = try await reviewed(first)
+        await first.accept()
+        await files.set(Self.tuiConfig, Self.original)
+        let second = flow(store, host)
+        _ = try await reviewed(second)
+        await second.accept()
+        #expect(store.harnessEdits.edits(on: host.id).map(\.path) == [Self.tuiConfigC, Self.tuiConfig])
+        return (store, files, host)
+    }
+
+    private func listed(
+        _ store: ConsoleStore, _ host: Host, path: String
+    ) throws -> HarnessConfigEditFlow {
+        store.harnessEditFlow(
+            for: try #require(store.harnessEdits.edit(OpenCodePluginEdit.id, path: path, on: host.id)), on: host.id)
+    }
+
+    /// A file that still names the folder keeps it, whichever goes first.
+    @Test(arguments: [
+        ("/home/dev/.config/opencode/tui.jsonc", "/home/dev/.config/opencode/tui.json"),
+        ("/home/dev/.config/opencode/tui.json", "/home/dev/.config/opencode/tui.jsonc"),
+    ])
+    func undoingOneOfTwoFilesKeepsTheFolderForTheOther(_ first: String, _ second: String) async throws {
+        let (store, files, host) = try await appliedToBothFiles()
+        defer { store.setHosts([]) }
+
+        try await listed(store, host, path: first).undo()
+
+        #expect(await files.files[first] == Self.original)
+        #expect(await files.files[second] == Self.edited)
+        #expect(await files.folders.contains(Self.folder))
+        #expect(await files.files["\(Self.folder)/tui.js"] == Data("// tui.js\n".utf8))
+        #expect(store.harnessEdits.edits(on: host.id).map(\.path) == [second])
+
+        try await listed(store, host, path: second).undo()
+
+        #expect(await files.files == [first: Self.original, second: Self.original])
+        #expect(await files.folders.isEmpty)
+        #expect(store.harnessEdits.edits(on: host.id).isEmpty)
+    }
+
+    @Test func removingTheHelperUndoesBothFilesAndThenTheFolder() async throws {
+        let (store, files, host) = try await appliedToBothFiles()
+        defer { store.setHosts([]) }
+
+        let left = try await store.harnessEdits.undoEditsGoingWithTheHelper(on: host.id, over: files)
+
+        #expect(left == nil)
+        #expect(await files.files == [Self.tuiConfig: Self.original, Self.tuiConfigC: Self.original])
+        #expect(await files.folders.isEmpty)
+    }
+
+    /// The file that refused still names the folder, and stays listed with its Undo.
+    @Test func aFileThatRefusesKeepsTheFolderThroughTheHelpersRemoval() async throws {
+        let (store, files, host) = try await appliedToBothFiles()
+        defer { store.setHosts([]) }
+        let broken = Data("broken {".utf8)
+        await files.set(Self.tuiConfigC, broken)
+
+        let left = try await store.harnessEdits.undoEditsGoingWithTheHelper(on: host.id, over: files)
+
+        #expect(left?.contains(Self.tuiConfigC) == true)
+        #expect(await files.files[Self.tuiConfigC] == broken)
+        #expect(await files.files[Self.tuiConfig] == Self.original)
+        #expect(await files.folders.contains(Self.folder))
+        #expect(store.harnessEdits.edits(on: host.id).map(\.path) == [Self.tuiConfigC])
+    }
+
+    /// Taking a folder back is only for one nothing else names.
+    @Test func aSecondFileThatChangedTakesNothingFromTheFirst() async throws {
+        let files = InMemoryHostFiles(files: [Self.tuiConfigC: Self.original])
+        let (store, _, host) = try await started(files: files)
+        defer { store.setHosts([]) }
+        let first = flow(store, host)
+        _ = try await reviewed(first)
+        await first.accept()
+        await files.set(Self.tuiConfig, Self.original)
+        let second = flow(store, host)
+        _ = try await reviewed(second)
+        let changed = Data("{ \"theme\": \"light\" }\n".utf8)
+        await files.onReplace(of: Self.tuiConfig) { await $0.set(Self.tuiConfig, changed) }
+
+        await second.accept()
+
+        #expect(second.phase == .failed(HarnessConfigEditError.changedSinceRead.errorDescription ?? ""))
+        #expect(await files.files[Self.tuiConfigC] == Self.edited)
+        #expect(await files.folders.contains(Self.folder))
+        #expect(await files.files["\(Self.folder)/tui.js"] == Data("// tui.js\n".utf8))
+    }
+
+    // MARK: A folder file that changes under an undo
+
+    /// The entry has gone by then, so "nothing was written" would be false, and
+    /// undoing again is what finishes it.
+    @Test func aFolderFileChangedDuringUndoSaysSoAndUndoingAgainFinishes() async throws {
+        let files = InMemoryHostFiles(files: [Self.tuiConfig: Self.original])
+        let (store, _, host) = try await started(files: files)
+        defer { store.setHosts([]) }
+        let flow = flow(store, host)
+        _ = try await reviewed(flow)
+        await flow.accept()
+        let plugin = "\(Self.folder)/index.js"
+        await files.onReplace(of: plugin) { await $0.set(plugin, Data("changed".utf8)) }
+
+        await flow.undo()
+
+        #expect(
+            flow.phase == .failed(
+                "Heeler took its change out of the file, but a file in its folder changed while Heeler was removing it, so the folder stays. Undo again to finish."))
+        #expect(!flow.canForget)
+        #expect(await files.files[Self.tuiConfig] == Self.original)
+        #expect(flow.applied != nil)
+
+        flow.cancel()
+        await flow.undo()
+
+        #expect(flow.applied == nil)
+        #expect(await files.files == [Self.tuiConfig: Self.original])
+        #expect(await files.folders.isEmpty)
+    }
+
+    /// ADR 0033: a refusing file doesn't keep the Helper, and this one is told as words.
+    @Test func aFolderFileChangedDuringTheHelpersRemovalDoesNotStopIt() async throws {
+        let files = InMemoryHostFiles(files: [Self.tuiConfig: Self.original])
+        let (store, _, host) = try await started(files: files)
+        defer { store.setHosts([]) }
+        let flow = flow(store, host)
+        _ = try await reviewed(flow)
+        await flow.accept()
+        let plugin = "\(Self.folder)/index.js"
+        await files.onReplace(of: plugin) { await $0.set(plugin, Data("changed".utf8)) }
+
+        let left = try await store.harnessEdits.undoEditsGoingWithTheHelper(on: host.id, over: files)
+
+        #expect(
+            left
+                == "The Host Helper is gone. Heeler took its change out of the file, but a file in its folder changed while Heeler was removing it, so the folder stays. Undo again to finish.")
+        #expect(store.harnessEdits.edits(on: host.id).count == 1)
     }
 
     // MARK: A detail keeps to its own core

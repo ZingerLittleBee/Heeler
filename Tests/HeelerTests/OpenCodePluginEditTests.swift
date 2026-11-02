@@ -537,6 +537,21 @@ import Testing
         #expect(await files.folders.isEmpty)
     }
 
+    /// The entry comes out first, so a refusal in the folder can't say nothing was written.
+    @Test func aFolderFileChangedDuringUndoIsItsOwnRefusal() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let record = try await applied(files)
+        let plugin = Self.pluginPaths[1]
+        await files.onReplace(of: plugin) { await $0.set(plugin, Data("changed".utf8)) }
+
+        await #expect(throws: HarnessConfigEditError.folderChangedDuringUndo) {
+            try await HarnessConfigEditor(files: files).undo(record)
+        }
+
+        #expect(await files.files[Self.config] == Self.original)
+        #expect(await files.folders.contains(Self.folder))
+    }
+
     /// A record from before folders existed, as this device may hold for Grok Build.
     @Test func anOlderRecordStillDecodesAndUndoesAsItDid() async throws {
         let older = #"""
