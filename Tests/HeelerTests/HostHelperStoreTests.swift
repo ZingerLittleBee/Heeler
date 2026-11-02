@@ -534,9 +534,10 @@ struct HostHelperOnboardingTests {
     }
 
     private func waitUntilFinished(_ store: HostOnboardingStore) async throws {
-        let deadline = ContinuousClock.now + .seconds(5)
-        while store.phase != .finished, ContinuousClock.now < deadline {
+        var budget = PollBudget(.seconds(5))
+        while store.phase != .finished, budget.hasTimeLeft {
             try await Task.sleep(for: .milliseconds(5))
+            budget.charge()
         }
         #expect(store.phase == .finished)
     }
@@ -599,6 +600,7 @@ struct HostHelperOnboardingTests {
         await installing.refresh()
         await installing.install()
         let gaps = OSAllocatedUnfairLock(initialState: 0)
+        let cancelled = AsyncStream<Void>.makeStream()
         let store = HostOnboardingStore(
             host: Host(address: "box.example", username: "dev", serverKind: .herdrCore, sessionName: "work"),
             connector: reaching(core),
@@ -609,8 +611,11 @@ struct HostHelperOnboardingTests {
                     gaps += 1
                     return gaps
                 }
-                // The first run's wait ends only by being cancelled.
-                if gap == 1 { try await Task.sleep(for: .seconds(600)) }
+                // Nothing yields, so the first run's wait ends only by being cancelled.
+                if gap == 1 {
+                    for await _ in cancelled.stream {}
+                    throw CancellationError()
+                }
             })
         let closes = await core.log.filter { $0 == "close" }.count
 
