@@ -44,6 +44,9 @@ extension HostProcessReader {
             "$names=\(list(request.namesOf))",
             "$pre='\(prefixPattern(request.namesWithPrefix))'",
             windowsBody,
+            // The command line's budget goes further without a walk nobody asked for.
+            request.descendantsOf == nil ? "" : windowsWalk,
+            "say ''",
             "say '\(endMarker(nonce))'",
             "exit 0",
         ]
@@ -104,10 +107,8 @@ extension HostProcessReader {
         '@
         """
 
-    /// A process's start is 0 when it cannot be read, so it prints `-`. A child older
-    /// than its parent is under a pid that was reused, so it is not one. Past the cap
-    /// only the root's own line prints, as on POSIX. Open files and argv always read
-    /// as unavailable, and the parser takes an answer nobody asked for.
+    /// A process's start is 0 when it cannot be read, so it prints `-`. Open files and
+    /// argv always read as unavailable, and the parser takes an answer nobody asked for.
     private static let windowsBody = """
         function hexOf($v){-join([Text.Encoding]::UTF8.GetBytes($v)|%{$_.ToString('x2')})}
         function startOf($p){try{[Diagnostics.Process]::GetProcessById($p).StartTime.ToFileTimeUtc()}catch{0}}
@@ -128,10 +129,15 @@ extension HostProcessReader {
         }
         say "O $p -";say "B $p -"
         }
-        function imageOf($c){if($c.Name -cmatch '^[A-Za-z0-9._-]+$'){$c.Name}else{'-'}}
         say ''
         say '\(windowsBeginPlaceholder)'
         foreach($p in $ids){readOne $p}
+        """
+
+    /// A child older than its parent is under a pid that was reused, so it is not one.
+    /// Past the cap only the root's own line prints, as on POSIX.
+    private static let windowsWalk = """
+        function imageOf($c){if($c.Name -cmatch '^[A-Za-z0-9._-]+$'){$c.Name}else{'-'}}
         if($root){
         $all=@{};$kids=@{}
         foreach($c in gcim Win32_Process -Property ProcessId,ParentProcessId,Name){
@@ -153,6 +159,5 @@ extension HostProcessReader {
         foreach($y in $tail){readOne $y}
         }
         }
-        say ''
         """
 }

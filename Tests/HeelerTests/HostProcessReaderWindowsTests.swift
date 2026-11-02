@@ -27,9 +27,9 @@ struct HostProcessReaderWindowsTests {
     func fitsTheCommandLine() throws {
         let command = try HostProcessReader.windowsCommand(Self.binderRequest, nonce: Self.nonce)
         #expect(command.utf8.count <= HostProcessReader.windowsCommandLimit)
+        let pids = (1...HostProcessReader.processCap).map { String(4_000_000_000 + $0) }
         let tooMany = HostProcessReader.Request(
-            pids: (1...HostProcessReader.processCap).map { String(4_000_000_000 + $0) }, readsStart: true,
-            valuesOf: Self.binderRequest.valuesOf)
+            pids: pids, readsStart: true, valuesOf: Self.binderRequest.valuesOf, descendantsOf: pids[0])
         #expect(throws: HostProcessReader.Refusal.self) {
             _ = try HostProcessReader.windowsCommand(tooMany, nonce: Self.nonce)
         }
@@ -75,6 +75,7 @@ struct HostProcessReaderWindowsTests {
     func noWalkNoList() throws {
         let script = try decoded(.init(pids: ["7868"], readsStart: true))
         #expect(script.split(separator: "\n").map(String.init).contains("$root=0"))
+        #expect(!script.contains("gcim"))
     }
 
     @Test("A process's memory and times are opened for reading only")

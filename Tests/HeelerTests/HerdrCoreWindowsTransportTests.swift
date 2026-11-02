@@ -333,7 +333,7 @@ struct HerdrCoreWindowsTransportTests {
         #expect(await host.connectCommands.count == 1)
         let log = await host.log
         #expect(log.filter { $0 == "windows-probe" }.count >= 3)
-        #expect(log.allSatisfy { ["windows-probe", "connect", "close"].contains($0) })
+        #expect(log.allSatisfy { ["windows-probe", "windows-process-read", "connect", "close"].contains($0) })
     }
 
     // MARK: Not installed and update required
