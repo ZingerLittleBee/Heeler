@@ -208,6 +208,29 @@ struct ComposerStagingStoreTests {
         #expect(!fixture.preparedFileExists(for: medium))
     }
 
+    /// A Herdr TUI upload says what it always has about a transport failure. Only a
+    /// core Host's Composer speaks in the transport's words.
+    @Test(arguments: StagingTestMedium.allCases)
+    func aTransportFailureOfAHerdrTUIUploadStaysAPreparationFailure(
+        _ medium: StagingTestMedium
+    ) async throws {
+        let stageGate = ScriptedTransportCallGate()
+        await stageGate.open()
+        let fixture = try await makeFixture(
+            medium,
+            gates: stageGates(stageGate, for: medium),
+            hostFailure: TransportError.timedOut)
+        defer { fixture.cleanup() }
+
+        fixture.begin(medium)
+        try await waitUntil("the failure should surface") {
+            fixture.store.state.isFailed
+        }
+
+        #expect(fixture.store.state.failure?.message == "\(medium.displayName) preparation failed.")
+        #expect(fixture.store.state.failure?.isRetryable == false)
+    }
+
     @Test(arguments: StagingTestMedium.allCases)
     func unavailableHostFeatureDiscardsPreparationAndCannotRetry(
         _ medium: StagingTestMedium

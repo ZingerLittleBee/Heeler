@@ -271,6 +271,27 @@ struct HerdrCoreWindowsStagingTests {
         await fixture.finish()
     }
 
+    /// A core's own failure says what it is and whether Retry can help. A Herdr TUI
+    /// upload keeps its own words (`ComposerStagingStoreTests`).
+    @Test func aFailureOfTheTransportSpeaksInItsOwnWords() async throws {
+        let fixture = try await Fixture()
+        let session = try fixture.session
+        try await Self.until("the Host's core") { fixture.console.hostStatuses[fixture.host.id] == .connected }
+        await fixture.scripted.setWindowsLocator(
+            ScriptedCoreHost.windowsLocatorLines(lock: ScriptedCoreHost.windowsPipe, pipe: false))
+        let url = try Self.temporaryFile(contents: Data("notes".utf8))
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try #require(session.staging.begin(.file(url)) != nil)
+        try await Self.until("the failure") { Self.failure(session.staging) != nil }
+
+        let refusal = TransportError.herdrCoreNotRunning(
+            socketPath: ScriptedCoreHost.windowsPipe, socketFilePresent: false)
+        #expect(Self.failure(session.staging)?.message == refusal.presentation.message)
+        #expect(Self.failure(session.staging)?.isRetryable == refusal.isRetryable)
+        await fixture.finish()
+    }
+
     @Test func aReplyCountingOtherBytesIsNoSuccess() async throws {
         let fixture = try await Fixture()
         let session = try fixture.session

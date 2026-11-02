@@ -23,12 +23,13 @@ final class AgentComposerSession {
         composer: AgentComposerStore,
         stageImage: @escaping ImageStager,
         stageFile: @escaping FileStager,
-        corePin: TerminalCorePin = TerminalCorePin()
+        corePin: TerminalCorePin = TerminalCorePin(),
+        isOnCoreHost: Bool = false
     ) {
         self.composer = composer
         self.corePin = corePin
         staging = ComposerStagingStore(
-            stageImage: stageImage, stageFile: stageFile, composer: composer)
+            stageImage: stageImage, stageFile: stageFile, composer: composer, saysTransportFailures: isOnCoreHost)
         composer.bindStaging(staging)
     }
 

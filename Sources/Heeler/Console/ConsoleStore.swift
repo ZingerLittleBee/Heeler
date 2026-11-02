@@ -798,7 +798,8 @@ final class ConsoleStore {
             composer: composer,
             stageImage: imageStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
             stageFile: fileStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
-            corePin: corePin)
+            corePin: corePin,
+            isOnCoreHost: coreSend != nil)
         composerSessions[agent.id] = session
         requestHostPlatforms(Array(projections.values))
         return session
