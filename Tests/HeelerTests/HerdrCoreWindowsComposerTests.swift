@@ -311,8 +311,9 @@ struct HerdrCoreWindowsComposerTests {
         await fixture.finish()
     }
 
-    /// Windows PowerShell 5.1 dropped such a paste on one 0x03 (herdr compatibility).
-    @Test func powerShellBackInTheForegroundGetsOneCtrlCAndTheTextIsGone() async throws {
+    /// Windows PowerShell 5.1 dropped such a paste on one 0x03, with one PSReadLine on
+    /// one machine (herdr compatibility), so the notice does not promise it elsewhere.
+    @Test func powerShellBackInTheForegroundGetsOneCtrlCAndTheTextMayRemain() async throws {
         let fixture = try await Fixture(terminal: Self.heelerFormClaude())
         let attached = try await fixture.live()
         let sending = await fixture.sendPastingHello(on: attached)
@@ -322,7 +323,7 @@ struct HerdrCoreWindowsComposerTests {
             with: Self.record(foreground: Self.foreground(argv: [Self.powerShell]), app: "claude-code"))
 
         let reason = Self.notSubmitted(await sending.value)
-        #expect(reason?.contains("no longer in the terminal") == true)
+        #expect(reason?.contains("may still be in the terminal") == true)
         #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.ctrlC])
         #expect(fixture.composer.draft == "hello")
         await fixture.finish()

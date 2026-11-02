@@ -471,10 +471,11 @@ agent discovery and launch, and its `terminal.put` through sshd.
 22. Bring an Agent to a question and Send: the text lands in its input unsubmitted.
     The tools keyboard submits it.
 23. Windows PowerShell 5.1 dropped a pending paste on one Ctrl+C in the runs recorded
-    in `docs/agents/herdr-compatibility.md`, so Send says the text is **no longer in
-    the terminal**. If your PowerShell or PSReadLine version keeps it, or PowerShell 7
-    is installed and acts otherwise, record the versions there, and ADR 0035 needs your
-    decision before Send ships on Windows.
+    in `docs/agents/herdr-compatibility.md`, on one machine with one PSReadLine, so Send
+    says the text **may still be in the terminal**. Record what your PowerShell and
+    PSReadLine versions do there. If they drop it too, Send can say it is gone once you
+    decide that in ADR 0035. If they keep it, ADR 0035 needs your decision before Send
+    ships on Windows.
 
 These steps are for Chat ([#590](https://github.com/ZingerLittleBee/Heeler/issues/590)).
 No lane runs them either. Nothing of the Windows process read has run on a Windows

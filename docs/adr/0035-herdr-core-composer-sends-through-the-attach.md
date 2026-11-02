@@ -201,8 +201,9 @@ confirm or refine these points with test clients, not the app.
   decision if that wrapper must have Send.
 - Ctrl+C on Windows still goes out when a read shows a plain PowerShell in the
   foreground, though the records have not shown that happen under Heeler's form.
-  `powershell` says the text is gone on the strength of the observation below (5.1,
-  PSReadLine 2.0.0, one machine), and `pwsh` says it may remain, since nobody tried it.
+  It says the text may remain under `powershell` too: the observation below is one
+  machine's (5.1, PSReadLine 2.0.0), and a wrong "gone" would leave text at the prompt.
+  `pwsh` says the same, since nobody tried it.
 - Stop on Windows reads the Terminal's state as well as its foreground, which stays
   the same to the end: a finished record takes the Agent off the list. Under `-NoExit`
   a Working status can outlast the Agent, so Stop's key can reach the prompt, where Esc
