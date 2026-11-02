@@ -292,6 +292,7 @@ struct HerdrCoreChatTests {
         try await rig.start(kernel: "Darwin")
 
         let agent = try #require(rig.agent)
+        #expect(agent.agent.kind == ChatProgram(rawValue: agent.agent.kind)?.rawValue)
         #expect((rig.store.chatProgram(for: agent) != nil) == opens)
         rig.store.setHosts([])
     }
