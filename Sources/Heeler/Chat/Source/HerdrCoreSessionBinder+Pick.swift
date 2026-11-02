@@ -47,9 +47,11 @@ extension HerdrCoreSessionBinder {
             return unconfirmed(evidence)
         }
         guard agent == String(hint.pid), let process = tree.facts[agent] else { return await dropped() }
-        // A session label from this very process is the program saying it moved.
+        // A session label from this very process, naming another conversation, is the
+        // program saying it moved. One naming the pick's own says nothing of the kind,
+        // where a macOS Host that does not bind this program leaves it standing (ADR 0034).
         if let session = labels[HerdrCoreSessionHint.sessionLabel].flatMap(HerdrCoreSessionHint.init(label:)),
-            session.pid == hint.pid, session.start == hint.start
+            session.pid == hint.pid, session.start == hint.start, session.session != hint.session
         {
             return await dropped()
         }

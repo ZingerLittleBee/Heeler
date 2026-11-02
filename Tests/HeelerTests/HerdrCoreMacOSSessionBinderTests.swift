@@ -493,9 +493,10 @@ struct HerdrCoreMacOSSessionBinderTests {
             session: "ccfe7187-4ea6-468d-9555-83c3827f9cd0", file: Self.piFile, pid: 2009, start: "Sun Nov  1 22:42:44 2026")
 
         let evidence = try await rig.binder(.pi, exact: []).check(
-            try rig.record(labels: ["heeler.chat": label, "heeler.session": ""]))
+            try rig.record(labels: ["heeler.chat": label]))
 
         #expect(evidence == .picked(sessionID: Self.piFile, transcriptRoot: "\(Self.lab)/pi085/agent/sessions"))
+        #expect(await rig.log.cleared.isEmpty)
     }
 
     /// A Codex left unconfirmed still gets only the reopen message on the daemon.
