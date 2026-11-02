@@ -299,7 +299,7 @@ struct HostHelperHealth: Sendable, Equatable {
             loadState: exitStatus == Self.launchctlNotLoadedStatus ? Self.launchdNotFound : (state == nil ? "unknown" : "loaded"),
             activeState: state ?? "inactive",
             result: result,
-            restarts: max(runs - 1, 0),
+            restarts: max(runs, 1) - 1,
             launchd: Launchd(pid: Int(fields["pid"] ?? "")))
     }
 

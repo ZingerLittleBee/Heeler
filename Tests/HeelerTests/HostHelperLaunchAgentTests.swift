@@ -101,6 +101,14 @@ struct LaunchctlPrintParserTests {
         #expect(recovered.isUp)
     }
 
+    /// The Host writes this text, so no number in it may trap.
+    @Test(arguments: ["-9223372036854775808", "-1", "0"])
+    func aRunCountBelowOneCountsNoRestarts(runs: String) {
+        let health = HostHelperHealth(
+            launchctlPrint: "\tstate = running\n\truns = \(runs)\n\tpid = 1", exitStatus: 0)
+        #expect(health.restarts == 0)
+    }
+
     @Test func anAgentTheDomainDoesNotHold() throws {
         let health = HostHelperHealth(
             launchctlPrint: try LaunchctlFixture.text("not-loaded"), exitStatus: 113)
