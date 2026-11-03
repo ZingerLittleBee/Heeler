@@ -134,6 +134,18 @@ struct HostHelperInstallTests {
         #expect(message == "Uploading the Host Helper failed: \(TransportError.timedOut.presentation.message)")
     }
 
+    /// The sheet's words when the SSH forward dropped mid-upload (hc-lab, 2026-11-03),
+    /// whose detail already ends its sentence.
+    @Test func aFailedUploadOverADroppedLinkEndsEachSentenceOnce() async throws {
+        let message = try await uploadFailureMessage(
+            TransportError.sshUnreachable(detail: "The SSH connection is no longer reusable."))
+        #expect(
+            message
+                == "Uploading the Host Helper failed: SSH unavailable: The SSH connection is no longer reusable. "
+                + "Check that the Host is awake and reachable, then verify its address and port.")
+        #expect(!message.contains(".."))
+    }
+
     @Test func aFailedUploadForAnotherReasonShowsNoTypeName() async throws {
         let message = try await uploadFailureMessage(ScriptedHelperHost.Failure())
         #expect(message == "Uploading the Host Helper failed.")
