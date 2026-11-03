@@ -347,6 +347,28 @@ struct HerdrCoreAgentsTests {
         #expect(shells(store) == ["t1"])
     }
 
+    /// Native Windows, step 19 (2026-11-03): the desktop app's `-NoExit` PowerShell
+    /// keeps its foreground after Claude Code 2.1.286's `/exit`, and only the title
+    /// goes back, to that PowerShell's own path. The Terminal is that shell again.
+    @Test func theDesktopNoExitAgentLeavesWhenItsTitleGoesBackToPowerShell() async throws {
+        let powerShell = #"C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe"#
+        let desktopForm = Self.foreground(
+            [powerShell, "-NoExit", "-Command", "& 'claude'"], name: "powershell.exe", pid: 61316)
+        let (store, transport) = try await started([
+            Self.record(
+                "t15", cwd: #"C:\Users\user\work\cc"#, argv: ["powershell.exe", "-NoExit", "-Command", "& 'claude'"],
+                foreground: desktopForm, pid: 61316, title: "✳ Claude Code")
+        ])
+        defer { store.setHosts([]) }
+        #expect(agent(store, "t15")?.agent.kind == "claude")
+
+        await transport.deliver(
+            Self.event(sequence: 2, type: "title", terminal: "t15", data: .object(["title": .string(powerShell)])))
+        try await waitUntil("the shell's title ends the Agent") { store.agents.isEmpty }
+        #expect(shells(store) == ["t15"])
+        #expect(store.terminals.first { $0.paneID == "t15" }?.isAgent == false)
+    }
+
     @Test func aTerminalBetweenLostAndRestartedHostsNoAgent() async throws {
         let (store, transport) = try await started([Self.claude("t1", keep: true)])
         defer { store.setHosts([]) }

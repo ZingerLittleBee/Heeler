@@ -218,8 +218,9 @@ confirm or refine these points with test clients, not the app.
   `pwsh` says the same, since nobody tried it.
 - Stop on Windows reads the Terminal's state as well as its foreground, which stays
   the same to the end: a finished record takes the Agent off the list. Under `-NoExit`
-  a Working status can outlast the Agent, so Stop's key can reach the prompt, where Esc
-  or Ctrl+C runs nothing.
+  a Working status can outlast the Agent until the title goes back to PowerShell's
+  own path, which takes the Agent off the list too (ADR 0032), so Stop's key can
+  reach the prompt in between, where Esc or Ctrl+C runs nothing.
 - An Agent's `CSI ?2004h` reaches the viewer through the pseudo console: on
   2026-11-03, on the owner's Windows machine with herdr-core 0.1.16, Claude Code
   2.1.286 and 2.1.316 each took a Send with no notice that the program was not

@@ -110,7 +110,7 @@ The server-side step of Pairing: the forced command appends the Device Key's pub
 _Avoid_: install key, authorization
 
 **Agent**:
-A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last.
+A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path.
 _Avoid_: bot, task, session
 
 **Staged Image**:

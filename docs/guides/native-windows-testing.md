@@ -504,11 +504,12 @@ the version under test.
     the agent exits, where New Agent's form ends with it. Then in Heeler tap Send with a
     draft that leaves a mark if PowerShell runs it, such as
     `New-Item -ItemType File heeler-step19.txt`: the notice says the terminal
-    **keeps a shell open**, nothing is written, and the draft stays. Exit that agent
-    and tap Send again: the same notice, and PowerShell runs nothing, so no file
-    appears. Heeler keeps that Terminal listed as an Agent after the agent exits,
-    titled with a `C:\WINDOWS\System32\…` path, and the first notice stays shown, so
-    judge the second Send by the screen and the missing file.
+    **keeps a shell open**, nothing is written, and the draft stays. Exit that agent:
+    its title goes back to the `C:\WINDOWS\System32\…\powershell.exe` path, and Heeler
+    moves the Terminal from Agents to the Terminals tab, with no Composer. PowerShell
+    runs nothing, so no file appears. The second run, with Claude Code 2.1.286, saw
+    Heeler keep it listed as the Agent under that title, its Send giving the same
+    notice.
 20. Start an agent by typing it in a PowerShell Terminal. It is not listed as an Agent,
     since the foreground stays PowerShell, so it has no Composer.
 21. Tap Stop during a working turn. The turn stops, and the Agent stays listed. Stop

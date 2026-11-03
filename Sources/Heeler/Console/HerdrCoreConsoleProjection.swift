@@ -358,6 +358,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             }
         case .title(let terminal, let title):
             update(terminal) { $0.title = title }
+            // A `-NoExit` PowerShell's title can end its Agent, as a foreground can.
+            noteTurns(of: terminal) { _, _ in }
         case .foreground(let terminal, let foreground):
             sessionEventCounts[terminal, default: 0] += 1
             foregroundChanges &+= 1

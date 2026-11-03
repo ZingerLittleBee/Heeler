@@ -3,7 +3,8 @@
 // while any program but a shell does and it has a Program Status whose `app` is
 // missing or unknown here. A known `app` counts only while it names the foreground:
 // nothing ties a report to a process, and the core keeps the report after its
-// program left.
+// program left. A `-NoExit` PowerShell, whose foreground never changes, is its shell
+// while the Terminal's title is that PowerShell's own path.
 //
 // plugin/test-vectors/herdr-core-agent-rule-v1.json holds this rule's cases for both
 // sides, so a change here changes that file and the app's rule in one commit.
@@ -296,6 +297,30 @@ function continuesAsShell(args) {
 
 const readLaunch = (args) => (continuesAsShell(args) ? SHELL_PROGRAM : read(args));
 
+/** `-NoExit` as PowerShell takes it: any case, `-`, `--` or `/`, and cut short as far as `-NoE`. */
+function isNoExitOption(argument) {
+  const option = argument.toLowerCase();
+  const prefix = ["--", "-", "/"].find((candidate) => option.startsWith(candidate));
+  if (prefix === undefined) return false;
+  const name = option.slice(prefix.length);
+  return [...name].length >= 3 && "noexit".startsWith(name);
+}
+
+/**
+ * A pseudo console's foreground stays the desktop app's `-NoExit` PowerShell after its
+ * program exits, so only the console's title shows the exit: it goes back to that
+ * PowerShell's own path, the title a console starts with (ADR 0032). That is also the
+ * title before a program first sets one, so a program that never does reads as the
+ * shell all along.
+ */
+function showsPowerShellPrompt(args, title) {
+  if (args.length === 0) return false;
+  const name = baseName(args[0]);
+  if ((name !== "powershell" && name !== "pwsh") || !args.slice(1).some(isNoExitOption)) return false;
+  const trimmed = title.trim();
+  return /[/\\]/.test(trimmed) && baseName(trimmed) === name;
+}
+
 /** The foreground, or without one what the Terminal launched. */
 function programOf(record) {
   const launch = strings(record.argv);
@@ -304,6 +329,7 @@ function programOf(record) {
   const args = strings(foreground.argv);
   const name = text(foreground.name);
   if (args.length === 0) return name === "" ? readLaunch(launch) : read([name]);
+  if (showsPowerShellPrompt(args, text(record.title))) return SHELL_PROGRAM;
   const program = read(args);
   // A process whose arguments say nothing known can still be known by its OS
   // name, as a native install running from a versioned path is.

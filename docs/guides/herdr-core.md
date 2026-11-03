@@ -70,7 +70,7 @@ A changed space, tab or label moves the rows within a moment, with no reconnect.
 
 ## Agents and status
 
-A Terminal is an Agent while its foreground program is a known coding program, or any program but a shell that reports a status. Everything else stays in the Terminals tab. Quitting a harness back to its shell ends the Agent, whatever it last reported. On Windows, a Terminal that keeps a shell open after its Agent exits, as one the Herdr desktop app started does, stays listed as that Agent until the shell exits.
+A Terminal is an Agent while its foreground program is a known coding program, or any program but a shell that reports a status. Everything else stays in the Terminals tab. Quitting a harness back to its shell ends the Agent, whatever it last reported. On Windows, a Terminal that keeps a shell open after its Agent exits, as one the Herdr desktop app started does, moves to the Terminals tab when its title goes back to PowerShell's own path, as it does when the Agent exits. An agent there that never sets its own title stays in the Terminals tab.
 
 | Status | What it means |
 | --- | --- |
@@ -127,7 +127,7 @@ If the Host does not answer a step, Send cannot tell what reached the program. T
 
 Send appears once the connection has told Heeler the Host's platform, a moment after the detail opens.
 
-On a Windows Host, an Agent Heeler started runs under Windows PowerShell, and when it exits its Terminal ends, so nothing stays behind to take Enter. A Terminal that keeps a shell open after its Agent exits, as one the Herdr desktop app started does, looks the same to Heeler before and after, so Send pastes nothing there.
+On a Windows Host, an Agent Heeler started runs under Windows PowerShell, and when it exits its Terminal ends, so nothing stays behind to take Enter. A Terminal that keeps a shell open after its Agent exits, as one the Herdr desktop app started does, shows the exit only in its title, which Heeler cannot check at the moment Enter arrives, so Send pastes nothing there.
 
 On the one Windows machine checked so far, Claude Code's bracketed paste reached Heeler through Windows' pseudo console. For a program whose paste does not, every Send there reads **not accepting a paste**, the draft stays, and sending again will not help.
 
@@ -141,7 +141,7 @@ Add appears once the connection has told Heeler the Host's platform, a moment af
 
 While an Agent is **Working** and the draft is empty, **Stop** takes Send's place. Heeler asks the core to press the Terminal's own stop key: the stop key of the Template the Terminal came from, else Esc. It then reads whether the program still runs, so an Agent that exits at the key leaves the list without waiting for the next update. Each tap presses once, and Heeler never presses again by itself.
 
-Stop shows only while the Agent holds the terminal, never for the shell it left behind. The exception is a Windows Terminal that keeps a shell open after its Agent exits: Heeler cannot see the Agent leave, so the key can reach that shell. A program that has not reported a status reads **Unknown** and has no Stop. Use the tools keyboard or Direct Input there.
+Stop shows only while the Agent holds the terminal, never for the shell it left behind. The exception is a Windows Terminal that keeps a shell open after its Agent exits: Heeler sees the Agent leave only when the title changes, so a key sent before then can reach that shell. A program that has not reported a status reads **Unknown** and has no Stop. Use the tools keyboard or Direct Input there.
 
 A Grok Build Agent's Composer keeps **Send** while it works, as on any other Host, because Esc does not stop its turns. Use the tools keyboard or Direct Input to press Ctrl+C.
 

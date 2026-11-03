@@ -233,15 +233,27 @@ with test clients, not the app.
   with 0 and its trust dialog's "No, exit" with 1, both reason `exited`, so a
   program's own code comes through when it exits normally. Under the
   desktop's `-NoExit` form an Agent's exit leaves the foreground's pid, name and
-  arguments unchanged and sends no new foreground event, so recognition from the foreground keeps
-  reading such a Terminal as that Agent until its shell exits, and "a shell in
-  the foreground ends the Agent" never fires. A read of PowerShell's children
-  showed the exit, and the attach stream later carried PowerShell's prompt; the
-  screen and the other event types were not compared as signals. Heeler's launch
-  does not use `-NoExit`, so this reaches only a Terminal the desktop app started.
-  No ticket adds a check: #590's read of PowerShell's children serves Chat's
-  binding only (ADR 0034), so that staleness stands, and Send refuses such a
-  Terminal (ADR 0035).
+  arguments unchanged and sends no new foreground event, so "a shell in the
+  foreground ends the Agent" never fires. A read of PowerShell's children
+  showed the exit, and the attach stream later carried PowerShell's prompt. The
+  Terminal's title shows it too: on 2026-11-03 Claude Code 2.1.286's `/exit`
+  under the desktop app 0.1.12 took the title from Claude Code's own back to
+  `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe`, the title a
+  console starts with ([observation](../agents/herdr-compatibility.md)). So a
+  `-NoExit` PowerShell in the foreground (`-NoExit` in any case, after `-`, `--`
+  or `/`, or cut short to `-NoE`) whose Terminal title is a path to that same
+  PowerShell reads as that shell, and the Terminal leaves the Agents for the
+  Terminals tab. The title is the program's to set, so this costs something:
+  before a program first sets one its Terminal reads as the shell, and one that
+  never does, or sets that path itself, never reads as its Agent there. Claude
+  Code titles itself as it starts; no other harness was run under this form. A
+  core restart empties titles (the Windows observations), and an empty title
+  keeps the foreground's reading. `cmd /k` was not run and has no title reading.
+  Heeler's launch does not use `-NoExit`, so this reaches only a Terminal the
+  desktop app started. #590's read of PowerShell's children still serves Chat's
+  binding only (ADR 0034), and Send still refuses such a Terminal while it is an
+  Agent (ADR 0035): a title read before the paste says nothing of the moment
+  Enter arrives.
 - The same `choice.exe` runs through `connect` over one SSH exec gave the same
   foreground and finishes, 2 under Heeler's form and the shell's `exit 5` under
   `-NoExit`. On that machine the exec refused a program on a path through fnm's
