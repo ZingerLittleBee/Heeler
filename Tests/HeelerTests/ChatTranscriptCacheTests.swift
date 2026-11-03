@@ -3,6 +3,13 @@ import Testing
 
 @testable import Heeler
 
+extension ChatTranscriptCache {
+    /// Saves entries without a Workspace structure, as most tests need.
+    func saveAgentDirectory(_ agents: [ChatCachedAgent], for host: Host) async {
+        await saveAgentDirectory(ChatAgentDirectory.Contents(agents: agents), for: host)
+    }
+}
+
 @Suite("Chat transcript cache")
 struct ChatTranscriptCacheTests {
     private static let hostA = UUID(uuidString: "6F1D5C2A-0000-4000-8000-00000000000A")!
@@ -277,7 +284,7 @@ struct ChatTranscriptCacheTests {
         await fixture.cache.saveAgentDirectory([cached], for: host)
 
         let reopened = FileChatTranscriptCache(root: fixture.root, knownHosts: fixture.knownHosts)
-        let entries = await reopened.loadAgentDirectory(for: host)
+        let entries = await reopened.loadAgentDirectory(for: host).agents
         #expect(entries == [cached])
         let restored = try #require(entries.first).consoleAgent(for: host)
         #expect(restored.id == ConsoleAgent.ID(hostID: host.id, paneID: "pane-1"))
@@ -295,6 +302,30 @@ struct ChatTranscriptCacheTests {
         #expect(restored.tabPosition == 2)
     }
 
+    @Test func agentDirectoryKeepsItsWorkspaceStructureAndReadsOneSavedWithout() async throws {
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        let host = Host(id: Self.hostA, address: "host.example", username: "dev")
+        let cached = Self.cachedAgent(for: host)
+        let structure = [
+            ChatCachedWorkspace(
+                id: "workspace-1", label: "Project",
+                checkout: RepositoryCheckout(
+                    repoKey: "/home/dev/project/.git", repoName: "project", repoRoot: "/home/dev/project",
+                    checkoutPath: "/home/dev/project-wt", isLinkedWorktree: true)),
+        ]
+        await fixture.cache.saveAgentDirectory(.init(agents: [cached], workspaces: structure), for: host)
+
+        let reopened = FileChatTranscriptCache(root: fixture.root, knownHosts: fixture.knownHosts)
+        #expect(await reopened.loadAgentDirectory(for: host) == .init(agents: [cached], workspaces: structure))
+
+        let url = fixture.root.appending(path: "v1/\(host.id.uuidString.lowercased())/agents.json")
+        var saved = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        #expect(saved.removeValue(forKey: "workspaces") != nil)
+        try JSONSerialization.data(withJSONObject: saved).write(to: url)
+        #expect(await reopened.loadAgentDirectory(for: host) == .init(agents: [cached]))
+    }
+
     /// A Host the device holds no key for yet compares the primary route,
     /// as every directory did before Routes.
     @Test(arguments: [false, true])
@@ -308,28 +339,28 @@ struct ChatTranscriptCacheTests {
 
         var changed = host
         changed.routes[0].address = "other.example"
-        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: changed).agents.isEmpty)
         changed = host
         changed.sessionName = "other"
-        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: changed).agents.isEmpty)
         changed = host
         changed.routes[0].port = 2222
-        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: changed).agents.isEmpty)
         changed = host
         changed.username = "other"
-        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: changed).agents.isEmpty)
         changed = host
         changed.routes[0].jumpAddress = "jump.example"
-        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: changed).agents.isEmpty)
         changed = host
         changed.routes[0].jumpPort = 2222
-        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: changed).agents.isEmpty)
         changed = host
         changed.routes[0].jumpUsername = "jump-user"
-        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: changed).agents.isEmpty)
         changed = host
         changed.name = "Renamed Host"
-        let renamed = await cache.loadAgentDirectory(for: changed)
+        let renamed = await cache.loadAgentDirectory(for: changed).agents
         #expect(renamed == [cached])
         #expect(renamed.first?.consoleAgent(for: changed).hostName == "Renamed Host")
     }
@@ -350,14 +381,14 @@ struct ChatTranscriptCacheTests {
         var relaunched = host
         relaunched.herdrEndpoint = HerdrEndpoint(
             socketPath: "/opt/app/herdr/herdr.sock", executablePath: "/opt/app2/bin/herdr")
-        #expect(await cache.loadAgentDirectory(for: relaunched) == [cached])
+        #expect(await cache.loadAgentDirectory(for: relaunched).agents == [cached])
         var moved = host
         moved.herdrEndpoint = HerdrEndpoint(
             socketPath: "/opt/other/herdr/herdr.sock", executablePath: "/opt/app/bin/herdr")
-        #expect(await cache.loadAgentDirectory(for: moved).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: moved).agents.isEmpty)
         var plain = host
         plain.herdrEndpoint = nil
-        #expect(await cache.loadAgentDirectory(for: plain).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: plain).agents.isEmpty)
     }
 
     private static func trust(
@@ -384,31 +415,31 @@ struct ChatTranscriptCacheTests {
         // The same machine on other routes: a new primary, then edited ones.
         var rerouted = host
         rerouted.routes.insert(HostRoute(address: "10.0.0.2"), at: 0)
-        #expect(await cache.loadAgentDirectory(for: rerouted) == [cached])
+        #expect(await cache.loadAgentDirectory(for: rerouted).agents == [cached])
         rerouted.routes[0].jumpAddress = "jump.example"
         rerouted.routes[1].address = "elsewhere.example"
-        #expect(await cache.loadAgentDirectory(for: rerouted) == [cached])
+        #expect(await cache.loadAgentDirectory(for: rerouted).agents == [cached])
         // The herdr session and account still name other bindings.
         var changed = rerouted
         changed.sessionName = "other"
-        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: changed).agents.isEmpty)
         changed = rerouted
         changed.username = "other"
-        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: changed).agents.isEmpty)
         // So does a Herdr Endpoint's socket, which is another herdr server.
         changed = rerouted
         changed.herdrEndpoint = HerdrEndpoint(
             socketPath: "/opt/app/herdr/herdr.sock", executablePath: "/opt/app/bin/herdr")
         #expect(changed.herdrEndpoint != nil)
-        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: changed).agents.isEmpty)
         // Trusting the machine's key for another algorithm keeps them.
         await Self.trust(2, algorithm: "rsa-sha2-512", for: host.id, in: fixture.knownHosts)
-        #expect(await cache.loadAgentDirectory(for: rerouted) == [cached])
+        #expect(await cache.loadAgentDirectory(for: rerouted).agents == [cached])
         #expect(await cache.agentDirectoryBelongs(to: rerouted))
 
         // A replaced key is another machine, whatever the routes say.
         await Self.trust(3, for: host.id, in: fixture.knownHosts)
-        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
         #expect(!(await cache.agentDirectoryBelongs(to: host)))
         #expect(await cache.agentDirectoryBelongs(to: Host(id: Self.hostB, address: "b", username: "dev")))
     }
@@ -429,12 +460,12 @@ struct ChatTranscriptCacheTests {
         var rerouted = host
         rerouted.routes[0].address = "other.example"
 
-        #expect(await cache.loadAgentDirectory(for: host) == [cached])
-        #expect(await cache.loadAgentDirectory(for: rerouted).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).agents == [cached])
+        #expect(await cache.loadAgentDirectory(for: rerouted).agents.isEmpty)
         #expect(!(await cache.agentDirectoryBelongs(to: rerouted)))
 
         await cache.saveAgentDirectory([cached], for: host)
-        #expect(await cache.loadAgentDirectory(for: rerouted) == [cached])
+        #expect(await cache.loadAgentDirectory(for: rerouted).agents == [cached])
     }
 
     @Test(arguments: [false, true])
@@ -446,13 +477,13 @@ struct ChatTranscriptCacheTests {
         let cached = Self.cachedAgent(for: host)
         await cache.saveAgentDirectory([cached], for: host)
         await cache.removeAll()
-        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
         await cache.saveAgentDirectory([cached], for: host)
-        #expect(await cache.loadAgentDirectory(for: host) == [cached])
+        #expect(await cache.loadAgentDirectory(for: host).agents == [cached])
         await cache.retainHosts([Self.hostB])
-        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
         await cache.saveAgentDirectory([cached], for: host)
-        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
     }
 
     @Test(arguments: [false, true])
@@ -466,9 +497,9 @@ struct ChatTranscriptCacheTests {
         await cache.saveAgentDirectory([
             valid, Self.cachedAgent(for: host, sessionID: "../invalid"), Self.cachedAgent(for: other),
         ], for: host)
-        #expect(await cache.loadAgentDirectory(for: host) == [valid])
+        #expect(await cache.loadAgentDirectory(for: host).agents == [valid])
         await cache.saveAgentDirectory([], for: host)
-        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
     }
 
     @Test func agentDirectoriesCountTowardUsageAndExpire() async throws {
@@ -482,7 +513,7 @@ struct ChatTranscriptCacheTests {
             [.modificationDate: fixture.clock.now], ofItemAtPath: directoryURL.path)
         fixture.clock.now.addTimeInterval(120)
         await fixture.cache.prune()
-        #expect(await fixture.cache.loadAgentDirectory(for: host).isEmpty)
+        #expect(await fixture.cache.loadAgentDirectory(for: host).agents.isEmpty)
         #expect(await fixture.cache.diskUsage() == 0)
     }
 
@@ -492,6 +523,6 @@ struct ChatTranscriptCacheTests {
         let host = Host(id: Self.hostA, address: "host.example", username: "dev")
         await fixture.cache.saveAgentDirectory([Self.cachedAgent(for: host)], for: host)
         #expect(await fixture.cache.diskUsage() == 0)
-        #expect(await fixture.cache.loadAgentDirectory(for: host).isEmpty)
+        #expect(await fixture.cache.loadAgentDirectory(for: host).agents.isEmpty)
     }
 }

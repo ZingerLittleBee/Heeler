@@ -193,7 +193,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
 
 /// The snapshot's exact git checkout identity for one workspace. Workspace
 /// ids are reusable slots, so destructive actions match this tuple too.
-struct RepositoryCheckout: Sendable, Equatable, Hashable {
+struct RepositoryCheckout: Codable, Sendable, Equatable, Hashable {
     let repoKey: String
     let repoName: String
     let repoRoot: String

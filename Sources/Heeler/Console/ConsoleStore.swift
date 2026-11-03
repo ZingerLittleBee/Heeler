@@ -1399,6 +1399,18 @@ final class ConsoleStore {
         return cachedChats.agents(on: projection.host).contains { $0.id == id }
     }
 
+    /// The Workspace structure each Host's last snapshot reported, for the
+    /// Hosts whose rows may be saved Chat entries, so By Workspace groups
+    /// those entries as it grouped the live Agents.
+    var savedWorkspaceStructures: [Host.ID: [ChatCachedWorkspace]] {
+        var structures: [Host.ID: [ChatCachedWorkspace]] = [:]
+        for projection in projections.values where projection.showsSavedChats {
+            let structure = cachedChats.structure(on: projection.host)
+            if !structure.isEmpty { structures[projection.host.id] = structure }
+        }
+        return structures
+    }
+
     private var savedChatAgents: [(agent: ConsoleAgent, readiness: HostReadiness)] {
         let live = Set(agents.map(\.id))
         return projections.values.flatMap { projection -> [(agent: ConsoleAgent, readiness: HostReadiness)] in

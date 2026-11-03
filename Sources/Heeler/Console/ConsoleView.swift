@@ -1715,7 +1715,8 @@ struct ConsoleView: View {
             changes: readsChanges ? console.rowChanges.store(for: agent) : nil,
             qualifier: standsAlone ? nil : qualifier,
             saved: saved,
-            hiddenTokens: ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: showsHost),
+            hiddenTokens: ConsoleWorkspaceCard.hiddenTokens(
+                for: agent, checkoutPath: section.checkout?.checkoutPath, showsHost: showsHost),
             heading: heading,
             showsHost: showsHost,
             lead: .card)
@@ -2142,11 +2143,15 @@ struct ConsoleView: View {
     private var agentTitleQualifiers: [ConsoleAgent.ID: String] {
         // By Workspace rows leave fields to their card's titles.
         let isByWorkspace = listPresentation.mode == .byWorkspace
+        let savedStructures = isByWorkspace ? console.savedWorkspaceStructures : [:]
         return AgentTitleQualifier.qualifiers(for: hostFilteredAgents) { agent in
+            let checkoutPath = agent.checkoutPath
+                ?? savedStructures[agent.hostID]?.first { $0.id == agent.agent.workspaceID }?.checkout.checkoutPath
             let card = AgentCardPresentation(
                 agent: agent, layout: console.rowLayout(for: agent.hostID),
                 hiding: isByWorkspace
-                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: false) : [],
+                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, checkoutPath: checkoutPath, showsHost: false)
+                    : [],
                 leadsWithMark: true)
             return .init(title: card.headline, namesAgent: card.cardNamesAgent)
         }
