@@ -77,6 +77,10 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Put Show Chat or Show Agent Terminal and More with Back in iPhone Duo's
+  side controls, using the system overflow menu instead of leaving their
+  capsule over the content. Horizontal layouts keep their existing controls.
+  (#612)
 - Put Back with the system controls along an iPhone Duo's side on Agent Chat,
   Agent Terminal and Shell Terminal details, instead of leaving it floating at
   the opposite top corner. (#610)
