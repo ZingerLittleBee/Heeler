@@ -286,7 +286,7 @@ struct ServerKindDetectionTests {
         let body = try #require(await host.scripts.first)
         #expect(await host.scripts.count == 1)
         #expect(body.contains("session list --json"))
-        #expect(body.contains(HerdrCoreLocator.windowsExecutable))
+        #expect(body.contains(HerdrCoreLocator.windowsInstallPath))
         #expect(!body.lowercased().contains("hc.exe"))
         #expect(!body.contains("server start"))
         #expect(!body.contains("connect"))

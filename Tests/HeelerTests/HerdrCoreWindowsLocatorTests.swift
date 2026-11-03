@@ -30,13 +30,23 @@ import Testing
 
     // MARK: The probe
 
-    @Test func theProbeFindsTheCoreAtTheInstallersPathAndAsksOnlyItsVersion() throws {
+    /// A PowerShell DefaultShell's profile may `Set-Location` before the probe runs,
+    /// which moved a `.\` path off the core on the owner's machine (#587).
+    @Test func theProbeFindsTheCoreInTheProfileFolderNotTheFolderTheExecStartsIn() throws {
         let body = try script()
-        #expect(body.contains(#"'.\AppData\Local\Programs\herdr-core\herdr-core.exe'"#))
+        #expect(body.contains(#"Join-Path $env:USERPROFILE 'AppData\Local\Programs\herdr-core\herdr-core.exe'"#))
+        #expect(!body.contains(#"'.\AppData"#))
         #expect(body.contains("& $exe --version"))
         #expect(!body.contains("connect"))
         #expect(!body.contains("server start"))
         #expect(!body.contains("Get-Command"))
+    }
+
+    /// A file there that does not answer is not a missing core.
+    @Test func theProbeReportsACoreFileThatDidNotAnswer() throws {
+        let body = try script()
+        #expect(body.contains("try { $v = & $exe --version"))
+        #expect(body.contains("} else { say ('present ' + $exe) }"))
     }
 
     /// A running core locks the file's first byte, so a plain read fails.
@@ -51,9 +61,13 @@ import Testing
         #expect(!body.contains("ReadAllText"))
     }
 
+    /// The core names its pipe from its own `USERNAME`, the account's name as the
+    /// desktop login spells it; sshd's is the name as typed at login, lower-case on
+    /// the owner's machine. The account's own name spells it as the core does.
     @Test func theProbeFallsBackToTheSessionsDefaultPipeAndChecksThePipeItFound() throws {
         let body = try script()
-        #expect(body.contains(#"'\\.\pipe\herdr-core-' + ($env:USERNAME -replace '[^A-Za-z0-9]', '') + '-' + $s + '.sock'"#))
+        #expect(body.contains(#"[Security.Principal.WindowsIdentity]::GetCurrent().Name -split '\\')[-1]"#))
+        #expect(body.contains(#"'\\.\pipe\herdr-core-' + ($u -replace '[^A-Za-z0-9]', '') + '-' + $s + '.sock'"#))
         #expect(body.contains("Test-Path -LiteralPath $p"))
         #expect(!body.contains("if exist"))
     }
@@ -114,10 +128,13 @@ import Testing
 
     /// `cmd /d /c` reads alike under a `cmd` or PowerShell DefaultShell, skips its
     /// AutoRun, and leaves the core a direct child that inherits the exec's stdio.
-    @Test func connectRunsUnderCmdAfterAMarkerByTheInstallersPath() throws {
+    /// It enters the profile folder first, so a profile's `Set-Location` cannot move
+    /// the path, and carries no quotes of its own a PowerShell DefaultShell would drop.
+    @Test func connectRunsUnderCmdAfterAMarkerFromTheProfileFolder() throws {
         #expect(
             try HerdrCoreLocator.windowsConnectCommand(session: "work")
-                == #"cmd /d /c "echo __HEELER_STREAM_READY__&& .\AppData\Local\Programs\herdr-core\herdr-core.exe connect --session work""#)
+                == #"cmd /d /c "echo __HEELER_STREAM_READY__&& cd /d %USERPROFILE%&& .\AppData\Local\Programs\herdr-core\herdr-core.exe connect --session work""#)
+        #expect(try HerdrCoreLocator.windowsConnectCommand(session: "work").filter { $0 == "\"" }.count == 2)
         #expect(
             try HerdrCoreLocator.windowsConnectCommand(session: " ").hasSuffix(#"connect --session default""#))
     }
@@ -153,6 +170,23 @@ import Testing
     @Test func noExecutableReadsAsNotInstalled() throws {
         let location = try parse(["kernel Windows", "default \(Self.pipe)", "socket-file 0"])
         #expect(location.executablePath == nil)
+        #expect(location.unansweredExecutablePath == nil)
+    }
+
+    @Test func aCoreFileThatDidNotAnswerIsKeptApartFromNoCore() throws {
+        let location = try parse(["kernel Windows", "present \(Self.executable)", "default \(Self.pipe)", "socket-file 1"])
+        #expect(location.executablePath == nil)
+        #expect(location.version == nil)
+        #expect(location.unansweredExecutablePath == Self.executable)
+    }
+
+    @Test(arguments: [
+        ["kernel Windows", #"present .\herdr-core.exe"#, "default x", "socket-file 0"],
+        ["kernel Linux", "present /usr/bin/herdr-core", "default x", "socket-file 0"],
+        ["kernel Windows", "executable \(executable)", "version 1", "present \(executable)", "default x", "socket-file 0"],
+    ])
+    func aCoreFileThatDidNotAnswerIsOnlyEverAWindowsAbsolutePathAlone(lines: [String]) {
+        #expect(throws: HerdrCoreLocator.MalformedOutput.self) { try parse(lines) }
     }
 
     /// A pipe name may run to 256 characters there, past any Unix socket path.

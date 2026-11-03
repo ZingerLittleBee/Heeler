@@ -27,7 +27,8 @@ stays as it is.
   under a file lock, restores the leading backslash, checks with PowerShell's
   `Test-Path` that the named pipe it names exists, and only then runs
   `.\AppData\Local\Programs\herdr-core\herdr-core.exe connect --session <s>`
-  under `cmd /d /c` over SSH exec, because a pipe cannot be forwarded. As in ADR 0018, the
+  from `%USERPROFILE%` under `cmd /d /c` over SSH exec, because a pipe cannot be
+  forwarded. As in ADR 0018, the
   Windows path is a platform branch, never a fallback. `<s>`, and the
   `core.lock` the app reads on either platform, follow the core session the
   Host stores: hc's `HC_SESSION`, `default` unless the user names another,
@@ -192,7 +193,7 @@ confirm or refine these points with test clients, not the app.
   started by `connect`; the window is one round trip. Every connect and
   reconnect repeats the check, so nothing about an earlier pipe is reused.
 - On Windows `connect` is not wrapped in PowerShell as the Herdr TUI bridge is.
-  `cmd /d /c "echo <marker>&& <installer path> connect --session <s>"` keeps it
+  `cmd /d /c "echo <marker>&& cd /d %USERPROFILE%&& <installer path> connect --session <s>"` keeps it
   a direct child on the exec's own stdio, the form whose bytes were measured,
   and what PowerShell does to the stream was not. The marker drops whatever the
   account's shell printed first. On 2026-11-03 this line, the marker and the
@@ -200,8 +201,15 @@ confirm or refine these points with test clients, not the app.
   0.1.16), under `cmd.exe` and with Windows PowerShell 5.1 and PowerShell 7.6.7 as
   `DefaultShell`, and carried an attach whole, a profile's printed line included
   ([observation](../agents/herdr-compatibility.md)). A profile that runs
-  `Set-Location` moves the exec's start folder, so the probe's `.\` path misses
-  the installed core and the Host reads not installed.
+  `Set-Location` moves the exec's start folder, and a `.\` path from it missed
+  the installed core, so the Host read not installed. The probe now joins the
+  installer path to `$env:USERPROFILE` and the line enters that folder with
+  `cd /d` before `connect`; `cmd` expands the variable itself, so the line
+  carries no quotes a PowerShell `DefaultShell` would drop, and `cd` takes a
+  path with spaces unquoted. A profile folder holding `&`, `^` or `%` would
+  still break that `cmd` line. A file at the installer path that does not
+  answer `--version` reads as a retried connection failure, not as not
+  installed (#587; the new forms are held by tests, not yet run through sshd).
 - `cmd` and a PowerShell `DefaultShell` parse that line differently and no
   quoting survives both, so a Windows session name is limited to the characters
   hc itself advises (letters, digits, `-`, `_`, `.`, no leading `-`), stricter

@@ -632,15 +632,14 @@ Code's `.key` files.
     the printed text), so write and remove a test profile through an exec such as
     `powershell -EncodedCommand`, not scp. Expected: the link's frames arrive whole,
     a killed link comes back, and the Host does not read
-    **herdr-core is not installed**. **Known defect**: the probe finds the core by
-    `.\AppData\Local\Programs\herdr-core\herdr-core.exe`, relative to the folder an
-    exec starts in, so under a profile that calls `Set-Location` the Host reads
-    **Can't Connect** and **herdr-core is not installed**, with install wording and no
-    retry seen in the 26 seconds it was watched, though the core is installed. On the one
-    machine run (herdr-core 0.1.16, OpenSSH_for_Windows_9.5p2), Windows PowerShell
-    5.1.26100.9711 and PowerShell 7.6.7 with a printing profile passed, and
-    PowerShell 7.6.7 with `Set-Location` added failed that way. Record the result in
-    `docs/agents/herdr-compatibility.md`.
+    **herdr-core is not installed**. The probe finds the core under
+    `$env:USERPROFILE`, and the link runs `cd /d %USERPROFILE%` before `connect`, so
+    a profile that calls `Set-Location` no longer moves either off the core. On the
+    one machine run (herdr-core 0.1.16, OpenSSH_for_Windows_9.5p2), Windows
+    PowerShell 5.1.26100.9711 and PowerShell 7.6.7 with a printing profile passed,
+    and PowerShell 7.6.7 with `Set-Location` added read **herdr-core is not
+    installed** with an older build, whose probe used a path relative to the folder
+    an exec starts in. Record the result in `docs/agents/herdr-compatibility.md`.
 36. Tear down. Some effects of these steps land in the account's own files and
     outlast the run:
     - Claude Code started under your account runs its 30-day cleanup and rotates

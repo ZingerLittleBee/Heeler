@@ -9,10 +9,12 @@ import Foundation
 /// runs `hc` by that name. What it says decides whether `connect`, which starts a
 /// core when none listens, runs at all.
 extension HerdrCoreLocator {
-    /// Where `install.ps1` puts the core, from the home folder an SSH exec starts
-    /// in, as hc's own machine dialer finds it. Not PATH: a session riding an older
-    /// login keeps the PATH from before the install.
-    static let windowsExecutable = #".\AppData\Local\Programs\herdr-core\herdr-core.exe"#
+    /// Where `install.ps1` puts the core, inside the user's profile folder. Not
+    /// PATH: a session riding an older login keeps the PATH from before the install.
+    /// Not the folder an SSH exec starts in either, which hc's own dialer uses: a
+    /// PowerShell `DefaultShell` runs the account's profile first, and a profile
+    /// that calls `Set-Location` moves it (#587).
+    static let windowsInstallPath = #"AppData\Local\Programs\herdr-core\herdr-core.exe"#
 
     /// A named pipe's path, which only a native Windows Host reports.
     static func isWindowsPipe(_ path: String) -> Bool {
@@ -43,17 +45,23 @@ extension HerdrCoreLocator {
             say ''
             say \(PowerShellCommand.literal("\(nonce) begin"))
             say 'kernel \(windowsKernel)'
-            if ($env:USERPROFILE) { say ('home ' + $env:USERPROFILE) }
-            $exe = \(PowerShellCommand.literal(windowsExecutable))
-            if (Test-Path -LiteralPath $exe -PathType Leaf) {
-                $v = & $exe --version 2>$null | Select-Object -First 1
-                if ($v -match '^(hc|herdr-core) [0-9]') {
-                    say ('executable ' + (Resolve-Path -LiteralPath $exe).ProviderPath)
-                    say ('version ' + ($v.Trim() -replace '^\\S+ ', ''))
+            if ($env:USERPROFILE) {
+                say ('home ' + $env:USERPROFILE)
+                $exe = Join-Path $env:USERPROFILE \(PowerShellCommand.literal(windowsInstallPath))
+                if (Test-Path -LiteralPath $exe -PathType Leaf) {
+                    $exe = (Resolve-Path -LiteralPath $exe).ProviderPath
+                    $v = $null
+                    try { $v = & $exe --version 2>$null | Select-Object -First 1 } catch { $v = $null }
+                    if ($v -match '^(hc|herdr-core) [0-9]') {
+                        say ('executable ' + $exe)
+                        say ('version ' + ($v.Trim() -replace '^\\S+ ', ''))
+                    } else { say ('present ' + $exe) }
                 }
             }
             $s = \(PowerShellCommand.literal(name))
-            $p = '\\\\.\\pipe\\herdr-core-' + ($env:USERNAME -replace '[^A-Za-z0-9]', '') + '-' + $s + '.sock'
+            $u = $env:USERNAME
+            try { $u = ([Security.Principal.WindowsIdentity]::GetCurrent().Name -split '\\\\')[-1] } catch { }
+            $p = '\\\\.\\pipe\\herdr-core-' + ($u -replace '[^A-Za-z0-9]', '') + '-' + $s + '.sock'
             say ('default ' + $p)
             $r = if ($env:XDG_STATE_HOME) { $env:XDG_STATE_HOME } elseif ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE 'AppData\\Local' }
             $l = Join-Path $r ('herdr-core\\' + $s + '\\core.lock')
@@ -71,18 +79,19 @@ extension HerdrCoreLocator {
             """
     }
 
-    /// The link's exec, by the path the probe checked. `cmd /d /c` skips AutoRun and,
-    /// by hc's own dialer source, reads the same under a `cmd` or PowerShell DefaultShell;
-    /// neither this line nor the probe has run through sshd (ADR 0031). `connect` stays
-    /// `cmd`'s direct child on the exec's own stdio, the form whose bytes were measured:
-    /// one machine, `cmd.exe` as sshd's shell, an elevated token, without this wrapper
-    /// (#586). Heeler adds no PowerShell of its own here. A PowerShell DefaultShell still
-    /// starts this line, and what it does to the stream was never measured.
+    /// The link's exec, by the path the probe checked: `cd /d` to the profile folder
+    /// the probe joined it to, so a profile's `Set-Location` cannot move it. `cmd /d /c`
+    /// skips AutoRun and reads the same under a `cmd` or PowerShell DefaultShell, and
+    /// `cmd` expands `%USERPROFILE%` itself, so the line needs no quotes a PowerShell
+    /// DefaultShell would drop; `cd` takes a path with spaces unquoted. `connect` stays
+    /// `cmd`'s direct child on the exec's own stdio (ADR 0031). Heeler adds no PowerShell
+    /// of its own here.
     static func windowsConnectCommand(session: String) throws -> String {
         guard HerdrCoreSessionName.windowsRefusal(session) == nil else {
             throw SessionRefused(session: session)
         }
         let name = HerdrCoreSessionName.normalized(session)
-        return "cmd /d /c \"echo \(PowerShellCommand.streamMarker)&& \(windowsExecutable) connect --session \(name)\""
+        return "cmd /d /c \"echo \(PowerShellCommand.streamMarker)&& cd /d %USERPROFILE%&& "
+            + ".\\\(windowsInstallPath) connect --session \(name)\""
     }
 }

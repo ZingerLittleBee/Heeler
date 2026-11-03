@@ -47,7 +47,7 @@ struct HerdrCoreWindowsTransportTests {
         #expect(await host.log == ["windows-probe", "connect"])
         #expect(
             await host.connectCommands
-                == [#"cmd /d /c "echo __HEELER_STREAM_READY__&& .\AppData\Local\Programs\herdr-core\herdr-core.exe connect --session work""#])
+                == [#"cmd /d /c "echo __HEELER_STREAM_READY__&& cd /d %USERPROFILE%&& .\AppData\Local\Programs\herdr-core\herdr-core.exe connect --session work""#])
         let socket = try #require(await host.socket)
         let line = try JSONDecoder().decode(JSONValue.self, from: await socket.nextWrittenLine())
         #expect(line["params"] == .object(["generation": .number(1), "framed": .bool(true)]))
@@ -348,6 +348,31 @@ struct HerdrCoreWindowsTransportTests {
 
         #expect(await host.connectCommands.isEmpty)
         try await transport.close()
+    }
+
+    /// The core is installed; something in that exec kept it from answering. That
+    /// is not "not installed", and a later read may hear it (#587).
+    @Test func aCoreFileThatDidNotAnswerRetriesInsteadOfReadingNotInstalled() async throws {
+        let unanswered = [
+            "kernel Windows", #"home C:\Users\me"#, "present \(ScriptedCoreHost.windowsExecutable)",
+            "default \(ScriptedCoreHost.windowsPipe)", "socket-file 1",
+        ]
+        let host = ScriptedCoreHost(windowsLocator: unanswered, channel: .core(.init()))
+        let session = session(on: host)
+        nonisolated(unsafe) var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+
+        let failure = TransportError.channelFailed(
+            detail: "herdr-core at \(ScriptedCoreHost.windowsExecutable) did not report its version")
+        #expect(failure.isRetryable)
+        #expect(await updates.next() == .status(.reconnecting(attempt: 1, delay: .seconds(1), failure: failure)))
+        #expect(await host.connectCommands.isEmpty)
+        await host.setWindowsLocator(ScriptedCoreHost.windowsLocatorLines())
+        await clock.untilParked(1)
+        clock.advance(.seconds(1))
+        #expect(await updates.next() == .status(.connected))
+        await session.end()
     }
 
     @Test func updateRequiredNamesTheProbedPathAndIsNeverRetried() async throws {
