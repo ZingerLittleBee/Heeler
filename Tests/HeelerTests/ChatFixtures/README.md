@@ -50,6 +50,9 @@ Nothing was signed in and it is not from hc-lab, so an account could change
 what it shows; `docs/agents/herdr-compatibility.md` says how for each program.
 Each `.json` names its harness version, method and what was observed, and holds
 process rows shaped for `ScriptedProcessTable.Process`, plus the files as read.
+`macos/` and `linux/` each hold one Host's run, every program in one file, which
+`HerdrCoreMacOSSessionBinderTests` and `HerdrCoreLinuxSessionBinderTests` read.
+`linux/` is the owner's signed-in run on hc-lab (2026-11-03).
 
 | Path | Source |
 | --- | --- |
@@ -64,6 +67,7 @@ process rows shaped for `ScriptedProcessTable.Process`, plus the files as read.
 | `host-evidence/omp/breadcrumb-and-session-files.json` | Oh My Pi 18.13.3: the breadcrumb through a process's life and the next one's, session files, the open file, the session lock, and how far the security scan got |
 | `host-evidence/omp/session-lock-by-id.json` | Oh My Pi 18.13.3: the lock its process holds while the title is held, and the names its own `tryAcquireSessionLease` binds for the same ids and for invented ids and homes. The hash is not identified |
 | `host-evidence/macos/vm-26.5.json` | herdr-core 0.1.13 on macOS 26.5 in a throwaway VM with SIP off, no sign-in and a fake model: each program's rows as `HostProcessReader`'s macOS script read them, trimmed to terminals and session files, the core's record, and the files as read. Rollouts keep their first line's identifying fields. Its `record` field is the core's `terminal.get` |
+| `host-evidence/linux/hc-lab-signed-in.json` | herdr-core 0.1.13 on hc-lab (Debian 13, Linux 6.18 x86_64), Codex and Grok Build signed in and the others on an API-key provider, real `HOME` `/data/home`: Codex CLI 0.165.0 `--no-daemon` before its first prompt and after its reply, plain `codex` on the box's 0.160.0 app-server daemon, Grok Build 1.0.70 `-s`, OpenCode 2.2.2 `-s ses…`, Pi 1.4.0 `--session-id` and two Oh My Pi 18.13.3 on bun 1.4.4, all without the Host Helper's extension. Rows are a watcher's samples of each Terminal's process and its descendants by parent; `record` is the core's reply to `terminal.run` with the foreground its events named. Its `method` and `observed` fields say what was rebuilt and what the run saw beyond the rows |
 | `host-evidence/reply-held.json` | All five with the fake model holding each reply, Pi on 0.85.1 and 1.4.0 and OpenCode on 2.0.32 and 2.2.5: what existed during the hold |
 | `host-evidence/*/*-core-events.ndjson` | The core's event stream for the same runs, from `scripts/lab/herdr-core-capture.py` |
 
@@ -125,6 +129,14 @@ they are not byte for byte and offsets do not hold:
   session folder names), and its host name and core id go.
 - The core events went through the capture script's scrubbing, then the same
   id mapping.
+- `linux/hc-lab-signed-in.json` follows the same rules. Its account-bound fields
+  go further: Codex's signed-in `session_meta` carries `creator_account_id` and
+  `creator_user_id`, kept only as keys reading `<scrubbed>`, and no credential
+  file was read. The capture script wrote that box's run folder,
+  `/data/home/<run folder>`, as `/data/home/user`, and every path here keeps that
+  form, plain, percent-encoded and in session folder names. File contents are
+  rebuilt from the values the run's record quotes, except the second Oh My Pi
+  breadcrumb, which is as read.
 
 After adding a capture, check that searching this directory for `/Users/`
 (other than `/Users/developer`), `ghp_`, `Bearer` and e-mail addresses finds

@@ -1,0 +1,835 @@
+{
+  "version": "herdr-core 0.1.13 on hc-lab, Debian 13, Linux 6.18.54 x86_64 (CLK_TCK 100), 2026-11-03, signed in: Codex CLI 0.165.0 (npm) with its app-server daemon 0.160.0 and Grok Build 1.0.70 on the owner's accounts, OpenCode 2.2.2, Pi 1.4.0 and Oh My Pi 18.13.3 on bun 1.4.4 on the owner's model endpoint, no Host Helper extension; real HOME /data/home, one prompt each",
+  "method": "Live, one Terminal per program started through terminal.run in Heeler's POSIX launch form, one sample of each scene. Rows are a watcher's 0.2 s samples of the Terminal's process and its descendants by parent: comm, field 22 of /proc/<pid>/stat, argv, HC_SCOPE alone of the environment (its hex a counter here), and open files, trimmed to session files, locks and the session store. The watcher read open files only under the programs' folders, so /dev/pts/0, the terminal each Oh My Pi Terminal got, comes from the run's record. A scene's record is the core's reply to terminal.run, with the foreground its events named and the argv sampled. File contents are rebuilt from the values the run's record quotes: rollouts keep their first line's identifying fields, with the two creator ids <scrubbed>; active_sessions.json takes the shape and size the watcher saw, its opened_at to the millisecond; omp-after-reply's breadcrumb is the one its process left once the file appeared. omp-fresh-breadcrumb's is as read. Every session and thread id is a synthetic one of the same form, and the run folder is /data/home/user, as the capture script wrote it.",
+  "observed": "Codex: the npm launcher stays as the Terminal's process; the native child holds the thread-writer lock once the folder is trusted and the rollout from the first prompt; the MCP servers the box's configuration starts sit under it with no HC_SCOPE. Default mode started the box's older 0.160.0 app-server daemon, which carries the Terminal's HC_SCOPE and holds its lock and rollout; it ended with the Terminal. Grok Build: pid_start is field 22 of /proc/<pid>/stat and the HC_SCOPE prefix; no leader. OpenCode: its service process holds opencode.db, and the session row took the given id at the first prompt. Pi: it retitles itself to pi with argv pi, and no open file, lock or socket names its session file. Oh My Pi: after the reply the file existed and the breadcrumb had dropped fresh, but the process never opened the file before it exited 2.5 minutes later, its title model having returned none; it held only an abstract socket @omp-file-lock-<hash>, which a read of open files does not name. The same day's Chat stage saw such a file opened 8.6 s after a send, in a run whose title was generated, so the open may follow the title model (one sample each way).",
+  "scenes": [
+    {
+      "name": "codex-before-prompt",
+      "record": {
+        "address": "t1",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "codex",
+          "--no-daemon"
+        ],
+        "cols": 200,
+        "created_ms": 1793671866336,
+        "cwd": "/data/home/user/projects/codex",
+        "die_with_parent": false,
+        "exit_code": null,
+        "finished_ms": null,
+        "identity": "ghostty",
+        "keep": false,
+        "labels": {},
+        "name": "cx-nd",
+        "notify": true,
+        "parent": null,
+        "pid": 191146,
+        "reason": null,
+        "reported": false,
+        "rm": false,
+        "rows": 120,
+        "screen": "exact",
+        "signal": null,
+        "state": "live",
+        "status": null,
+        "status_ms": null,
+        "template": null,
+        "title": "",
+        "turn": 0,
+        "foreground": {
+          "argv": [
+            "node",
+            "/data/home/user/bin/codex",
+            "--no-daemon"
+          ],
+          "cwd": "/data/home/user/projects/codex",
+          "name": "node",
+          "pid": 191146
+        }
+      },
+      "processes": [
+        {
+          "pid": 191146,
+          "parent": 191130,
+          "name": "node",
+          "start": "8562186",
+          "argv": [
+            "node",
+            "/data/home/user/bin/codex",
+            "--no-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "8562186-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 191162,
+          "parent": 191146,
+          "name": "codex",
+          "start": "8562208",
+          "argv": [
+            "/data/home/user/tools/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+            "--no-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "8562186-00000000000000000000000000000001"
+          },
+          "files": [
+            "/data/home/.codex/thread-writer-locks/01900000-0000-7000-8000-000000000001.lock"
+          ]
+        }
+      ],
+      "agentProcess": 191162
+    },
+    {
+      "name": "codex-after-reply",
+      "record": {
+        "address": "t1",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "codex",
+          "--no-daemon"
+        ],
+        "cols": 200,
+        "created_ms": 1793671866336,
+        "cwd": "/data/home/user/projects/codex",
+        "die_with_parent": false,
+        "exit_code": null,
+        "finished_ms": null,
+        "identity": "ghostty",
+        "keep": false,
+        "labels": {},
+        "name": "cx-nd",
+        "notify": true,
+        "parent": null,
+        "pid": 191146,
+        "reason": null,
+        "reported": false,
+        "rm": false,
+        "rows": 120,
+        "screen": "exact",
+        "signal": null,
+        "state": "live",
+        "status": null,
+        "status_ms": null,
+        "template": null,
+        "title": "",
+        "turn": 0,
+        "foreground": {
+          "argv": [
+            "node",
+            "/data/home/user/bin/codex",
+            "--no-daemon"
+          ],
+          "cwd": "/data/home/user/projects/codex",
+          "name": "node",
+          "pid": 191146
+        }
+      },
+      "processes": [
+        {
+          "pid": 191146,
+          "parent": 191130,
+          "name": "node",
+          "start": "8562186",
+          "argv": [
+            "node",
+            "/data/home/user/bin/codex",
+            "--no-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "8562186-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 191162,
+          "parent": 191146,
+          "name": "codex",
+          "start": "8562208",
+          "argv": [
+            "/data/home/user/tools/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+            "--no-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "8562186-00000000000000000000000000000001"
+          },
+          "files": [
+            "/data/home/.codex/thread-writer-locks/01900000-0000-7000-8000-000000000001.lock",
+            "/data/home/.codex/sessions/2026/11/03/rollout-2026-11-03T02-11-45-01900000-0000-7000-8000-000000000001.jsonl"
+          ]
+        },
+        {
+          "pid": 191316,
+          "parent": 191162,
+          "name": "python3",
+          "start": "8566082",
+          "argv": [
+            "python3",
+            "-I",
+            "/usr/local/bin/instabox-computer-use-proxy",
+            "--",
+            "/usr/local/bin/open-computer-use",
+            "mcp"
+          ],
+          "environment": {},
+          "files": []
+        },
+        {
+          "pid": 191324,
+          "parent": 191162,
+          "name": "python3",
+          "start": "8566084",
+          "argv": [
+            "python3",
+            "/usr/local/bin/instabox-mcp",
+            "mcp"
+          ],
+          "environment": {},
+          "files": []
+        },
+        {
+          "pid": 191355,
+          "parent": 191316,
+          "name": "node",
+          "start": "8566096",
+          "argv": [
+            "node",
+            "/usr/local/bin/open-computer-use",
+            "mcp"
+          ],
+          "environment": {},
+          "files": []
+        },
+        {
+          "pid": 191364,
+          "parent": 191355,
+          "name": "open-computer-u",
+          "start": "8566102",
+          "argv": [
+            "/usr/local/lib/node_modules/open-computer-use/dist/linux/amd64/open-computer-use",
+            "mcp"
+          ],
+          "environment": {},
+          "files": []
+        }
+      ],
+      "agentProcess": 191162,
+      "files": {
+        "/data/home/.codex/sessions/2026/11/03/rollout-2026-11-03T02-11-45-01900000-0000-7000-8000-000000000001.jsonl": "{\"type\": \"session_meta\", \"payload\": {\"id\": \"01900000-0000-7000-8000-000000000001\", \"session_id\": \"01900000-0000-7000-8000-000000000001\", \"source\": \"cli\", \"thread_source\": \"user\", \"originator\": \"codex-tui\", \"cli_version\": \"0.165.0\", \"model_provider\": \"openai\", \"history_mode\": \"paginated\", \"creator_account_id\": \"<scrubbed>\", \"creator_user_id\": \"<scrubbed>\"}}\n"
+      }
+    },
+    {
+      "name": "codex-shared-daemon",
+      "record": {
+        "address": "t2",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "codex"
+        ],
+        "cols": 200,
+        "created_ms": 1793672039566,
+        "cwd": "/data/home/user/projects/codex",
+        "die_with_parent": false,
+        "exit_code": null,
+        "finished_ms": null,
+        "identity": "ghostty",
+        "keep": false,
+        "labels": {},
+        "name": "cx-def",
+        "notify": true,
+        "parent": null,
+        "pid": 191783,
+        "reason": null,
+        "reported": false,
+        "rm": false,
+        "rows": 120,
+        "screen": "exact",
+        "signal": null,
+        "state": "live",
+        "status": null,
+        "status_ms": null,
+        "template": null,
+        "title": "",
+        "turn": 0,
+        "foreground": {
+          "argv": [
+            "node",
+            "/data/home/user/bin/codex"
+          ],
+          "cwd": "/data/home/user/projects/codex",
+          "name": "node",
+          "pid": 191783
+        }
+      },
+      "processes": [
+        {
+          "pid": 191783,
+          "parent": 191130,
+          "name": "node",
+          "start": "8579508",
+          "argv": [
+            "node",
+            "/data/home/user/bin/codex"
+          ],
+          "environment": {
+            "HC_SCOPE": "8579508-00000000000000000000000000000002"
+          },
+          "files": []
+        },
+        {
+          "pid": 191803,
+          "parent": 191783,
+          "name": "codex",
+          "start": "8579513",
+          "argv": [
+            "/data/home/user/tools/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+          ],
+          "environment": {
+            "HC_SCOPE": "8579508-00000000000000000000000000000002"
+          },
+          "files": []
+        },
+        {
+          "pid": 191827,
+          "parent": 191803,
+          "name": "codex",
+          "start": "8579579",
+          "argv": [
+            "/data/home/.codex/packages/app-server-daemon/releases/0.160.0-x86_64-unknown-linux-musl/bin/codex",
+            "app-server",
+            "--listen",
+            "unix://",
+            "--analytics-default-enabled",
+            "--managed-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "8579508-00000000000000000000000000000002"
+          },
+          "files": [
+            "/data/home/.codex/thread-writer-locks/01900000-0000-7000-8000-000000000002.lock",
+            "/data/home/.codex/sessions/2026/11/03/rollout-2026-11-03T02-14-00-01900000-0000-7000-8000-000000000002.jsonl"
+          ]
+        },
+        {
+          "pid": 191865,
+          "parent": 191803,
+          "name": "codex",
+          "start": "8579589",
+          "argv": [
+            "/data/home/.codex/packages/app-server-daemon/releases/0.160.0-x86_64-unknown-linux-musl/bin/codex",
+            "app-server",
+            "daemon",
+            "pid-update-loop"
+          ],
+          "environment": {
+            "HC_SCOPE": "8579508-00000000000000000000000000000002"
+          },
+          "files": []
+        },
+        {
+          "pid": 191957,
+          "parent": 191827,
+          "name": "python3",
+          "start": "8579640",
+          "argv": [
+            "python3",
+            "-I",
+            "/usr/local/bin/instabox-computer-use-proxy",
+            "--",
+            "/usr/local/bin/open-computer-use",
+            "mcp"
+          ],
+          "environment": {},
+          "files": []
+        },
+        {
+          "pid": 191958,
+          "parent": 191827,
+          "name": "python3",
+          "start": "8579641",
+          "argv": [
+            "python3",
+            "/usr/local/bin/instabox-mcp",
+            "mcp"
+          ],
+          "environment": {},
+          "files": []
+        },
+        {
+          "pid": 191989,
+          "parent": 191957,
+          "name": "node",
+          "start": "8579651",
+          "argv": [
+            "node",
+            "/usr/local/bin/open-computer-use",
+            "mcp"
+          ],
+          "environment": {},
+          "files": []
+        },
+        {
+          "pid": 192000,
+          "parent": 191989,
+          "name": "open-computer-u",
+          "start": "8579656",
+          "argv": [
+            "/usr/local/lib/node_modules/open-computer-use/dist/linux/amd64/open-computer-use",
+            "mcp"
+          ],
+          "environment": {},
+          "files": []
+        }
+      ],
+      "agentProcess": 191803,
+      "files": {
+        "/data/home/.codex/sessions/2026/11/03/rollout-2026-11-03T02-14-00-01900000-0000-7000-8000-000000000002.jsonl": "{\"type\": \"session_meta\", \"payload\": {\"id\": \"01900000-0000-7000-8000-000000000002\", \"source\": \"vscode\", \"originator\": \"codex-tui\", \"cli_version\": \"0.160.0\", \"creator_account_id\": \"<scrubbed>\", \"creator_user_id\": \"<scrubbed>\"}}\n"
+      }
+    },
+    {
+      "name": "grok",
+      "record": {
+        "address": "t3",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "grok",
+          "-s",
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "cols": 200,
+        "created_ms": 1793672189893,
+        "cwd": "/data/home/user/projects/grok",
+        "die_with_parent": false,
+        "exit_code": null,
+        "finished_ms": null,
+        "identity": "ghostty",
+        "keep": false,
+        "labels": {
+          "heeler.launch-session": "00000000-0000-4000-8000-000000000003"
+        },
+        "name": "gk",
+        "notify": true,
+        "parent": null,
+        "pid": 192461,
+        "reason": null,
+        "reported": false,
+        "rm": false,
+        "rows": 120,
+        "screen": "exact",
+        "signal": null,
+        "state": "live",
+        "status": null,
+        "status_ms": null,
+        "template": null,
+        "title": "",
+        "turn": 0,
+        "foreground": {
+          "argv": [
+            "grok",
+            "-s",
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "cwd": "/data/home/user/projects/grok",
+          "name": "grok",
+          "pid": 192461
+        }
+      },
+      "processes": [
+        {
+          "pid": 192461,
+          "parent": 191130,
+          "name": "grok",
+          "start": "8594541",
+          "argv": [
+            "grok",
+            "-s",
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "environment": {
+            "HC_SCOPE": "8594541-00000000000000000000000000000003"
+          },
+          "files": [
+            "/data/home/.grok/sessions/%2Fdata%2Fhome%2Fuser%2Fprojects%2Fgrok/00000000-0000-4000-8000-000000000003/events.jsonl"
+          ]
+        },
+        {
+          "pid": 192575,
+          "parent": 192461,
+          "name": "python3",
+          "start": "8594659",
+          "argv": [
+            "python3",
+            "/usr/local/bin/instabox-mcp",
+            "mcp"
+          ],
+          "environment": {
+            "HC_SCOPE": "8594541-00000000000000000000000000000003"
+          },
+          "files": []
+        },
+        {
+          "pid": 192577,
+          "parent": 192461,
+          "name": "python3",
+          "start": "8594659",
+          "argv": [
+            "python3",
+            "-I",
+            "/usr/local/bin/instabox-computer-use-proxy",
+            "--",
+            "/usr/local/bin/open-computer-use",
+            "mcp"
+          ],
+          "environment": {
+            "HC_SCOPE": "8594541-00000000000000000000000000000003"
+          },
+          "files": []
+        },
+        {
+          "pid": 192619,
+          "parent": 192577,
+          "name": "node",
+          "start": "8594676",
+          "argv": [
+            "node",
+            "/usr/local/bin/open-computer-use",
+            "mcp"
+          ],
+          "environment": {
+            "HC_SCOPE": "8594541-00000000000000000000000000000003"
+          },
+          "files": []
+        },
+        {
+          "pid": 192630,
+          "parent": 192619,
+          "name": "open-computer-u",
+          "start": "8594680",
+          "argv": [
+            "/usr/local/lib/node_modules/open-computer-use/dist/linux/amd64/open-computer-use",
+            "mcp"
+          ],
+          "environment": {
+            "HC_SCOPE": "8594541-00000000000000000000000000000003"
+          },
+          "files": []
+        }
+      ],
+      "agentProcess": 192461,
+      "files": {
+        "/data/home/.grok/active_sessions.json": "[\n  {\n    \"session_id\": \"00000000-0000-4000-8000-000000000003\",\n    \"pid\": 192461,\n    \"pid_start\": 8594541,\n    \"cwd\": \"/data/home/user/projects/grok\",\n    \"opened_at\": \"2026-11-03T02:16:31.129Z\"\n  }\n]"
+      }
+    },
+    {
+      "name": "opencode",
+      "record": {
+        "address": "t4",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "opencode",
+          "-s",
+          "ses_e6a000000004Abcdefghijklmn"
+        ],
+        "cols": 200,
+        "created_ms": 1793672474460,
+        "cwd": "/data/home/user/projects/opencode",
+        "die_with_parent": false,
+        "exit_code": null,
+        "finished_ms": null,
+        "identity": "ghostty",
+        "keep": false,
+        "labels": {
+          "heeler.launch-session": "ses_e6a000000004Abcdefghijklmn"
+        },
+        "name": "oc",
+        "notify": true,
+        "parent": null,
+        "pid": 194736,
+        "reason": null,
+        "reported": false,
+        "rm": false,
+        "rows": 120,
+        "screen": "exact",
+        "signal": null,
+        "state": "live",
+        "status": null,
+        "status_ms": null,
+        "template": null,
+        "title": "",
+        "turn": 0,
+        "foreground": {
+          "argv": [
+            "opencode",
+            "-s",
+            "ses_e6a000000004Abcdefghijklmn"
+          ],
+          "cwd": "/data/home/user/projects/opencode",
+          "name": "opencode",
+          "pid": 194736
+        }
+      },
+      "processes": [
+        {
+          "pid": 194736,
+          "parent": 191130,
+          "name": "opencode",
+          "start": "8622998",
+          "argv": [
+            "opencode",
+            "-s",
+            "ses_e6a000000004Abcdefghijklmn"
+          ],
+          "environment": {
+            "HC_SCOPE": "8622998-00000000000000000000000000000004"
+          },
+          "files": []
+        },
+        {
+          "pid": 194757,
+          "parent": 194736,
+          "name": "opencode.exe",
+          "start": "8623048",
+          "argv": [
+            "/data/home/user/tools/oc222/node_modules/@opencode/cli/bin/opencode.exe",
+            "serve",
+            "--service"
+          ],
+          "environment": {
+            "HC_SCOPE": "8622998-00000000000000000000000000000004"
+          },
+          "files": [
+            "/data/home/.local/share/opencode/opencode.db",
+            "/data/home/.local/share/opencode/opencode.db-wal",
+            "/data/home/.local/share/opencode/opencode.db-shm"
+          ]
+        }
+      ],
+      "agentProcess": 194736
+    },
+    {
+      "name": "pi-launch",
+      "record": {
+        "address": "t5",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "pi",
+          "--session-id",
+          "00000000-0000-4000-8000-000000000005"
+        ],
+        "cols": 200,
+        "created_ms": 1793672586863,
+        "cwd": "/data/home/user/projects/pi",
+        "die_with_parent": false,
+        "exit_code": null,
+        "finished_ms": null,
+        "identity": "ghostty",
+        "keep": false,
+        "labels": {
+          "heeler.launch-session": "00000000-0000-4000-8000-000000000005"
+        },
+        "name": "pi",
+        "notify": true,
+        "parent": null,
+        "pid": 195120,
+        "reason": null,
+        "reported": false,
+        "rm": false,
+        "rows": 120,
+        "screen": "exact",
+        "signal": null,
+        "state": "live",
+        "status": null,
+        "status_ms": null,
+        "template": null,
+        "title": "",
+        "turn": 0,
+        "foreground": {
+          "argv": [
+            "pi"
+          ],
+          "cwd": "/data/home/user/projects/pi",
+          "name": "pi",
+          "pid": 195120
+        }
+      },
+      "processes": [
+        {
+          "pid": 195120,
+          "parent": 191130,
+          "name": "pi",
+          "start": "8634238",
+          "argv": [
+            "pi"
+          ],
+          "environment": {
+            "HC_SCOPE": "8634238-00000000000000000000000000000005"
+          },
+          "files": []
+        }
+      ],
+      "agentProcess": 195120
+    },
+    {
+      "name": "omp-after-reply",
+      "record": {
+        "address": "t6",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "omp"
+        ],
+        "cols": 200,
+        "created_ms": 1793672657027,
+        "cwd": "/data/home/user/projects/omp",
+        "die_with_parent": false,
+        "exit_code": null,
+        "finished_ms": null,
+        "identity": "ghostty",
+        "keep": false,
+        "labels": {},
+        "name": "omp",
+        "notify": true,
+        "parent": null,
+        "pid": 195417,
+        "reason": null,
+        "reported": false,
+        "rm": false,
+        "rows": 120,
+        "screen": "exact",
+        "signal": null,
+        "state": "live",
+        "status": null,
+        "status_ms": null,
+        "template": null,
+        "title": "",
+        "turn": 0,
+        "foreground": {
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp"
+          ],
+          "cwd": "/data/home/user/projects/omp",
+          "name": "omp",
+          "pid": 195417
+        }
+      },
+      "processes": [
+        {
+          "pid": 195417,
+          "parent": 191130,
+          "name": "omp",
+          "start": "8641254",
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp"
+          ],
+          "environment": {
+            "HC_SCOPE": "8641254-00000000000000000000000000000006"
+          },
+          "files": [
+            "/dev/pts/0"
+          ]
+        }
+      ],
+      "agentProcess": 195417,
+      "files": {
+        "/data/home/.omp/agent/terminal-sessions/pts-0": "/data/home/user/projects/omp\n/data/home/.omp/agent/sessions/-user-projects-omp/2026-11-03T02-24-19-067Z_01900000-0000-7000-8000-000000000006.jsonl\ncwdstat 65040 806183\n"
+      }
+    },
+    {
+      "name": "omp-fresh-breadcrumb",
+      "record": {
+        "address": "t7",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "omp",
+          "--config=/data/home/user/ev/omp-security.yml"
+        ],
+        "cols": 200,
+        "created_ms": 1793672909577,
+        "cwd": "/data/home/user/projects/omp",
+        "die_with_parent": false,
+        "exit_code": null,
+        "finished_ms": null,
+        "identity": "ghostty",
+        "keep": false,
+        "labels": {},
+        "name": "omp-sec",
+        "notify": true,
+        "parent": null,
+        "pid": 196698,
+        "reason": null,
+        "reported": false,
+        "rm": false,
+        "rows": 120,
+        "screen": "exact",
+        "signal": null,
+        "state": "live",
+        "status": null,
+        "status_ms": null,
+        "template": null,
+        "title": "",
+        "turn": 0,
+        "foreground": {
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp",
+            "--config=/data/home/user/ev/omp-security.yml"
+          ],
+          "cwd": "/data/home/user/projects/omp",
+          "name": "omp",
+          "pid": 196698
+        }
+      },
+      "processes": [
+        {
+          "pid": 196698,
+          "parent": 191130,
+          "name": "omp",
+          "start": "8666509",
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp",
+            "--config=/data/home/user/ev/omp-security.yml"
+          ],
+          "environment": {
+            "HC_SCOPE": "8666509-00000000000000000000000000000007"
+          },
+          "files": [
+            "/dev/pts/0"
+          ]
+        }
+      ],
+      "agentProcess": 196698,
+      "files": {
+        "/data/home/.omp/agent/terminal-sessions/pts-0": "/data/home/user/projects/omp\n/data/home/.omp/agent/sessions/-user-projects-omp/2026-11-03T02-28-31-118Z_01900000-0000-7000-8000-000000000007.jsonl\nfresh\ncwdstat 65040 806183\n"
+      }
+    }
+  ]
+}
