@@ -63,6 +63,8 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Raise and lower the Shell Terminal's input row with the keyboard, in step
+  with it, as the Composer does, instead of jumping ahead of it. (#611)
 - Keep the answers on Claude Code's and Codex's folder trust cards in view
   below the folder, as a row of capsules with leaving on the left and
   trusting on the right, instead of below the card's fold on a phone.

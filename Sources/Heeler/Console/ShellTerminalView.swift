@@ -288,9 +288,12 @@ struct ShellTerminalView: View {
                     // resizes in one step, as it does for the keyboard.
                     .padding(
                         .top, showsShortcutRow ? InputChromeLayout.shortcutRowHeight : 0)
-                    // The room is the row's at once, before the row has slid
-                    // into it; the terminal's own background fills the gap.
-                    .background(themePalette.background)
+                    // On the keyboard while it opens and closes, as Agent
+                    // detail's Composer; the Keys dock is not a keyboard that
+                    // moves.
+                    .ridesKeyboard(
+                        keyboardInset, layoutInset: keyboardLayout.contentInset,
+                        isEnabled: !isKeysDockPresented)
             }
             .padding(.bottom, keyboardLayout.contentInset)
             // This dock is always present at the system keyboard's last
@@ -487,6 +490,11 @@ struct ShellTerminalView: View {
         _ mode: TerminalKeyboardMode, restoresSystemKeyboard: Bool = true
     ) {
         guard mode != keyboardMode else { return }
+        // The input row already rests on the Keys dock's footprint, which the
+        // returning system keyboard takes over; it must not ride that up.
+        if keyboardMode == .controls {
+            keyboardInset.skipKeyboardRideLeavingToolsDock()
+        }
         Self.prepareKeyboardMode(mode, inset: keyboardInset)
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -811,11 +819,17 @@ struct ShellTerminalInputRow: View {
     }
 
     private var keyboardToggle: some View {
-        Button(action: toggleKeyboard) {
+        Button {
+            // The glyph swaps inside this action, as the keyboard starts to
+            // move. Animated with the button's release, the old glyph fades
+            // out where the row was while the row rides the keyboard away.
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { toggleKeyboard() }
+        } label: {
             Image(systemName: isKeyboardUp ? "keyboard.chevron.compact.down" : "keyboard")
                 .font(.system(size: Self.glyphPointSize))
                 .foregroundStyle(Color(uiColor: .label))
-                .contentTransition(.symbolEffect(.replace))
                 .frame(
                     width: InputChromeLayout.shellAccessoryButtonWidth,
                     height: InputChromeLayout.shortcutRowHeight)
