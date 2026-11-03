@@ -203,6 +203,67 @@ struct CodexDialogParserTests {
         #expect(!CodexQueuedNotice.shows(answerTo: "Pick a fruit", in: try ScreenFixture.screen("codex-09-x4-expanded")))
     }
 
+    @Test("The folder trust screen in a Git repository's subdirectory")
+    func workspaceTrust() throws {
+        let dialog = try dialog("codex-20-x8-trust")
+        #expect(dialog.kind == .codexWorkspaceTrust)
+        #expect(dialog.program == .codex)
+        #expect(dialog.title == "Folder access")
+        #expect(dialog.subject.workspacePath == Self.trustFolder)
+        #expect(dialog.subject.workspaceRoot == Self.trustRoot)
+        #expect(dialog.body == Self.trustBody)
+        #expect(dialog.options.map(\.label) == ["Trust and continue", "Quit"])
+        #expect(dialog.options.map(\.number) == [1, 2])
+        #expect(dialog.options.map(\.role) == [.trust, .exitProgram])
+        #expect(dialog.focus == DialogFocusState(focusedOrdinal: 1))
+        #expect(dialog.rows == 1..<15)
+    }
+
+    @Test("At phone width the trust screen's wrapped paths join, and it keeps its fingerprint")
+    func workspaceTrustAtPhoneWidth() throws {
+        let wide = try dialog("codex-20-x8-trust")
+        for stem in ["codex-21-x8-phone-trust", "codex-22-x8-phone-trust-focus-quit"] {
+            let phone = try dialog(stem)
+            #expect(phone.kind == .codexWorkspaceTrust, "\(stem)")
+            #expect(phone.subject.workspacePath == Self.trustFolder, "\(stem)")
+            #expect(phone.subject.workspaceRoot == Self.trustRoot, "\(stem)")
+            #expect(phone.body == Self.trustBody, "\(stem)")
+            #expect(phone.fingerprint == wide.fingerprint, "\(stem)")
+            #expect(phone.rows == 1..<20, "\(stem)")
+        }
+        #expect(try dialog("codex-22-x8-phone-trust-focus-quit").focus == DialogFocusState(focusedOrdinal: 2))
+    }
+
+    @Test("Without --no-daemon the trust screen goes back to the Agent Command Center")
+    func workspaceTrustCommandCenter() throws {
+        let dialog = try dialog("codex-23-x8-trust-command-center")
+        #expect(dialog.kind == .codexWorkspaceTrust)
+        #expect(dialog.subject.workspacePath == "/private/tmp/hct/daemon-repo")
+        #expect(dialog.subject.workspaceRoot == nil)
+        #expect(dialog.body.count == 2)
+        #expect(dialog.options.map(\.label) == ["Trust and continue", "Back to Agent Command Center"])
+        #expect(dialog.options.map(\.role) == [.trust, .decline])
+    }
+
+    @Test("A trust screen offering an option Heeler does not know goes to the generic card (synthetic)")
+    func workspaceTrustUnknownOption() throws {
+        let text = try ScreenFixture.text("codex-20-x8-trust").replacingOccurrences(of: "2. Quit", with: "2. Leave")
+        let excerpt = try #require(CodexDialogParser.parse(ANSIScreenDecoder.decode(text)).excerpt)
+        #expect(excerpt.reason.contains("Leave"))
+        #expect(excerpt.rows.first?.trimmedText == "Folder access")
+    }
+
+    private static let trustRoot = "/private/tmp/hct/scratch-repository-for-heeler-trust-probe"
+    private static let trustFolder = trustRoot + "/nested/worktree-sync-fix"
+    private static let trustBody = [
+        trustFolder,
+        "Note: You\u{2019}re in a subdirectory of a Git project. Trusting will apply to the repository root:",
+        trustRoot,
+        "Trust this folder? Codex can read, edit, and run files here, subject to your permission settings. Folder "
+            + "settings can run code automatically, even without a model request. Continue only if you trust these "
+            + "files. Your trust decision will be saved.",
+    ]
+
     @Test(
         "Screens with the composer show no dialog",
         arguments: ["codex-00-ready", "codex-03-x2-after-esc", "codex-11-x4-after-skip"])

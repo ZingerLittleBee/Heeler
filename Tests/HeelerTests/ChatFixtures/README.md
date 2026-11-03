@@ -116,6 +116,19 @@ capture.
   with the styles of `codex-06` and `codex-15`: a bold reverse pointed row,
   dim descriptions and footer, and a bold-dim `›` on the history's prompt.
   Replace it with a capture when one is taken.
+- `codex-20` through `codex-23` come from Codex 0.165.0 on herdr 0.9.5
+  (2026-11-03, isolated backend, a temporary `CODEX_HOME` with
+  `approval_policy = "never"` and `sandbox_mode = "danger-full-access"`):
+  the `Folder access` trust screen Codex draws at startup in an untrusted
+  Git repository. `codex-20-x8-trust` is read at 120×40 in a subdirectory,
+  with the note naming the repository root; herdr reported it Blocked.
+  `codex-21-x8-phone-trust` and `codex-22-x8-phone-trust-focus-quit` are
+  the same folder at 57×52, the folder and root wrapping at the edge,
+  then after `down`; herdr reported both Idle. `codex-23-x8-trust-command-center`
+  is plain `codex` without `--no-daemon` in a repository's root, read
+  while an attach resized the pane (26 rows): `Back to Agent Command
+  Center` and `esc back` in place of `Quit`. The folders are scratch
+  directories under `/tmp/hct`, so nothing needed scrubbing.
 - `claude-27`, `-28`, `-30` and `-31` keep the live rendering residue after
   option 4 (`No` followed by a stale grey `r you`).
 - `claude-32` through `claude-37` come from Claude Code 2.1.301 on herdr

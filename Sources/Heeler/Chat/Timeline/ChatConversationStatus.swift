@@ -328,6 +328,8 @@ extension ChatProgram {
 struct ChatUnavailableView: View {
     let reason: ChatUnavailableReason
     var launchNotice: ChatLaunchNotice?
+    /// Check Again is looking, so its capsule spins instead.
+    var isChecking = false
     let retry: () -> Void
     let showAgentTerminal: () -> Void
 
@@ -337,16 +339,54 @@ struct ChatUnavailableView: View {
         } description: {
             Text(reason.explanation(launchNotice: launchNotice))
         } actions: {
-            Button(AgentDetailSurface.terminal.showTitle, action: showAgentTerminal)
-                .buttonStyle(.bordered)
-            if reason.offersRetry {
-                Button("Check Again", action: retry)
+            // One row of capsules, stacked when the row cannot fit.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { actions }
+                VStack(spacing: 10) { actions }
             }
-            if let guide = reason.launchNotice(launchNotice)?.guideURL {
-                Link("Read More", destination: guide)
-            }
+            .modifier(ChatUnavailableActionStyle())
+            .buttonBorderShape(.capsule)
         }
         .accessibilityIdentifier("chat.unavailable")
+    }
+
+    @ViewBuilder private var actions: some View {
+        Button(action: showAgentTerminal) { actionTitle(Text(AgentDetailSurface.terminal.showTitle)) }
+        if reason.offersRetry {
+            Button(action: retry) {
+                actionTitle(Text("Check Again"))
+                    // Hidden rather than gone, so the capsule keeps its width.
+                    .opacity(isChecking ? 0 : 1)
+                    .overlay {
+                        if isChecking { ProgressView() }
+                    }
+            }
+            .allowsHitTesting(!isChecking)
+            .accessibilityLabel(isChecking ? Text("Checking") : Text("Check Again"))
+            // A new button rather than new content: glass keeps drawing
+            // the tapped label until its press settles, over the spinner.
+            .id(isChecking)
+        }
+        if let guide = reason.launchNotice(launchNotice)?.guideURL {
+            Link(destination: guide) { actionTitle(Text("Read More")) }
+        }
+    }
+
+    /// A little larger than the system's regular capsule, which looks small
+    /// under the placeholder's text, yet narrow enough to share a row.
+    private func actionTitle(_ title: Text) -> some View {
+        title.padding(.vertical, 4).padding(.horizontal, 4)
+    }
+}
+
+/// Clear Liquid Glass like the toolbar's buttons, where the system has it.
+private struct ChatUnavailableActionStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.buttonStyle(.glass)
+        } else {
+            content.buttonStyle(.bordered)
+        }
     }
 }
 

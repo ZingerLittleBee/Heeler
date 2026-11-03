@@ -436,6 +436,68 @@ struct BlockedCardStoreTests {
         #expect(await pane.reads == 0)
     }
 
+    /// herdr 0.9.5 reports Codex's trust screen Idle once its question
+    /// wraps, as on the phone's grid, and Codex reports no session before
+    /// its first prompt.
+    @Test func anIdleCodexAwaitingItsSessionShowsOnlyTheTrustScreen() async throws {
+        let pane = FakePane(try ScreenFixture.screen("codex-22-x8-phone-trust-focus-quit"))
+        let store = Self.store(.codex, pane: pane)
+        store.update(activity: .idle)
+        store.update(awaitingSession: true)
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .codexWorkspaceTrust)
+
+        // Nothing else on an idle Codex's screen is a prompt to answer.
+        for stem in ["codex-00-ready", "codex-01-x1-exec", "codex-15-x6-mcp-tool-list"] {
+            await pane.show(try ScreenFixture.screen(stem))
+            await store.refresh()
+            #expect(store.content == .none, "\(stem)")
+        }
+
+        // Once Codex reports its session, an idle Codex isn't read.
+        await pane.show(try ScreenFixture.screen("codex-22-x8-phone-trust-focus-quit"))
+        await store.refresh()
+        store.update(awaitingSession: false)
+        #expect(store.content == .none)
+        let reads = await pane.reads
+        await store.refresh()
+        #expect(await pane.reads == reads)
+    }
+
+    @Test func trustingAnIdleCodexWaitsForTheScreenToChange() async throws {
+        let pane = FakePane(try ScreenFixture.screen("codex-22-x8-phone-trust-focus-quit"))
+        await pane.react(to: ["up"], with: try ScreenFixture.screen("codex-21-x8-phone-trust"))
+        let store = Self.store(.codex, pane: pane)
+        store.update(activity: .idle)
+        store.update(awaitingSession: true)
+        await store.refresh()
+
+        // Enter has not taken yet: the idle status alone confirms nothing.
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys == [["up"], ["enter"]])
+        #expect(store.progress == .unconfirmed)
+
+        await pane.react(to: ["enter"], with: try ScreenFixture.screen("codex-00-ready"))
+        let retry = Self.store(.codex, pane: pane)
+        retry.update(activity: .idle)
+        retry.update(awaitingSession: true)
+        await retry.refresh()
+
+        await retry.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys.suffix(1) == [["enter"]])
+        #expect(retry.progress == .ready)
+        #expect(retry.notice == nil)
+        #expect(retry.content == .none)
+    }
+
     @Test func aNewDialogUnfoldsACollapsedCard() async throws {
         let pane = FakePane(try ScreenFixture.screen("claude-30-par-first"))
         let store = Self.store(.claude, pane: pane)

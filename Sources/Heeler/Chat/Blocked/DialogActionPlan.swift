@@ -151,6 +151,20 @@ struct DialogObservation: Sendable {
         self.activity = activity
         self.resolvedToolUseIDs = resolvedToolUseIDs
     }
+
+    private init(
+        screen: ANSIScreen, result: DialogParseResult, activity: ChatAgentActivity, resolvedToolUseIDs: Set<String>
+    ) {
+        self.screen = screen
+        self.result = result
+        self.activity = activity
+        self.resolvedToolUseIDs = resolvedToolUseIDs
+    }
+
+    /// The same read with nothing on screen taken as a dialog.
+    var withoutDialog: DialogObservation {
+        DialogObservation(screen: screen, result: .none, activity: activity, resolvedToolUseIDs: resolvedToolUseIDs)
+    }
 }
 
 extension DialogExpectation {
