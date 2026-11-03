@@ -239,7 +239,7 @@ enum HarnessConfigEditError: Error, Equatable, LocalizedError {
         case .agentEnvironmentUnavailable:
             "Heeler couldn't read this Agent's environment, so it can't tell which file to change. Nothing was written."
         case .openCodeVersionUnknown:
-            "Heeler couldn't read which OpenCode this Host runs, so it can't tell which file to change. Nothing was written. \(OpenCodePluginEdit.manualInstructionForEitherRelease)"
+            "Heeler couldn't read which OpenCode this Agent runs, so it can't tell which file to change. Nothing was written. \(OpenCodePluginEdit.manualInstructionForEitherRelease)"
         case .folderChangedDuringUndo:
             "Heeler took its change out of the file, but a file changed while Heeler was removing its folder, so the folder stays. Undo again to finish."
         }

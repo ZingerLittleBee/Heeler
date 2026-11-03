@@ -2039,12 +2039,22 @@ final class ConsoleStore {
         guard let core = projections[hostID] as? HerdrCoreConsoleProjection else {
             throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
         }
-        guard let form = OpenCodePluginEdit.ConfigForm.of(version: try await core.currentOpenCodeVersion()) else {
-            throw HarnessConfigEditError.openCodeVersionUnknown
-        }
         // Only an environment that was read can say a variable is unset.
-        guard let process = core.foregroundProcess(of: paneID) else {
+        guard let foreground = core.foreground(of: paneID), let process = foreground.pid else {
             throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        // The release is the Agent's own, which its PATH found, and not the login
+        // shell's (herdr compatibility, OpenCode on a signed-in Linux core).
+        let path: String?
+        switch await core.processVariable("PATH", pid: process) {
+        case .value(let value): path = value
+        case .unset: path = nil
+        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let version = try await core.openCodeVersion(
+            running: OpenCodePluginEdit.program(running: foreground.argv), path: path, directory: foreground.cwd)
+        guard let form = OpenCodePluginEdit.ConfigForm.of(version: version) else {
+            throw HarnessConfigEditError.openCodeVersionUnknown
         }
         let services = try await harnessEditServices(on: hostID)
         let home: String

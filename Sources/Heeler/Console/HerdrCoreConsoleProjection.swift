@@ -721,18 +721,27 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         return installed.kinds
     }
 
-    /// OpenCode's own words for its version, asked of the Host now. A version kept
-    /// from an earlier discovery may have been upgraded away, and a list in that
-    /// release's file does nothing, and looks as if it did.
-    func currentOpenCodeVersion() async throws -> String? {
-        _ = try await availableAgentKinds()
-        return openCodeVersion
+    /// OpenCode's own words for its version, from `program` as an Agent with this
+    /// PATH in this directory finds it, asked of the Host now. Neither the login
+    /// shell's PATH nor a version kept from an earlier look need be that Agent's
+    /// release, and a list in another release's file does nothing, and looks as if
+    /// it did.
+    func openCodeVersion(running program: String, path: String?, directory: String) async throws -> String? {
+        let transport = try await session.withTransport { $0 }
+        let nonce = HostProcessReader.makeNonce()
+        let result = try await transport.runAgentDiscovery(
+            .posixScript(
+                HerdrCoreShellLaunch.versionScript(program: program, path: path, directory: directory, nonce: nonce)))
+        guard let found = try? HerdrCoreShellLaunch.parseDiscovery(stdout: result.stdout, nonce: nonce) else {
+            throw TransportError.malformedResponse("The Host's shell did not finish reading OpenCode's version.")
+        }
+        return found.version
     }
 
-    /// The process whose environment says where this Terminal's program keeps its
-    /// configuration.
-    func foregroundProcess(of paneID: String) -> Int? {
-        terminalRecord(at: paneID)?.foreground?.pid
+    /// What this Terminal runs, whose environment says where it keeps its
+    /// configuration and which release it is.
+    func foreground(of paneID: String) -> HerdrCoreForeground? {
+        terminalRecord(at: paneID)?.foreground
     }
 
     func availableTemplates() async throws -> [AgentTemplate] {

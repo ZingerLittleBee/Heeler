@@ -49,6 +49,19 @@ import Testing
         #expect(OpenCodePluginEdit.ConfigForm.of(version: version) == nil)
     }
 
+    /// What the Agent ran answers for its release when it names OpenCode; a bare
+    /// name or another program leaves it to the Agent's own PATH.
+    @Test(arguments: [
+        (["opencode", "-s", "ses_1"], "opencode"),
+        (["/home/dev/bin-oc119/opencode"], "/home/dev/bin-oc119/opencode"),
+        (["./node_modules/.bin/opencode"], "./node_modules/.bin/opencode"),
+        (["node", "/usr/lib/node_modules/opencode-ai/bin/opencode"], "opencode"),
+        ([], "opencode"),
+    ])
+    func theReleaseIsAskedOfWhatTheAgentRan(_ argv: [String], _ program: String) {
+        #expect(OpenCodePluginEdit.program(running: argv) == program)
+    }
+
     @Test func theConfigDirectoryFollowsTheAgentsEnvironment() {
         #expect(OpenCodePluginEdit.configDirectory(xdgConfigHome: nil, home: "/home/dev") == Self.directory)
         #expect(OpenCodePluginEdit.configDirectory(xdgConfigHome: "", home: "/home/dev/") == Self.directory)

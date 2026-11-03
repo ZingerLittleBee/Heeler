@@ -235,6 +235,26 @@ struct HerdrCoreOpenCodeEditTests {
         #expect(change.createsFile)
     }
 
+    /// hc-lab, 2026-11-03: the login shell found OpenCode 2.2.2, and a 1.19.5 the
+    /// Agent's own PATH found was offered the 2.x `cli.json`, which 1.19.5 ignores.
+    @Test func theFileFollowsTheAgentsOwnReleaseNotTheLoginShells() async throws {
+        let (store, transport, host) = try await started(version: "2.2.2")
+        defer { store.setHosts([]) }
+        let agentPath = "/home/dev/bin-oc119:/usr/local/bin:/usr/bin:/bin"
+        await transport.setProcessVariable("PATH", to: agentPath)
+        await transport.setOpenCodeVersion("1.19.5", searching: agentPath)
+
+        let change = try await reviewed(flow(store, host))
+
+        #expect(change.path == Self.tuiConfig)
+        let script = try #require(await transport.discoveryScripts.last)
+        #expect(script.contains("PATH='\(agentPath)'; export PATH"))
+        #expect(script.contains("cd '/work/app'"))
+        #expect(script.contains("'opencode' --version"))
+        #expect(!script.contains(" -ic "))
+        #expect(await transport.processVariableReads.contains("PATH of 70"))
+    }
+
     /// An upgrade while the Console stays connected: under the old release's key the
     /// entry would do nothing, and look as if it did.
     @Test func anUpgradeSinceTheLastLookMovesTheFile() async throws {
@@ -287,7 +307,7 @@ struct HerdrCoreOpenCodeEditTests {
     }
 
     /// Unreadable is not unset: taking it for unset would edit a file this Agent may not read.
-    @Test(arguments: ["XDG_CONFIG_HOME", "HOME"])
+    @Test(arguments: ["XDG_CONFIG_HOME", "HOME", "PATH"])
     func anEnvironmentItCantReadWritesNothing(_ variable: String) async throws {
         let files = InMemoryHostFiles()
         let (store, transport, host) = try await started(files: files)

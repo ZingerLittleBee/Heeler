@@ -29,7 +29,7 @@ enum OpenCodePluginEdit {
             + "where a list would replace the one inside \(section), \(pluginCopy)."
     }
 
-    /// For a Host whose release Heeler can't read.
+    /// For an Agent whose release Heeler can't read.
     static var manualInstructionForEitherRelease: String {
         let (tui, cli) = (ConfigForm.tuiConfig, ConfigForm.cliConfig)
         return "Add \"\(entryValue)\" to \(tui.listKey) in \(tui.fileNames[0]) on OpenCode 1.x, "
@@ -68,6 +68,15 @@ enum OpenCodePluginEdit {
             default: nil
             }
         }
+    }
+
+    /// The program to ask for the release an Agent runs: what it ran, when that
+    /// names OpenCode, or else `opencode` as its own PATH finds it.
+    static func program(running argv: [String]) -> String {
+        guard let first = argv.first, (first as NSString).lastPathComponent.hasPrefix("opencode") else {
+            return SupportedAgentKind.opencode.executable
+        }
+        return first
     }
 
     /// `$XDG_CONFIG_HOME/opencode`, by default `~/.config/opencode`, on Linux and on

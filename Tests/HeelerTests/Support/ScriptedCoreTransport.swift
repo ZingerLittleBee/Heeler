@@ -230,6 +230,8 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private var shell: String?
     private var discoveredPrograms: [String] = []
     private var openCodeVersionOutput: String?
+    /// What `opencode --version` prints for a script that searches this PATH.
+    private var openCodeVersionByPath: [String: String] = [:]
     private var runFailure: (any Error)?
     private var heldNames: Set<String> = []
     private var templateList: JSONValue = .object(["templates": .array([])])
@@ -454,7 +456,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         let lines =
             ["welcome from the rc", "", "\(marker)\(nonce)"]
             + discoveredPrograms.map { "agent \($0)" }
-            + ["version \(openCodeVersionOutput ?? "")", "", "__HEELER_AGENTS_END_\(nonce)"]
+            + ["version \(openCodeVersion(searching: body) ?? "")", "", "__HEELER_AGENTS_END_\(nonce)"]
         return GitExecResult(
             stdout: Data((lines.joined(separator: "\n") + "\n").utf8), stderr: Data(), exitStatus: 0)
     }
@@ -549,6 +551,17 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     func setDiscovery(programs: [String], openCodeVersion: String? = nil) {
         discoveredPrograms = programs
         openCodeVersionOutput = openCodeVersion
+    }
+
+    /// Another OpenCode, found first on this PATH, as one an Agent started with its
+    /// own PATH runs while the login shell finds the other.
+    func setOpenCodeVersion(_ version: String, searching path: String) {
+        openCodeVersionByPath[path] = version
+    }
+
+    private func openCodeVersion(searching script: String) -> String? {
+        openCodeVersionByPath.first { script.contains("PATH=\(HerdrCoreLocator.quoted($0.key));") }?.value
+            ?? openCodeVersionOutput
     }
 
     /// Every run fails with this until it is called with nil.

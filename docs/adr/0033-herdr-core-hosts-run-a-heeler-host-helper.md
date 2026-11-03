@@ -188,7 +188,10 @@ that Heeler can read from outside the process.
     copies its OpenCode plugin into a folder of its own under OpenCode's
     config directory and adds that folder to the list (`plugin` in
     `tui.json(c)`, or `plugins` in `cli.json`, by OpenCode's release, and
-    refused for a version it can't place). Undoing removes the entry, then the
+    refused for a version it can't place). The release is the one the Agent
+    runs: its program asked for its version with the Agent's own PATH and
+    directory, since the login shell's PATH can find another release, and a
+    list in that release's file does nothing. Undoing removes the entry, then the
     folder; removing the Helper undoes it. The entry is one line, first in the
     list, relative to the file: `./heeler-opencode`. The folder holds the
     plugin's three files, and goes in before the entry so the file never names
