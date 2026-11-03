@@ -430,7 +430,7 @@ final class ComposerStagingStore {
             copied = true
         } catch {}
         if insertsPathIntoComposer {
-            composer.insertIntoDraft("\(staged.path) ")
+            composer.insertPathIntoDraft(staged.path)
         }
         state = .completed(
             Outcome(medium: staged.medium, path: staged.path, copied: copied))

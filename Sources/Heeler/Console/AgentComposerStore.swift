@@ -7,6 +7,8 @@ import Observation
 protocol ComposerDraftOperations: AnyObject {
     func replaceDraft(with text: String)
     func insertIntoDraft(_ text: String)
+    /// Inserts a staged Host path as a word of its own (ADR 0006).
+    func insertPathIntoDraft(_ path: String)
 }
 
 /// Owns Agent detail's local draft and delivery state. Draft edits do not
@@ -204,6 +206,18 @@ final class AgentComposerStore: ComposerDraftOperations {
         draftSelection = NSRange(
             location: range.location + (text as NSString).length,
             length: 0)
+    }
+
+    /// At the caret, with a space before it unless the text there already ends
+    /// in whitespace, and one after it, so the path never runs into a word.
+    func insertPathIntoDraft(_ path: String) {
+        let range = Self.clamped(draftSelection, to: draft)
+        insertIntoDraft(Self.pathInsertion(path, after: (draft as NSString).substring(to: range.location)))
+    }
+
+    private static func pathInsertion(_ path: String, after text: String) -> String {
+        guard let last = text.last, !last.isWhitespace else { return "\(path) " }
+        return " \(path) "
     }
 
     func setDraftSelection(_ range: NSRange) {
@@ -686,10 +700,13 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard let index = indexOfDroppedImage(id: id) else { return }
         let placeholder = pendingDroppedImages[index].placeholder
         pendingDroppedImages.remove(at: index)
-        let insertion = "\(path) "
-        if !applyTokenReplacement(placeholder, firstReplacement: insertion) {
-            insertIntoDraft(insertion)
+        let slot = (draft as NSString).range(of: placeholder)
+        guard slot.location != NSNotFound else {
+            insertPathIntoDraft(path)
+            return
         }
+        let insertion = Self.pathInsertion(path, after: (draft as NSString).substring(to: slot.location))
+        applyTokenReplacement(placeholder, firstReplacement: insertion)
     }
 
     private func abandonDroppedImage(id: UInt64) {
