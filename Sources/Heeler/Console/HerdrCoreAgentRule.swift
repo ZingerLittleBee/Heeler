@@ -434,12 +434,14 @@ enum HerdrCoreAgentRule {
     /// `npm exec` and its alias `npm x`, which `npx` runs.
     private static let packageRunnerCommands: Set<String> = ["exec", "x"]
 
-    /// npm sets its process title to its command line, so on Linux the process
-    /// reads as `npm exec claude` (hc-lab, `npx claude`, 2026-11-02), which the
-    /// arguments hold as one word. Its words, when it is one.
+    /// npm sets its process title to `npm` and its positional arguments (npm 11
+    /// `lib/npm.js`), so on Linux the process reads as `npm exec claude` (hc-lab,
+    /// `npx claude`, 2026-11-02), which the arguments hold as one word, and a
+    /// scoped package keeps its `/` there. Its words, when it is one: the first
+    /// word is `npx` or `npm` itself, so a path never reads as one.
     private static func packageRunnerTitle(_ word: String) -> [String]? {
         let words = word.split(separator: " ").map(String.init)
-        guard words.count > 1, !word.contains("/"), !word.contains("\\") else { return nil }
+        guard words.count > 1 else { return nil }
         let isRunner = words[0] == "npx" || (words[0] == "npm" && packageRunnerCommands.contains(words[1]))
         return isRunner ? words : nil
     }

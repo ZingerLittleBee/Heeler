@@ -293,13 +293,15 @@ function readShell(args, name, depth) {
 }
 
 /**
- * npm sets its process title to its command line, so on Linux the process reads as
- * `npm exec claude` (hc-lab, `npx claude`, 2026-11-02), which the arguments hold as
- * one word. Its words, when it is one.
+ * npm sets its process title to `npm` and its positional arguments (npm 11
+ * `lib/npm.js`), so on Linux the process reads as `npm exec claude` (hc-lab, `npx
+ * claude`, 2026-11-02), which the arguments hold as one word, and a scoped package
+ * keeps its `/` there. Its words, when it is one: the first word is `npx` or `npm`
+ * itself, so a path never reads as one.
  */
 function packageRunnerTitle(word) {
   const words = word.split(" ").filter((part) => part !== "");
-  if (words.length < 2 || word.includes("/") || word.includes("\\")) return null;
+  if (words.length < 2) return null;
   const isRunner = words[0] === "npx" || (words[0] === "npm" && PACKAGE_RUNNER_COMMANDS.has(words[1]));
   return isRunner ? words : null;
 }

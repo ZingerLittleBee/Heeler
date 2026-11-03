@@ -4283,6 +4283,70 @@
       }
     },
     {
+      "name": "npm's retitled npm exec naming a scoped package with its version is its program",
+      "source": "npm 11 `lib/npm.js`: the title is `npm` and the positional arguments, so `npx --yes @anthropic-ai/claude-code@2.1.316 --session-id <id>` reads `npm exec @anthropic-ai/claude-code@2.1.316 --session-id <id>`, the package's `/` included; the kernel keeps 15 bytes of it as the process's name",
+      "record": {
+        "address": "t4",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/bash"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 174037,
+          "name": "npm exec @anthr",
+          "argv": [
+            "npm exec @anthropic-ai/claude-code@2.1.316 --session-id 00000000-0000-4000-8000-00000000000a"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "npm's retitled npm exec naming Codex's package with its options is Codex",
+      "source": "npm 11 `lib/npm.js`, as the case above: `npx @openai/codex --no-daemon` reads `npm exec @openai/codex --no-daemon`",
+      "record": {
+        "address": "t4",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/bash"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 174037,
+          "name": "npm exec @opena",
+          "argv": [
+            "npm exec @openai/codex --no-daemon"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
       "name": "npm exec with its arguments apart names its command",
       "source": "ADR 0032, the Agent rule: `npm exec` runs the package or command it names; the same launch as the retitled case with each word its own argument",
       "record": {
