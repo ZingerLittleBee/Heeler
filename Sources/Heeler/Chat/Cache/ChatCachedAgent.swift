@@ -66,6 +66,32 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
     }
 }
 
+/// A Workspace's git checkout as the Host's last snapshot reported it. Saved
+/// entries carry no checkout of their own, so this places them By Workspace
+/// as the live Agents were placed, even where the entries of a checkout are
+/// not saved.
+struct ChatCachedWorkspace: Codable, Equatable, Sendable {
+    let id: String
+    let label: String?
+    let checkout: RepositoryCheckout
+    /// The branch the latest Changes read of the checkout found, which
+    /// titles it in a repository's card until a read of this launch lands.
+    var branch: CheckoutHead.Branch? = nil
+
+    /// Each Workspace among `agents` that reported a checkout, by id so an
+    /// unchanged snapshot saves nothing. A checkout keeps the branch
+    /// `previous` holds for its path.
+    static func structure(of agents: [ConsoleAgent], keeping previous: [Self]) -> [Self] {
+        var seen: Set<String> = []
+        return agents.compactMap { agent -> Self? in
+            guard let checkout = agent.repositoryCheckout, seen.insert(agent.agent.workspaceID).inserted
+            else { return nil }
+            let branch = previous.first { $0.checkout.checkoutPath == checkout.checkoutPath }?.branch
+            return Self(id: agent.agent.workspaceID, label: agent.workspaceLabel, checkout: checkout, branch: branch)
+        }.sorted { $0.id < $1.id }
+    }
+}
+
 /// A Host id alone is insufficient: a Host whose herdr session, account, or
 /// machine changed must not revive another server's saved pane-to-
 /// conversation bindings. The machine is the host key the device trusts for
@@ -73,9 +99,18 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
 /// Host without one falls back to the primary route, as directories were
 /// compared before Routes.
 struct ChatAgentDirectory: Codable, Equatable, Sendable {
+    /// What a directory gives the Console: the saved entries and the
+    /// Workspace structure they were listed in.
+    struct Contents: Equatable, Sendable {
+        var agents: [ChatCachedAgent] = []
+        var workspaces: [ChatCachedWorkspace] = []
+    }
+
     var formatVersion = 1
     let host: HostIdentity
     let agents: [ChatCachedAgent]
+    /// Nil in directories saved before the structure was kept.
+    let workspaces: [ChatCachedWorkspace]?
 
     struct HostIdentity: Codable, Equatable, Sendable {
         let id: UUID
@@ -126,18 +161,19 @@ struct ChatAgentDirectory: Codable, Equatable, Sendable {
         }
     }
 
-    init(_ agents: [ChatCachedAgent], for host: Host, hostKeys: Set<Data>) {
+    init(_ contents: Contents, for host: Host, hostKeys: Set<Data>) {
         self.host = HostIdentity(host, hostKeys: hostKeys)
-        self.agents = agents.filter { $0.isValid(for: host) }
+        agents = contents.agents.filter { $0.isValid(for: host) }
+        workspaces = contents.workspaces
     }
 
     func belongs(to host: Host, hostKeys: Set<Data>) -> Bool {
         formatVersion == 1 && self.host.admits(HostIdentity(host, hostKeys: hostKeys))
     }
 
-    func entries(for host: Host, hostKeys: Set<Data>) -> [ChatCachedAgent] {
-        guard belongs(to: host, hostKeys: hostKeys) else { return [] }
-        return agents.filter { $0.isValid(for: host) }
+    func contents(for host: Host, hostKeys: Set<Data>) -> Contents {
+        guard belongs(to: host, hostKeys: hostKeys) else { return Contents() }
+        return Contents(agents: agents.filter { $0.isValid(for: host) }, workspaces: workspaces ?? [])
     }
 
     /// The digests of the host keys the device trusts for `hostID`, read

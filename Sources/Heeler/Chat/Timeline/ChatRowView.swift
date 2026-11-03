@@ -37,6 +37,14 @@ struct ChatRowView: View {
             .padding(.top, row.topSpacing)
             .chatContentColumn()
             .modifier(ChatRowAccessibility(row: row, actions: actions))
+            .environment(\.chatImageOpener, imageOpener)
+    }
+
+    /// Opens a path the message names in the preview an image row's
+    /// thumbnail opens.
+    private var imageOpener: ChatImageOpener {
+        let actions = actions
+        return ChatImageOpener { path in actions.previewImage(path, actions.thumbnails?.image(of: path)) }
     }
 
     @ViewBuilder
@@ -99,6 +107,7 @@ struct ChatRowView: View {
 private struct ChatRowAccessibility: ViewModifier {
     let row: ChatRow
     let actions: ChatRowActions
+    @Environment(\.chatImageOpener) private var imageOpener
 
     func body(content: Content) -> some View {
         if let text = row.copyText, !row.hasInnerControls {
@@ -107,10 +116,21 @@ private struct ChatRowAccessibility: ViewModifier {
                 .accessibilityIdentifier(identifier)
                 .accessibilityAction(named: "Copy") { actions.copy(text) }
                 .accessibilityAction(named: "Select Text") { actions.selectText(text) }
+                .accessibilityActions { imageActions }
         } else {
             content
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier(identifier)
+        }
+    }
+
+    /// One action per image the message names, as its links open.
+    private var imageActions: some View {
+        let opener = imageOpener
+        return ForEach(row.messageImagePaths, id: \.self) { @Sendable path in
+            Button("Preview \(RemoteHostPath.lastComponent(of: path))") { @MainActor in
+                opener?.open(path)
+            }
         }
     }
 
@@ -147,6 +167,7 @@ private struct ChatBubble<Content: View>: View {
 
 private struct ChatUserBubble: View {
     let message: ChatUserMessage
+    @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
         ChatBubble {
@@ -156,8 +177,11 @@ private struct ChatUserBubble: View {
                         + Text(command.arguments.isEmpty ? "" : " \(command.arguments)"))
                         .font(.body)
                 } else {
-                    Text(verbatim: message.text)
+                    // Image paths open as in the Agent's messages.
+                    ChatMarkdownView.text(
+                        ChatImageLink.marking(message.text), in: .body, opensImages: imageOpener != nil)
                         .font(.body)
+                        .chatMessageLinks(opener: imageOpener)
                 }
                 if message.imageCount > 0 || !message.attachmentLabels.isEmpty || message.wasQueued {
                     ChatAttachmentChips(message: message)

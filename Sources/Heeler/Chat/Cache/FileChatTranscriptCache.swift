@@ -87,23 +87,23 @@ actor FileChatTranscriptCache: ChatTranscriptCache {
         write(data, to: url, hostID: document.key.hostID)
     }
 
-    func loadAgentDirectory(for host: Host) async -> [ChatCachedAgent] {
+    func loadAgentDirectory(for host: Host) async -> ChatAgentDirectory.Contents {
         let hostKeys = await ChatAgentDirectory.trustedHostKeys(for: host.id, in: knownHosts)
-        guard let directory = readAgentDirectory(host.id) else { return [] }
-        let entries = directory.entries(for: host, hostKeys: hostKeys)
-        if !entries.isEmpty {
+        guard let directory = readAgentDirectory(host.id) else { return .init() }
+        let contents = directory.contents(for: host, hostKeys: hostKeys)
+        if contents != ChatAgentDirectory.Contents() {
             let url = agentDirectoryURL(host.id)
             try? fileManager.setAttributes([.modificationDate: now()], ofItemAtPath: url.path)
         }
-        return entries
+        return contents
     }
 
-    func saveAgentDirectory(_ agents: [ChatCachedAgent], for host: Host) async {
+    func saveAgentDirectory(_ contents: ChatAgentDirectory.Contents, for host: Host) async {
         let hostKeys = await ChatAgentDirectory.trustedHostKeys(for: host.id, in: knownHosts)
         if let allowedHosts, !allowedHosts.contains(host.id) { return }
         let url = agentDirectoryURL(host.id)
-        let directory = ChatAgentDirectory(agents, for: host, hostKeys: hostKeys)
-        guard !directory.agents.isEmpty,
+        let directory = ChatAgentDirectory(contents, for: host, hostKeys: hostKeys)
+        guard !directory.agents.isEmpty || directory.workspaces?.isEmpty == false,
             let data = try? Self.encoder.encode(directory), data.count <= policy.maxDocumentBytes
         else {
             removeFile(url)

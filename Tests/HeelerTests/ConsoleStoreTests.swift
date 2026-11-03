@@ -267,7 +267,7 @@ struct ConsoleStoreTests {
             return
         }
         #expect(document.entries.map(\.id.rawValue) == NumberedChatReducer.ids(0..<3))
-        let directory = await reopened.loadAgentDirectory(for: host)
+        let directory = await reopened.loadAgentDirectory(for: host).agents
         #expect(directory.map(\.paneID) == ["w1:p1"])
         #expect(directory.first?.agentSession == session)
         store.setHosts([])
@@ -420,7 +420,7 @@ struct ConsoleStoreTests {
             guard store.hostStatuses[host.id] == .connected else { return false }
             return await store.cachedChats.cachedSession(for: live, on: host) == nil
         }
-        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
     }
 
     /// #414, the app's removal wiring end to end: the revoke borrows the

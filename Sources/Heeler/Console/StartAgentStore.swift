@@ -692,6 +692,13 @@ final class StartAgentStore {
     }
 }
 
+extension StartAgentStore.LaunchOrigin {
+    /// Beside `agent`: its Host, Workspace, and launch directory.
+    init(beside agent: ConsoleAgent) {
+        self.init(hostID: agent.hostID, workspaceID: agent.agent.workspaceID, cwd: agent.agent.cwd)
+    }
+}
+
 extension Result {
     fileprivate var isSuccess: Bool {
         if case .success = self { return true }

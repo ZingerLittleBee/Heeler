@@ -100,7 +100,9 @@ struct ConsoleView: View {
     /// presented when a deep link carries the window off to an Agent.
     @State private var hostsTabGeneration = 0
     @State private var settingsTabGeneration = 0
-    @State private var isStartingAgent = false
+    /// The New Agent sheet while it is up. An item rather than a flag, so
+    /// the sheet reads the origin it was opened with.
+    @State private var startAgentRequest: StartAgentRequest?
     @State private var connectionDetailRequest: ConnectionDetailRequest?
     /// The flat lists' summary opened: every Host problem in one sheet.
     @State private var isShowingHostIssues = false
@@ -208,10 +210,10 @@ struct ConsoleView: View {
             if listTab == nil { listTab = shownListTab }
         }
         // The detail's actions can present these even while the sidebar is hidden.
-        .sheet(isPresented: $isStartingAgent) {
+        .sheet(item: $startAgentRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
-                StartAgentView(hosts: hosts.hosts, console: console) { id in
+                StartAgentView(hosts: hosts.hosts, console: console, origin: request.origin) { id in
                     // A fresh launch lands in its own terminal, exactly
                     // as tapping the new row would, on the list that has it.
                     if currentTab != .agents { selectedTab.wrappedValue = .agents }
@@ -639,7 +641,7 @@ struct ConsoleView: View {
         // Hosts and Settings tabs present their own sheets, which cover the
         // tab bar: one up now is theirs. Rebuilding the tab takes it down,
         // as closing them does where they are sheets.
-        let ownsPresentation = isStartingAgent || isStartingTerminal
+        let ownsPresentation = startAgentRequest != nil || isStartingTerminal
             || connectionDetailRequest != nil || isShowingHostIssues
             || isShowingHostsSheet || isShowingSettingsSheet
         if isPresentingOverConsole, !ownsPresentation {
@@ -653,7 +655,7 @@ struct ConsoleView: View {
         isHostsTabSelected = false
         isSettingsTabSelected = false
         isUsageTabSelected = false
-        isStartingAgent = false
+        startAgentRequest = nil
         isStartingTerminal = false
         connectionDetailRequest = nil
         isShowingHostIssues = false
@@ -1105,7 +1107,11 @@ struct ConsoleView: View {
     /// bar as it is.
     private func newItemButton(for tab: ConsoleTab) -> some View {
         Button(tab == .terminals ? "New Terminal" : "New Agent", systemImage: "plus") {
-            if tab == .terminals { isStartingTerminal = true } else { isStartingAgent = true }
+            if tab == .terminals {
+                isStartingTerminal = true
+            } else {
+                startAgentRequest = StartAgentRequest()
+            }
         }
     }
 
@@ -1156,7 +1162,7 @@ struct ConsoleView: View {
                     // Tabs are navigation, not cover: only sheets and alerts
                     // are, including the ones Hosts, Settings and the
                     // Terminals list present, which register nowhere.
-                    isCovered: isStartingAgent || isStartingTerminal
+                    isCovered: startAgentRequest != nil || isStartingTerminal
                         || connectionDetailRequest != nil || isShowingHostIssues
                         || isShowingHostsSheet || isShowingSettingsSheet
                         || isPresentingOverConsole,
@@ -1198,7 +1204,7 @@ struct ConsoleView: View {
                 if currentTab == .terminals {
                     isStartingTerminal = true
                 } else {
-                    isStartingAgent = true
+                    startAgentRequest = StartAgentRequest()
                 }
             },
             settings: { showSettings() },
@@ -1479,7 +1485,11 @@ struct ConsoleView: View {
                             .showSidebar()
                     }
                 case .newAgent:
-                    if tab == .terminals { isStartingTerminal = true } else { isStartingAgent = true }
+                    if tab == .terminals {
+                        isStartingTerminal = true
+                    } else {
+                        startAgentRequest = StartAgentRequest()
+                    }
                 case .hosts: presentHosts()
                 }
             }
@@ -1676,6 +1686,8 @@ struct ConsoleView: View {
             agentLink(
                 agent,
                 isSaved: saved[agent.id] != nil,
+                // A saved Agent's Workspace may be gone with its Host session.
+                newAgentOrigin: saved[agent.id] == nil ? StartAgentStore.LaunchOrigin(beside: agent) : nil,
                 background: ConsoleWorkspaceCardRow(
                     placed: placed, indent: .icon,
                     top: standsAlone ? (placed.followsHeader ? 0 : 6) : 2, bottom: standsAlone ? 6 : 4,
@@ -1715,23 +1727,27 @@ struct ConsoleView: View {
             changes: readsChanges ? console.rowChanges.store(for: agent) : nil,
             qualifier: standsAlone ? nil : qualifier,
             saved: saved,
-            hiddenTokens: ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: showsHost),
+            hiddenTokens: ConsoleWorkspaceCard.hiddenTokens(
+                for: agent, checkoutPath: section.checkout?.checkoutPath, showsHost: showsHost),
             heading: heading,
             showsHost: showsHost,
             lead: .card)
     }
 
     /// A repository's checkout, titled by the branch its Agents' latest
-    /// Changes reads found.
+    /// Changes reads found, or before any did, the branch saved from the
+    /// last read.
     private func checkoutTitle(_ section: ConsoleWorkspaceSection) -> ConsoleCheckoutTitle {
         let reads = section.agents.compactMap { agent -> CheckoutChanges? in
             guard case .loaded(let changes) = console.rowChanges.store(for: agent)?.phase else { return nil }
             return changes
         }
+        let path = section.checkout?.checkoutPath
         return ConsoleCheckoutTitle(
             label: section.title,
             isMainCheckout: section.checkout?.isLinkedWorktree != true,
-            branch: ConsoleCheckoutTitle.branch(at: section.checkout?.checkoutPath, in: reads))
+            branch: ConsoleCheckoutTitle.branch(at: path, in: reads)
+                ?? console.savedBranch(on: section.id.hostID, atCheckoutPath: path))
     }
 
     private func checkoutSummaries(_ card: ConsoleWorkspaceCard) -> [ConsoleCheckoutSummary] {
@@ -1876,10 +1892,12 @@ struct ConsoleView: View {
     }
 
     /// An Agent's row: `label` opens its detail, with the row's pin, close,
-    /// and window actions. `background` draws the row's place in the list;
-    /// `preview` is what a lifted card shows (see `ConsoleRowContextMenu`).
+    /// and window actions, and New Agent beside it when `newAgentOrigin` is
+    /// set. `background` draws the row's place in the list; `preview` is
+    /// what a lifted card shows (see `ConsoleRowContextMenu`).
     private func agentLink<RowContent: View, Background: ViewModifier, Preview: View>(
-        _ agent: ConsoleAgent, isSaved: Bool, background: Background,
+        _ agent: ConsoleAgent, isSaved: Bool, newAgentOrigin: StartAgentStore.LaunchOrigin? = nil,
+        background: Background,
         @ViewBuilder label: () -> RowContent, @ViewBuilder preview: () -> Preview
     ) -> some View {
         NavigationLink(value: ConsoleSelection.agent(agent.id)) {
@@ -1910,6 +1928,13 @@ struct ConsoleView: View {
                 if supportsMultipleWindows, notificationRouter.path.last != agent.id {
                     Button("Open in New Window", systemImage: "plus.rectangle.on.rectangle") {
                         openInNewWindow(agent)
+                    }
+                }
+                // In the Agent's Workspace and directory, as its detail's
+                // New Agent starts one.
+                if let newAgentOrigin {
+                    Button("New Agent", systemImage: "plus") {
+                        startAgentRequest = StartAgentRequest(origin: newAgentOrigin)
                     }
                 }
                 // Asks first, like the swipe. A menu item can be destructive:
@@ -2142,11 +2167,15 @@ struct ConsoleView: View {
     private var agentTitleQualifiers: [ConsoleAgent.ID: String] {
         // By Workspace rows leave fields to their card's titles.
         let isByWorkspace = listPresentation.mode == .byWorkspace
+        let savedStructures = isByWorkspace ? console.savedWorkspaceStructures : [:]
         return AgentTitleQualifier.qualifiers(for: hostFilteredAgents) { agent in
+            let checkoutPath = agent.checkoutPath
+                ?? savedStructures[agent.hostID]?.first { $0.id == agent.agent.workspaceID }?.checkout.checkoutPath
             let card = AgentCardPresentation(
                 agent: agent, layout: console.rowLayout(for: agent.hostID),
                 hiding: isByWorkspace
-                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: false) : [],
+                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, checkoutPath: checkoutPath, showsHost: false)
+                    : [],
                 leadsWithMark: true)
             return .init(title: card.headline, namesAgent: card.cardNamesAgent)
         }
@@ -2875,6 +2904,13 @@ private struct ConsoleAgentListStyle: ViewModifier {
 enum ConsoleSelection: Hashable {
     case agent(ConsoleAgent.ID)
     case terminal(ConsoleTerminal.ID)
+}
+
+/// One presentation of the New Agent sheet: beside `origin`'s Agent when a
+/// card row's menu opened it, else on a Host the form asks for.
+private struct StartAgentRequest: Identifiable {
+    let id = UUID()
+    var origin: StartAgentStore.LaunchOrigin?
 }
 
 /// What a list tab showed when the other list took the stage.

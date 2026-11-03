@@ -587,10 +587,7 @@ struct AgentTerminalView: View {
             StartAgentView(
                 hosts: hosts,
                 console: console,
-                origin: StartAgentStore.LaunchOrigin(
-                    hostID: agent.hostID,
-                    workspaceID: agent.agent.workspaceID,
-                    cwd: agent.agent.cwd),
+                origin: StartAgentStore.LaunchOrigin(beside: agent),
                 onStarted: { switchToAgent($0) })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
