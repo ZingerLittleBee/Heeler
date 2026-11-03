@@ -13,7 +13,7 @@ Entries reference the pull request that made the change.
   the text lands at the caret for you to review and send. Voice Input uses
   your own API key with OpenAI, DeepInfra, SiliconFlow, or any service that
   takes OpenAI's audio/transcriptions request, set up in Settings › Voice
-  Input. Recordings go only to the service you agree to.
+  Input. Recordings go only to the service you agree to. (#620)
 
 ## [0.1.17] - 2026-11-04
 
