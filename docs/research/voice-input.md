@@ -578,6 +578,10 @@ mapped to the unauthorized failure that points to Settings. Full locale identifi
 app sends are required. In the owner's Mac Simulator, every Core Audio input call timed
 out after 30 s (Mach send timeout), so the recorder was not exercised end to end there.
 
+Device result (2026-11-04): the owner ran the PR #620 build on an iPhone 17 Pro Max with the
+OpenAI preset and real speech, and reported no problems. DeepInfra and SiliconFlow remain
+untested with real keys.
+
 - **Smoke test first, about half a day:** one real key on each preset, plus one Custom endpoint
   through OpenRouter. Confirm SiliconFlow serves 1.7B and honors `language`, WAV upload and file limits,
   the built-in test clip's acceptance and billing, cold starts, and the median time from
@@ -626,7 +630,6 @@ out after 30 s (Mach send timeout), so the recorder was not exercised end to end
 
 - Any vendor call with a real key other than the OpenAI `gpt-transcribe` smoke tests on synthetic speech,
   so the other latency and accuracy statements remain documentation or model cards.
-- `SystemVoiceRecorder` capturing real speech, on a device or in a Simulator with working audio input.
 - Connectivity from mainland China for any vendor, and from overseas to SiliconFlow and Alibaba Beijing.
 - Whether non-mainland identities can open SiliconFlow, Doubao, or Bailian accounts, and whether DeepInfra
   accepts Chinese-issued cards.
