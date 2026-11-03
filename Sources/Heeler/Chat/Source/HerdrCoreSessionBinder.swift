@@ -315,8 +315,11 @@ struct HerdrCoreSessionBinder: Sendable {
 
     // MARK: Registry
 
-    /// On Windows Claude Code keeps the creation FILETIME in `procStartFt`, as
-    /// decimal digits (2.1.316 source, herdr compatibility).
+    /// On Windows Claude Code 2.1.286 and 2.1.316 wrote the creation FILETIME as
+    /// decimal digits in `procStart`, with no `procStartFt` (one machine, herdr-core
+    /// 0.1.16, 2026-11-03), though 2.1.316's source text names `procStartFt` there.
+    /// A Windows read takes `procStartFt` and falls back to `procStart` (herdr
+    /// compatibility).
     private struct RegistryEntry: Decodable {
         let pid: Int?
         let sessionId: String

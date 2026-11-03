@@ -224,8 +224,10 @@ extension HerdrCoreSessionBinder {
     /// One row of `active_sessions.json`. `pid_start` is a JSON number, field 22
     /// of `/proc/<pid>/stat` (Grok Build 1.0.70, `host-evidence/grok/s-flag.json`), and
     /// microseconds since the epoch on macOS (the same, `host-evidence/macos`).
-    /// On Windows it is taken to be the creation FILETIME, which no row has shown yet
-    /// (herdr compatibility): any other number binds nothing.
+    /// On Windows Grok Build 1.0.70's rows had no `pid_start` at all (one machine,
+    /// herdr-core 0.1.16, 2026-11-03), so none binds there. A row that has one is
+    /// taken to hold the creation FILETIME, and any other number binds nothing
+    /// (herdr compatibility).
     private struct ActiveSession: Decodable {
         let sessionID: String
         let pid: Int
