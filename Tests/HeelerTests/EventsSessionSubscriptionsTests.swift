@@ -494,6 +494,10 @@ struct EventsSessionSubscriptionsTests {
         // reinstall's transport check must replace it, silently.
         await first.setConnectionAlive(false)
         await session.updateSubscriptions(updated)
+        // Closing the stream does not wait for the run loop to retire its
+        // Transport. Arrive during the replacement dial, not on the dying
+        // link, where a failed request correctly emits a health warning.
+        await connectGate.waitForEntry()
 
         let probe = Task {
             try await session.withTransport { transport in
@@ -505,6 +509,12 @@ struct EventsSessionSubscriptionsTests {
         try await Task.sleep(for: .milliseconds(50))
         await connectGate.open()
         #expect(try await probe.value == "replacement")
+
+        // The deliberate replacement never announced a failure or a new
+        // activation; the fresh `.connected` is its only signal. Wait for
+        // that acknowledgement before inspecting the installed subscriptions.
+        let nextUpdate = await updates.next()
+        #expect(nextUpdate == .status(.connected))
         // A fresh transport sees exactly one `events.subscribe`, with the
         // CURRENT set: the `[initial]` capture belongs to `first`, the
         // transport that was replaced. Same contract as the suspend/resume
@@ -512,10 +522,6 @@ struct EventsSessionSubscriptionsTests {
         // — accumulating `[initial, updated]` is the same-transport
         // resubscribe case, not a fresh dial.
         #expect(await replacement.capturedSubscriptions == [updated])
-
-        // The deliberate replacement never announced a failure or a new
-        // activation; the fresh `.connected` is its only signal.
-        #expect(await updates.next() == .status(.connected))
         #expect(await session.transportGeneration == 1)
 
         await session.end()
