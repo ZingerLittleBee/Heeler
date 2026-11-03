@@ -89,7 +89,7 @@ struct CheckoutLocation: Sendable, Equatable, Hashable {
 
 /// What HEAD points at, and the latest commit's subject and time.
 struct CheckoutHead: Sendable, Equatable {
-    enum Branch: Sendable, Equatable {
+    enum Branch: Codable, Sendable, Equatable {
         case named(String)
         case detached
     }

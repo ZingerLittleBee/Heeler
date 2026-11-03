@@ -1088,12 +1088,27 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         let preview: UIContextMenuContentPreviewProvider? = path.map { path in
             { ChatImagePreviewController(path: path, placeholder: thumbnail, loadImage: loader) }
         }
+        let named = path == nil ? row.messageImagePaths : []
         return UIContextMenuConfiguration(identifier: path as NSString?, previewProvider: preview) { [weak self] _ in
             var items: [UIMenuElement] = []
             if let path {
                 items.append(UIAction(title: "Preview Image", image: UIImage(systemName: "photo")) { [weak self] _ in
                     self?.previewImage(path, thumbnail: thumbnail)
                 })
+            }
+            // The images a message names, by file name when it names several.
+            let previews = named.map { path in
+                UIAction(
+                    title: named.count == 1 ? "Preview Image" : RemoteHostPath.lastComponent(of: path),
+                    image: UIImage(systemName: "photo")
+                ) { [weak self] _ in
+                    self?.previewImage(path, thumbnail: self?.actions.thumbnails?.image(of: path))
+                }
+            }
+            if previews.count == 1 {
+                items += previews
+            } else if !previews.isEmpty {
+                items.append(UIMenu(title: "Preview Image", image: UIImage(systemName: "photo"), children: previews))
             }
             items += [
                 UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in

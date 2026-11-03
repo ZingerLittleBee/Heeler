@@ -155,6 +155,9 @@ final class AgentChatStore {
     /// Whether a read of the launch has finished, so a missing notice
     /// means none rather than not known yet.
     private(set) var hasCheckedLaunch = false
+    /// From `retry()` until a turn of the loop that began after it ends,
+    /// so Check Again shows the look it asked for.
+    private(set) var isRetrying = false
 
     /// Until the first read of the launch, waiting for a session may be
     /// the notice's case, which a prompt won't end: Chat keeps looking
@@ -187,6 +190,9 @@ final class AgentChatStore {
     @ObservationIgnored private var staleTitle: String?
     /// Retry asks the start-screen watch for a look at the screen.
     @ObservationIgnored private var screenCheckRequested = false
+    /// Counts calls to `retry()`, so a turn ends `isRetrying` only when
+    /// no retry came after it began.
+    @ObservationIgnored private var retryRequests = 0
     /// Whether the next visible step reads how the program was launched.
     @ObservationIgnored private var needsLaunchCheck = true
     @ObservationIgnored private var lastLaunchCheck: Date?
@@ -359,6 +365,7 @@ final class AgentChatStore {
         conversation = ChatConversationSnapshot()
         blocked = BlockedCardStore(program: program, io: source.screen)
         blocked.update(activity: ChatAgentActivity(agent.status))
+        blocked.update(awaitingSession: resolution == .noSession)
         switch ChatAgentActivity(agent.status) {
         case .idle: idleSince = now()
         case .working: turnStartedAt = now()
@@ -469,9 +476,20 @@ final class AgentChatStore {
     // MARK: Requests
 
     /// Preview reads use the same Host connection as the transcript;
-    /// thumbnails come from ``thumbnails``.
+    /// thumbnails come from ``thumbnails``. A path a message names may be
+    /// relative to the Agent's directory or start at `~` (`ChatImageLink`).
     func readImage(at path: String) async throws -> Data {
-        try await ChatImagePreviewReader.read(path: path, files: source.files)
+        try await ChatImagePreviewReader.read(path: try await hostPath(ofImage: path), files: source.files)
+    }
+
+    private func hostPath(ofImage path: String) async throws -> String {
+        if path.hasPrefix("/") { return path }
+        let home = path.hasPrefix("~/") ? try await source.files.home() : nil
+        let directory = agent.foregroundCwd.flatMap { $0.isEmpty ? nil : $0 } ?? agent.cwd
+        guard let resolved = ChatImagePath.resolve(path, cwd: directory, home: home) else {
+            throw ChatImagePreviewError.invalidPath
+        }
+        return resolved
     }
 
     /// Reads above the oldest message shown, a page per turn of the loop, for
@@ -550,6 +568,8 @@ final class AgentChatStore {
         failedOpens = 0
         screenCheckRequested = true
         needsLaunchCheck = true
+        retryRequests += 1
+        isRetrying = true
         wake()
     }
 
@@ -713,6 +733,10 @@ final class AgentChatStore {
     /// worked, a few reads of Workflow journals. Internal for tests, which
     /// drive turns directly.
     func step() async {
+        let retries = retryRequests
+        defer {
+            if isRetrying, retries == retryRequests, !Task.isCancelled { isRetrying = false }
+        }
         await restoreIfNeeded()
         guard !Task.isCancelled else { return }
         if needsAgentRefresh || sessionRecheckIsDue, let fresh = await refreshAgent() {
@@ -1081,6 +1105,7 @@ final class AgentChatStore {
         guard next != resolution || replacingAgent else { return }
         if next != .noSession { forgetStaleSession() }
         resolution = next
+        blocked.update(awaitingSession: next == .noSession)
         if !replacingAgent, isAwaitingSession {
             conversation.phase = .unavailable(awaitingReason)
             conversation.isFromCache = !conversation.transcript.entries.isEmpty

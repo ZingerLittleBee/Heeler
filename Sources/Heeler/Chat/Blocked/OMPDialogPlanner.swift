@@ -15,8 +15,8 @@ struct OMPDialogPlanner {
             try question(action)
         case .claudeBash, .claudeFileEdit, .claudeFileCreate, .claudeFileRead, .claudeFetch, .claudePlan,
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .codexExec, .codexPatch, .codexNetwork,
-            .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .grokPermission, .grokQuestion,
-            .grokCancelTurn, .grokFork, .openCodePermission, .openCodeQuestion:
+            .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .codexWorkspaceTrust, .grokPermission,
+            .grokQuestion, .grokCancelTurn, .grokFork, .openCodePermission, .openCodeQuestion:
             throw .unsupported("Not an Oh My Pi dialog.")
         }
     }

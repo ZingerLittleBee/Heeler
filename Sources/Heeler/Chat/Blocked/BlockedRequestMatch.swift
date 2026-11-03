@@ -66,7 +66,7 @@ enum BlockedRequestMatch {
             return openCodePermission(request, subject)
         case .openCodeQuestion:
             return request.kind == .question && asks(request, subject.question ?? dialog.title)
-        case .claudeWorkspaceTrust, .codexNetwork, .grokCancelTurn, .grokFork:
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .codexNetwork, .grokCancelTurn, .grokFork:
             return false
         }
     }
