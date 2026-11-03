@@ -233,6 +233,11 @@ final class AgentChatStore {
     /// the next Send stops once, as a Send whose own check moves Chat does,
     /// unless the draft changed since.
     @ObservationIgnored private var movedSinceDraft = false
+    /// The Composer's draft as last seen (`draftDidChange`), and what it held
+    /// when Chat moved: a refused Send puts the same text back, which is no
+    /// draft written since.
+    @ObservationIgnored private var composerDraft = ""
+    @ObservationIgnored private var draftAtMove = ""
     /// When the one check `Timing.lateEvidenceCheck` allows after an idle report
     /// is due. Only a running loop, which a Chat on screen keeps, takes it; one
     /// overdue when Chat opens is the check opening makes anyway.
@@ -1139,7 +1144,10 @@ final class AgentChatStore {
             forgetPick()
             let shown = followed
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: directory)
-            if let shown, let followed, !followed.namesSameSession(as: shown) { movedSinceDraft = true }
+            if let shown, let followed, !followed.namesSameSession(as: shown) {
+                movedSinceDraft = true
+                draftAtMove = composerDraft
+            }
         case .picked(let sessionID, let transcriptRoot):
             followsPick = true
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: nil)
@@ -1692,9 +1700,11 @@ final class AgentChatStore {
     }
 
     /// The Composer's draft changed. Text written since Chat moved is for the
-    /// conversation it shows now; emptying it, as a Send does, says nothing.
+    /// conversation it shows now. Emptying it, as a Send does, says nothing,
+    /// and nor does a refused Send putting the same text back.
     func draftDidChange(to draft: String) {
-        guard !draft.isEmpty else { return }
+        composerDraft = draft
+        guard !draft.isEmpty, draft != draftAtMove else { return }
         movedSinceDraft = false
     }
 

@@ -438,6 +438,10 @@ struct HerdrCoreChatTests {
         await rig.files.write(Self.registryEntry(session: Self.second), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
         await rig.transport.deliver(Self.statusEvent(sequence: 2, state: "idle"))
         try await rig.waitUntil("Chat to follow the new one") { Self.isFollowing(chat, session: Self.second) }
+        // A Send whose check couldn't run ("couldn't check … Try again") empties
+        // the draft and puts the same text back: nothing was written since.
+        chat.draftDidChange(to: "")
+        chat.draftDidChange(to: "second held send")
 
         guard case .refused(.inputNotReady(let reason)) = await composer.send(policy: policy) else {
             Issue.record("Expected a refusal")
