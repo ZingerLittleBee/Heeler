@@ -11,6 +11,7 @@ Entries reference the pull request that made the change.
 
 - Touch and hold an Agent on a By Workspace card and tap New Agent to start
   one in its Workspace and directory, as the Agent's own New Agent does.
+  (#616)
 - Browse Directories hides folders whose names start with a dot. Tap the eye
   button beside Select to list them again; Heeler remembers the choice.
   (#609)
@@ -81,7 +82,7 @@ Entries reference the pull request that made the change.
 
 - Round the bottom corners of a collapsed By Workspace card with nothing to
   summarize, such as a Workspace whose Agents are all idle, instead of ending
-  it in a square-cornered strip under its header.
+  it in a square-cornered strip under its header. (#616)
 - Put Show Chat or Show Agent Terminal and More with Back in iPhone Duo's
   side controls, using the system overflow menu instead of leaving their
   capsule over the content. Horizontal layouts keep their existing controls.
