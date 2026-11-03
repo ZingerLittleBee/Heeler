@@ -463,6 +463,28 @@ struct HerdrCoreOpenCodeEditTests {
             for: try #require(store.harnessEdits.edit(OpenCodePluginEdit.id, path: path, on: host.id)), on: host.id)
     }
 
+    /// hc-lab, 2026-11-03: the 1.x review after the 2.x edit listed the folder that
+    /// edit had placed as Added, though nothing in it was to be written.
+    @Test func aSecondReleasesReviewShowsTheSharedFolderAsAlreadyThere() async throws {
+        let files = InMemoryHostFiles()
+        let (store, transport, host) = try await started(version: "2.2.2", files: files)
+        defer { store.setHosts([]) }
+        let newer = flow(store, host)
+        #expect(try await reviewed(newer).folderFilesInPlace.isEmpty)
+        await newer.accept()
+        await transport.setDiscovery(programs: ["opencode"], openCodeVersion: "1.19.5")
+        let older = flow(store, host)
+
+        let change = try await reviewed(older)
+
+        #expect(change.folderFilesInPlace == Set(change.folder?.filePaths ?? []))
+        #expect(!change.writesFolderFiles)
+        let shown = try await labels(of: OpenCodePluginEditSheet(flow: older), showing: "Already there")
+        #expect(shown.contains("Already there: \(Self.folder)/tui.js"), "\(shown)")
+        #expect(!shown.contains { $0.hasPrefix("Added: \(Self.folder)") }, "\(shown)")
+        #expect(shown.contains { $0.localizedCaseInsensitiveContains("Creates This File") }, "\(shown)")
+    }
+
     /// A file that still names the folder keeps it, whichever goes first.
     @Test(arguments: [
         ("/home/dev/.config/opencode/tui.jsonc", "/home/dev/.config/opencode/tui.json"),

@@ -167,10 +167,17 @@ struct HarnessConfigPendingChange: Equatable, Sendable {
     let after: Data
     var folder: HarnessConfigFolder? = nil
     var listEntry: HarnessConfigListEntry? = nil
+    /// The folder's files already there as this would write them, as another
+    /// file's edit of the same folder left them. Nothing writes them again.
+    var folderFilesInPlace: Set<String> = []
 
     var hunk: HarnessConfigHunk { HarnessConfigHunk(before: before ?? Data(), after: after) }
     var shownLines: [HarnessConfigShownLine] { HarnessConfigShownLine.lines(of: hunk) }
     var createsFile: Bool { before == nil }
+    /// Whether any of the folder's files is new or different.
+    var writesFolderFiles: Bool {
+        folder?.filePaths.contains { !folderFilesInPlace.contains($0) } ?? false
+    }
 }
 
 /// What this device remembers of an edit it wrote, to list it and undo it.
@@ -271,8 +278,25 @@ struct HarnessConfigEditor: Sendable {
             return .change(
                 HarnessConfigPendingChange(
                     editID: edit.id, harness: edit.harness, path: edit.path, before: before,
-                    after: after, folder: edit.folder, listEntry: edit.listEntry))
+                    after: after, folder: edit.folder, listEntry: edit.listEntry,
+                    folderFilesInPlace: try await filesInPlace(edit.folder)))
         }
+    }
+
+    /// What of the folder is there already with the bytes it would get. One this
+    /// can't read with certainty isn't.
+    private func filesInPlace(_ folder: HarnessConfigFolder?) async throws -> Set<String> {
+        guard let folder else { return [] }
+        var inPlace: Set<String> = []
+        for file in folder.files {
+            let path = folder.filePath(file.name)
+            do {
+                if try await read(path) == file.contents { inPlace.insert(path) }
+            } catch HarnessConfigEditError.tooLarge, HarnessConfigEditError.unreadable {
+                continue
+            }
+        }
+        return inPlace
     }
 
     /// Writes exactly what was shown, if the file still holds what was read. A
