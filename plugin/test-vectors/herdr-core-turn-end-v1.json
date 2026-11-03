@@ -92,6 +92,15 @@
       ]
     },
     {
+      "name": "an OpenCode 1.x that never reports ends no turn and never reads Done",
+      "source": "hc-lab (Debian 13), OpenCode 1.19.5 started by `hc run`, herdr-core 0.1.13, 2026-11-03, three Terminals, live: status null and turn 0 at its start, after a prompt and its reply, and at `/exit`. reported is false here because no report came, which the reads did not show directly",
+      "kind": "opencode",
+      "steps": [
+        { "event": "snapshot", "turn": 0, "state": null, "reported": false, "ends": false, "done": false },
+        { "event": "snapshot", "turn": 0, "state": null, "reported": false, "ends": false, "done": false }
+      ]
+    },
+    {
       "name": "Grok Build working to idle ends its turn",
       "source": "ADR 0033, a turn's end: Working to Idle unless the program is known to report done",
       "kind": "grok",
@@ -162,6 +171,32 @@
         { "event": "status", "state": "working", "ends": false, "done": false },
         { "event": "status", "state": "idle", "ends": false, "done": false },
         { "event": "turn", "turn": 1, "state": "idle", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "Codex's working blip at /new moves the turn count and ends no turn",
+      "source": "hc-lab (Debian 13), Codex CLI 0.165.0 --no-daemon, herdr-core 0.1.13, 2026-11-03, one Terminal, live: terminal.get polled every 0.5 s read idle at count 2, then, at `/new`'s worktree choice, working at 2 and 1.1 s later idle at 3, with no done. A status the poll missed would not show",
+      "kind": "codex",
+      "steps": [
+        { "event": "snapshot", "turn": 2, "state": "idle", "reported": true, "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "turn", "turn": 3, "state": "idle", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "Codex working to error ends no turn, and its next working to done does",
+      "source": "hc-lab (Debian 13), Codex CLI 0.165.0 --no-daemon, herdr-core 0.1.13, 2026-11-03, one Terminal, live: terminal.get polled every 0.5 s read idle at count 6, working at 6, error at 7, idle at 7, working at 7, then done at 8. A status the poll missed would not show",
+      "kind": "codex",
+      "steps": [
+        { "event": "snapshot", "turn": 6, "state": "idle", "reported": true, "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "error", "ends": false, "done": false },
+        { "event": "turn", "turn": 7, "state": "error", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 8, "state": "done", "ends": false, "done": true }
       ]
     },
     {

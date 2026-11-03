@@ -478,6 +478,39 @@
       }
     },
     {
+      "name": "grok-build's status with a message is grok and its state",
+      "source": "hc-lab, herdr-core 0.1.13, 2026-11-02 (unsigned run against a fake model): Grok Build 1.0.70 started from its bin link reported `{\"app\":\"grok-build\",\"msg\":\"Responding\",\"state\":\"working\"}` while it answered; live; the run folder is written /data/home/user",
+      "record": {
+        "address": "t7",
+        "state": "live",
+        "pid": 116369,
+        "reason": null,
+        "argv": [
+          "/data/home/user/bin/grok"
+        ],
+        "cwd": "/data/home/user/iso/projects/grok",
+        "foreground": {
+          "pid": 116369,
+          "name": "grok",
+          "argv": [
+            "/data/home/user/bin/grok"
+          ],
+          "cwd": "/data/home/user/iso/projects/grok"
+        },
+        "status": {
+          "state": "working",
+          "app": "grok-build",
+          "msg": "Responding"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "grok",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
       "name": "grok-build with an ordinary program in the foreground is no Agent",
       "source": "ADR 0032, the Agent rule",
       "record": {
@@ -620,6 +653,37 @@
       },
       "expected": {
         "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "OpenCode started through env with no report is an Agent by its foreground",
+      "source": "hc-lab (Debian 13), OpenCode 1.19.5 started by `hc run … env PATH=<its folder>:… opencode`, herdr-core 0.1.13, 2026-11-03, three Terminals, live: the foreground was `opencode` with argv `opencode` on the Terminal's own pid, and the status stayed null. The PATH value here stands in for the run's, which was not recorded",
+      "record": {
+        "address": "t14",
+        "state": "live",
+        "pid": 313679,
+        "reason": null,
+        "argv": [
+          "env",
+          "PATH=/data/home/user/bin-oc119:/usr/local/bin:/usr/bin:/bin",
+          "opencode"
+        ],
+        "cwd": "/data/home/user/projects/opencode119",
+        "foreground": {
+          "pid": 313679,
+          "name": "opencode",
+          "argv": [
+            "opencode"
+          ],
+          "cwd": "/data/home/user/projects/opencode119"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "opencode",
         "known": true,
         "status": "unknown"
       }
@@ -2831,6 +2895,184 @@
         },
         "reported": true
       },
+      "expected": {
+        "kind": "omp",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "Codex's npm launcher from a bin link holds the foreground",
+      "source": "hc-lab (Debian 13), Codex CLI 0.165.0 from npm started `codex --no-daemon` through Heeler's POSIX launch, herdr-core 0.1.13, 2026-11-03, one Terminal, live: the core's foreground events named `node` while Codex reported idle, working and done. The argv is the process's /proc cmdline, its run folder written /data/home/user as the capture script scrubs it",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 191146,
+        "reason": null,
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "codex",
+          "--no-daemon"
+        ],
+        "cwd": "/data/home/user/projects/codex",
+        "foreground": {
+          "pid": 191146,
+          "name": "node",
+          "argv": [
+            "node",
+            "/data/home/user/bin/codex",
+            "--no-daemon"
+          ],
+          "cwd": "/data/home/user/projects/codex"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "Pi's npm launcher before Pi retitles itself names pi",
+      "source": "hc-lab (Debian 13), Pi 1.4.0 from npm started `pi --session-id <id>` through Heeler's POSIX launch, herdr-core 0.1.13, 2026-11-03, one Terminal, live: the core's first foreground event named `node`, Pi reported idle, and only then did a foreground event name `pi`. The argv is the process's /proc cmdline, its run folder written /data/home/user as the capture script scrubs it",
+      "record": {
+        "address": "t5",
+        "state": "live",
+        "pid": 195120,
+        "reason": null,
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "pi",
+          "--session-id",
+          "00000000-0000-4000-8000-000000000005"
+        ],
+        "cwd": "/data/home/user/projects/pi",
+        "foreground": {
+          "pid": 195120,
+          "name": "node",
+          "argv": [
+            "node",
+            "/data/home/user/bin/pi",
+            "--session-id",
+            "00000000-0000-4000-8000-000000000005"
+          ],
+          "cwd": "/data/home/user/projects/pi"
+        },
+        "status": {
+          "state": "idle",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "Oh My Pi retitled under bun keeps bun's argv",
+      "source": "hc-lab (Debian 13), Oh My Pi 18.13.3 on bun 1.4.4 started `omp` through Heeler's POSIX launch, herdr-core 0.1.13, 2026-11-03, two Terminals, live: the core's foreground events named `bun`, then `omp` with the argv still `bun <bin>/omp`, before Oh My Pi reported idle. The argv is the process's /proc cmdline, its run folder written /data/home/user as the capture script scrubs it",
+      "record": {
+        "address": "t6",
+        "state": "live",
+        "pid": 195417,
+        "reason": null,
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "omp"
+        ],
+        "cwd": "/data/home/user/projects/omp",
+        "foreground": {
+          "pid": 195417,
+          "name": "bun",
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp"
+          ],
+          "cwd": "/data/home/user/projects/omp"
+        },
+        "status": {
+          "state": "idle",
+          "app": "omp"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        {
+          "pid": 195417,
+          "name": "omp",
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp"
+          ],
+          "cwd": "/data/home/user/projects/omp"
+        }
+      ],
+      "expected": {
+        "kind": "omp",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "Oh My Pi with arguments after its script is omp, and its done reads idle",
+      "source": "hc-lab, herdr-core 0.1.13, 2026-11-02 (unsigned run against a fake model): Oh My Pi 18.13.3 on bun started as `omp --model fake/fake-model` from its bin link; the core's first foreground named `bun`, the next `omp` with argv `bun <bin>/omp --model fake/fake-model`, and a terminal.list after its reply showed status done; live. The record's argv after `omp` is taken from the foreground's, because the capture scrubbed it; the run folder is written /data/home/user",
+      "record": {
+        "address": "t6",
+        "state": "live",
+        "pid": 116356,
+        "reason": null,
+        "argv": [
+          "/data/home/user/bin/omp",
+          "--model",
+          "fake/fake-model"
+        ],
+        "cwd": "/data/home/user/iso/projects/omp",
+        "foreground": {
+          "pid": 116356,
+          "name": "bun",
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp",
+            "--model",
+            "fake/fake-model"
+          ],
+          "cwd": "/data/home/user/iso/projects/omp"
+        },
+        "status": {
+          "state": "done",
+          "app": "omp"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        {
+          "pid": 116356,
+          "name": "omp",
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp",
+            "--model",
+            "fake/fake-model"
+          ],
+          "cwd": "/data/home/user/iso/projects/omp"
+        }
+      ],
       "expected": {
         "kind": "omp",
         "known": true,
