@@ -36,7 +36,8 @@ struct HerdrCoreEnvironmentNotice: Equatable, Sendable {
     private static func breaks(_ name: String) -> String {
         switch name {
         case "CLAUDE_CODE_CHILD_SESSION":
-            "Claude Code keeps no session record and saves no conversation, so Chat has nothing to show."
+            // Claude Code 2.1.316 honored 1 and ignored a made-up value (#579).
+            "Set to 1, Claude Code keeps no session record and saves no conversation, so Chat has nothing to show."
         case "CLAUDE_CODE_SKIP_PROMPT_HISTORY":
             "Claude Code saves no conversation, so Chat has nothing to show."
         case "CLAUDECODE":

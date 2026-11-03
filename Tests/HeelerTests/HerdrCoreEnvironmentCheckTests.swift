@@ -306,7 +306,7 @@ struct HerdrCoreEnvironmentNoticeTests {
         #expect(notice.variables == [
             .init(
                 name: "CLAUDE_CODE_CHILD_SESSION",
-                breaks: "Claude Code keeps no session record and saves no conversation, so Chat has nothing to show."),
+                breaks: "Set to 1, Claude Code keeps no session record and saves no conversation, so Chat has nothing to show."),
             .init(name: "HERDR_CHECK", breaks: herdr),
             .init(name: "HERDR_ENV", breaks: herdr),
             .init(

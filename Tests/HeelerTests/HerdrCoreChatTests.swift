@@ -903,7 +903,7 @@ struct HerdrCoreChatTests {
     }
 
     @Test(arguments: [
-        ("CLAUDE_CODE_CHILD_SESSION", ChatTranscriptOffVariable.childSession, "neither a session record nor a transcript"),
+        ("CLAUDE_CODE_CHILD_SESSION", ChatTranscriptOffVariable.childSession, "has kept no session record and saves no transcript"),
         ("CLAUDE_CODE_SKIP_PROMPT_HISTORY", ChatTranscriptOffVariable.skipPromptHistory, "keeps no transcript"),
     ])
     func aLeakedVariableIsTheReason(_ name: String, _ variable: ChatTranscriptOffVariable, _ effect: String) async throws {
