@@ -328,6 +328,8 @@ extension ChatProgram {
 struct ChatUnavailableView: View {
     let reason: ChatUnavailableReason
     var launchNotice: ChatLaunchNotice?
+    /// Check Again is looking, so its capsule spins instead.
+    var isChecking = false
     let retry: () -> Void
     let showAgentTerminal: () -> Void
 
@@ -351,7 +353,19 @@ struct ChatUnavailableView: View {
     @ViewBuilder private var actions: some View {
         Button(action: showAgentTerminal) { actionTitle(Text(AgentDetailSurface.terminal.showTitle)) }
         if reason.offersRetry {
-            Button(action: retry) { actionTitle(Text("Check Again")) }
+            Button(action: retry) {
+                actionTitle(Text("Check Again"))
+                    // Hidden rather than gone, so the capsule keeps its width.
+                    .opacity(isChecking ? 0 : 1)
+                    .overlay {
+                        if isChecking { ProgressView() }
+                    }
+            }
+            .allowsHitTesting(!isChecking)
+            .accessibilityLabel(isChecking ? Text("Checking") : Text("Check Again"))
+            // A new button rather than new content: glass keeps drawing
+            // the tapped label until its press settles, over the spinner.
+            .id(isChecking)
         }
         if let guide = reason.launchNotice(launchNotice)?.guideURL {
             Link(destination: guide) { actionTitle(Text("Read More")) }

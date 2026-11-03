@@ -64,6 +64,8 @@ Entries reference the pull request that made the change.
   trusting on the right, instead of below the card's fold on a phone.
 - Show Chat's Show Agent Terminal and Check Again side by side as glass
   capsules while it waits for a conversation.
+- Spin Check Again while Chat looks for the conversation, for at least a
+  moment, then ease into what it found instead of switching at once.
 - Give an Agent's title on a By Workspace card one size and color, whether
   the Agent shares its checkout or stands alone under the checkout's title,
   and set a repository's checkout titles apart from it in a quieter color.

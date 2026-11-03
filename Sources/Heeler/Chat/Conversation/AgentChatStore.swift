@@ -155,6 +155,9 @@ final class AgentChatStore {
     /// Whether a read of the launch has finished, so a missing notice
     /// means none rather than not known yet.
     private(set) var hasCheckedLaunch = false
+    /// From `retry()` until a turn of the loop that began after it ends,
+    /// so Check Again shows the look it asked for.
+    private(set) var isRetrying = false
 
     /// Until the first read of the launch, waiting for a session may be
     /// the notice's case, which a prompt won't end: Chat keeps looking
@@ -187,6 +190,9 @@ final class AgentChatStore {
     @ObservationIgnored private var staleTitle: String?
     /// Retry asks the start-screen watch for a look at the screen.
     @ObservationIgnored private var screenCheckRequested = false
+    /// Counts calls to `retry()`, so a turn ends `isRetrying` only when
+    /// no retry came after it began.
+    @ObservationIgnored private var retryRequests = 0
     /// Whether the next visible step reads how the program was launched.
     @ObservationIgnored private var needsLaunchCheck = true
     @ObservationIgnored private var lastLaunchCheck: Date?
@@ -562,6 +568,8 @@ final class AgentChatStore {
         failedOpens = 0
         screenCheckRequested = true
         needsLaunchCheck = true
+        retryRequests += 1
+        isRetrying = true
         wake()
     }
 
@@ -725,6 +733,10 @@ final class AgentChatStore {
     /// worked, a few reads of Workflow journals. Internal for tests, which
     /// drive turns directly.
     func step() async {
+        let retries = retryRequests
+        defer {
+            if isRetrying, retries == retryRequests, !Task.isCancelled { isRetrying = false }
+        }
         await restoreIfNeeded()
         guard !Task.isCancelled else { return }
         if needsAgentRefresh || sessionRecheckIsDue, let fresh = await refreshAgent() {

@@ -606,6 +606,32 @@ struct AgentChatStoreTests {
         #expect(await fixture.files.reads.isEmpty)
     }
 
+    /// Check Again shows its look until a step that began after the tap
+    /// ends; a step already under way doesn't end it.
+    @Test func aRetryIsUnderwayUntilAStepThatBeganAfterItEnds() async throws {
+        let fixture = Fixture(session: nil)
+        await fixture.store.step()
+        #expect(!fixture.store.isRetrying)
+
+        fixture.store.retry()
+        #expect(fixture.store.isRetrying)
+        await fixture.store.step()
+        #expect(!fixture.store.isRetrying)
+
+        fixture.store.retry()
+        await fixture.server.suspendNextRead()
+        let reads = await fixture.server.reads
+        let step = Task { await fixture.store.step() }
+        try await Self.waitUntil { await fixture.server.reads == reads + 1 }
+        fixture.store.retry()
+        await fixture.server.releaseRead()
+        await step.value
+        #expect(fixture.store.isRetrying)
+
+        await fixture.store.step()
+        #expect(!fixture.store.isRetrying)
+    }
+
     @Test func aFailedSessionQueryKeepsMessagesAndRetriesWhileFollowing() async throws {
         let fixture = Fixture(session: Self.first)
         await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
