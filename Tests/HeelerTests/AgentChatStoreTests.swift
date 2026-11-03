@@ -150,6 +150,19 @@ struct AgentChatStoreTests {
                 backgroundWorkStaleness: ChatBackgroundWork.Staleness(workflowQuiet: 7_200, subagentRun: 10_800)))
     }
 
+    /// A path a message names reads from the Agent's directory or the
+    /// Host's home, as written; a recorded absolute path reads as is.
+    @Test func anImageAMessageNamesReadsFromTheAgentsDirectoryOrHome() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(Data([1]), at: "\(Self.cwd)/shots/a.png")
+        await fixture.files.write(Data([2]), at: "/home/dev/b.png")
+        await fixture.files.write(Data([3]), at: "/tmp/c.png")
+        #expect(try await fixture.store.readImage(at: "shots/a.png") == Data([1]))
+        #expect(try await fixture.store.readImage(at: "~/b.png") == Data([2]))
+        #expect(try await fixture.store.readImage(at: "/tmp/c.png") == Data([3]))
+        await #expect(throws: ChatImagePreviewError.self) { try await fixture.store.readImage(at: "~other/d.png") }
+    }
+
     @Test func runningBackgroundWorkKeepsTheActivePaceUntilItEnds() async throws {
         let fixture = Self.paced()
         let launch = NumberedChatReducer.launch("s1", journal: nil, at: fixture.clock.now)

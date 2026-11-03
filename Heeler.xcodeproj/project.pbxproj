@@ -663,6 +663,7 @@
 		C99BC52057BA048DDC4DE046 /* TerminalByteFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = C681336687D32709DA583BCC /* TerminalByteFeed.swift */; };
 		C9E8028C15EC02F3F36B2B26 /* NotificationRegistrationFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67AAFD0BF81441DB59EEF7AA /* NotificationRegistrationFile.swift */; };
 		C9F1C6CFE1F09E58CD9B3948 /* LocalSSHTestEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F172C9E024F73AD2DD96288 /* LocalSSHTestEnvironment.swift */; };
+		CA2808BFA799E5498B719DD0 /* ChatImageLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0526F5EC9996FA887E232ECC /* ChatImageLink.swift */; };
 		CA857FDF64629FD0B3C4D8ED /* HeelerWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AD69BB4579A415BE96578319 /* HeelerWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CAEA10BC9AF3498E5FD73478 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 915C9462A4A8AA91C0B91498 /* PrivacyInfo.xcprivacy */; };
 		CAF54F897E0FB91C460995EE /* ChangesStateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5072E68003793434B9C9286C /* ChangesStateViews.swift */; };
@@ -917,6 +918,7 @@
 		0381E017F0669FCFD5D64A74 /* ChangesViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesViewTests.swift; sourceTree = "<group>"; };
 		03E19BDF2824DC34B28A765C /* HostKeyPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostKeyPolicy.swift; sourceTree = "<group>"; };
 		0443F1688BCEC3474F278889 /* HostStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostStoreTests.swift; sourceTree = "<group>"; };
+		0526F5EC9996FA887E232ECC /* ChatImageLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatImageLink.swift; sourceTree = "<group>"; };
 		056F5FA6BE5B82D9729231A0 /* ConsoleRowSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleRowSelection.swift; sourceTree = "<group>"; };
 		057D706C9227FA8D9F5FAD7F /* RemoteFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFiles.swift; sourceTree = "<group>"; };
 		05AD61D4FA60884234EA856C /* TerminalInputControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInputControllerTests.swift; sourceTree = "<group>"; };
@@ -1778,6 +1780,7 @@
 				423EDC5B2A1A0A20551CF9D9 /* ChatConversationStatus.swift */,
 				10A5B1E17E7BBF6E3F89CF89 /* ChatFileDiffView.swift */,
 				B18F70A5EBC79510351A79B1 /* ChatFollowLatch.swift */,
+				0526F5EC9996FA887E232ECC /* ChatImageLink.swift */,
 				E9B02C82B59FFA986258EBA9 /* ChatImagePreviewController.swift */,
 				1F96AC0AFAB3758C64D04803 /* ChatImageThumbnail.swift */,
 				D020CA26F533FB4848A99F9B /* ChatMarkdown.swift */,
@@ -3323,6 +3326,7 @@
 				57131CD69FE8F9F4D47C92F9 /* ChatFileDiffView.swift in Sources */,
 				AD8F5D76914DBF0FE4494F0C /* ChatFollowLatch.swift in Sources */,
 				A8BBA0418C4309A3CCA51148 /* ChatHostFiles.swift in Sources */,
+				CA2808BFA799E5498B719DD0 /* ChatImageLink.swift in Sources */,
 				F0A24E42E4C6010BB5A483C1 /* ChatImagePreviewController.swift in Sources */,
 				D7E1CBAC7EAA1290065D717F /* ChatImagePreviewReader.swift in Sources */,
 				C45E9B44C5CA476709FF29F4 /* ChatImageThumbnail.swift in Sources */,

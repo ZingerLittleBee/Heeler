@@ -9,6 +9,11 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Paths to images in Chat messages open the image. A path to a picture on the
+  Host, written as code, as a link or in the text of your messages or the
+  Agent's, shows in the tint color after a photo symbol; tap it, or choose
+  Preview Image from the message's menu, to open it with zoom. Paths relative
+  to the Agent's folder and paths starting at `~` open too.
 - Browse Directories hides folders whose names start with a dot. Tap the eye
   button beside Select to list them again; Heeler remembers the choice.
   (#609)
