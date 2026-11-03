@@ -215,7 +215,7 @@ extension ChatSessionStoreProblem {
         case .storeClosed:
             "OpenCode's database is closed, which usually means OpenCode isn't running. Chat shows saved messages and checks again."
         case .olderOpenCode:
-            "This OpenCode keeps conversations in its 1.x format, which Chat doesn't read. Chat reads OpenCode 2.x."
+            "This OpenCode keeps conversations in its 1.x format, which Chat can't list. Heeler's plugin tells Chat which one OpenCode shows."
         case .unsupportedLayout(let detail):
             "OpenCode's database has a layout Chat doesn't read (\(detail)). A newer OpenCode may have changed it."
         case .subagentSession:
@@ -438,7 +438,7 @@ extension ChatProgram {
         case .grok:
             "Grok Build lists its conversation while it runs. After /new it lists both, so Chat can't tell until you start Grok Build again."
         case .opencode:
-            "OpenCode says which conversation it shows when Heeler starts OpenCode 2.1 or later from New Agent, or through Heeler's plugin, which takes one change to its configuration. Chat shows conversations from OpenCode 2.x."
+            "OpenCode says which conversation it shows when Heeler starts OpenCode 2.1 or later from New Agent, or through Heeler's plugin, which takes one change to its configuration."
         case .claude, .pi, .omp:
             "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal."
         }

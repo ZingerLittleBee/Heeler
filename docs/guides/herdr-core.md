@@ -81,7 +81,7 @@ A Terminal is an Agent while its foreground program is a known coding program, o
 
 The Agents tab sorts by status, with those waiting for you first, and within a status in the desktop app's order of spaces, tabs and panes. By Workspace takes its cards from the same order.
 
-Done is per device. An Agent shows Done when it finished a turn this device was not showing and still reports idle or done. Opening the Agent clears it here, and so does having it open when the turn ends; your other devices keep showing it until you open it there. It leaves on its own when the Agent starts working again. A turn finishes when a program goes from Working to Done. A program not known to report done also finishes one by going from Working to Idle, while Claude Code, Codex, Pi and Oh My Pi do not, so a Codex release too old to report done never shows Done. Removing the Host, or the Host getting a different core, starts over.
+Done is per device. An Agent shows Done when it finished a turn this device was not showing and still reports idle or done. Opening the Agent clears it here, and so does having it open when the turn ends; your other devices keep showing it until you open it there. It leaves on its own when the Agent starts working again. A turn finishes when a program goes from Working to Done. A program not known to report done also finishes one by going from Working to Idle, while Claude Code, Codex, Grok Build, Pi and Oh My Pi do not, so a Codex release too old to report done never shows Done. Removing the Host, or the Host getting a different core, starts over.
 
 Tap **Unknown** on an Agent's status line to see why it reads that way. Each program reports its status from a release on: Claude Code 2.1.295, Codex 0.163, OpenCode 2.1, Pi 1.1.0 (earlier releases report through the [Host Helper](#host-helper)) and Oh My Pi 18.8.7, so an older one stays Unknown. No such release is known for Grok Build or for a program Heeler does not recognize. A Terminal that has reported but holds no state reads as not having reported a state yet. Heeler never works out a status from the screen.
 
@@ -261,7 +261,7 @@ Codex on its shared background server offers no list, only `codex resume --no-da
 
 ### Let Chat follow OpenCode
 
-This offer stays off with OpenCode's Chat, so for now an OpenCode Agent offers the terminal alone. On Linux, OpenCode 2.2.2 passed its check, but an OpenCode 1.19.5 Agent bound through this plugin read **No Messages Yet** instead of saying Chat can't show its conversation, so OpenCode stays off there for every release. Once its Chat is on, it works like this:
+This offer stays off with OpenCode's Chat, so for now an OpenCode Agent offers the terminal alone. On Linux, OpenCode 2.2.2 passed its check, but an OpenCode 1.19.5 Agent bound through this plugin read **No Messages Yet**, since Chat then read only OpenCode 2.x's tables. Chat now reads a 1.x conversation from 1.x's own tables, which has not been run on a Host, so OpenCode stays off there for every release until it passes. Once its Chat is on, it works like this:
 
 When Chat can't tell an OpenCode Agent's conversation, it offers **Let Chat Follow OpenCode…**, in the conversation's place or on the banner over one it keeps showing. This is the only OpenCode setting Heeler changes, and it does nothing until you agree.
 
@@ -274,7 +274,7 @@ The plugin does nothing outside a herdr-core Terminal. It only tells the core wh
 **Undo** in the same sheet, or under **Harness Edits** in the Host's detail, takes the entry out and then the plugin's files and folder. Anything else you changed in the file since stays. Heeler keeps a folder that now holds something of yours, or that another file it edited still names, as after applying again once OpenCode moved to 2.x. If a file in the folder changes while Heeler removes it, Heeler says so and **Undo** again finishes. Removing the [Host Helper](#host-helper) from the device that made the edit undoes it too, and from another device leaves it in place, where it does nothing without a core.
 
 - A later app update does not refresh the plugin's copy. **Undo** and apply again to update it.
-- OpenCode 1.x gets its conversation named this way, but Chat reads only OpenCode 2.x's format, so an OpenCode that has never moved to 2.x says so instead of showing the conversation. The sheet says this before you apply the change.
+- OpenCode 1.x gets its conversation named this way too, and Chat shows it from 1.x's own tables, each prompt as its own turn.
 
 ### Pi and Oh My Pi
 
@@ -313,11 +313,11 @@ On a native Windows core Host, each program's Chat turns on only once it has pas
 |---------|-----------------------------|
 | Claude Code | On. Binds exactly once it reaches its prompt |
 | Pi | On, through Heeler's extension, which you add from Chat (below). Without it, Chat says it can't tell |
-| Grok Build | Off, so it offers the terminal alone. Grok Build 1.0.70 doesn't record its process's start there, which Chat needs |
-| Oh My Pi | Off, so it offers the terminal alone. Chat showed its conversation, but a Send from Chat found no input box |
+| Grok Build | Off, so it offers the terminal alone, until it passes a check. Grok Build 1.0.70 doesn't record its process's start there, so Heeler now binds from when Grok Build opened its conversation, which has not been run on Windows |
+| Oh My Pi | Off, so it offers the terminal alone, until it passes a check. Chat showed its conversation, but a Send from Chat found no input box under an Oh My Pi profile, which Heeler now reads and has not been run on Windows |
 | Codex, OpenCode | Not offered |
 
-These rows come from one Windows machine (build 26200) with herdr-core 0.1.16, Claude Code 2.1.286 and 2.1.316, Pi 1.4.0, Grok Build 1.0.70 and Oh My Pi 18.13.3. A Claude Code started through `npx` there listed as a Terminal, not an Agent, so it has no Chat.
+These rows come from one Windows machine (build 26200) with herdr-core 0.1.16, Claude Code 2.1.286 and 2.1.316, Pi 1.4.0, Grok Build 1.0.70 and Oh My Pi 18.13.3. A Claude Code started through `npx` there listed as a Terminal, not an Agent, so it had no Chat. Heeler now reads `npx` and `npm exec` as the program they start, which has not been checked on Windows since.
 
 **Choose a Conversation** is not offered on a Windows core Host yet.
 

@@ -496,8 +496,10 @@ struct HerdrCoreTerminalStoreTests {
     /// The order a program's end comes in, since a cursor drops what is not newer.
     private static let eventOrder = ["lost", "restarted", "finished", "foreground", "removed"]
 
-    private static func eventLine(_ type: String, data: JSONValue, terminal: String = "t1") throws -> Data {
-        let sequence = 50 + (eventOrder.firstIndex(of: type) ?? 0)
+    private static func eventLine(
+        _ type: String, data: JSONValue, terminal: String = "t1", sequence: Int? = nil
+    ) throws -> Data {
+        let sequence = sequence ?? 50 + (eventOrder.firstIndex(of: type) ?? 0)
         return try JSONEncoder().encode(
             JSONValue.object([
                 "jsonrpc": .string("2.0"), "method": .string("event"),
@@ -892,6 +894,94 @@ struct HerdrCoreTerminalStoreTests {
                 ])))
         try await Self.until("the Agent") { !fixture.console.agents.isEmpty }
         #expect(fixture.console.departedAgents.isEmpty)
+        await fixture.finish()
+    }
+
+    /// An Agent no lookup knows, listed only while it reports a status (#555).
+    private static func genericAgentRecord(keep: Bool) -> JSONValue {
+        .object([
+            "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("live"),
+            "argv": .array([.string("/bin/bash")]), "keep": .bool(keep), "title": .string(""),
+            "cols": .number(80), "rows": .number(24), "pid": .number(7),
+            "foreground": .object([
+                "pid": .number(4242), "name": .string("inert"), "argv": .array([.string("/work/app/inert")]),
+                "cwd": .string("/work/app"),
+            ]),
+            "status": .object(["state": .string("idle"), "app": .string("inert")]),
+            "labels": .object([:]),
+        ])
+    }
+
+    private static let clearedStatus: JSONValue = .object([
+        "records": .object([:]), "reported": .bool(true), "status": .null,
+    ])
+
+    /// `kill -9` on a kept Terminal, in the order a core sent it
+    /// (`accept-linux/captures/ps1.events.ndjson` seq 401 to 403): the status
+    /// clears first, which drops a generic Agent from the list before `lost`.
+    @Test func aGenericAgentLostOnAKeptTerminalShowsRestarting() async throws {
+        let fixture = try await Fixture(terminals: [Self.genericAgentRecord(keep: true)])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let first = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("agent screen", on: first)
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("status", data: Self.clearedStatus, sequence: 401))
+        try await Self.until("no Agent") { fixture.console.agents.isEmpty }
+        try await fixture.scripted.deliverEvent(Self.eventLine("lost", data: Self.lostEnd, sequence: 402))
+        try await Self.deliverClose(on: first)
+        try await Self.until("the restarting state") { detail.reads("Restarting…") }
+        #expect(fixture.console.departedAgents.map(\.id) == [agent.id])
+
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine("restarted", data: Self.restoredShell, sequence: 403))
+        let second = try await fixture.waitForAttach(2, laying: detail)
+        try await fixture.deliverOutput("new shell", on: second)
+        try await Self.until("the shell on screen") { !detail.reads("Restarting…") }
+        #expect(fixture.console.detailAgent(for: agent.id) != nil)
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// A program's exit, in the order a core sent it
+    /// (`accept-linux-signed/evidence/raw/codex-nd/core-events.ndjson` seq 111 to 113).
+    @Test func aGenericAgentThatExitsShowsAgentEnded() async throws {
+        let fixture = try await Fixture(terminals: [Self.genericAgentRecord(keep: false)])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let first = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("agent screen", on: first)
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("status", data: Self.clearedStatus, sequence: 111))
+        try await fixture.scripted.deliverEvent(Self.eventLine("foreground", data: .null, sequence: 112))
+        try await fixture.scripted.deliverEvent(Self.eventLine("finished", data: Self.exitedEnd, sequence: 113))
+        try await Self.deliverClose(on: first, end: Self.exitedEnd)
+        try await Self.until("the ended state") { detail.reads("Agent Ended") }
+        #expect(!detail.reads("Agent Gone"))
+        #expect(fixture.console.departedAgents.map(\.id) == [agent.id])
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// One whose shell took the Terminal back only left, so the shell's own end
+    /// later brings nothing back.
+    @Test func aGenericAgentThatLeftItsShellRunningLeavesNoDetailBehind() async throws {
+        let fixture = try await Fixture(terminals: [Self.genericAgentRecord(keep: false)])
+        let agent = try #require(fixture.console.agents.first)
+        try await fixture.scripted.deliverEvent(Self.eventLine("status", data: Self.clearedStatus, sequence: 60))
+        try await Self.until("no Agent") { fixture.console.agents.isEmpty }
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine(
+                "foreground",
+                data: .object([
+                    "pid": .number(8), "name": .string("bash"), "argv": .array([.string("/bin/bash")]),
+                    "cwd": .string("/work/app"),
+                ]), sequence: 61))
+        try await fixture.settle()
+        try await fixture.scripted.deliverEvent(Self.eventLine("finished", data: Self.exitedEnd, sequence: 62))
+        try await Self.until("the Terminal ends") { fixture.console.terminals.isEmpty }
+        #expect(fixture.console.departedAgents.isEmpty)
+        #expect(fixture.console.detailAgent(for: agent.id) == nil)
         await fixture.finish()
     }
 

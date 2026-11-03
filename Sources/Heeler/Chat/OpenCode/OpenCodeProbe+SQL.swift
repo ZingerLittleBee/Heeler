@@ -2,8 +2,9 @@ import Foundation
 
 /// The SQL behind each query (ADR 0025). Every statement reads one session
 /// from `session_v2`, `session_message`, `event_sequence` or
-/// `session_inbox`, but for `recentSessions`, which reads a directory's roots
-/// from `session_v2`, and nothing writes. The statements stay within SQLite
+/// `session_inbox`, or for a session only OpenCode 1.x holds from `session`,
+/// `message` and `part`, but for `recentSessions`, which reads a directory's
+/// roots from `session_v2`, and nothing writes. The statements stay within SQLite
 /// 3.25 with JSON1: window functions and `pragma_table_info` are fine, while
 /// `->`, `iif`, `FILTER`, `NULLS FIRST`, `HAVING` without `GROUP BY` and
 /// `ORDER BY` inside an aggregate are newer. They also stay shallow: SQLite
@@ -32,45 +33,37 @@ extension OpenCodeProbe {
             return [versionStatement, tablesStatement, layoutStatement, recentSessions(directory, limit: limit)]
         }
         let session = "'\(query.session?.rawValue ?? "")'"
-        var statements = [
-            versionStatement, tablesStatement, layoutStatement,
-            "SELECT 'E ' || coalesce((SELECT seq FROM event_sequence WHERE aggregate_id = \(session)), '')",
-            "SELECT 'M' WHERE NOT EXISTS (SELECT 1 FROM session_v2 WHERE id = \(session))",
-        ]
+        let store = Store(query.tables, session: session)
+        var statements = [versionStatement] + store.checks
         switch query.kind {
         case .tail(let budget):
             statements += [
-                sessionStatement(session, changed: "1"),
-                newestRows(session, below: nil, budget: budget),
-                firstStatement(session, changed: "1"),
-                inboxStatement(session, changed: "1"),
-            ]
+                store.sessionStatement("1"),
+                newestRows(session, below: nil, budget: budget, in: store),
+                firstStatement(session, changed: "1", in: store),
+            ] + store.inboxStatements("1")
         case .poll(let cursor):
-            let changed =
-                cursor.eventSeq.map {
-                    "(SELECT seq FROM event_sequence WHERE aggregate_id = \(session)) IS NOT \($0)"
-                } ?? "1"
+            let changed = cursor.eventSeq.map { "\(store.counter) IS NOT \($0)" } ?? "1"
             statements += [
-                sessionStatement(session, changed: changed),
+                store.sessionStatement(changed),
                 // The rows that start inside the budget, then `X` for the
                 // first row that does not, from one pass over the window.
                 """
-                \(pollWindow(session, cursor: cursor, changed: changed))
+                \(pollWindow(session, cursor: cursor, changed: changed, in: store))
                 SELECT CASE WHEN acc - len < \(cursor.budget) THEN 'R ' || \(rowObject(dataLimit: rowDataLimit))
                             ELSE 'X' END
                   FROM w WHERE coalesce(previous_start, 0) < \(cursor.budget) ORDER BY seq
                 """,
-                firstStatement(session, changed: changed),
+                firstStatement(session, changed: changed, in: store),
                 """
-                SELECT 'C ' || (SELECT count(*) FROM session_message WHERE session_id = \(session)
+                \(with(store.messages))SELECT 'C ' || (SELECT count(*) FROM session_message WHERE session_id = \(session)
                     AND seq BETWEEN \(cursor.lowSeq) AND \(cursor.highSeq)) WHERE \(changed)
                 """,
-                inboxStatement(session, changed: changed),
-            ]
+            ] + store.inboxStatements(changed)
         case .older(let before, let budget):
             statements += [
-                newestRows(session, below: before, budget: budget),
-                firstStatement(session, changed: "1"),
+                newestRows(session, below: before, budget: budget, in: store),
+                firstStatement(session, changed: "1", in: store),
             ]
         case .row(let seq, let outputLimit):
             let rows = """
@@ -78,13 +71,61 @@ extension OpenCodeProbe {
                   FROM session_message s WHERE s.session_id = \(session) AND s.seq = \(seq)
                 """
             statements.append("""
-                WITH \(slimmed(rows, outputLimit: max(0, outputLimit)))
-                SELECT 'R ' || \(rowObject(dataLimit: nil)) FROM r
+                \(with(store.messages, slimmed(rows, outputLimit: max(0, outputLimit))))SELECT 'R ' || \(rowObject(dataLimit: nil)) FROM r
                 """)
         case .recentSessions:
             break
         }
         return statements
+    }
+
+    /// What differs between the tables of OpenCode 2 and of 1.x: the checks
+    /// before any session is read, the change counter, the session's own line,
+    /// the inbox, and for 1.x a `session_message` that stands in for 2's.
+    private struct Store {
+        var checks: [String]
+        /// An integer that moves whenever the session changes, or NULL.
+        var counter: String
+        /// A CTE named `session_message`, or empty to read the table.
+        var messages: String
+        var sessionStatement: (_ changed: String) -> String
+        var inboxStatements: (_ changed: String) -> [String]
+
+        init(_ tables: OpenCodeQuery.Tables, session: String) {
+            switch tables {
+            case .v2:
+                counter = "(SELECT seq FROM event_sequence WHERE aggregate_id = \(session))"
+                messages = ""
+                checks = [
+                    OpenCodeProbe.tablesStatement, OpenCodeProbe.layoutStatement,
+                    "SELECT 'E ' || coalesce(\(counter), '')",
+                    // `M 1` when 1.x tables are there too, which may hold it.
+                    """
+                    SELECT 'M' || CASE WHEN EXISTS (SELECT 1 FROM sqlite_master
+                        WHERE type = 'table' AND name = 'message') THEN ' 1' ELSE '' END
+                     WHERE NOT EXISTS (SELECT 1 FROM session_v2 WHERE id = \(session))
+                    """,
+                ]
+                sessionStatement = { OpenCodeProbe.sessionStatement(session, changed: $0) }
+                inboxStatements = { [OpenCodeProbe.inboxStatement(session, changed: $0)] }
+            case .v1:
+                counter = OpenCodeProbe.v1Counter(session)
+                let messages = OpenCodeProbe.v1Messages(session)
+                self.messages = messages
+                checks = [
+                    OpenCodeProbe.v1LayoutStatement, "SELECT 'E ' || coalesce(\(counter), '')",
+                    "SELECT 'M' WHERE NOT EXISTS (SELECT 1 FROM session WHERE id = \(session))",
+                ]
+                sessionStatement = { OpenCodeProbe.v1SessionStatement(session, changed: $0, messages: messages) }
+                inboxStatements = { _ in [] }
+            }
+        }
+    }
+
+    /// `WITH` and the CTEs given that are not empty, or nothing.
+    private static func with(_ ctes: String...) -> String {
+        let ctes = ctes.filter { !$0.isEmpty }
+        return ctes.isEmpty ? "" : "WITH \(ctes.joined(separator: ",\n"))\n"
     }
 
     /// The directory travels as hex, so nothing of it can leave its literal.
@@ -133,7 +174,7 @@ extension OpenCodeProbe {
 
     /// A staged revert's patches stay in the store: the line carries only
     /// the boundary message, its `seq` and a file count.
-    private static func sessionStatement(_ session: String, changed: String) -> String {
+    fileprivate static func sessionStatement(_ session: String, changed: String) -> String {
         """
         SELECT 'S ' || json_object('k','session','id',id,'parent',parent_id,'title',substr(title,1,512),
           'version',version,
@@ -146,14 +187,14 @@ extension OpenCodeProbe {
         """
     }
 
-    private static func firstStatement(_ session: String, changed: String) -> String {
+    private static func firstStatement(_ session: String, changed: String, in store: Store) -> String {
         """
-        SELECT 'F ' || coalesce((SELECT min(seq) FROM session_message WHERE session_id = \(session)), '') \
+        \(with(store.messages))SELECT 'F ' || coalesce((SELECT min(seq) FROM session_message WHERE session_id = \(session)), '') \
         WHERE \(changed)
         """
     }
 
-    private static func inboxStatement(_ session: String, changed: String) -> String {
+    fileprivate static func inboxStatement(_ session: String, changed: String) -> String {
         """
         SELECT 'I ' || json_object('k','inbox',
             'items', json(coalesce((SELECT json_group_array(json(item)) FROM (
@@ -174,21 +215,25 @@ extension OpenCodeProbe {
     /// The newest rows within `budget` bytes of slimmed JSON, below `below`
     /// when given, printed oldest first. The newest row always prints. A
     /// prefilter on the stored length bounds how many rows are slimmed.
-    private static func newestRows(_ session: String, below: Int64?, budget: Int) -> String {
+    private static func newestRows(_ session: String, below: Int64?, budget: Int, in store: Store) -> String {
         let bound = below.map { " AND seq < \($0)" } ?? ""
         let rows = """
             SELECT s.id, s.type, s.seq, s.time_created, s.time_updated, s.data
               FROM session_message s JOIN raw ON raw.seq = s.seq
              WHERE s.session_id = \(session) AND raw.racc - raw.rlen < 4 * \(budget)
             """
-        return """
-            WITH raw AS (SELECT seq, length(data) AS rlen,
-                                sum(length(data)) OVER (ORDER BY seq DESC ROWS UNBOUNDED PRECEDING) AS racc
-                           FROM session_message WHERE session_id = \(session)\(bound)),
-            \(slimmed(rows, outputLimit: toolOutputLimit)),
+        let raw = """
+            raw AS (SELECT seq, length(data) AS rlen,
+                           sum(length(data)) OVER (ORDER BY seq DESC ROWS UNBOUNDED PRECEDING) AS racc
+                      FROM session_message WHERE session_id = \(session)\(bound))
+            """
+        let window = """
             w AS (SELECT *, length(CAST(d AS BLOB)) AS len,
                          sum(length(CAST(d AS BLOB))) OVER (ORDER BY seq DESC ROWS UNBOUNDED PRECEDING) AS acc
                     FROM r)
+            """
+        return """
+            \(with(store.messages, raw, slimmed(rows, outputLimit: toolOutputLimit), window))\
             SELECT 'R ' || \(rowObject(dataLimit: rowDataLimit))
               FROM w WHERE acc - len < \(budget) ORDER BY seq
             """
@@ -198,7 +243,7 @@ extension OpenCodeProbe {
     /// the row before each starts: newer than the window, still open, or
     /// updated inside it since the last read.
     private static func pollWindow(
-        _ session: String, cursor: OpenCodePollCursor, changed: String
+        _ session: String, cursor: OpenCodePollCursor, changed: String, in store: Store
     ) -> String {
         let open = cursor.openRows.prefix(openRowLimit).map(String.init).joined(separator: ",")
         let rows = """
@@ -208,14 +253,14 @@ extension OpenCodeProbe {
                AND (s.seq > \(cursor.highSeq) OR s.seq IN (\(open.isEmpty ? "NULL" : open))
                     OR (s.seq >= \(cursor.lowSeq) AND s.time_updated >= \(cursor.updatedSince)))
             """
-        return """
-            WITH \(slimmed(rows, outputLimit: toolOutputLimit)),
+        let window = """
             w AS (SELECT *, length(CAST(d AS BLOB)) AS len,
                          sum(length(CAST(d AS BLOB))) OVER (ORDER BY seq ROWS UNBOUNDED PRECEDING) AS acc,
                          sum(length(CAST(d AS BLOB)))
                            OVER (ORDER BY seq ROWS BETWEEN UNBOUNDED PRECEDING AND 2 PRECEDING) AS previous_start
                     FROM r)
             """
+        return with(store.messages, slimmed(rows, outputLimit: toolOutputLimit), window)
     }
 
     /// The CTEs that slim the rows `rows` selects from `session_message`:
@@ -412,5 +457,125 @@ extension OpenCodeProbe {
                 'shellID', json_extract(m.data, '$.metadata.shellID'),
                 'truncated', json_extract(m.data, '$.metadata.truncated')) END),
               'time', json_extract(m.data, '$.time')
+        """
+
+    // MARK: OpenCode 1.x
+
+    /// The columns the 1.x statements name, checked as `layoutStatement` checks 2's.
+    fileprivate static let v1LayoutStatement = """
+        WITH need(t, c) AS (VALUES
+          ('session','id'),('session','parent_id'),('session','title'),('session','version'),
+          ('session','revert'),('session','time_updated'),
+          ('message','id'),('message','session_id'),('message','time_created'),('message','time_updated'),
+          ('message','data'),
+          ('part','id'),('part','message_id'),('part','session_id'),('part','time_updated'),('part','data'))
+        SELECT 'L ' || m FROM (SELECT group_concat(t || '.' || c, ',') AS m FROM need
+          WHERE NOT EXISTS (SELECT 1 FROM pragma_table_info(need.t) p WHERE p.name = need.c))
+         WHERE m IS NOT NULL
+        """
+
+    /// 1.x keeps no event counter. This one is the newest `time_updated` of the
+    /// session, its messages and its parts, with how many of them there are, so
+    /// a write or a deletion moves it.
+    fileprivate static func v1Counter(_ session: String) -> String {
+        """
+        (SELECT max(t) * 4096 + sum(n) % 4096 FROM (
+           SELECT time_updated AS t, 0 AS n FROM session WHERE id = \(session)
+           UNION ALL SELECT max(time_updated), count(*) FROM message WHERE session_id = \(session)
+           UNION ALL SELECT max(time_updated), count(*) FROM part WHERE session_id = \(session)))
+        """
+    }
+
+    fileprivate static func v1SessionStatement(_ session: String, changed: String, messages: String) -> String {
+        """
+        \(with(messages))SELECT 'S ' || json_object('k','session','id',id,'parent',parent_id,
+          'title',substr(title,1,512),'version',version,
+          'revertMessage', json_extract(CASE WHEN json_valid(revert) THEN revert END, '$.messageID'),
+          'revertSeq', (SELECT m.seq FROM session_message m WHERE m.session_id = \(session)
+             AND m.id = json_extract(CASE WHEN json_valid(session.revert) THEN session.revert END, '$.messageID')),
+          'updated', time_updated)
+          FROM session WHERE id = \(session) AND \(changed)
+        """
+    }
+
+    /// A `session_message` of 1.x's messages in 2's shape (OpenCode 1.19.5's
+    /// tables): a user message's own text and files, a step's text, reasoning
+    /// and tool parts as its content, and a compaction's summary. `seq` is the
+    /// message's place by `time_created`, then id; `time_updated` the newest of
+    /// the message's and its parts'. The user message that asks for a
+    /// compaction has a type Chat does not show, and a message that is not JSON
+    /// has no row.
+    ///
+    /// These nest as little as they can: a result or aggregate expression reads
+    /// only rows its `WHERE` let through, so a `WHERE` that proves the JSON valid
+    /// lets them read it unguarded, and a part of another type adds NULL, which
+    /// `group_concat` skips and the reducer reads as no item. A message's parts
+    /// gather in id order, the order `part_message_id_id_idx` reads them in, since
+    /// an aggregate takes no `ORDER BY` here, and objects are built flat with
+    /// `json_set` paths.
+    static func v1Messages(_ session: String) -> String {
+        let role = "json_extract(msg.data, '$.role')"
+        let isSummary = "json_type(msg.data, '$.summary') = 'true'"
+        let time = "'$.time.created', json_extract(msg.data, '$.time.created'), "
+            + "'$.time.completed', json_extract(msg.data, '$.time.completed')"
+        let parts = "FROM part p WHERE p.message_id = msg.id AND json_valid(p.data)"
+        return """
+            v1_seq AS (SELECT id, row_number() OVER (ORDER BY time_created, id) AS seq
+                         FROM message WHERE session_id = \(session)),
+            session_message AS (SELECT msg.id AS id, msg.session_id AS session_id,
+                CASE WHEN \(role) = 'user' THEN CASE WHEN EXISTS (SELECT 1 FROM part p WHERE p.message_id = msg.id
+                       AND p.data LIKE '%"type":"compaction"%') THEN 'v1-compaction' ELSE 'user' END
+                     WHEN \(role) = 'assistant' AND \(isSummary) THEN 'compaction'
+                     WHEN \(role) = 'assistant' THEN 'assistant'
+                     ELSE 'v1-' || coalesce(\(role), '') END AS type,
+                q.seq AS seq, msg.time_created AS time_created,
+                max(msg.time_updated, coalesce((SELECT max(p.time_updated) FROM part p WHERE p.message_id = msg.id), 0))
+                  AS time_updated,
+                CASE WHEN \(role) = 'user' THEN json_set('{}', '$.text', \(v1Text(synthetic: false)),
+                       '$.files', json((SELECT json_group_array(CASE json_extract(p.data, '$.type') WHEN 'file' THEN
+                         json_object('name', json_extract(p.data, '$.filename'), 'mime', json_extract(p.data, '$.mime')) END)
+                         \(parts))),
+                       '$.time.created', msg.time_created)
+                     WHEN \(role) = 'assistant' AND \(isSummary) THEN json_set('{}', '$.status', 'completed',
+                       '$.summary', \(v1Text(synthetic: true)), \(time))
+                     WHEN \(role) = 'assistant' THEN json_set('{}',
+                       '$.content', json((SELECT json_group_array(\(v1Item)) \(parts))),
+                       '$.finish', json_extract(msg.data, '$.finish'),
+                       '$.error.type', replace(json_extract(msg.data, '$.error.name'), 'MessageAbortedError', 'aborted'),
+                       '$.error.message', json_extract(msg.data, '$.error.data.message'), \(time))
+                     ELSE json_set('{}', '$.time.created', msg.time_created) END AS data
+              FROM message msg JOIN v1_seq q ON q.id = msg.id WHERE json_valid(msg.data))
+            """
+    }
+
+    /// A message's text parts joined by newlines: a prompt's own, without
+    /// the text 1.x adds for an attachment, or every one. A part's JSON keeps a
+    /// quote in its text escaped, so only the flag itself matches.
+    private static func v1Text(synthetic: Bool) -> String {
+        """
+        (SELECT group_concat(CASE WHEN json_extract(p.data, '$.type') = 'text'\
+        \(synthetic ? "" : #" AND p.data NOT LIKE '%"synthetic":true%'"#) THEN json_extract(p.data, '$.text') END,
+          char(10)) FROM part p WHERE p.message_id = msg.id AND json_valid(p.data))
+        """
+    }
+
+    /// A text, reasoning or tool part as 2's content item, NULL for another
+    /// part. A tool's output becomes its one text; its `pending` reads as
+    /// running, as 2's `streaming` does.
+    private static let v1Item = """
+        CASE json_extract(p.data, '$.type')
+          WHEN 'tool' THEN json_set('{}', '$.type', 'tool', '$.id', json_extract(p.data, '$.callID'),
+            '$.name', json_extract(p.data, '$.tool'),
+            '$.state.status', json_extract(p.data, '$.state.status'),
+            '$.state.input', json_extract(p.data, '$.state.input'),
+            '$.state.error', json_extract(p.data, '$.state.error'),
+            '$.state.metadata', json_extract(p.data, '$.state.metadata'),
+            '$.state.content[0].type', 'text', '$.state.content[0].text', json_extract(p.data, '$.state.output'),
+            '$.time.created', json_extract(p.data, '$.state.time.start'),
+            '$.time.completed', json_extract(p.data, '$.state.time.end'))
+          WHEN 'reasoning' THEN json_set('{}', '$.type', 'reasoning', '$.text', json_extract(p.data, '$.text'),
+            '$.time.created', json_extract(p.data, '$.time.start'),
+            '$.time.completed', json_extract(p.data, '$.time.end'))
+          WHEN 'text' THEN json_set('{}', '$.type', 'text', '$.text', json_extract(p.data, '$.text')) END
         """
 }

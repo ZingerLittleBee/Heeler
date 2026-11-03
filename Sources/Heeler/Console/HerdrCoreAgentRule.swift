@@ -21,10 +21,11 @@ struct HerdrCoreAgent: Equatable, Sendable {
 /// has a Program Status whose `app` is missing or unknown here. A known `app`
 /// counts only while it names the foreground: nothing ties a report to a process,
 /// and the core keeps the report after its program left. The foreground is read
-/// after unwrapping launch wrappers, `sh -c` lines and interpreters, and a cleared
-/// one leaves the last sample standing (`HerdrCoreTerminalRecord.noteForeground`).
-/// A `-NoExit` PowerShell, whose foreground never changes, is its shell while the
-/// Terminal's title is that PowerShell's own path.
+/// after unwrapping launch wrappers, `sh -c` lines, interpreters and `npx` or
+/// `npm exec`, and a cleared one leaves the last sample standing
+/// (`HerdrCoreTerminalRecord.noteForeground`). A `-NoExit` PowerShell, whose
+/// foreground never changes, is its shell while the Terminal's title is that
+/// PowerShell's own path.
 ///
 /// `plugin/test-vectors/herdr-core-agent-rule-v1.json` holds this rule's cases, so
 /// a change here changes that file and the Helper's reading of it in one commit.
@@ -145,9 +146,16 @@ enum HerdrCoreAgentRule {
 
     private static func read(_ arguments: [String], depth: Int = 0) -> Reading {
         guard depth < maximumDepth, let executable = arguments.first else { return Reading(program: .shell) }
+        if arguments.dropFirst().allSatisfy(\.isEmpty), let title = packageRunnerTitle(executable) {
+            return read(title, depth: depth + 1)
+        }
         let name = baseName(executable)
         if shells.contains(name) { return readShell(arguments, name: name, depth: depth) }
         if interpreters.contains(name) { return readInterpreter(arguments, name: name) }
+        if name == "npx" { return readPackageRunner(Array(arguments.dropFirst()), name: name, depth: depth) }
+        if name == "npm", arguments.count > 1, packageRunnerCommands.contains(arguments[1]) {
+            return readPackageRunner(Array(arguments.dropFirst(2)), name: name, depth: depth)
+        }
         let rest = Array(arguments.dropFirst())
         if let kind = knownKind(name) { return Reading(program: .known(kind), arguments: rest) }
         return Reading(program: .other(name), arguments: rest)
@@ -446,6 +454,92 @@ enum HerdrCoreAgentRule {
         return commands
     }
 
+    // MARK: Package runners
+
+    /// `npm exec` and its alias `npm x`, which `npx` runs.
+    private static let packageRunnerCommands: Set<String> = ["exec", "x"]
+
+    /// npm sets its process title to `npm` and its positional arguments (npm 11
+    /// `lib/npm.js`), so on Linux the process reads as `npm exec claude` (hc-lab,
+    /// `npx claude`, 2026-11-02), which the arguments hold as one word, and a
+    /// scoped package keeps its `/` there. Its words, when it is one: the first
+    /// word is `npx` or `npm` itself, so a path never reads as one.
+    private static func packageRunnerTitle(_ word: String) -> [String]? {
+        let words = word.split(separator: " ").map(String.init)
+        guard words.count > 1 else { return nil }
+        let isRunner = words[0] == "npx" || (words[0] == "npm" && packageRunnerCommands.contains(words[1]))
+        return isRunner ? words : nil
+    }
+
+    /// Options of `npx` and `npm exec` that take no value.
+    private static let packageRunnerFlags: Set<String> = [
+        "-y", "--yes", "--no", "--prefer-offline", "--prefer-online", "--offline", "-q", "--quiet", "--silent",
+    ]
+
+    /// Options that name the package whose command runs.
+    private static let packageOptions: Set<String> = ["-p", "--package"]
+
+    /// npm packages whose name is not their program's.
+    private static let packages = [
+        "@anthropic-ai/claude-code": "claude",
+        "@google/gemini-cli": "gemini",
+        "@mariozechner/pi-coding-agent": "pi",
+        "@earendil-works/pi-coding-agent": "pi",
+        "@openai/codex": "codex",
+        "opencode-ai": "opencode",
+        "@opencode/cli": "opencode",
+    ]
+
+    /// `npx [options] <package or command> [arguments]`: the agent the package or
+    /// command names, with the arguments after it. With `--package` the word is the
+    /// package's command. An option this does not know may take a value, and
+    /// `--call` runs a line, so either leaves the runner as the program.
+    private static func readPackageRunner(_ arguments: [String], name: String, depth: Int) -> Reading {
+        var index = 0
+        var namesACommand = false
+        while index < arguments.count {
+            let argument = arguments[index]
+            if argument == "--" {
+                index += 1
+                break
+            }
+            if !argument.hasPrefix("-") { break }
+            if packageRunnerFlags.contains(argument) {
+                index += 1
+            } else if packageOptions.contains(argument) {
+                namesACommand = true
+                index += 2
+            } else if argument.hasPrefix("--package=") {
+                namesACommand = true
+                index += 1
+            } else {
+                return Reading(program: .other(name))
+            }
+        }
+        guard index < arguments.count else { return Reading(program: .other(name)) }
+        let word = arguments[index]
+        let rest = Array(arguments.dropFirst(index + 1))
+        if namesACommand || (word.contains("/") && !word.hasPrefix("@")) || word.contains("\\") {
+            let program = read([word], depth: depth + 1).program
+            return Reading(program: program, arguments: rest)
+        }
+        let package = packageName(word)
+        let command = String(package.split(separator: "/").last ?? "")
+        guard let kind = packages[package] ?? knownKind(command) else {
+            return Reading(program: .other(command.isEmpty ? name : command), arguments: rest)
+        }
+        return Reading(program: .known(kind), arguments: rest)
+    }
+
+    /// A package spec's name, without its version: `@scope/name@1.2.3` is
+    /// `@scope/name`.
+    private static func packageName(_ spec: String) -> String {
+        let lowered = spec.lowercased()
+        let start = lowered.hasPrefix("@") ? lowered.index(after: lowered.startIndex) : lowered.startIndex
+        guard let at = lowered[start...].firstIndex(of: "@") else { return lowered }
+        return String(lowered[..<at])
+    }
+
     // MARK: Interpreters
 
     /// Script entry points named for their package, not for the program.
@@ -454,6 +548,7 @@ enum HerdrCoreAgentRule {
         (["@google", "gemini-cli", "dist", "index.js"], "gemini"),
         (["@mariozechner", "pi-coding-agent", "dist", "cli.js"], "pi"),
         (["@earendil-works", "pi-coding-agent", "dist", "cli.js"], "pi"),
+        (["@earendil-works", "pi-coding-agent", "dist", "bundle", "cli.js"], "pi"),
         (["@openai", "codex", "bin", "codex.js"], "codex"),
     ]
 

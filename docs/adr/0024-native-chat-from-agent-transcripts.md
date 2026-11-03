@@ -71,11 +71,12 @@ Pi sets a braille spinner and label into the top rule (`── ⠸ Working ─�
 that editor still takes a message, which steers the turn.
 OMP's status-band composer is recognized by its filled header, percentage
 gauge and `╰─` prompt even when herdr omits the hardware cursor. Only the
-header's idle glyph (`π > ` in the 18.10.4 unicode preset, U+F0D57 in the
-18.11.1 nerd preset) lets Chat send. A braille spinner there means a turn is
-running, so Chat holds the message rather than steer it; an approval or ask
-panel resting on the band also holds it. The italic first-message hint on the
-prompt row is not a draft.
+header's idle glyph (`π > ` in the 18.10.4 unicode preset, `π-<profile> > `
+under a profile in 18.13.3, U+F0D57 in the 18.11.1 nerd preset) lets Chat
+send. A braille spinner there means a turn is running, so Chat holds the
+message rather than steer it; an approval or ask panel resting on the band
+also holds it. The italic first-message hint on the prompt row, with the icons
+before it (⇧⇥ in the unicode preset), is not a draft.
 Drafts, completion popups and other editor shapes stay in the terminal.
 OMP's tool approval and single-select question get Blocked cards (see Blocked
 cards); any other titled OMP panel ending the screen or resting on the band,

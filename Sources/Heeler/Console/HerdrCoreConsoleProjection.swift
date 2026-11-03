@@ -25,6 +25,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
     private(set) var departedAgentsByPane: [String: ConsoleAgent] = [:]
+    /// Agents that left the list while their program still held the Terminal, by
+    /// address, with that program's pid. The core clears a Program Status just before
+    /// it says the program was lost or finished, which a generic Agent cannot outlast.
+    private var leavingAgentsByPane: [String: (agent: ConsoleAgent, pid: Int)] = [:]
+    /// Each listed Agent's foreground pid, as of the last rebuild.
+    private var listedAgentPIDs: [String: Int] = [:]
     /// Stays through `invalidateInventory`, for a detail open while the link
     /// recovers. A snapshot replaces it, from whichever core answers.
     private(set) var lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
@@ -286,6 +292,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         terminalsByPane = [:]
         agentsByPane = [:]
         departedAgentsByPane = [:]
+        leavingAgentsByPane = [:]
+        listedAgentPIDs = [:]
         workspaces = []
         workspacesByID = [:]
         documentRead?.cancel()
@@ -543,18 +551,45 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// a detail open on it stays to show what happens next. An Agent that left
     /// its shell running only left, so nothing stays. One stays until an Agent
     /// is back at the address or the core forgets the Terminal.
+    ///
+    /// A generic Agent leaves when the core clears its status, which comes just
+    /// before its program is lost or finishes (ADR 0032). It waits while the same
+    /// program holds the Terminal, and departs if that program's end comes next.
     private func noteDepartedAgents(listed agents: [String: ConsoleAgent]) {
         for (address, agent) in agentsByPane where agents[address] == nil {
-            guard let record = records.first(where: { $0.address == address }),
-                record.hasFinished || record.isRestarting
-            else { continue }
-            var departed = agent
-            departed.agent.status = .unknown
-            departedAgentsByPane[address] = departed
+            guard let record = records.first(where: { $0.address == address }) else { continue }
+            if record.hasFinished || record.isRestarting {
+                depart(agent, at: address)
+            } else if record.status == nil, let pid = record.foreground?.pid, pid == listedAgentPIDs[address] {
+                leavingAgentsByPane[address] = (agent, pid)
+            }
+        }
+        for (address, leaving) in leavingAgentsByPane {
+            guard agents[address] == nil, let record = records.first(where: { $0.address == address }),
+                record.status == nil
+            else {
+                leavingAgentsByPane[address] = nil
+                continue
+            }
+            if record.hasFinished || record.isRestarting {
+                depart(leaving.agent, at: address)
+                leavingAgentsByPane[address] = nil
+            } else if let pid = record.foreground?.pid, pid != leaving.pid {
+                leavingAgentsByPane[address] = nil
+            }
         }
         departedAgentsByPane = departedAgentsByPane.filter { address, _ in
             agents[address] == nil && records.contains { $0.address == address }
         }
+        listedAgentPIDs = agents.keys.reduce(into: [:]) { pids, address in
+            pids[address] = records.first { $0.address == address }?.foreground?.pid
+        }
+    }
+
+    private func depart(_ agent: ConsoleAgent, at address: String) {
+        var departed = agent
+        departed.agent.status = .unknown
+        departedAgentsByPane[address] = departed
     }
 
     // MARK: The desktop app's document

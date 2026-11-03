@@ -10,7 +10,7 @@
 // points at one count apart.
 
 /** Agent kinds known to report done, whose idle therefore ends no turn. */
-export const DONE_REPORTER_KINDS = new Set(["claude", "codex", "pi", "omp"]);
+export const DONE_REPORTER_KINDS = new Set(["claude", "codex", "pi", "omp", "grok"]);
 
 const keepsAFinishedTurn = (word) => word === "idle" || word === "done";
 

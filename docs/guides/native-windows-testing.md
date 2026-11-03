@@ -564,23 +564,26 @@ Code's `.key` files.
     `claude.exe`, not `node.exe`. Through `npx` the tree ran `powershell.exe`,
     `cmd.exe`, `node.exe` (`npx-cli.js`), `cmd.exe`, `claude.exe`. That 2.1.316
     reported its status and wrote a matching `sessions\<pid>.json`, but Heeler listed
-    no Agent for it, so it had no Chat, Composer or Stop: **known defect**, the Agent
-    rule does not look through `npx`. New Agent starts whichever `claude` a Terminal's
-    PowerShell finds first. On the one machine that was the account's winget copy,
-    even with the npm copy first on the core's own PATH, so the npm and `npx` copies
-    were started over the core's pipe with `terminal.run` in New Agent's form.
+    no Agent for it, so it had no Chat, Composer or Stop: the Agent rule did not look
+    through `npx`. It now reads `npx` and `npm exec` as the package they run, so the
+    `npx` Agent should list as Claude Code and bind; not run on a Host since. New
+    Agent starts whichever `claude` a Terminal's PowerShell finds first. On the one
+    machine that was the account's winget copy, even with the npm copy first on the
+    core's own PATH, so the npm and `npx` copies were started over the core's pipe
+    with `terminal.run` in New Agent's form.
 28. Run `/clear` in the terminal. Chat follows at its next check, with no
     **Working for** row while Claude Code sits idle. Claude Code 2.1.286 reports no
     status, and on herdr-core 0.1.16 an earlier build counted one up from the
     `/clear` row until the next turn.
 29. Start Grok Build and send a message. Chat shows it, from the one row of
-    `active_sessions.json` with that `pid` and `pid_start`. Record the row's fields and
-    `pid_start`'s value beside the creation time: Heeler assumes they are equal. On the
-    one machine run (herdr-core 0.1.16), Grok Build 1.0.70 wrote rows with only
-    `session_id`, `pid`, `cwd` and `opened_at`, and Chat said it can't tell, also after
-    **Check Again**. **Known defect**: Heeler's row reader requires `pid_start` (by its
-    source), so no Grok Build 1.0.70 Agent can bind there. Run
-    `/new`: two rows match, and Chat says it can't tell until Grok Build starts again.
+    `active_sessions.json` with that `pid` and either a `pid_start` equal to the
+    creation time or, with none, an `opened_at` no earlier than it. Record the row's
+    fields beside the creation time. On the one machine run (herdr-core 0.1.16), Grok
+    Build 1.0.70 wrote rows with only `session_id`, `pid`, `cwd` and `opened_at`, 2 s
+    after the creation time, and Chat said it can't tell, also after **Check Again**,
+    since Heeler then required `pid_start`. It now binds from `opened_at`; not run on
+    a Host since. Run `/new`: two rows match, and Chat says it can't tell until Grok
+    Build starts again.
 30. Open Chat on a Pi Agent with no extension. It says it can't tell, and offers
     **Add Heeler's Extension…**. The sheet names the folders and has written nothing.
     Tap Add. `heeler-session.js` is in Pi's folder, `.omp\agent\extensions` and each
@@ -591,10 +594,12 @@ Code's `.key` files.
     label took, since it runs one hidden PowerShell. Repeat on Oh My Pi, with a profile.
 32. Send from Chat in a Terminal New Agent started: the message submits. Stop a working
     turn. Answer a Blocked card. For a program whose bracketed paste does not cross the
-    pseudo console (step 16), record that Chat's Send says the same. **Known defect**,
-    seen on herdr-core 0.1.16 with Oh My Pi 18.13.3 (`omp.exe`, with a profile): Send
-    from Chat said **Heeler can't find the Agent's input box on screen.** before and
-    after a turn, while Direct Input submitted.
+    pseudo console (step 16), record that Chat's Send says the same. On herdr-core
+    0.1.16 with Oh My Pi 18.13.3 (`omp.exe`, with a profile), Send from Chat said
+    **Heeler can't find the Agent's input box on screen.** before and after a turn,
+    while Direct Input submitted: the profile's band reads `π-hwa > `, which Heeler's
+    send check did not know. It now does; not run on a Host since. Repeat on Oh My
+    Pi with a profile and without.
 33. Record each program that passed as a versioned observation in
     `docs/agents/herdr-compatibility.md`, here, and by adding it to
     `HostCapabilities.confirmedWindowsCoreChatPrograms`. One that fails stays off, with
@@ -819,8 +824,10 @@ unless it says otherwise.
     and without. With the profile Chat showed the conversation (the Agent without one
     was not opened in Chat), but Send from Chat said
     **Heeler can't find the Agent's input box on screen.** before and after a turn,
-    while Direct Input submitted. Grok Build 1.0.70 could not be told (step 29), and
-    Claude Code through `npx` gave no Agent (step 27).
+    while Direct Input submitted, since the send check did not know the profile's
+    `π-hwa > ` band, which it now reads. Grok Build 1.0.70 could not be told (step
+    29), and Claude Code through `npx` gave no Agent (step 27), which the Agent rule
+    now reads.
   - Seen: after `/clear`, Chat showed a **Working for 0:18** row counting up while
     Claude Code 2.1.286 sat idle, until the next turn. npm Claude Code's first check
     after its trust dialog said **Can't Tell the Conversation**, and the next, about 3

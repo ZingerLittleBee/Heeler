@@ -22,8 +22,19 @@ struct OpenCodeQuery: Equatable, Sendable {
         case recentSessions(directory: String, limit: Int)
     }
 
+    /// Which OpenCode's tables hold the session.
+    enum Tables: Equatable, Sendable {
+        /// OpenCode 2's `session_v2` and `session_message`, where 2.x also keeps
+        /// the sessions it imported from 1.x.
+        case v2
+        /// OpenCode 1.x's `session`, `message` and `part`, for a session no
+        /// OpenCode 2 has imported.
+        case v1
+    }
+
     var session: OpenCodeSessionID?
     var kind: Kind
+    var tables: Tables = .v2
 }
 
 /// What a poll already holds, so the query reads only what changed.
@@ -109,7 +120,8 @@ enum OpenCodeStoreProblem: Equatable, Sendable {
     /// The database's `-wal` or `-shm` file is missing: OpenCode is not
     /// running, and a read-only open would create them or fail.
     case storeClosed
-    /// Only OpenCode 1.x tables exist.
+    /// Only OpenCode 1.x tables exist, or on a tail read, the session is not in
+    /// OpenCode 2's tables while 1.x tables are there: read them instead.
     case olderOpenCode
     /// Tables or columns Chat reads are missing (`table.column`).
     case layout(missing: [String])

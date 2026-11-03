@@ -7,8 +7,9 @@ import Testing
 /// over the tree #586 recorded: `powershell.exe` as the foreground, the Agent its
 /// child. The start values are FILETIMEs. A Claude Code registry entry carries one in
 /// `procStart`, as 2.1.286 and 2.1.316 wrote it on the owner's machine, or in
-/// `procStartFt`, the field its source names; Grok Build's `pid_start` there is
-/// assumed, since 1.0.70 wrote none (`docs/agents/herdr-compatibility.md`).
+/// `procStartFt`, the field its source names. Grok Build 1.0.70's rows there had
+/// no `pid_start`, only `opened_at`; a `pid_start` holding the FILETIME is assumed
+/// (`docs/agents/herdr-compatibility.md`).
 @Suite("herdr-core session binder on native Windows")
 struct HerdrCoreWindowsSessionBinderTests {
     private static let session = "11111111-1111-4111-8111-111111111111"
@@ -35,7 +36,10 @@ struct HerdrCoreWindowsSessionBinderTests {
         let execs = Execs()
         let labels = LabelLog()
 
-        init(agentImage: String? = "claude.exe", agentEnvironment: [String: String] = [:]) {
+        init(
+            agentImage: String? = "claude.exe", agentEnvironment: [String: String] = [:],
+            agentStart: String = HerdrCoreWindowsSessionBinderTests.agentStart
+        ) {
             let base = ["HC_SCOPE": scope, "USERPROFILE": "C:\\Users\\me", "SECRET": "never"]
             table.add(
                 .init(
@@ -268,6 +272,80 @@ struct HerdrCoreWindowsSessionBinderTests {
         await rig.files.write(Data("[\(Self.row()),\(Self.row(session: Self.other))]".utf8), at: Self.grokPath)
 
         #expect(try await rig.binder(.grok).check(try Self.record()) == .unavailable(.cannotTellSessionOnWindows(.grok)))
+    }
+
+    /// Grok Build 1.0.70's rows on the owner's machine, which have no `pid_start`, and
+    /// `grok.exe`'s creation FILETIME there, 2 s before the row was opened
+    /// (`docs/agents/herdr-compatibility.md`).
+    private static let grokCreated = "134381662108367563"
+
+    private static func openedRow(session: String = session, pid: Int = agentPid, openedAt: String) -> String {
+        "{\"session_id\":\"\(session)\",\"pid\":\(pid),\"cwd\":\"C:\\\\proj\",\"opened_at\":\"\(openedAt)\"}"
+    }
+
+    @Test("Grok Build 1.0.70 binds from the row its process opened, which has no pid_start")
+    func grokBindsFromOpenedAt() async throws {
+        let rig = Rig(agentImage: "grok.exe", agentStart: Self.grokCreated)
+        let rows =
+            "[\(Self.openedRow(session: Self.other, pid: 11, openedAt: "2026-11-03T07:56:52.816690400Z")),"
+            + "\(Self.openedRow(openedAt: "2026-11-03T07:56:52.816690400Z"))]"
+        await rig.files.write(Data(rows.utf8), at: Self.grokPath)
+
+        let evidence = try await rig.binder(.grok).check(try Self.record())
+
+        #expect(evidence == .bound(sessionID: Self.session, transcriptRoot: "\(Self.home)/.grok", directory: "C:\\proj"))
+        #expect(await rig.readPaths == [Self.grokPath])
+    }
+
+    @Test("A row opened before the process was created is an earlier process's with the same pid")
+    func grokRefusesARowFromBeforeTheProcess() async throws {
+        let rig = Rig(agentImage: "grok.exe", agentStart: Self.grokCreated)
+        // 07:56:50.8367562Z is one tick before the creation time.
+        for openedAt in ["2026-11-03T07:56:50.8367562Z", "2026-11-03T07:40:00Z"] {
+            await rig.files.write(Data("[\(Self.openedRow(openedAt: openedAt))]".utf8), at: Self.grokPath)
+            #expect(
+                try await rig.binder(.grok).check(try Self.record()) == .unavailable(.cannotTellSessionOnWindows(.grok)),
+                "\(openedAt)")
+        }
+        await rig.files.write(
+            Data("[\(Self.openedRow(openedAt: "2026-11-03T07:56:50.8367563Z"))]".utf8), at: Self.grokPath)
+        #expect(
+            try await rig.binder(.grok).check(try Self.record())
+                == .bound(sessionID: Self.session, transcriptRoot: "\(Self.home)/.grok", directory: "C:\\proj"))
+    }
+
+    /// `/new` on the owner's machine added a second row for the same pid and kept the first.
+    @Test("After /new two rows of the process bind nothing")
+    func grokTwoOpenedRows() async throws {
+        let rig = Rig(agentImage: "grok.exe", agentStart: Self.grokCreated)
+        let rows =
+            "[\(Self.openedRow(openedAt: "2026-11-03T07:56:52.816690400Z")),"
+            + "\(Self.openedRow(session: Self.other, openedAt: "2026-11-03T07:59:10.638095400Z"))]"
+        await rig.files.write(Data(rows.utf8), at: Self.grokPath)
+
+        #expect(try await rig.binder(.grok).check(try Self.record()) == .unavailable(.cannotTellSessionOnWindows(.grok)))
+    }
+
+    @Test("A row with neither pid_start nor opened_at, or an opened_at in another form, binds nothing")
+    func grokRowsWithoutAStart() async throws {
+        let rig = Rig(agentImage: "grok.exe", agentStart: Self.grokCreated)
+        let bare = "{\"session_id\":\"\(Self.other)\",\"pid\":11,\"cwd\":\"C:\\\\proj\"}"
+        await rig.files.write(
+            Data("[\(bare),\(Self.openedRow(openedAt: "2026-11-03T07:56:52.816690400Z"))]".utf8), at: Self.grokPath)
+        #expect(try await rig.binder(.grok).check(try Self.record()) == .unavailable(.cannotTellSessionOnWindows(.grok)))
+
+        await rig.files.write(
+            Data("[\(Self.openedRow(openedAt: "2026-11-03 07:56:52"))]".utf8), at: Self.grokPath)
+        #expect(try await rig.binder(.grok).check(try Self.record()) == .unavailable(.cannotTellSessionOnWindows(.grok)))
+    }
+
+    @Test("opened_at reads as a FILETIME to its seventh decimal")
+    func openedAtAsAFileTime() {
+        #expect(HerdrCoreSessionBinder.windowsFileTime(ofUTC: "2026-11-03T07:56:50.8367563Z") == 134_381_662_108_367_563)
+        #expect(HerdrCoreSessionBinder.windowsFileTime(ofUTC: "2026-11-03T07:56:52.816690400Z") == 134_381_662_128_166_904)
+        #expect(HerdrCoreSessionBinder.windowsFileTime(ofUTC: "1970-01-01T00:00:00Z") == 116_444_736_000_000_000)
+        #expect(HerdrCoreSessionBinder.windowsFileTime(ofUTC: "2026-02-30T00:00:00Z") == nil)
+        #expect(HerdrCoreSessionBinder.windowsFileTime(ofUTC: "2026-11-03T07:56:52+08:00") == nil)
     }
 
     @Test("Grok Build does not bind through a runtime or PowerShell")

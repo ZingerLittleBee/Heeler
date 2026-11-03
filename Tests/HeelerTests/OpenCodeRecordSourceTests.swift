@@ -153,6 +153,34 @@ struct OpenCodeRecordSourceTests {
         #expect(await queries.fileCalls == 0)
     }
 
+    /// A session no OpenCode 2 imported (OpenCode 1.19.5, #541 Linux P3): the
+    /// tail goes on to 1.x's tables, and every read after it stays there.
+    @Test func aSessionOnlyOpenCode1HoldsIsReadFromItsTables() async throws {
+        let queries = ScriptedQueries()
+        await queries.answer(
+            .unavailable(.olderOpenCode), Self.records([Self.row(1), Self.row(2, type: "assistant")], eventSeq: 9),
+            .unchanged(eventSeq: 9))
+        var source = OpenCodeRecordSource(session: Self.session)
+        let opened = try await source.open(queries.files)
+        #expect(opened?.isEmpty == false)
+        #expect(try await source.poll(queries.files) == .unchanged)
+        #expect(await queries.queries.map(\.tables) == [.v2, .v1, .v1])
+    }
+
+    /// Nor do 1.x's tables hold it: OpenCode 2 writes it with its first
+    /// message, so the next tail looks in 2's tables again.
+    @Test func aSessionNeitherTablesHoldIsMissingAndLookedForInOpenCode2Again() async throws {
+        let queries = ScriptedQueries()
+        await queries.answer(
+            .unavailable(.olderOpenCode), .sessionMissing(otherStores: []),
+            .unavailable(.olderOpenCode), .sessionMissing(otherStores: []))
+        for _ in 0..<2 {
+            var source = OpenCodeRecordSource(session: Self.session)
+            await #expect(throws: ChatSourceUnavailable.self) { try await source.open(queries.files) }
+        }
+        #expect(await queries.queries.map(\.tables) == [.v2, .v1, .v2, .v1])
+    }
+
     @Test func anUnchangedCounterReadsNothingMore() async throws {
         let queries = ScriptedQueries()
         let step = Self.row(7, type: "assistant", isFinal: false, updated: Self.epoch + 5_000)
@@ -354,7 +382,6 @@ struct OpenCodeRecordSourceTests {
         (.noReader, .noReader),
         (.readerTooOld("3.24.0"), .readerTooOld("3.24.0")),
         (.storeClosed, .storeClosed),
-        (.olderOpenCode, .olderOpenCode),
         (
             .layout(missing: ["session_v2.revert", "session_inbox.delivery"]),
             .unsupportedLayout("session_v2.revert, session_inbox.delivery")

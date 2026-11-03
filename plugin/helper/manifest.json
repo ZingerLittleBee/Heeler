@@ -3,7 +3,7 @@
   "files": [
     {
       "path": "core/agent-rule.js",
-      "sha256": "ab987eba0c26bd5ce8a4bda5d6df4dbf17a6b6772ee4926dc2a22fd12fb6e6df"
+      "sha256": "329c087131f4dbd2b2a815436822a431c8b1ef0fdbe98658bced033fdd4c6f39"
     },
     {
       "path": "core/client.js",
@@ -35,7 +35,7 @@
     },
     {
       "path": "core/turn-state.js",
-      "sha256": "cd0d5caa0a5051661a4a4d6b34d421f68efd5dd38f67d1b6c8bb00e5c71c3eca"
+      "sha256": "ba9e9ce839a9d3a9be338c5153b3c2a57e9381dd8afead5b88a3240dd4f6fc99"
     },
     {
       "path": "extensions/extension-folders.js",

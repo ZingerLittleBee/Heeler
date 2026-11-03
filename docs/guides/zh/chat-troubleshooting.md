@@ -53,7 +53,7 @@ Heeler 不认识这个问题，例如 Pi 的所有问题。用卡片上的键按
 
 ## Reading OpenCode's conversations needs sqlite3 or python3 on the Host
 
-在 Host 上安装 `sqlite3` 或 Python 3，然后轻点 **Check Again**。如果 Chat 提示对话是 OpenCode 1.x 格式，请把 OpenCode 升级到 2.x。
+在 Host 上安装 `sqlite3` 或 Python 3，然后轻点 **Check Again**。如果 Chat 提示无法列出 OpenCode 1.x 的对话，请通过 **Let Chat Follow OpenCode…** 添加 Heeler 的插件，或把 OpenCode 升级到 2.x。
 
 ## SFTP is unavailable on this Host
 

@@ -52,7 +52,10 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   a known `app` counts only while that `app` names the foreground program. A
   shell in the foreground ends the Agent, whatever was reported last. The
   foreground is read after unwrapping: the desktop app's wrapper forms, `sh -c
-  <command line>`, and interpreters running an agent's script. A cleared
+  <command line>`, interpreters running an agent's script, and `npx` or `npm
+  exec` running an agent's package or command, npm's retitled `npm exec claude`
+  included. A script the shell runs is its own program, whatever it starts, so
+  a known `app` reported under it makes no Agent. A cleared
   foreground names no program, so the last sample stands until the next. With
   no sample the launch arguments stand in, except a desktop wrapper that
   continues as a shell, which only a sample can name.
@@ -293,8 +296,12 @@ with test clients, not the app.
   program restarts. An Agent detail open on either stays on screen, showing
   restarting or ended, though the Terminal has stopped being an Agent. The app
   keeps that departed Agent for the detail alone, so no list shows it, and a
-  reconnect forgets it. Its Chat stays too, on the conversation it showed, says
-  what became of the Agent, and follows the next Agent back at that address.
+  reconnect forgets it. The core clears the program's status just before it
+  says the program was lost or finished, which takes an Agent whose `app`
+  Heeler does not know off the list first, so that Agent departs too when the
+  same program's end follows; one whose shell took the Terminal back did not.
+  Its Chat stays too, on the conversation it showed, says what became of the
+  Agent, and follows the next Agent back at that address.
 - Close ends a Terminal for good with `terminal.kill`, one for each Terminal
   it takes, and never sends one twice: a kill the core did not answer reads as
   outcome unknown. A kill is final even on a kept Terminal, so keep is left as
