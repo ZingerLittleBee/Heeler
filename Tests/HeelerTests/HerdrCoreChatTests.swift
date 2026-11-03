@@ -248,12 +248,16 @@ struct HerdrCoreChatTests {
         #expect(!HostCapabilities(serverKind: .herdrCore).chat)
         #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix).chat)
         #expect(!HostCapabilities(serverKind: .herdrCore, coreKernel: "Linux").chat)
-        #expect(!HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows, coreKernel: "Linux").chat)
+        // A native Windows platform reads as a Windows core whatever the kernel says, so
+        // it opens Windows' list and never Linux's.
+        let windowsPlatform = HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows, coreKernel: "Linux")
+        #expect(windowsPlatform.chatPrograms == HostCapabilities.confirmedWindowsCoreChatPrograms)
+        #expect(!windowsPlatform.offersChat(for: .codex))
         #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "FreeBSD").chat)
-        // Each kernel offers what passed its owner's check there: Claude Code alone on
-        // Linux until hc-lab, and on macOS each program the owner's Mac bound exactly.
+        // Each kernel offers what passed its owner's check there: on hc-lab and on the
+        // owner's Mac, every program but OpenCode.
         let shipped: [(kernel: String, offered: Set<ChatProgram>)] = [
-            ("Linux", [.claude]), ("Darwin", [.claude, .codex, .grok, .pi, .omp]),
+            ("Linux", [.claude, .codex, .grok, .pi, .omp]), ("Darwin", [.claude, .codex, .grok, .pi, .omp]),
         ]
         for (kernel, offered) in shipped {
             let capabilities = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: kernel)
@@ -265,17 +269,21 @@ struct HerdrCoreChatTests {
         }
     }
 
+    /// The programs whose Chat passed on hc-lab open on a Linux core Host, and OpenCode,
+    /// whose 1.x Agent showed no messages there, does not.
     @Test(arguments: [
-        (["codex"], "codex", "codex"), (["opencode"], "opencode", "opencode"), (["pi"], "pi", "pi"),
-        (["omp"], "omp", "omp"), (["grok"], "grok", "grok-build"),
+        (["codex"], "codex", "codex", true), (["opencode"], "opencode", "opencode", false),
+        (["pi"], "pi", "pi", true), (["omp"], "omp", "omp", true), (["grok"], "grok", "grok-build", true),
     ])
-    func otherProgramsStayOffForNow(_ argv: [String], _ name: String, _ app: String) async throws {
+    func programsThatPassedOnLinuxOpenThere(_ argv: [String], _ name: String, _ app: String, _ opens: Bool)
+        async throws
+    {
         let rig = Rig(host: host, record: Self.record(foreground: argv, name: name, app: app))
         try await rig.start()
 
         let agent = try #require(rig.agent)
         #expect(agent.agent.kind == ChatProgram(rawValue: agent.agent.kind)?.rawValue)
-        #expect(rig.store.chatProgram(for: agent) == nil)
+        #expect((rig.store.chatProgram(for: agent) != nil) == opens)
         rig.store.setHosts([])
     }
 

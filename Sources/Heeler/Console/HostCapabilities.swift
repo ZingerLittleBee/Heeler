@@ -132,16 +132,24 @@ extension HostCapabilities {
     /// OpenCode stay without it.
     static let windowsCoreChatCandidates: Set<ChatProgram> = [.claude, .grok, .pi, .omp]
 
-    /// The programs whose Chat a native Windows core Host opens. Each joins only when
-    /// its owner's check there has passed and is recorded in the native Windows
-    /// acceptance checklist (`docs/guides/native-windows-testing.md`). None has yet.
-    static let confirmedWindowsCoreChatPrograms: Set<ChatProgram> = []
+    /// The programs whose Chat a native Windows core Host opens, each once the owner's
+    /// check of it on a Windows machine passed and was recorded in the native Windows
+    /// acceptance checklist (`docs/guides/native-windows-testing.md`). On Windows build
+    /// 26200 with herdr-core 0.1.16 (2026-11-03), Claude Code 2.1.286 and 2.1.316, and
+    /// Pi 1.4.0 with Heeler's extension, each bound, showed its conversation and sent
+    /// from Chat. Grok Build stays off: 1.0.70's `active_sessions.json` rows there carry
+    /// no `pid_start`, which its binding needs. Oh My Pi stays off: 18.13.3 bound and
+    /// showed its conversation, but every Send from Chat found no input box on screen.
+    static let confirmedWindowsCoreChatPrograms: Set<ChatProgram> = [.claude, .pi]
 
-    /// The programs whose Chat a Linux core Host opens. Binding works for Codex, Grok
-    /// Build, OpenCode, Pi and Oh My Pi, from recordings with no sign-in. Each joins
-    /// only once the owner's signed-in check of that program on hc-lab passes and is
-    /// recorded, and one that fails stays off with its observation saying why (ADR 0034).
-    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude]
+    /// The programs whose Chat a Linux core Host opens, each once the owner's check of
+    /// it on hc-lab passed and was recorded (ADR 0034): Claude Code 2.1.288 and 2.1.316
+    /// against a mock API (2026-11-02), and, on herdr-core 0.1.13 (2026-11-03), Codex
+    /// 0.165.0 started with `--no-daemon` and Grok Build 1.0.70 signed in, and Pi 1.4.0
+    /// and Oh My Pi 18.13.3 on an API-key provider. OpenCode stays off, since this list
+    /// turns a program on for every release: 2.2.2 passed, but a 1.19.5 Agent bound
+    /// through Heeler's plugin showed no messages.
+    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp]
 
     /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in
     /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New

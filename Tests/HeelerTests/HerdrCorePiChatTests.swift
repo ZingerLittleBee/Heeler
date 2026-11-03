@@ -190,11 +190,23 @@ struct HerdrCorePiChatTests {
 
     // MARK: The offer
 
+    /// Both passed their owner's check on hc-lab, so the shipped Linux list offers them.
     @Test(arguments: programs)
-    func itStaysOffUntilTheOwnersCheckOfThatProgramPasses(_ program: ChatProgram) async throws {
+    func theShippedLinuxListOffersIt(_ program: ChatProgram) async throws {
         let linux = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Linux")
-        #expect(!linux.offersChat(for: program))
+        #expect(linux.offersChat(for: program))
 
+        let rig = Rig(
+            host: host, program: program, record: Self.record(program),
+            offered: HostCapabilities.confirmedLinuxCoreChatPrograms)
+        try await rig.start()
+
+        #expect(rig.store.chatProgram(for: try #require(rig.agent)) == program)
+        rig.store.setHosts([])
+    }
+
+    @Test(arguments: programs)
+    func aListWithoutItOffersNoChat(_ program: ChatProgram) async throws {
         let rig = Rig(host: host, program: program, record: Self.record(program), offered: [.claude])
         try await rig.start()
 

@@ -6,9 +6,9 @@ import Testing
 
 /// Chat on a native Windows core Host, from the Console down: the real Console,
 /// session, link and Windows read's parser, with the core, the process table and SFTP
-/// scripted. No PowerShell and no program runs: each program's Chat stays off until
-/// its owner's check in `docs/guides/native-windows-testing.md` passes, so these turn
-/// them on through the store's own list.
+/// scripted. No PowerShell and no program runs. The app ships Claude Code and Pi, whose
+/// owner's checks in `docs/guides/native-windows-testing.md` passed, so these turn on
+/// every candidate through the store's own list unless a test says otherwise.
 @MainActor
 @Suite(.timeLimit(.minutes(1)))
 struct HerdrCoreWindowsChatTests {
@@ -179,10 +179,21 @@ struct HerdrCoreWindowsChatTests {
 
     // MARK: Which programs
 
-    @Test func aHostOffersNoChatUntilAProgramIsMarkedPassed() {
+    /// Claude Code and Pi passed their owner's check on Windows; Grok Build and Oh My
+    /// Pi did not, and Codex and OpenCode are no candidates.
+    @Test func theShippedListOffersOnlyWhatPassedOnWindows() {
         let shipped = HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows, coreKernel: "Windows")
-        #expect(!shipped.chat)
-        for program in ChatProgram.allCases { #expect(!shipped.offersChat(for: program)) }
+        #expect(shipped.chat)
+        for program in ChatProgram.allCases {
+            #expect(shipped.offersChat(for: program) == [.claude, .pi].contains(program), "\(program)")
+        }
+    }
+
+    @Test func aHostOffersEachProgramOnlyOnceItIsMarkedPassed() {
+        let none = HostCapabilities(
+            serverKind: .herdrCore, platform: .nativeWindows, coreKernel: "Windows", coreWindowsChatPrograms: [])
+        #expect(!none.chat)
+        for program in ChatProgram.allCases { #expect(!none.offersChat(for: program)) }
 
         for program in Self.candidates {
             let one = HostCapabilities(
@@ -221,10 +232,6 @@ struct HerdrCoreWindowsChatTests {
     }
 
     @Test func theStoreOffersAProgramOnlyOnceItIsOnTheList() async throws {
-        let shipped = try await Fixture(offered: nil)
-        #expect(shipped.console.chatProgram(for: shipped.agent) == nil)
-        shipped.finish()
-
         let elsewhere = try await Fixture(offered: [.pi])
         #expect(elsewhere.console.chatProgram(for: elsewhere.agent) == nil)
         elsewhere.finish()
@@ -232,6 +239,22 @@ struct HerdrCoreWindowsChatTests {
         let passed = try await Fixture()
         #expect(passed.console.chatProgram(for: passed.agent) == .claude)
         passed.finish()
+    }
+
+    /// The list the app ships, through the store: Claude Code and Pi open, Grok Build and
+    /// Oh My Pi offer the terminal alone.
+    @Test(arguments: [
+        ("claude", "claude-code", "claude.exe", true), ("pi", "pi", "node.exe", true),
+        ("grok", "grok-build", "grok.exe", false), ("omp", "omp", "omp.exe", false),
+    ])
+    func theShippedListOpensWhatPassedOnWindows(program: String, app: String, image: String, opens: Bool)
+        async throws
+    {
+        let fixture = try await Fixture(
+            terminal: Self.record(program: program, app: app), image: image, offered: nil)
+        #expect(fixture.agent.agent.kind == program)
+        #expect(fixture.console.chatProgram(for: fixture.agent) == (opens ? ChatProgram(rawValue: program) : nil))
+        fixture.finish()
     }
 
     @Test(arguments: [("codex", "codex"), ("opencode", "opencode")])

@@ -223,15 +223,17 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
-    /// None of them has passed its owner check on Linux yet. Turning one on changes
-    /// this, which is the point: the list is the whole switch.
-    @Test(arguments: [ChatProgram.codex, .grok, .opencode])
-    func chatStaysOffUntilTheOwnerCheckPasses(_ program: ChatProgram) async throws {
-        #expect(!HostCapabilities.confirmedLinuxCoreChatPrograms.contains(program))
+    /// Codex and Grok Build passed their owner check on Linux, and OpenCode stays off
+    /// there. The list is the whole switch.
+    @Test(arguments: [(ChatProgram.codex, true), (.grok, true), (.opencode, false)])
+    func theShippedLinuxListOffersWhatPassedItsOwnerCheck(_ program: ChatProgram, _ passed: Bool) async throws {
+        #expect(HostCapabilities.confirmedLinuxCoreChatPrograms.contains(program) == passed)
         let (rig, rows) = try offerRig(program, offering: HostCapabilities.confirmedLinuxCoreChatPrograms)
         try await rig.start(rows)
 
-        #expect(rig.store.chatProgram(for: try #require(rig.agent)) == nil)
+        let agent = try #require(rig.agent)
+        #expect(rig.store.chatProgram(for: agent) == (passed ? program : nil))
+        #expect((rig.store.chatStore(for: agent, program: program) != nil) == passed)
         rig.store.setHosts([])
     }
 
