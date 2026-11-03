@@ -44,6 +44,11 @@ case "script":
         HerdrCoreShellLaunch.discoveryScript(
             shell: arguments[2], executables: Array(arguments[4...]), versionOf: arguments[3],
             nonce: nonce))
+case "version-script":
+    FileHandle.standardOutput.write(
+        HerdrCoreShellLaunch.versionScript(
+            program: arguments[2], path: arguments[3] == "-" ? nil : arguments[3],
+            directory: arguments.count > 4 ? arguments[4] : nil, nonce: nonce))
 case "parse":
     let output = FileHandle.standardInput.readDataToEndOfFile()
     guard let found = try? HerdrCoreShellLaunch.parseDiscovery(stdout: output, nonce: nonce) else {
@@ -200,6 +205,41 @@ class ShellLaunchTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         found = json.loads(self.drive("parse", stdin=result.stdout))
         self.assertEqual(found["executables"], [])
+
+    def agent_version(self, program: str, path: str, directory: str | None = None) -> str | None:
+        arguments = ["version-script", program, path] + ([directory] if directory is not None else [])
+        result = subprocess.run(
+            ["/bin/sh", "-s"], input=self.drive(*arguments), env=self.environment(), capture_output=True,
+            timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(b"welcome from the rc", result.stdout)
+        return json.loads(self.drive("parse", stdin=result.stdout))["version"]
+
+    def older_opencode(self, folder: str) -> Path:
+        path = self.home / folder / "opencode"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("#!/bin/sh\necho 1.19.5\n")
+        path.chmod(0o700)
+        return path
+
+    def test_the_agents_version_comes_from_its_own_path_not_the_rc(self):
+        # hc-lab, 2026-11-03: the login shell found 2.2.2, the Agent's PATH 1.19.5.
+        older = self.older_opencode("bin-oc119")
+        self.assertEqual(self.agent_version("opencode", f"{older.parent}:/usr/bin:/bin"), "1.19.5")
+        self.assertEqual(self.agent_version("opencode", f"{self.home}/rc-bin:/usr/bin:/bin"), "opencode v2.2.2")
+        self.assertIsNone(self.agent_version("opencode", "/usr/bin:/bin"))
+
+    def test_a_relative_program_runs_from_the_agents_directory(self):
+        self.older_opencode("project/bin")
+        self.assertEqual(self.agent_version("./bin/opencode", "/usr/bin:/bin", str(self.home / "project")), "1.19.5")
+
+    def test_an_agent_directory_that_has_gone_reads_no_version(self):
+        self.older_opencode("bin-oc119")
+        self.assertIsNone(
+            self.agent_version("opencode", f"{self.home}/bin-oc119", str(self.home / "gone")))
+
+    def test_an_agent_with_no_path_searches_where_exec_does(self):
+        self.assertIsNone(self.agent_version("opencode", "-"))
 
     def test_an_output_cut_short_is_refused(self):
         with self.assertRaises(subprocess.CalledProcessError) as caught:

@@ -1485,7 +1485,7 @@ actor HeelerSSHTransport: Transport {
             try Self.notificationWriteError(error)
         }
         notificationFileClients[operationID] = sftp
-        var temporaryPath: String? = "\(path).tmp-\(UUID().uuidString.lowercased())"
+        var temporaryPath: String? = "\(path)\(HostHelperScript.temporarySuffix)\(UUID().uuidString.lowercased())"
         notificationTemporaryPaths[operationID] = temporaryPath
 
         do {

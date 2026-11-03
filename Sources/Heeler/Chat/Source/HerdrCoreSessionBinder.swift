@@ -18,6 +18,10 @@ enum ChatSessionEvidence: Equatable, Sendable {
     case pickUnconfirmed(ChatUnavailableReason)
     /// A Chat following a pick takes this as the pick's end.
     case unavailable(ChatUnavailableReason)
+
+    var leavesItToAPick: Bool {
+        if case .unavailable(let reason) = self { reason.leavesItToAPick } else { false }
+    }
 }
 
 /// A `heeler.*` label naming a session (ADR 0034). It is a hint: anything may
@@ -77,8 +81,9 @@ enum HerdrCoreHostSystem: Equatable, Sendable {
 
 /// Binds a herdr-core Agent's Chat from what the Host shows about the Agent's own
 /// process, never from a guess (ADR 0034). A check is one exec and at most one
-/// SFTP read, past a Codex holding several rollouts, and the app makes it only
-/// when something says the answer may have changed.
+/// SFTP read, past a Codex holding several rollouts and an Oh My Pi whose
+/// breadcrumb names nothing yet, which also looks for Heeler's extension, and the
+/// app makes it only when something says the answer may have changed.
 ///
 /// It starts from the Terminal's foreground process, and goes through descendants
 /// that share the Terminal's `HC_SCOPE` to reach the process behind a launcher.

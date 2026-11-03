@@ -12,10 +12,11 @@ struct TransportErrorPresentation: Equatable, Sendable {
     let recoverySuggestion: String?
 
     /// `summary` [+ ": " + `detail`] + "." — what happened, no instruction.
-    /// A detail cut short with an ellipsis already ends the sentence.
+    /// A detail that already ends its sentence, with a period or an ellipsis
+    /// where it was cut short, gets no second one.
     var explanation: String {
         if let detail {
-            return detail.hasSuffix("…") ? "\(summary): \(detail)" : "\(summary): \(detail)."
+            return detail.hasSuffix("…") || detail.hasSuffix(".") ? "\(summary): \(detail)" : "\(summary): \(detail)."
         }
         return "\(summary)."
     }

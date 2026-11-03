@@ -189,7 +189,10 @@ that Heeler can read from outside the process.
     copies its OpenCode plugin into a folder of its own under OpenCode's
     config directory and adds that folder to the list (`plugin` in
     `tui.json(c)`, or `plugins` in `cli.json`, by OpenCode's release, and
-    refused for a version it can't place). Undoing removes the entry, then the
+    refused for a version it can't place). The release is the one the Agent
+    runs: its program asked for its version with the Agent's own PATH and
+    directory, since the login shell's PATH can find another release, and a
+    list in that release's file does nothing. Undoing removes the entry, then the
     folder; removing the Helper undoes it. The entry is one line, first in the
     list, relative to the file: `./heeler-opencode`. The folder holds the
     plugin's three files, and goes in before the entry so the file never names
@@ -208,12 +211,19 @@ that Heeler can read from outside the process.
     file that refuses the undo doesn't keep the Helper: the Helper goes, and
     the edit stays listed with its Undo. So does a conflict on a file in the
     folder, once the entry is already out. A failed connection stops the removal
-    as any step's does. A running OpenCode can still make a file name a folder
-    that isn't there: on hc-lab on 2026-11-03, with Host Helper 0.5.3's edits
-    for OpenCode 2.2.2 and 1.19.5 applied and both releases running, 2.2.2
-    migrated `tui.json` into a new `cli.json` during the removal, and that file named the deleted folder until it was deleted by hand
-    ([herdr compatibility](../agents/herdr-compatibility.md)). Nothing in the
-    removal prevents that yet.
+    as any step's does. A running OpenCode 2.x makes a `cli.json` out of
+    `tui.json` whenever it finds none: on hc-lab on 2026-11-03, with Host
+    Helper 0.5.3's edits for OpenCode 2.2.2 and 1.19.5 applied and both
+    releases running, 2.2.2 did so during the removal, after `cli.json` went
+    and before `tui.json` did, and the new file named the deleted folder until
+    it was deleted by hand ([herdr compatibility](../agents/herdr-compatibility.md)).
+    So the removal undoes a `cli.json` edit last, when no `tui.json` of
+    Heeler's names the folder any more, and whichever undo takes the folder
+    first takes the entry out of every other `tui.json`, `tui.jsonc` and
+    `cli.json` beside it, as an undo of a changed file does. That covers a
+    `cli.json` OpenCode made after an Undo of the 2.x edit alone, which keeps
+    the rest of what OpenCode wrote. A file written between that read and the
+    folder's removal can still name it.
   - Grok Build, offered where a Grok Build Agent shows no status because its
     automatic check left Program Status off: `[ui.notifications]
     program_status = "on"` in its configuration. The value is a quoted string:
@@ -311,6 +321,18 @@ Hosts are unchanged.
   down from there until the service starts again. A removal boots the agent out
   and deletes its property list in one exec, so that a read on another connection
   cannot load it back with no record left to clean up after it.
+- An install cut short with its link cannot clean up after itself. On hc-lab an
+  SSH forward that dropped mid-upload left a staging folder holding a
+  half-written `.tmp-` file, the install record and the empty extension folders
+  it had made, until the next install. A first install that fails while its
+  link holds now takes all of that back at once, since nothing outside the
+  Helper directory is written before the Helper is in place. Otherwise the next
+  check of the Host clears the staging and `.tmp-` files and, with no Helper in
+  place, the record and the empty folders it names, but only once nothing of an
+  install has changed for five minutes, so that another device's install still
+  under way keeps its files. A record goes only while no file it names is on the
+  Host and nothing else is in the Helper directory, so a removal can still find
+  them.
 - A Helper already running outlives the Node.js it started from, so neither
   service manager reports anything when an upgrade removes a versioned path, as
   Homebrew's and nvm's are, though a restart would fail and Usage, which runs the

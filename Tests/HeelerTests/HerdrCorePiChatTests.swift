@@ -526,6 +526,35 @@ struct HerdrCorePiChatTests {
         rig.store.setHosts([])
     }
 
+    /// The owner's Mac, 2026-11-02: `pi --no-extensions` with the Helper installed was
+    /// told to install the Helper. The extension is there, so the words say why it
+    /// isn't running, and the conversation can still be picked.
+    @Test(arguments: [ChatProgram.pi, .omp])
+    func withTheExtensionInPlaceChatSaysItIsntLoadedAndOffersNoHelper(_ program: ChatProgram) async throws {
+        let rig = Rig(host: host, program: program, record: Self.record(program))
+        try await rig.start()
+        let folder = program == .pi ? ".pi/agent/extensions" : ".omp/agent/extensions"
+        await rig.files.write("export default function () {}\n", at: "\(Self.hostHome)/\(folder)/heeler-session.js")
+        let chat = try rig.chat()
+
+        chat.show()
+        try await rig.waitUntil("Chat to say so") {
+            chat.conversation.phase == .unavailable(.extensionNotLoaded(program, turnedOff: false))
+        }
+
+        let reason = ChatUnavailableReason.extensionNotLoaded(program, turnedOff: false)
+        #expect(reason.title == "Can't Tell the Conversation")
+        #expect(!reason.explanation.contains("Install the Helper"))
+        #expect(reason.explanation.contains("--no-extensions"))
+        #expect(reason.offersRetry)
+        #expect(chat.offersCandidates)
+        let turnedOff = ChatUnavailableReason.extensionNotLoaded(program, turnedOff: true).explanation
+        #expect(turnedOff.contains("started with its extensions turned off (--no-extensions)"))
+        #expect(!turnedOff.contains("Install the Helper"))
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     /// The Claude Code wording stays Claude Code's: it names its conversation by
     /// itself and has no extension.
     @Test func claudeCodesReasonOffersNoHelper() {
@@ -549,7 +578,10 @@ struct HerdrCorePiChatTests {
             chat.conversation.phase == .unavailable(.cannotTellSession(.omp))
         }
         #expect(await rig.checks == 1)
-        #expect(await rig.files.reads.map(\.path) == [crumb])
+        // The breadcrumb, then whether Heeler's extension is in place.
+        #expect(
+            await rig.files.reads.map(\.path)
+                == [crumb, "\(Self.hostHome)/.omp/agent/extensions/heeler-session.js"])
 
         // The reply wrote the file, dropped `fresh`, and the process opened it.
         await rig.files.write(try Self.transcript(.omp, session: Self.first), at: file)

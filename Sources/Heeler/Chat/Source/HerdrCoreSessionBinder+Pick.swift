@@ -55,7 +55,7 @@ extension HerdrCoreSessionBinder {
         {
             return await dropped()
         }
-        guard evidence == cannotTell else { return await dropped() }
+        guard evidence == cannotTell || evidence.leavesItToAPick else { return await dropped() }
         guard let conversation = pickedConversation(hint) else { return await dropped() }
         let root = transcriptRoot(of: process)
         guard root != nil || program == .opencode else { return unconfirmed(evidence) }

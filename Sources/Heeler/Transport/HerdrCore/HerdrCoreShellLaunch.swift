@@ -61,6 +61,31 @@ enum HerdrCoreShellLaunch {
         return Data("\(quoted(shell)) -ic \(quoted(lines.joined(separator: "\n")))".utf8)
     }
 
+    /// A script for `/bin/sh` that asks the program an Agent runs for its version,
+    /// found as that Agent found it: with its own PATH, from its own directory, and
+    /// no startup file in between, since a login shell's PATH can find another
+    /// release (herdr compatibility, OpenCode on a signed-in Linux core). With no
+    /// PATH it searches where `execvp` does, and with its directory gone it reads
+    /// no version. Its output reads as discovery's, with the version alone.
+    static func versionScript(program: String, path: String?, directory: String?, nonce: String) -> Data {
+        let quoted = HerdrCoreLocator.quoted
+        let end = "printf '\\n%s\\n' \(quoted(endMarker(nonce)))"
+        var lines = [
+            "printf '\\n%s\\n' \(quoted(beginMarker(nonce)))",
+            "PATH=\(quoted(path ?? "/bin:/usr/bin")); export PATH",
+        ]
+        if let directory, !directory.isEmpty {
+            lines.append("cd \(quoted(directory)) 2>/dev/null || { \(end); exit 0; }")
+        }
+        lines += [
+            "printf 'version '",
+            "command -v \(quoted(program)) >/dev/null 2>&1 && \(quoted(program)) --version </dev/null 2>/dev/null",
+            end,
+            "exit 0",
+        ]
+        return Data((lines.joined(separator: "\n") + "\n").utf8)
+    }
+
     /// The same look through Windows PowerShell, a whole command line for one
     /// bounded exec. It loads the profile a launch's `-Command` loads, and counts every
     /// command type, since `&` runs them all. An exec can refuse a program a Terminal

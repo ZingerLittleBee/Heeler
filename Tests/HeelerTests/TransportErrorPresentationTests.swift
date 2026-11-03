@@ -542,4 +542,11 @@ struct TransportErrorPresentationTests {
             TransportError.apiRejected(code: "pane_not_found", message: "gone").presentation.message
                 == "herdr rejected the request: gone (pane_not_found).")
     }
+
+    /// A detail that is its own sentence keeps its one period.
+    @Test func aDetailEndingInAPeriodGetsNoSecond() {
+        #expect(
+            TransportError.sshUnreachable(detail: "The SSH connection is no longer reusable.").presentation.explanation
+                == "SSH unavailable: The SSH connection is no longer reusable.")
+    }
 }

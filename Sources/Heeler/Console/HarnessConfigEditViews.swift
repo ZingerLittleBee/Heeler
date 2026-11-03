@@ -36,6 +36,8 @@ struct HarnessConfigChangeLines: View {
 struct HarnessConfigFolderLines: View {
     let path: String
     let filePaths: [String]
+    /// Already there as the edit would write them, so not added.
+    var inPlace: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -52,12 +54,14 @@ struct HarnessConfigFolderLines: View {
     }
 
     private func row(_ file: String) -> some View {
-        (Text(verbatim: "+ ").foregroundStyle(Color.green)
-            + Text(verbatim: (file as NSString).lastPathComponent))
+        let added = !inPlace.contains(file)
+        return (Text(verbatim: added ? "+ " : "  ").foregroundStyle(Color.green)
+            + Text(verbatim: (file as NSString).lastPathComponent)
+            .foregroundStyle(added ? Color.primary : Color.secondary))
             .font(.footnote.monospaced())
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityLabel("Added: \(file)")
+            .accessibilityLabel(added ? "Added: \(file)" : "Already there: \(file)")
     }
 }
 
@@ -97,13 +101,14 @@ struct HarnessConfigEditOffer: View {
             Section {
                 HarnessConfigChangeLines(path: change.path, lines: change.shownLines)
                 if let folder = change.folder {
-                    HarnessConfigFolderLines(path: folder.path, filePaths: folder.filePaths)
+                    HarnessConfigFolderLines(
+                        path: folder.path, filePaths: folder.filePaths, inPlace: change.folderFilesInPlace)
                 }
                 Button("Apply This Change") { Task { await flow.accept() } }
                     .accessibilityIdentifier("harness-edit.apply")
                 Button("Cancel", role: .cancel) { flow.cancel() }
             } header: {
-                if change.folder == nil {
+                if !change.writesFolderFiles {
                     Text(change.createsFile ? "Creates This File" : "Changes This File")
                 } else {
                     Text(change.createsFile ? "Creates These Files" : "Changes These Files")

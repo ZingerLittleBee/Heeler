@@ -4,6 +4,8 @@ import Foundation
 /// session, so what names it is a `heeler.*` label the Agent's own extension wrote,
 /// the launch hint for a Pi Heeler started with `--session-id`, or, for Oh My Pi
 /// with no extension, its terminal breadcrumb once the process holds that file open.
+/// With none of those, and the extension in the Agent's own extension folder, the
+/// reason says it isn't loaded rather than asking for a Helper that is there.
 extension HerdrCoreSessionBinder {
     private static let breadcrumbLimit = 16 * 1024
 
@@ -40,7 +42,9 @@ extension HerdrCoreSessionBinder {
         if program == .omp, let file = try await confirmedBreadcrumbFile(of: process, agentDirectory: places.agent) {
             return bound(file)
         }
-        return cannotTell
+        guard await holdsHeelersExtension(agentDirectory: places.agent) else { return cannotTell }
+        return .unavailable(
+            .extensionNotLoaded(program, turnedOff: turnsExtensionsOff(process, pid: pid, record: record)))
     }
 
     /// Whether a Pi's launch hint is there and no send guard dropped it, for a check
@@ -53,7 +57,33 @@ extension HerdrCoreSessionBinder {
     var piFamilyProcessAsk: ProcessAsk {
         ProcessAsk(
             values: [Self.homeVariable] + PiSessionLayout(program: program).variables,
+            arguments: extensionsOffFlags,
             readsOpenFiles: program == .omp)
+    }
+
+    /// What turns every extension off for a run (herdr compatibility, Pi 1.4.0 and
+    /// Oh My Pi 18.13.3).
+    private var extensionsOffFlags: [String] {
+        program == .pi ? ["--no-extensions", "-ne"] : ["--no-extensions"]
+    }
+
+    /// Whether Heeler's extension is where this Agent loads its extensions from. It
+    /// only chooses the words, so a read that fails says no, and the check still
+    /// answers that it can't tell, as it did before it read this.
+    private func holdsHeelersExtension(agentDirectory: String) async -> Bool {
+        let path = RemoteFilePath.join(agentDirectory, "extensions", HostHelperScript.extensionFileName)
+        return (try? await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: 1)))?.length != nil
+    }
+
+    /// Pi takes its title as its process's arguments, which drops its flags (herdr
+    /// compatibility), so a Terminal whose own process is the Agent counts with the
+    /// arguments it was started with. Oh My Pi keeps its own.
+    private func turnsExtensionsOff(
+        _ process: HostProcessReader.Facts, pid: String, record: HerdrCoreTerminalRecord
+    ) -> Bool {
+        let flags = Set(extensionsOffFlags)
+        if case .value(let arguments) = process.arguments, !arguments.isDisjoint(with: flags) { return true }
+        return pid == record.pid.map(String.init) && record.argv.contains(where: flags.contains)
     }
 
     /// Where this process keeps its sessions, from its own environment.

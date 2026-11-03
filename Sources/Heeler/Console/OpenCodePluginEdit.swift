@@ -29,7 +29,7 @@ enum OpenCodePluginEdit {
             + "where a list would replace the one inside \(section), \(pluginCopy)."
     }
 
-    /// For a Host whose release Heeler can't read.
+    /// For an Agent whose release Heeler can't read.
     static var manualInstructionForEitherRelease: String {
         let (tui, cli) = (ConfigForm.tuiConfig, ConfigForm.cliConfig)
         return "Add \"\(entryValue)\" to \(tui.listKey) in \(tui.fileNames[0]) on OpenCode 1.x, "
@@ -64,6 +64,15 @@ enum OpenCodePluginEdit {
         }
     }
 
+    /// The program to ask for the release an Agent runs: what it ran, when that
+    /// names OpenCode, or else `opencode` as its own PATH finds it.
+    static func program(running argv: [String]) -> String {
+        guard let first = argv.first, (first as NSString).lastPathComponent.hasPrefix("opencode") else {
+            return SupportedAgentKind.opencode.executable
+        }
+        return first
+    }
+
     /// `$XDG_CONFIG_HOME/opencode`, by default `~/.config/opencode`, on Linux and on
     /// a Mac. Nil when the Agent's `XDG_CONFIG_HOME` names no absolute path.
     static func configDirectory(xdgConfigHome: String?, home: String) -> String? {
@@ -78,6 +87,29 @@ enum OpenCodePluginEdit {
         var path = path
         while path.count > 1, path.hasSuffix("/") { path.removeLast() }
         return path
+    }
+
+    /// Whether a running OpenCode 2.x may write this file by itself: it makes a
+    /// `cli.json` out of `tui.json`, plugin list included, whenever it finds no
+    /// `cli.json`, and not only at its start (herdr compatibility, OpenCode 2.2.2).
+    /// An undo that takes such a file away comes last, once no `tui.json` of
+    /// Heeler's names the folder any more.
+    static func isMigratedInto(_ path: String) -> Bool {
+        ConfigForm.cliConfig.fileNames.contains((path as NSString).lastPathComponent)
+    }
+
+    /// Every file of either release beside the folder, with the entry its list
+    /// would name the folder by, for the folder's last undo to take out of a file
+    /// OpenCode wrote it into meanwhile.
+    static func listings(of folderPath: String) -> [HarnessConfigListing] {
+        let directory = (folderPath as NSString).deletingLastPathComponent
+        return [ConfigForm.tuiConfig, ConfigForm.cliConfig].flatMap { form in
+            form.fileNames.map {
+                HarnessConfigListing(
+                    path: RemoteFilePath.join(directory, $0),
+                    entry: HarnessConfigListEntry(key: form.listKey, value: entryValue))
+            }
+        }
     }
 
     /// A file of the form that exists, the first when none does: OpenCode reads

@@ -37,6 +37,10 @@ enum ChatUnavailableReason: Equatable, Sendable {
     case cannotTellSession(ChatProgram)
     /// The same on a native Windows Host, which has no Host Helper to offer.
     case cannotTellSessionOnWindows(ChatProgram)
+    /// The same for a Pi or Oh My Pi that hasn't loaded Heeler's extension, which is
+    /// in its extension folder: it runs with its extensions turned off, as
+    /// `turnedOff` says its arguments show, or started before the extension was there.
+    case extensionNotLoaded(ChatProgram, turnedOff: Bool)
     /// The same because the read of the Agent's process failed on that Host, which
     /// its extension would not change (ADR 0034).
     case cannotReadProcessesOnWindows(ChatProgram)
@@ -52,6 +56,15 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// the conversation again.
     var hidesConversation: Bool {
         if case .startScreen = self { true } else { false }
+    }
+
+    /// Nothing exact names the conversation on a POSIX core Host, which is where a
+    /// pick can stand in for it (ADR 0034).
+    var leavesItToAPick: Bool {
+        switch self {
+        case .cannotTellSession, .extensionNotLoaded: true
+        default: false
+        }
     }
 }
 

@@ -125,7 +125,13 @@ never show or send into a conversation it has guessed.
   multiplexer. Every other leak is reported as below.
 - Without exact evidence Chat says it cannot tell the session, and offers the
   fix: install the Helper, accept the one configuration edit, or reopen Codex
-  with `codex resume --no-daemon`, picking the session in Codex's own list. If
+  with `codex resume --no-daemon`, picking the session in Codex's own list. A
+  Pi or Oh My Pi whose own extension folder already holds Heeler's extension,
+  and that wrote no label, is told it hasn't loaded it rather than to install
+  the Helper: it runs with its extensions turned off, which its arguments name
+  when they still show `--no-extensions` (Oh My Pi's own, or the Terminal's for
+  a Pi it started, since Pi's title overwrites its own), or it started before
+  the extension was there. That costs one SFTP read when nothing else binds. If
   the user wants Chat now, it lists candidates (recent Transcripts in the
   Agent's directory, files the process holds open, Program Status child ids)
   for one confirmation. The choice is stored as the Terminal's `heeler.chat`
