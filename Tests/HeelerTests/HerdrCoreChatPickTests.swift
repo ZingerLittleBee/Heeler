@@ -863,8 +863,8 @@ struct HerdrCoreChatPickTests {
         "\(home)/.pi/agent/sessions/--work-app--/2026-11-01T07-19-26-219Z_\(session).jsonl"
     }
 
-    private static func piTranscript(session: String) throws -> Data {
-        let data = try ChatFixture.data("pi/provider-retry.jsonl")
+    private static func piTranscript(session: String, fixture: String = "pi/provider-retry.jsonl") throws -> Data {
+        let data = try ChatFixture.data(fixture)
         let recorded = try #require(PiTranscriptLocator.sessionID(inHead: data))
         return Data(String(decoding: data, as: UTF8.self).replacingOccurrences(of: recorded, with: session).utf8)
     }
@@ -948,6 +948,45 @@ struct HerdrCoreChatPickTests {
         rig.clock.advance(60)
         await chat.step()
         #expect(await rig.transport.processTable.requests.count == checks + 1)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// hc-lab P5: Oh My Pi 18.13.3 without its extension wrote its file with the
+    /// finished turn and held it about 6 s later, and Chat said it can't tell until
+    /// Check Again. Its one later check comes 10 s after the idle report.
+    @Test func anOhMyPiFileHeldJustAfterIdleBindsAtTheOneLaterCheck() async throws {
+        let session = "019a0000-0000-7000-8000-00000000b001"
+        let file = "\(Self.home)/.omp/agent/sessions/--work-app--/2026-11-03T05-07-57-239Z_\(session).jsonl"
+        let crumb = "\(Self.home)/.omp/agent/terminal-sessions/pts-0"
+        let rig = Rig(host: host, program: .omp, record: Self.record(.omp), steppedByTheTest: true)
+        await rig.files.write("\(Self.directory)\n\(file)\nfresh\ncwdstat 1 2\n", at: crumb)
+        try await rig.start([Self.process(.omp, files: ["/dev/pts/0"])])
+        let chat = try rig.chat()
+        try await rig.stepUntil(chat, "Chat to say it cannot tell") {
+            chat.conversation.phase == .unavailable(.cannotTellSession(.omp))
+        }
+        try await rig.runTurn {
+            // The reply writes the file and drops `fresh`; the process opens it later.
+            await rig.files.write(
+                try Self.piTranscript(session: session, fixture: "omp/approvals-asks-plan.jsonl"), at: file)
+            await rig.files.write("\(Self.directory)\n\(file)\ncwdstat 1 2\n", at: crumb)
+        }
+        await chat.step()
+        try await Task.sleep(for: .milliseconds(50))
+        await chat.step()
+        let checks = await rig.transport.processTable.requests.count
+
+        await rig.transport.processTable.add(Self.process(.omp, files: ["/dev/pts/0", file]))
+        await chat.step()
+        #expect(await rig.transport.processTable.requests.count == checks)
+        let delay = try #require(AgentChatStore.Timing().lateEvidenceCheck[.omp])
+        rig.clock.advance(delay)
+        await chat.step()
+        #expect(await rig.transport.processTable.requests.count == checks + 1)
+        try await rig.stepUntil(chat, "Chat to follow the file") {
+            chat.conversation.phase == .following(path: file)
+        }
         chat.end()
         rig.store.setHosts([])
     }
