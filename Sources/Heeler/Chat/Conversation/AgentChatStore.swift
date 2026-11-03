@@ -222,6 +222,12 @@ final class AgentChatStore {
         program.mayShareSessionServer && source.processInfo != nil && !hasCheckedLaunch
     }
 
+    /// On herdr-core, a check found the program in another conversation of
+    /// its own (`/clear` in Claude Code) and Chat moved there with no Send
+    /// waiting on it. The draft may have been written for the last one, so
+    /// the next Send stops once, as a Send whose own check moves Chat does,
+    /// unless the draft changed since.
+    @ObservationIgnored private var movedSinceDraft = false
     @ObservationIgnored private let source: AgentChatSource
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private let now: @Sendable () -> Date
@@ -1110,7 +1116,9 @@ final class AgentChatStore {
         switch evidence {
         case .bound(let sessionID, let transcriptRoot, let directory):
             forgetPick()
+            let shown = followed
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: directory)
+            if let shown, let followed, !followed.namesSameSession(as: shown) { movedSinceDraft = true }
         case .picked(let sessionID, let transcriptRoot):
             followsPick = true
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: nil)
@@ -1630,6 +1638,8 @@ final class AgentChatStore {
         _ sessionEvidence: @Sendable () async throws -> ChatSessionEvidence
     ) async -> String? {
         let shown = followed
+        // Read before the check: the Send emptying the draft must not end it.
+        let movedUnseen = movedSinceDraft
         let recordRevision = sessionRecordRevision
         guard let evidence = try? await sessionEvidence(), !Task.isCancelled,
             recordRevision == sessionRecordRevision
@@ -1650,9 +1660,21 @@ final class AgentChatStore {
             default: followed == shown
             }
         if !isSameConversation {
+            movedSinceDraft = false
             return "\(name) now shows another conversation. Chat is switching to it; check it, then send again."
         }
+        if movedUnseen, movedSinceDraft {
+            movedSinceDraft = false
+            return "\(name) moved to another conversation, which Chat now shows. Check it, then send again."
+        }
         return program.confirmsSessionBeforeSend ? coreTitleConcern : nil
+    }
+
+    /// The Composer's draft changed. Text written since Chat moved is for the
+    /// conversation it shows now; emptying it, as a Send does, says nothing.
+    func draftDidChange(to draft: String) {
+        guard !draft.isEmpty else { return }
+        movedSinceDraft = false
     }
 
     /// No herdr reports OpenCode's moves on a core and its argv keeps the id it

@@ -419,6 +419,47 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
+    /// hc-lab, Claude Code 2.1.316: `/clear` in the terminal, an event's check
+    /// moved Chat to the new conversation, and a draft written for the old one
+    /// went into it 7 s later. Its first Send stops as one whose own check
+    /// moves Chat does; the next goes, as does text written after the move.
+    @Test func aDraftFromBeforeAMoveTheChecksFoundIsHeldOnce() async throws {
+        let rig = Rig(host: host)
+        try await rig.start()
+        let chat = try await Self.follow(rig)
+        let composer = rig.store.composerStore(for: try #require(rig.agent))
+        composer.open()
+        let order = Recorder()
+        let policy = try Self.policy(confirmingWith: chat, order: order)
+        composer.replaceDraft(with: "second held send")
+        chat.draftDidChange(to: composer.draft)
+
+        await rig.files.write(try Self.transcript(session: Self.second), at: Self.transcriptPath(session: Self.second))
+        await rig.files.write(Self.registryEntry(session: Self.second), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+        await rig.transport.deliver(Self.statusEvent(sequence: 2, state: "idle"))
+        try await rig.waitUntil("Chat to follow the new one") { Self.isFollowing(chat, session: Self.second) }
+
+        guard case .refused(.inputNotReady(let reason)) = await composer.send(policy: policy) else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("moved to another conversation"), "\(reason)")
+        #expect(composer.draft == "second held send")
+        #expect(order.steps == ["confirm"])
+        _ = await composer.send(policy: policy)
+        #expect(order.steps == ["confirm", "confirm", "read"])
+
+        await rig.files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+        await rig.transport.deliver(Self.statusEvent(sequence: 3, state: "idle"))
+        try await rig.waitUntil("Chat to follow the first again") { Self.isFollowing(chat) }
+        composer.replaceDraft(with: "written after the move")
+        chat.draftDidChange(to: composer.draft)
+        _ = await composer.send(policy: policy)
+        #expect(order.steps == ["confirm", "confirm", "read", "confirm", "read"])
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     @Test func aBindingTheHostNoLongerShowsSendsNothingAndKeepsTheDraft() async throws {
         let rig = Rig(host: host)
         try await rig.start()

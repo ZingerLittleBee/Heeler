@@ -24,6 +24,12 @@ never show or send into a conversation it has guessed.
   no part. No clock asks, including a Send's echo timeout, and neither does
   a Send having gone, since one check ran just before it. A leak answer that
   names a variable also asks again, since it changes what a reason says.
+- A check that moves Chat to another conversation of an exact binding, with no
+  Send waiting on it, holds the next Send once, as a Send whose own check moves
+  Chat does, unless the draft changed since: the draft may have been written for
+  the conversation Chat showed. On hc-lab on 2026-11-02, `/clear` moved Claude
+  Code 2.1.316's registry entry with no status change, an event's check moved
+  Chat, and a draft from before went into the new conversation 7 s later.
 - A check needs something to look at. Between a link and its snapshot nothing is
   known of any Terminal, and an Agent that left its Terminal has no process, so
   there it says nothing and runs nothing, rather than that it cannot tell: the

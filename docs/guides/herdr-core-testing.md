@@ -433,7 +433,7 @@ one of its permission dialog beside the fixtures in
 | Blocked card | Make Claude Code ask for permission, then answer from the card | The dialog closes with that answer and the turn goes on. The Composer returns |
 | Dialog gone | Open the card, answer the dialog in the terminal, then tap the stale card at once | Nothing more reaches the Agent |
 | Second viewer's size | View the Terminal from a second client at another size, then Send and Stop from Chat | The second client's size and the Terminal's stay as they were, with no `size` event |
-| Moved conversation | Run `/clear` in the terminal, then Send from Chat before the next status change | Nothing is sent, the draft stays, and Chat moves to the new conversation |
+| Moved conversation | Run `/clear` in the terminal, then Send from Chat before the next status change | Nothing is sent, the draft stays, and Chat moves to the new conversation. If Chat moved before the Send, the first Send says Claude Code **moved to another conversation** and the next one goes, as does a draft written after the move |
 | Exit race | Run the Composer's exit race from Chat, on bash | No file. The draft stays and the notice says **no longer in the terminal** |
 
 On hc-lab on 2026-11-02 (Debian 13, herdr-core 0.1.13), Template's stop key passed with Claude Code 2.1.316 against a fake model as the Template's command and `shift+tab` as its key: Claude Code changed its permission mode and went on working, so the Template's key took the place of its own. A Template that wrapped Claude Code in `script` was not listed as an Agent and had no Chat, so its key could not be sent from Chat.

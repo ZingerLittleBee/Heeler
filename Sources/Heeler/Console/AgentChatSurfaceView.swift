@@ -338,6 +338,9 @@ struct AgentChatSurfaceView: View {
             let earlier = Set(previous.map(\.id))
             if messages.contains(where: { !earlier.contains($0.id) }) { followRequest += 1 }
         }
+        .onChange(of: composer.draft) { _, draft in
+            chat?.draftDidChange(to: draft)
+        }
         .onChange(of: chat?.conversationGeneration) { _, generation in
             guard let generation else { return }
             composer.conversationDidChange(to: generation)
