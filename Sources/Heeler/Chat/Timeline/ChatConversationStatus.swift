@@ -349,13 +349,19 @@ struct ChatUnavailableView: View {
     }
 
     @ViewBuilder private var actions: some View {
-        Button(AgentDetailSurface.terminal.showTitle, action: showAgentTerminal)
+        Button(action: showAgentTerminal) { actionTitle(Text(AgentDetailSurface.terminal.showTitle)) }
         if reason.offersRetry {
-            Button("Check Again", action: retry)
+            Button(action: retry) { actionTitle(Text("Check Again")) }
         }
         if let guide = reason.launchNotice(launchNotice)?.guideURL {
-            Link("Read More", destination: guide)
+            Link(destination: guide) { actionTitle(Text("Read More")) }
         }
+    }
+
+    /// A little larger than the system's regular capsule, which looks small
+    /// under the placeholder's text, yet narrow enough to share a row.
+    private func actionTitle(_ title: Text) -> some View {
+        title.padding(.vertical, 4).padding(.horizontal, 4)
     }
 }
 
