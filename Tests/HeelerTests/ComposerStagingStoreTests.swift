@@ -952,6 +952,11 @@ private final class RecordingStagingComposer: ComposerDraftOperations {
         draft.append(text)
         sideEffects.record(.inserted(text))
     }
+
+    /// The draft starts empty here, so a path needs no space before it.
+    func insertPathIntoDraft(_ path: String) {
+        insertIntoDraft("\(path) ")
+    }
 }
 
 @MainActor

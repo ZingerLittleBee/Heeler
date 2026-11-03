@@ -272,7 +272,8 @@ link. Record each version, and each result beside the check it answers.
 | Check | What to do | What to check |
 | --- | --- | --- |
 | Claude Code, Codex, Pi | Run Claude Code and Codex against the mock API, and Pi, each in a core Terminal. Send a multi-line message from the Composer | The whole message reaches the Agent as one message and it starts working. The Composer shows it delivered |
-| Blocked | Make Claude Code ask for permission, then Send | The text appears in its input, nothing answers the dialog, and the tools keyboard comes up to submit or cancel. **Known defect**, seen on 2026-11-02 with Claude Code 2.1.316 on herdr-core 0.1.13: the draft cleared and the text never showed, during the dialog or after Esc, while a stand-in that logs its bytes got the paste and no Enter. Native Windows step 22 saw the same with that version |
+| Blocked | Make Claude Code ask for permission, then Send | Nothing reaches it and nothing answers the dialog. The draft stays, and the notice says the Agent is **waiting on its question on screen**. Answer it with the tools keyboard, whose Enter picks the highlighted option, then Send again |
+| Ended | Exit an Agent so its Terminal finishes, then Send | Nothing is sent and no terminal opens. The draft stays at once, and the notice says the Agent **has ended**, with no Retry |
 | Not accepting a paste | A program in a core Terminal with bracketed paste off, as `cat`, then Send | Nothing reaches it. The draft stays and the notice says **not accepting a paste** |
 | Exit race | Under each of bash, fish and dash, start an Agent stand-in that exits as it reads a paste, with the desktop app's wrapper so its shell continues under the same pid (`composerPasteThenSubmit` has the program), then Send `touch /tmp/sent-to-shell` | No file. The shell's line is empty, the draft stays, and the notice says **no longer in the terminal**. Note any shell whose line keeps the text |
 | Child note | With a Claude Code parent, make an `hc run` child exit during the two seconds after a Send, so the core types its note | Record what reached the Agent: the message, the note, and whether the note's Enter submitted them together. ADR 0035's two seconds exist to bound this |
@@ -284,12 +285,13 @@ Use a throwaway account whose login shell is zsh. It needs a real account becaus
 zsh does with a paste it is still reading depends on its line editor. Run the exit race
 above, and look at the prompt line after Send's Ctrl+C.
 
-Until this is recorded, Send presses Ctrl+C under zsh and always says **may still be in
-the terminal**. The conservative part is that notice, never skipping the Ctrl+C. If zsh
-drops the text, add it to `shellsDroppingPasteOnInterrupt` in `HerdrCoreComposerSend`.
-If it keeps the text, amend [ADR 0035](../adr/0035-herdr-core-composer-sends-through-the-attach.md)
-so Send skips Ctrl+C under zsh while still saying so. Either way, record the result in
-[herdr compatibility](../agents/herdr-compatibility.md).
+zsh 5.9 (Debian 5.9-8+b24) dropped the text on hc-lab on 2026-11-02
+([herdr compatibility](../agents/herdr-compatibility.md)), so zsh is in
+`shellsDroppingPasteOnInterrupt` in `HerdrCoreComposerSend` and the notice says **no
+longer in the terminal**, as under bash. Rerun this for another zsh version. If one keeps
+the text, take zsh out of that list, so Send says **may still be in the terminal**, and
+amend [ADR 0035](../adr/0035-herdr-core-composer-sends-through-the-attach.md) if Send
+should skip the Ctrl+C there. Record the result in herdr compatibility either way.
 
 ## Chat evidence
 

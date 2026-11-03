@@ -3,7 +3,7 @@
   "files": [
     {
       "path": "core/agent-rule.js",
-      "sha256": "e615e9e00df3f135a7040a3c5e79db568785d2cc1e4d04548791789a317d3ed2"
+      "sha256": "ab987eba0c26bd5ce8a4bda5d6df4dbf17a6b6772ee4926dc2a22fd12fb6e6df"
     },
     {
       "path": "core/client.js",
@@ -31,7 +31,7 @@
     },
     {
       "path": "core/turn-fold.js",
-      "sha256": "1f60c309abdf2ca34468e85324b14dfcfc99d01d5f47b3397c963d578943968a"
+      "sha256": "39b479fa5c9e42cade5a3b339137fc351cc9906e111bdbc3969975b5c40928c2"
     },
     {
       "path": "core/turn-state.js",

@@ -4,7 +4,11 @@
 
 import { agentIn } from "./agent-rule.js";
 
-/** Events that can change what an Agent reads as. Size, title and the like cannot. */
+/**
+ * Events that can change what an Agent reads as. Size and the like cannot. A title can
+ * only on native Windows, which runs no Helper (ADR 0033), so a program's frequent
+ * retitling stays out.
+ */
 export const AGENT_EVENTS = new Set(["created", "restarted", "foreground", "status", "turn", "lost", "finished"]);
 
 const statusWord = (record) => record.status?.state ?? null;

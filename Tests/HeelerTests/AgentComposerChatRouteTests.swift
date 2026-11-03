@@ -163,32 +163,49 @@ struct AgentComposerChatRouteTests {
         #expect(store.notice == nil)
     }
 
-    /// The hold rests on a screen read while the Agent worked; it went Idle
-    /// before the read came back, so nothing is left to say about it.
-    @Test(arguments: [false, true])
-    func aHoldThatAStatusChangeUnderTheSendEndsShowsNoNotice(retrying: Bool) async throws {
+    /// hc-lab D10 (2026-11-03): after OpenCode's `/new`, a Send just before a prompt
+    /// typed in its terminal landed was refused while that prompt made the Agent
+    /// Working. The draft came back, and so does the reason, though the change
+    /// that would end it came first. The next change ends it as usual.
+    @Test func aRefusalThatAStatusChangeUnderTheSendWouldEndStillSaysWhy() async throws {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport, status: .idle)
+        store.replaceDraft(with: "Reply with the single word NEW.")
+        let hold = ComposerRefusal.inputNotReady(
+            "OpenCode's terminal isn't showing this conversation. Open it in the terminal, then send again.")
+        let policy = Self.chatPolicy(preflight: { _ in
+            store.agentStatusDidChange(.working)
+            return hold
+        })
+
+        let result = await store.send(policy: policy)
+
+        #expect(result == .refused(hold))
+        #expect(store.draft == "Reply with the single word NEW.")
+        #expect(store.messages.isEmpty)
+        #expect(store.notice == ComposerNotice(refusal: hold, route: .chat))
+        #expect(await transport.agentPromptParams.isEmpty)
+        store.agentStatusDidChange(.idle)
+        #expect(store.notice == nil)
+    }
+
+    /// A retry's refusal shows on the message it failed, with its own words.
+    @Test func aRetryRefusedUnderAStatusChangeKeepsItsReason() async throws {
         let transport = ScriptedTransport()
         let store = Self.store(transport, status: .working)
         store.replaceDraft(with: "next step")
         let hold = ComposerRefusal.inputNotReady("Oh My Pi is working. Send once it's idle, or steer from the terminal.")
-        let policy = Self.chatPolicy(preflight: { _ in
+        await transport.setAgentPromptFailure(TransportError.sshUnreachable(detail: "offline"))
+        _ = await store.send(policy: Self.chatPolicy())
+        let failed = try #require(store.messages.first)
+
+        let result = await store.retry(failed.id, policy: Self.chatPolicy(preflight: { _ in
             store.agentStatusDidChange(.idle)
             return hold
-        })
-
-        let result: AgentComposerStore.SendResult
-        if retrying {
-            await transport.setAgentPromptFailure(TransportError.sshUnreachable(detail: "offline"))
-            _ = await store.send(policy: Self.chatPolicy())
-            let failed = try #require(store.messages.first)
-            result = await store.retry(failed.id, policy: policy)
-        } else {
-            result = await store.send(policy: policy)
-            #expect(store.draft == "next step")
-        }
+        }))
 
         #expect(result == .refused(hold))
-        #expect(store.notice == nil)
+        #expect(store.messages.first?.state == .failed(hold.message))
     }
 
     @Test func aHoldThatAStatusChangeUnderTheSendKeepsStillShows() async {

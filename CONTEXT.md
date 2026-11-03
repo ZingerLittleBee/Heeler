@@ -110,7 +110,7 @@ The server-side step of Pairing: the forced command appends the Device Key's pub
 _Avoid_: install key, authorization
 
 **Agent**:
-A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last.
+A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path.
 _Avoid_: bot, task, session
 
 **Staged Image**:
@@ -309,7 +309,9 @@ and the Composer never claims otherwise.
 On herdr-core, Send submits only while the same Agent still holds the
 terminal; otherwise it submits nothing, a shell that received the text drops
 it, and the Composer keeps the draft and says so. While Agent Status is
-Blocked it only pastes, as on Herdr TUI. It pastes only into a terminal that
+Blocked it sends nothing and says so, unlike Herdr TUI, since the dialog
+would take its Enter: the tools keyboard answers first. It sends nothing to a
+Terminal that has ended either. It pastes only into a terminal that
 accepts a bracketed paste, and otherwise says so. A Send with no answer has an
 unknown outcome and is never repeated. Stop there presses the Terminal's own
 stop key. On native Windows Send pastes nothing into a Terminal whose shell can

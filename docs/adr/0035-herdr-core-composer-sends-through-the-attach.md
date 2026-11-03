@@ -37,8 +37,18 @@ the shell that stays behind, and a retry can deliver it twice.
   the end of the Attach's first paint, the sequence every paint ends with,
   before it reads them: a program's modes can be in a later frame than the
   output that made the Attach live.
-- While Agent Status is Blocked, Send only pastes, as on Herdr TUI, and the
-  tools keyboard submits or cancels.
+- While Agent Status is Blocked, Send sends nothing: the Composer keeps the
+  draft and says the program is waiting on its question on screen, to be
+  answered with the tools keyboard first. The tools keyboard's own Enter still
+  sends Enter, which is how it answers. A sample after the paste that shows the
+  Agent Blocked submits nothing either, and the draft comes back saying the text
+  may still be in the Agent's input. This replaces Herdr TUI's paste without
+  Enter here (ADR 0013): on 2026-11-02 and 2026-11-03 Claude Code 2.1.316 showed no
+  paste made during its permission dialog, so the tools keyboard's Enter that was to
+  submit it approved the dialog's highlighted option instead, on Linux and Windows.
+- Send to a Terminal that has finished sends nothing and opens no Attach, which a
+  finished Terminal never takes: the Composer keeps the draft and says the Agent has
+  ended, with no Retry, since the Terminal cannot come back.
 - If the check fails or runs out of time, nothing is submitted. Text the Agent
   had read goes with it; text it had not read reaches whatever now holds the
   terminal, usually the shell's line editor as a pending paste. When a shell
@@ -46,7 +56,8 @@ the shell that stays behind, and a retry can deliver it twice.
   that text unrun. It writes the byte 0x03 whatever keyboard mode is set,
   because an Agent that died leaves its flags behind and a shell reads no
   `CSI 99 ; 5 u`. The Composer keeps the draft and says whether the text may
-  still be in the terminal.
+  still be in the terminal: gone under bash, fish, dash and zsh, each seen
+  dropping it, and may remain under any other shell.
 - Nothing long waits ahead of Enter on the link: a Staged file's `terminal.put` on
   native Windows, one frame of up to about 11 MiB, goes on a link of its own
   (ADR 0032), since what is queued on a link cannot be withdrawn, and Enter behind it
@@ -207,8 +218,9 @@ confirm or refine these points with test clients, not the app.
   `pwsh` says the same, since nobody tried it.
 - Stop on Windows reads the Terminal's state as well as its foreground, which stays
   the same to the end: a finished record takes the Agent off the list. Under `-NoExit`
-  a Working status can outlast the Agent, so Stop's key can reach the prompt, where Esc
-  or Ctrl+C runs nothing.
+  a Working status can outlast the Agent until the title goes back to PowerShell's
+  own path, which takes the Agent off the list too (ADR 0032), so Stop's key can
+  reach the prompt in between, where Esc or Ctrl+C runs nothing.
 - An Agent's `CSI ?2004h` reaches the viewer through the pseudo console: on
   2026-11-03, on the owner's Windows machine with herdr-core 0.1.16, Claude Code
   2.1.286 and 2.1.316 each took a Send with no notice that the program was not

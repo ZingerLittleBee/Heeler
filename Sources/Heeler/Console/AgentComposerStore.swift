@@ -7,6 +7,8 @@ import Observation
 protocol ComposerDraftOperations: AnyObject {
     func replaceDraft(with text: String)
     func insertIntoDraft(_ text: String)
+    /// Inserts a staged Host path as a word of its own (ADR 0006).
+    func insertPathIntoDraft(_ path: String)
 }
 
 /// Owns Agent detail's local draft and delivery state. Draft edits do not
@@ -206,6 +208,18 @@ final class AgentComposerStore: ComposerDraftOperations {
             length: 0)
     }
 
+    /// At the caret, with a space before it unless the text there already ends
+    /// in whitespace, and one after it, so the path never runs into a word.
+    func insertPathIntoDraft(_ path: String) {
+        let range = Self.clamped(draftSelection, to: draft)
+        insertIntoDraft(Self.pathInsertion(path, after: (draft as NSString).substring(to: range.location)))
+    }
+
+    private static func pathInsertion(_ path: String, after text: String) -> String {
+        guard let last = text.last, !last.isWhitespace else { return "\(path) " }
+        return " \(path) "
+    }
+
     func setDraftSelection(_ range: NSRange) {
         let clamped = Self.clamped(range, to: draft)
         guard draftSelection != clamped else { return }
@@ -332,8 +346,7 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     @discardableResult
     func send(policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
-        let revision = statusRevision
-        return noting(await sendDraft(policy: policy), route: policy.route, since: revision)
+        noting(await sendDraft(policy: policy), route: policy.route)
     }
 
     private func sendDraft(policy: ComposerDeliveryPolicy) async -> SendResult {
@@ -361,8 +374,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// message's own route.
     @discardableResult
     func retry(_ id: Message.ID, policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
-        let revision = statusRevision
-        return noting(await retryMessage(id, policy: policy), route: policy.route, since: revision)
+        noting(await retryMessage(id, policy: policy), route: policy.route)
     }
 
     private func retryMessage(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
@@ -385,12 +397,11 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     /// Keeps a refusal as the notice; any other outcome ends the last one.
-    /// A refusal may rest on a screen read before Agent Status changed under
-    /// the Send; when that change ends it, it shows no notice.
-    private func noting(_ result: SendResult, route: ComposerRoute, since revision: UInt64) -> SendResult {
-        if case .refused(let refusal) = result,
-            revision == statusRevision || !refusal.endsWhenStatusBecomes(agentStatus)
-        {
+    /// A refusal shows even when Agent Status changed under the Send: the
+    /// draft came back, and the notice is the only word of why. The next
+    /// change that ends it still does.
+    private func noting(_ result: SendResult, route: ComposerRoute) -> SendResult {
+        if case .refused(let refusal) = result {
             notice = ComposerNotice(refusal: refusal, route: route)
         } else {
             notice = nil
@@ -517,10 +528,6 @@ final class AgentComposerStore: ComposerDraftOperations {
                 }
             }
             return .submittedViaAttach
-        case .pasted:
-            messages[index].tracksAgentProgress = false
-            messages[index].state = .delivered(.acknowledged)
-            return .deliveredViaAttach
         case .refused(let refusal):
             returnToDraft(id)
             return .refused(refusal)
@@ -689,10 +696,13 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard let index = indexOfDroppedImage(id: id) else { return }
         let placeholder = pendingDroppedImages[index].placeholder
         pendingDroppedImages.remove(at: index)
-        let insertion = "\(path) "
-        if !applyTokenReplacement(placeholder, firstReplacement: insertion) {
-            insertIntoDraft(insertion)
+        let slot = (draft as NSString).range(of: placeholder)
+        guard slot.location != NSNotFound else {
+            insertPathIntoDraft(path)
+            return
         }
+        let insertion = Self.pathInsertion(path, after: (draft as NSString).substring(to: slot.location))
+        applyTokenReplacement(placeholder, firstReplacement: insertion)
     }
 
     private func abandonDroppedImage(id: UInt64) {

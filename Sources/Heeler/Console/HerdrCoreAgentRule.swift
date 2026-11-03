@@ -23,6 +23,8 @@ struct HerdrCoreAgent: Equatable, Sendable {
 /// and the core keeps the report after its program left. The foreground is read
 /// after unwrapping launch wrappers, `sh -c` lines and interpreters, and a cleared
 /// one leaves the last sample standing (`HerdrCoreTerminalRecord.noteForeground`).
+/// A `-NoExit` PowerShell, whose foreground never changes, is its shell while the
+/// Terminal's title is that PowerShell's own path.
 ///
 /// `plugin/test-vectors/herdr-core-agent-rule-v1.json` holds this rule's cases, so
 /// a change here changes that file and the Helper's reading of it in one commit.
@@ -115,6 +117,7 @@ enum HerdrCoreAgentRule {
         guard !foreground.argv.isEmpty else {
             return foreground.name.isEmpty ? readLaunch(record.argv) : read([foreground.name]).program
         }
+        if showsPowerShellPrompt(foreground.argv, title: record.title) { return .shell }
         let program = read(foreground.argv).program
         if case .other = program, let kind = knownKind(baseName(foreground.name)) {
             return .known(kind)
@@ -262,6 +265,28 @@ enum HerdrCoreAgentRule {
         if line.hasSuffix(powerShellExit) { line.removeLast(powerShellExit.count) }
         guard let words = powerShellWords(line) else { return Reading(program: .other(name)) }
         return read(words, depth: depth + 1)
+    }
+
+    /// A pseudo console's foreground stays the desktop app's `-NoExit` PowerShell
+    /// after its program exits, so only the console's title shows the exit: it goes
+    /// back to that PowerShell's own path (ADR 0032). A console nothing has titled
+    /// reads an empty title instead, which keeps the foreground's reading.
+    private static func showsPowerShellPrompt(_ arguments: [String], title: String) -> Bool {
+        guard let executable = arguments.first else { return false }
+        let name = baseName(executable)
+        guard name == "powershell" || name == "pwsh", arguments.dropFirst().contains(where: isNoExitOption)
+        else { return false }
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.contains(where: { $0 == "\\" || $0 == "/" }) && baseName(title) == name
+    }
+
+    /// `-NoExit` as PowerShell takes it: any case, `-`, `--` or `/`, and cut short
+    /// as far as `-NoE`.
+    private static func isNoExitOption(_ argument: String) -> Bool {
+        let option = argument.lowercased()
+        guard let prefix = ["--", "-", "/"].first(where: option.hasPrefix) else { return false }
+        let name = option.dropFirst(prefix.count)
+        return name.count >= 3 && "noexit".hasPrefix(name)
     }
 
     /// Whether a Terminal holding this foreground on native Windows ends when its

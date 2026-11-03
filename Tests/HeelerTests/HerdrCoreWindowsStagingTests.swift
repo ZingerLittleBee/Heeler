@@ -90,6 +90,16 @@ struct HerdrCoreWindowsStagingTests {
         return url
     }
 
+    /// A file picked by this name, alone in a folder of its own: remove the folder.
+    private static func pickedFile(named name: String, contents: Data) throws -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("core-windows-staging-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent(name)
+        try contents.write(to: url)
+        return url
+    }
+
     private static func pickedPhoto() throws -> ComposerStagingStore.Source {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
@@ -121,19 +131,20 @@ struct HerdrCoreWindowsStagingTests {
         let fixture = try await Fixture()
         let session = try fixture.session
         let contents = Data("notes 修复".utf8)
-        let url = try Self.temporaryFile(contents: contents)
-        defer { try? FileManager.default.removeItem(at: url) }
+        // The second Windows run's 8 MiB file went as `file.bin`, not its own name.
+        let url = try Self.pickedFile(named: "keep 15 修复.txt", contents: contents)
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
 
         try #require(session.staging.begin(.file(url)) != nil)
         try await Self.until("the file") { Self.completedPath(session) != nil }
 
         let puts = await fixture.scripted.puts
         #expect(puts.map(\.terminal) == ["t1"])
-        #expect(puts.map(\.name) == ["file.txt"])
+        #expect(puts.map(\.name) == ["keep_15___.txt"])
         #expect(puts.first?.contents == contents)
         #expect(await putCount(fixture) == 1)
-        #expect(Self.completedPath(session) == Self.filesFolder + "file.txt")
-        #expect(session.composer.draft == Self.filesFolder + "file.txt ")
+        #expect(Self.completedPath(session) == Self.filesFolder + "keep_15___.txt")
+        #expect(session.composer.draft == Self.filesFolder + "keep_15___.txt ")
 
         // No SFTP, and the path waits in the draft for Send.
         #expect(await fixture.scripted.stagedFiles.isEmpty)
@@ -343,8 +354,8 @@ struct HerdrCoreWindowsStagingTests {
         let fixture = try await Fixture()
         let session = try fixture.session
         await fixture.scripted.holdNextPutReply()
-        let url = try Self.temporaryFile(contents: Data("notes".utf8))
-        defer { try? FileManager.default.removeItem(at: url) }
+        let url = try Self.pickedFile(named: "notes.txt", contents: Data("notes".utf8))
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
 
         try #require(session.staging.begin(.file(url)) != nil)
         try await Self.until("the put") { await fixture.scripted.puts.count == 1 }
@@ -363,7 +374,7 @@ struct HerdrCoreWindowsStagingTests {
         try await Self.until("the second copy") { Self.completedPath(session) != nil }
 
         #expect(await fixture.scripted.puts.count == 2)
-        #expect(session.composer.draft == Self.filesFolder + "file-2.txt ")
+        #expect(session.composer.draft == Self.filesFolder + "notes-2.txt ")
         await fixture.finish()
     }
 

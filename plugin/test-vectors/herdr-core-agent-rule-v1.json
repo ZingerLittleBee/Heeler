@@ -2009,6 +2009,175 @@
       }
     },
     {
+      "name": "the desktop PowerShell wrapper titled with its own path is at its prompt",
+      "source": "docs/agents/herdr-compatibility.md, the native Windows Composer observation (herdr-core 0.1.16, Herdr desktop app 0.1.12, Claude Code 2.1.286, 2026-11-03; native-windows-testing.md step 19): after `/exit` `terminal.get` showed the Terminal live with the same foreground, no status and the title `C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`, PowerShell's prompt on screen",
+      "record": {
+        "address": "t15",
+        "state": "live",
+        "pid": 61316,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-NoExit",
+          "-Command",
+          "& 'claude'"
+        ],
+        "cwd": "C:\\Users\\user\\work\\cc",
+        "foreground": {
+          "pid": 61316,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoExit",
+            "-Command",
+            "& 'claude'"
+          ],
+          "cwd": "C:\\Users\\user\\work\\cc"
+        },
+        "status": null,
+        "reported": false,
+        "title": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      },
+      "expected": null
+    },
+    {
+      "name": "the desktop PowerShell wrapper titled by its program names that program",
+      "source": "docs/agents/herdr-compatibility.md, the native Windows Composer observation (herdr-core 0.1.16, Herdr desktop app 0.1.12, Claude Code 2.1.286, 2026-11-03; native-windows-testing.md step 19): while Claude Code ran, the Terminal's title was its own, `✳ Claude Code`",
+      "record": {
+        "address": "t15",
+        "state": "live",
+        "pid": 61316,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-NoExit",
+          "-Command",
+          "& 'claude'"
+        ],
+        "cwd": "C:\\Users\\user\\work\\cc",
+        "foreground": {
+          "pid": 61316,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoExit",
+            "-Command",
+            "& 'claude'"
+          ],
+          "cwd": "C:\\Users\\user\\work\\cc"
+        },
+        "status": null,
+        "reported": false,
+        "title": "✳ Claude Code"
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a report kept after the desktop wrapper's program exited revives no Agent at PowerShell's prompt",
+      "source": "docs/agents/herdr-compatibility.md, the native Windows Composer observation (herdr-core 0.1.16, Herdr desktop app 0.1.12, Claude Code 2.1.286, 2026-11-03; native-windows-testing.md step 19): the title after the exit; ADR 0032: the core keeps a report after its program left",
+      "record": {
+        "address": "t15",
+        "state": "live",
+        "pid": 61316,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-NoExit",
+          "-Command",
+          "& 'claude'"
+        ],
+        "cwd": "C:\\Users\\user\\work\\cc",
+        "foreground": {
+          "pid": 61316,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoExit",
+            "-Command",
+            "& 'claude'"
+          ],
+          "cwd": "C:\\Users\\user\\work\\cc"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true,
+        "title": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      },
+      "expected": null
+    },
+    {
+      "name": "a desktop pwsh wrapper with -NoExit cut short reads its own path as its prompt",
+      "source": "ADR 0032, the Agent rule: PowerShell takes -NoExit in any case, after -, -- or /, and cut short as far as -NoE",
+      "record": {
+        "address": "t16",
+        "state": "live",
+        "pid": 4242,
+        "reason": null,
+        "argv": [
+          "pwsh.exe",
+          "-NoE",
+          "-Command",
+          "& 'codex'"
+        ],
+        "cwd": "C:\\Users\\user\\work\\cc",
+        "foreground": {
+          "pid": 4242,
+          "name": "pwsh.exe",
+          "argv": [
+            "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+            "-NoE",
+            "-Command",
+            "& 'codex'"
+          ],
+          "cwd": "C:\\Users\\user\\work\\cc"
+        },
+        "status": null,
+        "reported": false,
+        "title": "Administrator: C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+      },
+      "expected": null
+    },
+    {
+      "name": "Heeler's PowerShell launch titled with PowerShell's path still names its program",
+      "source": "docs/agents/herdr-compatibility.md, the native Windows Composer observation (2026-11-03): under Heeler's form each Claude Code Terminal that finished kept the PowerShell path as its title. That form has no -NoExit and ends with its program, so the finish ends the Agent (ADR 0032)",
+      "record": {
+        "address": "t17",
+        "state": "live",
+        "pid": 29940,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-Command",
+          "& 'claude'; exit $LASTEXITCODE"
+        ],
+        "cwd": "C:\\Users\\user\\work\\cc",
+        "foreground": {
+          "pid": 29940,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-Command",
+            "& 'claude'; exit $LASTEXITCODE"
+          ],
+          "cwd": "C:\\Users\\user\\work\\cc"
+        },
+        "status": null,
+        "reported": false,
+        "title": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
       "name": "a launch command stands in only until a foreground arrives",
       "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
       "record": {

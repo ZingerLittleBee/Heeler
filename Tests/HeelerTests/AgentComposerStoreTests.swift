@@ -768,6 +768,41 @@ struct AgentComposerStoreTests {
         #expect(await transport.agentPromptParams.isEmpty)
     }
 
+    /// Windows step 15 (2026-11-03): after `keep 15` the draft read
+    /// `keep 15C:\…\file.bin `, the path run into the word before it.
+    @Test func aStagedPathAfterAWordGetsASpaceBeforeIt() {
+        let path = #"C:\Users\ZingerBee\AppData\Local\herdr-core\hwa1103-main\files\t4\file.bin"#
+        let store = Self.draftOnlyStore()
+        store.replaceDraft(with: "keep 15")
+
+        store.insertPathIntoDraft(path)
+
+        #expect(store.draft == "keep 15 \(path) ")
+        #expect(store.draftSelection == NSRange(location: (store.draft as NSString).length, length: 0))
+    }
+
+    @Test(arguments: ["", "keep 15 ", "keep 15\n"])
+    func aStagedPathAfterWhitespaceOrNothingGetsNoSecondSpace(draft: String) {
+        let store = Self.draftOnlyStore()
+        store.replaceDraft(with: draft)
+
+        store.insertPathIntoDraft("/tmp/heeler.x/image.jpg")
+
+        #expect(store.draft == draft + "/tmp/heeler.x/image.jpg ")
+    }
+
+    /// The caret decides, not the draft's end.
+    @Test(arguments: [("abcd", "ab /tmp/a.jpg cd"), ("ab cd", "ab /tmp/a.jpg cd")])
+    func aStagedPathAtTheCaretLooksAtTheTextBeforeIt(draft: String, expected: String) {
+        let store = Self.draftOnlyStore()
+        store.replaceDraft(with: draft)
+        store.setDraftSelection(NSRange(location: (draft as NSString).length - 2, length: 0))
+
+        store.insertPathIntoDraft("/tmp/a.jpg")
+
+        #expect(store.draft == expected)
+    }
+
     @Test func imageDropStagesThroughComposerStagingBegin() async throws {
         let fixture = try Self.makeDropStagingFixture()
         defer { fixture.cleanup() }
@@ -927,10 +962,10 @@ struct AgentComposerStoreTests {
             "the path should fill the reserved slot, not the live caret",
             timeout: .seconds(5)
         ) {
-            fixture.store.draft == "x>>ab/tmp/heeler-drop.jpg "
+            fixture.store.draft == "x>>ab /tmp/heeler-drop.jpg "
         }
 
-        #expect(fixture.store.draft == "x>>ab/tmp/heeler-drop.jpg ")
+        #expect(fixture.store.draft == "x>>ab /tmp/heeler-drop.jpg ")
         #expect(fixture.store.draftSelection == NSRange(location: 1, length: 0))
         #expect(fixture.store.messages.isEmpty)
         #expect(await fixture.transport.agentPromptParams.isEmpty)
@@ -1009,10 +1044,10 @@ struct AgentComposerStoreTests {
             "the path should stay after the inserted prefix letter",
             timeout: .seconds(5)
         ) {
-            fixture.store.draft == "aa/tmp/heeler-drop.jpg a"
+            fixture.store.draft == "aa /tmp/heeler-drop.jpg a"
         }
 
-        #expect(fixture.store.draft == "aa/tmp/heeler-drop.jpg a")
+        #expect(fixture.store.draft == "aa /tmp/heeler-drop.jpg a")
         #expect(fixture.store.messages.isEmpty)
     }
 
@@ -1045,11 +1080,11 @@ struct AgentComposerStoreTests {
             "a deleted placeholder should fall back to the caret",
             timeout: .seconds(5)
         ) {
-            fixture.store.draft == "😁/tmp/heeler-drop.jpg "
+            fixture.store.draft == "😁 /tmp/heeler-drop.jpg "
         }
 
-        #expect(fixture.store.draft == "😁/tmp/heeler-drop.jpg ")
-        #expect(fixture.store.draftSelection == NSRange(location: 23, length: 0))
+        #expect(fixture.store.draft == "😁 /tmp/heeler-drop.jpg ")
+        #expect(fixture.store.draftSelection == NSRange(location: 24, length: 0))
         #expect(fixture.store.messages.isEmpty)
     }
 
