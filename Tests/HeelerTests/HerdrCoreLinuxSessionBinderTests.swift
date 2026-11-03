@@ -88,6 +88,20 @@ struct HerdrCoreLinuxSessionBinderTests {
         #expect(await rig.log.cleared.isEmpty)
     }
 
+    /// An exec that answers nothing tells nothing, so a launch hint the send guard
+    /// watches stands, as a pick's label does, and Chat keeps the conversation it
+    /// shows. One a guard dropped does not.
+    @Test func aPiLaunchHintACheckCannotHoldStands() async throws {
+        let rig = try await Rig("pi-launch")
+        var binder = rig.binder(.pi)
+        binder.processes = { _ in [:] }
+
+        #expect(try await binder.check(try rig.record()) == .pickUnconfirmed(.cannotTellSession(.pi)))
+        binder.isDroppedPick = { _ in true }
+        #expect(try await binder.check(try rig.record()) == Self.cannotTell(.pi))
+        #expect(await rig.log.cleared.isEmpty)
+    }
+
     @Test(arguments: recorded)
     func aCheckCostsOneExecAndOneReadAndNamesItsVariables(
         _ entry: (scene: String, program: ChatProgram, evidence: ChatSessionEvidence)

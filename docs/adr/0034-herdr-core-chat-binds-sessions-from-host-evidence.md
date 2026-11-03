@@ -295,7 +295,8 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   it needs the extension. That binding names the launch's session, which an
   in-process `/new` leaves with nothing on the Host saying so, so the send guard
   watches it as it does a pick: a message missing once a turn ends drops the
-  hint, clears the label, and the device does not adopt that id again. On
+  hint, clears the label, and the device does not adopt that id again, while a
+  check that cannot see the process leaves it standing, as it does a pick. On
   hc-lab on 2026-11-03 a Send from Chat after `/new` read **Sent. It hasn't
   appeared in the conversation yet.** six minutes later, with no guard.
 - A `pi` wrapper script around a real `pi` reads as the Agent, being the nearest of

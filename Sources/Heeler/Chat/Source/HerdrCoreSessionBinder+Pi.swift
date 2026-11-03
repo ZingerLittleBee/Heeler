@@ -43,6 +43,13 @@ extension HerdrCoreSessionBinder {
         return cannotTell
     }
 
+    /// Whether a Pi's launch hint is there and no send guard dropped it, for a check
+    /// that cannot see the process to hold it against.
+    func launchHintStands(in record: HerdrCoreTerminalRecord) async -> Bool {
+        guard program == .pi, !isOnWindows, let id = record.piLaunchSession else { return false }
+        return await !isDroppedPick(id)
+    }
+
     var piFamilyProcessAsk: ProcessAsk {
         ProcessAsk(
             values: [Self.homeVariable] + PiSessionLayout(program: program).variables,
