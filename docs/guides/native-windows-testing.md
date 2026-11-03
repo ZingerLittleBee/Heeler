@@ -802,8 +802,8 @@ unless it says otherwise.
     Step 19, before and after the desktop app's agent exited. Stop on Claude Code
     2.1.316, and on a stand-in that exits at Esc, since no installed agent does. Step
     20. No **not accepting a paste** notice appeared.
-  - Failed: steps 18 and 22, as their known defects say. "Blocked pastes only" held
-    only in that nothing was submitted.
+  - Failed: steps 18 and 22, as those steps record of the second run. "Blocked pastes
+    only" held only in that nothing was submitted.
   - Recorded: step 23 under Windows PowerShell 5.1. Not run: PowerShell 7 there.
 - [#590](https://github.com/ZingerLittleBee/Heeler/issues/590), steps 24 to 33, second
   run, failed as a whole. New Agent listed only the account's Claude Code, Codex and
