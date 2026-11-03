@@ -341,7 +341,8 @@ struct AgentChatSurfaceView: View {
         .onChange(of: composer.draft) { _, draft in
             chat?.draftDidChange(to: draft)
         }
-        .onChange(of: chat?.conversationGeneration) { _, generation in
+        // Also on appearing: Chat may have followed another while it was away.
+        .onChange(of: chat?.conversationGeneration, initial: true) { _, generation in
             guard let generation else { return }
             composer.conversationDidChange(to: generation)
         }
