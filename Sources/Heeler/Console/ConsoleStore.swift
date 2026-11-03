@@ -67,8 +67,15 @@ final class ConsoleStore {
     /// The Agents list's Changes totals, one store per Agent, shared by
     /// every window's rows and by nothing else.
     @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges { [unowned self] agent in
-        makeChangesStore(
+        let store = makeChangesStore(
             agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
+        store.onLoaded = { [weak self] changes in
+            guard let self, let host = projections[agent.hostID]?.host else { return }
+            cachedChats.record(
+                changes.head.branch, atCheckoutPath: String(decoding: changes.checkout.topLevel, as: UTF8.self),
+                on: host)
+        }
+        return store
     }
     /// Composer ownership sits above the detail branch so a transient
     /// missing-Agent placeholder during reconnect cannot destroy a draft, and
@@ -1409,6 +1416,14 @@ final class ConsoleStore {
             if !structure.isEmpty { structures[projection.host.id] = structure }
         }
         return structures
+    }
+
+    /// The branch the latest Changes read of the Host's checkout at `path`
+    /// found, saved with the Workspace structure, so a card titles the
+    /// checkout as it last did until a read of this launch lands.
+    func savedBranch(on hostID: Host.ID, atCheckoutPath path: String?) -> CheckoutHead.Branch? {
+        guard let path, let host = projections[hostID]?.host else { return nil }
+        return cachedChats.structure(on: host).first { $0.checkout.checkoutPath == path }?.branch
     }
 
     private var savedChatAgents: [(agent: ConsoleAgent, readiness: HostReadiness)] {

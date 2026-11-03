@@ -74,15 +74,20 @@ struct ChatCachedWorkspace: Codable, Equatable, Sendable {
     let id: String
     let label: String?
     let checkout: RepositoryCheckout
+    /// The branch the latest Changes read of the checkout found, which
+    /// titles it in a repository's card until a read of this launch lands.
+    var branch: CheckoutHead.Branch? = nil
 
     /// Each Workspace among `agents` that reported a checkout, by id so an
-    /// unchanged snapshot saves nothing.
-    static func structure(of agents: [ConsoleAgent]) -> [Self] {
+    /// unchanged snapshot saves nothing. A checkout keeps the branch
+    /// `previous` holds for its path.
+    static func structure(of agents: [ConsoleAgent], keeping previous: [Self]) -> [Self] {
         var seen: Set<String> = []
         return agents.compactMap { agent -> Self? in
             guard let checkout = agent.repositoryCheckout, seen.insert(agent.agent.workspaceID).inserted
             else { return nil }
-            return Self(id: agent.agent.workspaceID, label: agent.workspaceLabel, checkout: checkout)
+            let branch = previous.first { $0.checkout.checkoutPath == checkout.checkoutPath }?.branch
+            return Self(id: agent.agent.workspaceID, label: agent.workspaceLabel, checkout: checkout, branch: branch)
         }.sorted { $0.id < $1.id }
     }
 }

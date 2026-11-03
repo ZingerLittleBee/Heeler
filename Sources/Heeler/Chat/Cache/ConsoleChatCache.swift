@@ -25,6 +25,7 @@ final class ConsoleChatCache {
         case snapshot([ConsoleAgent])
         case confirmation(Agent, ConsoleAgent)
         case removal(paneID: String)
+        case branch(CheckoutHead.Branch, checkoutPath: String)
     }
 
     private struct ConfirmedSession {
@@ -96,6 +97,7 @@ final class ConsoleChatCache {
             case .snapshot(let agents): observe(agents, on: host)
             case .confirmation(let fresh, let snapshot): confirm(fresh, for: snapshot, on: host)
             case .removal(let paneID): remove(paneID: paneID, on: host)
+            case .branch(let branch, let path): record(branch, atCheckoutPath: path, on: host)
             }
         }
     }
@@ -126,7 +128,8 @@ final class ConsoleChatCache {
             guard entry.isValid(for: host) else { return nil }
             return entry
         }.sorted { $0.paneID < $1.paneID }
-        replace(next, structure: ChatCachedWorkspace.structure(of: agents), on: host)
+        let structure = ChatCachedWorkspace.structure(of: agents, keeping: structures[host.id] ?? [])
+        replace(next, structure: structure, on: host)
     }
 
     /// Persist the exact binding that Chat actually queried, which can be
@@ -153,6 +156,25 @@ final class ConsoleChatCache {
             next.append(entry)
         }
         replace(next.sorted { $0.paneID < $1.paneID }, structure: structures[host.id] ?? [], on: host)
+    }
+
+    /// A Changes read found the checkout at `path` on `branch`. Only a
+    /// checkout of the saved structure keeps it.
+    func record(_ branch: CheckoutHead.Branch, atCheckoutPath path: String, on host: Host) {
+        guard hosts[host.id] == host else { return }
+        if loads[host.id] != nil {
+            pendingUpdates[host.id, default: []].append(.branch(branch, checkoutPath: path))
+            return
+        }
+        let current = structures[host.id] ?? []
+        let next = current.map { workspace in
+            guard workspace.checkout.checkoutPath == path else { return workspace }
+            var updated = workspace
+            updated.branch = branch
+            return updated
+        }
+        guard next != current else { return }
+        replace(records[host.id] ?? [], structure: next, on: host)
     }
 
     /// The user's removal of a saved entry: it and its saved messages leave

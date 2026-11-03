@@ -117,6 +117,76 @@ struct ConsoleChatCacheTests {
         #expect(Set(card.visibleAgentIDs) == [live[1].id, live[2].id])
     }
 
+    @Test func aRecordedBranchSurvivesRelaunchAndTheNextSnapshot() async {
+        let host = Host(address: "host", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let checkout = RepositoryCheckout(
+            repoKey: "/src/heeler/.git", repoName: "heeler", repoRoot: "/src/heeler",
+            checkoutPath: "/src/heeler", isLinkedWorktree: false)
+        let live = Self.agent(
+            host: host, session: Self.sessionA, workspaceID: "wM", paneID: "wM:p1", label: "heeler",
+            checkout: checkout)
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+        directory.observe([live], on: host)
+        directory.record(.named("release/1.4"), atCheckoutPath: "/src/heeler", on: host)
+        directory.record(.named("elsewhere"), atCheckoutPath: "/src/other", on: host)
+        await directory.settled()
+
+        let relaunched = ConsoleChatCache(cache: cache)
+        relaunched.setHosts([host])
+        await relaunched.settled()
+        #expect(relaunched.structure(on: host).map(\.branch) == [.named("release/1.4")])
+        relaunched.observe([live], on: host)
+        #expect(relaunched.structure(on: host).map(\.branch) == [.named("release/1.4")])
+        await relaunched.settled()
+
+        // A read that lands during the disk read waits for it.
+        let restoring = ConsoleChatCache(cache: cache)
+        restoring.setHosts([host])
+        restoring.record(.detached, atCheckoutPath: "/src/heeler", on: host)
+        await restoring.settled()
+        #expect(restoring.structure(on: host).map(\.branch) == [.detached])
+        #expect(await cache.loadAgentDirectory(for: host).workspaces.map(\.branch) == [.detached])
+    }
+
+    /// The Agent here is not a Chat entry: the structure and its branches
+    /// are kept for every Host the list reads Changes on.
+    @Test func aRowsChangesReadSavesItsCheckoutsBranchForTheNextLaunch() async throws {
+        let host = Host.fixture()
+        let read = try ChangesStoreTests.read(GitProbeRecordings.hostile)
+        let path = String(decoding: read.changes.checkout.topLevel, as: UTF8.self)
+        let wireAgent = AgentInfo.fixture(paneID: "w1:p1", workspaceID: "w1")
+        let transport = ScriptedTransport(snapshot: .fixture(
+            agents: [wireAgent],
+            workspaces: [.fixture(workspaceID: "w1", label: "app", repoName: "app", checkoutPath: path)]))
+        await transport.scriptChangesReads([.success(read)])
+        let cache = VolatileChatTranscriptCache()
+        let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10), chatCache: cache) { _, subscriptions in
+            EventsSession(subscriptions: subscriptions, connect: { transport }, keepalive: nil)
+        }
+        console.setHosts([host])
+        defer { console.setHosts([]) }
+        await console.resume()
+        let agentID = ConsoleAgent.ID(hostID: host.id, paneID: wireAgent.paneID)
+        try await Self.waitUntil {
+            console.agents.contains { $0.id == agentID }
+                && console.cachedChats.structure(on: host).map(\.checkout.checkoutPath) == [path]
+        }
+        let agent = try #require(console.agents.first { $0.id == agentID })
+        #expect(console.savedBranch(on: host.id, atCheckoutPath: path) == nil)
+
+        console.rowChanges.rowAppeared(agent)
+        defer { console.rowChanges.rowDisappeared(agent.id) }
+        try await Self.waitUntil { console.savedBranch(on: host.id, atCheckoutPath: path) != nil }
+        await console.cachedChats.settled()
+
+        #expect(read.changes.head.branch == .named("main"))
+        #expect(console.savedBranch(on: host.id, atCheckoutPath: path) == .named("main"))
+        #expect(await cache.loadAgentDirectory(for: host).workspaces.map(\.branch) == [.named("main")])
+    }
+
     @Test func coldOfflineSavedChatReadsAsItsHostsHeader() async throws {
         let host = Host(address: "offline.invalid", username: "reader")
         let cache = VolatileChatTranscriptCache()

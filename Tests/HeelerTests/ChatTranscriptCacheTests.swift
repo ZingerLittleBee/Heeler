@@ -318,6 +318,12 @@ struct ChatTranscriptCacheTests {
 
         let reopened = FileChatTranscriptCache(root: fixture.root, knownHosts: fixture.knownHosts)
         #expect(await reopened.loadAgentDirectory(for: host) == .init(agents: [cached], workspaces: structure))
+        // A structure, with its branches, outlives the last saved entry.
+        var branched = structure
+        branched[0].branch = .named("worktree/nest")
+        await fixture.cache.saveAgentDirectory(.init(agents: [], workspaces: branched), for: host)
+        #expect(await reopened.loadAgentDirectory(for: host) == .init(workspaces: branched))
+        await fixture.cache.saveAgentDirectory(.init(agents: [cached], workspaces: structure), for: host)
 
         let url = fixture.root.appending(path: "v1/\(host.id.uuidString.lowercased())/agents.json")
         var saved = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])

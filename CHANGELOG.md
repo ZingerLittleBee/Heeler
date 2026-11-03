@@ -80,7 +80,8 @@ Entries reference the pull request that made the change.
 - By Workspace keeps each repository's card while Heeler connects: saved
   Chats from a main checkout and its worktrees open under the same card the
   running Agents had, instead of as separate cards that regroup once the Host
-  answers.
+  answers. Each checkout keeps the branch it was last read on as its title
+  until Heeler reads it again.
 - Put Show Chat or Show Agent Terminal and More with Back in iPhone Duo's
   side controls, using the system overflow menu instead of leaving their
   capsule over the content. Horizontal layouts keep their existing controls.

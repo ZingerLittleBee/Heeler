@@ -91,7 +91,7 @@ actor FileChatTranscriptCache: ChatTranscriptCache {
         let hostKeys = await ChatAgentDirectory.trustedHostKeys(for: host.id, in: knownHosts)
         guard let directory = readAgentDirectory(host.id) else { return .init() }
         let contents = directory.contents(for: host, hostKeys: hostKeys)
-        if !contents.agents.isEmpty {
+        if contents != ChatAgentDirectory.Contents() {
             let url = agentDirectoryURL(host.id)
             try? fileManager.setAttributes([.modificationDate: now()], ofItemAtPath: url.path)
         }
@@ -103,7 +103,7 @@ actor FileChatTranscriptCache: ChatTranscriptCache {
         if let allowedHosts, !allowedHosts.contains(host.id) { return }
         let url = agentDirectoryURL(host.id)
         let directory = ChatAgentDirectory(contents, for: host, hostKeys: hostKeys)
-        guard !directory.agents.isEmpty,
+        guard !directory.agents.isEmpty || directory.workspaces?.isEmpty == false,
             let data = try? Self.encoder.encode(directory), data.count <= policy.maxDocumentBytes
         else {
             removeFile(url)
