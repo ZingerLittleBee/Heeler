@@ -202,7 +202,9 @@ never show or send into a conversation it has guessed.
   same day the owner's Windows machine passed Claude Code 2.1.286 and 2.1.316 and
   Pi 1.4.0 with the extension, which the Windows list now holds. Oh My Pi
   18.13.3 stays off there, since it bound but every Send from Chat was refused as
-  finding no input box on screen, and Grok Build 1.0.70 stays off, since its rows
+  finding no input box on screen, because under its profile the band read
+  `π-hwa > `, which the send check now knows but no Host has run since, and
+  Grok Build 1.0.70 stays off, since its rows
   there carry no `pid_start`; binding from `opened_at` instead waits for a live
   check. Codex and OpenCode were not run on Windows.
 

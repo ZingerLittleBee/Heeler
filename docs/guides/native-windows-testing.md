@@ -595,10 +595,12 @@ Code's `.key` files.
     label took, since it runs one hidden PowerShell. Repeat on Oh My Pi, with a profile.
 32. Send from Chat in a Terminal New Agent started: the message submits. Stop a working
     turn. Answer a Blocked card. For a program whose bracketed paste does not cross the
-    pseudo console (step 16), record that Chat's Send says the same. **Known defect**,
-    seen on herdr-core 0.1.16 with Oh My Pi 18.13.3 (`omp.exe`, with a profile): Send
-    from Chat said **Heeler can't find the Agent's input box on screen.** before and
-    after a turn, while Direct Input submitted.
+    pseudo console (step 16), record that Chat's Send says the same. On herdr-core
+    0.1.16 with Oh My Pi 18.13.3 (`omp.exe`, with a profile), Send from Chat said
+    **Heeler can't find the Agent's input box on screen.** before and after a turn,
+    while Direct Input submitted: the profile's band reads `π-hwa > `, which Heeler's
+    send check did not know. It now does; not run on a Host since. Repeat on Oh My
+    Pi with a profile and without.
 33. Record each program that passed as a versioned observation in
     `docs/agents/herdr-compatibility.md`, here, and by adding it to
     `HostCapabilities.confirmedWindowsCoreChatPrograms`. One that fails stays off, with
@@ -823,8 +825,10 @@ unless it says otherwise.
     and without. With the profile Chat showed the conversation (the Agent without one
     was not opened in Chat), but Send from Chat said
     **Heeler can't find the Agent's input box on screen.** before and after a turn,
-    while Direct Input submitted. Grok Build 1.0.70 could not be told (step 29), and
-    Claude Code through `npx` gave no Agent (step 27), which the Agent rule now reads.
+    while Direct Input submitted, since the send check did not know the profile's
+    `π-hwa > ` band, which it now reads. Grok Build 1.0.70 could not be told (step
+    29), and Claude Code through `npx` gave no Agent (step 27), which the Agent rule
+    now reads.
   - Seen: after `/clear`, Chat showed a **Working for 0:18** row counting up while
     Claude Code 2.1.286 sat idle, until the next turn. npm Claude Code's first check
     after its trust dialog said **Can't Tell the Conversation**, and the next, about 3

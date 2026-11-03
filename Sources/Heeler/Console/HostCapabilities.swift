@@ -139,8 +139,9 @@ extension HostCapabilities {
     /// Pi 1.4.0 with Heeler's extension, each bound, showed its conversation and sent
     /// from Chat. Grok Build stays off until a live check: 1.0.70's `active_sessions.json`
     /// rows there carry no `pid_start`, and binding from `opened_at` instead has not run
-    /// on a Host. Oh My Pi stays off: 18.13.3 bound and
-    /// showed its conversation, but every Send from Chat found no input box on screen.
+    /// on a Host. Oh My Pi stays off until a live check: 18.13.3 bound and showed its
+    /// conversation, but every Send from Chat found no input box on screen, since the
+    /// send check did not know its profile's band (`π-hwa > `), which it now reads.
     static let confirmedWindowsCoreChatPrograms: Set<ChatProgram> = [.claude, .pi]
 
     /// The programs whose Chat a Linux core Host opens, each once the owner's check of

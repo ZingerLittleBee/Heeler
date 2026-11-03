@@ -312,7 +312,7 @@ On a native Windows core Host, each program's Chat turns on only once it has pas
 | Claude Code | On. Binds exactly once it reaches its prompt |
 | Pi | On, through Heeler's extension, which you add from Chat (below). Without it, Chat says it can't tell |
 | Grok Build | Off, so it offers the terminal alone, until it passes a check. Grok Build 1.0.70 doesn't record its process's start there, so Heeler now binds from when Grok Build opened its conversation, which has not been run on Windows |
-| Oh My Pi | Off, so it offers the terminal alone. Chat showed its conversation, but a Send from Chat found no input box |
+| Oh My Pi | Off, so it offers the terminal alone, until it passes a check. Chat showed its conversation, but a Send from Chat found no input box under an Oh My Pi profile, which Heeler now reads and has not been run on Windows |
 | Codex, OpenCode | Not offered |
 
 These rows come from one Windows machine (build 26200) with herdr-core 0.1.16, Claude Code 2.1.286 and 2.1.316, Pi 1.4.0, Grok Build 1.0.70 and Oh My Pi 18.13.3. A Claude Code started through `npx` there listed as a Terminal, not an Agent, so it had no Chat. Heeler now reads `npx` and `npm exec` as the program they start, which has not been checked on Windows since.

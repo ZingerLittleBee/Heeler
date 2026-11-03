@@ -1347,6 +1347,28 @@ struct PiChatTests {
         #expect(PreSendGate.check(screen, program: .omp, activity: .blocked) == .holdBlocked)
     }
 
+    /// Oh My Pi 18.13.3's unicode band, as recorded in the #541 acceptance:
+    /// under profile `hwa` on Windows (`ch-70-ompterm2.png`, where every Send
+    /// from Chat said it found no input box), under profile `work` and with
+    /// no profile on Linux. Before the first message the prompt carries ⇧⇥
+    /// and the italic hint. The runs recorded text only, so the band's fill
+    /// is the one 18.10.4 drew.
+    @Test(arguments: [
+        (" π-hwa > ◒ GPT-5.6 Luna (ZenMux) > 📁 …s/chat2/omp ", "─4%─┃200K─"),
+        (" π-work > ⬢ Fake > 📁 ~/work ▶", "──────────6%──────────┃──────128K─"),
+        (" π > ⬢ GPT-5.6 Luna (ZenMux) > 📁 …/projects/omp > ⑂ master ▶", "────4%──────────┃───────200K─"),
+    ])
+    func ompUnicodeBandIsEmptyBeforeTheFirstMessage(segment: String, gauge: String) {
+        let band = "\u{1B}[48;2;15;18;22m\(segment)\u{1B}[0m\(gauge)"
+        let hint = "\u{1B}[38;2;0;200;255m\u{21E7}\u{21E5} \u{1B}[0m\(SGR.italic)to change thinking effort\(SGR.reset)"
+        func screen(_ prompt: String) -> ANSIScreen { ANSIScreenDecoder.decode("\(band)\r\n\(prompt)") }
+        let empty = screen("╰─" + String(repeating: " ", count: 40) + hint)
+        #expect(InputBoxStateDetector.detect(empty, program: .omp) == .empty(placeholder: nil))
+        #expect(PreSendGate.check(empty, program: .omp, activity: .idle) == .send)
+        let draft = screen("╰─ hello" + String(repeating: " ", count: 30) + hint)
+        #expect(InputBoxStateDetector.detect(draft, program: .omp) == .text("hello"))
+    }
+
     @Test func ompBandPreservesDraftsAndRefusesMenusAndIncompleteChrome() {
         let band = "\u{1B}[48;2;15;18;22m π > 📁 project \u{1B}[0m────────────────44%────300K─"
         func detect(_ text: String) -> InputBoxState {
@@ -1460,6 +1482,9 @@ struct PiChatTests {
         }
         #expect(detect("\u{E0B6} \u{2839} 1s") == .disabled("Oh My Pi is working. Send once it's idle, or steer from the terminal."))
         #expect(!detect("pi >").isSendable)
+        #expect(!detect("π- >").isSendable)
+        #expect(!detect("π-work>").isSendable)
+        #expect(!detect("π-my work >").isSendable)
         #expect(!detect("\u{E0B6} @ explore").isSendable)
         #expect(!detect("\u{E0B6} \u{F0D58}").isSendable)
     }

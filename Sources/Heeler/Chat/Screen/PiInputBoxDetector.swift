@@ -86,7 +86,8 @@ enum PiInputBoxDetector {
     /// OMP draws its default composer as a filled status band followed by
     /// an unboxed `╰─ ` prompt; agent.read omits the hardware cursor. The
     /// band's leading segment says whether OMP takes a message: idle shows
-    /// `π > ` (18.10.4 unicode preset) or U+E0B6 then U+F0D57 (18.11.1
+    /// `π > ` (18.10.4 unicode preset), `π-<profile> > ` under a profile
+    /// (18.13.3, Linux and Windows), or U+E0B6 then U+F0D57 (18.11.1
     /// nerd preset, plan mode included); a running turn swaps that glyph
     /// for a braille spinner and elapsed time. Any other band, such as the
     /// ASCII preset or a focused subagent, stays unrecognized. Approval
@@ -100,7 +101,7 @@ enum PiInputBoxDetector {
         guard isOMPStatusBand(band) else { return nil }
         let header = band.trimmedText
         let isWorking: Bool
-        if ompIdleBands.contains(where: { header.hasPrefix($0) }) {
+        if ompIdleBand(header) {
             isWorking = false
         } else if ompSpinnerBand(header) {
             isWorking = true
@@ -145,7 +146,9 @@ enum PiInputBoxDetector {
             && row.runs.contains { $0.style.background != nil }
     }
 
-    private static let ompIdleBands = ["π > ", "\u{E0B6} \u{F0D57} "]
+    private static func ompIdleBand(_ header: String) -> Bool {
+        header.hasPrefix("\u{E0B6} \u{F0D57} ") || header.prefixMatch(of: #/π(?:-[^\s>]+)? > /#) != nil
+    }
 
     private static func ompSpinnerBand(_ header: String) -> Bool {
         let scalars = Array(header.unicodeScalars.prefix(3))
@@ -154,7 +157,8 @@ enum PiInputBoxDetector {
     }
 
     /// The prompt row without OMP's right-aligned italic hint: before the
-    /// first message, U+F0636 U+F0312 `to change thinking effort`. Only a
+    /// first message, U+F0636 U+F0312 `to change thinking effort`, or ⇧⇥
+    /// (U+21E7 U+21E5) in the unicode preset (18.13.3). Only a
     /// known hint set apart by at least two blanks is dropped; anything
     /// else stays part of the draft.
     private static func ompPromptText(_ row: ScreenRow) -> String {
@@ -173,7 +177,7 @@ enum PiInputBoxDetector {
         return gap >= 2 ? body : row.text
     }
 
-    private static let ompHintIcons: Set<Character> = ["\u{F0636}", "\u{F0312}"]
+    private static let ompHintIcons: Set<Character> = ["\u{F0636}", "\u{F0312}", "\u{21E7}", "\u{21E5}"]
 
     /// Pi's footer stats: context use such as `0.0%/500k` or `?/200k`.
     /// Narrow panes cut the row with `...`, possibly before the gauge, so
