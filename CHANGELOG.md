@@ -13,7 +13,7 @@ Entries reference the pull request that made the change.
   Host, written as code, as a link or in the text of your messages or the
   Agent's, shows in the tint color after a photo symbol; tap it, or choose
   Preview Image from the message's menu, to open it with zoom. Paths relative
-  to the Agent's folder and paths starting at `~` open too.
+  to the Agent's folder and paths starting at `~` open too. (#618)
 - Touch and hold an Agent on a By Workspace card and tap New Agent to start
   one in its Workspace and directory, as the Agent's own New Agent does.
   (#616)
@@ -89,7 +89,7 @@ Entries reference the pull request that made the change.
   Chats from a main checkout and its worktrees open under the same card the
   running Agents had, instead of as separate cards that regroup once the Host
   answers. Each checkout keeps the branch it was last read on as its title
-  until Heeler reads it again.
+  until Heeler reads it again. (#618)
 - Round the bottom corners of a collapsed By Workspace card with nothing to
   summarize, such as a Workspace whose Agents are all idle, instead of ending
   it in a square-cornered strip under its header. (#616)
