@@ -338,6 +338,10 @@ struct AgentChatSurfaceView: View {
             let earlier = Set(previous.map(\.id))
             if messages.contains(where: { !earlier.contains($0.id) }) { followRequest += 1 }
         }
+        .onChange(of: chat?.conversationGeneration) { _, generation in
+            guard let generation else { return }
+            composer.conversationDidChange(to: generation)
+        }
         .onChange(of: chat?.sendStatuses, initial: true) { _, statuses in
             guard let statuses else { return }
             composer.settleUnknownOutcomes(recorded: Set(statuses.filter { $0.value == .recorded }.keys))
@@ -832,7 +836,14 @@ struct AgentChatSurfaceView: View {
     private var sendPolicy: ComposerDeliveryPolicy {
         .chat(
             rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, confirmSession: confirmSession,
-            sendConcern: sendConcern, willReadScreen: registerSends)
+            sendConcern: sendConcern, willReadScreen: registerSends,
+            conversation: conversationStamp)
+    }
+
+    /// Which conversation Chat follows, noted with a refusal.
+    private var conversationStamp: (@MainActor () -> Int)? {
+        guard let chat else { return nil }
+        return { chat.conversationGeneration }
     }
 
     /// Whether the program still shows the conversation Chat shows, for a

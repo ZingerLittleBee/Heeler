@@ -333,7 +333,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     @discardableResult
     func send(policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
         let revision = statusRevision
-        return noting(await sendDraft(policy: policy), route: policy.route, since: revision)
+        return noting(await sendDraft(policy: policy), policy: policy, since: revision)
     }
 
     private func sendDraft(policy: ComposerDeliveryPolicy) async -> SendResult {
@@ -362,7 +362,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     @discardableResult
     func retry(_ id: Message.ID, policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
         let revision = statusRevision
-        return noting(await retryMessage(id, policy: policy), route: policy.route, since: revision)
+        return noting(await retryMessage(id, policy: policy), policy: policy, since: revision)
     }
 
     private func retryMessage(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
@@ -387,15 +387,25 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// Keeps a refusal as the notice; any other outcome ends the last one.
     /// A refusal may rest on a screen read before Agent Status changed under
     /// the Send; when that change ends it, it shows no notice.
-    private func noting(_ result: SendResult, route: ComposerRoute, since revision: UInt64) -> SendResult {
+    private func noting(_ result: SendResult, policy: ComposerDeliveryPolicy, since revision: UInt64) -> SendResult {
         if case .refused(let refusal) = result,
             revision == statusRevision || !refusal.endsWhenStatusBecomes(agentStatus)
         {
-            notice = ComposerNotice(refusal: refusal, route: route)
+            notice = ComposerNotice(refusal: refusal, route: policy.route, conversation: policy.conversation?())
         } else {
             notice = nil
         }
         return result
+    }
+
+    /// Chat follows another conversation, or none: a refusal about the
+    /// input box described the one it followed, so it ends. Noted after the
+    /// change, as when the Send's own check moved Chat, it stays.
+    func conversationDidChange(to conversation: Int) {
+        guard let notice, let noted = notice.conversation, noted != conversation,
+            case .inputNotReady = notice.refusal
+        else { return }
+        self.notice = nil
     }
 
     /// Removes a failed or unanswered echo and restores all of its text to the
