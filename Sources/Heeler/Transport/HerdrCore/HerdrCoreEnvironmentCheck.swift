@@ -33,7 +33,8 @@ enum HerdrCoreEnvironmentCheck {
     }
 
     /// The same names on a native Windows Host, from the block in the core's own
-    /// memory. No value leaves the Host there either. It has not run on Windows.
+    /// memory. No value leaves the Host there either. It ran on Windows build 26200 with
+    /// herdr-core 0.1.16 (`docs/agents/herdr-compatibility.md`).
     static func windowsCommand(pid: Int, nonce: String) throws -> String {
         try HostProcessReader.windowsCommand(request(pid: pid), nonce: nonce)
     }

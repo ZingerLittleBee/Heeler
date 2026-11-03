@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 /// What the Windows process read may carry, and how the lines it prints parse.
-/// Nothing here runs PowerShell, and it has not run on a Windows machine
+/// Nothing here runs PowerShell. The read itself ran on one Windows machine
 /// (`docs/agents/herdr-compatibility.md`).
 @Suite("Host process reader on native Windows")
 struct HostProcessReaderWindowsTests {

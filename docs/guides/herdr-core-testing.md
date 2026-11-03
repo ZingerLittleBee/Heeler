@@ -345,7 +345,7 @@ A signed-in hc-lab run of 2026-11-03 (Debian 13, herdr-core 0.1.13), with codex-
 
 ### Chat on a Mac
 
-On a Mac Host with signed-in harnesses and the Host Helper installed as a LaunchAgent. Temporarily turn on each program in `HostCapabilities.confirmedMacOSCoreChatPrograms` that has not passed yet. A program that passes joins that list, and Linux's list waits for this box. Record each result as a versioned observation in `docs/agents/herdr-compatibility.md`.
+On a Mac Host with signed-in harnesses and the Host Helper installed as a LaunchAgent. Temporarily turn on each program in `HostCapabilities.confirmedMacOSCoreChatPrograms` that has not passed yet. A program that passes joins that list; Linux keeps its own, `confirmedLinuxCoreChatPrograms`. Record each result as a versioned observation in `docs/agents/herdr-compatibility.md`.
 
 The run of 2026-11-02, on macOS 27.0.1 with herdr-core 0.1.13, Claude Code 2.1.316, codex-cli 0.165.0, Grok Build 1.0.70, Pi 1.4.0 and Oh My Pi 18.12.3, passed the Claude Code, SIP on, Codex, Pi and Grok Build rows, Oh My Pi with the extension, and Moved on under zsh ([herdr compatibility](../agents/herdr-compatibility.md)). OpenCode 2.0.32 from New Agent could only be chosen and 2.1 or later was not run, so it stays off on macOS. It stays in `macOSExactCoreChatPrograms`, since no read failed and Heeler's plugin label bound it exactly in the same run.
 
@@ -389,7 +389,8 @@ A signed-in hc-lab run of 2026-11-03 (Debian 13, herdr-core 0.1.13) with codex-c
 
 Each program's Chat on a Linux core Host stays off until its check here passes: add it
 to `HostCapabilities.confirmedLinuxCoreChatPrograms` only then. Both are on for macOS
-since the [Mac run](#chat-on-a-mac). Until then, use a debug build
+since the [Mac run](#chat-on-a-mac), and for Linux since the signed-in hc-lab run of
+2026-11-03. Until a program passes, use a debug build
 with that set widened for the run, and do not commit that edit. Sign Pi and Oh My Pi in
 on hc-lab, and install the Host Helper first unless a step says otherwise. Record each
 program's version and result as a versioned observation in
