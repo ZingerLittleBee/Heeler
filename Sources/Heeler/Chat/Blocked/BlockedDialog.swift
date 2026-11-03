@@ -23,6 +23,9 @@ enum BlockedDialogKind: String, Sendable, Hashable, CaseIterable {
     /// composer. Their text is only in the transcript until expanded.
     case codexAsyncCollapsed
     case codexAsyncQuestion
+    /// Codex's `Folder access` screen at startup, before its first prompt:
+    /// `Trust and continue`, or `Quit`.
+    case codexWorkspaceTrust
     /// Oh My Pi's `Allow tool:` panel, answered by ctrl+q or Esc.
     case ompApproval
     /// One page of Oh My Pi's `Ask` panel: a single-select question,
@@ -53,7 +56,7 @@ enum BlockedDialogKind: String, Sendable, Hashable, CaseIterable {
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust:
             .claude
         case .codexExec, .codexPatch, .codexNetwork, .codexQuestion, .codexAsyncCollapsed,
-            .codexAsyncQuestion:
+            .codexAsyncQuestion, .codexWorkspaceTrust:
             .codex
         case .ompApproval, .ompQuestion, .ompQuestionReview:
             .omp
@@ -77,7 +80,9 @@ enum DialogOptionRole: String, Sendable, Hashable {
     case approvePersistent
     /// Allows it and switches the permission mode, such as auto mode.
     case approveModeSwitch
-    /// Declines: Claude's `No…`, Codex's `(esc)` option.
+    /// Declines: Claude's `No…`, Codex's `(esc)` option, and on Codex's
+    /// trust screen `Back to Agent Command Center`, which leaves Codex
+    /// running.
     case decline
     /// A question's answer.
     case answer
@@ -92,9 +97,9 @@ enum DialogOptionRole: String, Sendable, Hashable {
     case submit
     /// `Cancel` on the review page.
     case cancel
-    /// `Yes, I trust this folder`.
+    /// Claude's `Yes, I trust this folder`, Codex's `Trust and continue`.
     case trust
-    /// `No, exit`: Claude Code quits.
+    /// Claude's `No, exit` and Codex's `Quit`: the program quits.
     case exitProgram
 }
 
@@ -225,8 +230,11 @@ struct DialogSubject: Sendable, Hashable {
     var reviewAnswers: [ReviewAnswer] = []
     /// Claude plan: the plan file from the footer (`~/.claude/plans/…`).
     var planFilePath: String?
-    /// Claude workspace trust: the folder.
+    /// Workspace trust: the folder.
     var workspacePath: String?
+    /// Codex workspace trust: the Git repository root that trusting
+    /// applies to, for a folder below it.
+    var workspaceRoot: String?
     /// OpenCode permission: the lines under the action, wrapped rows
     /// joined (`Path: .env`, `$ ls -la`). OpenCode swaps them for what the
     /// rule would allow while `Always allow` has focus, so the fingerprint

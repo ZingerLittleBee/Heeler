@@ -37,7 +37,7 @@ struct GrokDialogPlanner {
             return try fork(action)
         case .claudeBash, .claudeFileEdit, .claudeFileCreate, .claudeFileRead, .claudeFetch, .claudePlan,
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .codexExec, .codexPatch, .codexNetwork,
-            .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .ompApproval, .ompQuestion,
+            .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .codexWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .openCodePermission, .openCodeQuestion:
             throw Self.notGrok
         }

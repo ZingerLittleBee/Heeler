@@ -31,6 +31,8 @@ enum ScreenFixture {
         "codex-11-x4-after-skip", "codex-12-x5-narrow-exec", "codex-13-par-first",
         "codex-14-par-second", "codex-15-x6-mcp-tool-list", "codex-16-x7-phone-question-pointed",
         "codex-17-x7-phone-question-notes", "codex-18-x7-phone-async-countdown", "codex-19-x3-implement-plan",
+        "codex-20-x8-trust", "codex-21-x8-phone-trust", "codex-22-x8-phone-trust-focus-quit",
+        "codex-23-x8-trust-command-center",
     ]
 
     static let pi = [

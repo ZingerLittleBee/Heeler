@@ -606,6 +606,32 @@ struct AgentChatStoreTests {
         #expect(await fixture.files.reads.isEmpty)
     }
 
+    /// Check Again shows its look until a step that began after the tap
+    /// ends; a step already under way doesn't end it.
+    @Test func aRetryIsUnderwayUntilAStepThatBeganAfterItEnds() async throws {
+        let fixture = Fixture(session: nil)
+        await fixture.store.step()
+        #expect(!fixture.store.isRetrying)
+
+        fixture.store.retry()
+        #expect(fixture.store.isRetrying)
+        await fixture.store.step()
+        #expect(!fixture.store.isRetrying)
+
+        fixture.store.retry()
+        await fixture.server.suspendNextRead()
+        let reads = await fixture.server.reads
+        let step = Task { await fixture.store.step() }
+        try await Self.waitUntil { await fixture.server.reads == reads + 1 }
+        fixture.store.retry()
+        await fixture.server.releaseRead()
+        await step.value
+        #expect(fixture.store.isRetrying)
+
+        await fixture.store.step()
+        #expect(!fixture.store.isRetrying)
+    }
+
     @Test func aFailedSessionQueryKeepsMessagesAndRetriesWhileFollowing() async throws {
         let fixture = Fixture(session: Self.first)
         await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
@@ -2748,6 +2774,32 @@ struct AgentChatStoreTests {
         await store.step()
 
         #expect(store.sendStatuses[second] == .recorded)
+    }
+
+    // MARK: Codex's folder trust
+
+    /// Codex draws its trust screen before it reports a session, and herdr
+    /// can report the screen idle, so the card reads it until a session
+    /// comes.
+    @Test func anIdleCodexReadsItsTrustScreenUntilItReportsASession() async throws {
+        let pane = Pane(try ScreenFixture.screen("codex-22-x8-phone-trust-focus-quit"))
+        let fixture = Fixture(session: nil, program: .codex, screen: pane.io)
+
+        await fixture.store.blocked.refresh()
+
+        guard case .card(let card) = fixture.store.blocked.content else {
+            Issue.record("Expected the trust card, got \(fixture.store.blocked.content)")
+            return
+        }
+        #expect(card.dialog.kind == .codexWorkspaceTrust)
+
+        fixture.store.agentDidChange(
+            Self.agent(session: "01a10f87-e025-7fb1-8974-8dd09937767a", status: .idle, program: .codex))
+
+        #expect(fixture.store.blocked.content == .none)
+        let reads = await pane.reads
+        await fixture.store.blocked.refresh()
+        #expect(await pane.reads == reads)
     }
 
     // MARK: A new Claude Code conversation
