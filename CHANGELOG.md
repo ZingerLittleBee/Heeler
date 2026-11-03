@@ -20,6 +20,11 @@ Entries reference the pull request that made the change.
 - Browse Directories hides folders whose names start with a dot. Tap the eye
   button beside Select to list them again; Heeler remembers the choice.
   (#609)
+- The Shell Terminal can show the shortcut row from Direct Input (Esc, Tab,
+  arrows, Backspace and Enter) above its input row, so you can reach those
+  keys while typing on the iOS keyboard. Turn it on with the new button beside
+  the keyboard button. It's off by default, and the row and its button
+  hide in Keys mode. (#611)
 - New Agent opens on the Agent you started last, when the Host has it
   installed. (#608)
 - Chat shows the images Agents read or make as thumbnails under their rows;
@@ -59,6 +64,8 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Raise and lower the Shell Terminal's input row with the keyboard, in step
+  with it, as the Composer does, instead of jumping ahead of it. (#611)
 - Keep the answers on Claude Code's and Codex's folder trust cards in view
   below the folder, as a row of capsules with leaving on the left and
   trusting on the right, instead of below the card's fold on a phone.

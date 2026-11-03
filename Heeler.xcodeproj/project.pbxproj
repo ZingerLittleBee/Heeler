@@ -808,6 +808,7 @@
 		F1942670E29F7B340860DC8D /* HostStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AEC3D31861DABF40C05EE8D /* HostStore.swift */; };
 		F22477BCF1869E1A28EAC68F /* ChatDeliveryPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B49CD83D83EF72199552659A /* ChatDeliveryPolicyTests.swift */; };
 		F271226A2892164D44593BD9 /* plugin-version-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = CD3F97D0C9A6A0BC8FBEE6CD /* plugin-version-v1.json */; };
+		F2A55460F7C60EB474D69647 /* InputShortcutStripRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C19E7601C369DC92DCB7704B /* InputShortcutStripRow.swift */; };
 		F2DFC082D465B0096B587055 /* ClaudeTranscriptLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88A7E1308B558F009B396A9F /* ClaudeTranscriptLocator.swift */; };
 		F2EDACBD031E425D1B629920 /* AppAppearanceSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12CB6AC68294D97226EBF857 /* AppAppearanceSettingsTests.swift */; };
 		F2F508BF4FB5C96D066FFA67 /* PollBudget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1209F79DFBDD6D95E0510227 /* PollBudget.swift */; };
@@ -1548,6 +1549,7 @@
 		C153200B3B3D2360D295D806 /* RemoteFiles+HeelerSSH.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteFiles+HeelerSSH.swift"; sourceTree = "<group>"; };
 		C17016197F052B8BC51732FA /* GitProbe+Failures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitProbe+Failures.swift"; sourceTree = "<group>"; };
 		C17F006C341136811D0496E6 /* SnippetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetStore.swift; sourceTree = "<group>"; };
+		C19E7601C369DC92DCB7704B /* InputShortcutStripRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputShortcutStripRow.swift; sourceTree = "<group>"; };
 		C1AA33CB009DE705AC691967 /* AgentDetailStatusChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailStatusChrome.swift; sourceTree = "<group>"; };
 		C23C88AFF1D51D19671636D2 /* FileDiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileDiffView.swift; sourceTree = "<group>"; };
 		C24E3F2728F8EED318E0F73F /* NumberedChatReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumberedChatReducer.swift; sourceTree = "<group>"; };
@@ -2478,6 +2480,7 @@
 				88E1434C9C39A6419A3A0D79 /* HostConsoleProjection.swift */,
 				6CAC72199BF308E484F37439 /* HostTelemetryPresentation.swift */,
 				5A001C1028C859D6281E1642 /* InputShortcutStripPresentation.swift */,
+				C19E7601C369DC92DCB7704B /* InputShortcutStripRow.swift */,
 				D46DEE9ECECAF179DB591F32 /* InteractivePopGesture.swift */,
 				DE495B3E9477AF03F551A350 /* LiveInAnotherWindowPresentation.swift */,
 				17631B548FA0C56DD5318D7A /* MessageJumpControl.swift */,
@@ -3130,8 +3133,8 @@
 			targets = (
 				081A3B29EFF2C7B2FCAA3248 /* Heeler */,
 				DFFB82C74B73FA5CBCE6D5D2 /* HeelerNotificationService */,
-				9806EA6C63028F1217417282 /* HeelerTests */,
 				134E6CD1AC1396155DAB93E2 /* HeelerWidgets */,
+				9806EA6C63028F1217417282 /* HeelerTests */,
 			);
 		};
 /* End PBXProject section */
@@ -3498,6 +3501,7 @@
 				EA83373CB743395BF9FF0689 /* ImagePreparer.swift in Sources */,
 				069ECD72119CF4C41A3DB817 /* InputBoxStateDetector.swift in Sources */,
 				170F2BD0EB0840B197A6475E /* InputShortcutStripPresentation.swift in Sources */,
+				F2A55460F7C60EB474D69647 /* InputShortcutStripRow.swift in Sources */,
 				81DA9F136FCE696ACD0632DF /* InteractivePopGesture.swift in Sources */,
 				D8742E32B3BA3A76771BC2B7 /* JSONValue.swift in Sources */,
 				A20CC86A7DC41BD651647882 /* KnownHostsStore.swift in Sources */,

@@ -10,12 +10,22 @@ enum InputShortcutStripItem: Hashable, Sendable {
 }
 
 /// Ordered shortcut-strip contents. One layout on every device and with or
-/// without a hardware keyboard: the scrolling key row with Enter and More
-/// pinned at the trailing edge. The view must not recompute this inline.
+/// without a hardware keyboard: the scrolling key row with Enter (and More,
+/// where the surface has it) pinned at the trailing edge. The view must not
+/// recompute this inline.
 struct InputShortcutStripPresentation: Equatable, Sendable {
     enum SizeClass: Equatable, Sendable, CaseIterable {
         case compact
         case regular
+    }
+
+    /// Which input chrome hosts the strip.
+    enum Surface: Equatable, Sendable, CaseIterable {
+        /// Agent detail's Direct Input: the strip carries Paste and More.
+        case directInput
+        /// The Shell Terminal: its input row, directly below, already has
+        /// Paste and More, so the strip carries keys only.
+        case shellTerminal
     }
 
     /// Keys that scroll horizontally.
@@ -33,9 +43,20 @@ struct InputShortcutStripPresentation: Equatable, Sendable {
         .paste, .key(.enter), .more,
     ]
 
-    init() {
-        leadingItems = Array(Self.allItems.dropLast(2))
-        trailingItems = Array(Self.allItems.suffix(2))
+    /// The Shell Terminal strip: the same keys, without Paste and More.
+    static let shellTerminalItems: [InputShortcutStripItem] = allItems.filter {
+        $0 != .paste && $0 != .more
+    }
+
+    init(surface: Surface = .directInput) {
+        switch surface {
+        case .directInput:
+            leadingItems = Array(Self.allItems.dropLast(2))
+            trailingItems = Array(Self.allItems.suffix(2))
+        case .shellTerminal:
+            leadingItems = Array(Self.shellTerminalItems.dropLast())
+            trailingItems = Array(Self.shellTerminalItems.suffix(1))
+        }
     }
 }
 
