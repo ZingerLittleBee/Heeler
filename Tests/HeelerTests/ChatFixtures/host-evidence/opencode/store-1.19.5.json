@@ -16,98 +16,98 @@
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711527859,
       "time_updated": 1793711529567,
-      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711527859},\"agent\":\"build\",\"model\":{\"providerID\":\"zenmux\",\"modelID\":\"openai/gpt-5.6-luna\"},\"summary\":{\"diffs\":[]}}"
+      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711527859},\"agent\":\"build\",\"model\":{\"providerID\":\"example-provider\",\"modelID\":\"example/model\"},\"summary\":{\"diffs\":[]}}"
     },
     {
       "id": "msg_1a189ddc1001AeTkXFiwBUvGX4",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711529409,
       "time_updated": 1793711532404,
-      "data": "{\"parentID\":\"msg_1a189d7b3001IAmfyqCnO0o6nO\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00150635,\"tokens\":{\"total\":6007,\"input\":3,\"output\":5,\"reasoning\":0,\"cache\":{\"write\":5999,\"read\":0}},\"modelID\":\"openai/gpt-5.6-luna\",\"providerID\":\"zenmux\",\"time\":{\"created\":1793711529409,\"completed\":1793711532402},\"finish\":\"stop\"}"
+      "data": "{\"parentID\":\"msg_1a189d7b3001IAmfyqCnO0o6nO\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00150635,\"tokens\":{\"total\":6007,\"input\":3,\"output\":5,\"reasoning\":0,\"cache\":{\"write\":5999,\"read\":0}},\"modelID\":\"example/model\",\"providerID\":\"example-provider\",\"time\":{\"created\":1793711529409,\"completed\":1793711532402},\"finish\":\"stop\"}"
     },
     {
       "id": "msg_1a189ef42001qiTL0vVk46xewb",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711533890,
       "time_updated": 1793711538469,
-      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711533890},\"agent\":\"build\",\"model\":{\"providerID\":\"zenmux\",\"modelID\":\"openai/gpt-5.6-luna\"},\"summary\":{\"diffs\":[]}}"
+      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711533890},\"agent\":\"build\",\"model\":{\"providerID\":\"example-provider\",\"modelID\":\"example/model\"},\"summary\":{\"diffs\":[]}}"
     },
     {
       "id": "msg_1a189f2e2001yLHXvpvx37rOH1",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711534818,
       "time_updated": 1793711538436,
-      "data": "{\"parentID\":\"msg_1a189ef42001qiTL0vVk46xewb\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00026373,\"tokens\":{\"total\":6149,\"input\":3,\"output\":112,\"reasoning\":0,\"cache\":{\"write\":35,\"read\":5999}},\"modelID\":\"openai/gpt-5.6-luna\",\"providerID\":\"zenmux\",\"time\":{\"created\":1793711534818,\"completed\":1793711538435},\"finish\":\"tool-calls\"}"
+      "data": "{\"parentID\":\"msg_1a189ef42001qiTL0vVk46xewb\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00026373,\"tokens\":{\"total\":6149,\"input\":3,\"output\":112,\"reasoning\":0,\"cache\":{\"write\":35,\"read\":5999}},\"modelID\":\"example/model\",\"providerID\":\"example-provider\",\"time\":{\"created\":1793711534818,\"completed\":1793711538435},\"finish\":\"tool-calls\"}"
     },
     {
       "id": "msg_1a18a0107001IGODhqkTjWSpfz",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711538439,
       "time_updated": 1793711540714,
-      "data": "{\"parentID\":\"msg_1a189ef42001qiTL0vVk46xewb\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00019223,\"tokens\":{\"total\":6279,\"input\":3,\"output\":11,\"reasoning\":0,\"cache\":{\"write\":231,\"read\":6034}},\"modelID\":\"openai/gpt-5.6-luna\",\"providerID\":\"zenmux\",\"time\":{\"created\":1793711538439,\"completed\":1793711540713},\"finish\":\"stop\"}"
+      "data": "{\"parentID\":\"msg_1a189ef42001qiTL0vVk46xewb\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00019223,\"tokens\":{\"total\":6279,\"input\":3,\"output\":11,\"reasoning\":0,\"cache\":{\"write\":231,\"read\":6034}},\"modelID\":\"example/model\",\"providerID\":\"example-provider\",\"time\":{\"created\":1793711538439,\"completed\":1793711540713},\"finish\":\"stop\"}"
     },
     {
       "id": "msg_1a18a11650014YW7kKGrIDHK8m",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711542629,
       "time_updated": 1793711543104,
-      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711542629},\"agent\":\"build\",\"model\":{\"providerID\":\"zenmux\",\"modelID\":\"openai/gpt-5.6-luna\",\"variant\":\"high\"},\"summary\":{\"diffs\":[]}}"
+      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711542629},\"agent\":\"build\",\"model\":{\"providerID\":\"example-provider\",\"modelID\":\"example/model\",\"variant\":\"high\"},\"summary\":{\"diffs\":[]}}"
     },
     {
       "id": "msg_1a18a1320001ISLe1WvFPYfxAa",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711543072,
       "time_updated": 1793711546387,
-      "data": "{\"parentID\":\"msg_1a18a11650014YW7kKGrIDHK8m\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"variant\":\"high\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00160085,\"tokens\":{\"total\":6328,\"input\":3,\"output\":20,\"reasoning\":0,\"cache\":{\"write\":6305,\"read\":0}},\"modelID\":\"openai/gpt-5.6-luna\",\"providerID\":\"zenmux\",\"time\":{\"created\":1793711543072,\"completed\":1793711546386},\"finish\":\"stop\"}"
+      "data": "{\"parentID\":\"msg_1a18a11650014YW7kKGrIDHK8m\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"variant\":\"high\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00160085,\"tokens\":{\"total\":6328,\"input\":3,\"output\":20,\"reasoning\":0,\"cache\":{\"write\":6305,\"read\":0}},\"modelID\":\"example/model\",\"providerID\":\"example-provider\",\"time\":{\"created\":1793711543072,\"completed\":1793711546386},\"finish\":\"stop\"}"
     },
     {
       "id": "msg_1a18b193c0010GRMqJB03yKiUt",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711610172,
       "time_updated": 1793711610783,
-      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711610172},\"agent\":\"build\",\"model\":{\"providerID\":\"zenmux\",\"modelID\":\"openai/gpt-5.6-luna\"},\"summary\":{\"diffs\":[]}}"
+      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711610172},\"agent\":\"build\",\"model\":{\"providerID\":\"example-provider\",\"modelID\":\"example/model\"},\"summary\":{\"diffs\":[]}}"
     },
     {
       "id": "msg_1a18b1afa0014L7NeAbNsh04By",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711610618,
       "time_updated": 1793711613174,
-      "data": "{\"parentID\":\"msg_1a18b193c0010GRMqJB03yKiUt\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00019105,\"tokens\":{\"total\":6464,\"input\":3,\"output\":17,\"reasoning\":0,\"cache\":{\"write\":179,\"read\":6265}},\"modelID\":\"openai/gpt-5.6-luna\",\"providerID\":\"zenmux\",\"time\":{\"created\":1793711610618,\"completed\":1793711613174},\"finish\":\"stop\"}"
+      "data": "{\"parentID\":\"msg_1a18b193c0010GRMqJB03yKiUt\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00019105,\"tokens\":{\"total\":6464,\"input\":3,\"output\":17,\"reasoning\":0,\"cache\":{\"write\":179,\"read\":6265}},\"modelID\":\"example/model\",\"providerID\":\"example-provider\",\"time\":{\"created\":1793711610618,\"completed\":1793711613174},\"finish\":\"stop\"}"
     },
     {
       "id": "msg_1a18b2809001eTB2tycYG9BG8X",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711613961,
       "time_updated": 1793711614383,
-      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711613961},\"agent\":\"build\",\"model\":{\"providerID\":\"zenmux\",\"modelID\":\"openai/gpt-5.6-luna\"},\"summary\":{\"diffs\":[]}}"
+      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711613961},\"agent\":\"build\",\"model\":{\"providerID\":\"example-provider\",\"modelID\":\"example/model\"},\"summary\":{\"diffs\":[]}}"
     },
     {
       "id": "msg_1a18b2991001BJPh8VU5HvT4pH",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711614353,
       "time_updated": 1793711617959,
-      "data": "{\"parentID\":\"msg_1a18b2809001eTB2tycYG9BG8X\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00015658,\"tokens\":{\"total\":6506,\"input\":3,\"output\":13,\"reasoning\":0,\"cache\":{\"write\":46,\"read\":6444}},\"modelID\":\"openai/gpt-5.6-luna\",\"providerID\":\"zenmux\",\"time\":{\"created\":1793711614353,\"completed\":1793711617958},\"finish\":\"stop\"}"
+      "data": "{\"parentID\":\"msg_1a18b2809001eTB2tycYG9BG8X\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00015658,\"tokens\":{\"total\":6506,\"input\":3,\"output\":13,\"reasoning\":0,\"cache\":{\"write\":46,\"read\":6444}},\"modelID\":\"example/model\",\"providerID\":\"example-provider\",\"time\":{\"created\":1793711614353,\"completed\":1793711617958},\"finish\":\"stop\"}"
     },
     {
       "id": "msg_1a18b3aa100165xkHgD8x18btF",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711618721,
       "time_updated": 1793711622662,
-      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711618721},\"agent\":\"build\",\"model\":{\"providerID\":\"zenmux\",\"modelID\":\"openai/gpt-5.6-luna\"},\"summary\":{\"diffs\":[]}}"
+      "data": "{\"role\":\"user\",\"time\":{\"created\":1793711618721},\"agent\":\"build\",\"model\":{\"providerID\":\"example-provider\",\"modelID\":\"example/model\"},\"summary\":{\"diffs\":[]}}"
     },
     {
       "id": "msg_1a18b3c31001tp2jlS636Yzxj5",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711619121,
       "time_updated": 1793711622635,
-      "data": "{\"parentID\":\"msg_1a18b3aa100165xkHgD8x18btF\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.0002014,\"tokens\":{\"total\":6587,\"input\":3,\"output\":50,\"reasoning\":0,\"cache\":{\"write\":44,\"read\":6490}},\"modelID\":\"openai/gpt-5.6-luna\",\"providerID\":\"zenmux\",\"time\":{\"created\":1793711619121,\"completed\":1793711622635},\"finish\":\"tool-calls\"}"
+      "data": "{\"parentID\":\"msg_1a18b3aa100165xkHgD8x18btF\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.0002014,\"tokens\":{\"total\":6587,\"input\":3,\"output\":50,\"reasoning\":0,\"cache\":{\"write\":44,\"read\":6490}},\"modelID\":\"example/model\",\"providerID\":\"example-provider\",\"time\":{\"created\":1793711619121,\"completed\":1793711622635},\"finish\":\"tool-calls\"}"
     },
     {
       "id": "msg_1a18b49ed001JXi04T4jPXr2V3",
       "session_id": "ses_e5e7628e2ffe3OTTUgA7nkekCV",
       "time_created": 1793711622637,
       "time_updated": 1793711625270,
-      "data": "{\"parentID\":\"msg_1a18b3aa100165xkHgD8x18btF\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00015403,\"tokens\":{\"total\":6609,\"input\":3,\"output\":5,\"reasoning\":0,\"cache\":{\"write\":67,\"read\":6534}},\"modelID\":\"openai/gpt-5.6-luna\",\"providerID\":\"zenmux\",\"time\":{\"created\":1793711622637,\"completed\":1793711625269},\"finish\":\"stop\"}"
+      "data": "{\"parentID\":\"msg_1a18b3aa100165xkHgD8x18btF\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/work/app\",\"root\":\"/work/app\"},\"cost\":0.00015403,\"tokens\":{\"total\":6609,\"input\":3,\"output\":5,\"reasoning\":0,\"cache\":{\"write\":67,\"read\":6534}},\"modelID\":\"example/model\",\"providerID\":\"example-provider\",\"time\":{\"created\":1793711622637,\"completed\":1793711625269},\"finish\":\"stop\"}"
     }
   ],
   "parts": [
