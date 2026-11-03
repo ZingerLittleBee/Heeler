@@ -53,7 +53,7 @@ The Console lists the core's Agents and Terminals, each in a card named for its 
 
 **Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stage through the core, not over SFTP, one file of up to 8 MiB at a time. Heeler refuses a larger one before sending anything, and your draft stays as it was. The path the core gives goes in your draft and on the clipboard, and a program in that Terminal can read it. Nothing reaches the Agent until you [send](#send). The file is in `%LOCALAPPDATA%\herdr-core\<session>\files\<terminal>\`. It inherits its access from your profile, since the core sets none: on the one Windows machine checked so far, that was SYSTEM, Administrators and your account, and no one else. It stays after the Terminal is closed, and goes when the core removes the Terminal's record: with `terminal.rm`, and by the core's source, not yet run, about a day after the Terminal ended.
 
-[Send](#send) and [Stop](#stop) are built for there too, with the limits Send describes. [Chat](#chat-on-windows) opens for Claude Code and Pi, the programs that have passed their check there. Not offered there yet, whatever the Host reads: Rename, Worktrees, Changes and Skills. The Host Helper reads **Not Available**.
+[Send](#send) and [Stop](#stop) are built for there too, with the limits Send describes. [Chat](#chat-on-windows) opens for Claude Code, Grok Build, Pi and Oh My Pi, the programs that have passed their check there. Not offered there yet, whatever the Host reads: Rename, Worktrees, Changes and Skills. The Host Helper reads **Not Available**.
 
 Heeler's own connection, launch, staging, Composer and Chat on Windows have run on one machine so far, Windows build 26200 with herdr-core 0.1.16.
 
@@ -227,7 +227,7 @@ If the connection drops with **Worktree Details** open, the sheet goes with the 
 
 ## Chat
 
-In Chat you can read an Agent's conversation, send to it, stop it and answer its questions. On Linux and [macOS](#chat-on-macos) core Hosts it opens for Claude Code, Codex, Grok Build, Pi and Oh My Pi, and on [native Windows](#chat-on-windows) for Claude Code and Pi. Each program is turned on for a kind of Host once it has passed a check there. [OpenCode](#let-chat-follow-opencode) has not been turned on for any yet. Until a program is, its Agents offer the terminal alone. The rows below say what to expect from each.
+In Chat you can read an Agent's conversation, send to it, stop it and answer its questions. On Linux and [macOS](#chat-on-macos) core Hosts it opens for Claude Code, Codex, Grok Build, Pi and Oh My Pi, and on [native Windows](#chat-on-windows) for Claude Code, Grok Build, Pi and Oh My Pi. Each program is turned on for a kind of Host once it has passed a check there. [OpenCode](#let-chat-follow-opencode) has not been turned on for any yet. Until a program is, its Agents offer the terminal alone. The rows below say what to expect from each.
 
 - **Send** checks the Agent's input box and which conversation it shows, pastes the message, and submits it only if the same Agent still holds the terminal within two seconds. Otherwise nothing is submitted, the draft stays in the Composer, and a notice says whether the text may still be in the terminal. A Send the Host did not answer is never sent again, so check the terminal before sending it yourself. Its message says it **may or may not have reached the Agent**, until the conversation shows it arrived. The next Send pastes nothing until the Host answers, then says the last message **may still be in the Agent's input**.
 - **Stop** presses the program's stop keys: Esc, Esc twice on OpenCode, or Ctrl+C on Grok Build. Grok Build and OpenCode check the screen first, and if pressing could act on something else, Stop presses nothing and says why. On a Template's Terminal it presses the Template's stop key, after the same check.
@@ -278,7 +278,7 @@ The plugin does nothing outside a herdr-core Terminal. It only tells the core wh
 
 ### Pi and Oh My Pi
 
-Chat for Pi and Oh My Pi is on for Linux and [macOS](#chat-on-macos) core Hosts, where each passed its check. On [native Windows](#chat-on-windows), Pi's is on and Oh My Pi's stays off. On Linux and macOS it works like this:
+Chat for Pi and Oh My Pi is on for Linux and [macOS](#chat-on-macos) core Hosts, where each passed its check. On [native Windows](#chat-on-windows), both are on through Heeler's extension. On Linux and macOS it works like this:
 
 - **With the [Host Helper](#host-helper)**, Heeler's extension names the conversation, however the Agent started: New Agent, a Template, `hc run` or a shell. Chat follows `/new` at its next check. An Agent already running when you install the Helper needs starting again.
 - **Pi without the Helper** opens only if Heeler started it, from the session id Heeler gave it. Chat waits for the first message, and keeps showing that conversation after a `/new`, which it cannot notice. Sending still reaches the session the program shows, and once a message you send from Chat fails to appear in the conversation after the turn ends, Chat says it can't tell and lets you choose.
@@ -313,11 +313,11 @@ On a native Windows core Host, each program's Chat turns on only once it has pas
 |---------|-----------------------------|
 | Claude Code | On. Binds exactly once it reaches its prompt |
 | Pi | On, through Heeler's extension, which you add from Chat (below). Without it, Chat says it can't tell |
-| Grok Build | Off, so it offers the terminal alone, until it passes a check. Grok Build 1.0.70 doesn't record its process's start there, so Heeler now binds from when Grok Build opened its conversation, which has not been run on Windows |
-| Oh My Pi | Off, so it offers the terminal alone, until it passes a check. Chat showed its conversation, but a Send from Chat found no input box under an Oh My Pi profile, which Heeler now reads and has not been run on Windows |
+| Grok Build | On. Binds from the conversation Grok Build opened for its process. After `/new`, Chat says it can't tell until Grok Build starts again |
+| Oh My Pi | On, through Heeler's extension, as for Pi, with an Oh My Pi profile or without |
 | Codex, OpenCode | Not offered |
 
-These rows come from one Windows machine (build 26200) with herdr-core 0.1.16, Claude Code 2.1.286 and 2.1.316, Pi 1.4.0, Grok Build 1.0.70 and Oh My Pi 18.13.3. A Claude Code started through `npx` there listed as a Terminal, not an Agent, so it had no Chat. Heeler now reads `npx` and `npm exec` as the program they start, which has not been checked on Windows since.
+These rows come from one Windows machine (build 26200) with herdr-core 0.1.16, Claude Code 2.1.286 and 2.1.316, also started through `npx`, Pi 1.4.0, Grok Build 1.0.70 and Oh My Pi 18.13.3.
 
 **Choose a Conversation** is not offered on a Windows core Host yet.
 
@@ -338,7 +338,7 @@ When Heeler can't read the Agent's process at all, **Can't Tell the Conversation
 ## Known limits
 
 - Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.
-- Chat opens for Claude Code, Codex, Grok Build, [Pi and Oh My Pi](#pi-and-oh-my-pi) on Linux and [macOS](#chat-on-macos), and for Claude Code and Pi on [native Windows](#chat-on-windows). OpenCode opens on none of them yet, and Grok Build and Oh My Pi not on Windows. Those Agents offer the terminal alone.
+- Chat opens for Claude Code, Codex, Grok Build, [Pi and Oh My Pi](#pi-and-oh-my-pi) on Linux and [macOS](#chat-on-macos), and for Claude Code, Grok Build, Pi and Oh My Pi on [native Windows](#chat-on-windows). OpenCode opens on none of them yet, and its Agents offer the terminal alone.
 - After you choose a conversation for a Pi without the [Host Helper](#host-helper) or an OpenCode without its plugin, an in-process `/new` changes nothing Heeler can see. Chat keeps showing the old conversation until a message you send from Chat fails to appear in it, and only then drops your choice. A program that reports no status never ends a turn, so that check waits until it does.
 - Right after `/new` in Codex, before any message there, nothing on the Host has changed. Chat keeps showing the old conversation, and a Send goes to the new one. After `/new`, keep to the terminal until you have exited Codex and run `codex resume --no-daemon`.
 - After `/new` or a pick in OpenCode's list, Chat keeps showing the conversation OpenCode started with until you start OpenCode again, unless OpenCode has [Heeler's plugin](#let-chat-follow-opencode), which Chat follows. Its terminal title is what says the screen moved, so a Send sends nothing and says why. With OpenCode's `terminal.title` setting off, or while Chat's conversation has no title of its own, the title can't tell, and a Send goes to whatever conversation is on screen. Only OpenCode's home screen still holds it.

@@ -179,13 +179,13 @@ struct HerdrCoreWindowsChatTests {
 
     // MARK: Which programs
 
-    /// Claude Code and Pi passed their owner's check on Windows; Grok Build and Oh My
-    /// Pi did not, and Codex and OpenCode are no candidates.
+    /// Every candidate passed its owner's check on Windows, and Codex and OpenCode are
+    /// no candidates.
     @Test func theShippedListOffersOnlyWhatPassedOnWindows() {
         let shipped = HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows, coreKernel: "Windows")
         #expect(shipped.chat)
         for program in ChatProgram.allCases {
-            #expect(shipped.offersChat(for: program) == [.claude, .pi].contains(program), "\(program)")
+            #expect(shipped.offersChat(for: program) == Self.candidates.contains(program), "\(program)")
         }
     }
 
@@ -241,19 +241,16 @@ struct HerdrCoreWindowsChatTests {
         passed.finish()
     }
 
-    /// The list the app ships, through the store: Claude Code and Pi open, Grok Build and
-    /// Oh My Pi offer the terminal alone.
+    /// The list the app ships, through the store: each candidate opens.
     @Test(arguments: [
-        ("claude", "claude-code", "claude.exe", true), ("pi", "pi", "node.exe", true),
-        ("grok", "grok-build", "grok.exe", false), ("omp", "omp", "omp.exe", false),
+        ("claude", "claude-code", "claude.exe"), ("pi", "pi", "node.exe"),
+        ("grok", "grok-build", "grok.exe"), ("omp", "omp", "omp.exe"),
     ])
-    func theShippedListOpensWhatPassedOnWindows(program: String, app: String, image: String, opens: Bool)
-        async throws
-    {
+    func theShippedListOpensWhatPassedOnWindows(program: String, app: String, image: String) async throws {
         let fixture = try await Fixture(
             terminal: Self.record(program: program, app: app), image: image, offered: nil)
         #expect(fixture.agent.agent.kind == program)
-        #expect(fixture.console.chatProgram(for: fixture.agent) == (opens ? ChatProgram(rawValue: program) : nil))
+        #expect(fixture.console.chatProgram(for: fixture.agent) == ChatProgram(rawValue: program))
         fixture.finish()
     }
 
