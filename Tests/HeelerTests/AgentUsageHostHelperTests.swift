@@ -342,6 +342,7 @@ struct AgentUsageHostHelperTests {
         await console.agentUsageStore(for: host.id).pullToRefresh()
 
         let entry = console.agentUsageEntry(for: host)
+        #expect(entry.readsOverHostHelper)
         #expect(AgentUsageScope(readings: [entry.reading]).excluded.map(\.reason) == ["Waiting for the core"])
         let sentence = "The Host Helper has not reached this session's core yet. Start the core if it is not running."
         let labels = try await pageLabels(entry, expecting: sentence)

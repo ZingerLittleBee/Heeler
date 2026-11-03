@@ -100,6 +100,31 @@ struct AgentUsageLimitsTests {
         }
     }
 
+    /// A herdr-core Host has no plugin, and the Mac run read the plugin's sentence
+    /// there (#574).
+    @Test func aCoreHostsDisclosureNamesTheHostHelper() async throws {
+        let name = "claude-helper-disclosure-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let report = try ClaudeUsageFixture.report()
+        let store = AgentUsageStore(hostID: UUID(), defaults: defaults) { _, _ in .available(report) }
+        await store.refresh()
+        let content = AnyView(AgentUsageLimitsSheet(entries: [
+            AgentUsageHostEntry(
+                id: UUID(), name: "Studio Mac", store: store, isConnected: true, readsOverHostHelper: true),
+        ]))
+        let controller = UIHostingController(rootView: content.environment(\.locale, Locale(identifier: "en_US")))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 844), rootViewController: controller)
+        defer { window.isHidden = true }
+        try await Task.sleep(for: .milliseconds(150))
+        controller.view.layoutIfNeeded()
+        let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: "\n")
+        #expect(labels.contains("The Host Helper asks Claude Code on this computer for your plan limits."))
+        #expect(labels.contains("Neither the Helper nor Heeler handles your sign-in."))
+        #expect(!labels.contains("plugin"))
+    }
+
     @Test func turningClaudeLimitsOnReadsThemInsteadOfSayingTheyAreOff() async throws {
         let name = "claude-reading-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: name))
