@@ -1118,7 +1118,7 @@ struct AgentTerminalView: View {
                 surfaceSwitch: chatSurfaceSwitch,
                 title: AgentDetailHeaderTitle(agent),
                 statusTitle: connectionRecoveryTitle,
-                trailingInBar: headerSharesBar)
+                controlPlacement: headerControlPlacement)
             .environment(
                 \.colorScheme,
                 terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
@@ -1170,15 +1170,21 @@ struct AgentTerminalView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar(.visible, for: .navigationBar)
         .detailHeaderBarControls(
-            headerSharesBar,
+            headerControlPlacement,
             palette: themePalette,
             isExpanded: $isBackHeaderExpanded,
             actions: backHeaderActions,
             surfaceSwitch: chatSurfaceSwitch,
             onBack: showsBackButton && usesVerticalToolbar ? { dismiss() } : nil)
+        .prioritizesVerticalDetailToolbar()
     }
 
     private var headerSharesBar: Bool { AgentDetailHeader.levelsWithBar(barRow) }
+
+    private var headerControlPlacement: AgentDetailHeaderControlPlacement {
+        AgentDetailHeaderControlPlacement(
+            headerSharesBar: headerSharesBar, usesVerticalToolbar: usesVerticalToolbar)
+    }
 
     private var terminalTopInset: CGFloat {
         max(statusBarInset, topChromeInset, windowControlsHeight)

@@ -268,7 +268,7 @@ struct ShellTerminalView: View {
                             Task { await goBack() }
                         } : nil,
                     actions: backHeaderActions,
-                    trailingInBar: headerSharesBar)
+                    controlPlacement: headerControlPlacement)
                 .environment(
                     \.colorScheme,
                     terminal.themes.selection(for: colorScheme)
@@ -320,13 +320,15 @@ struct ShellTerminalView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar(.visible, for: .navigationBar)
             .detailHeaderBarControls(
-                headerSharesBar, palette: themePalette, isExpanded: $isBackHeaderExpanded,
+                headerControlPlacement, palette: themePalette,
+                isExpanded: $isBackHeaderExpanded,
                 actions: backHeaderActions,
                 onBack: showsBackButton && usesVerticalToolbar
                     ? {
                         guard !isReturning else { return }
                         Task { await goBack() }
                     } : nil)
+            .prioritizesVerticalDetailToolbar()
             .sheet(
                 isPresented: Binding(
                     get: { store.pendingPaste != nil },
@@ -397,6 +399,11 @@ struct ShellTerminalView: View {
     }
 
     private var headerSharesBar: Bool { AgentDetailHeader.levelsWithBar(barRow) }
+
+    private var headerControlPlacement: AgentDetailHeaderControlPlacement {
+        AgentDetailHeaderControlPlacement(
+            headerSharesBar: headerSharesBar, usesVerticalToolbar: usesVerticalToolbar)
+    }
 
     /// A terminal pushed over the Console list goes back the system's way,
     /// following the finger. One opened from an Agent stands in for that
