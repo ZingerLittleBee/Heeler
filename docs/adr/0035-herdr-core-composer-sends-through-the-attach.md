@@ -209,10 +209,12 @@ confirm or refine these points with test clients, not the app.
   the same to the end: a finished record takes the Agent off the list. Under `-NoExit`
   a Working status can outlast the Agent, so Stop's key can reach the prompt, where Esc
   or Ctrl+C runs nothing.
-- Nothing on record shows an Agent's `CSI ?2004h` reaching the viewer through the
-  pseudo console: no kept attach stream holds a program that sets it. If it does not
-  arrive, the mode gate refuses every Send on Windows, which leaves the draft and writes
-  nothing. The owner's Windows check settles this.
+- An Agent's `CSI ?2004h` reaches the viewer through the pseudo console: on
+  2026-11-03, on the owner's Windows machine with herdr-core 0.1.16, Claude Code
+  2.1.286 and 2.1.316 each took a Send with no notice that the program was not
+  accepting a paste ([observation](../agents/herdr-compatibility.md)). Had it not
+  arrived, the mode gate would refuse every Send on Windows, leaving the draft and
+  writing nothing; other programs' modes there are not on record.
 - On the one Windows machine tried, across an SSH exec with an elevated token and
   an elevated core, the mode stayed off at the prompt of Windows PowerShell 5.1
   (PSReadLine 2.0.0): with the first paint kept, `CSI ?2004h` appeared nowhere in

@@ -229,7 +229,9 @@ with test clients, not the app.
   (`HerdrCoreAgentRule.readPowerShell`). Under Heeler's form the Terminal finished when its program ended, so
   its Pane closes as on Unix. `choice.exe` finished it with its own code, 2.
   Claude Code stopped by two Ctrl+C keys finished it with 1, not separated from
-  PowerShell's own code, and no Agent has exited normally there. Under the
+  PowerShell's own code. On 2026-11-03 Claude Code 2.1.286's `/exit` finished it
+  with 0 and its trust dialog's "No, exit" with 1, both reason `exited`, so a
+  program's own code comes through when it exits normally. Under the
   desktop's `-NoExit` form an Agent's exit leaves the foreground's pid, name and
   arguments unchanged and sends no new foreground event, so recognition from the foreground keeps
   reading such a Terminal as that Agent until its shell exits, and "a shell in

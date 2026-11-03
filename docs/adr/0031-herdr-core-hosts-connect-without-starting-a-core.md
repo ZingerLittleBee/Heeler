@@ -195,8 +195,13 @@ confirm or refine these points with test clients, not the app.
   `cmd /d /c "echo <marker>&& <installer path> connect --session <s>"` keeps it
   a direct child on the exec's own stdio, the form whose bytes were measured,
   and what PowerShell does to the stream was not. The marker drops whatever the
-  account's shell printed first. This exact line, the marker and the PowerShell
-  probe have not run through sshd; #587 leaves that to its owner acceptance.
+  account's shell printed first. On 2026-11-03 this line, the marker and the
+  PowerShell probe ran through sshd on the owner's Windows machine (herdr-core
+  0.1.16), under `cmd.exe` and with Windows PowerShell 5.1 and PowerShell 7.6.7 as
+  `DefaultShell`, and carried an attach whole, a profile's printed line included
+  ([observation](../agents/herdr-compatibility.md)). A profile that runs
+  `Set-Location` moves the exec's start folder, so the probe's `.\` path misses
+  the installed core and the Host reads not installed.
 - `cmd` and a PowerShell `DefaultShell` parse that line differently and no
   quoting survives both, so a Windows session name is limited to the characters
   hc itself advises (letters, digits, `-`, `_`, `.`, no leading `-`), stricter
