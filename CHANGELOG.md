@@ -60,8 +60,8 @@ Entries reference the pull request that made the change.
 ### Changed
 
 - Keep the answers on Claude Code's and Codex's folder trust cards in view
-  below the folder, with trusting as the main button and leaving under it
-  in red, instead of below the card's fold on a phone.
+  below the folder, as a row of capsules with leaving on the left and
+  trusting on the right, instead of below the card's fold on a phone.
 - Give an Agent's title on a By Workspace card one size and color, whether
   the Agent shares its checkout or stands alone under the checkout's title,
   and set a repository's checkout titles apart from it in a quieter color.

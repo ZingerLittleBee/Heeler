@@ -369,22 +369,35 @@ private struct BlockedDialogCard: View {
         }
     }
 
-    /// A trust screen's two short answers make one decision, so they read
-    /// as a sheet's do: trusting as the main button, leaving below it as
-    /// red text, whatever order the program lists them in. Keys follow
+    /// A trust screen's two short answers make one decision, so they share
+    /// a row of capsules whatever order the program lists them in: leaving
+    /// on the left at its label's width, trusting on the right filling the
+    /// rest. Labels too long for one row stack, trusting first. Keys follow
     /// ordinals, not this order. Pinned below the text by `pinsChoices`.
     private var trustChoices: some View {
-        let options = dialog.options.filter { $0.role == .trust } + dialog.options.filter { $0.role != .trust }
-        return VStack(spacing: 4) {
-            ForEach(options, id: \.ordinal) { @Sendable option in
-                MainActorContent {
-                    BlockedTrustChoice(label: option.label, leads: option.role == .trust) {
-                        perform(.choose(ordinal: option.ordinal))
-                    }
-                }
+        let trusting = dialog.options.filter { $0.role == .trust }
+        let leaving = dialog.options.filter { $0.role != .trust }
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                trustChoiceButtons(leaving + trusting, stacked: false)
+            }
+            VStack(spacing: 8) {
+                trustChoiceButtons(trusting + leaving, stacked: true)
             }
         }
         .disabled(dialog.answersHeldByDraft)
+    }
+
+    private func trustChoiceButtons(_ options: [DialogOption], stacked: Bool) -> some View {
+        ForEach(options, id: \.ordinal) { @Sendable option in
+            MainActorContent {
+                BlockedTrustChoice(
+                    label: option.label, leads: option.role == .trust, fills: stacked || option.role == .trust
+                ) {
+                    perform(.choose(ordinal: option.ordinal))
+                }
+            }
+        }
     }
 
     private func emphasis(of option: DialogOption, leads: Bool) -> BlockedOptionEmphasis {
@@ -650,31 +663,44 @@ private extension BlockedDialog {
     }
 }
 
-/// A trust answer: the lead filled like the card's other main buttons, the
-/// way out as red text the row's width.
+/// A trust answer as a capsule, in Liquid Glass where the system has it:
+/// trusting prominent, the way out red on clear glass.
 private struct BlockedTrustChoice: View {
     let label: String
     let leads: Bool
+    /// Whether the capsule takes the row's spare width.
+    let fills: Bool
     let action: () -> Void
 
     var body: some View {
-        if leads {
-            Button(action: action) {
-                Text(verbatim: label)
-                    .font(.body.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity, minHeight: 28)
+        Button(role: leads ? nil : .destructive, action: action) {
+            Text(verbatim: label)
+                .font(leads ? .body.weight(.semibold) : .body)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: fills ? .infinity : nil)
+                .padding(.horizontal, fills ? 0 : 6)
+        }
+        .modifier(BlockedTrustChoiceStyle(leads: leads))
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+    }
+}
+
+private struct BlockedTrustChoiceStyle: ViewModifier {
+    let leads: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            if leads {
+                content.buttonStyle(.glassProminent)
+            } else {
+                // Glass ignores the destructive role's color.
+                content.buttonStyle(.glass).tint(.red)
             }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.roundedRectangle(radius: 12))
+        } else if leads {
+            content.buttonStyle(.borderedProminent)
         } else {
-            Button(role: .destructive, action: action) {
-                Text(verbatim: label)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity, minHeight: 36)
-                    .contentShape(.rect)
-            }
-            .buttonStyle(.borderless)
+            content.buttonStyle(.bordered)
         }
     }
 }

@@ -95,6 +95,8 @@ struct BlockedCardViewTests {
         await store.refresh()
         let layouts: [(CGSize, DynamicTypeSize, CGFloat)] = [
             (CGSize(width: Self.phoneWidth, height: 812), .large, 220),
+            // Too narrow for one row: the answers stack.
+            (CGSize(width: Self.phoneWidth, height: 812), .accessibility3, 400),
             (CGSize(width: 944, height: 280), .accessibility3, 400),
         ]
         for (size, textSize, budget) in layouts {
