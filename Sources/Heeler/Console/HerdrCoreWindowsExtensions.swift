@@ -112,7 +112,7 @@ struct HerdrCoreWindowsExtensionSheet: View {
         case .ready(let folders):
             folderSection(
                 folders,
-                footer: "Expect Pi and Oh My Pi to load what is in these folders for every session on this Host, though that has not been seen on Windows yet. The extension only tells Chat which conversation a session is in.")
+                footer: "Expect Pi and Oh My Pi to load what is in these folders for every session on this Host. The extension only tells Chat which conversation a session is in.")
             Section {
                 Button("Add to \(folders.count) Folders") {
                     Task { await flow.confirm() }
