@@ -727,7 +727,7 @@ struct ShellTerminalInputRow: View {
                     .frame(
                         width: InputChromeLayout.shellAccessoryButtonWidth,
                         height: InputChromeLayout.shortcutRowHeight)
-                shortcutRowToggle
+                more
             }
             .frame(width: Self.sideWidth, alignment: .leading)
 
@@ -744,9 +744,11 @@ struct ShellTerminalInputRow: View {
 
             // A line break without submitting (Shift+Enter) lives on the Keys
             // keyboard and the optional shortcut row; this row keeps only
-            // what Text mode cannot do itself.
+            // what Text mode cannot do itself. The shortcut row toggle sits
+            // beside the keyboard toggle: both change what the keyboard area
+            // shows.
             HStack(spacing: 0) {
-                more
+                shortcutRowToggle
                 keyboardToggle
             }
             .frame(width: Self.sideWidth, alignment: .trailing)
