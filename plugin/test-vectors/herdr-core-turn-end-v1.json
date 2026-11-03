@@ -4,7 +4,7 @@
   "provisionalReason": "Built from the versioned compatibility observations and ADR 0033's cases; recordings of real harnesses on hc-lab may add cases.",
   "coreVersion": "0.1.13",
   "coreCommit": "88fe4e752debdc6ff6689eaa153d7f95819835a4",
-  "doneReporters": ["claude", "codex", "pi", "omp"],
+  "doneReporters": ["claude", "codex", "pi", "omp", "grok"],
   "cases": [
     {
       "name": "Claude Code working to done ends a turn, and working again takes Done away",
@@ -60,10 +60,12 @@
       ]
     },
     {
-      "name": "Grok Build working to done would end a turn too",
-      "source": "ADR 0033, a turn's end: Working to Done for every program",
+      "name": "Grok Build working to done ends a turn",
+      "source": "hc-lab (Debian 13), Grok Build 1.0.70 signed in, started `grok -s <uuid>` by New Agent, herdr-core 0.1.13, 2026-11-03, one Terminal, live (core events seq 117-131 of the signed-in run's codex-nd capture): idle at its start, working with msg \"Responding\", done (\"Turn complete in 1.3s.\"), then the turn event at 1",
       "kind": "grok",
       "steps": [
+        { "event": "snapshot", "turn": 0, "state": "idle", "reported": true, "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
         { "event": "status", "state": "working", "ends": false, "done": false },
         { "event": "status", "state": "done", "ends": true, "done": true },
         { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": true }
@@ -101,13 +103,13 @@
       ]
     },
     {
-      "name": "Grok Build working to idle ends its turn",
-      "source": "ADR 0033, a turn's end: Working to Idle unless the program is known to report done",
+      "name": "Grok Build working to idle ends no turn",
+      "source": "ADR 0033, a turn's end: Grok Build is known to report done (Grok Build 1.0.70 reported done at each turn's end on hc-lab, 2026-11-03)",
       "kind": "grok",
       "steps": [
         { "event": "status", "state": "working", "ends": false, "done": false },
-        { "event": "status", "state": "idle", "ends": true, "done": true },
-        { "event": "turn", "turn": 1, "state": "idle", "ends": false, "done": true }
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": "idle", "ends": false, "done": false }
       ]
     },
     {

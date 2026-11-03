@@ -15,7 +15,7 @@ struct HerdrCoreTurnState: Codable, Equatable, Sendable {
     }
 
     /// Agent kinds known to report done, whose idle therefore ends no turn.
-    static let doneReporterKinds: Set<String> = ["claude", "codex", "pi", "omp"]
+    static let doneReporterKinds: Set<String> = ["claude", "codex", "pi", "omp", "grok"]
 
     /// The last report this device knows of.
     private(set) var last: Mark?

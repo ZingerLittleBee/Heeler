@@ -35,7 +35,7 @@
     },
     {
       "path": "core/turn-state.js",
-      "sha256": "cd0d5caa0a5051661a4a4d6b34d421f68efd5dd38f67d1b6c8bb00e5c71c3eca"
+      "sha256": "ba9e9ce839a9d3a9be338c5153b3c2a57e9381dd8afead5b88a3240dd4f6fc99"
     },
     {
       "path": "extensions/extension-folders.js",
