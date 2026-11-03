@@ -1351,8 +1351,9 @@ struct PiChatTests {
     /// under profile `hwa` on Windows (`ch-70-ompterm2.png`, where every Send
     /// from Chat said it found no input box), under profile `work` and with
     /// no profile on Linux. Before the first message the prompt carries ⇧⇥
-    /// and the italic hint. The runs recorded text only, so the band's fill
-    /// is the one 18.10.4 drew.
+    /// and the italic hint. The runs recorded text and a screenshot, no ANSI:
+    /// the band's fill is 18.10.4's, which the screenshot's band shows too
+    /// (RGB 14, 18, 22 behind the segments).
     @Test(arguments: [
         (" π-hwa > ◒ GPT-5.6 Luna (ZenMux) > 📁 …s/chat2/omp ", "─4%─┃200K─"),
         (" π-work > ⬢ Fake > 📁 ~/work ▶", "──────────6%──────────┃──────128K─"),
