@@ -66,7 +66,7 @@ Heeler 会记住你的选择，之后打开的 Agent 都会先显示 Chat，直�
 - **Agent 工作时**，Claude Code、Codex、Pi 和 Grok Build 会立即接收你的消息；Oh My Pi 和 OpenCode 要等这一轮结束。
 - **停止。** Agent 工作时，如果输入框是空的，**Send** 会变成 **Stop**。轻点它可以中断这一轮。
 - **命令。** 输入 `/` 可以选择 `/compact` 或 Agent 的技能。其他命令（例如 `/model`）请在终端中运行。
-- **图片和文件。** 轻点 **+**，再选择 **Add Image** 或 **Add File**。Heeler 会把它上传到 Host，并把路径加到你的消息里。
+- **图片和文件。** 轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Paste Image 使用剪贴板里的图片，直接把图片粘贴到消息里也一样。Heeler 会把它上传到 Host，并把路径加到你的消息里。
 
 如果 Chat 不能发送某条消息（例如以 `!` 开头的消息），它会保留你的文字，并在输入框下方说明原因。
 

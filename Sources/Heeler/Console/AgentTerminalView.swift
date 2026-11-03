@@ -938,6 +938,7 @@ struct AgentTerminalView: View {
             canBegin: session.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
             addImage: { isSelectingPhoto = true },
+            pasteImage: { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) },
             addFile: { isSelectingFile = true },
             showAttachLinks: { attachLinksOrigin = .composerChip },
             openTerminal: canOpenTerminal
