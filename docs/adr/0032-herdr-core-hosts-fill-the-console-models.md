@@ -279,7 +279,10 @@ with test clients, not the app.
   program restarts. An Agent detail open on either stays on screen, showing
   restarting or ended, though the Terminal has stopped being an Agent. The app
   keeps that departed Agent for the detail alone, so no list shows it, and a
-  reconnect forgets it. Its Chat stays too, on the conversation it showed, says
+  reconnect forgets it. The core clears the program's status just before it
+  says the program was lost or finished, which takes an Agent whose `app`
+  Heeler does not know off the list first, so that Agent departs too when the
+  same program's end follows; one whose shell took the Terminal back did not. Its Chat stays too, on the conversation it showed, says
   what became of the Agent, and follows the next Agent back at that address.
 - Close ends a Terminal for good with `terminal.kill`, one for each Terminal
   it takes, and never sends one twice: a kill the core did not answer reads as
