@@ -281,8 +281,12 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   minutes before it exited, so it could not bind this way.
 - A Pi that Heeler started and that has no extension binds from the launch hint
   only while it is still the Terminal's own process, so a launcher in front of
-  it needs the extension. That binding names the launch's session, so it is the
-  in-process `/new` case above.
+  it needs the extension. That binding names the launch's session, which an
+  in-process `/new` leaves with nothing on the Host saying so, so the send guard
+  watches it as it does a pick: a message missing once a turn ends drops the
+  hint, clears the label, and the device does not adopt that id again. On
+  hc-lab on 2026-11-03 a Send from Chat after `/new` read **Sent. It hasn't
+  appeared in the conversation yet.** six minutes later, with no guard.
 - A `pi` wrapper script around a real `pi` reads as the Agent, being the nearest of
   that name, and its child might be a subagent, so nothing tells them apart. Such a
   Terminal says can't tell, and a label from the child stays, since it would never be

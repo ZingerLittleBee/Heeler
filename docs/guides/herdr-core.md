@@ -279,7 +279,7 @@ The plugin does nothing outside a herdr-core Terminal. It only tells the core wh
 Chat for Pi and Oh My Pi is on for Linux and [macOS](#chat-on-macos) core Hosts, where each passed its check. On [native Windows](#chat-on-windows), Pi's is on and Oh My Pi's stays off. On Linux and macOS it works like this:
 
 - **With the [Host Helper](#host-helper)**, Heeler's extension names the conversation, however the Agent started: New Agent, a Template, `hc run` or a shell. Chat follows `/new` at its next check. An Agent already running when you install the Helper needs starting again.
-- **Pi without the Helper** opens only if Heeler started it, from the session id Heeler gave it. Chat waits for the first message, and keeps showing that conversation after a `/new`, which it cannot notice. Sending still reaches the session the program shows.
+- **Pi without the Helper** opens only if Heeler started it, from the session id Heeler gave it. Chat waits for the first message, and keeps showing that conversation after a `/new`, which it cannot notice. Sending still reaches the session the program shows, and once a message you send from Chat fails to appear in the conversation after the turn ends, Chat says it can't tell and lets you choose.
 - **Oh My Pi without the Helper** opens once the first message makes the process hold its session file, and follows `/new` the same way. Until then its conversation has no proof yet, so Chat says it can't tell. If it still says so after the first reply, tap **Check Again**: on Linux it did not check again by itself.
 
 Anything else reads **Can't Tell the Conversation**, and the message points you to installing the Helper from the Host's details. Heeler never picks the newest file or goes by the directory.

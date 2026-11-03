@@ -8,7 +8,9 @@ enum ChatSessionEvidence: Equatable, Sendable {
     /// file has no root.
     case bound(sessionID: String, transcriptRoot: String?, directory: String?)
     /// The user confirmed this conversation from candidates, with nothing on the
-    /// Host showing it, so a send guard watches it.
+    /// Host showing it, so a send guard watches it. A Pi Heeler started with
+    /// `--session-id` reads the same: its launch hint keeps that id after `/new`
+    /// moves Pi on in the same process, which nothing on the Host shows either.
     case picked(sessionID: String, transcriptRoot: String?)
     /// A pick's label stands, and this check could not see the process to hold it
     /// against. Nothing says the pick is wrong, so a Chat following it keeps the

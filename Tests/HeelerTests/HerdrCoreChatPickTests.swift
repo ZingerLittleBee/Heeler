@@ -857,6 +857,63 @@ struct HerdrCoreChatPickTests {
         rig.store.setHosts([])
     }
 
+    private static let piLaunched = "019a0000-0000-7000-8000-00000000a001"
+
+    private static func piFile(_ session: String) -> String {
+        "\(home)/.pi/agent/sessions/--work-app--/2026-11-01T07-19-26-219Z_\(session).jsonl"
+    }
+
+    private static func piTranscript(session: String) throws -> Data {
+        let data = try ChatFixture.data("pi/provider-retry.jsonl")
+        let recorded = try #require(PiTranscriptLocator.sessionID(inHead: data))
+        return Data(String(decoding: data, as: UTF8.self).replacingOccurrences(of: recorded, with: session).utf8)
+    }
+
+    /// hc-lab P11: a Pi Heeler started, then `/new` in the terminal. Its launch hint
+    /// still names the first conversation and nothing on the Host says Pi left it, so
+    /// a Send from Chat stayed "Sent. It hasn't appeared…". The guard watches that
+    /// binding as it does a pick: a message missing once the turn ends drops the hint
+    /// here and on the core.
+    @Test func aPiLaunchHintTheTurnDisprovesIsDropped() async throws {
+        var record = Self.record(
+            .pi, argv: ["pi", "--session-id", Self.piLaunched],
+            labels: [HerdrCoreLaunch.sessionHintLabel: Self.piLaunched])
+        // Heeler's launch runs Pi as the Terminal's own process.
+        if case .object(var fields) = record {
+            fields["pid"] = .number(Double(Self.pid))
+            record = .object(fields)
+        }
+        let rig = Rig(host: host, program: .pi, record: record, steppedByTheTest: true)
+        await rig.files.write(try Self.piTranscript(session: Self.piLaunched), at: Self.piFile(Self.piLaunched))
+        try await rig.start([Self.process(.pi, argv: ["pi", "--session-id", Self.piLaunched])])
+        let chat = try rig.chat()
+        try await rig.stepUntil(chat, "Chat to follow it") {
+            chat.conversation.phase == .following(path: Self.piFile(Self.piLaunched))
+                && !chat.conversation.transcript.entries.isEmpty
+        }
+
+        Self.send("this goes to the conversation /new started", on: chat)
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+
+        rig.expectLeftConversation(chat)
+        func hintWrites() async -> [String] {
+            await rig.transport.labelWrites.compactMap {
+                $0["labels"]?[HerdrCoreLaunch.sessionHintLabel]?.stringValue
+            }
+        }
+        for _ in 0..<500 where await hintWrites().isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await hintWrites() == [""])
+        // Whatever the record still holds, the hint is not taken again.
+        await rig.nudgeCheck()
+        await chat.step()
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     /// The message the guard judged stays as an echo only until its clock runs out,
     /// and then nothing holds a timeline up over the reason.
     @Test func aMissingMessageLeavesNoTimelineOnceItsEchoEnds() async throws {
@@ -1036,12 +1093,12 @@ struct HerdrCoreChatPickTests {
         let picked = ChatSessionEvidence.picked(sessionID: Self.grokHeld, transcriptRoot: "\(Self.home)/.grok")
         #expect(try await core.checkChatSession(paneID: "t1", program: .grok) == picked)
 
-        core.dropChatPick(paneID: "t1", scope: "an earlier core")
+        core.dropChatPick(paneID: "t1", scope: "an earlier core", program: .grok)
 
         #expect(try await core.checkChatSession(paneID: "t1", program: .grok) == picked)
         #expect(await rig.pickWrites.isEmpty)
 
-        core.dropChatPick(paneID: "t1", scope: core.chatCacheScope)
+        core.dropChatPick(paneID: "t1", scope: core.chatCacheScope, program: .grok)
 
         #expect(try await core.checkChatSession(paneID: "t1", program: .grok) == .unavailable(.cannotTellSession(.grok)))
         try await Self.waitForClear(rig)
