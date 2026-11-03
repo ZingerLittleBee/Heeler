@@ -207,12 +207,19 @@ that Heeler can read from outside the process.
     file that refuses the undo doesn't keep the Helper: the Helper goes, and
     the edit stays listed with its Undo. So does a conflict on a file in the
     folder, once the entry is already out. A failed connection stops the removal
-    as any step's does. A running OpenCode can still make a file name a folder
-    that isn't there: on hc-lab on 2026-11-03, with Host Helper 0.5.3's edits
-    for OpenCode 2.2.2 and 1.19.5 applied and both releases running, 2.2.2
-    migrated `tui.json` into a new `cli.json` during the removal, and that file named the deleted folder until it was deleted by hand
-    ([herdr compatibility](../agents/herdr-compatibility.md)). Nothing in the
-    removal prevents that yet.
+    as any step's does. A running OpenCode 2.x makes a `cli.json` out of
+    `tui.json` whenever it finds none: on hc-lab on 2026-11-03, with Host
+    Helper 0.5.3's edits for OpenCode 2.2.2 and 1.19.5 applied and both
+    releases running, 2.2.2 did so during the removal, after `cli.json` went
+    and before `tui.json` did, and the new file named the deleted folder until
+    it was deleted by hand ([herdr compatibility](../agents/herdr-compatibility.md)).
+    So the removal undoes a `cli.json` edit last, when no `tui.json` of
+    Heeler's names the folder any more, and whichever undo takes the folder
+    first takes the entry out of every other `tui.json`, `tui.jsonc` and
+    `cli.json` beside it, as an undo of a changed file does. That covers a
+    `cli.json` OpenCode made after an Undo of the 2.x edit alone, which keeps
+    the rest of what OpenCode wrote. A file written between that read and the
+    folder's removal can still name it.
   - Grok Build, offered where a Grok Build Agent shows no status because its
     automatic check left Program Status off: `[ui.notifications]
     program_status = "on"` in its configuration. The value is a quoted string:

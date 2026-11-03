@@ -59,10 +59,16 @@ final class HarnessConfigEditStore {
     /// sources bring, and no other (ADR 0033). One the file no longer lets Heeler undo
     /// stays listed with its own Undo, and comes back as words for the user, since a
     /// configuration file is no reason to keep a Helper the user wants gone. A lost
-    /// connection throws, and stops the removal as any step's does.
+    /// connection throws, and stops the removal as any step's does. A `cli.json`
+    /// goes last, so a running OpenCode 2.x has no `tui.json` of Heeler's to make
+    /// a new one from.
     func undoEditsGoingWithTheHelper(on hostID: Host.ID, over services: any HostServices) async throws -> String? {
         var refusal: String?
-        for edit in edits(on: hostID) where edit.editID == OpenCodePluginEdit.id {
+        let openCode = edits(on: hostID).filter { $0.editID == OpenCodePluginEdit.id }
+        let ordered =
+            openCode.filter { !OpenCodePluginEdit.isMigratedInto($0.path) }
+            + openCode.filter { OpenCodePluginEdit.isMigratedInto($0.path) }
+        for edit in ordered {
             do {
                 try await HarnessConfigEditor(
                     files: services, foldersInUse: foldersInUse(on: hostID, besides: edit.id)

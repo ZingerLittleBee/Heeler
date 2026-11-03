@@ -21,6 +21,7 @@ actor InMemoryHostFiles: HostServices {
     private var folderFailure: (any Error)?
     private(set) var replaceCalls = 0
     private var beforeNextReplace: (@Sendable (InMemoryHostFiles) async -> Void)?
+    private var afterEveryChange: (@Sendable (InMemoryHostFiles) async -> Void)?
     private var failure: (any Error)?
     private var lostReplaceAnswer: (any Error)?
     private var losesConnectionWithAnswer = false
@@ -45,6 +46,12 @@ actor InMemoryHostFiles: HostServices {
         beforeReplaceOf[path] = change
     }
 
+    /// Runs after every change made through the seam, as a program on the Host
+    /// that rewrites its files when it sees one would.
+    func whileRunning(_ program: @escaping @Sendable (InMemoryHostFiles) async -> Void) {
+        afterEveryChange = program
+    }
+
     /// Every folder step fails with this before it does anything.
     func setFolderFailure(_ failure: (any Error)?) {
         folderFailure = failure
@@ -63,6 +70,7 @@ actor InMemoryHostFiles: HostServices {
         guard folders.contains(path), !files.keys.contains(where: { $0.hasPrefix("\(path)/") }) else { return }
         folders.remove(path)
         journal.append("rmdir \(path)")
+        await afterEveryChange?(self)
     }
 
     /// Runs once, after a read and before the next replace compares.
@@ -110,6 +118,7 @@ actor InMemoryHostFiles: HostServices {
         files[path] = contents
         writes.append(Write(path: path, contents: contents))
         journal.append("\(contents == nil ? "remove" : "write") \(path)")
+        await afterEveryChange?(self)
         if let lost = lostReplaceAnswer {
             lostReplaceAnswer = nil
             if losesConnectionWithAnswer { failure = lost }

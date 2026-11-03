@@ -516,6 +516,82 @@ struct HerdrCoreOpenCodeEditTests {
         #expect(await files.files["\(Self.folder)/tui.js"] == Data("// tui.js\n".utf8))
     }
 
+    // MARK: A running OpenCode 2.x
+
+    /// What OpenCode 2.2.2 did while it ran on hc-lab (2026-11-03): finding no
+    /// `cli.json`, it made one out of `tui.json`, whose `plugin` list became
+    /// `plugins` ("migrated cli config", role=cli).
+    private nonisolated static func openCode2Running(_ files: InMemoryHostFiles) async {
+        guard await files.files[cliConfig] == nil, let tui = await files.files[tuiConfig],
+            let object = try? JSONSerialization.jsonObject(with: tui) as? [String: Any]
+        else { return }
+        var cli: [String: Any] = ["$schema": "https://opencode.ai/v2/cli.json"]
+        cli["plugins"] = object["plugin"]
+        guard
+            let migrated = try? JSONSerialization.data(
+                withJSONObject: cli, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        else { return }
+        await files.set(cliConfig, migrated)
+    }
+
+    /// The 2.x edit, then the 1.x one once the Agent is 1.19.5, each in a file of
+    /// its own that Heeler created, as on hc-lab.
+    private func appliedForBothReleases() async throws -> (ConsoleStore, InMemoryHostFiles, Host) {
+        let files = InMemoryHostFiles()
+        let (store, transport, host) = try await started(version: "2.2.2", files: files)
+        let newer = flow(store, host)
+        _ = try await reviewed(newer)
+        await newer.accept()
+        await transport.setDiscovery(programs: ["opencode"], openCodeVersion: "1.19.5")
+        let older = flow(store, host)
+        _ = try await reviewed(older)
+        await older.accept()
+        #expect(store.harnessEdits.edits(on: host.id).map(\.path) == [Self.cliConfig, Self.tuiConfig])
+        return (store, files, host)
+    }
+
+    private static func namesTheFolder(_ file: Data?) -> Bool {
+        guard let file else { return false }
+        return [ConfigForm.tuiConfig, ConfigForm.cliConfig].contains {
+            HarnessConfigJSONCList.removing(
+                HarnessConfigListEntry(key: $0.listKey, value: OpenCodePluginEdit.entryValue), from: file) != .notThere
+        }
+    }
+
+    private typealias ConfigForm = OpenCodePluginEdit.ConfigForm
+
+    @Test func removingTheHelperUnderARunningOpenCode2LeavesNoFileNamingTheFolder() async throws {
+        let (store, files, host) = try await appliedForBothReleases()
+        defer { store.setHosts([]) }
+        await files.whileRunning { await Self.openCode2Running($0) }
+
+        let left = try await store.harnessEdits.undoEditsGoingWithTheHelper(on: host.id, over: files)
+
+        #expect(left == nil)
+        #expect(await files.files.isEmpty)
+        #expect(await files.folders.isEmpty)
+    }
+
+    /// Undoing `cli.json` alone lets OpenCode make a new one naming the folder,
+    /// which the folder's last undo then takes the entry out of.
+    @Test func undoingEachEditUnderARunningOpenCode2LeavesNoFileNamingTheFolder() async throws {
+        let (store, files, host) = try await appliedForBothReleases()
+        defer { store.setHosts([]) }
+        await files.whileRunning { await Self.openCode2Running($0) }
+
+        try await listed(store, host, path: Self.cliConfig).undo()
+        #expect(Self.namesTheFolder(await files.files[Self.cliConfig]))
+        #expect(await files.folders.contains(Self.folder))
+
+        let last = try listed(store, host, path: Self.tuiConfig)
+        await last.undo()
+
+        #expect(last.applied == nil)
+        #expect(await files.files.keys.sorted() == [Self.cliConfig])
+        #expect(!Self.namesTheFolder(await files.files[Self.cliConfig]))
+        #expect(await files.folders.isEmpty)
+    }
+
     // MARK: A folder file that changes under an undo
 
     /// The entry has gone by then, so "nothing was written" would be false, and
@@ -534,7 +610,7 @@ struct HerdrCoreOpenCodeEditTests {
 
         #expect(
             flow.phase == .failed(
-                "Heeler took its change out of the file, but a file in its folder changed while Heeler was removing it, so the folder stays. Undo again to finish."))
+                "Heeler took its change out of the file, but a file changed while Heeler was removing its folder, so the folder stays. Undo again to finish."))
         #expect(!flow.canForget)
         #expect(await files.files[Self.tuiConfig] == Self.original)
         #expect(flow.applied != nil)
@@ -562,7 +638,7 @@ struct HerdrCoreOpenCodeEditTests {
 
         #expect(
             left
-                == "The Host Helper is gone. Heeler took its change out of the file, but a file in its folder changed while Heeler was removing it, so the folder stays. Undo again to finish.")
+                == "The Host Helper is gone. Heeler took its change out of the file, but a file changed while Heeler was removing its folder, so the folder stays. Undo again to finish.")
         #expect(store.harnessEdits.edits(on: host.id).count == 1)
     }
 

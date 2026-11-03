@@ -189,6 +189,19 @@ struct HarnessConfigAppliedEdit: Codable, Equatable, Identifiable, Sendable {
     var listEntry: HarnessConfigListEntry? = nil
 
     var shownLines: [HarnessConfigShownLine] { HarnessConfigShownLine.lines(of: hunk) }
+
+    /// Files besides its own that the harness itself may come to name its folder
+    /// in, which its folder's last undo cleans before the folder goes.
+    var otherListings: [HarnessConfigListing] {
+        guard editID == OpenCodePluginEdit.id, let folder else { return [] }
+        return OpenCodePluginEdit.listings(of: folder.path).filter { $0.path != path }
+    }
+}
+
+/// A file whose list may name a folder of Heeler's, and the entry that would.
+struct HarnessConfigListing: Equatable, Sendable {
+    let path: String
+    let entry: HarnessConfigListEntry
 }
 
 enum HarnessConfigProposal: Equatable, Sendable {
@@ -207,7 +220,8 @@ enum HarnessConfigEditError: Error, Equatable, LocalizedError {
     case unresolvedPath
     case agentEnvironmentUnavailable
     case openCodeVersionUnknown
-    /// The file no longer names the folder by then, so this can't say nothing was written.
+    /// The file no longer names the folder by then, so this can't say nothing was written:
+    /// a file in the folder, or another that names it, changed while it was going.
     case folderChangedDuringUndo
 
     var errorDescription: String? {
@@ -227,7 +241,7 @@ enum HarnessConfigEditError: Error, Equatable, LocalizedError {
         case .openCodeVersionUnknown:
             "Heeler couldn't read which OpenCode this Host runs, so it can't tell which file to change. Nothing was written. \(OpenCodePluginEdit.manualInstructionForEitherRelease)"
         case .folderChangedDuringUndo:
-            "Heeler took its change out of the file, but a file in its folder changed while Heeler was removing it, so the folder stays. Undo again to finish."
+            "Heeler took its change out of the file, but a file changed while Heeler was removing its folder, so the folder stays. Undo again to finish."
         }
     }
 }
@@ -355,9 +369,33 @@ struct HarnessConfigEditor: Sendable {
         }
         guard let folder = applied.folder, !foldersInUse.contains(folder.path) else { return }
         do {
+            for listing in applied.otherListings { try await takeOut(listing) }
             try await remove(folder)
         } catch HostTextFileError.changedSinceRead, HarnessConfigEditError.tooLarge, HarnessConfigEditError.unreadable {
             throw HarnessConfigEditError.folderChangedDuringUndo
+        }
+    }
+
+    /// The entry, from a file that holds it and that this can read with
+    /// certainty. A harness that writes the file between the read and the write
+    /// gets one more read; past that the folder stays, so nothing names one that
+    /// isn't there.
+    private func takeOut(_ listing: HarnessConfigListing) async throws {
+        for attempt in 1...2 {
+            let current: Data?
+            do {
+                current = try await read(listing.path)
+            } catch HarnessConfigEditError.tooLarge, HarnessConfigEditError.unreadable {
+                return
+            }
+            guard let current, case .changed(let after) = HarnessConfigJSONCList.removing(listing.entry, from: current)
+            else { return }
+            do {
+                try await files.replaceHostTextFile(path: listing.path, expected: current, contents: after)
+                return
+            } catch HostTextFileError.changedSinceRead where attempt == 1 {
+                continue
+            }
         }
     }
 
