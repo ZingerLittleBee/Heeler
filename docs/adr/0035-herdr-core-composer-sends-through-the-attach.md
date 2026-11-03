@@ -46,7 +46,8 @@ the shell that stays behind, and a retry can deliver it twice.
   that text unrun. It writes the byte 0x03 whatever keyboard mode is set,
   because an Agent that died leaves its flags behind and a shell reads no
   `CSI 99 ; 5 u`. The Composer keeps the draft and says whether the text may
-  still be in the terminal.
+  still be in the terminal: gone under bash, fish, dash and zsh, each seen
+  dropping it, and may remain under any other shell.
 - Nothing long waits ahead of Enter on the link: a Staged file's `terminal.put` on
   native Windows, one frame of up to about 11 MiB, goes on a link of its own
   (ADR 0032), since what is queued on a link cannot be withdrawn, and Enter behind it

@@ -107,11 +107,11 @@ final class HerdrCoreComposerSend {
     static let stepTimeout: Duration = .seconds(5)
     static let liveAttachTimeout: Duration = .seconds(5)
 
-    /// The shells checked to drop a pending paste on one Ctrl+C. zsh waits on the owner's
-    /// check, nobody has tried `pwsh`, and Windows PowerShell was seen doing it with one
-    /// PSReadLine on one machine (herdr compatibility), so they say what any other shell
-    /// says: if the promise were wrong, the text would still be at the prompt.
-    private static let shellsDroppingPasteOnInterrupt: Set<String> = ["bash", "fish", "dash"]
+    /// The shells checked to drop a pending paste on one Ctrl+C: bash, fish and dash,
+    /// and zsh 5.9 on hc-lab (herdr compatibility). Nobody has tried `pwsh`, and Windows
+    /// PowerShell was seen doing it with one PSReadLine on one machine, so they say what
+    /// any other shell says: if the promise were wrong, the text would still be at the prompt.
+    private static let shellsDroppingPasteOnInterrupt: Set<String> = ["bash", "fish", "dash", "zsh"]
 
     private let address: String
     private let projection: @MainActor () -> HerdrCoreConsoleProjection?

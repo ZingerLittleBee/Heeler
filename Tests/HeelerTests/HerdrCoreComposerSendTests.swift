@@ -17,9 +17,9 @@ struct HerdrCoreComposerSendTests {
     /// The win32 input mode's sequence: every first paint ends with it.
     private static let paintEnd = "\u{1B}[?9001l"
 
-    private static func foreground(pid: Int = 40, argv: [String] = ["claude"]) -> JSONValue {
+    private static func foreground(pid: Int = 40, argv: [String] = ["claude"], name: String? = nil) -> JSONValue {
         .object([
-            "pid": .number(Double(pid)), "name": .string(argv.first ?? ""),
+            "pid": .number(Double(pid)), "name": .string(name ?? argv.first ?? ""),
             "argv": .array(argv.map(JSONValue.string)), "cwd": .string("/work/app"),
         ])
     }
@@ -379,8 +379,8 @@ struct HerdrCoreComposerSendTests {
     }
 
     /// A shell's foreground event ends the wait at once, with no read and no
-    /// delay. Fish and dash read as bash does.
-    @Test(arguments: ["fish", "dash"])
+    /// delay. Fish, dash and zsh read as bash does.
+    @Test(arguments: ["fish", "dash", "zsh", "-zsh"])
     func aShellsEventStopsTheSendAtOnce(shell: String) async throws {
         let fixture = try await Fixture()
         let attached = try await fixture.live()
@@ -397,9 +397,35 @@ struct HerdrCoreComposerSendTests {
         await fixture.finish()
     }
 
-    /// Until the owner's account check: the conservative part is the notice, not
-    /// skipping Ctrl+C. Any shell nobody has observed says the same.
-    @Test(arguments: ["zsh", "-zsh", "ksh", "sh"])
+    /// hc-lab's zsh 5.9 race (2026-11-02): the stand-in under the desktop wrapper
+    /// exited on the paste opener, the wrapper's pid went on as `zsh -i`, and one
+    /// Ctrl+C left zsh's line empty with nothing run.
+    @Test func theRecordedZshRaceGetsOneCtrlCAndTheTextIsGone() async throws {
+        let wrapper = [
+            "/usr/bin/zsh", "-ic", "\"$@\"; exec \"$0\" -i", "/usr/bin/zsh",
+            "/home/hla1102zc/hla/bin/exits/claude", "/home/hla1102zc/hla/race-zsh.log",
+        ]
+        let standIn = Self.foreground(
+            pid: 146310, argv: ["/bin/sh", "/home/hla1102zc/hla/bin/exits/claude", "/home/hla1102zc/hla/race-zsh.log"],
+            name: "claude")
+        let fixture = try await Fixture(terminal: Self.record(foreground: standIn, argv: wrapper))
+        let attached = try await fixture.live()
+        let sending = await fixture.sendPastingHello(on: attached)
+        try await fixture.deliverForeground(Self.foreground(pid: 146306, argv: ["/usr/bin/zsh", "-i"], name: "zsh"))
+
+        guard case .refused(.notSubmitted(let reason)) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("no longer in the terminal"))
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.ctrlC])
+        #expect(fixture.composer.draft == "hello")
+        await fixture.finish()
+    }
+
+    /// The conservative part is the notice, not skipping Ctrl+C. Any shell
+    /// nobody has observed says the same.
+    @Test(arguments: ["ksh", "sh"])
     func underAShellNotObservedToDropThePasteTheNoticeSaysItMayRemain(shell: String) async throws {
         let fixture = try await Fixture()
         let attached = try await fixture.live()

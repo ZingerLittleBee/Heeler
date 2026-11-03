@@ -624,7 +624,7 @@ struct HerdrCoreChatTypingTests {
 
     @Test(arguments: [
         ("bash", "no longer in the terminal"), ("fish", "no longer in the terminal"),
-        ("zsh", "may still be in the terminal"), ("nu", "may still be in the terminal"),
+        ("zsh", "no longer in the terminal"), ("nu", "may still be in the terminal"),
     ])
     func aShellInTheForegroundGetsOneCtrlC(shell: String, says copy: String) async throws {
         let fixture = try await Fixture()

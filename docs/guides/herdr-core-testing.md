@@ -284,12 +284,13 @@ Use a throwaway account whose login shell is zsh. It needs a real account becaus
 zsh does with a paste it is still reading depends on its line editor. Run the exit race
 above, and look at the prompt line after Send's Ctrl+C.
 
-Until this is recorded, Send presses Ctrl+C under zsh and always says **may still be in
-the terminal**. The conservative part is that notice, never skipping the Ctrl+C. If zsh
-drops the text, add it to `shellsDroppingPasteOnInterrupt` in `HerdrCoreComposerSend`.
-If it keeps the text, amend [ADR 0035](../adr/0035-herdr-core-composer-sends-through-the-attach.md)
-so Send skips Ctrl+C under zsh while still saying so. Either way, record the result in
-[herdr compatibility](../agents/herdr-compatibility.md).
+zsh 5.9 (Debian 5.9-8+b24) dropped the text on hc-lab on 2026-11-02
+([herdr compatibility](../agents/herdr-compatibility.md)), so zsh is in
+`shellsDroppingPasteOnInterrupt` in `HerdrCoreComposerSend` and the notice says **no
+longer in the terminal**, as under bash. Rerun this for another zsh version. If one keeps
+the text, take zsh out of that list, so Send says **may still be in the terminal**, and
+amend [ADR 0035](../adr/0035-herdr-core-composer-sends-through-the-attach.md) if Send
+should skip the Ctrl+C there. Record the result in herdr compatibility either way.
 
 ## Chat evidence
 

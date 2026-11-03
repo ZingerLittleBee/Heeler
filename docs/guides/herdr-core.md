@@ -115,7 +115,7 @@ The submit goes out within two seconds of the paste or not at all, so a slow lin
 | --- | --- | --- |
 | **stayed in the Agent's input unsubmitted** | The Agent still holds the terminal, and the check took longer than two seconds | Finish it in the terminal, or clear it there before you send again |
 | **no longer in the terminal** | The Agent left and a shell took over. Send pressed Ctrl+C once, which made the shell drop the text unrun | Send again once the Agent is back |
-| **may still be in the terminal** | The Agent left and something else holds the terminal. Under a shell Send pressed Ctrl+C once, and what zsh or PowerShell does with that is not confirmed yet | Check the terminal before you press anything there |
+| **may still be in the terminal** | The Agent left and something else holds the terminal. Under a shell Send pressed Ctrl+C once, and only bash, fish, dash and zsh are counted on to drop the text for it, not PowerShell or any other | Check the terminal before you press anything there |
 | **not accepting a paste** | The program has bracketed paste off, so nothing was written | Send again when it is back at its input. On Windows, if this repeats at the Agent's own input, type it with Direct Input |
 | **keeps a shell open** | On Windows, this terminal's shell stays after its Agent exits, so Send cannot tell which would get your message. Nothing was written | Type it with Direct Input |
 
