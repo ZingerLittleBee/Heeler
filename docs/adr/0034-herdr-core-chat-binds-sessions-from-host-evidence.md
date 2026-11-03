@@ -181,9 +181,12 @@ never show or send into a conversation it has guessed.
 - When the core's own environment carries such leaked variables, the Host
   says what they break and that restarting the core from the user's own
   terminal fixes it. Heeler does not restart it. A Claude Code Agent started
-  with `CLAUDE_CODE_CHILD_SESSION` keeps neither a registry entry nor a
-  Transcript, and one with `CLAUDE_CODE_SKIP_PROMPT_HISTORY` keeps no
-  Transcript; Chat says so instead of waiting for a file. `HERDR_*` in a
+  with `CLAUDE_CODE_CHILD_SESSION=1` keeps neither a registry entry nor a
+  Transcript, and one with `CLAUDE_CODE_SKIP_PROMPT_HISTORY` keeps an entry and
+  no Transcript; Chat says so instead of waiting for a file. Claude Code reads
+  the first one's value: 2.1.316 ignored `made-up` and kept both, so with that
+  variable Chat says so only when no registry entry turned up, and binds by the
+  entry when one did (#579). `HERDR_*` in a
   herdr-core Terminal is never trusted.
 - An Agent with no Program Status shows Unknown and says which release
   reports one where that is known

@@ -36,7 +36,8 @@ struct HerdrCoreEnvironmentNotice: Equatable, Sendable {
     private static func breaks(_ name: String) -> String {
         switch name {
         case "CLAUDE_CODE_CHILD_SESSION":
-            "Claude Code keeps no session record and saves no conversation, so Chat has nothing to show."
+            // Claude Code 2.1.316 honored 1 and ignored a made-up value (#579).
+            "Set to 1, Claude Code keeps no session record and saves no conversation, so Chat has nothing to show."
         case "CLAUDE_CODE_SKIP_PROMPT_HISTORY":
             "Claude Code saves no conversation, so Chat has nothing to show."
         case "CLAUDECODE":
@@ -57,8 +58,11 @@ struct HerdrCoreEnvironmentNotice: Equatable, Sendable {
             "Programs here read as started from inside Oh My Pi, which can change what they report and record."
         case "PI_PROGRAM_STATUS":
             "Set to 0, it turns Pi's status off, so its Agents read Unknown."
-        default:
+        case "HERDR_PANE_ID":
             "Herdr's agent hooks report to the pane this names, not to the Terminal they run in."
+        default:
+            // Any other `HERDR_*` name, which may name no pane at all.
+            "Terminals here inherit it, so a program that reads Herdr's variables may act as if it runs inside Herdr."
         }
     }
 }

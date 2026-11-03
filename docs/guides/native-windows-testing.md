@@ -407,10 +407,11 @@ By the same source it updates itself and then the core, which can move herdr-cor
 the version under test.
 
 1. Stop the core. On the phone, add the machine with Session left blank or a
-   plain name. The form says to add the Device Key line to `~/.ssh/authorized_keys`.
-   For an account in the Administrators group, Windows OpenSSH reads
-   `%ProgramData%\ssh\administrators_authorized_keys` instead, with the access list
-   in [section 4](#4-test-device-key-authentication). Server Kind detection also runs
+   plain name. The form says to add the Device Key line to `~/.ssh/authorized_keys`,
+   or for an administrator account on Windows to
+   `C:\ProgramData\ssh\administrators_authorized_keys`, which Windows OpenSSH reads
+   instead for an account in the Administrators group, with the access list in
+   [section 4](#4-test-device-key-authentication). Server Kind detection also runs
    `herdr session list --json` there (by Heeler's source), so on a machine with a
    Herdr TUI server it reaches that server's sessions and reads Herdr TUI **Found**
    beside herdr-core. Confirm **herdr-core** with **Use herdr-core**. The Host reads
@@ -450,10 +451,11 @@ the version under test.
    subfolder of a repository. Its card takes the repository's folder name, and
    Worktrees stay off. Outside a repository it takes its directory's. This exercises
    Heeler's PowerShell checkout read through sshd.
-9. Edit the Host's Session to a name with a space. The form takes it without a
-   warning. After Save the Host reads **Can't Connect**, with a note that Heeler
-   cannot use that session name on native Windows, and Rename and Worktrees are
-   still not offered.
+9. Edit the Host's Session to a name with a space. Below the field the form says
+   Heeler cannot use that session name on native Windows, and Save stays off. A
+   Host the app has not yet found on Windows takes the name; after Save it reads
+   **Can't Connect** and **This session name can't be used**, with the same note
+   and one closing period, and Rename and Worktrees are still not offered.
 10. Install an agent the launch can find, with OpenCode too if you have it. New
     Agent lists what a Windows PowerShell session over SSH finds, and OpenCode's
     version reaches its launch (`-s ses_...` in the Terminal's argv on 2.1 or newer).
@@ -636,15 +638,14 @@ Code's `.key` files.
     the printed text), so write and remove a test profile through an exec such as
     `powershell -EncodedCommand`, not scp. Expected: the link's frames arrive whole,
     a killed link comes back, and the Host does not read
-    **herdr-core is not installed**. **Known defect**: the probe finds the core by
-    `.\AppData\Local\Programs\herdr-core\herdr-core.exe`, relative to the folder an
-    exec starts in, so under a profile that calls `Set-Location` the Host reads
-    **Can't Connect** and **herdr-core is not installed**, with install wording and no
-    retry seen in the 26 seconds it was watched, though the core is installed. On the one
-    machine run (herdr-core 0.1.16, OpenSSH_for_Windows_9.5p2), Windows PowerShell
-    5.1.26100.9711 and PowerShell 7.6.7 with a printing profile passed, and
-    PowerShell 7.6.7 with `Set-Location` added failed that way. Record the result in
-    `docs/agents/herdr-compatibility.md`.
+    **herdr-core is not installed**. The probe finds the core under
+    `$env:USERPROFILE`, and the link runs `cd /d %USERPROFILE%` before `connect`, so
+    a profile that calls `Set-Location` no longer moves either off the core. On the
+    one machine run (herdr-core 0.1.16, OpenSSH_for_Windows_9.5p2), Windows
+    PowerShell 5.1.26100.9711 and PowerShell 7.6.7 with a printing profile passed,
+    and PowerShell 7.6.7 with `Set-Location` added read **herdr-core is not
+    installed** with an older build, whose probe used a path relative to the folder
+    an exec starts in. Record the result in `docs/agents/herdr-compatibility.md`.
 36. Tear down. Some effects of these steps land in the account's own files and
     outlast the run:
     - Claude Code started under your account runs its 30-day cleanup and rotates
@@ -678,9 +679,10 @@ Code's `.key` files.
       Terminal join the PSReadLine history. Remove both.
     - `%LOCALAPPDATA%\herdr-core\<session>` and its `core.lock` stay after
       `server stop`. Delete them only for a session you started for the test.
-    - Remove Host leaves the Host's trusted host key and its recent-workspace entry
-      in the app's preferences. Remove your test key's line from the authorized-keys
-      file, restore the file's access list, and check that the key is refused.
+    - Remove Host also forgets the Host's trusted host key and its recent-workspace
+      entry in the app's preferences. Remove your test key's line from the
+      authorized-keys file, restore the file's access list, and check that the key
+      is refused.
     - In helper scripts, never name a function after a built-in alias, which wins
       over it: `H` is `Get-History`, and a function named `H` made one cleanup skip
       its guard. Variable names ignore case, so `$r` is `$R`.
@@ -774,9 +776,10 @@ unless it says otherwise.
     by the export's hash, and the safety task never ran.
   - Seen beside the steps: after Microsoft Edit quit across a rotation, PowerShell's
     screen held overlapping rows in Heeler and in the core's own `terminal.read`, so
-    not from Heeler's renderer. Step 9's refusal reads "This feature is unavailable on
-    the Host" and ends in a doubled period. Core Environment explains `HERDR_CHECK`
-    with `HERDR_PANE_ID`'s meaning. Grok Build 1.0.70's first start stops at a
+    not from Heeler's renderer. Step 9's refusal read "This feature is unavailable on
+    the Host", ended in a doubled period and came only after Save, and Core
+    Environment explained `HERDR_CHECK` with `HERDR_PANE_ID`'s meaning (all changed
+    since; not run again). Grok Build 1.0.70's first start stops at a
     "Help improve Grok" opt-in prompt, and Oh My Pi 18.13.3's at a setup wizard.
   - Not run: a blank Session (`default`).
 - [#588](https://github.com/ZingerLittleBee/Heeler/issues/588), steps 10 to 15, second

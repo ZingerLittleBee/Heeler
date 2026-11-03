@@ -1663,7 +1663,8 @@ final class ConsoleStore {
         let store = agentUsageStore(for: host.id)
         return AgentUsageHostEntry(
             id: host.id, name: host.displayName, store: store,
-            isConnected: usageHasConnection(host, state: store.state))
+            isConnected: usageHasConnection(host, state: store.state),
+            readsOverHostHelper: host.serverKind == .herdrCore)
     }
 
     /// Whether a Host's Usage has a connection to answer over. A Herdr TUI Host

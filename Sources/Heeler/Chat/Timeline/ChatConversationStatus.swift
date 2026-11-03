@@ -187,7 +187,7 @@ extension ChatTranscriptOffVariable {
     func explanation(coreCarriesIt: Bool) -> String {
         let effect =
             switch self {
-            case .childSession: "keeps neither a session record nor a transcript"
+            case .childSession: "has kept no session record and saves no transcript"
             case .skipPromptHistory: "keeps no transcript"
             }
         let fix =

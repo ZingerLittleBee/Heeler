@@ -671,9 +671,17 @@ struct ConsoleStoreTests {
             console.hostStatuses[host.id] == .connected
         }
         try await ceremony.register(host: host, deviceToken: token, over: transport)
+        // Every platform's acceptance cleanup found these left after Remove Host,
+        // and an empty Live Activity list written for a Host never opted in.
+        let knownHosts = InMemoryKnownHostsStore()
+        let trust = HostKeyTrust.hostKey(host.id)
+        await knownHosts.setFingerprint(
+            HostKeyFingerprint(publicKeyBlob: Data("key".utf8)), host: trust.host, port: trust.port)
+        let recents = RecentWorkspaceStore(defaults: defaults)
+        recents.remember("w1", for: host.id)
         let dependencies = HostRemovalDependencies.app(
             console: console, notificationPreferences: preferences,
-            liveActivities: liveActivities)
+            liveActivities: liveActivities, knownHosts: knownHosts, recentWorkspaces: recents)
         let removal = HostRemovalStore(store: hostStore)
 
         removal.requestRemoval([host.id], dependencies: dependencies)
@@ -688,6 +696,9 @@ struct ConsoleStoreTests {
         let file = try NotificationRegistrationFile.decode(
             await transport.notificationRegistration)
         #expect(file.devices.isEmpty)
+        #expect(await knownHosts.fingerprints(host: trust.host, port: trust.port).isEmpty)
+        #expect(recents.workspaceID(for: host.id) == nil)
+        #expect(defaults.object(forKey: "live-activity.enabled-hosts") == nil)
 
         // What the app model's catalog observer does next.
         console.setHosts(hostStore.hosts)

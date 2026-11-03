@@ -42,6 +42,8 @@ struct HostOnboardingDependencies: Sendable {
     /// Add Host's detection found a native Windows machine behind this Host, which
     /// its first connection may never reach to say.
     var noteWindowsCore: @MainActor @Sendable (Host.ID) -> Void = { _ in }
+    /// The kernel a herdr-core Host's locator last found, nil before any has.
+    var coreKernel: @MainActor @Sendable (Host.ID) -> String? = { _ in nil }
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,

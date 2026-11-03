@@ -7,6 +7,8 @@ struct AgentUsageHostEntry: Identifiable {
     let name: String
     let store: AgentUsageStore
     let isConnected: Bool
+    /// A herdr-core Host, whose Host Helper reads Usage in place of the plugin.
+    var readsOverHostHelper = false
 
     var reading: AgentUsageScope.HostReading {
         .init(id: id, name: name, state: store.state, refreshFailure: store.refreshFailure,

@@ -37,6 +37,9 @@ enum HerdrCoreLocator {
         /// Absolute. Nil when neither place holds a program that identifies
         /// itself as the core, which reads as not installed.
         let executablePath: String?
+        /// Absolute. A native Windows Host's installer path holds a file that did
+        /// not say what it is: the core is there, and this read could not ask it.
+        var unansweredExecutablePath: String? = nil
         /// As `--version` reports it. Advisory: a core other than the one this
         /// build was tested with still connects if `hello` passes.
         let version: String?
@@ -141,7 +144,9 @@ enum HerdrCoreLocator {
         for line in lines {
             let parts = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false)
             let key = String(parts[0])
-            guard ["kernel", "executable", "version", "default", "lock", "socket-file", "shell", "home"].contains(key),
+            guard
+                ["kernel", "executable", "present", "version", "default", "lock", "socket-file", "shell", "home"]
+                    .contains(key),
                 fields[key] == nil
             else { throw MalformedOutput() }
             fields[key] = parts.count == 2 ? String(parts[1]) : ""
@@ -151,16 +156,21 @@ enum HerdrCoreLocator {
             let socketFile = fields["socket-file"], ["0", "1"].contains(socketFile)
         else { throw MalformedOutput() }
         let executable = fields["executable"]
+        let present = fields["present"]
         let isAbsolute =
             executable.map {
                 kernel == windowsKernel ? RemoteHostPath.isWindowsAbsolute($0) : $0.hasPrefix("/")
             } ?? true
-        guard isAbsolute, (executable == nil) == (fields["version"] == nil) else {
+        let presentIsAbsolute = present.map { kernel == windowsKernel && RemoteHostPath.isWindowsAbsolute($0) } ?? true
+        guard isAbsolute, presentIsAbsolute, executable == nil || present == nil,
+            (executable == nil) == (fields["version"] == nil)
+        else {
             throw MalformedOutput()
         }
         return Location(
             kernel: kernel,
             executablePath: executable,
+            unansweredExecutablePath: present,
             version: fields["version"],
             socketPath: fields["lock"] ?? defaultPath,
             socketSource: fields["lock"] == nil ? .sessionDefault : .lock,

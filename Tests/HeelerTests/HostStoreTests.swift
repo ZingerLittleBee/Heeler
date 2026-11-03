@@ -1194,6 +1194,82 @@ struct HostStoreTests {
         #expect(try store.password(for: host) == nil)
     }
 
+    /// Every platform's cleanup found these left behind (#587).
+    @Test func confirmedRemovalForgetsTheHostsRecordsOnceItLeftTheCatalog() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        let host = Host.fixture(name: "Workbox")
+        try store.add(host)
+        let removal = HostRemovalStore(store: store)
+        let log = RemovedHostLog()
+        let dependencies = HostRemovalDependencies(
+            didRemoveHost: { id in log.entries.append((id, false)) },
+            forgetHostRecords: { id in log.entries.append((id, store.hosts.contains { $0.id == id })) })
+
+        removal.requestRemoval([host.id], dependencies: dependencies)
+        let request = try #require(removal.pendingRequest)
+        #expect(request.message.contains("its trusted host key"))
+        await removal.confirmRemoval(request, dependencies: dependencies)
+
+        #expect(log.entries.map(\.id) == [host.id, host.id])
+        #expect(log.entries.last?.wasStillInCatalog == false)
+    }
+
+    /// Only the removed Host's own trust goes. An endpoint's, as a Jump Host
+    /// shared with another Host keeps, stays, and so does another Host's.
+    @Test func forgettingAHostDropsOnlyItsOwnTrustAndRecentWorkspace() async throws {
+        let suiteName = "hm-known-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let knownHosts = try #require(UserDefaultsKnownHostsStore(suiteName: suiteName))
+        let removed = UUID()
+        let other = UUID()
+        let key = HostKeyFingerprint(publicKeyBlob: Data("key".utf8))
+        for id in [removed, other] {
+            let trust = HostKeyTrust.hostKey(id)
+            await knownHosts.setFingerprint(key, host: trust.host, port: trust.port)
+        }
+        await knownHosts.setFingerprint(key, host: "jump.example", port: 22)
+        let recents = RecentWorkspaceStore(defaults: defaults)
+        recents.remember("w1", for: removed)
+        recents.remember("w2", for: other)
+
+        await knownHosts.forgetHost(removed)
+        recents.forget(removed)
+
+        let removedTrust = HostKeyTrust.hostKey(removed)
+        let otherTrust = HostKeyTrust.hostKey(other)
+        #expect(await knownHosts.fingerprints(host: removedTrust.host, port: removedTrust.port).isEmpty)
+        #expect(await knownHosts.fingerprints(host: otherTrust.host, port: otherTrust.port) == [key])
+        #expect(await knownHosts.fingerprints(host: "jump.example", port: 22) == [key])
+        #expect(recents.workspaceID(for: removed) == nil)
+        #expect(recents.workspaceID(for: other) == "w2")
+
+        await knownHosts.forgetHost(other)
+        await knownHosts.forgetHost(UUID())
+        recents.forget(other)
+        #expect(await knownHosts.fingerprints(host: "jump.example", port: 22) == [key])
+        #expect(defaults.object(forKey: "recent-workspace-by-host") == nil)
+    }
+
+    /// Removing a Host that never opted in wrote an empty list (#587).
+    @Test func turningOffAHostThatWasNeverOnWritesNothing() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let preferences = LiveActivityPreferences(defaults: defaults)
+        let host = UUID()
+
+        preferences.setEnabled(false, for: host)
+        #expect(defaults.object(forKey: "live-activity.enabled-hosts") == nil)
+
+        preferences.setEnabled(true, for: host)
+        #expect(defaults.stringArray(forKey: "live-activity.enabled-hosts") == [host.uuidString])
+        preferences.setEnabled(false, for: host)
+        #expect(defaults.object(forKey: "live-activity.enabled-hosts") == nil)
+        #expect(!LiveActivityPreferences(defaults: defaults).isEnabled(for: host))
+    }
+
     @Test func removalRequestRequiresExplicitConfirmation() async throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }

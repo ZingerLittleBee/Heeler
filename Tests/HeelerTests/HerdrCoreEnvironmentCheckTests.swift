@@ -297,15 +297,21 @@ struct HerdrCoreEnvironmentNoticeTests {
     @Test func eachVariableSaysWhatItBreaks() throws {
         let notice = try #require(
             HerdrCoreEnvironmentNotice(names: [
-                "TMUX", "CLAUDE_CODE_CHILD_SESSION", "HERDR_PANE_ID", "HERDR_ENV", "PI_PROGRAM_STATUS",
+                "TMUX", "CLAUDE_CODE_CHILD_SESSION", "HERDR_PANE_ID", "HERDR_ENV", "HERDR_CHECK",
+                "PI_PROGRAM_STATUS",
             ]))
-        let herdr = "Herdr's agent hooks report to the pane this names, not to the Terminal they run in."
+        // Only HERDR_PANE_ID names a pane. Windows saw HERDR_CHECK explained as if
+        // it did (#557).
+        let herdr = "Terminals here inherit it, so a program that reads Herdr's variables may act as if it runs inside Herdr."
         #expect(notice.variables == [
             .init(
                 name: "CLAUDE_CODE_CHILD_SESSION",
-                breaks: "Claude Code keeps no session record and saves no conversation, so Chat has nothing to show."),
+                breaks: "Set to 1, Claude Code keeps no session record and saves no conversation, so Chat has nothing to show."),
+            .init(name: "HERDR_CHECK", breaks: herdr),
             .init(name: "HERDR_ENV", breaks: herdr),
-            .init(name: "HERDR_PANE_ID", breaks: herdr),
+            .init(
+                name: "HERDR_PANE_ID",
+                breaks: "Herdr's agent hooks report to the pane this names, not to the Terminal they run in."),
             .init(
                 name: "TMUX",
                 breaks: "Grok Build turns its status off inside tmux, so its Agents read Unknown."),
@@ -316,7 +322,7 @@ struct HerdrCoreEnvironmentNoticeTests {
     }
 
     @Test func everyVariableTheCheckAsksForHasItsOwnReason() throws {
-        let names = HerdrCoreEnvironmentCheck.names + ["HERDR_ENV"]
+        let names = HerdrCoreEnvironmentCheck.names + ["HERDR_ENV", "HERDR_PANE_ID"]
         let notice = try #require(HerdrCoreEnvironmentNotice(names: Set(names)))
         #expect(notice.variables.count == names.count)
         #expect(Set(notice.variables.map(\.breaks)).count == names.count)

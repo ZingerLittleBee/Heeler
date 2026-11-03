@@ -312,7 +312,7 @@ struct AgentUsageLimitsPage: View {
             .padding(18)
             .background(cardBackground)
             Group {
-                if card.carriesToggle { ClaudeUsageLimitsNote() }
+                if card.carriesToggle { ClaudeUsageLimitsNote(readsOverHostHelper: entry.readsOverHostHelper) }
                 if case .limits(_, "codex", _, _) = card { CodexUsageLimitsNote() }
             }
             .padding(.horizontal, 18)

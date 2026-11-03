@@ -115,7 +115,10 @@ struct PreflightReportTests {
             Issue.record("connection check should fail")
             return
         }
-        #expect(keyHint.contains("authorized_keys"))
+        #expect(keyHint.contains("~/.ssh/authorized_keys"))
+        // Windows OpenSSH reads an administrator's keys from here alone.
+        #expect(keyHint.contains(#"C:\ProgramData\ssh\administrators_authorized_keys"#))
+        #expect(keyHint.contains("only Administrators and SYSTEM"))
         #expect(rsaHint.contains("RSA Key"))
         #expect(rsaHint.contains("SSH identities"))
         #expect(passwordHint.contains("password"))
@@ -266,6 +269,13 @@ struct PreflightReportTests {
         let report = PreflightReport.failure(check: .connection, hint: "no password saved")
         #expect(report[.connection] == .failed(hint: "no password saved"))
         #expect(report[.herdrInstalled] == .blocked)
+    }
+
+    @Test func aRefusedSessionNameFailsTheEnvironmentCheckWithOnePeriod() throws {
+        let refusal = try #require(HerdrCoreSessionName.windowsRefusal("my work"))
+        let report = PreflightReport.failure(.herdrCoreSessionNameRefused(reason: refusal), authMethod: .deviceKey)
+        let hint = "This session name can't be used: \(refusal) Edit the Host's session name."
+        #expect(report[.remoteEnvironment] == .failed(hint: hint))
     }
 
     /// That refusal is a whole sentence already.

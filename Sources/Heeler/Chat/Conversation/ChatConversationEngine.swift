@@ -58,7 +58,8 @@ enum ChatUnavailableReason: Equatable, Sendable {
 /// Variables that stop Claude Code keeping a Transcript when it inherits them,
 /// as from a core started inside a Claude Code session (ADR 0034).
 enum ChatTranscriptOffVariable: String, CaseIterable, Equatable, Sendable {
-    /// No registry entry and no Transcript.
+    /// No registry entry and no Transcript, for the values Claude Code honors.
+    /// Read only once no registry entry turned up.
     case childSession = "CLAUDE_CODE_CHILD_SESSION"
     /// No Transcript.
     case skipPromptHistory = "CLAUDE_CODE_SKIP_PROMPT_HISTORY"

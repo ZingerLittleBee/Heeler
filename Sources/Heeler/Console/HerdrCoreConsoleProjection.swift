@@ -1137,7 +1137,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
         defer { worktreesBeingRemoved.remove(identity) }
 
-        let git = try await worktreeGit()
+        let git = try await beforeEnding { try await worktreeGit() }
         if worktreeRemovals[identity] == nil {
             guard
                 let checkout = workspacesByID[identity.workspaceID]?.worktree
@@ -1145,8 +1145,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 identity.matches(checkout)
             else { throw WorktreeRemovalError.staleIdentity }
         }
-        let mainCheckout = try await git.verifiedMainCheckout(of: identity)
-        let risk = try await git.removalRisk(ofCheckout: identity.checkoutPath)
+        let mainCheckout = try await beforeEnding { try await git.verifiedMainCheckout(of: identity) }
+        let risk = try await beforeEnding { try await git.removalRisk(ofCheckout: identity.checkoutPath) }
         guard risk.isCovered(by: request.toldRisk) else {
             throw WorktreeRemovalError.changedSinceConfirmation
         }
@@ -1169,6 +1169,16 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         for agent in receipt.affectedAgentIDs { removedWorktreesByAgent[agent] = receipt }
         publish()
         return receipt
+    }
+
+    /// A link lost while the checkout is read has ended nothing yet, which is what
+    /// the user needs to hear rather than the transport's own words.
+    private func beforeEnding<T>(_ read: () async throws -> T) async throws -> T {
+        do {
+            return try await read()
+        } catch let error as TransportError where error.isRetryable && error != .cancelled {
+            throw WorktreeRemovalError.connectionFailedBeforeEnding
+        }
     }
 
     /// A Terminal that joined while the kills were on their way ends too. How

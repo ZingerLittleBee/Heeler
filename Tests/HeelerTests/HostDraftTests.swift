@@ -225,6 +225,26 @@ struct HostDraftTests {
         #expect(draft.makeHost() == nil)
     }
 
+    /// The core takes a space; a native Windows Host's `connect` line does not, so
+    /// the form says why before Save rather than the Host after it (#587).
+    @Test func aCoreHostFoundOnWindowsRefusesWhatItsConnectLineCannotCarry() throws {
+        let draft = coreDraft(sessionName: "hwa1103-main x")
+        #expect(draft.sessionNameRefusal() == nil)
+        #expect(draft.canSave(editing: nil))
+
+        let refusal = try #require(draft.sessionNameRefusal(onNativeWindows: true))
+        #expect(refusal == HerdrCoreSessionName.windowsRefusal("hwa1103-main x"))
+        #expect(!refusal.hasSuffix(".."))
+        #expect(!draft.canSave(editing: nil, onNativeWindows: true))
+        #expect(coreDraft(sessionName: "hwa1103-main").canSave(editing: nil, onNativeWindows: true))
+    }
+
+    @Test func aRefusalTheCoreMakesIsShownWhereverTheHostIs() {
+        let draft = coreDraft(sessionName: "a/b")
+        #expect(draft.sessionNameRefusal() == HerdrCoreSessionName.refusal("a/b"))
+        #expect(!draft.canSave(editing: nil))
+    }
+
     @Test func acceptsHerdrSessionNameCharacterSetAndLengthLimit() {
         var draft = HostDraft()
         draft.address = "host.example"

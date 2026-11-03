@@ -230,16 +230,26 @@ struct HerdrCoreSessionBinder: Sendable {
 
         let hints = await readHints(in: record, tree: tree, pid: pid, start: start)
 
-        if case .value(let names) = process.nonEmptyNames {
-            for variable in ChatTranscriptOffVariable.allCases where names.contains(variable.rawValue) {
-                return .unavailable(
-                    .transcriptOff(variable, coreCarriesIt: coreCarries.contains(variable.rawValue)))
+        var transcriptOff: ChatSessionEvidence?
+        if case .value(let names) = process.nonEmptyNames,
+            let variable = ChatTranscriptOffVariable.allCases.first(where: { names.contains($0.rawValue) })
+        {
+            transcriptOff = .unavailable(
+                .transcriptOff(variable, coreCarriesIt: coreCarries.contains(variable.rawValue)))
+            // Claude Code saves no Transcript whatever this one holds, and still
+            // keeps a registry entry, so an entry proves nothing.
+            if names.contains(ChatTranscriptOffVariable.skipPromptHistory.rawValue), let transcriptOff {
+                return transcriptOff
             }
         }
-        guard let configRoot = transcriptRoot(of: process) else { return cannotTell }
+        guard let configRoot = transcriptRoot(of: process) else { return transcriptOff ?? cannotTell }
+        // Claude Code honors `CLAUDE_CODE_CHILD_SESSION` only for some values and
+        // surroundings: 2.1.316 ignored `made-up` and kept both an entry and a
+        // Transcript (#579). Its own entry says which happened.
         if let entry = try await readEntry(under: configRoot, pid: pid, start: start) {
             return .bound(sessionID: entry.sessionID, transcriptRoot: configRoot, directory: entry.directory)
         }
+        if let transcriptOff { return transcriptOff }
         for hint in hints {
             if let session = ConversationReference.canonicalUUID(hint.session) {
                 return .bound(sessionID: session, transcriptRoot: configRoot, directory: nil)

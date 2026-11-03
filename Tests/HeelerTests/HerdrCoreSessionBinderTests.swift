@@ -422,15 +422,29 @@ struct HerdrCoreSessionBinderTests {
     func aVariableThatStopsTheTranscriptIsTheReason(_ name: String, _ variable: ChatTranscriptOffVariable) async throws {
         let rig = Rig()
         await rig.add(Self.claude(environment: [name: "1"]))
-        await rig.files.write(Self.registryEntry(), at: Self.registryPath())
+        // With `=1` Claude Code 2.1.316 kept no entry under the child-session marker,
+        // and one beside a skipped history, with no Transcript (#579).
+        if variable == .skipPromptHistory {
+            await rig.files.write(Self.registryEntry(), at: Self.registryPath())
+        }
 
         let alone = try await rig.binder.check(try Self.record())
         let shared = try await rig.binder.check(try Self.record(), coreCarries: [name])
 
         #expect(alone == .unavailable(.transcriptOff(variable, coreCarriesIt: false)))
         #expect(shared == .unavailable(.transcriptOff(variable, coreCarriesIt: true)))
-        // Nothing to wait for, so nothing to read.
-        #expect(await rig.reads.isEmpty)
+    }
+
+    /// Claude Code 2.1.316 ignored `CLAUDE_CODE_CHILD_SESSION=made-up` and kept its
+    /// entry and Transcript, so Chat follows them rather than saying they are off.
+    @Test func aChildSessionClaudeCodeIgnoredBindsByItsEntry() async throws {
+        let rig = Rig()
+        await rig.add(Self.claude(environment: ["CLAUDE_CODE_CHILD_SESSION": "made-up"]))
+        await rig.files.write(Self.registryEntry(), at: Self.registryPath())
+
+        let evidence = try await rig.binder.check(try Self.record(), coreCarries: ["CLAUDE_CODE_CHILD_SESSION"])
+
+        #expect(evidence == .bound(sessionID: Self.first, transcriptRoot: "\(Self.home)/.claude", directory: "/work/app"))
     }
 
     @Test func aBlankVariableReadsAsUnset() async throws {

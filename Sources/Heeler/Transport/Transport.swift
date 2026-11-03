@@ -1022,6 +1022,9 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The core's socket path does not fit this Host's limit, so nothing can
     /// connect to it however often the app tries.
     case herdrCoreSocketPathTooLong(path: String, limit: Int)
+    /// The core, or on native Windows the exec's `cmd` line, cannot take the Host's
+    /// session name, so nothing ran. `reason` is whole sentences saying why.
+    case herdrCoreSessionNameRefused(reason: String)
     /// Nothing was sent: the action came from one core's Terminals and the link
     /// now reaches another, or none yet. Addresses are only unique within a core,
     /// so it waits for that link's snapshot instead (ADR 0031).
@@ -1082,6 +1085,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .streamLocalOpenFailed, .gitTimedOut, .hostFileTimedOut, .hostFileUnreadable,
             .hostStoreUnreadable, .hostFeatureUnavailable, .coreMutationOutcomeUnknown,
             .herdrCoreNotInstalled, .herdrCoreUpdateRequired, .herdrCoreSocketPathTooLong,
+            .herdrCoreSessionNameRefused,
             .herdrCoreForwardingRefused, .herdrCoreTerminalGone,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,

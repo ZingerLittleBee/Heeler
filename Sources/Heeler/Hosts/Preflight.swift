@@ -77,7 +77,9 @@ struct PreflightReport: Equatable, Sendable {
             case .deviceKey:
                 hint =
                     "The Host rejected the device key. Copy this Host's key line "
-                    + "into ~/.ssh/authorized_keys on the Host, then run the checks again."
+                    + "into ~/.ssh/authorized_keys on the Host, or for an administrator account "
+                    + #"on Windows into C:\ProgramData\ssh\administrators_authorized_keys, "#
+                    + "which only Administrators and SYSTEM may access, then run the checks again."
             case .rsaKey:
                 hint =
                     "The Host rejected the RSA Key. Copy its public key from Edit Host and "
@@ -89,7 +91,9 @@ struct PreflightReport: Equatable, Sendable {
             check = .connection
             hint =
                 "The Device Key is corrupted. Edit this Host and choose Replace Device Key, "
-                + "then add the new public key to ~/.ssh/authorized_keys on every Device Key Host."
+                + "then add the new public key to ~/.ssh/authorized_keys on every Device Key Host, "
+                + #"or C:\ProgramData\ssh\administrators_authorized_keys for an administrator "#
+                + "account on Windows."
         case .rsaKeyCorrupt:
             check = .connection
             hint =
@@ -171,6 +175,9 @@ struct PreflightReport: Equatable, Sendable {
             hint = error.presentation.message
         case .herdrCoreNotInstalled:
             check = .herdrInstalled
+            hint = error.presentation.message
+        case .herdrCoreSessionNameRefused:
+            check = .remoteEnvironment
             hint = error.presentation.message
         case .herdrCoreNotRunning, .herdrCoreSocketPathTooLong, .herdrCoreForwardingRefused:
             check = .serverRunning

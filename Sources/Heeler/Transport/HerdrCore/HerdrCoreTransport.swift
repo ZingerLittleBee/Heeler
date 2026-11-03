@@ -368,16 +368,16 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
                 return try await connection.runWindowsCommand(
                     try HerdrCoreLocator.windowsProbe(session: session, nonce: nonce), for: .locator)
             } catch is HerdrCoreLocator.SessionRefused {
-                throw TransportError.hostFeatureUnavailable(
-                    feature: HerdrCoreSessionName.windowsRefusal(session) ?? "")
+                throw TransportError.herdrCoreSessionNameRefused(
+                    reason: HerdrCoreSessionName.windowsRefusal(session)
+                        ?? HerdrCoreSessionName.refusal(session) ?? "")
             }
         }
         do {
             return try await connection.runCoreLocator(
                 try HerdrCoreLocator.script(session: session, nonce: nonce))
         } catch is HerdrCoreLocator.SessionRefused {
-            throw TransportError.hostFeatureUnavailable(
-                feature: "herdr-core refuses the session name \"\(session)\"")
+            throw TransportError.herdrCoreSessionNameRefused(reason: HerdrCoreSessionName.refusal(session) ?? "")
         }
     }
 
@@ -406,9 +406,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     /// measured here and needs no agreement between the two machines' clocks.
     func startCore() async throws -> HerdrCoreStart.Outcome {
         let location = try await locate()
-        guard let executablePath = location.executablePath else {
-            throw TransportError.herdrCoreNotInstalled
-        }
+        let executablePath = try Self.installedExecutable(at: location)
         guard location.appMayStartCore else {
             throw TransportError.hostFeatureUnavailable(
                 feature: "Starting herdr-core on \(location.kernel)")
@@ -700,9 +698,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         } else {
             location = try await locate()
         }
-        guard let executablePath = location.executablePath else {
-            throw TransportError.herdrCoreNotInstalled
-        }
+        let executablePath = try Self.installedExecutable(at: location)
         guard location.fitsSocketPathLimit else {
             throw TransportError.herdrCoreSocketPathTooLong(
                 path: location.socketPath, limit: location.socketPathLimit)
@@ -746,6 +742,17 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             throw TransportError.herdrCoreNotRunning(
                 socketPath: location.socketPath, socketFilePresent: location.socketFilePresent)
         }
+    }
+
+    /// A core file that did not answer `--version` is still installed: something
+    /// in that exec, not the Host's setup, kept it from saying so, and a later read
+    /// may hear it. Only an empty installer path reads as not installed.
+    private static func installedExecutable(at location: HerdrCoreLocator.Location) throws -> String {
+        if let executablePath = location.executablePath { return executablePath }
+        if let unanswered = location.unansweredExecutablePath {
+            throw TransportError.channelFailed(detail: "herdr-core at \(unanswered) did not report its version")
+        }
+        throw TransportError.herdrCoreNotInstalled
     }
 
     private static func updateCommand(_ executablePath: String) -> String {

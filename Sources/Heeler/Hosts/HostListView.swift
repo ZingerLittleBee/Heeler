@@ -23,10 +23,10 @@ struct HostRemovalRequest: Equatable {
     var message: String {
         var sentences = [
             deletesNotificationKey
-                ? "This permanently deletes the Host configuration, any saved password, "
-                    + "and the Notification Key from the Keychain."
-                : "This permanently deletes the Host configuration and any saved password "
-                    + "from the Keychain."
+                ? "This permanently deletes the Host configuration, its trusted host key, any "
+                    + "saved password, and the Notification Key from the Keychain."
+                : "This permanently deletes the Host configuration, its trusted host key, and "
+                    + "any saved password from the Keychain."
         ]
         if leavesNotificationsBehind {
             sentences.append(
@@ -64,6 +64,10 @@ struct HostRemovalDependencies: Sendable {
     /// Runs once per Host after its catalog removal succeeds, so the Host
     /// is already gone from `HostStore.hosts`. Not called when it fails.
     var didRemoveHost: @MainActor @Sendable (Host.ID) -> Void = { _ in }
+    /// Forgets what this device kept about the Host outside the catalog: its
+    /// trusted host key and the Workspace New Agent last picked there. Runs
+    /// after `didRemoveHost`.
+    var forgetHostRecords: @MainActor @Sendable (Host.ID) async -> Void = { _ in }
 }
 
 extension HostRemovalDependencies {
@@ -71,12 +75,14 @@ extension HostRemovalDependencies {
     /// revoked over its live Console connection, its Notification Key goes
     /// through the preferences store's key store (volatile in demo mode),
     /// and once it leaves the catalog its Live Activity ends and its opt-in
-    /// goes with it.
+    /// goes with it, as do its trusted host key and recent Workspace.
     @MainActor
     static func app(
         console: ConsoleStore,
         notificationPreferences: NotificationPreferencesStore,
         liveActivities: HostLiveActivityCoordinator,
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        recentWorkspaces: RecentWorkspaceStore = RecentWorkspaceStore(),
         revokeTimeout: Duration = .seconds(6)
     ) -> HostRemovalDependencies {
         HostRemovalDependencies(
@@ -94,6 +100,10 @@ extension HostRemovalDependencies {
             },
             didRemoveHost: { [weak liveActivities] id in
                 liveActivities?.forgetHost(id)
+            },
+            forgetHostRecords: { id in
+                await knownHosts.forgetHost(id)
+                recentWorkspaces.forget(id)
             })
     }
 }
@@ -189,6 +199,7 @@ final class HostRemovalStore {
                 return
             }
             dependencies.didRemoveHost(host.id)
+            await dependencies.forgetHostRecords(host.id)
         }
     }
 
@@ -379,7 +390,6 @@ struct HostListView: View {
                         usage: usageStore?(id),
                         openUsage: openUsage.map { open in { open(id) } },
                         connectionStatus: connectionStatuses[id],
-                        standingFailure: standingFailures[id],
                         connectedRouteID: routeIDs[id],
                         syncIssue: syncIssues[id],
                         coreEnvironmentNotice: coreEnvironmentNotices[id],

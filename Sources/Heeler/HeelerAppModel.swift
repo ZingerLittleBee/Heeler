@@ -102,7 +102,8 @@ final class HeelerAppModel {
                 Task { await notificationPreferences?.refresh() }
             },
             harnessEdits: console.harnessEdits,
-            noteWindowsCore: { [weak console] in console?.noteWindowsCore(on: $0) })
+            noteWindowsCore: { [weak console] in console?.noteWindowsCore(on: $0) },
+            coreKernel: { [weak console] in console?.hostCoreKernels[$0] })
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on
