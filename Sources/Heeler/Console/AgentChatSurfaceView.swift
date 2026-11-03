@@ -93,6 +93,7 @@ struct AgentChatSurfaceView: View {
     @Environment(\.detailCrossfade) private var detailCrossfade
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackButton) private var showsBackButton
+    @Environment(\.usesVerticalToolbar) private var usesVerticalToolbar
     @Environment(\.detailTopChromeInset) private var topChromeInset
     @Environment(\.detailBarRow) private var barRow
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
@@ -405,7 +406,7 @@ struct AgentChatSurfaceView: View {
             AgentDetailHeader(
                 palette: .system,
                 isExpanded: $isBackHeaderExpanded,
-                onBack: showsBackButton ? { dismiss() } : nil,
+                onBack: showsBackButton && !usesVerticalToolbar ? { dismiss() } : nil,
                 actions: backHeaderActions,
                 surfaceSwitch: terminalSurfaceSwitch,
                 title: AgentDetailHeaderTitle(agent),
@@ -452,7 +453,8 @@ struct AgentChatSurfaceView: View {
             palette: .system,
             isExpanded: $isBackHeaderExpanded,
             actions: backHeaderActions,
-            surfaceSwitch: terminalSurfaceSwitch)
+            surfaceSwitch: terminalSurfaceSwitch,
+            onBack: showsBackButton && usesVerticalToolbar ? { dismiss() } : nil)
     }
 
     /// Over the list's bottom edge, which keeps Collapse Steps' band clear

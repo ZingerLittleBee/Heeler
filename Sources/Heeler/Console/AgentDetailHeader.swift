@@ -380,20 +380,47 @@ struct AgentDetailHeaderButton: View {
 extension View {
     /// Puts `AgentDetailHeader`'s trailing controls in the bar while
     /// `isShown`, for a header made with `trailingInBar`.
+    ///
+    /// `onBack` puts Back in the bar as well, for a screen whose header
+    /// leaves it out. On iPhone Duo the system draws the bar along the
+    /// display's side, Back first, where the floating one would sit at the
+    /// top across the screen from the bar.
     func detailHeaderBarControls(
         _ isShown: Bool,
         palette: TerminalThemePalette,
         isExpanded: Binding<Bool>,
         actions: [AgentDetailHeaderAction],
-        surfaceSwitch: AgentDetailSurfaceSwitch? = nil
+        surfaceSwitch: AgentDetailSurfaceSwitch? = nil,
+        onBack: (() -> Void)? = nil
     ) -> some View {
         toolbar {
+            if let onBack {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Back", systemImage: "chevron.left", action: onBack)
+                }
+            }
             if isShown {
                 AgentDetailHeaderBarControls(
                     palette: palette, isExpanded: isExpanded, actions: actions,
                     surfaceSwitch: surfaceSwitch)
             }
         }
+    }
+
+    /// Publishes `usesVerticalToolbar` for the screens below, from the
+    /// system's vertical bar edge where the SDK and system have one. Behind
+    /// a compiler check while CI builds with Xcode 26.
+    @ViewBuilder
+    func readsVerticalToolbar() -> some View {
+        #if compiler(>=6.4)
+        if #available(iOS 27.1, *) {
+            modifier(VerticalToolbarReader())
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
     }
 
     /// Liquid Glass where the system has it, a blur before that. The glass
@@ -416,3 +443,22 @@ extension View {
         .contentShape(shape)
     }
 }
+
+extension EnvironmentValues {
+    /// Whether the system draws this screen's bars along the display's side,
+    /// as iPhone Duo does on its outer display and on its inner one in
+    /// landscape. A detail's Back then moves from its floating header into
+    /// the bar.
+    @Entry var usesVerticalToolbar = false
+}
+
+#if compiler(>=6.4)
+@available(iOS 27.1, *)
+private struct VerticalToolbarReader: ViewModifier {
+    @Environment(\.toolbarVerticalEdge) private var toolbarVerticalEdge
+
+    func body(content: Content) -> some View {
+        content.environment(\.usesVerticalToolbar, toolbarVerticalEdge != nil)
+    }
+}
+#endif
