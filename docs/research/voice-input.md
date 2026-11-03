@@ -31,7 +31,7 @@ Owner decisions (2026-11-02):
   to install a model on their computer. This also accepts that spoken prompts reach a
   third party, with consent.
 
-Recommendation, pending owner confirmation:
+Owner decisions (2026-11-03), from the recommendation below:
 
 - **Bring your own key first. No Heeler proxy is scheduled.** See
   [Who provides the API](#who-provides-the-api).
@@ -123,9 +123,11 @@ Composer mic -> VoiceInputSession (one app-level owner; AVAudioSession is per pr
   destroy marked text. Insertion waits until `markedTextRange` is nil, and the cleanup
   action is disabled during composition. This needs composition state exposed from
   `AgentComposerUITextView`.
-- **A slow result must not overwrite newer work.** Capture the input at start and
-  apply the result only if the draft still equals it; otherwise discard it. Without
-  this, Send clears the draft and a late write puts the text back, ready to send twice.
+- **A slow result must not overwrite newer work.** Send waits from the first tap until
+  the text lands, so the draft cannot be sent and emptied under a pending result, and
+  the text goes in at the caret like a Snippet. An earlier draft of this rule discarded
+  the result whenever the draft changed; with Send gated, that only threw away speech
+  for ordinary edits ([ADR 0036](../adr/0036-voice-input-sends-recordings-to-the-users-speech-service.md)).
   Offer restore only while the draft still equals the polished text.
 - **Composer height does not change while recording.** Height inside the terminal
   Composer resizes the remote PTY, so any recording or uploading state is a fixed-height
@@ -561,6 +563,21 @@ Do not take:
 
 No engine choice is final until this runs. The owner records the corpus and provides the keys.
 
+First smoke result (2026-11-03): OpenAI `gpt-transcribe` with the owner's key took an 8 s
+synthetic zh + en clip as 16 kHz mono WAV and returned it word for word, `useEffect`,
+`dependency array`, `unit tests` and `README` included, in 1.7 to 2.9 s over a local
+proxy, reporting `languages: [{"code":"zh"}]`. Sending `language` beside `languages[]`
+returned 400 ("cannot be used together"). Real iPhone speech, DeepInfra and SiliconFlow
+are still untested.
+
+Second smoke result (2026-11-03): the app's `VoiceTranscriptionClient` and endpoint sources,
+compiled for macOS, sent `say` clips written as 16 kHz mono 16-bit WAV to `gpt-transcribe`. A
+4.7 s zh + en clip came back word for word in 3.0 s and an English clip in 1.5 s; a wrong key
+mapped to the unauthorized failure that points to Settings. Full locale identifiers in
+`languages[]` (`zh-Hans`, `en-US`) returned 400 "Invalid request.", so the two-letter codes the
+app sends are required. In the owner's Mac Simulator, every Core Audio input call timed
+out after 30 s (Mach send timeout), so the recorder was not exercised end to end there.
+
 - **Smoke test first, about half a day:** one real key on each preset, plus one Custom endpoint
   through OpenRouter. Confirm SiliconFlow serves 1.7B and honors `language`, WAV upload and file limits,
   the built-in test clip's acceptance and billing, cold starts, and the median time from
@@ -607,8 +624,9 @@ No engine choice is final until this runs. The owner records the corpus and prov
 
 ## Not verified
 
-- Any vendor call with a real key, so all latency and accuracy statements remain documentation or model
-  cards.
+- Any vendor call with a real key other than the OpenAI `gpt-transcribe` smoke tests on synthetic speech,
+  so the other latency and accuracy statements remain documentation or model cards.
+- `SystemVoiceRecorder` capturing real speech, on a device or in a Simulator with working audio input.
 - Connectivity from mainland China for any vendor, and from overseas to SiliconFlow and Alibaba Beijing.
 - Whether non-mainland identities can open SiliconFlow, Doubao, or Bailian accounts, and whether DeepInfra
   accepts Chinese-issued cards.
