@@ -174,11 +174,17 @@ private struct BlockedDialogCard: View {
                     }
                 }
             }
-        case .claudeWorkspaceTrust:
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust:
             BlockedCodeBox(text: subject.workspacePath ?? "")
+            // Codex's note on a folder below a repository's root, then the
+            // root.
             ForEach(Array(dialog.body.filter { $0 != subject.workspacePath }.enumerated()), id: \.offset) { @Sendable item in
                 MainActorContent {
-                    BlockedCardText(item.element)
+                    if item.element == subject.workspaceRoot {
+                        BlockedCodeBox(text: item.element)
+                    } else {
+                        BlockedCardText(item.element)
+                    }
                 }
             }
         case .codexAsyncCollapsed:
@@ -585,13 +591,15 @@ private extension BlockedDialog {
     var canStop: Bool { ![.codexAsyncQuestion, .grokQuestion, .grokCancelTurn, .grokFork].contains(kind) }
 
     /// What Stop does, for the folded card and an open card whose options
-    /// don't send it: it quits Claude Code on the trust dialog, only denies
-    /// an Oh My Pi approval, presses a Grok Build permission's reject row,
-    /// rejects an OpenCode permission and dismisses an OpenCode question,
-    /// as OpenCode's `esc dismiss` says.
+    /// don't send it: it quits Claude Code or Codex on the trust dialog
+    /// (Codex without `--no-daemon` goes back to its Agent Command Center
+    /// instead), only denies an Oh My Pi approval, presses a Grok Build
+    /// permission's reject row, rejects an OpenCode permission and
+    /// dismisses an OpenCode question, as OpenCode's `esc dismiss` says.
     var stopTitle: String {
         switch kind {
         case .claudeWorkspaceTrust: "Exit Claude Code"
+        case .codexWorkspaceTrust: options.first { $0.role == .decline }?.label ?? "Quit Codex"
         case .ompApproval, .grokPermission: "Deny"
         case .openCodePermission: "Reject"
         case .openCodeQuestion: "Dismiss"

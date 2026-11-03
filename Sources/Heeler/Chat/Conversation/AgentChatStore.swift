@@ -359,6 +359,7 @@ final class AgentChatStore {
         conversation = ChatConversationSnapshot()
         blocked = BlockedCardStore(program: program, io: source.screen)
         blocked.update(activity: ChatAgentActivity(agent.status))
+        blocked.update(awaitingSession: resolution == .noSession)
         switch ChatAgentActivity(agent.status) {
         case .idle: idleSince = now()
         case .working: turnStartedAt = now()
@@ -1081,6 +1082,7 @@ final class AgentChatStore {
         guard next != resolution || replacingAgent else { return }
         if next != .noSession { forgetStaleSession() }
         resolution = next
+        blocked.update(awaitingSession: next == .noSession)
         if !replacingAgent, isAwaitingSession {
             conversation.phase = .unavailable(awaitingReason)
             conversation.isFromCache = !conversation.transcript.entries.isEmpty

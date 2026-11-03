@@ -77,6 +77,10 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Show Codex's Folder access prompt in Chat as a card with Trust and continue
+  and Quit. On a phone, where herdr reports Codex idle on that prompt, Chat
+  used to wait for a conversation instead, and on a wider screen the generic
+  card's `1` did nothing.
 - Put Show Chat or Show Agent Terminal and More with Back in iPhone Duo's
   side controls, using the system overflow menu instead of leaving their
   capsule over the content. Horizontal layouts keep their existing controls.

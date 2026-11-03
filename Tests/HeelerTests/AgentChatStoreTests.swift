@@ -2737,6 +2737,32 @@ struct AgentChatStoreTests {
         #expect(store.sendStatuses[second] == .recorded)
     }
 
+    // MARK: Codex's folder trust
+
+    /// Codex draws its trust screen before it reports a session, and herdr
+    /// can report the screen idle, so the card reads it until a session
+    /// comes.
+    @Test func anIdleCodexReadsItsTrustScreenUntilItReportsASession() async throws {
+        let pane = Pane(try ScreenFixture.screen("codex-22-x8-phone-trust-focus-quit"))
+        let fixture = Fixture(session: nil, program: .codex, screen: pane.io)
+
+        await fixture.store.blocked.refresh()
+
+        guard case .card(let card) = fixture.store.blocked.content else {
+            Issue.record("Expected the trust card, got \(fixture.store.blocked.content)")
+            return
+        }
+        #expect(card.dialog.kind == .codexWorkspaceTrust)
+
+        fixture.store.agentDidChange(
+            Self.agent(session: "01a10f87-e025-7fb1-8974-8dd09937767a", status: .idle, program: .codex))
+
+        #expect(fixture.store.blocked.content == .none)
+        let reads = await pane.reads
+        await fixture.store.blocked.refresh()
+        #expect(await pane.reads == reads)
+    }
+
     // MARK: A new Claude Code conversation
 
     private static let sessionEnvironment = "/home/dev/.claude/session-env/\(first)"
