@@ -57,6 +57,8 @@ enum ImagePreparationError: Error, Sendable, Equatable {
     case selectionUnavailable
     /// Paste Image found no image on the clipboard.
     case clipboardHasNoImage
+    /// Paste Image found an image on the clipboard but could not read it.
+    case clipboardUnreadable
     case invalidImage
     case sourceTooLarge
     case unableToProduceBoundedOutput

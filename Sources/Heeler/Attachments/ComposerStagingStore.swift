@@ -505,6 +505,12 @@ final class ComposerStagingStore {
                 medium: medium,
                 message: "The clipboard has no image. Copy one, then tap Paste Image.",
                 isRetryable: false)
+        case ImagePreparationError.clipboardUnreadable:
+            Failure(
+                medium: medium,
+                message:
+                    "Heeler couldn't read the clipboard. Tap Allow Paste when asked, or check Paste from Other Apps in Settings.",
+                isRetryable: false)
         case ImagePreparationError.selectionUnavailable:
             Failure(
                 medium: medium,
