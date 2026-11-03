@@ -723,6 +723,32 @@ struct HerdrCoreWorktreesTests {
         ]))) ?? Data()
     }
 
+    /// The Linux run cut the route just after the confirm tap and read the raw
+    /// `channelFailed(detail: "channelFailed")`, with the checkout still there (#566).
+    @Test func aLinkLostBeforeAnyTerminalEndedSaysNothingWasRemoved() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        let request = try await fixture.removalAfterHearing()
+        await fixture.services.setGitAnswer(
+            .failure(TransportError.channelFailed(detail: "channelFailed")), for: ["status", "--porcelain"])
+
+        await #expect(throws: WorktreeRemovalError.connectionFailedBeforeEnding) {
+            _ = try await fixture.store.removeWorktree(request, on: fixture.host.id)
+        }
+
+        #expect(await fixture.transport.kills.isEmpty)
+        #expect(await fixture.git("worktree", "remove").isEmpty)
+        let message = WorktreeRemovalRefusal(
+            WorktreeRemovalError.connectionFailedBeforeEnding, request: request, sessionName: "").message
+        #expect(message.contains("nothing was removed"))
+        #expect(!message.contains("channelFailed"))
+        // Any other transport failure reads as its own presentation, not a Swift value.
+        #expect(
+            WorktreeRemovalRefusal(
+                TransportError.malformedResponse("bad"), request: request, sessionName: ""
+            ).message == "Removing the worktree failed. \(TransportError.malformedResponse("bad").presentation.message)")
+    }
+
     @Test func aRemoveNobodyConfirmedIsSentOnceAndSaysWhatToCheck() async throws {
         let fixture = try await Fixture()
         defer { fixture.finish() }

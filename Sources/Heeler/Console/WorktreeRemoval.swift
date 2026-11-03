@@ -77,6 +77,8 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
     case changedWhileTerminalsEnded
     /// git could not say what the checkout holds, before anything ended.
     case riskUnread(String)
+    /// The connection failed while the checkout was read, before anything ended.
+    case connectionFailedBeforeEnding
     case removeRefused(String)
     case removeUnconfirmed(path: String)
 
@@ -101,6 +103,8 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
             "The worktree's Terminals have ended, but it changed since you confirmed, so the checkout was not removed. Removing it again deletes what it holds now."
         case .riskUnread(let reason):
             "git could not read this worktree, so this attempt ended no Terminal and did not remove the checkout: \(reason)"
+        case .connectionFailedBeforeEnding:
+            "The connection to the Host failed before any Terminal ended, so nothing was removed. Try again once the Host is connected."
         case .removeRefused(let reason):
             "The worktree's Terminals have ended, but git did not remove the checkout: \(reason)"
         case .removeUnconfirmed(let path):
@@ -221,8 +225,10 @@ struct WorktreeRemovalRefusal {
             self.init(message: "Worktree removal was cancelled.")
         case TransportError.herdrCoreTerminalGone:
             self.init(message: TransportError.herdrCoreTerminalGone.presentation.message)
+        case let transport as TransportError:
+            self.init(message: "Removing the worktree failed. \(transport.presentation.message)")
         default:
-            self.init(message: "Removing the worktree failed: \(error)")
+            self.init(message: "Removing the worktree failed. \(error.localizedDescription)")
         }
     }
 
