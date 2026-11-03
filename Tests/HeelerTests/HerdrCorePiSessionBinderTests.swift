@@ -181,7 +181,8 @@ struct HerdrCorePiSessionBinderTests {
         let evidence = try await rig.binder(.pi).check(
             try run.record(argv: run.launch, labels: [HerdrCoreLaunch.sessionHintLabel: run.id]))
 
-        #expect(evidence == .bound(sessionID: run.id, transcriptRoot: run.sessions, directory: nil))
+        // A pick the send guard watches, since `/new` leaves the hint behind (ADR 0034).
+        #expect(evidence == .picked(sessionID: run.id, transcriptRoot: run.sessions))
         #expect(await rig.labels.cleared.isEmpty)
     }
 
@@ -217,7 +218,7 @@ struct HerdrCorePiSessionBinderTests {
                     "heeler.session": Self.label(session: Self.otherSession, pid: 9, start: "1"),
                 ]))
 
-        #expect(evidence == .bound(sessionID: run.id, transcriptRoot: run.sessions, directory: nil))
+        #expect(evidence == .picked(sessionID: run.id, transcriptRoot: run.sessions))
         #expect(await rig.labels.cleared == [["heeler.session"]])
     }
 
