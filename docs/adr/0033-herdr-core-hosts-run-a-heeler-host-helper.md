@@ -207,7 +207,12 @@ that Heeler can read from outside the process.
     file that refuses the undo doesn't keep the Helper: the Helper goes, and
     the edit stays listed with its Undo. So does a conflict on a file in the
     folder, once the entry is already out. A failed connection stops the removal
-    as any step's does.
+    as any step's does. A running OpenCode can still make a file name a folder
+    that isn't there: on hc-lab on 2026-11-03, with Host Helper 0.5.3's edits
+    for OpenCode 2.2.2 and 1.19.5 applied and both releases running, 2.2.2
+    migrated `tui.json` into a new `cli.json` during the removal, and that file named the deleted folder until it was deleted by hand
+    ([herdr compatibility](../agents/herdr-compatibility.md)). Nothing in the
+    removal prevents that yet.
   - Grok Build, offered where a Grok Build Agent shows no status because its
     automatic check left Program Status off: `[ui.notifications]
     program_status = "on"` in its configuration. The value is a quoted string:
@@ -316,7 +321,10 @@ Hosts are unchanged.
   asks for the Repair only when the service's path has gone too. When only the
   record's has, the Helper rewrites that record at its next connection to the
   core, so Usage waits for the core. The check has run against scripts and fake
-  service managers, and not yet on a Host where Node.js went away.
+  service managers, and on one Linux Host: on hc-lab on 2026-11-02 (Debian 13,
+  systemd 257, Host Helper 0.5.3, Node.js v22.23.3), renaming the Node.js the
+  unit names under a running Helper read **Node.js Moved** with Repair, and Usage
+  asked for the Repair. It has not run on a Mac where Node.js went away.
 - The VM showed a notification that `node` can run in the background and listed
   it under Login Items, with no mention of Heeler. What the list does when the
   user turns it off has not been tried.
