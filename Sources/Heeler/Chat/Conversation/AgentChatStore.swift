@@ -734,7 +734,8 @@ final class AgentChatStore {
             sessionID: sessionID, transcript: conversation.transcript, activity: ChatAgentActivity(agent.status),
             polledSinceIdle: idleSince.flatMap { idle in lastReadStartedAt.map { $0 >= idle } } ?? false,
             unrecordedSendKeys: Set(recent.map(\.key)),
-            misdirectedSendKeys: Set(unrecorded.filter { misdirectedSends.contains($0.id) }.map(\.key)))
+            misdirectedSendKeys: Set(unrecorded.filter { misdirectedSends.contains($0.id) }.map(\.key)),
+            followsSessionMoves: source.sessionEvidence == nil)
     }
 
     /// The skills the Host offers, so a Codex `$name` prompt shows as the
