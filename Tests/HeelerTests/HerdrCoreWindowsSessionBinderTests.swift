@@ -5,9 +5,10 @@ import Testing
 
 /// The binder on native Windows, through the real Windows read's command and parser
 /// over the tree #586 recorded: `powershell.exe` as the foreground, the Agent its
-/// child. The start values are FILETIMEs; the fields in a registry entry and an
-/// `active_sessions.json` row on Windows come from source or are assumed, until the
-/// owner's check (`docs/agents/herdr-compatibility.md`).
+/// child. The start values are FILETIMEs. A Claude Code registry entry carries one in
+/// `procStart`, as 2.1.286 and 2.1.316 wrote it on the owner's machine, or in
+/// `procStartFt`, the field its source names; Grok Build's `pid_start` there is
+/// assumed, since 1.0.70 wrote none (`docs/agents/herdr-compatibility.md`).
 @Suite("herdr-core session binder on native Windows")
 struct HerdrCoreWindowsSessionBinderTests {
     private static let session = "11111111-1111-4111-8111-111111111111"
@@ -132,6 +133,18 @@ struct HerdrCoreWindowsSessionBinderTests {
         #expect(await rig.execCount == 1)
         #expect(await rig.readPaths == [Self.registryPath])
         #expect(await rig.files.listings.isEmpty)
+    }
+
+    @Test("Claude Code binds from procStart, where 2.1.286 and 2.1.316 wrote the creation time on Windows")
+    func claudeBindsFromProcStart() async throws {
+        let rig = Rig()
+        await rig.files.write(Self.entry(field: "procStart"), at: Self.registryPath)
+
+        let evidence = try await rig.binder(.claude).check(try Self.record())
+
+        #expect(
+            evidence == .bound(sessionID: Self.session, transcriptRoot: "\(Self.home)/.claude", directory: "C:\\proj"))
+        #expect(await rig.readPaths == [Self.registryPath])
     }
 
     @Test("An entry written for another pid binds nothing")
