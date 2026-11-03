@@ -337,16 +337,36 @@ struct ChatUnavailableView: View {
         } description: {
             Text(reason.explanation(launchNotice: launchNotice))
         } actions: {
-            Button(AgentDetailSurface.terminal.showTitle, action: showAgentTerminal)
-                .buttonStyle(.bordered)
-            if reason.offersRetry {
-                Button("Check Again", action: retry)
+            // One row of capsules, stacked when the row cannot fit.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { actions }
+                VStack(spacing: 10) { actions }
             }
-            if let guide = reason.launchNotice(launchNotice)?.guideURL {
-                Link("Read More", destination: guide)
-            }
+            .modifier(ChatUnavailableActionStyle())
+            .buttonBorderShape(.capsule)
         }
         .accessibilityIdentifier("chat.unavailable")
+    }
+
+    @ViewBuilder private var actions: some View {
+        Button(AgentDetailSurface.terminal.showTitle, action: showAgentTerminal)
+        if reason.offersRetry {
+            Button("Check Again", action: retry)
+        }
+        if let guide = reason.launchNotice(launchNotice)?.guideURL {
+            Link("Read More", destination: guide)
+        }
+    }
+}
+
+/// Clear Liquid Glass like the toolbar's buttons, where the system has it.
+private struct ChatUnavailableActionStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.buttonStyle(.glass)
+        } else {
+            content.buttonStyle(.bordered)
+        }
     }
 }
 
