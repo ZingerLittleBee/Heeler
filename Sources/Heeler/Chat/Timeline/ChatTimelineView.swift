@@ -19,6 +19,11 @@ struct ChatTimelineView: UIViewControllerRepresentable {
     /// Chat's own text size; nil follows the system's.
     var textSize: DynamicTypeSize?
     var font: ChatFontOption = .system
+    /// A placeholder covers the list. SwiftUI's `accessibilityHidden` on
+    /// this view leaves the collection view's rows in the accessibility
+    /// tree, rows the screen doesn't show (hc-lab, a refused Send's
+    /// "Sending…" under Can't Tell the Conversation).
+    var hidesFromAccessibility = false
     let actions: ChatTimelineActions
 
     func makeCoordinator() -> Coordinator {
@@ -31,6 +36,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
         controller.setTopObstruction(topObstruction)
         bottomEdge.controller = controller
         controller.setCollapseControlClearance(collapseControlClearance)
+        controller.view.accessibilityElementsHidden = hidesFromAccessibility
         controller.apply(state)
         return controller
     }
@@ -41,6 +47,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
         controller.setTopObstruction(topObstruction)
         bottomEdge.controller = controller
         controller.setCollapseControlClearance(collapseControlClearance)
+        controller.view.accessibilityElementsHidden = hidesFromAccessibility
         controller.apply(state)
         let coordinator = context.coordinator
         if coordinator.followRequest != followRequest {

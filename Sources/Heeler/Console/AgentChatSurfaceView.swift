@@ -518,10 +518,10 @@ struct AgentChatSurfaceView: View {
                 collapseControlClearance: collapseControlHeight,
                 textSize: ChatTextSettings.size(system: dynamicTypeSize, offset: textSizeOffset),
                 font: chatFont,
+                hidesFromAccessibility: presentation != .timeline,
                 actions: timelineActions)
             .padding(.top, -topInset)
             .ignoresSafeArea(.container, edges: .bottom)
-            .accessibilityHidden(presentation != .timeline)
             .modifier(HiddenConversation(isHidden: hidesConversation))
             if presentation != .timeline {
                 GeometryReader { proxy in
@@ -530,6 +530,13 @@ struct AgentChatSurfaceView: View {
                             .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                     }
                     .scrollBounceBehavior(.basedOnSize)
+                }
+                // The scroll view reaches under the Composer, whose status
+                // row has no background: a placeholder taller than the room
+                // the keyboard leaves ran under it. It still passes under
+                // the header and banners above.
+                .mask(alignment: .bottom) {
+                    Rectangle().padding(.top, -(topInset + headerObstruction + bannerHeight))
                 }
                 .padding(.top, headerObstruction + bannerHeight)
             }
