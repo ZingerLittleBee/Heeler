@@ -1267,19 +1267,15 @@ final class AgentComposerUITextView: UITextView {
         return onPasteImage != nil && board.hasImages && !board.hasStrings
     }
 
+    /// The keyboard's clipboard suggestion, the edit menu and ⌘V all send this.
+    /// `paste(itemProviders:)` stays UITextView's: UIKit calls it only after
+    /// `canPaste(_:)`, which UITextView grants to text alone, so taking the
+    /// clipboard's image there would replace the text it was handed.
     override func paste(_ sender: Any?) {
         if pastesImage, let onPasteImage {
             onPasteImage()
         } else {
             super.paste(sender)
-        }
-    }
-
-    override func paste(itemProviders: [NSItemProvider]) {
-        if pastesImage, let onPasteImage {
-            onPasteImage()
-        } else {
-            super.paste(itemProviders: itemProviders)
         }
     }
 
