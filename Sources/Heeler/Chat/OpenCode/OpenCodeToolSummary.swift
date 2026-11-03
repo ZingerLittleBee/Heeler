@@ -12,7 +12,8 @@ enum OpenCodeToolSummary {
 
     /// The row for `tool` as its step recorded it, its output read again
     /// from `output`. The reducer settles a running call by its turn.
-    static func activity(_ tool: OpenCodeTool, output: ChatOutputReference) -> ChatToolActivity {
+    /// `directory` is the folder the session was in at the call.
+    static func activity(_ tool: OpenCodeTool, output: ChatOutputReference, directory: String?) -> ChatToolActivity {
         let kind = kind(of: tool.name)
         let status = status(of: tool)
         let questions = questions(of: tool)
@@ -21,7 +22,7 @@ enum OpenCodeToolSummary {
             kind: kind, name: tool.name, title: String(label.title.prefix(500)), subtitle: label.subtitle,
             status: status, exitCode: status == .failed ? tool.metadata?.exit : nil, questions: questions,
             callID: tool.callID, preview: preview(of: tool, kind: kind, questions: questions), output: output)
-        if kind == .fileRead, status == .succeeded { activity.imagePath = imagePath(of: tool) }
+        if kind == .fileRead, status == .succeeded { activity.imagePath = imagePath(of: tool, directory: directory) }
         if let changes = fileChanges(of: tool) {
             activity.fileChanges = changes
             activity.diff = ChatDiffStats(
@@ -168,16 +169,14 @@ enum OpenCodeToolSummary {
         return OpenCodeFileChanges.changes(tool.metadata, callPath: path(of: tool))
     }
 
-    /// The Host file a read showed, when it is an image the row previews.
-    private static func imagePath(of tool: OpenCodeTool) -> String? {
-        guard let path = path(of: tool), RemoteHostPath.isAbsolute(path),
-            let dot = path.lastIndex(of: "."),
-            imageExtensions.contains(path[path.index(after: dot)...].lowercased())
+    /// The Host file a read showed as an image. OpenCode 2 returns the image
+    /// named as the path it read, which is relative to the session's folder
+    /// when the input's was. A 1.x read records an absolute `filePath` and
+    /// no image, so its extension decides.
+    private static func imagePath(of tool: OpenCodeTool, directory: String?) -> String? {
+        if let image = tool.image { return ChatImagePath.resolve(image, cwd: directory) }
+        guard let path = path(of: tool), RemoteHostPath.isAbsolute(path), ChatImagePath.hasImageExtension(path)
         else { return nil }
         return path
     }
-
-    private static let imageExtensions: Set<String> = [
-        "avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "tif", "tiff", "webp",
-    ]
 }

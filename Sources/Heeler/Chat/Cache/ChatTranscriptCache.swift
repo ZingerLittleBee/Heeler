@@ -124,8 +124,8 @@ protocol ChatTranscriptCache: Sendable {
     func load(_ key: ChatCacheKey) async -> ChatCacheLoadResult
     func save(_ document: ChatCacheDocument) async
     func remove(_ key: ChatCacheKey) async
-    func loadAgentDirectory(for host: Host) async -> [ChatCachedAgent]
-    func saveAgentDirectory(_ agents: [ChatCachedAgent], for host: Host) async
+    func loadAgentDirectory(for host: Host) async -> ChatAgentDirectory.Contents
+    func saveAgentDirectory(_ contents: ChatAgentDirectory.Contents, for host: Host) async
     /// False only when a saved directory exists and no longer belongs to
     /// `host`, such as after the user trusted a replaced host key: the same
     /// Host record may now reach another machine.
@@ -140,8 +140,8 @@ protocol ChatTranscriptCache: Sendable {
 }
 
 extension ChatTranscriptCache {
-    func loadAgentDirectory(for host: Host) async -> [ChatCachedAgent] { [] }
-    func saveAgentDirectory(_ agents: [ChatCachedAgent], for host: Host) async {}
+    func loadAgentDirectory(for host: Host) async -> ChatAgentDirectory.Contents { .init() }
+    func saveAgentDirectory(_ contents: ChatAgentDirectory.Contents, for host: Host) async {}
     func agentDirectoryBelongs(to host: Host) async -> Bool { true }
 }
 
@@ -170,15 +170,15 @@ actor VolatileChatTranscriptCache: ChatTranscriptCache {
         documents[key] = nil
     }
 
-    func loadAgentDirectory(for host: Host) async -> [ChatCachedAgent] {
+    func loadAgentDirectory(for host: Host) async -> ChatAgentDirectory.Contents {
         let hostKeys = await ChatAgentDirectory.trustedHostKeys(for: host.id, in: knownHosts)
-        return agentDirectories[host.id]?.entries(for: host, hostKeys: hostKeys) ?? []
+        return agentDirectories[host.id]?.contents(for: host, hostKeys: hostKeys) ?? .init()
     }
 
-    func saveAgentDirectory(_ agents: [ChatCachedAgent], for host: Host) async {
+    func saveAgentDirectory(_ contents: ChatAgentDirectory.Contents, for host: Host) async {
         let hostKeys = await ChatAgentDirectory.trustedHostKeys(for: host.id, in: knownHosts)
         if let allowedHosts, !allowedHosts.contains(host.id) { return }
-        agentDirectories[host.id] = ChatAgentDirectory(agents, for: host, hostKeys: hostKeys)
+        agentDirectories[host.id] = ChatAgentDirectory(contents, for: host, hostKeys: hostKeys)
     }
 
     func agentDirectoryBelongs(to host: Host) async -> Bool {

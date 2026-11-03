@@ -14,6 +14,38 @@ Entries reference the pull request that made the change.
   your own API key with OpenAI, DeepInfra, SiliconFlow, or any service that
   takes OpenAI's audio/transcriptions request, set up in Settings › Voice
   Input. Recordings go only to the service you agree to.
+
+## [0.1.17] - 2026-11-04
+
+### Added
+
+- Paste an image from the clipboard into a message: tap **+**, then **Paste
+  Image**, or paste into the Composer from the keyboard or the edit menu.
+  Heeler uploads it to the Host and adds its path, as Add Image does.
+  (#617)
+- Paths to images in Chat messages open the image. A path to a picture on the
+  Host, written as code, as a link or in the text of your messages or the
+  Agent's, shows in the tint color after a photo symbol; tap it, or choose
+  Preview Image from the message's menu, to open it with zoom. Paths relative
+  to the Agent's folder and paths starting at `~` open too. (#618)
+- Touch and hold an Agent on a By Workspace card and tap New Agent to start
+  one in its Workspace and directory, as the Agent's own New Agent does.
+  (#616)
+- Browse Directories hides folders whose names start with a dot. Tap the eye
+  button beside Select to list them again; Heeler remembers the choice.
+  (#609)
+- The Shell Terminal can show the shortcut row from Direct Input (Esc, Tab,
+  arrows, Backspace and Enter) above its input row, so you can reach those
+  keys while typing on the iOS keyboard. Turn it on with the new button beside
+  the keyboard button. It's off by default, and the row and its button
+  hide in Keys mode. (#611)
+- New Agent opens on the Agent you started last, when the Host has it
+  installed. (#608)
+- Chat shows the images Agents read or make as thumbnails under their rows;
+  tap one to open it with zoom. Claude Code, Codex, Grok Build, Pi, Oh My Pi
+  and OpenCode are covered, and image rows no longer fold into tool groups.
+  Images over 8 MB load on a tap, and a deleted image or an offline Host says
+  so in the thumbnail's place. (#600)
 - Turn Usage off in Settings to hide its tab and each Host's Usage section and
   stop reading usage from your Hosts. Usage widgets clear their figures and say
   so until you turn it back on. (#597)
@@ -46,6 +78,17 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Raise and lower the Shell Terminal's input row with the keyboard, in step
+  with it, as the Composer does, instead of jumping ahead of it. (#611)
+- Keep the answers on Claude Code's and Codex's folder trust cards in view
+  below the folder, as a row of capsules with leaving on the left and
+  trusting on the right, instead of below the card's fold on a phone.
+  (#619)
+- Show Chat's Show Agent Terminal and Check Again side by side as glass
+  capsules while it waits for a conversation. (#619)
+- Spin Check Again while Chat looks for the conversation, for at least a
+  moment, then ease into what it found instead of switching at once.
+  (#619)
 - Give an Agent's title on a By Workspace card one size and color, whether
   the Agent shares its checkout or stands alone under the checkout's title,
   and set a repository's checkout titles apart from it in a quieter color.
@@ -72,6 +115,32 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Show Codex's Folder access prompt in Chat as a card with Trust and continue
+  and Quit. On a phone, where herdr reports Codex idle on that prompt, Chat
+  used to wait for a conversation instead, and on a wider screen the generic
+  card's `1` did nothing. (#619)
+- By Workspace keeps each repository's card while Heeler connects: saved
+  Chats from a main checkout and its worktrees open under the same card the
+  running Agents had, instead of as separate cards that regroup once the Host
+  answers. Each checkout keeps the branch it was last read on as its title
+  until Heeler reads it again. (#618)
+- Round the bottom corners of a collapsed By Workspace card with nothing to
+  summarize, such as a Workspace whose Agents are all idle, instead of ending
+  it in a square-cornered strip under its header. (#616)
+- Put Show Chat or Show Agent Terminal and More with Back in iPhone Duo's
+  side controls, using the system overflow menu instead of leaving their
+  capsule over the content. Horizontal layouts keep their existing controls.
+  (#612)
+- Put Back with the system controls along an iPhone Duo's side on Agent Chat,
+  Agent Terminal and Shell Terminal details, instead of leaving it floating at
+  the opposite top corner. (#610)
+- Give the website and bilingual docs clean search URLs, sitemaps, app metadata,
+  browser icons, landscape sharing cards, and permanent canonical redirects.
+  Keep error pages, raw guides, and search data out of search results, and add
+  direct App Store links to both docs home pages. Explain remote Claude Code
+  and Codex use on iPhone and iPad, with setup, Chat, notification, and Usage
+  widget guidance on the existing pages, and identify Heeler as an independent
+  herdr mobile client. (#605)
 - Chat fills in earlier messages page by page and keeps up with the Agent while
   it does, so returning to a long conversation no longer shows a few old rows
   under a spinner and a blank screen until a whole turn has loaded. Messages

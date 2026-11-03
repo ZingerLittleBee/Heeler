@@ -42,7 +42,6 @@ struct AgentDirectInputChromeContext {
 /// tear it down or leave a hollow gap.
 struct AgentDirectInputChrome: View {
     let context: AgentDirectInputChromeContext
-    @Environment(\.displayScale) private var displayScale
     @Environment(\.colorScheme) private var colorScheme
 
     private let strip = InputShortcutStripPresentation()
@@ -89,93 +88,20 @@ struct AgentDirectInputChrome: View {
     }
 
     private var shortcutRow: some View {
-        scrollingShortcutRow
-        .frame(height: InputChromeLayout.shortcutRowHeight)
-        .background(alignment: .top) {
-            Rectangle()
-                .fill(Color(uiColor: .separator))
-                .frame(height: 1 / max(displayScale, 1))
-        }
-        .background(Color(uiColor: .secondarySystemBackground))
-    }
-
-    private var scrollingShortcutRow: some View {
-        HStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(strip.leadingItems, id: \.self) { @Sendable item in
-                        MainActorContent { sizedStripItem(item) }
-                    }
-                }
-                .padding(.leading, 8)
-                .padding(.trailing, 6)
-            }
-
-            HStack(spacing: 4) {
-                ForEach(strip.trailingItems, id: \.self) { @Sendable item in
-                    MainActorContent { sizedStripItem(item) }
-                }
-            }
-            .padding(.leading, 4)
-            .padding(.trailing, 8)
-            .background(Color(uiColor: .secondarySystemBackground))
-            .overlay(alignment: .leading) {
-                LinearGradient(
-                    colors: [.clear, Color(uiColor: .separator).opacity(0.7)],
-                    startPoint: .leading,
-                    endPoint: .trailing)
-                    .frame(width: InputChromeLayout.pinnedFadeWidth)
-                    .offset(x: -InputChromeLayout.pinnedFadeWidth)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+        InputShortcutStripRow(
+            strip: strip,
+            keyAccessibilityHint: "Sends this key directly to the Agent",
+            sendKey: interactions.sendQuickKey
+        ) { item in
+            switch item {
+            case .paste:
+                pasteKeyButton
+            case .more:
+                moreMenu
+            case .key:
+                EmptyView()
             }
         }
-    }
-
-    private func sizedStripItem(_ item: InputShortcutStripItem) -> some View {
-        stripItem(item)
-            .frame(
-                width: InputChromeLayout.compactWidth(for: item),
-                height: InputChromeLayout.shortcutRowHeight)
-    }
-
-    @ViewBuilder
-    private func stripItem(_ item: InputShortcutStripItem) -> some View {
-        switch item {
-        case .key(let key):
-            shortcutKeyButton(key)
-        case .paste:
-            pasteKeyButton
-        case .more:
-            moreMenu
-        }
-    }
-
-    @ViewBuilder
-    private func shortcutKeyButton(_ key: AgentQuickKey) -> some View {
-        if key == .backspace {
-            TerminalBackspaceButton(isToolbar: true) { sendShortcutKey(key) }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            Button {
-                sendShortcutKey(key)
-            } label: {
-                shortcutKeyCap {
-                    shortcutKeyLabel(key)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(.rect)
-            .buttonStyle(TerminalKeyboardButtonStyle())
-            .accessibilityLabel(key.accessibilityLabel)
-            .accessibilityHint("Sends this key directly to the Agent")
-        }
-    }
-
-    private func sendShortcutKey(_ key: AgentQuickKey) {
-        UIDevice.current.playInputClick()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        interactions.sendQuickKey(key)
     }
 
     /// A system paste control, so a tap needs no Allow Paste prompt. Below
@@ -200,24 +126,6 @@ struct AgentDirectInputChrome: View {
         .accessibilityHint("Pastes the clipboard into the Agent")
     }
 
-    @ViewBuilder
-    private func shortcutKeyLabel(_ key: AgentQuickKey) -> some View {
-        if let systemImageName = key.systemImageName {
-            Image(systemName: systemImageName)
-                .font(.system(size: 12, weight: .semibold))
-        } else if let title = key.title {
-            Text(title)
-                .font(.caption.weight(.medium))
-        }
-    }
-
-    private func shortcutKeyCap<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        content()
-            .frame(maxWidth: .infinity, minHeight: 30)
-    }
-
     private var moreMenu: some View {
         Menu {
             AgentActionMenuContent(
@@ -225,10 +133,9 @@ struct AgentDirectInputChrome: View {
                 sections: AgentActionMenuPolicy.directInputMoreSections,
                 restoreComposerThen: interactions.restoreComposerThen)
         } label: {
-            shortcutKeyCap {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 12, weight: .semibold))
-            }
+            Image(systemName: "ellipsis")
+                .font(.system(size: 12, weight: .semibold))
+                .inputShortcutKeyCap()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(.rect)

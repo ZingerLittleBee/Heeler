@@ -24,6 +24,7 @@ import {
   rehypeFumadocsElements,
   rehypeGithubAlerts,
   rehypeGuideComponents,
+  rehypeGuideImages,
   remarkGuideCode,
   resolveGuideHref,
   rewriteHtmlLinks,
@@ -139,6 +140,17 @@ describe('rewriteHtmlLinks', () => {
       rewriteHtmlLinks('<img data-src="images/a.png" srcset="images/a.png 2x, images/b.png 3x"><a href = "zerotier.md">', resolve),
       '<img data-src="images/a.png" srcset="/images/a.png 2x, /images/b.png 3x"><a href="/zerotier">',
     );
+  });
+});
+
+describe('rehypeGuideImages', () => {
+  it('sizes raw and Markdown screenshots without changing authored attributes or external images', () => {
+    const raw = { type: 'raw' as const, value: '<a href="/images/phone.png"><img src="/images/phone.png" width="300" alt="Host > Routes"></a><img src="https://example.com/photo.png">' };
+    const markdown: Element = { type: 'element', tagName: 'img', properties: { src: '/images/wide.png', height: 120, loading: 'eager' }, children: [] };
+    const tree: HastRoot = { type: 'root', children: [raw, markdown] };
+    rehypeGuideImages({ '/images/phone.png': { width: 1200, height: 2600 }, '/images/wide.png': { width: 900, height: 600 } })(tree);
+    assert.equal(raw.value, '<a href="/images/phone.png"><img src="/images/phone.png" width="300" alt="Host > Routes" height="650" loading="lazy" decoding="async"></a><img src="https://example.com/photo.png">');
+    assert.deepEqual(markdown.properties, { src: '/images/wide.png', width: 180, height: 120, loading: 'eager', decoding: 'async' });
   });
 });
 

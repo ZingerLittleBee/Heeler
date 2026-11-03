@@ -582,6 +582,50 @@ struct ChatMarkdownTests {
         #expect(links(in: linked.content) == ["logo": "https://example.com"])
     }
 
+    @Test("Paths to Host images are marked; web images, web links and commands are not")
+    func imagePaths() throws {
+        let source = """
+            Shots: `/tmp/a.png`, [the shot](/tmp/b%20c.png), ![](shots/d.png), ![alt](/tmp/e.png) \
+            and /tmp/f.png. Web: [w](https://x.test/g.png) ![web](https://x.test/h.png) `ls /tmp/i.png` \
+            [![logo](/tmp/j.png)](https://example.com)
+            """
+        let block = try #require(ChatMarkdown.blocks(from: source).first)
+        #expect(ChatImageLink.paths(in: block.content) == [
+            "/tmp/a.png", "/tmp/b c.png", "shots/d.png", "/tmp/e.png", "/tmp/f.png",
+        ])
+        // An image without alt text reads as its file's name.
+        #expect(block.text.contains(", d.png, alt and /tmp/f.png."))
+        #expect(!block.text.contains("\u{FFFC}"))
+        #expect(links(in: block.content) == ["w": "https://x.test/g.png", "logo": "https://example.com"])
+        let marked = block.content.runs.compactMap { run in
+            run[ChatImageLink.PathAttribute.self].map { (String(block.content[run.range].characters), $0) }
+        }
+        #expect(marked.map(\.0) == ["/tmp/a.png", "the shot", "d.png", "alt", "/tmp/f.png"])
+    }
+
+    @Test("A table cell marks its image paths")
+    func imagePathInTable() throws {
+        let block = try #require(ChatMarkdown.blocks(from: "| Shot |\n| - |\n| `/tmp/a.png` |").first)
+        let cell = try #require(block.table?.rows[1][0])
+        #expect(ChatImageLink.paths(in: cell) == ["/tmp/a.png"])
+    }
+
+    @Test("A path that opens an image is a link without code's background; elsewhere it stays code")
+    func styledImagePaths() throws {
+        let block = try #require(ChatMarkdown.blocks(from: "see `/tmp/a.png` and `b()`").first)
+        let opening = ChatMarkdownView.styled(block.content, in: .body, opensImages: true)
+        let path = try #require(opening.runs.first { $0[ChatImageLink.PathAttribute.self] != nil })
+        #expect(path.link.flatMap(ChatImageLink.path(opening:)) == "/tmp/a.png")
+        #expect(path.backgroundColor == nil)
+        #expect(path.inlinePresentationIntent == .code)
+        let code = try #require(opening.runs.first { String(opening[$0.range].characters) == "b()" })
+        #expect(code.backgroundColor != nil && code.link == nil)
+
+        let closed = ChatMarkdownView.styled(block.content, in: .body)
+        #expect(closed.runs.allSatisfy { $0.link == nil })
+        #expect(closed.runs.filter { $0.backgroundColor != nil }.count == 2)
+    }
+
     @Test("A footnote reference keeps its text and loses its relative link")
     func footnote() throws {
         let blocks = ChatMarkdown.blocks(from: "text[^1]\n\n[^1]: note")

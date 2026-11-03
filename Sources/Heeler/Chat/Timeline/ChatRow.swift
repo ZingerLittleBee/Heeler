@@ -108,9 +108,11 @@ struct ChatRow: Identifiable, Sendable {
 
     /// Whether the row holds controls besides its own disclosure, which
     /// VoiceOver must reach one by one rather than as one element: changed
-    /// files to open, or a diff with View All.
+    /// files to open, a diff with View All, or an image to open.
     var hasInnerControls: Bool {
-        guard case .tool(let tool) = content, let changes = tool.fileChanges else { return false }
+        guard case .tool(let tool) = content else { return false }
+        if tool.imagePath != nil { return true }
+        guard let changes = tool.fileChanges else { return false }
         return tool.showsDiffAsOutput || !changes.files.isEmpty
     }
 
@@ -127,6 +129,24 @@ struct ChatRow: Identifiable, Sendable {
     var imagePath: String? {
         guard case .tool(let tool) = content else { return nil }
         return tool.imagePath
+    }
+
+    /// The image files the row's message names by path, as written and
+    /// each once (`ChatImageLink`).
+    var messageImagePaths: [String] {
+        switch content {
+        case .user(let message) where message.command == nil:
+            return ChatImageLink.paths(in: ChatImageLink.marking(message.text))
+        case .assistant(_, let blocks), .plan(_, let blocks):
+            var seen: Set<String> = []
+            return blocks.flatMap { block in
+                [block.content] + (block.table?.rows.flatMap(\.self) ?? [])
+            }
+            .flatMap(ChatImageLink.paths(in:))
+            .filter { seen.insert($0).inserted }
+        default:
+            return []
+        }
     }
 
     /// What Copy and Select Text take: the whole message as written, the

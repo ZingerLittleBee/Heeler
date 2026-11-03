@@ -426,7 +426,7 @@ enum CodexRecordDecoder {
                     title: raw.path.map { CodexToolSummary.relativePath(fileURLPath($0), cwd: context.cwd) }
                         ?? "Image",
                     status: .succeeded, callID: raw.id, output: reference(line),
-                    imagePath: remoteImagePath(raw.path, cwd: context.cwd)))
+                    imagePath: ChatImagePath.resolve(raw.path, cwd: context.cwd)))
         case .imageGeneration:
             return .tool(
                 imageGeneration(
@@ -663,7 +663,7 @@ enum CodexRecordDecoder {
         case "view_image":
             snapshot.kind = .image
             snapshot.title = arguments?.path.map { CodexToolSummary.relativePath(fileURLPath($0), cwd: context.cwd) } ?? name
-            snapshot.imagePath = remoteImagePath(arguments?.path, cwd: context.cwd)
+            snapshot.imagePath = ChatImagePath.resolve(arguments?.path, cwd: context.cwd)
         default:
             break
         }
@@ -781,7 +781,7 @@ enum CodexRecordDecoder {
             kind: .image, name: "image_generation",
             title: revisedPrompt.flatMap { firstLine($0) } ?? "Image generation",
             subtitle: savedPath.map { CodexToolSummary.relativePath($0, cwd: context.cwd) }, status: state,
-            callID: id, output: reference(line), imagePath: remoteImagePath(savedPath, cwd: context.cwd))
+            callID: id, output: reference(line), imagePath: ChatImagePath.resolve(savedPath, cwd: context.cwd))
     }
 
     private static func subAgentActivity(path: String?, kind: String?) -> CodexToolSnapshot {
@@ -825,29 +825,6 @@ enum CodexRecordDecoder {
         let line = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true).first
             .map { $0.trimmingCharacters(in: .whitespaces) }
         return line.flatMap { $0.isEmpty ? nil : $0 }
-    }
-
-    /// Resolves only recorded filesystem paths. Joining preserves remote symlink
-    /// semantics; local URL standardization must not rewrite a Host's path.
-    private static func remoteImagePath(_ value: String?, cwd: String?) -> String? {
-        guard let value, !value.isEmpty else { return nil }
-        if value.lowercased().hasPrefix("file:") {
-            guard let url = URL(string: value), url.isFileURL,
-                url.host == nil || url.host == "" || url.host?.lowercased() == "localhost",
-                url.query == nil, url.fragment == nil
-            else { return nil }
-            let path = url.path(percentEncoded: false)
-            return RemoteHostPath.isAbsolute(path) ? path : nil
-        }
-        if RemoteHostPath.isAbsolute(value) { return value }
-        // Schemes, drive-relative paths and home-relative paths need context
-        // the transcript does not provide. They must not become cwd children.
-        guard URLComponents(string: value)?.scheme == nil,
-            !value.hasPrefix("~"), !value.hasPrefix("\\"),
-            let cwd, RemoteHostPath.isAbsolute(cwd)
-        else { return nil }
-        let path = RemoteHostPath.childPath(cwd, name: value)
-        return RemoteHostPath.isAbsolute(path) ? path : nil
     }
 
     /// A `file://` URI's path; plain paths pass through.

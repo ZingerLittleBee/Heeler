@@ -17,6 +17,7 @@ struct ChatMarkdownView: View {
     @ScaledMetric(relativeTo: .body) private var blankLineGap: CGFloat = 16
     @ScaledMetric(relativeTo: .body) private var aboveHeadingGap: CGFloat = 24
     @ScaledMetric(relativeTo: .body) private var belowHeadingGap: CGFloat = 12
+    @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -28,11 +29,7 @@ struct ChatMarkdownView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Links that pass `ChatLinkPolicy` open in the browser; nothing else
-        // the model wrote acts on the phone.
-        .environment(\.openURL, OpenURLAction { url in
-            ChatLinkPolicy.allows(url) ? .systemAction : .discarded
-        })
+        .chatMessageLinks(opener: imageOpener)
     }
 
     private func gap(before index: Int) -> CGFloat {
@@ -76,10 +73,12 @@ struct ChatMarkdownView: View {
     /// The content with its inline code on a tinted background.
     ///
     /// The monospaced design has no CJK glyphs, so code in Chinese would
-    /// read as body text. The tint marks it in every script.
-    nonisolated static func tintingCode(_ content: AttributedString) -> AttributedString {
+    /// read as body text. The tint marks it in every script. Code that
+    /// opens an image is a link instead (see `styled`).
+    nonisolated static func tintingCode(_ content: AttributedString, opensImages: Bool = false) -> AttributedString {
         var result = content
         for run in content.runs where run.inlinePresentationIntent?.contains(.code) == true {
+            if opensImages, run[ChatImageLink.PathAttribute.self] != nil { continue }
             result[run.range].backgroundColor = Color(uiColor: .tertiarySystemFill)
         }
         return result
@@ -89,14 +88,73 @@ struct ChatMarkdownView: View {
     ///
     /// Chat's font sets a design on the whole conversation, which outranks
     /// the code intent's monospaced one; a run font outranks the design, so
-    /// code keeps its face in every Chat font.
-    nonisolated static func styled(_ content: AttributedString, in font: Font) -> AttributedString {
-        var result = tintingCode(boldingStrongEmphasis(content, in: font))
-        for run in result.runs where run.inlinePresentationIntent?.contains(.code) == true {
-            let runFont = run[AttributeScopes.SwiftUIAttributes.FontAttribute.self] ?? font
-            result[run.range].font = runFont.monospaced()
+    /// code keeps its face in every Chat font. Where Chat can open images,
+    /// a path to one is a link in the tint color (`ChatImageLink`).
+    nonisolated static func styled(_ content: AttributedString, in font: Font, opensImages: Bool = false)
+        -> AttributedString
+    {
+        var result = tintingCode(boldingStrongEmphasis(content, in: font), opensImages: opensImages)
+        for run in result.runs {
+            if run.inlinePresentationIntent?.contains(.code) == true {
+                let runFont = run[AttributeScopes.SwiftUIAttributes.FontAttribute.self] ?? font
+                result[run.range].font = runFont.monospaced()
+            }
+            if opensImages, let path = run[ChatImageLink.PathAttribute.self] {
+                result[run.range].link = ChatImageLink.url(for: path)
+            }
         }
         return result
+    }
+
+    /// The content as a text block draws it in `font`: `styled`, with a
+    /// photo symbol before each path that opens an image, so the link reads
+    /// as a picture rather than as code or a web page.
+    static func text(_ content: AttributedString, in font: Font, opensImages: Bool) -> Text {
+        let styled = styled(content, in: font, opensImages: opensImages)
+        guard opensImages, styled.runs.contains(where: { $0[ChatImageLink.PathAttribute.self] != nil }) else {
+            return Text(styled)
+        }
+        var pieces: [Text] = []
+        var chunk = AttributedString()
+        var previousPath: String?
+        for run in styled.runs {
+            let path = run[ChatImageLink.PathAttribute.self]
+            if let path, path != previousPath {
+                if !chunk.characters.isEmpty { pieces.append(Text(chunk)) }
+                chunk = AttributedString()
+                // A no-break space keeps the symbol on its path's line.
+                pieces.append(Text("\(Image(systemName: "photo"))\u{00A0}").foregroundStyle(.tint))
+            }
+            previousPath = path
+            chunk.append(styled[run.range])
+        }
+        if !chunk.characters.isEmpty { pieces.append(Text(chunk)) }
+        return pieces.reduce(Text(verbatim: "")) { Text("\($0)\($1)") }
+    }
+}
+
+/// Opens an image file a message names, by its path as written
+/// (`ChatImageLink`). Rows that can open images put one in the environment.
+struct ChatImageOpener {
+    let open: @MainActor (String) -> Void
+}
+
+extension EnvironmentValues {
+    @Entry var chatImageOpener: ChatImageOpener? = nil
+}
+
+extension View {
+    /// What links in message text do: web links that pass `ChatLinkPolicy`
+    /// open in the browser and image paths in Chat's preview; nothing else
+    /// the model wrote acts on the phone.
+    func chatMessageLinks(opener: ChatImageOpener?) -> some View {
+        environment(\.openURL, OpenURLAction { url in
+            if let path = ChatImageLink.path(opening: url) {
+                opener?.open(path)
+                return opener == nil ? .discarded : .handled
+            }
+            return ChatLinkPolicy.allows(url) ? .systemAction : .discarded
+        })
     }
 }
 
@@ -104,6 +162,7 @@ private struct ChatMarkdownBlockView: View {
     let block: ChatMarkdownBlock
     let isMuted: Bool
     @ScaledMetric(relativeTo: .body) private var indent: CGFloat = 18
+    @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -181,7 +240,7 @@ private struct ChatMarkdownBlockView: View {
     }
 
     private func styledText(in font: Font) -> some View {
-        Text(ChatMarkdownView.styled(block.content, in: font))
+        ChatMarkdownView.text(block.content, in: font, opensImages: imageOpener != nil)
             .font(font)
     }
 
@@ -201,6 +260,7 @@ private struct ChatMarkdownBlockView: View {
 struct ChatMarkdownTableView: View {
     let table: ChatMarkdownBlock.Table
     @ScaledMetric(relativeTo: .subheadline) private var minimumColumnWidth: CGFloat = 112
+    @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -221,7 +281,8 @@ struct ChatMarkdownTableView: View {
                     ForEach(table.columns.indices, id: \.self) { @Sendable column in
                         MainActorContent {
                             let alignment = alignment(for: table.columns[column])
-                            Text(ChatMarkdownView.styled(table.rows[row][column], in: .subheadline))
+                            ChatMarkdownView.text(
+                                table.rows[row][column], in: .subheadline, opensImages: imageOpener != nil)
                                 .font(row == 0 ? .subheadline.weight(.semibold) : .subheadline)
                                 .multilineTextAlignment(textAlignment(for: table.columns[column]))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)

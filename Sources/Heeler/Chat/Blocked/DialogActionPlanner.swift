@@ -331,6 +331,8 @@ private struct CodexDialogPlanner {
             try collapsedQuestions(action)
         case .codexAsyncQuestion:
             try asyncQuestion(action)
+        case .codexWorkspaceTrust:
+            try workspaceTrust(action)
         case .claudeBash, .claudeFileEdit, .claudeFileCreate, .claudeFileRead, .claudeFetch, .claudePlan,
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork, .openCodePermission,
@@ -438,6 +440,25 @@ private struct CodexDialogPlanner {
             return DialogActionPlan(steps: [.keys(["ctrl+]"])], confirmation: .fingerprintChangeOrUnblocked)
         case .dismiss, .amend, .respond, .approvePlan, .submitSelection, .expandQuestions:
             throw .unsupported("Codex offers only an answer or a skip here.")
+        }
+    }
+
+    /// Codex 0.165.0's trust screen ignores `1`, so an option goes by arrow
+    /// keys and Enter; Esc quits, or goes back to the Agent Command Center.
+    /// herdr can report the screen Idle throughout, so only the screen
+    /// changing confirms.
+    private func workspaceTrust(_ action: DialogAction) throws(DialogPlanError) -> DialogActionPlan {
+        switch action {
+        case .choose(let ordinal):
+            guard dialog.option(ordinal) != nil else { throw .noSuchOption(ordinal) }
+            var builder = StepBuilder(dialog: dialog)
+            try builder.move(to: ordinal)
+            builder.keys("enter")
+            return DialogActionPlan(steps: builder.steps, confirmation: .fingerprintChange)
+        case .dismiss:
+            return DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChange)
+        case .amend, .respond, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
+            throw .unsupported("The trust screen has no such action.")
         }
     }
 

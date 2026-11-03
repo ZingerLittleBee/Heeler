@@ -273,6 +273,29 @@ struct DialogActionPlannerTests {
         }
     }
 
+    /// Codex 0.165.0 ignores `1` on its trust screen, and herdr can report
+    /// the screen Idle throughout, so leaving Blocked confirms nothing.
+    @Test("Codex trust: arrows and Enter rather than digits, confirmed by the screen changing")
+    func codexTrust() throws {
+        #expect(
+            try plan(.choose(ordinal: 1), "codex-20-x8-trust")
+                == DialogActionPlan(steps: [.keys(["enter"])], confirmation: .fingerprintChange))
+        #expect(
+            try plan(.choose(ordinal: 2), "codex-20-x8-trust")
+                == DialogActionPlan(
+                    steps: [.keys(["down"]), .expect(.focus(ordinal: 2)), .keys(["enter"])],
+                    confirmation: .fingerprintChange))
+        #expect(
+            try plan(.choose(ordinal: 1), "codex-22-x8-phone-trust-focus-quit").steps
+                == [.keys(["up"]), .expect(.focus(ordinal: 1)), .keys(["enter"])])
+        #expect(
+            try plan(.dismiss, "codex-23-x8-trust-command-center")
+                == DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChange))
+        #expect(throws: DialogPlanError.unsupported("The trust screen has no such action.")) {
+            try plan(.skipQuestion, "codex-20-x8-trust")
+        }
+    }
+
     @Test("Codex question: a digit answers and moves on; notes go on None of the above")
     func codexQuestion() throws {
         let note = "Medium please"

@@ -8,13 +8,15 @@ interface Props {
 }
 
 const { figure } = Astro.props;
+// Astro dev serves public files verbatim; Workers normalizes HTML paths.
+const src = `/figures/${figure.slug}${import.meta.env.DEV ? '.html' : ''}`;
 ---
 
 <div
   class:list={['frame', { 'stage-crop': figure.stageCrop }]}
   style={`--ratio: ${figure.ratio}; --narrow-ratio: ${figure.narrowRatio}; --narrow-bottom: ${figure.narrowBottom}px`}
 >
-  <iframe src={`/figures/${figure.slug}.html`} title={figure.label} loading="lazy"></iframe>
+  <iframe src={src} title={figure.label} loading="lazy"></iframe>
 </div>
 
 <style>

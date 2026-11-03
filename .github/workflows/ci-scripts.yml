@@ -1,0 +1,56 @@
+# macOS self-tests of CI and VPS scripts (refs #23).
+#
+# Agent tooling covers the workflow contracts on Ubuntu for every PR, but only
+# macOS has the /bin/bash 3.2 that ci-full.yml executes. These checks build
+# nothing; only the two scripts ci.yml executes also start the app build.
+# ci-full.yml repeats them so the release gate stays self-contained.
+
+name: iOS CI scripts
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - scripts/**
+      - Makefile
+      - .github/workflows/ci-full.yml
+      - .github/workflows/ci-scripts.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/**
+      - Makefile
+      - .github/workflows/ci-full.yml
+      - .github/workflows/ci-scripts.yml
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ci-ios-scripts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate-scripts:
+    name: CI and VPS scripts (macOS)
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Test VPS SSH access scripts
+        run: scripts/test-vps-ssh-access-scripts.sh
+      - name: Test CI watchdog
+        run: make test-ci-watchdog
+      - name: Test CI gate guards
+        run: make test-ci-guards
+      - name: Test CI diagnostic controls
+        run: make test-ci-diagnostic-controls

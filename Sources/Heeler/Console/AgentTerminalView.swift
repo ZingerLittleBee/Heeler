@@ -284,6 +284,7 @@ struct AgentTerminalView: View {
     @Environment(\.detailCrossfade) private var detailCrossfade
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackButton) private var showsBackButton
+    @Environment(\.usesVerticalToolbar) private var usesVerticalToolbar
     /// Whether the back header is out, or folded into its one button.
     /// Folded until the user shows it, so it covers no output by default,
     /// then remembered across Agents as a reading preference.
@@ -586,10 +587,7 @@ struct AgentTerminalView: View {
             StartAgentView(
                 hosts: hosts,
                 console: console,
-                origin: StartAgentStore.LaunchOrigin(
-                    hostID: agent.hostID,
-                    workspaceID: agent.agent.workspaceID,
-                    cwd: agent.agent.cwd),
+                origin: StartAgentStore.LaunchOrigin(beside: agent),
                 onStarted: { switchToAgent($0) })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
@@ -946,6 +944,7 @@ struct AgentTerminalView: View {
             canBegin: session.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
             addImage: { isSelectingPhoto = true },
+            pasteImage: { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) },
             addFile: { isSelectingFile = true },
             showAttachLinks: { attachLinksOrigin = .composerChip },
             openTerminal: canOpenTerminal
@@ -1118,12 +1117,12 @@ struct AgentTerminalView: View {
             AgentDetailHeader(
                 palette: themePalette,
                 isExpanded: $isBackHeaderExpanded,
-                onBack: showsBackButton ? { dismiss() } : nil,
+                onBack: showsBackButton && !usesVerticalToolbar ? { dismiss() } : nil,
                 actions: backHeaderActions,
                 surfaceSwitch: chatSurfaceSwitch,
                 title: AgentDetailHeaderTitle(agent),
                 statusTitle: connectionRecoveryTitle,
-                trailingInBar: headerSharesBar)
+                controlPlacement: headerControlPlacement)
             .environment(
                 \.colorScheme,
                 terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
@@ -1175,14 +1174,21 @@ struct AgentTerminalView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar(.visible, for: .navigationBar)
         .detailHeaderBarControls(
-            headerSharesBar,
+            headerControlPlacement,
             palette: themePalette,
             isExpanded: $isBackHeaderExpanded,
             actions: backHeaderActions,
-            surfaceSwitch: chatSurfaceSwitch)
+            surfaceSwitch: chatSurfaceSwitch,
+            onBack: showsBackButton && usesVerticalToolbar ? { dismiss() } : nil)
+        .prioritizesVerticalDetailToolbar()
     }
 
     private var headerSharesBar: Bool { AgentDetailHeader.levelsWithBar(barRow) }
+
+    private var headerControlPlacement: AgentDetailHeaderControlPlacement {
+        AgentDetailHeaderControlPlacement(
+            headerSharesBar: headerSharesBar, usesVerticalToolbar: usesVerticalToolbar)
+    }
 
     private var terminalTopInset: CGFloat {
         max(statusBarInset, topChromeInset, windowControlsHeight)

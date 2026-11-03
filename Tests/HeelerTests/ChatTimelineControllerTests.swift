@@ -39,6 +39,31 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    /// An image row on screen reads its picture by itself, and keeps its
+    /// height when the picture arrives.
+    @Test func anImageRowShowsItsThumbnailWithoutChangingHeight() async throws {
+        let path = "/tmp/shot.png"
+        let png = ChatImageThumbnailsTests.png(width: 1_200, height: 800)
+        let thumbnails = ChatImageThumbnails(
+            source: .init(
+                stamp: { _ in ChatImageStamp(size: UInt64(png.count), modificationTime: 1) }, read: { _, _ in png }),
+            cache: ChatImageThumbnailCache())
+        let controller = ChatTimelineController(actions: ChatTimelineActions(thumbnails: thumbnails))
+        var tool = ChatToolActivity(kind: .fileRead, name: "Read", title: path, status: .succeeded)
+        tool.imagePath = path
+        let entry = ChatEntry(id: ChatEntryID("read"), sourceOffset: 0, content: .tool(tool))
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [entry]))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let before = try #require(controller.cellFrame(of: .entry(entry.id))).height
+            await thumbnails.settled()
+            await Self.settle(controller)
+            #expect(thumbnails.image(of: path) != nil)
+            #expect(try #require(controller.cellFrame(of: .entry(entry.id))).height == before)
+        }
+    }
+
     @Test func subagentHistoryStaysOpenWhenMoreEventsArrive() async throws {
         var outputRequests: [ChatEntryID] = []
         let controller = ChatTimelineController(actions: ChatTimelineActions(loadOutput: { outputRequests.append($0) }))
