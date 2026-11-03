@@ -782,7 +782,9 @@ struct ShellTerminalInputRow: View {
             // beside the keyboard toggle: both change what the keyboard area
             // shows.
             HStack(spacing: 0) {
-                shortcutRowToggle
+                if mode == .text {
+                    shortcutRowToggle
+                }
                 keyboardToggle
             }
             .frame(width: Self.sideWidth, alignment: .trailing)
@@ -799,8 +801,8 @@ struct ShellTerminalInputRow: View {
 
     /// Shows or hides the shortcut row with Agent detail's Direct Input
     /// glyph, in the row's label color in both states: the row itself shows
-    /// whether it is on. In Keys mode the row stays hidden either way, but
-    /// the toggle still sets what Text mode will show.
+    /// whether it is on. Text mode only: the Keys keyboard already carries
+    /// every key on the row, so the row and its toggle both hide there.
     private var shortcutRowToggle: some View {
         Button {
             isShortcutRowEnabled.toggle()
