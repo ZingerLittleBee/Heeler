@@ -61,8 +61,8 @@ Cards and the cache work as described there.
 - Only the tables `session_v2`, `session_message`, `event_sequence` and
   `session_inbox`, the `pragma_table_info` of those four, and table names from
   `sqlite_master`, or for a session only OpenCode 1.x's tables hold, `session`,
-  `message` and `part` and their `pragma_table_info` (below). Every row read is filtered on the one session id herdr
-  reports: `ses_` followed by 12 hexadecimal digits and 14 letters or digits,
+  `message` and `part` and their `pragma_table_info` (below). Every row read
+  is filtered on the one session id herdr reports: `ses_` followed by 12 hexadecimal digits and 14 letters or digits,
   checked before the id reaches a query. A session with a parent belongs to a
   subagent and is not shown; Chat follows the root session herdr reports. On a
   herdr-core Host the one exception is the candidate list ADR 0034 offers, which
@@ -295,8 +295,9 @@ its Done status until the first prompt of the new session.
   `sqlite3` CLI. Without either, Chat explains and the terminal stays
   available.
 - The schema is OpenCode's private format and changes often. Missing tables
-  and columns and newer session versions fail closed with an explanation. A change inside a row's JSON cannot be caught that way: unknown
-  row and item types are counted and skipped and unknown fields ignored, so a
+  and columns and newer session versions fail closed with an explanation. A
+  change inside a row's JSON cannot be caught that way: unknown row and item
+  types are counted and skipped and unknown fields ignored, so a
   change hides content until the adapter learns it. No allowlist of
   OpenCode's migrations is kept, because every release adds some and an
   allowlist would refuse every upgrade.
