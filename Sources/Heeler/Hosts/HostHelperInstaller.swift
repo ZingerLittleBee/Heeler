@@ -93,10 +93,16 @@ struct HostHelperInstaller: Sendable {
         try await confirmingHealth(of: try await readLoadingAgent())
     }
 
-    /// One read, after loading a LaunchAgent that a restart of the Mac left out.
-    /// A failure to load reads back as what it is, and nothing here asks twice.
+    /// One read, after clearing what an install that stopped partway left and
+    /// loading a LaunchAgent that a restart of the Mac left out. A failure to do
+    /// either reads back as what it is, and nothing here asks twice.
     func readLoadingAgent() async throws -> HostHelperReading {
-        let reading = try await read()
+        var reading = try await read()
+        if reading.leftInterruptedInstall, let layout = reading.layout,
+            await tidy(layout, record: Self.record(of: reading), quietMinutes: HostHelperScript.quietMinutesBeforeTidying)
+        {
+            reading = try await read()
+        }
         guard reading.agentNeedsLoading, let probe = reading.probe, let layout = reading.layout else { return reading }
         _ = try? await run(.launchctl(["bootstrap", HostHelperLaunchAgent.domain(uid: probe.uid), layout.launchAgent]))
         return try await read()
@@ -176,9 +182,7 @@ struct HostHelperInstaller: Sendable {
 
         // Written first, so a failure below leaves removal knowing about them.
         // Until it is, nothing else does, so a failure here takes them back.
-        let previous = reading.probe?.record.flatMap {
-            try? JSONDecoder().decode(HostHelperInstallRecord.self, from: $0)
-        }
+        let previous = Self.record(of: reading)
         var record = (previous ?? HostHelperInstallRecord(files: [], folders: []))
             // The Helper directory goes as a whole, at the end of a removal.
             .merged(files: plan.outsideFiles, folders: created.filter { $0 != layout.directory })
@@ -192,7 +196,17 @@ struct HostHelperInstaller: Sendable {
         }
 
         if plan.replacesHelper {
-            try await placeHelper(bundle, plan: plan, over: reading)
+            do {
+                try await placeHelper(bundle, plan: plan, over: reading)
+            } catch {
+                // Nothing outside the Helper directory is written yet, so a first
+                // install takes back all it made, its record too. A link that has
+                // gone cannot, and the next read does it instead.
+                if previous == nil, reading.integrity == .absent {
+                    await tidy(layout, record: record, quietMinutes: nil)
+                }
+                throw error
+            }
         }
         for file in plan.extensionFiles {
             try await write(extensionText, to: file, in: nil, step: "Placing the Pi and Oh My Pi extensions")
@@ -222,7 +236,7 @@ struct HostHelperInstaller: Sendable {
         guard reading.unsupportedPlatform == nil, let probe = reading.probe, let layout = reading.layout else {
             throw HostHelperError.unsupportedPlatform
         }
-        let record = probe.record.flatMap { try? JSONDecoder().decode(HostHelperInstallRecord.self, from: $0) }
+        let record = Self.record(of: reading)
             // With no record, only the files that are certainly Heeler's.
             ?? HostHelperInstallRecord(
                 files: layout.serviceFiles
@@ -285,6 +299,30 @@ struct HostHelperInstaller: Sendable {
         }
         guard lines != nil else { throw HostHelperError.unreadableHost }
         return created
+    }
+
+    /// Clears what an install that stopped partway left, which until now stayed
+    /// until the next install: its staging, half-written files, and with no Helper
+    /// in place the record and the folders it made, as `HostHelperScript` words it.
+    /// With `quietMinutes`, leaves all of it while any of it is recent, as another
+    /// install's still running would be. Says whether it removed anything.
+    @discardableResult
+    private func tidy(_ layout: HostHelperLayout, record: HostHelperInstallRecord?, quietMinutes: Int?) async -> Bool {
+        let paths = record.map {
+            HostHelperScript.RecordedPaths(
+                files: $0.safeFiles, folders: ($0.safeFolders + [layout.directory]).sorted(by: Self.deepestFirst))
+        }
+        let script = HostHelperScript(
+            .tidyInterruptedInstall(directory: layout.directory, record: paths, quietMinutes: quietMinutes),
+            nonce: nonce())
+        guard let result = try? await host.runHostHelperScript(script), result.exitStatus == 0,
+            let lines = try? HostHelperProbe.framedLines(stdout: result.stdout, nonce: script.nonce)
+        else { return false }
+        return !lines.contains(HostHelperScript.busyLine)
+    }
+
+    private static func record(of reading: HostHelperReading) -> HostHelperInstallRecord? {
+        reading.probe?.record.flatMap { try? JSONDecoder().decode(HostHelperInstallRecord.self, from: $0) }
     }
 
     /// Only ever removes what is still empty. A connection that has gone cannot

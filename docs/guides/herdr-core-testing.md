@@ -624,6 +624,7 @@ besides the default (`omp --profile work` makes one).
 | --- | --- | --- |
 | Install | Open the Host's detail, tap **Host Helper**, read the sheet, and tap **Install** | The sheet lists every file, the unit included, and those are the files on the Host. `XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status heeler-host-helper` is active, with the absolute Node.js path in its `ExecStart` |
 | Privacy | `ls -la` the Helper directory, its `app` folder and the unit | Directories `0700`, files `0600` |
+| Dropped link | On a Host with no Helper, tap **Install** and cut the SSH link mid-upload (stop the forward). Wait five minutes, reconnect and open the Host's detail | The sheet's failure ends each sentence with one period. Afterwards the Helper directory, its `staging-*` folder and `*.tmp-*` files, `installed.json` and the extension folders the install created are gone, and the row reads **Not Installed** |
 | Linger | Read the row with linger off, then tap **Turn On Linger** | The row reads **Linger Off**, the sheet offers linger, and `loginctl show-user $USER -p Linger` then reads `yes`. On a Host that asks for an administrator, the sheet shows the Host's reason |
 | Log out | End every login to the Host, wait a minute, and log back in | The Helper kept running: the same main PID, with no restart counted |
 | Restart | `kill -9` the Helper's Node.js process | systemd starts it again within seconds, `NRestarts` goes up by one, and the row still reads the version |

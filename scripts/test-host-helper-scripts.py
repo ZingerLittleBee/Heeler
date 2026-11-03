@@ -58,6 +58,9 @@ struct Input: Decodable {
     var lister: String?
     var service: String?
     var home: String?
+    var recordFiles: [String]?
+    var recordFolders: [String]?
+    var quietMinutes: Int?
 }
 
 let arguments = CommandLine.arguments
@@ -84,6 +87,11 @@ case "enableLinger": step = .enableLinger(user: input.user ?? "")
 case "removeFiles": step = .removeFiles(input.files ?? [])
 case "removeEmptyFolders": step = .removeEmptyFolders(input.folders ?? [])
 case "removeTree": step = .removeTree(input.path ?? "")
+case "tidyInterruptedInstall":
+    step = .tidyInterruptedInstall(
+        directory: input.directory ?? "",
+        record: input.recordFiles.map { HostHelperScript.RecordedPaths(files: $0, folders: input.recordFolders ?? []) },
+        quietMinutes: input.quietMinutes)
 case "usageQuery":
     step = .usageQuery(
         timeZone: input.timeZone ?? "", claudeLimits: input.claudeLimits ?? false, session: input.session ?? "")
@@ -120,6 +128,7 @@ case "parse-probe":
         "hashes": probe.hashes,
         "hashToolMissing": probe.hashToolMissing,
         "serviceNodeGone": probe.serviceNodeGone,
+        "leftovers": probe.leftovers,
     ]
     let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys])
     print(String(decoding: data, as: UTF8.self))
@@ -764,6 +773,124 @@ class RemovalStepTests(HelperScriptCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.helper_dir.exists())
         self.assertTrue(self.helper_dir.parent.exists())
+
+
+class TidyStepTests(HelperScriptCase):
+    """What a dropped SSH forward left mid-upload on hc-lab (2026-11-03): a staging
+    folder holding a half-written file, the record, and empty extension folders."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.config = self.home / ".config"
+        self.config.mkdir()
+        self.extensions = [self.home / ".pi/agent/extensions", self.home / ".omp/agent/extensions"]
+        for folder in self.extensions:
+            folder.mkdir(parents=True)
+        (self.config / "systemd/user/default.target.wants").mkdir(parents=True)
+        staging = self.helper_dir / "staging-8D99F76C/core"
+        staging.mkdir(parents=True)
+        (staging / "follower.js.tmp-4c1d").write_text("half")
+        self.unit = self.config / "systemd/user/heeler-host-helper.service"
+        self.files = [
+            str(self.unit), str(self.config / "systemd/user/default.target.wants/heeler-host-helper.service"),
+            *(str(folder / "heeler-session.js") for folder in self.extensions),
+        ]
+        created = [
+            self.config / "systemd", self.config / "systemd/user", self.config / "systemd/user/default.target.wants",
+            self.home / ".local", self.home / ".local/share", self.home / ".local/share/heeler",
+            self.home / ".pi", self.home / ".pi/agent", *self.extensions,
+            self.home / ".omp", self.home / ".omp/agent",
+        ]
+        (self.helper_dir / "installed.json").write_text(json.dumps({"version": 1, "files": self.files, "folders": []}))
+        self.folders = sorted(
+            (str(path) for path in [*created, self.helper_dir]),
+            key=lambda path: (-path.count("/"), path))
+
+    def age(self) -> None:
+        old = os.path.getmtime(self.home) - 3600
+        for root, folders, files in os.walk(self.home):
+            for name in folders + files:
+                os.utime(os.path.join(root, name), (old, old), follow_symlinks=False)
+
+    def tidy(self, shell: str = "/bin/sh", record: bool = True) -> subprocess.CompletedProcess:
+        step = {"step": "tidyInterruptedInstall", "directory": str(self.helper_dir), "quietMinutes": 5}
+        if record:
+            step |= {"recordFiles": self.files, "recordFolders": self.folders}
+        result = self.run_script(shell, **step)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result
+
+    def test_clears_everything_a_first_install_left_under_every_shell(self) -> None:
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.setUp()
+                self.age()
+                result = self.tidy(shell)
+                self.assertIn("record-removed", result.stdout)
+                self.assertEqual(sorted(path.name for path in self.home.iterdir()), [".config"])
+                self.assertEqual(list(self.config.iterdir()), [])
+
+    def test_the_probe_says_leftovers_are_there_and_then_gone(self) -> None:
+        self.assertTrue(self.probe()["leftovers"])
+        self.age()
+        self.tidy()
+        self.assertFalse(self.probe()["leftovers"])
+
+    def test_leaves_everything_while_an_install_may_still_be_writing(self) -> None:
+        self.age()
+        (self.helper_dir / "staging-8D99F76C/core/follower.js.tmp-4c1d").write_text("still coming")
+        result = self.tidy()
+        self.assertIn("busy", result.stdout)
+        self.assertTrue((self.helper_dir / "staging-8D99F76C/core/follower.js.tmp-4c1d").exists())
+        self.assertTrue((self.helper_dir / "installed.json").exists())
+
+    def test_a_fresh_temporary_beside_a_recorded_file_counts_as_writing(self) -> None:
+        self.age()
+        (self.extensions[0] / "heeler-session.js.tmp-77").write_text("still coming")
+        self.assertIn("busy", self.tidy().stdout)
+        self.assertTrue((self.helper_dir / "installed.json").exists())
+
+    def test_a_recorded_file_on_the_host_keeps_the_record(self) -> None:
+        (self.extensions[0] / "heeler-session.js").write_text("export default 1;\n")
+        (self.extensions[1] / "heeler-session.js.tmp-77").write_text("half")
+        self.age()
+        result = self.tidy()
+        self.assertNotIn("record-removed", result.stdout)
+        self.assertEqual(sorted(path.name for path in self.helper_dir.iterdir()), ["installed.json"])
+        self.assertEqual(list(self.extensions[1].iterdir()), [])
+        self.assertTrue(self.extensions[1].exists())
+
+    def test_a_dangling_link_the_record_names_keeps_it_too(self) -> None:
+        os.symlink(self.unit, self.files[1])
+        self.age()
+        self.assertNotIn("record-removed", self.tidy().stdout)
+        self.assertTrue((self.helper_dir / "installed.json").exists())
+
+    def test_anything_else_in_the_directory_keeps_the_record(self) -> None:
+        (self.helper_dir / "notifications.json").write_text("{}")
+        self.age()
+        self.tidy()
+        self.assertEqual(
+            sorted(path.name for path in self.helper_dir.iterdir()), ["installed.json", "notifications.json"])
+
+    def test_a_helper_in_place_keeps_its_record_and_loses_its_staging(self) -> None:
+        self.install_tree({"main.js": "one\n"})
+        (self.helper_dir / "app.old-1").mkdir()
+        self.age()
+        self.tidy()
+        self.assertEqual(sorted(path.name for path in self.helper_dir.iterdir()), ["app", "installed.json"])
+
+    def test_without_a_record_only_the_leftovers_go(self) -> None:
+        (self.helper_dir / "installed.json.tmp-9").write_text("half")
+        self.age()
+        self.tidy(record=False)
+        self.assertEqual(sorted(path.name for path in self.helper_dir.iterdir()), ["installed.json"])
+
+    def test_a_host_without_the_directory_changes_nothing(self) -> None:
+        shutil.rmtree(self.home / ".local")
+        result = self.tidy()
+        self.assertNotIn("record-removed", result.stdout)
+        self.assertTrue(self.extensions[0].exists())
 
 
 class UsageQueryTests(HelperScriptCase):

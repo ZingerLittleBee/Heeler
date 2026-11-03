@@ -34,10 +34,25 @@ struct HostHelperScript: Sendable, Equatable {
         /// Removes each folder that is empty, in the order given.
         case removeEmptyFolders([String])
         case removeTree(String)
+        /// Clears what an install that never finished left in the Helper directory
+        /// and beside the files `record` names: staging folders, a previous `app`
+        /// and half-written temporary files. With a record, and no Helper in place, no
+        /// file it names on the Host and nothing else in the directory, the record
+        /// goes too, with each of its folders that is then empty. With `quietMinutes`,
+        /// anything of those written more recently may be an install still running,
+        /// and the step leaves everything as it is.
+        case tidyInterruptedInstall(directory: String, record: RecordedPaths?, quietMinutes: Int?)
         /// Runs the Helper's own Usage query for a session, whose folder it makes
         /// so the Helper comes to follow that session's core. The whole answer
         /// is framed and capped, so a cut-off report can never read as complete.
         case usageQuery(timeZone: String, claudeLimits: Bool, session: String)
+    }
+
+    /// What an install record names, for `tidyInterruptedInstall`.
+    struct RecordedPaths: Sendable, Equatable {
+        var files: [String]
+        /// The record's folders and the Helper directory, deepest first.
+        var folders: [String]
     }
 
     /// The unit's name, one per SSH user.
@@ -49,6 +64,13 @@ struct HostHelperScript: Sendable, Equatable {
     static let appFolderName = "app"
     static let manifestFileName = "manifest.json"
     static let stagingPrefix = "staging-"
+    /// The install record, which the Helper directory holds.
+    static let recordFileName = "installed.json"
+    /// What an SFTP write names its file until it renames it into place.
+    static let temporarySuffix = ".tmp-"
+    /// How long a leftover has to lie untouched before a read takes it for one. An
+    /// install writes each file within one SFTP request's deadline of the last.
+    static let quietMinutesBeforeTidying = 5
     /// What the Helper places in each folder Pi and Oh My Pi load extensions from.
     static let extensionFileName = "heeler-session.js"
     /// That file in the Helper's tree.
@@ -144,6 +166,8 @@ struct HostHelperScript: Sendable, Equatable {
             lines = folders.isEmpty ? [":"] : folders.map { "rmdir -- \(quote($0)) 2>/dev/null || :" }
         case .removeTree(let path):
             lines = ["rm -rf -- \(quote(path))"]
+        case .tidyInterruptedInstall(let directory, let record, let quietMinutes):
+            lines = tidy(directory: directory, record: record, quietMinutes: quietMinutes)
         case .usageQuery(let timeZone, let claudeLimits, let session):
             lines = usageQuery(timeZone: timeZone, claudeLimits: claudeLimits, session: session, nonce: nonce)
         }
@@ -208,6 +232,56 @@ struct HostHelperScript: Sendable, Equatable {
 
     /// What the probe and a Usage read say of a service whose Node.js has gone.
     static let serviceNodeGoneLine = "helper-node-gone"
+    /// What the probe says of a Helper directory holding something an install
+    /// leaves only when it stops partway.
+    static let leftoverLine = "leftover"
+    /// What `tidyInterruptedInstall` says when something it would remove may still
+    /// be an install's, or once it has removed the record.
+    static let busyLine = "busy"
+    static let recordRemovedLine = "record-removed"
+
+    /// A failed `find` reads as busy, so a Host that cannot say what is recent
+    /// loses nothing.
+    private static func tidy(directory: String, record: RecordedPaths?, quietMinutes: Int?) -> [String] {
+        let files = record?.files ?? []
+        let busy = "{ printf '\(busyLine)\\n'; exit 0; }"
+        let leftovers = "./\(stagingPrefix)* ./\(appFolderName).old-* ./\(recordFileName)\(temporarySuffix)*"
+        var lines = ["umask 077", "cd \(quote(directory)) 2>/dev/null || exit 0"]
+        if let quietMinutes {
+            let recent = "-mmin -\(quietMinutes) -print"
+            lines += [
+                "__h_recent=$(find . \\( -path './\(stagingPrefix)*' -o -path './\(appFolderName).old-*' "
+                    + "-o -path './\(recordFileName)*' \\) \(recent)) || \(busy)",
+                "[ -z \"$__h_recent\" ] || \(busy)",
+            ]
+            for file in files {
+                let folder = quote((file as NSString).deletingLastPathComponent)
+                let pattern = quote((file as NSString).lastPathComponent + temporarySuffix + "*")
+                lines.append(
+                    "if [ -d \(folder) ]; then __h_recent=$(find \(folder) -maxdepth 1 -name \(pattern) \(recent)) "
+                        + "|| \(busy); [ -z \"$__h_recent\" ] || \(busy); fi")
+            }
+        }
+        lines.append("rm -rf -- \(leftovers) || exit 1")
+        if !files.isEmpty {
+            lines.append("rm -f -- \(files.map { quote($0) + "\(temporarySuffix)*" }.joined(separator: " ")) || exit 1")
+        }
+        guard let record else { return lines }
+        let app = quote(appFolderName)
+        let conditions =
+            ["[ -z \"$__h_others\" ]", "[ ! -e \(app) ]", "[ ! -h \(app) ]", "[ -f \(quote(recordFileName)) ]"]
+            + files.map { "[ ! -e \(quote($0)) ]" } + files.map { "[ ! -h \(quote($0)) ]" }
+        return lines + [
+            "__h_others=$(find . -mindepth 1 -maxdepth 1 ! -name \(quote(recordFileName)) -print) || __h_others=unread",
+            "if \(conditions.joined(separator: " && ")); then",
+            "rm -f -- \(quote(recordFileName)) || exit 1",
+            "cd /",
+        ] + record.folders.map { "rmdir -- \(quote($0)) 2>/dev/null || :" } + [
+            "printf '\(recordRemovedLine)\\n'",
+            "fi",
+            ":",
+        ]
+    }
 
     /// Prints `$__h_print` without its nested dictionaries, whose values, the
     /// service's environment among them, never leave the Host.
@@ -277,7 +351,10 @@ struct HostHelperScript: Sendable, Equatable {
         "__h_dir=\"$__h_data/\(helperDirectorySuffix)\"",
         "__h_app=\"$__h_dir/\(appFolderName)\"",
         "__h_hex() { od -An -v -tx1 \"$1\" | tr -d ' \\n'; }",
-        "if [ -f \"$__h_dir/installed.json\" ]; then printf 'record %s\\n' \"$(__h_hex \"$__h_dir/installed.json\")\"; fi",
+        "if [ -f \"$__h_dir/\(recordFileName)\" ]; then printf 'record %s\\n' \"$(__h_hex \"$__h_dir/\(recordFileName)\")\"; fi",
+        "for __h_left in \"$__h_dir\"/\(stagingPrefix)* \"$__h_dir\"/\(appFolderName).old-* "
+            + "\"$__h_dir\"/\(recordFileName)\(temporarySuffix)*; do "
+            + "if [ -e \"$__h_left\" ] || [ -h \"$__h_left\" ]; then printf '\(leftoverLine)\\n'; break; fi; done",
         "if [ -e \"$__h_app\" ]; then printf 'app-present\\n'; "
             + "if [ -f \"$__h_app/\(manifestFileName)\" ]; then printf 'manifest %s\\n' \"$(__h_hex \"$__h_app/\(manifestFileName)\")\"; fi; fi",
         "if [ -d \"$__h_app\" ]; then",
@@ -395,6 +472,8 @@ struct HostHelperProbe: Sendable, Equatable {
     var appPresent = false
     var manifest: Data?
     var record: Data?
+    /// Something only an install stopped partway leaves is in the Helper directory.
+    var leftovers = false
     var hashToolMissing = false
     var hashes: [String: String] = [:]
     /// Nil when nothing asked, or the Host could not say.
@@ -480,6 +559,7 @@ struct HostHelperProbe: Sendable, Equatable {
             case "app-present": appPresent = true
             case "manifest": manifest = Self.bytes(hex: value)
             case "record": record = Self.bytes(hex: value)
+            case HostHelperScript.leftoverLine: leftovers = true
             case "hash-tool-missing": hashToolMissing = true
             case "hash":
                 let pair = value.split(separator: " ", maxSplits: 1)

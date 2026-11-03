@@ -109,6 +109,55 @@ struct HostHelperInstallTests {
         #expect(await !host.journal.contains("promote"))
     }
 
+    @Test func aFirstInstallThatFailsTakesBackItsRecordAndFolders() async throws {
+        let before = await (host.filePaths(), host.folders)
+        await host.configure { $0.failUploadsNamed = "version.json" }
+        await #expect(throws: HostHelperError.self) { _ = try await install() }
+        #expect(await host.filePaths() == before.0)
+        #expect(await host.folders == before.1)
+        #expect(await host.journal.last == "tidy")
+    }
+
+    /// What the SSH forward's drop mid-upload left on hc-lab (2026-11-03): staging
+    /// with a half-written file, the record, and empty extension folders.
+    @Test func anInstallCutOffByADroppedLinkLeavesNothingOnceTheHostIsReadAgain() async throws {
+        let before = await (host.filePaths(), host.folders)
+        await host.configure { $0.dropsLinkAtUploadNamed = "push.js" }
+        await #expect(throws: HostHelperError.self) { _ = try await install() }
+        let left = await host.filePaths()
+        #expect(left.contains { $0.contains("/staging-") && $0.contains(HostHelperScript.temporarySuffix) })
+        #expect(left.contains("\(ScriptedHelperHost.helperDirectory)/installed.json"))
+        #expect(await host.folders["\(ScriptedHelperHost.home)/.pi/agent/extensions"] != nil)
+
+        await host.restoreLink()
+        let reading = try await installer.check()
+        #expect(reading.status == .notInstalled)
+        #expect(!reading.offersRemoval)
+        #expect(await host.filePaths() == before.0)
+        #expect(await host.folders == before.1)
+    }
+
+    @Test func leavesWhatAnotherInstallMayStillBeWriting() async throws {
+        await host.configure { $0.dropsLinkAtUploadNamed = "push.js" }
+        await #expect(throws: HostHelperError.self) { _ = try await install() }
+        let left = await (host.filePaths(), host.folders)
+        await host.configure {
+            $0.restoreLink()
+            $0.installWritesAreRecent = true
+            $0.clearLog()
+        }
+        _ = try await installer.check()
+        #expect(await host.journal.contains("tidy when quiet"))
+        #expect(await host.filePaths() == left.0)
+        #expect(await host.folders == left.1)
+    }
+
+    @Test func aHostWithNothingLeftIsOnlyRead() async throws {
+        try await installed()
+        _ = try await installer.check()
+        #expect(await !host.journal.contains { $0.hasPrefix("tidy") })
+    }
+
     private func uploadFailureMessage(_ error: any Error) async throws -> String {
         await host.configure {
             $0.failUploadsNamed = "version.json"
@@ -422,6 +471,18 @@ struct HostHelperServiceTests {
             over: try await installer.read(), bundle: HostHelperFixture.bundle(version: "0.0.1"))
         await host.configure { $0.clearLog() }
         return try await installer.read()
+    }
+
+    @Test func anUpdateCutOffByADroppedLinkLosesOnlyItsStaging() async throws {
+        let older = try await olderHelper()
+        let before = await (host.filePaths(), host.folders)
+        await host.configure { $0.dropsLinkAtUploadNamed = "push.js" }
+        await #expect(throws: HostHelperError.self) { _ = try await installer.install(over: older, bundle: bundle) }
+        #expect(await host.filePaths().contains { $0.contains("/staging-") })
+        await host.restoreLink()
+        #expect(try await installer.check().installAction == .update)
+        #expect(await host.filePaths() == before.0)
+        #expect(await host.folders == before.1)
     }
 
     /// The stopped service is a state the status shows and Repair can leave,

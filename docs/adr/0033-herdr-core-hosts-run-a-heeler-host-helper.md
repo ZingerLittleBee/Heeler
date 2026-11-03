@@ -310,6 +310,18 @@ Hosts are unchanged.
   down from there until the service starts again. A removal boots the agent out
   and deletes its property list in one exec, so that a read on another connection
   cannot load it back with no record left to clean up after it.
+- An install cut short with its link cannot clean up after itself. On hc-lab an
+  SSH forward that dropped mid-upload left a staging folder holding a
+  half-written `.tmp-` file, the install record and the empty extension folders
+  it had made, until the next install. A first install that fails while its
+  link holds now takes all of that back at once, since nothing outside the
+  Helper directory is written before the Helper is in place. Otherwise the next
+  check of the Host clears the staging and `.tmp-` files and, with no Helper in
+  place, the record and the empty folders it names, but only once nothing of an
+  install has changed for five minutes, so that another device's install still
+  under way keeps its files. A record goes only while no file it names is on the
+  Host and nothing else is in the Helper directory, so a removal can still find
+  them.
 - A Helper already running outlives the Node.js it started from, so neither
   service manager reports anything when an upgrade removes a versioned path, as
   Homebrew's and nvm's are, though a restart would fail and Usage, which runs the

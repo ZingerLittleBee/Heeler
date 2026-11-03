@@ -88,7 +88,7 @@ struct HostHelperBundle: Sendable, Equatable {
 /// Where everything of the Helper's sits on a Host. Notification and Usage files
 /// live in `directory`, whose `app` folder alone gets replaced.
 struct HostHelperLayout: Sendable, Equatable {
-    static let recordFileName = "installed.json"
+    static let recordFileName = HostHelperScript.recordFileName
 
     let directory: String
     let manager: HostHelperServiceManager
@@ -354,6 +354,13 @@ struct HostHelperReading: Sendable, Equatable {
     /// Helper itself is fine, so this offers a repair without calling it damage.
     private var lacksAnExtension: Bool {
         probe?.extensionFolders?.contains { !$0.installed } ?? false
+    }
+
+    /// What an install that stopped partway leaves: a staging folder or half-written
+    /// file in the Helper directory, or a record with no Helper beside it.
+    var leftInterruptedInstall: Bool {
+        guard unsupportedPlatform == nil, let probe else { return false }
+        return probe.leftovers || (probe.record != nil && !probe.appPresent)
     }
 
     /// Whether there is anything of the Helper's on this Host to remove.

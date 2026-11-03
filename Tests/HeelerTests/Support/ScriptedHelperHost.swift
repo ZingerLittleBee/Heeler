@@ -68,6 +68,15 @@ actor ScriptedHelperHost: HostHelperHost {
     var folderRefusal: (folder: String, message: String)?
     /// A Host with neither `sha256sum` nor `shasum`.
     var hashToolMissing = false
+    /// What an install writes reads as written within the quiet minutes, as
+    /// another install's still running would.
+    var installWritesAreRecent = false
+    /// The write of the file of this name leaves its temporary file and the link
+    /// goes, as a dropped SSH forward did mid-upload (hc-lab, 2026-11-03). Every
+    /// step, read and write then fails until `restoreLink()`.
+    var dropsLinkAtUploadNamed: String?
+    private(set) var linkDown = false
+    static let droppedLink = TransportError.sshUnreachable(detail: "The SSH connection is no longer reusable.")
     /// Fails the Node.js run that finds the extension folders, with this message.
     var extensionFoldersFailure: String?
 
@@ -131,6 +140,11 @@ actor ScriptedHelperHost: HostHelperHost {
         files[path] = nil
     }
 
+    /// A new connection, once the Host can be reached again.
+    func restoreLink() {
+        linkDown = false
+    }
+
     func seedFolder(_ path: String, mode: UInt32 = 0o755) {
         var current = ""
         for component in path.split(separator: "/") {
@@ -190,6 +204,7 @@ actor ScriptedHelperHost: HostHelperHost {
     func readHostHelperFile(at path: String, privateDirectory: String) async throws -> Data? {
         reads.append(path)
         journal.append("read \(path)")
+        if linkDown { throw Self.droppedLink }
         guard folders[privateDirectory] != nil else { throw Failure() }
         return files[path]?.contents
     }
@@ -197,9 +212,16 @@ actor ScriptedHelperHost: HostHelperHost {
     func replaceHostHelperFile(_ contents: Data, at path: String, privateDirectory: String?) async throws {
         writes.append((path, privateDirectory))
         journal.append("write \(path)")
+        if linkDown { throw Self.droppedLink }
         let name = (path as NSString).lastPathComponent
         if name == failUploadsNamed { throw uploadError }
         guard folders[(path as NSString).deletingLastPathComponent] != nil else { throw Failure() }
+        if name == dropsLinkAtUploadNamed {
+            files["\(path)\(HostHelperScript.temporarySuffix)0f1e2d3c"] = File(contents: Data(), mode: 0o600)
+            linkDown = true
+            throw NotificationRegistrationError.writeFailed(
+                detail: "The incomplete temporary file could not be removed safely.")
+        }
         if let privateDirectory { folders[privateDirectory] = 0o700 }
         files[path] = File(
             contents: name == corruptUploadNamed ? Data("corrupt".utf8) : contents, mode: 0o600)
@@ -209,6 +231,7 @@ actor ScriptedHelperHost: HostHelperHost {
         steps.append(script.step)
         scripts.append(script.text)
         journal.append(Self.describe(script.step))
+        if linkDown { throw Self.droppedLink }
         var lines: [String] = []
         var status: Int32 = 0
         var stderr = ""
@@ -293,6 +316,8 @@ actor ScriptedHelperHost: HostHelperHost {
             for path in paths where isEmpty(path) { folders[path] = nil }
         case .removeTree(let path):
             removeTree(path)
+        case .tidyInterruptedInstall(let directory, let record, let quietMinutes):
+            lines = tidy(directory: directory, record: record, waitsForQuiet: quietMinutes != nil)
         case .usageQuery(_, _, let session):
             lines = ["__HEELER_USAGE_BEGIN_\(script.nonce)", usageBody(session: session), "__HEELER_USAGE_END_\(script.nonce):0"]
         }
@@ -327,6 +352,34 @@ actor ScriptedHelperHost: HostHelperHost {
         guard files["\(directory)/sessions/\(session)/runtime-node"] != nil, let report = usageAnswers[session]
         else { return missing }
         return String(decoding: report, as: UTF8.self)
+    }
+
+    /// As the real script does, but with no clock: `installWritesAreRecent` stands
+    /// for anything of an install written within the quiet minutes.
+    private func tidy(directory: String, record: HostHelperScript.RecordedPaths?, waitsForQuiet: Bool) -> [String] {
+        guard folders[directory] != nil else { return [] }
+        if waitsForQuiet, installWritesAreRecent { return [HostHelperScript.busyLine] }
+        let isLeftover = { (path: String) in
+            Self.leftoverPrefixes(in: directory).contains { path.hasPrefix($0) }
+                || (record?.files ?? []).contains { path.hasPrefix($0 + HostHelperScript.temporarySuffix) }
+        }
+        for path in Array(files.keys) where isLeftover(path) { files[path] = nil }
+        for path in Array(folders.keys) where isLeftover(path) { folders[path] = nil }
+        let recordPath = "\(directory)/\(HostHelperScript.recordFileName)"
+        guard let record, files[recordPath] != nil, folders["\(directory)/app"] == nil,
+            !record.files.contains(where: { files[$0] != nil }),
+            !(Array(files.keys) + Array(folders.keys)).contains(where: { $0.hasPrefix(directory + "/") && $0 != recordPath })
+        else { return [] }
+        files[recordPath] = nil
+        for folder in record.folders where isEmpty(folder) { folders[folder] = nil }
+        return [HostHelperScript.recordRemovedLine]
+    }
+
+    private static func leftoverPrefixes(in directory: String) -> [String] {
+        [
+            "\(directory)/\(HostHelperScript.stagingPrefix)", "\(directory)/app.old-",
+            "\(directory)/\(HostHelperScript.recordFileName)\(HostHelperScript.temporarySuffix)",
+        ]
     }
 
     private func isEmpty(_ folder: String) -> Bool {
@@ -469,6 +522,10 @@ actor ScriptedHelperHost: HostHelperHost {
         if serviceNodeGone { lines.append("helper-node-gone") }
         let directory = helperDirectory
         if let record = files["\(directory)/installed.json"] { lines.append("record \(Self.hex(record.contents))") }
+        let prefixes = Self.leftoverPrefixes(in: directory)
+        if (Array(files.keys) + Array(folders.keys)).contains(where: { path in prefixes.contains { path.hasPrefix($0) } }) {
+            lines.append(HostHelperScript.leftoverLine)
+        }
         let app = "\(directory)/app"
         if folders[app] != nil {
             lines.append("app-present")
@@ -499,6 +556,7 @@ actor ScriptedHelperHost: HostHelperHost {
         case .removeFiles(let paths): "removeFiles \(paths.joined(separator: " "))"
         case .removeEmptyFolders(let paths): "removeEmptyFolders \(paths.joined(separator: " "))"
         case .removeTree(let path): "removeTree \(path)"
+        case .tidyInterruptedInstall(_, _, let quietMinutes): quietMinutes == nil ? "tidy" : "tidy when quiet"
         case .usageQuery(_, _, let session): "usageQuery \(session)"
         }
     }
