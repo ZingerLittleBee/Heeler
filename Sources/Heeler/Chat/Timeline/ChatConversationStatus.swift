@@ -13,7 +13,7 @@ extension ChatUnavailableReason {
         case .compressed: "Conversation Compressed"
         case .unsupportedSession, .unsupportedFormat, .sessionStore: "Conversation Not Readable"
         case .startScreen: "Not in This Conversation"
-        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows:
+        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded:
             "Can't Tell the Conversation"
         case .transcriptOff: "Transcript Saving Is Off"
         case .codexSharedDaemon: "Codex Started Without \(ChatLaunchNotice.unbrokenNoDaemon)"
@@ -71,6 +71,12 @@ extension ChatUnavailableReason {
             "Chat can't tell which conversation this Agent is in, and doesn't guess. Oh My Pi names it through Heeler's extension, which comes with the Host Helper. Install the Helper from this Host's details, then start the Agent again. Without it, Chat follows the conversation after its first message."
         case .cannotTellSession(let program):
             "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes."
+        case .extensionNotLoaded(let program, let turnedOff):
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. "
+                + (turnedOff
+                    ? "\(program.chatName) started with its extensions turned off (--no-extensions), so Heeler's extension, which names the conversation, isn't running in this session. Start the Agent again without --no-extensions."
+                    : "Heeler's extension, which names the conversation, is installed, but this \(program.chatName) hasn't loaded it: it started before the Helper was installed, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on.")
+                + (program == .omp ? " Without it, Chat follows the conversation after its first message." : "")
         case .cannotTellSessionOnWindows(let program) where program == .pi || program == .omp:
             "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it through Heeler's extension, which goes in its extension folder on this Host. If it isn't there yet, add it here, then start the Agent again."
         case .cannotTellSessionOnWindows(let program):
@@ -135,7 +141,7 @@ extension ChatUnavailableReason {
         // Never over the timeline, which this reason hides.
         case .startScreen(let program):
             "\(program.chatName) is on its home screen."
-        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows:
+        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded:
             "Chat can't tell which conversation this Agent is in now.\(saved)"
         case .transcriptOff:
             "This Agent isn't saving a transcript.\(saved)"
@@ -160,7 +166,7 @@ extension ChatUnavailableReason {
     var offersRetry: Bool {
         switch self {
         case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .cannotTellSessionOnWindows,
-            .cannotReadProcessesOnWindows, .transcriptOff, .codexSharedDaemon:
+            .cannotReadProcessesOnWindows, .extensionNotLoaded, .transcriptOff, .codexSharedDaemon:
             true
         case .sessionStore(_, let problem): problem.isRetryable
         default: false

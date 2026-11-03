@@ -96,6 +96,23 @@ struct HerdrCoreChatPickBinderTests {
         #expect(await rig.log.cleared.isEmpty)
     }
 
+    /// `pi --no-extensions` on the owner's Mac (2026-11-02): with the extension in
+    /// place and no label, a pick still stands, as K8 and K9 used it.
+    @Test(arguments: [ChatProgram.pi, .omp])
+    func aPickStandsOverAnAgentThatHasNotLoadedTheExtension(_ program: ChatProgram) async throws {
+        let rig = await Rig(program)
+        let folder = program == .pi ? ".pi/agent/extensions" : ".omp/agent/extensions"
+        await rig.files.write("export default function () {}\n", at: "\(Self.home)/\(folder)/heeler-session.js")
+
+        #expect(
+            try await rig.binder.check(try Self.record(program, labels: [:]))
+                == .unavailable(.extensionNotLoaded(program, turnedOff: false)))
+        let evidence = try await rig.binder.check(try Self.record(program, labels: ["heeler.chat": Self.label()]))
+
+        #expect(evidence == .picked(sessionID: Self.uuid, transcriptRoot: Self.root(program)))
+        #expect(await rig.log.cleared.isEmpty)
+    }
+
     @Test func aPiLabelWithAFileBindsThatFile() async throws {
         let rig = await Rig(.pi)
         let file = "\(Self.home)/.pi/agent/sessions/--work-app--/2026-11-01T07-19-26-219Z_\(Self.uuid).jsonl"

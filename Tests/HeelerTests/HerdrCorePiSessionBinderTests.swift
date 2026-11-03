@@ -33,7 +33,7 @@ struct HerdrCorePiSessionBinderTests {
         /// as `-`, as the reader prints it.
         func add(
             _ scene: PiHostEvidence.Scene, environment: [String: String] = [:],
-            filesOf extra: [Int: [String]] = [:]
+            filesOf extra: [Int: [String]] = [:], argvOf argv: [Int: [String]] = [:]
         ) async {
             for process in scene.processes {
                 let readable = process.name.allSatisfy { $0.isLetter || $0.isNumber || "._-".contains($0) }
@@ -42,7 +42,7 @@ struct HerdrCorePiSessionBinderTests {
                         pid: process.pid, parent: process.parent, name: readable ? process.name : "-",
                         start: process.start,
                         environment: process.environment.merging(environment) { $1 },
-                        openFiles: process.files + (extra[process.pid] ?? [])))
+                        argv: argv[process.pid] ?? [], openFiles: process.files + (extra[process.pid] ?? [])))
             }
         }
 
@@ -280,9 +280,61 @@ struct HerdrCorePiSessionBinderTests {
         let evidence = try await rig.binder(.pi).check(try run.record())
 
         #expect(evidence == .unavailable(.cannotTellSession(.pi)))
-        #expect(await rig.reads.isEmpty)
+        // Only whether Heeler's extension is in place, never a Transcript.
+        #expect(await rig.reads == ["\(run.agentDir)/extensions/heeler-session.js"])
         #expect(await rig.files.listings.isEmpty)
         #expect(await rig.files.statuses.isEmpty)
+    }
+
+    // MARK: The extension in place and not loaded
+
+    private static let extensionText = "export default function () {}\n"
+
+    /// The owner's Mac, 2026-11-02: `pi --no-extensions` with the Helper installed was
+    /// told to install the Helper. Pi takes its title as its arguments, so its own
+    /// process shows no flag there (herdr compatibility).
+    @Test(arguments: piVersions)
+    func piWithTheExtensionInPlaceAndNoLabelSaysItIsntLoaded(_ version: String) async throws {
+        let run = try PiRun(version: version)
+        let rig = Rig()
+        try await run.addScene(to: rig)
+        await rig.files.write(Self.extensionText, at: "\(run.agentDir)/extensions/heeler-session.js")
+
+        let evidence = try await rig.binder(.pi).check(try run.record(argv: ["/bin/zsh"]))
+
+        #expect(evidence == .unavailable(.extensionNotLoaded(.pi, turnedOff: false)))
+    }
+
+    @Test(arguments: ["--no-extensions", "-ne"])
+    func aPiTheTerminalStartedWithItsExtensionsOffSaysSo(_ flag: String) async throws {
+        let run = try PiRun(version: "1.4.0")
+        let rig = Rig()
+        try await run.addScene(to: rig)
+        await rig.files.write(Self.extensionText, at: "\(run.agentDir)/extensions/heeler-session.js")
+
+        let evidence = try await rig.binder(.pi).check(
+            try run.record(argv: ["/usr/bin/fish", "-ic", "exec $argv[2..]", "fish", "pi", flag]))
+
+        #expect(evidence == .unavailable(.extensionNotLoaded(.pi, turnedOff: true)))
+    }
+
+    /// The Terminal's arguments are its first process's, so they say nothing of a
+    /// Pi another process started under it.
+    @Test func aFlagOfTheTerminalsShellSaysNothingOfAPiUnderIt() async throws {
+        let run = try PiRun(version: "1.4.0")
+        let rig = Rig()
+        let scope = try #require(run.process.environment["HC_SCOPE"])
+        let environment = run.environment.merging(["HC_SCOPE": scope]) { $1 }
+        await rig.table.add(.init(pid: 100, name: "sh", start: "5", environment: environment))
+        await rig.table.add(.init(pid: 101, parent: 100, name: "pi", start: "6", environment: environment))
+        await rig.files.write(Self.extensionText, at: "\(run.agentDir)/extensions/heeler-session.js")
+        var record = try run.record(argv: ["sh", "-c", "pi --no-extensions; exec sh", "--no-extensions"])
+        record.pid = 100
+        record.foreground = HerdrCoreForeground(pid: 100, name: "sh", argv: ["sh"], cwd: "/")
+
+        let evidence = try await rig.binder(.pi).check(record)
+
+        #expect(evidence == .unavailable(.extensionNotLoaded(.pi, turnedOff: false)))
     }
 
     @Test(arguments: [ChatProgram.pi, .omp])
@@ -692,7 +744,24 @@ struct HerdrCorePiSessionBinderTests {
         let evidence = try await rig.binder(.omp).check(try run.record(scene: "after-first-reply"))
 
         #expect(evidence == .unavailable(.cannotTellSession(.omp)))
-        #expect(await rig.reads.isEmpty)
+        #expect(await !rig.reads.contains(run.crumbPath))
+    }
+
+    /// Oh My Pi keeps its own arguments, so they say when its extensions are off.
+    @Test func ompStartedWithItsExtensionsOffSaysSo() async throws {
+        let run = try OMPRun()
+        let rig = Rig()
+        let process = try run.agent(in: "at-prompt")
+        await rig.add(
+            try run.evidence.scene("at-prompt"), environment: ["HOME": OMPRun.home],
+            filesOf: [process.pid: [run.tty]], argvOf: [process.pid: ["omp", "--no-extensions"]])
+        await rig.files.write(try run.evidence.breadcrumb("at-prompt"), at: run.crumbPath)
+        await rig.files.write(Self.extensionText, at: "\(OMPRun.agentDir)/extensions/heeler-session.js")
+
+        let evidence = try await rig.binder(.omp).check(try run.record(scene: "at-prompt"))
+
+        #expect(evidence == .unavailable(.extensionNotLoaded(.omp, turnedOff: true)))
+        #expect(await rig.table.requests.first?.argumentsAmong == ["--no-extensions"])
     }
 
     @Test(arguments: ["", "one line", "/cwd\nrelative.jsonl\n", "/cwd\n/a/../b.jsonl\n", "/cwd\n/x.txt\n"])

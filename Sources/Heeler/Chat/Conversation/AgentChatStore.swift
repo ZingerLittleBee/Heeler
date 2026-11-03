@@ -1242,7 +1242,7 @@ final class AgentChatStore {
         switch conversation.phase {
         case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
             .unavailable(.cannotTellSessionOnWindows), .unavailable(.cannotReadProcessesOnWindows),
-            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
+            .unavailable(.extensionNotLoaded), .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
             true
         default: false
         }
@@ -1355,8 +1355,8 @@ final class AgentChatStore {
     /// Codex on its shared daemon reads as another reason and gets no list, and
     /// Herdr TUI has no picks to make (ADR 0034).
     var offersCandidates: Bool {
-        guard acceptsPicks, case .unavailable(.cannotTellSession) = conversation.phase else { return false }
-        return true
+        guard acceptsPicks, case .unavailable(let reason) = conversation.phase else { return false }
+        return reason.leavesItToAPick
     }
 
     /// Whether this Chat's Host keeps a pick at all, which only a core does.
