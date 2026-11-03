@@ -238,17 +238,22 @@ with test clients, not the app.
   showed the exit, and the attach stream later carried PowerShell's prompt. The
   Terminal's title shows it too: on 2026-11-03 Claude Code 2.1.286's `/exit`
   under the desktop app 0.1.12 took the title from Claude Code's own back to
-  `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe`, the title a
-  console starts with ([observation](../agents/herdr-compatibility.md)). So a
-  `-NoExit` PowerShell in the foreground (`-NoExit` in any case, after `-`, `--`
-  or `/`, or cut short to `-NoE`) whose Terminal title is a path to that same
-  PowerShell reads as that shell, and the Terminal leaves the Agents for the
-  Terminals tab. The title is the program's to set, so this costs something:
-  before a program first sets one its Terminal reads as the shell, and one that
-  never does, or sets that path itself, never reads as its Agent there. Claude
-  Code titles itself as it starts; no other harness was run under this form. A
-  core restart empties titles (the Windows observations), and an empty title
-  keeps the foreground's reading. `cmd /k` was not run and has no title reading.
+  `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe`
+  ([observation](../agents/herdr-compatibility.md)). That path is not the title a
+  console starts with: the core's own `-NoExit` PowerShell, at its prompt with
+  nothing run, read an empty title. So a `-NoExit` PowerShell in the foreground
+  (`-NoExit` in any case, after `-`, `--` or `/`, or cut short to `-NoE`) whose
+  Terminal title is a path to that same PowerShell reads as that shell, and the
+  Terminal leaves the Agents for the Terminals tab. An empty title, as in a
+  console nothing has titled yet or after a core restart, which empties titles
+  (the Windows observations), keeps the foreground's reading. The title is the
+  program's to set, so this costs something: a program that sets that path as its
+  own title reads as the shell, and whether one that never titles itself leaves
+  the path behind when it exits was not seen, so such an Agent may stay listed
+  after its exit. Claude Code titles itself as it starts, and Grok Build 1.0.70
+  and Oh My Pi 18.13.3 titled their Terminals under Heeler's form; no harness but
+  Claude Code was run under the desktop form. `cmd /k` was not run and has no
+  title reading.
   Heeler's launch does not use `-NoExit`, so this reaches only a Terminal the
   desktop app started. #590's read of PowerShell's children still serves Chat's
   binding only (ADR 0034), and Send still refuses such a Terminal while it is an

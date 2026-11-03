@@ -309,9 +309,8 @@ function isNoExitOption(argument) {
 /**
  * A pseudo console's foreground stays the desktop app's `-NoExit` PowerShell after its
  * program exits, so only the console's title shows the exit: it goes back to that
- * PowerShell's own path, the title a console starts with (ADR 0032). That is also the
- * title before a program first sets one, so a program that never does reads as the
- * shell all along.
+ * PowerShell's own path (ADR 0032). A console nothing has titled reads an empty title
+ * instead, which keeps the foreground's reading.
  */
 function showsPowerShellPrompt(args, title) {
   if (args.length === 0) return false;

@@ -2145,7 +2145,7 @@
     },
     {
       "name": "Heeler's PowerShell launch titled with PowerShell's path still names its program",
-      "source": "docs/agents/herdr-compatibility.md, the native Windows Composer observation (2026-11-03): under Heeler's form the title went back to the PowerShell path as Claude Code exited, before its Terminal finished. That form has no -NoExit and ends with its program, so the finish ends the Agent (ADR 0032)",
+      "source": "docs/agents/herdr-compatibility.md, the native Windows Composer observation (2026-11-03): under Heeler's form each Claude Code Terminal that finished kept the PowerShell path as its title. That form has no -NoExit and ends with its program, so the finish ends the Agent (ADR 0032)",
       "record": {
         "address": "t17",
         "state": "live",
