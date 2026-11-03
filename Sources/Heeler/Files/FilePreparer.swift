@@ -4,15 +4,44 @@ struct PreparedFile: Sendable, Equatable {
     let fileURL: URL
     let fileExtension: String
     let byteCount: Int64
+    /// The picked file's name without its extension, cleaned for the Host, or nil
+    /// when it kept no letter or digit.
+    let stem: String?
 
-    init(fileURL: URL, fileExtension: String, byteCount: Int64) {
+    init(fileURL: URL, fileExtension: String, byteCount: Int64, pickedName: String? = nil) {
         self.fileURL = fileURL
         self.fileExtension = Self.safeExtension(fileExtension)
         self.byteCount = byteCount
+        stem = pickedName.flatMap(Self.cleanStem)
     }
 
+    /// The Host copy's name: the picked file's own, cleaned, with its safe extension.
     var remoteFilename: String {
-        fileExtension.isEmpty ? "file" : "file.\(fileExtension)"
+        let stem = stem ?? "file"
+        return fileExtension.isEmpty ? stem : "\(stem).\(fileExtension)"
+    }
+
+    private static let maximumStemLength = 64
+
+    /// Device names Windows opens in any folder, whatever extension follows.
+    private static let windowsDeviceNames: Set<String> = Set(
+        ["con", "prn", "aux", "nul"] + (1...9).flatMap { ["com\($0)", "lpt\($0)"] })
+
+    /// As herdr-core's `terminal.put` cleans a name, so both routes land the same:
+    /// ASCII letters and digits, `.`, `-` and `_` kept, anything else `_`, and no
+    /// leading dot. No trailing dot either, which Windows drops, and no device name.
+    static func cleanStem(_ name: String) -> String? {
+        let base = name.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? ""
+        let kept = (base as NSString).deletingPathExtension.map { character -> Character in
+            let isKept = character.isASCII && (character.isLetter || character.isNumber)
+            return isKept || "._-".contains(character) ? character : "_"
+        }
+        var stem = String(String(kept).drop { $0 == "." }.prefix(maximumStemLength))
+        while stem.hasSuffix(".") { stem.removeLast() }
+        guard stem.contains(where: { $0.isASCII && ($0.isLetter || $0.isNumber) }) else { return nil }
+        let device = stem.prefix { $0 != "." }
+        guard windowsDeviceNames.contains(device.lowercased()) else { return stem }
+        return "\(device)_\(stem.dropFirst(device.count))"
     }
 
     func remove(fileManager: FileManager = .default) throws {
@@ -49,7 +78,7 @@ enum FilePreparationError: Error, Sendable, Equatable {
 
 /// Copies a document-picker result into protected app-owned temporary storage.
 /// The private copy keeps retries independent from the provider's security scope
-/// and replaces the original filename with a random local name.
+/// and has a random local name. The picked name, cleaned, names only the Host copy.
 actor FilePreparer: FilePreparing {
     static let maximumByteCount = 64 * 1_024 * 1_024
     static let defaultDirectory = FileManager.default.temporaryDirectory
@@ -125,7 +154,8 @@ actor FilePreparer: FilePreparing {
             return PreparedFile(
                 fileURL: destinationURL,
                 fileExtension: fileExtension,
-                byteCount: size.int64Value)
+                byteCount: size.int64Value,
+                pickedName: sourceURL.lastPathComponent)
         } catch let error as FilePreparationError {
             try? fileManager.removeItem(at: destinationURL)
             throw error

@@ -320,7 +320,9 @@ with test clients, not the app.
   plus one byte was refused the same way.
   The files sit at `<state>\files\<address>\<cleaned name>` under the user's
   profile, with the inherited access of SYSTEM, Administrators and the account
-  ([observation](../agents/herdr-compatibility.md)). A program in the Terminal
+  ([observation](../agents/herdr-compatibility.md)). The name is the picked
+  file's own, cleaned as ADR 0006 says, or `image.<ext>`, and the core numbers a
+  name already taken there (`name-2.ext`). A program in the Terminal
   reads them by that path. The folder outlives `terminal.kill` and goes with
   `terminal.rm`. By the core's source at v0.1.16, which was not run, an ended
   Terminal's record also goes once it passes the core's retention, about a day, or
