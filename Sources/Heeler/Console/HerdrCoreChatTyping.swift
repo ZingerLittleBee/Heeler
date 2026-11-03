@@ -60,7 +60,7 @@ final class HerdrCoreChatViewer: HerdrCoreTypingSeat {
         try await withCheckedThrowingContinuation { paintWaiters.append($0) }
     }
 
-    func write(_ data: Data, indexedAs source: AttachUserMessageIndex.OutgoingSource?) async throws {
+    func write(_ data: Data) async throws {
         if let size = latestSize(), size != sentSize {
             session.resize(cols: size.columns, rows: size.rows)
             sentSize = size
@@ -70,8 +70,6 @@ final class HerdrCoreChatViewer: HerdrCoreTypingSeat {
 
     /// Chat's messages are in the Transcript, and it has no index of its own.
     func recordSubmitted(_ text: String) {}
-
-    func notePendingInsert(_ data: Data) {}
 
     func leave() {
         Task { [session] in await session.end() }
@@ -236,7 +234,7 @@ final class HerdrCoreChatTyping {
 
     private func write(_ data: Data, on viewer: HerdrCoreChatViewer) async throws {
         try await AsyncDeadline.run(for: HerdrCoreComposerSend.stepTimeout, sleep: clock.sleep) {
-            try await viewer.write(data, indexedAs: nil)
+            try await viewer.write(data)
         }
     }
 
@@ -265,7 +263,7 @@ final class HerdrCoreChatTyping {
                 throw Refusal(message: Self.holderChanged)
             }
             return holder
-        case .failure(.agentLeft):
+        case .failure(.agentLeft), .failure(.ended):
             throw Refusal(message: Self.agentLeft)
         case .failure(.notSampledYet):
             throw Refusal(message: Self.notSampledYet)

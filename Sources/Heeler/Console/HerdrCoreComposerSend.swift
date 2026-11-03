@@ -8,16 +8,16 @@ protocol HerdrCoreTypingSeat: AnyObject, Sendable {
     var modes: TerminalModeTracker { get }
     /// Returns once the bytes have left. `coreMutationOutcomeUnknown` says they may
     /// have; anything else says they never did.
-    func write(_ data: Data, indexedAs source: AttachUserMessageIndex.OutgoingSource?) async throws
+    func write(_ data: Data) async throws
     func recordSubmitted(_ text: String)
-    /// `data` left and now waits, unsubmitted, for the user to finish it.
-    func notePendingInsert(_ data: Data)
     func leave()
 }
 
 /// The Agent holding a core Terminal before anything is typed into it.
 struct HerdrCoreAgentHolder {
     enum Problem: Error {
+        /// The Terminal finished: its program ended, and nothing holds it.
+        case ended
         case agentLeft
         case notSampledYet
         case noAnswer
@@ -45,6 +45,7 @@ struct HerdrCoreAgentHolder {
                 return .failure(.noAnswer)
             }
         }
+        if record?.hasFinished == true { return .failure(.ended) }
         guard let record, let agent = HerdrCoreAgentRule.agent(in: record) else { return .failure(.agentLeft) }
         guard let foreground = record.foreground, foreground.pid != nil else { return .failure(.notSampledYet) }
         return .success(HerdrCoreAgentHolder(record: record, agent: agent, foreground: foreground))
@@ -64,16 +65,12 @@ private final class ViewedAttachSeat: HerdrCoreTypingSeat {
 
     var modes: TerminalModeTracker { attach.terminal.modes }
 
-    func write(_ data: Data, indexedAs source: AttachUserMessageIndex.OutgoingSource?) async throws {
-        try await attach.input.writeAcknowledged(data, generation: session, indexedAs: source)
+    func write(_ data: Data) async throws {
+        try await attach.input.writeAcknowledged(data, generation: session)
     }
 
     func recordSubmitted(_ text: String) {
         attach.input.recordSubmitted(text, generation: session)
-    }
-
-    func notePendingInsert(_ data: Data) {
-        attach.input.notePendingInsert(data, generation: session)
     }
 
     func leave() {}
@@ -83,14 +80,13 @@ private final class ViewedAttachSeat: HerdrCoreTypingSeat {
 /// Attach the user is viewing, or from Chat a viewer of its own, in checked steps,
 /// so it is submitted only while the same Agent still holds the terminal, and a
 /// step nobody answers is never sent again. One Send at a time per Agent: two
-/// pastes must not share one submit.
+/// pastes must not share one submit. A Blocked Agent gets nothing: its dialog
+/// would take the paste's Enter, or the next one, as an answer.
 @MainActor
 final class HerdrCoreComposerSend {
     enum Outcome: Equatable, Sendable {
         /// The paste and the submit key both left, in that order.
         case submitted
-        /// The paste left and the submit is the user's: the Agent is Blocked.
-        case pasted
         /// Nothing more goes out, and the draft comes back with this.
         case refused(ComposerRefusal)
         /// Nothing left Heeler, so sending again is safe.
@@ -163,7 +159,11 @@ final class HerdrCoreComposerSend {
         var viewed: ViewedAttachSeat?
         if route == .terminal {
             guard let attach else { return .failed(Self.notConnected) }
-            guard let session = await liveSession(of: attach) else { return .failed(Self.noLiveAttach) }
+            // A finished Terminal takes no Attach, so waiting for one would only time out.
+            if hasEnded(in: projection) { return Self.outcome(of: .ended) }
+            guard let session = await liveSession(of: attach) else {
+                return hasEnded(in: projection) ? Self.outcome(of: .ended) : .failed(Self.noLiveAttach)
+            }
             viewed = ViewedAttachSeat(attach, session: session)
         }
 
@@ -176,14 +176,16 @@ final class HerdrCoreComposerSend {
         if isOnWindows(), !HerdrCoreAgentRule.windowsTerminalEndsWithItsProgram(held.foreground) {
             return .refused(.inputNotReady(Self.shellStaysOpen))
         }
-        let isBlocked = held.agent.status == .blocked
+        // Its dialog has the input: a paste may not show, and the next Enter answers.
+        // Chat answers with its card; the terminal's tools keyboard answers there.
+        if held.agent.status == .blocked {
+            return .refused(route == .terminal ? .inputNotReady(Self.answerTheQuestionFirst) : .agentBlocked)
+        }
 
         let seat: any HerdrCoreTypingSeat
         if let viewed {
             seat = viewed
         } else {
-            // Chat answers a dialog with its card, and never types into one.
-            guard !isBlocked else { return .refused(.agentBlocked) }
             do {
                 seat = try await projection.chatTyping(at: address).openViewer()
             } catch where Self.saysProgramEnded(error) {
@@ -218,19 +220,16 @@ final class HerdrCoreComposerSend {
 
         let pasteStart = clock.now()
         let paste = TerminalBracketedPaste.encode(text, bracketed: true)
-        switch await write(paste, on: seat, indexedAs: isBlocked ? .composerInsert : nil) {
+        switch await write(paste, on: seat) {
         case .left: break
         case .notLeft: return .failed(Self.notConnected)
         case .unknown: return .outcomeUnknown
         }
-        if isBlocked { return .pasted }
 
         switch await sampleAfterPaste(of: held, wakes: wakes, wake: wake, in: projection) {
         case .holds(let record):
             if HerdrCoreAgentRule.agent(in: record)?.status == .blocked {
-                guard route == .terminal else { return .refused(.notSubmitted(Self.becameBlocked)) }
-                seat.notePendingInsert(paste)
-                return .pasted
+                return .refused(.notSubmitted(Self.becameBlocked))
             }
             guard clock.now() - pasteStart < Self.submitWindow else {
                 return .refused(.notSubmitted(Self.windowPassed))
@@ -262,8 +261,14 @@ final class HerdrCoreComposerSend {
         return .refused(.inputNotReady(Self.lastSendMayRemain))
     }
 
+    /// What this link's events left: a finished Terminal never takes input again.
+    private func hasEnded(in projection: HerdrCoreConsoleProjection) -> Bool {
+        projection.terminalRecord(at: address)?.hasFinished == true
+    }
+
     private static func outcome(of problem: HerdrCoreAgentHolder.Problem) -> Outcome {
         switch problem {
+        case .ended: .refused(.inputNotReady(agentEnded))
         case .agentLeft: .refused(.inputNotReady(agentLeft))
         case .notSampledYet: .refused(.inputNotReady(notSampledYet))
         case .noAnswer: .failed(noAnswerBeforePaste)
@@ -308,13 +313,10 @@ final class HerdrCoreComposerSend {
         case unknown
     }
 
-    private func write(
-        _ data: Data, on seat: any HerdrCoreTypingSeat,
-        indexedAs source: AttachUserMessageIndex.OutgoingSource? = nil
-    ) async -> Write {
+    private func write(_ data: Data, on seat: any HerdrCoreTypingSeat) async -> Write {
         do {
             try await AsyncDeadline.run(for: Self.stepTimeout, sleep: clock.sleep) {
-                try await seat.write(data, indexedAs: source)
+                try await seat.write(data)
             }
             return .left
         } catch AsyncDeadlineError.timedOut, TransportError.coreMutationOutcomeUnknown {
@@ -466,6 +468,9 @@ final class HerdrCoreComposerSend {
     private static let lastSendMayRemain =
         "The last message may still be in the Agent's input, so nothing was sent. Check the terminal, then send again."
     private static let agentLeft = "The Agent no longer holds this terminal, so nothing was sent."
+    private static let agentEnded = "The Agent has ended, so nothing was sent."
+    private static let answerTheQuestionFirst =
+        "The Agent is waiting on its question on screen, so nothing was sent. Answer it with the tools keyboard first, then send again."
     private static let holderChangedWhileOpening =
         "Another process took over the terminal as Heeler reached it, so nothing was sent."
     private static let notSampledYet = "The Agent is still starting, so nothing was sent. Try again in a moment."

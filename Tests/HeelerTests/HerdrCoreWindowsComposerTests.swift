@@ -491,14 +491,23 @@ struct HerdrCoreWindowsComposerTests {
         await fixture.finish()
     }
 
-    @Test func aBlockedAgentGetsThePasteAndNoSubmit() async throws {
-        let fixture = try await Fixture(terminal: try Self.heelerForm(status: "blocked"))
+    /// Step 22 (2026-11-03): at Claude Code 2.1.316's permission dialog the paste never
+    /// showed and the tools keyboard's Enter approved the dialog. Nothing goes now.
+    @Test func aBlockedAgentGetsNothingAndTheDraftStays() async throws {
+        let fixture = try await Fixture(terminal: Self.heelerFormClaude(status: "blocked"))
         let attached = try await fixture.live()
 
-        let sending = await fixture.sendPastingHello(on: attached)
+        fixture.composer.replaceDraft(with: "hello")
+        let result = await fixture.composer.send(policy: fixture.policy)
 
-        #expect(await sending.value == .deliveredViaAttach)
-        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+        guard case .refused(.inputNotReady(let reason)) = result else {
+            Issue.record("Expected a refusal, got \(result)")
+            await fixture.finish()
+            return
+        }
+        #expect(reason.contains("tools keyboard"))
+        #expect(fixture.composer.draft == "hello")
+        #expect(await attached.socket.dataWritten(channel: attached.channel).isEmpty)
         #expect(await !fixture.scripted.methods.contains("terminal.get"))
         await fixture.finish()
     }

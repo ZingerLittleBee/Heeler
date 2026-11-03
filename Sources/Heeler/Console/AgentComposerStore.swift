@@ -528,10 +528,6 @@ final class AgentComposerStore: ComposerDraftOperations {
                 }
             }
             return .submittedViaAttach
-        case .pasted:
-            messages[index].tracksAgentProgress = false
-            messages[index].state = .delivered(.acknowledged)
-            return .deliveredViaAttach
         case .refused(let refusal):
             returnToDraft(id)
             return .refused(refusal)

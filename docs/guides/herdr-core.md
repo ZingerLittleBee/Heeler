@@ -118,8 +118,10 @@ The submit goes out within two seconds of the paste or not at all, so a slow lin
 | **may still be in the terminal** | The Agent left and something else holds the terminal. Under a shell Send pressed Ctrl+C once, and only bash, fish, dash and zsh are counted on to drop the text for it, not PowerShell or any other | Check the terminal before you press anything there |
 | **not accepting a paste** | The program has bracketed paste off, so nothing was written | Send again when it is back at its input. On Windows, if this repeats at the Agent's own input, type it with Direct Input |
 | **keeps a shell open** | On Windows, this terminal's shell stays after its Agent exits, so Send cannot tell which would get your message. Nothing was written | Type it with Direct Input |
+| **waiting on its question on screen** | The Agent is **Blocked** on a dialog, so nothing was written: the dialog would take the next Enter as its answer | Answer it with the tools keyboard, then send again |
+| **has ended** | The Agent's program ended, so its terminal takes nothing more | Start a new Agent |
 
-While the Agent is **Blocked**, Send only pastes. Use the tools keyboard to submit or cancel.
+While the Agent is **Blocked**, Send sends nothing. The tools keyboard answers the dialog: its Enter picks the highlighted option.
 
 If the Host does not answer a step, Send cannot tell what reached the program. The Composer says so, offers **Edit Draft** instead of Retry, and never sends the message again, because a paste or an Enter the core was holding can still arrive. Look at the terminal first. The next Send pastes nothing until the Host answers, then says the last message **may still be in the Agent's input**. Check the terminal and send again.
 

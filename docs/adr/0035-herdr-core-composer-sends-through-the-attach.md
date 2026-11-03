@@ -37,8 +37,18 @@ the shell that stays behind, and a retry can deliver it twice.
   the end of the Attach's first paint, the sequence every paint ends with,
   before it reads them: a program's modes can be in a later frame than the
   output that made the Attach live.
-- While Agent Status is Blocked, Send only pastes, as on Herdr TUI, and the
-  tools keyboard submits or cancels.
+- While Agent Status is Blocked, Send sends nothing: the Composer keeps the
+  draft and says the program is waiting on its question on screen, to be
+  answered with the tools keyboard first. The tools keyboard's own Enter still
+  sends Enter, which is how it answers. A sample after the paste that shows the
+  Agent Blocked submits nothing either, and the draft comes back saying the text
+  may still be in the Agent's input. This replaces Herdr TUI's paste without
+  Enter here (ADR 0013): on 2026-11-02 and 2026-11-03 Claude Code 2.1.316 showed no
+  paste made during its permission dialog, so the tools keyboard's Enter that was to
+  submit it approved the dialog's highlighted option instead, on Linux and Windows.
+- Send to a Terminal that has finished sends nothing and opens no Attach, which a
+  finished Terminal never takes: the Composer keeps the draft and says the Agent has
+  ended, with no Retry, since the Terminal cannot come back.
 - If the check fails or runs out of time, nothing is submitted. Text the Agent
   had read goes with it; text it had not read reaches whatever now holds the
   terminal, usually the shell's line editor as a pending paste. When a shell

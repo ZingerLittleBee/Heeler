@@ -494,13 +494,11 @@ the version under test.
 17. Add an image and Send the draft holding its path. The Agent reads the file by
     that path.
 18. Leave a draft in an Agent's Composer, exit the Agent with Direct Input, and tap
-    Send. Its Terminal has ended, so nothing runs anywhere, and the draft stays.
-    **Known defect**, seen on herdr-core 0.1.16 with Claude Code 2.1.286 after `/exit`
-    (exit code 0): nothing ran, but on an Agent that already reads **Agent Ended**
-    every Send empties the draft at once, and a few seconds later the Composer says
-    **The terminal did not connect in time, so nothing was sent. Retry when it
-    shows.**, with **Retry** and **Edit Draft**. Only Edit Draft brings the text back,
-    and Retry cannot help a Terminal that has ended.
+    Send. Its Terminal has ended, so nothing runs anywhere, and the draft stays at
+    once with a notice that the Agent **has ended**, and no Retry. The second run, on
+    herdr-core 0.1.16 with Claude Code 2.1.286 after `/exit` (exit code 0), saw
+    instead the draft emptied and **The terminal did not connect in time**, with
+    Retry; Send now reads the finished Terminal first.
 19. From the Herdr desktop app, start an agent in a space. Herdr desktop app 0.1.12
     ran it as `powershell.exe -NoExit -Command "& '<agent>'"`, a shell that stays after
     the agent exits, where New Agent's form ends with it. Then in Heeler tap Send with a
@@ -516,13 +514,13 @@ the version under test.
 21. Tap Stop during a working turn. The turn stops, and the Agent stays listed. Stop
     an Agent that exits at the key: it leaves the list. Claude Code 2.1.286 reports no
     status, so it reads **Unknown** and offers no Stop.
-22. Bring an Agent to a question and Send: the text lands in its input unsubmitted.
-    The tools keyboard submits it. **Known defect**, seen on herdr-core 0.1.16 with
-    Claude Code 2.1.316 at its permission dialog: Send empties the draft with no
-    notice and the text never shows, as on Linux with that version. The tools
-    keyboard's Enter then answers the dialog with its highlighted option (**1. Yes**,
-    which ran the tool use) instead of submitting text. Ask for something harmless,
-    such as a file in a scratch folder, so that approving it does no harm.
+22. Bring an Agent to a question and Send: nothing is written, the draft stays, and
+    the notice says the Agent is **waiting on its question on screen**. Answer it with
+    the tools keyboard, whose Enter picks the highlighted option, then Send again. The
+    second run, with Claude Code 2.1.316 at its permission dialog, saw the draft
+    emptied with no notice and no text in its input, and the tools keyboard's Enter
+    then approved the dialog's **1. Yes**. Ask for something harmless, such as a file
+    in a scratch folder, so that approving it does no harm.
 23. When an Agent leaves its Terminal to PowerShell before a Send's submit, Heeler
     sends one Ctrl+C and says the text **may still be in the terminal** (by its
     source): it does not count PowerShell among the shells that drop a pending paste

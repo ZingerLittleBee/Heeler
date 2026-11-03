@@ -171,15 +171,12 @@ final class TerminalInputController {
 
     /// Writes `data` on `generation`'s session and returns once it has left.
     /// Throws `TerminalAttachInputError.sessionEnded` when that session is gone
-    /// and nothing was written, or what the session's write threw. `source`
-    /// indexes the bytes as typing; a caller that records its own message omits it.
-    func writeAcknowledged(
-        _ data: Data, generation: SessionGeneration, indexedAs source: AttachUserMessageIndex.OutgoingSource? = nil
-    ) async throws {
+    /// and nothing was written, or what the session's write threw. Nothing is
+    /// indexed: the caller records its own message once it is submitted.
+    func writeAcknowledged(_ data: Data, generation: SessionGeneration) async throws {
         guard generation == liveGeneration, let acknowledgedWriter else {
             throw TerminalAttachInputError.sessionEnded
         }
-        if let source { userMessageIndex.observeOutgoing(data, source: source) }
         try await acknowledgedWriter(data)
     }
 
@@ -334,13 +331,6 @@ final class TerminalInputController {
     func recordSubmitted(_ text: String, generation: SessionGeneration) {
         guard generation == liveGeneration else { return }
         userMessageIndex.record(submitted: text)
-    }
-
-    /// Indexes a Composer insert that `generation` has already written, for a
-    /// write that only learned it was one afterwards.
-    func notePendingInsert(_ data: Data, generation: SessionGeneration) {
-        guard generation == liveGeneration else { return }
-        userMessageIndex.observeOutgoing(data, source: .composerInsert)
     }
 
     private func write(

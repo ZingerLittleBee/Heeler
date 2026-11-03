@@ -195,7 +195,7 @@ struct HerdrCoreComposerSendTests {
 
     // MARK: A detail whose core is gone
 
-    /// A Blocked Agent's answer goes by the same Send as any other message.
+    /// Whatever the Agent's status, another core's Terminal hears nothing.
     @Test(arguments: ["idle", "blocked"])
     func aDetailsSendTypesNothingOnceAnotherCoreServesTheAddress(status: String) async throws {
         let fixture = try await Fixture(terminal: Self.record(status: status))
@@ -823,21 +823,35 @@ struct HerdrCoreComposerSendTests {
 
     // MARK: Blocked
 
-    /// As on Herdr TUI: the tools keyboard submits or cancels.
-    @Test func aBlockedAgentGetsThePasteAndNoSubmit() async throws {
+    /// Claude Code 2.1.316's permission dialog (hc-lab and Windows, 2026-11-02 and
+    /// -03) showed no paste, and the tools keyboard's Enter then approved its
+    /// highlighted option. So nothing goes, and the draft stays with the reason.
+    @Test func aBlockedAgentGetsNothingAndTheDraftStaysWithTheReason() async throws {
         let fixture = try await Fixture(terminal: Self.record(status: "blocked"))
         let attached = try await fixture.live()
 
-        let sending = await fixture.sendPastingHello(on: attached)
+        fixture.composer.replaceDraft(with: "hello")
+        let result = await fixture.composer.send(policy: fixture.policy)
 
-        #expect(await sending.value == .deliveredViaAttach)
-        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+        guard case .refused(.inputNotReady(let reason)) = result else {
+            Issue.record("Expected a refusal, got \(result)")
+            return
+        }
+        #expect(reason.contains("waiting on its question on screen"))
+        #expect(reason.contains("tools keyboard"))
+        #expect(fixture.composer.draft == "hello")
+        #expect(fixture.composer.messages.isEmpty)
+        #expect(fixture.composer.notice?.refusal.message == reason)
+        #expect(await attached.socket.dataWritten(channel: attached.channel).isEmpty)
         #expect(await !fixture.scripted.methods.contains("terminal.get"))
-        #expect(fixture.composer.messages.last?.state == .delivered(.acknowledged))
+
+        fixture.composer.agentStatusDidChange(.working)
+        #expect(fixture.composer.notice == nil)
         await fixture.finish()
     }
 
-    /// Enter would answer the dialog that came up meanwhile.
+    /// Enter would answer the dialog that came up meanwhile, so the draft comes back
+    /// saying the paste may be under it.
     @Test func anAgentThatBecameBlockedDuringTheCheckGetsNoSubmit() async throws {
         let fixture = try await Fixture()
         let attached = try await fixture.live()
@@ -846,29 +860,42 @@ struct HerdrCoreComposerSendTests {
         await fixture.scripted.waitForMethod("terminal.get")
         await fixture.scripted.answerTerminalReads(with: Self.record(status: "blocked"))
 
-        #expect(await sending.value == .deliveredViaAttach)
+        guard case .refused(.notSubmitted(let reason)) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("started asking something"))
         #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+        #expect(fixture.composer.draft == "hello")
+        #expect(fixture.attach.input.userMessageIndex.entries.isEmpty)
         await fixture.finish()
     }
 
-    /// The tools keyboard's Enter submits it, as it does a paste into an Agent that
-    /// was Blocked before the Send, so the message can be jumped to either way.
-    @Test func aPasteTheAgentStartedAskingOverIsIndexedOnceItsEnterGoes() async throws {
+    // MARK: An Agent that ended
+
+    /// Windows step 18 (2026-11-03): Claude Code's `/exit` finished the Terminal with
+    /// 0, and Send waited for an Attach that never came, then offered Retry.
+    @Test func anEndedAgentGetsNothingAndNoWaitForAnAttach() async throws {
         let fixture = try await Fixture()
-        let attached = try await fixture.live()
-        fixture.composer.replaceDraft(with: "hello there")
-        let composer = fixture.composer
-        let sending = Task { await composer.send(policy: fixture.policy) }
-        await attached.socket.waitForData(channel: attached.channel, count: 1)
-        await fixture.passSampleDelay()
-        await fixture.scripted.waitForMethod("terminal.get")
-        await fixture.scripted.answerTerminalReads(with: Self.record(status: "blocked"))
-        #expect(await sending.value == .deliveredViaAttach)
-        #expect(fixture.attach.input.userMessageIndex.entries.isEmpty)
+        try await fixture.deliverEvent(
+            "finished", data: .object(["exit_code": .number(0), "reason": .string("exited")]))
+        try await Self.until("the finish") { [console = fixture.console, host = fixture.host] in
+            console.coreProjection(on: host.id)?.terminalRecord(at: "t1")?.hasFinished == true
+        }
 
-        fixture.attach.input.send(Data(Self.enter.utf8))
+        fixture.composer.replaceDraft(with: "hello")
+        let result = await fixture.composer.send(policy: fixture.policy)
 
-        #expect(fixture.attach.input.userMessageIndex.entries.map(\.rawText) == ["hello there"])
+        guard case .refused(.inputNotReady(let reason)) = result else {
+            Issue.record("Expected a refusal, got \(result)")
+            return
+        }
+        #expect(reason.contains("has ended"))
+        #expect(!reason.contains("connect"))
+        #expect(fixture.composer.draft == "hello")
+        #expect(fixture.composer.messages.isEmpty)
+        #expect(fixture.composer.notice?.refusal.message == reason)
+        #expect(await fixture.scripted.attaches.isEmpty)
         await fixture.finish()
     }
 

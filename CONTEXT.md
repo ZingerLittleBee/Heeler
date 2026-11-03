@@ -309,7 +309,9 @@ and the Composer never claims otherwise.
 On herdr-core, Send submits only while the same Agent still holds the
 terminal; otherwise it submits nothing, a shell that received the text drops
 it, and the Composer keeps the draft and says so. While Agent Status is
-Blocked it only pastes, as on Herdr TUI. It pastes only into a terminal that
+Blocked it sends nothing and says so, unlike Herdr TUI, since the dialog
+would take its Enter: the tools keyboard answers first. It sends nothing to a
+Terminal that has ended either. It pastes only into a terminal that
 accepts a bracketed paste, and otherwise says so. A Send with no answer has an
 unknown outcome and is never repeated. Stop there presses the Terminal's own
 stop key. On native Windows Send pastes nothing into a Terminal whose shell can
