@@ -51,6 +51,63 @@ struct ChatImagePreviewReaderTests {
     }
 }
 
+@Suite("Chat image links")
+struct ChatImageLinkTests {
+    @Test(arguments: [
+        "/tmp/shot.png", "/Users/dev/Desktop/Screenshot 2026-11-03 at 10.00.00.png", "~/shots/a.JPG",
+        "docs/images/logo@2x.png", "logo.webp", "file:///tmp/y%20z.heic", " /tmp/padded.gif ",
+    ])
+    func aWrittenPathToAnImageNamesIt(_ value: String) {
+        #expect(ChatImageLink.path(written: value) == value.trimmingCharacters(in: .whitespaces))
+    }
+
+    @Test(arguments: [
+        "*.png", ".png", "/tmp/.png", "image/png", #"UIImage(named: "a.png")"#, "https://x.test/a.png",
+        "/tmp/a.pdf", "a b.png", "-o.png", "/tmp/dir.png/", #"C:\shots\a.png"#, "~user/a.png", "a:b.png",
+        "/tmp/$NAME.png", "/tmp/a.png\n/tmp/b.png",
+    ])
+    func codeAndOtherFilesNameNoImage(_ value: String) {
+        #expect(ChatImageLink.path(written: value) == nil)
+    }
+
+    @Test func linksToHostImagesNameThemAndWebLinksDoNot() throws {
+        #expect(ChatImageLink.path(linkedBy: try #require(URL(string: "/tmp/a%20b.png"))) == "/tmp/a b.png")
+        #expect(ChatImageLink.path(linkedBy: try #require(URL(string: "shots/c.png"))) == "shots/c.png")
+        #expect(ChatImageLink.path(linkedBy: try #require(URL(string: "file:///tmp/d.png"))) == "file:///tmp/d.png")
+        #expect(ChatImageLink.path(linkedBy: try #require(URL(string: "https://x.test/e.png"))) == nil)
+        #expect(ChatImageLink.path(linkedBy: try #require(URL(string: "docs/a.md"))) == nil)
+    }
+
+    @Test("Absolute and home paths in prose end where the image's name does", arguments: [
+        ("截图在 /tmp/a.png。", ["/tmp/a.png"]),
+        ("保存到/tmp/截图.png，然后打开", ["/tmp/截图.png"]),
+        ("See /tmp/a.png.", ["/tmp/a.png"]),
+        ("(/tmp/a.png) and ~/x/y.webp", ["/tmp/a.png", "~/x/y.webp"]),
+        ("/tmp/a.png,/tmp/b.png", ["/tmp/a.png", "/tmp/b.png"]),
+        ("/usr/bin/x and --out=/tmp/b.gif", ["/tmp/b.gif"]),
+        ("and/or.png https://x.test/a.png ftp://h/b.png", []),
+        ("/tmp/a.png.bak /tmp/a.png/thumb.txt /tmp/a.pngx /tmp/.png", []),
+    ])
+    func prosePaths(_ text: String, _ expected: [String]) {
+        #expect(ChatImageLink.pathRanges(in: text).map { String(text[$0]) } == expected)
+    }
+
+    @Test func theLinkOpensThePathAsWritten() throws {
+        let path = "/tmp/截图 1.png?#&"
+        let url = try #require(ChatImageLink.url(for: path))
+        #expect(!ChatLinkPolicy.allows(url))
+        #expect(ChatImageLink.path(opening: url) == path)
+        #expect(ChatImageLink.path(opening: try #require(URL(string: "https://x.test/?path=/a.png"))) == nil)
+    }
+
+    @Test func aHomePathResolvesOnlyWithTheHome() {
+        #expect(ChatImagePath.resolve("~/a/b.png", cwd: "/w", home: "/home/dev") == "/home/dev/a/b.png")
+        #expect(ChatImagePath.resolve("~/a/b.png", cwd: "/w") == nil)
+        #expect(ChatImagePath.resolve("~other/b.png", cwd: "/w", home: "/home/dev") == nil)
+        #expect(ChatImagePath.resolve("shots/b.png", cwd: "/w", home: "/home/dev") == "/w/shots/b.png")
+    }
+}
+
 @MainActor
 @Suite("Chat image thumbnails", .timeLimit(.minutes(1)))
 struct ChatImageThumbnailsTests {

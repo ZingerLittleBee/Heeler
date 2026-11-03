@@ -131,6 +131,24 @@ struct ChatRow: Identifiable, Sendable {
         return tool.imagePath
     }
 
+    /// The image files the row's message names by path, as written and
+    /// each once (`ChatImageLink`).
+    var messageImagePaths: [String] {
+        switch content {
+        case .user(let message) where message.command == nil:
+            return ChatImageLink.paths(in: ChatImageLink.marking(message.text))
+        case .assistant(_, let blocks), .plan(_, let blocks):
+            var seen: Set<String> = []
+            return blocks.flatMap { block in
+                [block.content] + (block.table?.rows.flatMap(\.self) ?? [])
+            }
+            .flatMap(ChatImageLink.paths(in:))
+            .filter { seen.insert($0).inserted }
+        default:
+            return []
+        }
+    }
+
     /// What Copy and Select Text take: the whole message as written, the
     /// Markdown source for the model's text. Nil for rows without text.
     var copyText: String? {

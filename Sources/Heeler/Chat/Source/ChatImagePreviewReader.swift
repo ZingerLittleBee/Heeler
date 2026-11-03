@@ -4,10 +4,11 @@ import ImageIO
 /// The Host file an image row shows, as transcripts record it.
 enum ChatImagePath {
     /// Resolves only recorded filesystem paths: an absolute path or a
-    /// `file:` URL, or a relative path joined to the recorded working
-    /// directory. Joining preserves remote symlink semantics; local URL
+    /// `file:` URL, a relative path joined to the recorded working
+    /// directory, or a `~/` path joined to the Host's home directory when
+    /// it is known. Joining preserves remote symlink semantics; local URL
     /// standardization must not rewrite a Host's path.
-    static func resolve(_ value: String?, cwd: String?) -> String? {
+    static func resolve(_ value: String?, cwd: String?, home: String? = nil) -> String? {
         guard let value, !value.isEmpty else { return nil }
         if value.lowercased().hasPrefix("file:") {
             guard let url = URL(string: value), url.isFileURL,
@@ -18,8 +19,14 @@ enum ChatImagePath {
             return RemoteHostPath.isAbsolute(path) ? path : nil
         }
         if RemoteHostPath.isAbsolute(value) { return value }
-        // Schemes, drive-relative paths and home-relative paths need context
-        // the transcript does not provide. They must not become cwd children.
+        if value.hasPrefix("~/") {
+            guard let home, RemoteHostPath.isAbsolute(home) else { return nil }
+            let path = RemoteHostPath.childPath(home, name: String(value.dropFirst(2)))
+            return RemoteHostPath.isAbsolute(path) ? path : nil
+        }
+        // Schemes, drive-relative paths and other home-relative paths need
+        // context the transcript does not provide. They must not become cwd
+        // children.
         guard URLComponents(string: value)?.scheme == nil,
             !value.hasPrefix("~"), !value.hasPrefix("\\"),
             let cwd, RemoteHostPath.isAbsolute(cwd)

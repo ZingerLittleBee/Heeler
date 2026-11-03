@@ -1727,23 +1727,27 @@ struct ConsoleView: View {
             changes: readsChanges ? console.rowChanges.store(for: agent) : nil,
             qualifier: standsAlone ? nil : qualifier,
             saved: saved,
-            hiddenTokens: ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: showsHost),
+            hiddenTokens: ConsoleWorkspaceCard.hiddenTokens(
+                for: agent, checkoutPath: section.checkout?.checkoutPath, showsHost: showsHost),
             heading: heading,
             showsHost: showsHost,
             lead: .card)
     }
 
     /// A repository's checkout, titled by the branch its Agents' latest
-    /// Changes reads found.
+    /// Changes reads found, or before any did, the branch saved from the
+    /// last read.
     private func checkoutTitle(_ section: ConsoleWorkspaceSection) -> ConsoleCheckoutTitle {
         let reads = section.agents.compactMap { agent -> CheckoutChanges? in
             guard case .loaded(let changes) = console.rowChanges.store(for: agent)?.phase else { return nil }
             return changes
         }
+        let path = section.checkout?.checkoutPath
         return ConsoleCheckoutTitle(
             label: section.title,
             isMainCheckout: section.checkout?.isLinkedWorktree != true,
-            branch: ConsoleCheckoutTitle.branch(at: section.checkout?.checkoutPath, in: reads))
+            branch: ConsoleCheckoutTitle.branch(at: path, in: reads)
+                ?? console.savedBranch(on: section.id.hostID, atCheckoutPath: path))
     }
 
     private func checkoutSummaries(_ card: ConsoleWorkspaceCard) -> [ConsoleCheckoutSummary] {
@@ -2163,11 +2167,15 @@ struct ConsoleView: View {
     private var agentTitleQualifiers: [ConsoleAgent.ID: String] {
         // By Workspace rows leave fields to their card's titles.
         let isByWorkspace = listPresentation.mode == .byWorkspace
+        let savedStructures = isByWorkspace ? console.savedWorkspaceStructures : [:]
         return AgentTitleQualifier.qualifiers(for: hostFilteredAgents) { agent in
+            let checkoutPath = agent.checkoutPath
+                ?? savedStructures[agent.hostID]?.first { $0.id == agent.agent.workspaceID }?.checkout.checkoutPath
             let card = AgentCardPresentation(
                 agent: agent, layout: console.rowLayout(for: agent.hostID),
                 hiding: isByWorkspace
-                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: false) : [],
+                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, checkoutPath: checkoutPath, showsHost: false)
+                    : [],
                 leadsWithMark: true)
             return .init(title: card.headline, namesAgent: card.cardNamesAgent)
         }

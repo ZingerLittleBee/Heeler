@@ -372,26 +372,61 @@ struct ConsoleListPresentationStoreTests {
         #expect(rowShape(try #require(cards.first)) == ["header", "alone p2"])
     }
 
+    @Test func savedStructureKeepsTheRepositoryCardOfAnEntryWhoseWorktreesAreNotListed() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture()
+        // A saved entry reports no checkout; the last snapshot's structure does.
+        let saved = consoleAgent(host: host, paneID: "p1", status: .unknown, workspaceID: "wY", label: "Heeler")
+        let live = checkoutAgent(host: host, paneID: "p9", status: .working, workspaceID: "w1", label: "nest", repo: "heeler", linked: true)
+        let main = checkoutAgent(host: host, paneID: "p1", status: .working, workspaceID: "wY", label: "Heeler", repo: "heeler")
+        let structure = try [main, live].map {
+            ChatCachedWorkspace(id: $0.agent.workspaceID, label: $0.workspaceLabel, checkout: try #require($0.repositoryCheckout))
+        }
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let cards = ConsoleWorkspaceCard.cards(
+            store.workspaceSections(hosts: [host], agents: [saved], savedStructures: [host.id: structure]))
+
+        #expect(cards.map(\.id) == [sid(host, "wY")])
+        let card = try #require(cards.first)
+        #expect(card.isRepository)
+        #expect(card.primary.checkout == main.repositoryCheckout)
+        #expect(rowShape(card) == ["header", "alone p1"])
+        let liveCard = try #require(
+            ConsoleWorkspaceCard.cards(store.workspaceSections(hosts: [host], agents: [main, live])).first)
+        #expect(liveCard.id == card.id)
+        #expect(liveCard.nested.map(\.id) == card.nested.map(\.id))
+        // A search lists only matches and so no worktree without one.
+        let searched = ConsoleWorkspaceCard.cards(store.workspaceSections(
+            hosts: [host], agents: [saved], savedStructures: [host.id: structure], searchQuery: "Heeler"))
+        #expect(searched.map(rowShape) == [["alone p1"]])
+        // Without a structure the entry is a Workspace of its own.
+        let unplaced = ConsoleWorkspaceCard.cards(store.workspaceSections(hosts: [host], agents: [saved]))
+        #expect(unplaced.map(rowShape) == [["alone p1"]])
+        #expect(unplaced.first?.primary.checkout == nil)
+    }
+
     @Test func rowsInACardLeaveTheWorkspaceHostAndCheckoutDirectoryToIt() {
         let host = Host.fixture()
         let atCheckout = checkoutAgent(
             host: host, paneID: "p1", status: .idle, workspaceID: "w1", label: "nest", repo: "heeler", linked: true)
-        #expect(ConsoleWorkspaceCard.hiddenTokens(for: atCheckout, showsHost: false) == [.workspace, .host])
-        #expect(ConsoleWorkspaceCard.hiddenTokens(for: atCheckout, showsHost: true) == [.workspace])
+        #expect(ConsoleWorkspaceCard.hiddenTokens(for: atCheckout, checkoutPath: atCheckout.checkoutPath, showsHost: false) == [.workspace, .host])
+        #expect(ConsoleWorkspaceCard.hiddenTokens(for: atCheckout, checkoutPath: atCheckout.checkoutPath, showsHost: true) == [.workspace])
         let inCheckout = ConsoleAgent(
             hostID: host.id, hostName: host.displayName,
             agent: Agent(
                 terminalID: "term_p2", kind: "claude", title: "Task", status: .idle,
                 workspaceID: "w1", tabID: "w1:t1", paneID: "p2", cwd: "/wt/nest", revision: 1),
             workspaceLabel: "nest", repositoryCheckout: atCheckout.repositoryCheckout)
-        #expect(ConsoleWorkspaceCard.hiddenTokens(for: inCheckout, showsHost: true) == [.workspace, .directory])
+        #expect(ConsoleWorkspaceCard.hiddenTokens(for: inCheckout, checkoutPath: inCheckout.checkoutPath, showsHost: true) == [.workspace, .directory])
 
         let layout = AgentRowLayout(rows: [
             [.init(.workspace), .init(.host)], [.init(.agent)], [.init(.directory)],
         ])
         let card = AgentCardPresentation(
             agent: inCheckout, layout: layout,
-            hiding: ConsoleWorkspaceCard.hiddenTokens(for: inCheckout, showsHost: false))
+            hiding: ConsoleWorkspaceCard.hiddenTokens(for: inCheckout, checkoutPath: inCheckout.checkoutPath, showsHost: false))
         #expect(card.headline == inCheckout.agent.displayName)
         #expect(card.additionalRows.isEmpty)
     }

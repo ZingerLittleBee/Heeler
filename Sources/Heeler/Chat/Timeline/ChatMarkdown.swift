@@ -78,7 +78,8 @@ struct ChatMarkdownBlock: Sendable, Equatable {
 /// Runs are grouped by their innermost block; list and quote depths come
 /// from the intents that enclose it. Nothing is fetched or interpreted:
 /// images keep only their alt text, HTML stays text, and links that fail
-/// `ChatLinkPolicy` keep their text but stop being links.
+/// `ChatLinkPolicy` keep their text but stop being links. Paths to image
+/// files on the Host are marked for Chat to open on a tap (`ChatImageLink`).
 ///
 /// Lines follow Claude Code's terminal, which keeps the source's: a single
 /// line break stays a line break, and blocks are a blank line apart only
@@ -135,7 +136,8 @@ enum ChatMarkdown {
 /// Only web links: http or https with a host. Anything else the model wrote
 /// would act on the phone rather than take the user to a page: a relative
 /// path or `file:` URL means a file on the Host, which the phone cannot
-/// open, `heeler:` would drive Heeler itself, and `javascript:`, `mailto:`
+/// open (Chat previews an image file itself, see `ChatImageLink`),
+/// `heeler:` would drive Heeler itself, and `javascript:`, `mailto:`
 /// and `data:` run, compose or render something nobody asked for. Such
 /// links keep their text and lose their link.
 enum ChatLinkPolicy {
@@ -524,18 +526,30 @@ private struct BlockBuilder {
     /// The runs as inline content: block attributes and source positions
     /// removed, images reduced to their alt text, unsafe links reduced to
     /// their text, and breaks spelled as the characters they render as.
+    /// Paths to image files are marked (`ChatImageLink`): a code span or
+    /// link that is one, a Markdown image of one, whose text is its file's
+    /// name when it has no alt text, and absolute paths in plain text.
     private func inlineContent(_ range: Range<AttributedString.Index>) -> AttributedString {
         var content = AttributedString()
         let slice = parsed[range]
         for run in slice.runs {
             var attributes = run.attributes
+            var text = String(slice[run.range].characters)
+            let imageSource = attributes.imageURL.flatMap(ChatImageLink.path(linkedBy:))
+            if let imageSource, text.allSatisfy({ $0 == "\u{FFFC}" }) {
+                text = RemoteHostPath.lastComponent(of: imageSource)
+            }
+            var imagePath = imageSource
             attributes.presentationIntent = nil
             attributes.markdownSourcePosition = nil
             attributes.imageURL = nil
             if let link = attributes.link, !ChatLinkPolicy.allows(link) {
+                imagePath = imagePath ?? ChatImageLink.path(linkedBy: link)
                 attributes.link = nil
             }
-            var text = String(slice[run.range].characters)
+            if attributes.inlinePresentationIntent?.contains(.code) == true, attributes.link == nil {
+                imagePath = imagePath ?? ChatImageLink.path(written: text)
+            }
             if var intent = attributes.inlinePresentationIntent {
                 // `Text` ignores both break intents and draws the characters,
                 // so the characters must be the break. A soft break breaks
@@ -547,7 +561,16 @@ private struct BlockBuilder {
                 }
                 attributes.inlinePresentationIntent = intent.isEmpty ? nil : intent
             }
-            content.append(AttributedString(text, attributes: attributes))
+            // A web link around an image keeps its destination.
+            if let imagePath, attributes.link == nil {
+                var piece = AttributedString(text, attributes: attributes)
+                piece[ChatImageLink.PathAttribute.self] = imagePath
+                content.append(piece)
+            } else if attributes.link == nil, attributes.inlinePresentationIntent?.contains(.code) != true {
+                ChatImageLink.append(text, attributes: attributes, to: &content)
+            } else {
+                content.append(AttributedString(text, attributes: attributes))
+            }
         }
         return content
     }
