@@ -103,8 +103,7 @@ enum ChatTimelineProjection {
             }
         }
         for index in segments.indices {
-            let phase =
-                index == segments.count - 1 ? newestPhase(ending: segments[index].ending, signals: signals) : .settled
+            let phase = index == segments.count - 1 ? newestPhase(of: segments[index], signals: signals) : .settled
             // Rows of a turn whose start is still to load show as they
             // arrive: folded, each page would add nothing to see. Once
             // earlier messages wait for the user, the turn reads as finished
@@ -140,6 +139,21 @@ enum ChatTimelineProjection {
         // as last seen, and a clock counting from them would read as work.
         if ending == nil, signals.activity != .idle, signals.isLive { return .running }
         return signals.isBackgroundWorkRunning ? .held : .settled
+    }
+
+    /// A turn of the program's own commands alone, such as the `/clear` a
+    /// new Claude Code conversation opens with, asks the model nothing and
+    /// records no end. While the Agent reports no state, nothing says it
+    /// works, so no clock counts from it.
+    private static func newestPhase(of segment: Segment, signals: ChatTurnSignals) -> Phase {
+        guard signals.activity == .unknown, segment.ending == nil, let head = segment.head, isCommand(head),
+            segment.body.allSatisfy({ isCommand($0) || isBlank($0) })
+        else { return newestPhase(ending: segment.ending, signals: signals) }
+        return signals.isBackgroundWorkRunning ? .held : .settled
+    }
+
+    private static func isCommand(_ row: ChatRow) -> Bool {
+        if case .notice(let notice) = row.content { notice.kind == .command } else { false }
     }
 
     /// A running call as last seen: it may have ended since, so it stops
