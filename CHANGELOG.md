@@ -7,6 +7,8 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-11-04
+
 ### Added
 
 - Paste an image from the clipboard into a message: tap **+**, then **Paste
