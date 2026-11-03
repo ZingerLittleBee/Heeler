@@ -41,6 +41,8 @@ struct OpenCodeRecordSource: ChatTranscriptSource {
     let session: OpenCodeSessionID
     let budgets: Budgets
     private var isOpen = false
+    /// Where the session was found. A tail looks in OpenCode 2's tables first.
+    private var tables: OpenCodeQuery.Tables = .v2
     /// The event counter at the last newer read.
     private var eventSeq: Int64?
     /// The rows held, by `seq`: every row from `lowSeq` to `highSeq`.
@@ -220,7 +222,13 @@ struct OpenCodeRecordSource: ChatTranscriptSource {
                 }
                 return .lines(chatLines(records))
             case .sessionMissing(let otherStores):
+                // OpenCode 2 writes a new session with its first message.
+                tables = .v2
                 return .missing(otherStores: otherStores)
+            case .unavailable(.olderOpenCode) where tables == .v2:
+                // Only OpenCode 1.x's tables can hold it (ADR 0025).
+                tables = .v1
+                return try await readTail(files)
             case .unavailable(let problem):
                 throw Self.unavailable(problem)
             case .unchanged:
@@ -268,7 +276,7 @@ struct OpenCodeRecordSource: ChatTranscriptSource {
         guard let queryOpenCode = files.queryOpenCode else {
             throw TransportError.hostFeatureUnavailable(feature: "Chat")
         }
-        return try await queryOpenCode(OpenCodeQuery(session: session, kind: kind))
+        return try await queryOpenCode(OpenCodeQuery(session: session, kind: kind, tables: tables))
     }
 
     /// Chat shows a subagent's session only inside its parent's.

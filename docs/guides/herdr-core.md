@@ -259,7 +259,7 @@ Codex on its shared background server offers no list, only `codex resume --no-da
 
 ### Let Chat follow OpenCode
 
-This offer stays off with OpenCode's Chat, so for now an OpenCode Agent offers the terminal alone. On Linux, OpenCode 2.2.2 passed its check, but an OpenCode 1.19.5 Agent bound through this plugin read **No Messages Yet** instead of saying Chat can't show its conversation, so OpenCode stays off there for every release. Once its Chat is on, it works like this:
+This offer stays off with OpenCode's Chat, so for now an OpenCode Agent offers the terminal alone. On Linux, OpenCode 2.2.2 passed its check, but an OpenCode 1.19.5 Agent bound through this plugin read **No Messages Yet**, since Chat then read only OpenCode 2.x's tables. Chat now reads a 1.x conversation from 1.x's own tables, which has not been run on a Host, so OpenCode stays off there for every release until it passes. Once its Chat is on, it works like this:
 
 When Chat can't tell an OpenCode Agent's conversation, it offers **Let Chat Follow OpenCode…**, in the conversation's place or on the banner over one it keeps showing. This is the only OpenCode setting Heeler changes, and it does nothing until you agree.
 
@@ -272,7 +272,7 @@ The plugin does nothing outside a herdr-core Terminal. It only tells the core wh
 **Undo** in the same sheet, or under **Harness Edits** in the Host's detail, takes the entry out and then the plugin's files and folder. Anything else you changed in the file since stays. Heeler keeps a folder that now holds something of yours, or that another file it edited still names, as after applying again once OpenCode moved to 2.x. If a file in the folder changes while Heeler removes it, Heeler says so and **Undo** again finishes. Removing the [Host Helper](#host-helper) from the device that made the edit undoes it too, and from another device leaves it in place, where it does nothing without a core.
 
 - A later app update does not refresh the plugin's copy. **Undo** and apply again to update it.
-- OpenCode 1.x gets its conversation named this way, but Chat reads only OpenCode 2.x's format, so an OpenCode that has never moved to 2.x says so instead of showing the conversation. The sheet says this before you apply the change.
+- OpenCode 1.x gets its conversation named this way too, and Chat shows it from 1.x's own tables, each prompt as its own turn.
 
 ### Pi and Oh My Pi
 

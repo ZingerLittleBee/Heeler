@@ -150,7 +150,8 @@ extension HostCapabilities {
     /// 0.165.0 started with `--no-daemon` and Grok Build 1.0.70 signed in, and Pi 1.4.0
     /// and Oh My Pi 18.13.3 on an API-key provider. OpenCode stays off, since this list
     /// turns a program on for every release: 2.2.2 passed, but a 1.19.5 Agent bound
-    /// through Heeler's plugin showed no messages.
+    /// through Heeler's plugin showed no messages, since Chat read only 2.x's tables. It
+    /// now reads 1.x's own, which has not run on a Host.
     static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp]
 
     /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in

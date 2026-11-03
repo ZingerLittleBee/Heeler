@@ -108,10 +108,6 @@ struct HarnessConfigEditOffer: View {
                 } else {
                     Text(change.createsFile ? "Creates These Files" : "Changes These Files")
                 }
-            } footer: {
-                if let limitation = flow.limitation {
-                    Text(limitation)
-                }
             }
         case .alreadyApplied(let path):
             Section {
@@ -199,12 +195,10 @@ struct OpenCodePluginEditSheet: View {
             List {
                 HarnessConfigEditOffer(
                     flow: flow,
-                    offer: [
+                    offer:
                         "OpenCode says which conversation it shows through Heeler's plugin. Loading the plugin takes one change to OpenCode's configuration and a folder beside it. You see both first, and you can undo them.",
-                        flow.limitation,
-                    ].compactMap { $0 }.joined(separator: " "),
                     actionTitle: "Review the Change",
-                    afterApplying: "Start OpenCode again to load the plugin. \(flow.limitation ?? "Chat then follows its conversation.")")
+                    afterApplying: "Start OpenCode again to load the plugin. Chat then follows its conversation.")
             }
             .task { await flow.locate() }
             .navigationTitle("Follow OpenCode")

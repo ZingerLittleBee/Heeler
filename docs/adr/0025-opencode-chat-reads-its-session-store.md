@@ -60,7 +60,8 @@ Cards and the cache work as described there.
   never reads them.
 - Only the tables `session_v2`, `session_message`, `event_sequence` and
   `session_inbox`, the `pragma_table_info` of those four, and table names from
-  `sqlite_master`. Every row read is filtered on the one session id herdr
+  `sqlite_master`, or for a session only OpenCode 1.x's tables hold, `session`,
+  `message` and `part` and their `pragma_table_info` (below). Every row read is filtered on the one session id herdr
   reports: `ses_` followed by 12 hexadecimal digits and 14 letters or digits,
   checked before the id reaches a query. A session with a parent belongs to a
   subagent and is not shown; Chat follows the root session herdr reports. On a
@@ -84,6 +85,21 @@ Cards and the cache work as described there.
   no steers, so until an `idle` row shows such a session going on in
   OpenCode 2, each prompt opens a turn and the turn before it ends with its
   last step.
+- A session no OpenCode 2 imported is read from 1.x's own tables (amended
+  2026-11-03 after #541's Linux run, where OpenCode 1.19.5 shared its store
+  with 2.2.2 and its sessions were only in `session`, `message` and `part`).
+  When `session_v2` lacks the session on a tail read and `message` exists, or
+  only 1.x's tables exist, the source reads the tail again from 1.x's tables
+  and stays on them for that session, and looks in `session_v2` first again
+  once neither holds it. A CTE named `session_message` stands in for 2's
+  table: each message is one row in 2's shape, its `seq` its place by
+  `time_created` then id, its `time_updated` the newest of its own and its
+  parts', a step's text, reasoning and tool parts its content in part id
+  order, and a summary step a compaction. The same slimming and budgets then
+  apply. 1.x has no event counter and no queue: the counter is the newest
+  `time_updated` of the session, its messages and its parts with their count,
+  and no queue line prints. A session read this way keeps its 1.x `version`, so
+  each prompt opens a turn.
 
 ### Polling and changes
 
@@ -114,10 +130,12 @@ Cards and the cache work as described there.
 The query shows nothing it cannot account for:
 
 - a store with only OpenCode 1.x tables (`session`, `message`, `part`) reads
-  as an older OpenCode, which Chat does not read;
+  as an older OpenCode, which sends a tail on to those tables and leaves the
+  candidate list unread;
 - a table or column the statements name that the store lacks reads as an
   unsupported layout, naming what is missing;
-- a session id absent from `session_v2` reads as not found;
+- a session id absent from `session_v2`, and from 1.x's `session` where that
+  table exists, reads as not found;
 - a `session_v2.version` whose major version is above 2 reads as an
   unsupported format;
 - the statements use only the syntax of SQLite 3.25 with JSON1 (window
@@ -239,8 +257,11 @@ its Done status until the first prompt of the new session.
   empty result, and needs SQLite 3.33.
 - **Decoding JSON in Python.** A second slimming implementation; one SQL text
   serves both readers.
-- **Reading OpenCode 1.x tables.** Sessions imported from 1.x live in
-  `session_v2` and are read there; a store never imported is not read.
+- **Leaving OpenCode 1.x tables unread.** This was the first decision:
+  sessions imported from 1.x live in `session_v2`, and a store never imported
+  was not read. OpenCode 1.19.5 still writes only 1.x's tables beside a 2.x
+  store, so its Agent bound by Heeler's plugin read as a conversation with no
+  messages.
 - **A long-lived reader process.** It would hold a connection to the user's
   database between polls and need a lifecycle of its own. If polling proves
   costly, the pace goes down instead.
@@ -274,8 +295,7 @@ its Done status until the first prompt of the new session.
   `sqlite3` CLI. Without either, Chat explains and the terminal stays
   available.
 - The schema is OpenCode's private format and changes often. Missing tables
-  and columns, 1.x-only stores and newer session versions fail closed with an
-  explanation. A change inside a row's JSON cannot be caught that way: unknown
+  and columns and newer session versions fail closed with an explanation. A change inside a row's JSON cannot be caught that way: unknown
   row and item types are counted and skipped and unknown fields ignored, so a
   change hides content until the adapter learns it. No allowlist of
   OpenCode's migrations is kept, because every release adds some and an

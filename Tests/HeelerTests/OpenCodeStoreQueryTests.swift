@@ -531,6 +531,165 @@ struct OpenCodeStoreQueryTests {
         #expect(try harness.response(Self.tail(#require(fixture.sessionID))) == .unavailable(.olderOpenCode))
     }
 
+    // MARK: OpenCode 1.x
+
+    /// OpenCode 1.x's three tables as they stand in a store OpenCode 1.x and 2
+    /// share (`.schema session message part` of the owner's store, 2026-11-03).
+    private static let v1Tables = """
+        CREATE TABLE `session` (`id` text PRIMARY KEY, `project_id` text NOT NULL, `parent_id` text,
+          `slug` text NOT NULL, `directory` text NOT NULL, `title` text NOT NULL, `version` text NOT NULL,
+          `share_url` text, `summary_additions` integer, `summary_deletions` integer, `summary_files` integer,
+          `summary_diffs` text, `revert` text, `permission` text, `time_created` integer NOT NULL,
+          `time_updated` integer NOT NULL, `time_compacting` integer, `time_archived` integer, `workspace_id` text,
+          `path` text, `agent` text, `model` text, `cost` real DEFAULT 0 NOT NULL,
+          `tokens_input` integer DEFAULT 0 NOT NULL, `tokens_output` integer DEFAULT 0 NOT NULL,
+          `tokens_reasoning` integer DEFAULT 0 NOT NULL, `tokens_cache_read` integer DEFAULT 0 NOT NULL,
+          `tokens_cache_write` integer DEFAULT 0 NOT NULL, `metadata` text);
+        CREATE TABLE `message` (`id` text PRIMARY KEY, `session_id` text NOT NULL,
+          `time_created` integer NOT NULL, `time_updated` integer NOT NULL, `data` text NOT NULL);
+        CREATE INDEX `message_session_time_created_id_idx` ON `message` (`session_id`,`time_created`,`id`);
+        CREATE TABLE `part` (`id` text PRIMARY KEY, `message_id` text NOT NULL, `session_id` text NOT NULL,
+          `time_created` integer NOT NULL, `time_updated` integer NOT NULL, `data` text NOT NULL);
+        CREATE INDEX `part_session_idx` ON `part` (`session_id`);
+        CREATE INDEX `part_message_id_id_idx` ON `part` (`message_id`,`id`);
+        """
+
+    private static let v1Session = OpenCodeSessionID("ses_e6038b72affeV1OnlySession1")
+    private static let v1Epoch: Int64 = 1_800_000_000_000
+
+    /// A store OpenCode 2.2.2 and 1.19.5 share, the second's session in its own
+    /// tables only, written in the shapes 1.19.5 writes (#541 Linux P3).
+    private static func v1Store() throws -> (OpenCodeSQLiteHarness, OpenCodeSessionID) {
+        let harness = try OpenCodeSQLiteHarness(
+            OpenCodeStoreFixture.named("pong"), schema: try ChatFixture.text("opencode/schema.sql") + v1Tables)
+        let session = try #require(v1Session)
+        try harness.insert(into: "session", [
+            "id": .text(session.rawValue), "project_id": .text("global"), "slug": .text("calm-river"),
+            "directory": .text("/work/app"), "title": .text("Say OK"), "version": .text("1.19.5"),
+            "time_created": .integer(v1Epoch), "time_updated": .integer(v1Epoch + 5_600),
+        ])
+        try insertV1(harness, message: "msg_a", at: v1Epoch, #"{"role":"user","time":{"created":0},"agent":"build"}"#,
+            parts: [
+                #"{"type":"text","text":"Reply with the single word OK."}"#,
+                #"{"type":"file","mime":"text/plain","filename":"notes.txt","url":"file:///work/app/notes.txt"}"#,
+                #"{"type":"text","text":"Called the Read tool","synthetic":true}"#,
+            ])
+        try insertV1(harness, message: "msg_b", at: v1Epoch + 5_000,
+            #"{"role":"assistant","time":{"created":5000,"completed":5500},"parentID":"msg_a","modelID":"fake","#
+                + #""providerID":"fake","mode":"build","finish":"stop"}"#,
+            parts: [
+                #"{"type":"step-start"}"#,
+                #"{"type":"reasoning","text":"Thinking.","time":{"start":1110,"end":1120}}"#,
+                #"{"type":"tool","callID":"call_1","tool":"bash","state":{"status":"completed","#
+                    + #""input":{"command":"echo hi"},"output":"hi\n","title":"echo hi","metadata":{},"#
+                    + #""time":{"start":1200,"end":1300}}}"#,
+                #"{"type":"text","text":"OK","time":{"start":1400,"end":1500}}"#,
+                #"{"type":"step-finish","reason":"stop"}"#,
+            ])
+        return (harness, session)
+    }
+
+    private static func insertV1(
+        _ harness: OpenCodeSQLiteHarness, message: String, at time: Int64, _ data: String, parts: [String]
+    ) throws {
+        let session = try #require(v1Session).rawValue
+        try harness.insert(into: "message", [
+            "id": .text(message), "session_id": .text(session), "time_created": .integer(time),
+            "time_updated": .integer(time), "data": .text(data),
+        ])
+        for (index, part) in parts.enumerated() {
+            try harness.insert(into: "part", [
+                "id": .text("prt_\(message)_\(index)"), "message_id": .text(message), "session_id": .text(session),
+                "time_created": .integer(time + Int64(index)), "time_updated": .integer(time + Int64(index)),
+                "data": .text(part),
+            ])
+        }
+    }
+
+    @Test func aSessionOnlyOpenCode1HoldsIsReadFromItsTables() throws {
+        let (harness, session) = try Self.v1Store()
+        // OpenCode 2's tables do not hold it, so a tail goes on to 1.x's.
+        #expect(try harness.response(Self.tail(session)) == .unavailable(.olderOpenCode))
+        let records = try harness.records(OpenCodeQuery(session: session, kind: .tail(budget: 524_288), tables: .v1))
+
+        #expect(records.rows.map(\.seq) == [1, 2])
+        #expect(records.firstSeq == 1)
+        #expect(records.inboxLine == nil)
+        guard case .session(let stored)? = records.sessionLine.map(OpenCodeLine.init) else {
+            Issue.record("no session line")
+            return
+        }
+        #expect(stored.version == "1.19.5")
+        #expect(stored.title == "Say OK")
+        guard case .row(let prompt) = OpenCodeLine(records.rows[0].line), case .user(let user) = prompt.content,
+            case .row(let step) = OpenCodeLine(records.rows[1].line), case .assistant(let reply) = step.content
+        else {
+            Issue.record("rows read as \(records.rows.map { String(decoding: $0.line, as: UTF8.self) })")
+            return
+        }
+        #expect(user.text == "Reply with the single word OK.")
+        #expect(user.files.map(\.name) == ["notes.txt"])
+        #expect(step.isFinal)
+        #expect(records.rows[1].timeUpdated == Self.v1Epoch + 5_004)
+        #expect(reply.finish == "stop")
+        #expect(reply.completed == 5_500)
+        let kinds = reply.items.map { item -> String in
+            switch item.kind {
+            case .text(let text): "text \(text.text)"
+            case .reasoning(let text): "reasoning \(text.text) \(text.started ?? 0)-\(text.completed ?? 0)"
+            case .tool(let tool): "tool \(tool.name) \(tool.status ?? "") \(tool.input.command ?? "") \(tool.output ?? "")"
+            case .other: "other"
+            }
+        }
+        // A step's start and finish parts are no item Chat shows.
+        #expect(kinds == ["other", "reasoning Thinking. 1110-1120", "tool bash completed echo hi hi\n", "text OK", "other"])
+
+        // Nothing changed: the counter holds. A new message moves it.
+        let cursor = try Self.cursor(after: records)
+        let poll = OpenCodeQuery(session: session, kind: .poll(cursor), tables: .v1)
+        #expect(try harness.response(poll) == .unchanged(eventSeq: try #require(records.eventSeq)))
+        try Self.insertV1(harness, message: "msg_c", at: Self.v1Epoch + 10_000,
+            #"{"role":"user","time":{"created":10000}}"#, parts: [#"{"type":"text","text":"Again."}"#])
+        let changed = try harness.records(poll)
+        // The newest row read is read again, as on 2's tables.
+        #expect(changed.rows.map(\.seq) == [2, 3])
+        #expect(changed.windowCount == 2)
+
+        // Neither tables hold an absent session.
+        let absent = try #require(OpenCodeSessionID("ses_0a1b2c3d4effAbsentSession1"))
+        #expect(
+            try harness.response(OpenCodeQuery(session: absent, kind: .tail(budget: 1024), tables: .v1))
+                == .sessionMissing(otherStores: []))
+    }
+
+    /// 1.x's statements nest no deeper than 2's. Its `session_message` stands
+    /// at the foot of the CTEs that slim rows, and SQLite adds a CTE's height to
+    /// each expression that reads it, so the CTE is held to the expression limit
+    /// on its own; the parser stack of older SQLite sees only what is written.
+    @Test func everyOpenCode1StatementParsesOnTheParserStackOfOlderSQLite() throws {
+        let (harness, session) = try Self.v1Store()
+        let cursor = OpenCodePollCursor(
+            eventSeq: 9, lowSeq: 1, highSeq: 2, knownInWindow: 2, openRows: [2], updatedSince: 0, budget: 1024)
+        let kinds: [OpenCodeQuery.Kind] = [
+            .tail(budget: 1024), .poll(cursor), .older(before: 2, budget: 1024), .row(seq: 2, outputLimit: 1024),
+        ]
+        for kind in kinds {
+            for (index, sql) in OpenCodeProbe.statements(OpenCodeQuery(session: session, kind: kind, tables: .v1))
+                .enumerated()
+            {
+                #expect(Self.parenthesisDepth(sql) <= Self.deepestParentheses, "\(kind) statement \(index)")
+                #expect(harness.prepareFailure(sql) == nil, "\(kind) statement \(index)")
+                if OpenCodeSQLiteHarness.limitsParserDepth {
+                    #expect(
+                        harness.prepareFailure(sql, parserStack: OpenCodeSQLiteHarness.fixedParserStack - 20) == nil,
+                        "\(kind) statement \(index)")
+                }
+            }
+        }
+        let messages = "WITH \(OpenCodeProbe.v1Messages("'\(session.rawValue)'")) SELECT count(*) FROM session_message"
+        #expect(harness.prepareFailure(messages, expressionDepth: Self.deepestExpression) == nil)
+    }
+
     @Test func aMissingSessionIsReported() throws {
         let (harness, _) = try Self.store("pong")
         harness.otherStores = ["opencode-beta.db"]

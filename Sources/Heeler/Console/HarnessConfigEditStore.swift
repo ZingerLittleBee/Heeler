@@ -121,8 +121,6 @@ final class HarnessConfigEditFlow: Identifiable {
     /// True when the last failure was the file changing under an undo, and so
     /// forgetting the edit is what is left to offer.
     private(set) var canForget = false
-    /// What the edit this offer found still won't bring, once it knows its edit.
-    private(set) var limitation: String?
 
     private let hostID: Host.ID
     private var subject: Subject
@@ -266,7 +264,6 @@ final class HarnessConfigEditFlow: Identifiable {
     private func remember(_ edit: HarnessConfigEdit?) {
         guard let edit, case .offer(let editID, _) = subject else { return }
         subject = .offer(editID: editID, path: edit.path)
-        limitation = edit.limitation
     }
 }
 

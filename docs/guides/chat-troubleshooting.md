@@ -52,7 +52,7 @@ Heeler doesn't recognize this question, for example any question from Pi. Use th
 
 ## Reading OpenCode's conversations needs sqlite3 or python3 on the Host
 
-Install `sqlite3` or Python 3 on the Host, then tap **Check Again**. If Chat says the conversations are in OpenCode's 1.x format, upgrade OpenCode to 2.x.
+Install `sqlite3` or Python 3 on the Host, then tap **Check Again**. If Chat says it can't list OpenCode's 1.x conversations, add Heeler's plugin with **Let Chat Follow OpenCode…** or upgrade OpenCode to 2.x.
 
 ## SFTP is unavailable on this Host
 

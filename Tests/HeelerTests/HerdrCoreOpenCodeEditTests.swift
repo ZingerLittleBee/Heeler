@@ -370,34 +370,13 @@ struct HerdrCoreOpenCodeEditTests {
         #expect(shown.contains { $0.contains(instruction) }, "\(shown)")
     }
 
-    // MARK: What it can't do on a release
+    // MARK: What it promises on each release
 
-    private static let olderReleaseLimit =
-        "OpenCode 1.x keeps conversations in a format Chat doesn't read, so Chat can name this conversation but can't show it. Chat shows conversations from OpenCode 2.x."
-
-    /// Whoever agrees to the edit on 1.x hears that first, and isn't promised otherwise after.
-    @Test func onOpenCode1xTheSheetSaysChatStillWontShowTheConversation() async throws {
-        let files = InMemoryHostFiles(files: [Self.tuiConfig: Self.original])
-        let (store, _, host) = try await started(version: "1.19.5", files: files)
-        defer { store.setHosts([]) }
-        let flow = flow(store, host)
-        await flow.locate()
-
-        let offered = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: Self.olderReleaseLimit)
-        #expect(offered.contains { $0.contains(Self.olderReleaseLimit) }, "\(offered)")
-
-        _ = try await reviewed(flow)
-        let reviewing = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: Self.olderReleaseLimit)
-        #expect(reviewing.contains { $0.contains(Self.olderReleaseLimit) }, "\(reviewing)")
-
-        await flow.accept()
-        let done = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: "Start OpenCode again")
-        #expect(done.contains { $0.contains(Self.olderReleaseLimit) }, "\(done)")
-        #expect(!done.contains { $0.contains("Chat then follows its conversation") }, "\(done)")
-    }
-
-    @Test func onOpenCode2xTheSheetPromisesTheConversation() async throws {
-        let (store, _, host) = try await started(version: "2.2.5")
+    /// Chat shows a 1.x conversation too (#541 Linux P3), so the sheet promises it on
+    /// either release.
+    @Test(arguments: ["1.19.5", "2.2.5"])
+    func theSheetPromisesTheConversation(version: String) async throws {
+        let (store, _, host) = try await started(version: version)
         defer { store.setHosts([]) }
         let flow = flow(store, host)
         _ = try await reviewed(flow)
@@ -406,14 +385,14 @@ struct HerdrCoreOpenCodeEditTests {
         let done = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: "Start OpenCode again")
 
         #expect(done.contains { $0.contains("Chat then follows its conversation") }, "\(done)")
-        #expect(!done.contains { $0.contains(Self.olderReleaseLimit) }, "\(done)")
+        #expect(!done.contains { $0.contains("can't show") }, "\(done)")
     }
 
-    /// Chat doesn't know the release here, so it says what holds on every one.
-    @Test func theUnavailableTextSaysWhichConversationsChatShows() {
+    /// Chat doesn't know the release here, and shows a conversation of either.
+    @Test func theUnavailableTextNamesThePluginForEveryRelease() {
         let text = ChatUnavailableReason.cannotTellSession(.opencode).explanation
         #expect(text.contains("Heeler's plugin"), "\(text)")
-        #expect(text.contains("Chat shows conversations from OpenCode 2.x."), "\(text)")
+        #expect(!text.contains("2.x"), "\(text)")
     }
 
     // MARK: Two files, one folder

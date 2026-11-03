@@ -206,6 +206,11 @@ enum OpenCodeProbe {
             return .unavailable(.layout(missing: missing))
         }
         if output.sessionMissing {
+            // Only a tail goes on to 1.x's tables; a session that goes missing
+            // later is missing.
+            if output.olderTablesBeside, case .tail = query.kind, query.tables == .v2 {
+                return .unavailable(.olderOpenCode)
+            }
             return .sessionMissing(otherStores: output.otherStores.filter(isStoreName))
         }
         guard let exitLine = output.exitLine else {
@@ -238,6 +243,8 @@ enum OpenCodeProbe {
         var missingColumns: [String]?
         var eventSeq: Int64?
         var sessionMissing = false
+        /// `M 1`: OpenCode 1.x's tables are there too.
+        var olderTablesBeside = false
         var recentSessions: [OpenCodeRecentSession] = []
         var sessionLine: Data?
         var rows: [OpenCodeRowLine] = []
@@ -297,8 +304,9 @@ enum OpenCodeProbe {
                 guard text.isEmpty || Int64(text) != nil else { return false }
                 eventSeq = Int64(text)
             case "M":
-                guard value.isEmpty else { return false }
+                guard value.isEmpty || text == "1" else { return false }
                 sessionMissing = true
+                olderTablesBeside = text == "1"
             case "S": sessionLine = Data(text.utf8)
             case "Q":
                 guard let row = try? JSONDecoder().decode(OpenCodeRecentSession.self, from: Data(text.utf8)) else {

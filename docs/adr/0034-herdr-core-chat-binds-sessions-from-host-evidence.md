@@ -198,7 +198,9 @@ never show or send into a conversation it has guessed.
   and an Oh My Pi without the extension, each bound only after Check Again, and a
   Pi started from a Template left no saved evidence of its reply.
   OpenCode stays off on Linux: 2.2.2 passed, but a 1.19.5 Agent bound through
-  Heeler's plugin showed no messages, and one switch covers every release. The
+  Heeler's plugin showed no messages, since Chat read only 2.x's tables, and one
+  switch covers every release. Chat now reads 1.x's own tables (ADR 0025), which
+  has not run on a Host. The
   same day the owner's Windows machine passed Claude Code 2.1.286 and 2.1.316 and
   Pi 1.4.0 with the extension, which the Windows list now holds. Oh My Pi
   18.13.3 stays off there, since it bound but every Send from Chat was refused as
