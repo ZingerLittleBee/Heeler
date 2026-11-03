@@ -311,7 +311,7 @@ On a native Windows core Host, each program's Chat turns on only once it has pas
 |---------|-----------------------------|
 | Claude Code | On. Binds exactly once it reaches its prompt |
 | Pi | On, through Heeler's extension, which you add from Chat (below). Without it, Chat says it can't tell |
-| Grok Build | Off, so it offers the terminal alone. Grok Build 1.0.70 doesn't record its process's start there, which Chat needs |
+| Grok Build | Off, so it offers the terminal alone, until it passes a check. Grok Build 1.0.70 doesn't record its process's start there, so Heeler now binds from when Grok Build opened its conversation, which has not been run on Windows |
 | Oh My Pi | Off, so it offers the terminal alone. Chat showed its conversation, but a Send from Chat found no input box |
 | Codex, OpenCode | Not offered |
 

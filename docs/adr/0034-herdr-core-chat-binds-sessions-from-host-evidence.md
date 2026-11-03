@@ -203,7 +203,8 @@ never show or send into a conversation it has guessed.
   Pi 1.4.0 with the extension, which the Windows list now holds. Oh My Pi
   18.13.3 stays off there, since it bound but every Send from Chat was refused as
   finding no input box on screen, and Grok Build 1.0.70 stays off, since its rows
-  there carry no `pid_start`. Codex and OpenCode were not run on Windows.
+  there carry no `pid_start`; binding from `opened_at` instead waits for a live
+  check. Codex and OpenCode were not run on Windows.
 
 This amends ADR 0024, and ADR 0025's source of the OpenCode session id, its
 start-screen watch, what its confirmation makes of the title `OpenCode` and its
@@ -396,8 +397,10 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   Oh My Pi the nearest runtime, with no following past it, and never the PowerShell.
   A wrong pick binds nothing, because what proves the Agent is still its pid and
   start against what the program recorded, and Grok Build gets no runtime rule since
-  it is a native binary; its 1.0.70 rows there carry no `pid_start`, so nothing
-  proves a Grok Build Agent. Under `npx` Claude Code 2.1.316 reported status and
+  it is a native binary; its 1.0.70 rows there carry no `pid_start`, only
+  `opened_at`, so there a row of the Agent's pid proves it when it was opened no
+  earlier than the process's creation FILETIME, which a row a reused pid's earlier
+  process left cannot be. Under `npx` Claude Code 2.1.316 reported status and
   its record matched, but the Terminal was not listed as an Agent at all, so Chat
   had nothing to say; the Agent rule now reads `npx` (ADR 0032), which no Host
   has run since. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the

@@ -137,8 +137,9 @@ extension HostCapabilities {
     /// acceptance checklist (`docs/guides/native-windows-testing.md`). On Windows build
     /// 26200 with herdr-core 0.1.16 (2026-11-03), Claude Code 2.1.286 and 2.1.316, and
     /// Pi 1.4.0 with Heeler's extension, each bound, showed its conversation and sent
-    /// from Chat. Grok Build stays off: 1.0.70's `active_sessions.json` rows there carry
-    /// no `pid_start`, which its binding needs. Oh My Pi stays off: 18.13.3 bound and
+    /// from Chat. Grok Build stays off until a live check: 1.0.70's `active_sessions.json`
+    /// rows there carry no `pid_start`, and binding from `opened_at` instead has not run
+    /// on a Host. Oh My Pi stays off: 18.13.3 bound and
     /// showed its conversation, but every Send from Chat found no input box on screen.
     static let confirmedWindowsCoreChatPrograms: Set<ChatProgram> = [.claude, .pi]
 

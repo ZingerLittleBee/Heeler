@@ -577,13 +577,14 @@ Code's `.key` files.
     **Working for 0:18** row counting up while Claude Code sat idle, until the next
     turn. Note whether yours does.
 29. Start Grok Build and send a message. Chat shows it, from the one row of
-    `active_sessions.json` with that `pid` and `pid_start`. Record the row's fields and
-    `pid_start`'s value beside the creation time: Heeler assumes they are equal. On the
-    one machine run (herdr-core 0.1.16), Grok Build 1.0.70 wrote rows with only
-    `session_id`, `pid`, `cwd` and `opened_at`, and Chat said it can't tell, also after
-    **Check Again**. **Known defect**: Heeler's row reader requires `pid_start` (by its
-    source), so no Grok Build 1.0.70 Agent can bind there. Run
-    `/new`: two rows match, and Chat says it can't tell until Grok Build starts again.
+    `active_sessions.json` with that `pid` and either a `pid_start` equal to the
+    creation time or, with none, an `opened_at` no earlier than it. Record the row's
+    fields beside the creation time. On the one machine run (herdr-core 0.1.16), Grok
+    Build 1.0.70 wrote rows with only `session_id`, `pid`, `cwd` and `opened_at`, 2 s
+    after the creation time, and Chat said it can't tell, also after **Check Again**,
+    since Heeler then required `pid_start`. It now binds from `opened_at`; not run on
+    a Host since. Run `/new`: two rows match, and Chat says it can't tell until Grok
+    Build starts again.
 30. Open Chat on a Pi Agent with no extension. It says it can't tell, and offers
     **Add Heeler's Extension…**. The sheet names the folders and has written nothing.
     Tap Add. `heeler-session.js` is in Pi's folder, `.omp\agent\extensions` and each

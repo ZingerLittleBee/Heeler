@@ -187,9 +187,11 @@ extension HerdrCoreSessionBinder {
     /// Rows go when their process ends, so a Host never holds many.
     private static let activeSessionsLimit = 1024 * 1024
 
-    /// The one row whose `pid` and `pid_start` match the Agent's process. `/new`
-    /// adds a second row for the same process and keeps the first, and nothing
-    /// says which the screen shows, so two bind nothing (ADR 0034).
+    /// The one row whose `pid` and `pid_start` match the Agent's process, or on
+    /// Windows, where rows have no `pid_start`, its `pid` and an `opened_at` no
+    /// earlier than the process's creation. `/new` adds a second row for the same
+    /// process and keeps the first, and nothing says which the screen shows, so two
+    /// bind nothing (ADR 0034).
     func checkGrokBuild(_ tree: HerdrCoreTerminalProcesses) async throws -> ChatSessionEvidence {
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid],
             case .value(let start) = process.start, let grokHome = grokHome(of: process)
@@ -198,20 +200,59 @@ extension HerdrCoreSessionBinder {
         let slice = try await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: Self.activeSessionsLimit))
         // Any row in another shape could be the one that matches.
         guard slice.length != nil, slice.data.count < Self.activeSessionsLimit,
-            let rows = try? JSONDecoder().decode([ActiveSession].self, from: slice.data)
+            let rows = try? JSONDecoder().decode([ActiveSession].self, from: slice.data),
+            rows.allSatisfy(hasGrokStart)
         else { return cannotTell }
-        let matching = rows.filter { String($0.pid) == pid && matchesGrokStart($0.pidStart, start: start) }
+        let matching = rows.filter { String($0.pid) == pid && matchesGrokStart($0, start: start) }
         guard matching.count == 1, let row = matching.first,
             let session = ConversationReference.lowercaseUUID(row.sessionID)
         else { return cannotTell }
         return .bound(sessionID: session, transcriptRoot: grokHome, directory: startDirectory(row.cwd))
     }
 
-    /// macOS's read says the second, and the row its microseconds.
-    private func matchesGrokStart(_ pidStart: Int64, start: String) -> Bool {
+    /// Whether a row says when its process started, in a form this Host's read compares.
+    private func hasGrokStart(_ row: ActiveSession) -> Bool {
+        row.pidStart != nil || (isOnWindows && row.openedAt != nil)
+    }
+
+    /// macOS's read says the second, and the row its microseconds. Windows's says the
+    /// creation FILETIME: a row with no `pid_start` matches when Grok Build opened it
+    /// after its process was created, so a row an earlier process with a reused pid
+    /// left behind cannot.
+    private func matchesGrokStart(_ row: ActiveSession, start: String) -> Bool {
+        guard let pidStart = row.pidStart else {
+            guard isOnWindows, let created = Int64(start),
+                let opened = row.openedAt.flatMap(Self.windowsFileTime(ofUTC:))
+            else { return false }
+            return opened >= created
+        }
         guard isOnMacOS else { return String(pidStart) == start }
         return HostProcessReader.macOSStartSeconds(start) == pidStart / 1_000_000
     }
+
+    /// `2026-11-03T07:56:52.816690400Z` as a FILETIME, 100-nanosecond ticks since
+    /// 1601 in UTC, exact to its seventh decimal. Nil for any other form.
+    static func windowsFileTime(ofUTC text: String) -> Int64? {
+        let pattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?Z$/
+        guard let match = text.wholeMatch(of: pattern),
+            let year = Int(match.1), let month = Int(match.2), let day = Int(match.3),
+            let hour = Int(match.4), let minute = Int(match.5), let second = Int(match.6),
+            (1...12).contains(month), (1...31).contains(day), hour < 24, minute < 60, second < 60
+        else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        let components = DateComponents(year: year, month: month, day: day, hour: hour, minute: minute, second: second)
+        guard let date = calendar.date(from: components), calendar.component(.day, from: date) == day else {
+            return nil
+        }
+        let digits = String((match.7.map(String.init) ?? "").prefix(7))
+        let ticks = Int64(digits.padding(toLength: 7, withPad: "0", startingAt: 0)) ?? 0
+        let seconds = Int64(date.timeIntervalSince1970.rounded()) + Self.fileTimeEpochOffset
+        return seconds * 10_000_000 + ticks
+    }
+
+    /// Seconds from 1601 to 1970.
+    private static let fileTimeEpochOffset: Int64 = 11_644_473_600
 
     var grokProcessAsk: ProcessAsk {
         ProcessAsk(values: [Self.homeVariable, Self.grokHomeVariable])
@@ -224,20 +265,23 @@ extension HerdrCoreSessionBinder {
     /// One row of `active_sessions.json`. `pid_start` is a JSON number, field 22
     /// of `/proc/<pid>/stat` (Grok Build 1.0.70, `host-evidence/grok/s-flag.json`), and
     /// microseconds since the epoch on macOS (the same, `host-evidence/macos`).
-    /// On Windows Grok Build 1.0.70's rows had no `pid_start` at all (one machine,
-    /// herdr-core 0.1.16, 2026-11-03), so none binds there. A row that has one is
-    /// taken to hold the creation FILETIME, and any other number binds nothing
-    /// (herdr compatibility).
+    /// On Windows Grok Build 1.0.70's rows had no `pid_start` at all, only
+    /// `opened_at`, such as `2026-11-03T07:56:52.816690400Z`, 2 s after the process's
+    /// creation (one machine, herdr-core 0.1.16, 2026-11-03). A row there that has a
+    /// `pid_start` is taken to hold the creation FILETIME, and any other number binds
+    /// nothing (herdr compatibility).
     private struct ActiveSession: Decodable {
         let sessionID: String
         let pid: Int
-        let pidStart: Int64
+        let pidStart: Int64?
+        let openedAt: String?
         let cwd: String?
 
         private enum CodingKeys: String, CodingKey {
             case pid, cwd
             case sessionID = "session_id"
             case pidStart = "pid_start"
+            case openedAt = "opened_at"
         }
     }
 
