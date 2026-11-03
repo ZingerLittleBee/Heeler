@@ -290,6 +290,21 @@ struct HerdrCorePiSessionBinderTests {
 
     private static let extensionText = "export default function () {}\n"
 
+    /// Looking for the extension only chooses the words: a read of it that fails
+    /// leaves the reason it had, not a failed check.
+    @Test func aFailedLookForTheExtensionStillSaysItCantTell() async throws {
+        let run = try PiRun(version: "1.4.0")
+        let rig = Rig()
+        try await run.addScene(to: rig)
+        let path = "\(run.agentDir)/extensions/heeler-session.js"
+        await rig.files.write(Self.extensionText, at: path)
+        await rig.files.failNext(.read, path: path, with: TransportError.hostFileTimedOut)
+
+        let evidence = try await rig.binder(.pi).check(try run.record())
+
+        #expect(evidence == .unavailable(.cannotTellSession(.pi)))
+    }
+
     /// The owner's Mac, 2026-11-02: `pi --no-extensions` with the Helper installed was
     /// told to install the Helper. Pi takes its title as its arguments, so its own
     /// process shows no flag there (herdr compatibility).

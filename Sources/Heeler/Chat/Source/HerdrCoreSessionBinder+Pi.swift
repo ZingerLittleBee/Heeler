@@ -39,7 +39,7 @@ extension HerdrCoreSessionBinder {
         if program == .omp, let file = try await confirmedBreadcrumbFile(of: process, agentDirectory: places.agent) {
             return bound(file)
         }
-        guard try await holdsHeelersExtension(agentDirectory: places.agent) else { return cannotTell }
+        guard await holdsHeelersExtension(agentDirectory: places.agent) else { return cannotTell }
         return .unavailable(
             .extensionNotLoaded(program, turnedOff: turnsExtensionsOff(process, pid: pid, record: record)))
     }
@@ -57,10 +57,12 @@ extension HerdrCoreSessionBinder {
         program == .pi ? ["--no-extensions", "-ne"] : ["--no-extensions"]
     }
 
-    /// Whether Heeler's extension is where this Agent loads its extensions from.
-    private func holdsHeelersExtension(agentDirectory: String) async throws -> Bool {
+    /// Whether Heeler's extension is where this Agent loads its extensions from. It
+    /// only chooses the words, so a read that fails says no, and the check still
+    /// answers that it can't tell, as it did before it read this.
+    private func holdsHeelersExtension(agentDirectory: String) async -> Bool {
         let path = RemoteFilePath.join(agentDirectory, "extensions", HostHelperScript.extensionFileName)
-        return try await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: 1)).length != nil
+        return (try? await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: 1)))?.length != nil
     }
 
     /// Pi takes its title as its process's arguments, which drops its flags (herdr
