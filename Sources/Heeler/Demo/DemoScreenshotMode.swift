@@ -212,7 +212,8 @@
                 activity: AppActivityCoordinator(),
                 hostRemoval: HostRemovalDependencies.app(
                     console: console, notificationPreferences: notificationPreferences,
-                    liveActivities: liveActivities))
+                    liveActivities: liveActivities,
+                    knownHosts: DemoScreenshotFixture.onboardingDependencies.knownHosts))
         }
     }
 

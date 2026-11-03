@@ -675,9 +675,10 @@ Code's `.key` files.
       Terminal join the PSReadLine history. Remove both.
     - `%LOCALAPPDATA%\herdr-core\<session>` and its `core.lock` stay after
       `server stop`. Delete them only for a session you started for the test.
-    - Remove Host leaves the Host's trusted host key and its recent-workspace entry
-      in the app's preferences. Remove your test key's line from the authorized-keys
-      file, restore the file's access list, and check that the key is refused.
+    - Remove Host also forgets the Host's trusted host key and its recent-workspace
+      entry in the app's preferences. Remove your test key's line from the
+      authorized-keys file, restore the file's access list, and check that the key
+      is refused.
     - In helper scripts, never name a function after a built-in alias, which wins
       over it: `H` is `Get-History`, and a function named `H` made one cleanup skip
       its guard. Variable names ignore case, so `$r` is `$R`.

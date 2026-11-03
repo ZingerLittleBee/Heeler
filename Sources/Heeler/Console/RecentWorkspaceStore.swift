@@ -25,8 +25,18 @@ struct RecentWorkspaceStore {
         defaults.set(updated, forKey: Self.defaultsKey)
     }
 
-    /// Entries for Hosts that no longer exist are harmless (a few bytes each,
-    /// never read), so nothing prunes them.
+    /// Remove Host forgets its entry. Entries left by Hosts removed before it
+    /// did stay, since nothing here knows which Hosts exist.
+    func forget(_ hostID: Host.ID) {
+        var updated = byHost
+        guard updated.removeValue(forKey: hostID.uuidString) != nil else { return }
+        if updated.isEmpty {
+            defaults.removeObject(forKey: Self.defaultsKey)
+        } else {
+            defaults.set(updated, forKey: Self.defaultsKey)
+        }
+    }
+
     private var byHost: [String: String] {
         defaults.dictionary(forKey: Self.defaultsKey) as? [String: String] ?? [:]
     }

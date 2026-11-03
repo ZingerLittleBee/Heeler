@@ -21,12 +21,15 @@ final class LiveActivityPreferences {
         enabledIDs.contains(hostID)
     }
 
+    /// Writes only a change, and drops the key once no Host is left, so a
+    /// removed Host that never opted in leaves nothing behind.
     func setEnabled(_ enabled: Bool, for hostID: Host.ID) {
-        if enabled {
-            enabledIDs.insert(hostID)
+        let changed = enabled ? enabledIDs.insert(hostID).inserted : enabledIDs.remove(hostID) != nil
+        guard changed else { return }
+        if enabledIDs.isEmpty {
+            defaults.removeObject(forKey: Self.defaultsKey)
         } else {
-            enabledIDs.remove(hostID)
+            defaults.set(enabledIDs.map(\.uuidString).sorted(), forKey: Self.defaultsKey)
         }
-        defaults.set(enabledIDs.map(\.uuidString).sorted(), forKey: Self.defaultsKey)
     }
 }

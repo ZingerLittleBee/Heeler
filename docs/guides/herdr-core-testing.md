@@ -44,9 +44,10 @@ covers the fixture and CI.
   identity provider's session in its profile. After the logins, look for that provider's
   cookies there, and sign out or clear them unless the owner decides to keep them.
 - **A Simulator another run shares.** Export the app's preferences before adding a Host,
-  and undo only your own: **Remove Host** in the app, then delete that Host's entries in
-  `knownHostFingerprints` and `recent-workspace-by-host`, which Remove Host leaves behind
-  (once it left a Pin too), and compare the export with the one from before. Never delete
+  and undo only your own: **Remove Host** in the app, which also forgets that Host's
+  entries in `knownHostFingerprints` and `recent-workspace-by-host` (builds before #587's
+  acceptance fixes left them, and once a Pin), then compare the export with the one from
+  before; a Jump Host's endpoint key stays, since another Host may share it. Never delete
   `herdrCoreHosts`, `knownHostFingerprints` or another shared key whole, since another
   run's Host lives in them too, and do not rely on `defaults import` alone: it merges, so
   keys the run added stay.

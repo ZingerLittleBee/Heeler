@@ -9,6 +9,9 @@ protocol KnownHostsStore: Sendable {
     func fingerprint(host: String, port: Int, algorithm: String) async -> HostKeyFingerprint?
     func fingerprint(host: String, port: Int) async -> HostKeyFingerprint?
     func setFingerprint(_ fingerprint: HostKeyFingerprint, host: String, port: Int) async
+    /// Forgets the keys trusted for a catalog Host (`HostKeyTrust.host`), never
+    /// an endpoint's, which another Host's Jump Host may share.
+    func forgetHost(_ id: UUID) async
 }
 
 extension KnownHostsStore {
@@ -44,6 +47,12 @@ actor InMemoryKnownHostsStore: KnownHostsStore {
         storedFingerprints[
             Self.algorithmKey(host: host, port: port, algorithm: fingerprint.algorithm)] =
             fingerprint
+    }
+
+    func forgetHost(_ id: UUID) {
+        let key = HostKeyTrust.hostKey(id)
+        let prefix = Self.algorithmKeyPrefix(host: key.host, port: key.port)
+        storedFingerprints = storedFingerprints.filter { !$0.key.hasPrefix(prefix) }
     }
 
     static func endpointKey(host: String, port: Int) -> String {
@@ -112,6 +121,19 @@ actor UserDefaultsKnownHostsStore: KnownHostsStore {
                 host: host, port: port, algorithm: fingerprint.algorithm)] =
                 fingerprint.digest.base64EncodedString()
         defaults.set(stored, forKey: Self.defaultsKey)
+    }
+
+    func forgetHost(_ id: UUID) {
+        let key = HostKeyTrust.hostKey(id)
+        let prefix = InMemoryKnownHostsStore.algorithmKeyPrefix(host: key.host, port: key.port)
+        let stored = storedValues()
+        let kept = stored.filter { !$0.key.hasPrefix(prefix) }
+        guard kept.count != stored.count else { return }
+        if kept.isEmpty {
+            defaults.removeObject(forKey: Self.defaultsKey)
+        } else {
+            defaults.set(kept, forKey: Self.defaultsKey)
+        }
     }
 
     private func storedValues() -> [String: String] {
