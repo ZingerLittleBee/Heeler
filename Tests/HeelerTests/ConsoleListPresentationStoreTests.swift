@@ -333,6 +333,30 @@ struct ConsoleListPresentationStoreTests {
         #expect(cards.flatMap(\.visibleAgentIDs) == [agents[3].id])
     }
 
+    @Test func collapsedWorkspaceWithNothingToSummarizeEndsAtItsHeader() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture()
+        var agents = [
+            checkoutAgent(host: host, paneID: "p1", status: .idle, workspaceID: "wA", label: "API", repo: "api"),
+            checkoutAgent(host: host, paneID: "p2", status: .idle, workspaceID: "wA", label: "API", repo: "api"),
+        ]
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        store.toggleWorkspace(sid(host, "wA"))
+        var card = try #require(
+            ConsoleWorkspaceCard.cards(store.workspaceSections(hosts: [host], agents: agents)).first)
+        // An empty summary row would be shorter than the card's corners.
+        #expect(card.isCollapsed)
+        #expect(rowShape(card) == ["header"])
+        #expect(card.rows.map(\.isLast) == [true])
+
+        agents[1] = checkoutAgent(
+            host: host, paneID: "p2", status: .working, workspaceID: "wA", label: "API", repo: "api")
+        card = try #require(
+            ConsoleWorkspaceCard.cards(store.workspaceSections(hosts: [host], agents: agents)).first)
+        #expect(rowShape(card) == ["header", "summary"])
+    }
+
     @Test func searchKeepsTheRepositoryHeaderButNotItsUnmatchedMainCheckout() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }

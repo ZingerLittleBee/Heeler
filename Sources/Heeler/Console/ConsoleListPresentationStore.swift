@@ -72,6 +72,8 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
         case header
         /// A collapsed card's summary under its header: a row of its own,
         /// so a fold adds or removes rows and never resizes the header.
+        /// With nothing to summarize the header ends the card instead, as
+        /// an empty row would be too short for the card's corners.
         case summary
         /// A checkout with several Agents inside a repository's card.
         case checkout(ConsoleWorkspaceSection)
@@ -115,6 +117,11 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
     /// search can keep a main checkout none of whose Agents match.
     var checkouts: [ConsoleWorkspaceSection] { ([primary] + nested).filter { !$0.agents.isEmpty } }
     var agents: [ConsoleAgent] { primary.agents + nested.flatMap(\.agents) }
+    /// Whether a collapsed card has anything to say under its header: who
+    /// needs the user and, for a repository, its checkouts.
+    var hasSummary: Bool {
+        !ConsoleHostAgentStatusCounts(agents: agents).items.isEmpty || (isRepository && !checkouts.isEmpty)
+    }
 
     var rows: [Placed] {
         var items: [(Row, Rule)] = []
@@ -126,7 +133,7 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
         if isRepository {
             items.append((.header, .none))
             if isCollapsed {
-                items.append((.summary, .none))
+                if hasSummary { items.append((.summary, .none)) }
             } else {
                 for (index, checkout) in checkouts.enumerated() {
                     let rule: Rule = index == 0 ? .none : .full
@@ -143,7 +150,11 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
             items.append((.agent(primary.agents[0], of: primary, standsAlone: true), .none))
         } else {
             items.append((.header, .none))
-            if isCollapsed { items.append((.summary, .none)) } else { list(primary) }
+            if !isCollapsed {
+                list(primary)
+            } else if hasSummary {
+                items.append((.summary, .none))
+            }
         }
         return items.enumerated().map { index, item in
             let id: Placed.ID =

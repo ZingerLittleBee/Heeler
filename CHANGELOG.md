@@ -14,6 +14,9 @@ Entries reference the pull request that made the change.
   Agent's, shows in the tint color after a photo symbol; tap it, or choose
   Preview Image from the message's menu, to open it with zoom. Paths relative
   to the Agent's folder and paths starting at `~` open too.
+- Touch and hold an Agent on a By Workspace card and tap New Agent to start
+  one in its Workspace and directory, as the Agent's own New Agent does.
+  (#616)
 - Browse Directories hides folders whose names start with a dot. Tap the eye
   button beside Select to list them again; Heeler remembers the choice.
   (#609)
@@ -87,6 +90,9 @@ Entries reference the pull request that made the change.
   running Agents had, instead of as separate cards that regroup once the Host
   answers. Each checkout keeps the branch it was last read on as its title
   until Heeler reads it again.
+- Round the bottom corners of a collapsed By Workspace card with nothing to
+  summarize, such as a Workspace whose Agents are all idle, instead of ending
+  it in a square-cornered strip under its header. (#616)
 - Put Show Chat or Show Agent Terminal and More with Back in iPhone Duo's
   side controls, using the system overflow menu instead of leaving their
   capsule over the content. Horizontal layouts keep their existing controls.
