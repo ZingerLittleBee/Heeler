@@ -99,10 +99,7 @@ enum ServerKind: String, Codable, Hashable, Sendable {
             return "herdr refuses the session name \"\(name)\". Its names use letters, digits, "
                 + "\".\", \"_\" and \"-\", up to \(HerdrSessionName.maximumUTF8Length) bytes."
         case .herdrCore:
-            guard !HerdrCoreSessionName.isValid(value) else { return nil }
-            let name = HerdrCoreSessionName.normalized(value)
-            return "herdr-core refuses the session name \"\(name)\". A name cannot be \".\" or "
-                + "\"..\", or contain control characters or any of / \\ : * ? \" < > |."
+            return HerdrCoreSessionName.refusal(value)
         case .unconfirmed:
             return nil
         }

@@ -450,10 +450,11 @@ the version under test.
    subfolder of a repository. Its card takes the repository's folder name, and
    Worktrees stay off. Outside a repository it takes its directory's. This exercises
    Heeler's PowerShell checkout read through sshd.
-9. Edit the Host's Session to a name with a space. The form takes it without a
-   warning. After Save the Host reads **Can't Connect**, with a note that Heeler
-   cannot use that session name on native Windows, and Rename and Worktrees are
-   still not offered.
+9. Edit the Host's Session to a name with a space. Below the field the form says
+   Heeler cannot use that session name on native Windows, and Save stays off. A
+   Host the app has not yet found on Windows takes the name; after Save it reads
+   **Can't Connect** and **This session name can't be used**, with the same note
+   and one closing period, and Rename and Worktrees are still not offered.
 10. Install an agent the launch can find, with OpenCode too if you have it. New
     Agent lists what a Windows PowerShell session over SSH finds, and OpenCode's
     version reaches its launch (`-s ses_...` in the Terminal's argv on 2.1 or newer).
@@ -769,9 +770,10 @@ unless it says otherwise.
     by the export's hash, and the safety task never ran.
   - Seen beside the steps: after Microsoft Edit quit across a rotation, PowerShell's
     screen held overlapping rows in Heeler and in the core's own `terminal.read`, so
-    not from Heeler's renderer. Step 9's refusal reads "This feature is unavailable on
-    the Host" and ends in a doubled period. Core Environment explains `HERDR_CHECK`
-    with `HERDR_PANE_ID`'s meaning. Grok Build 1.0.70's first start stops at a
+    not from Heeler's renderer. Step 9's refusal read "This feature is unavailable on
+    the Host", ended in a doubled period and came only after Save, and Core
+    Environment explained `HERDR_CHECK` with `HERDR_PANE_ID`'s meaning (all changed
+    since; not run again). Grok Build 1.0.70's first start stops at a
     "Help improve Grok" opt-in prompt, and Oh My Pi 18.13.3's at a setup wizard.
   - Not run: a blank Session (`default`).
 - [#588](https://github.com/ZingerLittleBee/Heeler/issues/588), steps 10 to 15, second

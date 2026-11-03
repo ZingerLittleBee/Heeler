@@ -43,6 +43,21 @@ struct TransportErrorPresentationTests {
         #expect(tooLong.message.contains("not running") == false)
     }
 
+    /// The refusal is already whole sentences, so the presentation adds no second
+    /// period, and it names the session name rather than a missing feature (#587).
+    @Test(arguments: ["my work", "a/b"])
+    func aRefusedSessionNameSaysSoInOneSentence(name: String) throws {
+        let reason = try #require(
+            HerdrCoreSessionName.windowsRefusal(name) ?? HerdrCoreSessionName.refusal(name))
+        let error = TransportError.herdrCoreSessionNameRefused(reason: reason)
+        #expect(!error.isRetryable)
+        #expect(error.presentation.summary == "This session name can't be used")
+        #expect(error.presentation.recoverySuggestion == "Edit the Host's session name.")
+        #expect(error.presentation.message.contains(reason))
+        #expect(!error.presentation.message.contains(".."))
+        #expect(!error.presentation.message.contains("unavailable"))
+    }
+
     /// SSH reports a missing socket, a refused one and a forbidden path alike,
     /// so a socket file left behind cannot say which cause it is.
     @Test func notRunningWithASocketFileNamesBothCauses() {

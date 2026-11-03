@@ -16,6 +16,13 @@ enum HerdrCoreSessionName {
             }
     }
 
+    /// Why herdr-core refuses this name, nil when it takes it.
+    static func refusal(_ value: String) -> String? {
+        guard !isValid(value) else { return nil }
+        return "herdr-core refuses the session name \"\(normalized(value))\". A name cannot be \".\" or "
+            + "\"..\", or contain control characters or any of / \\ : * ? \" < > |."
+    }
+
     /// Why a native Windows Host cannot carry this name, which the core may accept.
     /// `connect --session` goes through `cmd`, then maybe PowerShell before it, and
     /// no quoting survives both, so only hc's own advice for a name does: letters,

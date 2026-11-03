@@ -220,12 +220,22 @@ struct HostDraft: Equatable, Sendable {
             && (herdrEndpoint == nil ? serverKind : .herdrTUI).isValidSessionName(sessionName)
     }
 
+    /// Why this Host cannot use its session name, nil when it can. A herdr-core
+    /// Host on native Windows takes fewer names than the core does, which only a
+    /// Host already found there can know (`HerdrCoreSessionName.windowsRefusal`).
+    func sessionNameRefusal(onNativeWindows: Bool = false) -> String? {
+        let kind = herdrEndpoint == nil ? serverKind : .herdrTUI
+        if let refusal = kind.sessionNameRefusal(sessionName) { return refusal }
+        guard onNativeWindows, kind == .herdrCore else { return nil }
+        return HerdrCoreSessionName.windowsRefusal(sessionName)
+    }
+
     /// Form-level validity including credential intent. A blank password can
     /// only mean "keep current" when the existing Host already used password
     /// authentication; new Hosts and Device Key -> Password changes require
     /// an actual secret to persist.
-    func canSave(editing existingHost: Host?) -> Bool {
-        guard isValid else { return false }
+    func canSave(editing existingHost: Host?, onNativeWindows: Bool = false) -> Bool {
+        guard isValid, sessionNameRefusal(onNativeWindows: onNativeWindows) == nil else { return false }
         guard authMethod == .password, password.isEmpty else { return true }
         return existingHost?.authMethod == .password
     }

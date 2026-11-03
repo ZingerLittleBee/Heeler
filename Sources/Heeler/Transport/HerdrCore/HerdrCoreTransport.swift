@@ -368,16 +368,16 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
                 return try await connection.runWindowsCommand(
                     try HerdrCoreLocator.windowsProbe(session: session, nonce: nonce), for: .locator)
             } catch is HerdrCoreLocator.SessionRefused {
-                throw TransportError.hostFeatureUnavailable(
-                    feature: HerdrCoreSessionName.windowsRefusal(session) ?? "")
+                throw TransportError.herdrCoreSessionNameRefused(
+                    reason: HerdrCoreSessionName.windowsRefusal(session)
+                        ?? HerdrCoreSessionName.refusal(session) ?? "")
             }
         }
         do {
             return try await connection.runCoreLocator(
                 try HerdrCoreLocator.script(session: session, nonce: nonce))
         } catch is HerdrCoreLocator.SessionRefused {
-            throw TransportError.hostFeatureUnavailable(
-                feature: "herdr-core refuses the session name \"\(session)\"")
+            throw TransportError.herdrCoreSessionNameRefused(reason: HerdrCoreSessionName.refusal(session) ?? "")
         }
     }
 

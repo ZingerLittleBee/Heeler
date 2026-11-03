@@ -268,6 +268,13 @@ struct PreflightReportTests {
         #expect(report[.herdrInstalled] == .blocked)
     }
 
+    @Test func aRefusedSessionNameFailsTheEnvironmentCheckWithOnePeriod() throws {
+        let refusal = try #require(HerdrCoreSessionName.windowsRefusal("my work"))
+        let report = PreflightReport.failure(.herdrCoreSessionNameRefused(reason: refusal), authMethod: .deviceKey)
+        let hint = "This session name can't be used: \(refusal) Edit the Host's session name."
+        #expect(report[.remoteEnvironment] == .failed(hint: hint))
+    }
+
     /// That refusal is a whole sentence already.
     @Test func aFeatureThatEndsItsOwnSentenceGetsNoSecondPeriod() throws {
         let refusal = try #require(HerdrCoreSessionName.windowsRefusal("my work"))

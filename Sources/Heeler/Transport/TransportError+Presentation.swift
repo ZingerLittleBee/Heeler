@@ -202,6 +202,11 @@ extension TransportError {
                 detail: "\(path) is over this Host's limit of \(limit) bytes",
                 recoverySuggestion:
                     "Use a shorter core session name, or set a shorter socket in the core's config.")
+        case .herdrCoreSessionNameRefused(let reason):
+            TransportErrorPresentation(
+                summary: "This session name can't be used",
+                detail: Self.droppingTrailingPeriods(reason),
+                recoverySuggestion: "Edit the Host's session name.")
         case .gitTimedOut:
             TransportErrorPresentation(
                 summary: "Reading Changes timed out",

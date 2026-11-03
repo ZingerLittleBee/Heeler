@@ -396,8 +396,11 @@ struct HerdrCoreWindowsTransportTests {
     @Test func aNameTheCmdLineCannotCarryRunsNothing() async throws {
         let host = Self.runningHost()
         let transport = host.transport(session: "a&calc")
+        let reason = try #require(HerdrCoreSessionName.windowsRefusal("a&calc"))
 
-        await #expect(throws: TransportError.self) { _ = try await transport.hello() }
+        await #expect(throws: TransportError.herdrCoreSessionNameRefused(reason: reason)) {
+            _ = try await transport.hello()
+        }
 
         #expect(await host.log.isEmpty)
         try await transport.close()

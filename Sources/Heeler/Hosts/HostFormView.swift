@@ -27,6 +27,7 @@ struct HostFormView: View {
     @State private var isEditingRoutes = false
     @FocusState private var isUsernameFocused: Bool
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.hostOnboardingDependencies) private var onboardingDependencies
 
     private let credentials = HostCredentialsProvider()
 
@@ -75,7 +76,7 @@ struct HostFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
-                        .disabled(!draft.canSave(editing: editing))
+                        .disabled(!draft.canSave(editing: editing, onNativeWindows: isNativeWindowsCore))
                 }
             }
             .alert("Could not save the Host", isPresented: $saveFailed) {
@@ -178,11 +179,23 @@ struct HostFormView: View {
             } header: {
                 Text(draft.serverKind == .herdrTUI ? "herdr Session" : draft.serverKind == .herdrCore ? "herdr-core Session" : "Session")
             } footer: {
-                Text(draft.serverKind == .herdrTUI
-                    ? "Leave blank for the default herdr session."
-                    : "Leave blank for the default session.")
+                if let refusal = draft.sessionNameRefusal(onNativeWindows: isNativeWindowsCore) {
+                    Text(refusal)
+                        .foregroundStyle(.red)
+                } else {
+                    Text(draft.serverKind == .herdrTUI
+                        ? "Leave blank for the default herdr session."
+                        : "Leave blank for the default session.")
+                }
             }
         }
+    }
+
+    /// A herdr-core Host already found on native Windows, whose `connect` line
+    /// takes fewer session names than the core.
+    private var isNativeWindowsCore: Bool {
+        guard let editing, draft.serverKind == .herdrCore else { return false }
+        return onboardingDependencies.coreKernel(editing.id) == HerdrCoreLocator.windowsKernel
     }
 
     /// A Host keeps its Server Kind (ADR 0031), so Edit only names it. A new
@@ -418,7 +431,7 @@ struct HostFormView: View {
     }
 
     private func save() {
-        guard draft.canSave(editing: editing) else { return }
+        guard draft.canSave(editing: editing, onNativeWindows: isNativeWindowsCore) else { return }
         guard let host = draft.makeHost(id: editing?.id ?? UUID()) else { return }
         do {
             if editing == nil {

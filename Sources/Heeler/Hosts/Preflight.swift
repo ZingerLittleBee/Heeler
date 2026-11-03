@@ -172,6 +172,9 @@ struct PreflightReport: Equatable, Sendable {
         case .herdrCoreNotInstalled:
             check = .herdrInstalled
             hint = error.presentation.message
+        case .herdrCoreSessionNameRefused:
+            check = .remoteEnvironment
+            hint = error.presentation.message
         case .herdrCoreNotRunning, .herdrCoreSocketPathTooLong, .herdrCoreForwardingRefused:
             check = .serverRunning
             hint = error.presentation.message
