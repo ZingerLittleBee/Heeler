@@ -771,7 +771,7 @@ struct AgentComposerStoreTests {
     /// Windows step 15 (2026-11-03): after `keep 15` the draft read
     /// `keep 15C:\…\file.bin `, the path run into the word before it.
     @Test func aStagedPathAfterAWordGetsASpaceBeforeIt() {
-        let path = #"C:\Users\ZingerBee\AppData\Local\herdr-core\hwa1103-main\files\t4\file.bin"#
+        let path = #"C:\Users\user\AppData\Local\herdr-core\hwa1103-main\files\t4\file.bin"#
         let store = Self.draftOnlyStore()
         store.replaceDraft(with: "keep 15")
 

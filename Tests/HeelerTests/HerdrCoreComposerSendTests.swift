@@ -403,10 +403,10 @@ struct HerdrCoreComposerSendTests {
     @Test func theRecordedZshRaceGetsOneCtrlCAndTheTextIsGone() async throws {
         let wrapper = [
             "/usr/bin/zsh", "-ic", "\"$@\"; exec \"$0\" -i", "/usr/bin/zsh",
-            "/home/hla1102zc/hla/bin/exits/claude", "/home/hla1102zc/hla/race-zsh.log",
+            "/home/dev/hla/bin/exits/claude", "/home/dev/hla/race-zsh.log",
         ]
         let standIn = Self.foreground(
-            pid: 146310, argv: ["/bin/sh", "/home/hla1102zc/hla/bin/exits/claude", "/home/hla1102zc/hla/race-zsh.log"],
+            pid: 146310, argv: ["/bin/sh", "/home/dev/hla/bin/exits/claude", "/home/dev/hla/race-zsh.log"],
             name: "claude")
         let fixture = try await Fixture(terminal: Self.record(foreground: standIn, argv: wrapper))
         let attached = try await fixture.live()
