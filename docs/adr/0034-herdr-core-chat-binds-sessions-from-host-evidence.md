@@ -174,24 +174,36 @@ never show or send into a conversation it has guessed.
   ([herdr compatibility](../agents/herdr-compatibility.md)). A
   Terminal that has reported but holds no state, as Claude Code leaves it
   before sign-in, has none. No status is inferred from the screen.
-- Chat covers the six programs it reads today. On native Windows herdr-core
-  Hosts it opens for Claude Code and Grok Build (session registry plus the
-  Windows process tree and creation times) and Pi and Oh My Pi (their
-  extensions' labels, adopted only on a pid and creation-time match), each once
-  tested on a Windows Host and listed in
-  `HostCapabilities.confirmedWindowsCoreChatPrograms`; Codex and OpenCode follow
-  later. Native
-  Windows Herdr TUI Hosts stay without Chat. Codex, Grok Build, OpenCode from 2.x, Pi
-  and Oh My Pi are built for Linux and macOS core Hosts from the recordings below,
-  which never saw a signed-in account. Each kernel keeps its own list,
-  `HostCapabilities.confirmedLinuxCoreChatPrograms` and
-  `confirmedMacOSCoreChatPrograms`, and a program joins one only once its check
-  with a harness the owner signs in to passes on that kernel. One that fails stays
-  off there with its observation saying why. On 2026-11-02 the owner's Mac passed
-  Codex, Grok Build, Pi and Oh My Pi, and the owner turned them on for macOS only:
-  Linux keeps Claude Code alone until hc-lab checks the rest. OpenCode 2.0.32 from
-  New Agent reached only candidates on that Mac, and 2.1 or later was not run, so
-  OpenCode stays off on both.
+- Chat covers the six programs it reads today. Codex, Grok Build, OpenCode from
+  2.x, Pi and Oh My Pi are built for Linux and macOS core Hosts from the
+  recordings below, made with no sign-in. On native Windows herdr-core Hosts the
+  candidates are Claude Code and Grok Build (session registry plus the Windows
+  process tree and creation times) and Pi and Oh My Pi (their extensions' labels,
+  adopted only on a pid and creation-time match); Codex and OpenCode follow
+  later. Native Windows Herdr TUI Hosts stay without Chat. Each kernel keeps its
+  own list, `HostCapabilities.confirmedLinuxCoreChatPrograms`,
+  `confirmedMacOSCoreChatPrograms` and `confirmedWindowsCoreChatPrograms`, and a
+  program joins one only once its check with a harness the owner signs in to
+  passes on that kernel, on the versions its ticket names: Chat shows the
+  conversation and sends from Chat. A program that binds only after Check Again
+  has a defect to fix, not a failed check; a bound Agent that shows no messages
+  fails. One that fails stays off there with its observation saying why
+  ([herdr compatibility](../agents/herdr-compatibility.md)).
+  On 2026-11-02 the owner's Mac passed Codex, Grok Build, Pi and Oh My Pi, which
+  the owner turned on for macOS beside Claude Code; OpenCode 2.0.32 from New Agent
+  reached only candidates there, and 2.1 or later was not run, so it stays off on
+  macOS. On 2026-11-03 hc-lab passed Codex 0.165.0 with `--no-daemon`, Grok Build
+  1.0.70, Pi 1.4.0 and Oh My Pi 18.13.3, which the Linux list now holds beside
+  Claude Code, though a Grok Build whose Chat opened before its first message,
+  and an Oh My Pi without the extension, each bound only after Check Again, and a
+  Pi started from a Template left no saved evidence of its reply.
+  OpenCode stays off on Linux: 2.2.2 passed, but a 1.19.5 Agent bound through
+  Heeler's plugin showed no messages, and one switch covers every release. The
+  same day the owner's Windows machine passed Claude Code 2.1.286 and 2.1.316 and
+  Pi 1.4.0 with the extension, which the Windows list now holds. Oh My Pi
+  18.13.3 stays off there, since it bound but every Send from Chat was refused as
+  finding no input box on screen, and Grok Build 1.0.70 stays off, since its rows
+  there carry no `pid_start`. Codex and OpenCode were not run on Windows.
 
 This amends ADR 0024, and ADR 0025's source of the OpenCode session id, its
 start-screen watch, what its confirmation makes of the title `OpenCode` and its
@@ -257,7 +269,10 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   outlives the process on a reused terminal name, so without the extension an
   Oh My Pi Agent binds only once its first message opens the file. The lock is
   not a check here, since no read-only one exists while its hash is unknown, so
-  the window between the file appearing and opening reads as cannot tell.
+  the window between the file appearing and opening reads as cannot tell. On
+  hc-lab on 2026-11-03, with Oh My Pi 18.13.3 and a real provider, the open
+  followed the title model, seen once each way: a process whose title came back empty did not open its file in the 2.5
+  minutes before it exited, so it could not bind this way.
 - A Pi that Heeler started and that has no extension binds from the launch hint
   only while it is still the Terminal's own process, so a launcher in front of
   it needs the extension. That binding names the launch's session, so it is the
@@ -286,18 +301,19 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   not from the Host's Default Account, which follows the core's environment.
   The two differ when the user's shell rc sets the variable.
 - Unverified: whether Oh My Pi's security scan leaves the breadcrumb rewritten,
-  since the scan needs a stored OAuth account; whether a signed-in account
-  changes any of the evidence below, which never saw one; whether OpenCode's
-  terminal title moves on `/new` and on a pick as 2.2.5's source says and equals its conversation's title, since the recording
-  scrubs each title and holds no `/new`; whether a pick keeps the argv as `/new` does,
-  which no run recorded, and whether the home screen check, from 2.0.32's screen, holds
-  on 2.2.5; whether a Host
-  can work out an Oh My Pi lock's name without running its code, since the hash is not
-  identified; and whether Heeler's OpenCode store query reads what OpenCode 2.2.5
-  really writes. It runs against both recorded schemas, on rows of 2.0.32's shape
-  put there by a test, and 2.2.5's own rows and `session_part` were not read. Owner
-  confirmation with a signed-in
-  harness on hc-lab remains available, and is listed in #578's Owner acceptance.
+  since the scan needs a stored OAuth account, which neither the VM nor hc-lab's
+  signed-in run had; whether OpenCode's terminal title moves on a pick as 2.2.5's
+  source says and equals its conversation's title, since on hc-lab 2.2.2's title
+  was seen only to move to `OpenCode` on `/new` and to `OC | ` and the stored
+  title at a turn's end, with Sends refused on the title after `/new`, and 2.2.5
+  itself was not run there; whether a pick keeps the argv as `/new` does,
+  which no run recorded, and whether the home screen check, from 2.0.32's screen,
+  holds on 2.2.5; whether a Host can work out an Oh My Pi lock's name without
+  running its code, since the hash is not identified; whether Oh My Pi ever opens
+  its file when its title model returns nothing, which one run did not do in 2.5
+  minutes; and whether Heeler's OpenCode store query reads what OpenCode 2.2.5
+  really writes. The query read 2.2.2's own rows on hc-lab, and 2.2.5's own rows
+  were not read.
 - Settled with a local fake model and no sign-in, in a throwaway Linux VM and
   not on hc-lab ([herdr compatibility](../agents/herdr-compatibility.md), which
   says what could differ for each program;
@@ -320,12 +336,33 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   sent before the box appeared left no row. For the scan, only its one
   `SessionManager.create` call ran, on its own, and it did rewrite the
   breadcrumb.
+- Settled with signed-in harnesses and real providers on hc-lab, Debian 13 with
+  herdr-core 0.1.13, on 2026-11-03 (#578, [herdr
+  compatibility](../agents/herdr-compatibility.md)): what the VM showed held
+  except as noted here. A signed-in Codex 0.165.0 with `--no-daemon` holds its one
+  root rollout from just after the prompt, and `session_meta` also carries the
+  account's creator ids, which a fixture must scrub. Unlike the VM, the first
+  message after its `/new` showed a turn and created and held the new rollout,
+  beside the old one. The shared daemon can be an older
+  release than the CLI and can update itself, and one that did outlived the
+  `/quit` of the Codex that started it and kept its thread loaded, so the reopen
+  message's `codex resume --no-daemon` was refused until `codex app-server daemon
+  stop`. Grok Build's row is there at startup with `pid_start` as field 22 and no
+  leader, but it came 0.18 s after the core's first `idle`, so a Chat opened before
+  the first message did not check again by itself. OpenCode 2.2.2 with a real
+  provider wrote no `session_part` rows and keeps the reply in `session_message`.
+  Pi 1.4.0's file appears before the reply and nothing holds it. Oh My Pi
+  18.13.3's file and lock appear together, `fresh` goes in the same sample, and no
+  lasting child runs, while its open of the file followed the title model (above). Heeler's OpenCode plugin is listed in `cli.json` `plugins` on 2.2.2 and
+  `tui.json` `plugin` on 1.19.5, and 1.19.5 reports no Program Status.
 - On native Windows `HC_TERMINAL_SOCKET` holds the pipe path,
   `\\.\pipe\herdr-core-<user>-<session>.sock`, and Node's `net.connect` reaches
   it and gets a plain JSON-RPC reply
   ([observation](../agents/herdr-compatibility.md)), so the extensions connect
-  by that value as they do to a Unix socket (#590). Pi and Oh My Pi themselves
-  have not run there.
+  by that value as they do to a Unix socket (#590). On 2026-11-03, on one
+  machine, Pi 1.4.0 running as `node.exe` and Oh My Pi 18.13.3 running as
+  `omp.exe` loaded the extension from the folders Heeler wrote and labeled their
+  Terminals with a `start` equal to the creation time.
 - Windows Transcripts are read over SFTP, the reader Unix already uses. Through
   sshd from a Mac, with a program in a Terminal appending, SFTP and `file.read`
   each returned bytes that were a prefix of the final file at every round, and
@@ -334,25 +371,35 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   file, a single 9 MiB line and a 65 MiB file unchanged, where `file.read`
   refused each (`not_text`, `line 1 is over 8 MB`, `is over 64 MB`) and paged a
   9 MiB file by lines. That is why SFTP stays the path. A writer that shares
-  nothing fails both. This is one machine and an elevated SSH token, on made-up
-  files: no real Agent's Transcript has been read on Windows.
+  nothing fails both. That was one machine and an elevated SSH token, on made-up
+  files. On 2026-11-03 the same machine's Chat showed real Claude Code, Pi and Oh
+  My Pi conversations read this way.
 - Under PowerShell the foreground's pid is never the Agent's, so #590 binds
-  through PowerShell's children, not through the foreground's pid. A session
-  registry entry on Windows has not been read.
+  through PowerShell's children, not through the foreground's pid. Claude Code
+  2.1.286 and 2.1.316 there wrote the creation FILETIME as decimal digits in
+  `procStart`, with no `procStartFt`, though 2.1.316's source text was read as
+  naming `procStartFt`; the binder takes `procStartFt` and falls back to
+  `procStart`, and bound both.
 - The check of a core's own leaked variables reads the same way on Windows: one
   `HostProcessReader.windowsCommand` per link, names only, and any failure reads as
-  no names. It has not run on Windows, so no notice there proves nothing yet.
+  no names. On 2026-11-03 an elevated SSH token's read named `CLAUDECODE` and
+  `HERDR_CHECK` in a core started without elevation in the desktop session; a
+  core the token cannot read was not tried, so no notice there still proves
+  nothing.
 - The rules hold on Windows in the same costs: one exec, here
   `HostProcessReader.windowsCommand`, and at most one read, named variables only,
   never a `.key` file. Windows names a process by its image and a program cannot
-  retitle itself, so under npm the Agent should be a `node.exe` or `bun.exe`, which
-  no run has shown: the binder
+  retitle itself, so under npm the Agent can be a runtime: Pi 1.4.0 ran as
+  `node.exe`, while npm Claude Code 2.1.316 ran its package's native `claude.exe`,
+  and Oh My Pi 18.13.3, a binary install, ran as its own `omp.exe`. The binder
   takes the nearest process named for the program, else for Claude Code, Pi and
   Oh My Pi the nearest runtime, with no following past it, and never the PowerShell.
   A wrong pick binds nothing, because what proves the Agent is still its pid and
   start against what the program recorded, and Grok Build gets no runtime rule since
-  it is a native binary. Under `npx` the nearest runtime should be the launcher, so
-  Chat would say it can't tell; no Agent has run that way on Windows. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the
+  it is a native binary; its 1.0.70 rows there carry no `pid_start`, so nothing
+  proves a Grok Build Agent. Under `npx` Claude Code 2.1.316 reported status and
+  its record matched, but the Terminal was not listed as an Agent at all, so Chat
+  had nothing to say. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the
   launch runs under PowerShell, and open files are not read. Chat's cannot-tell there
   is its own reason, `cannotTellSessionOnWindows`, which never offers the Helper,
   and offers no candidates yet: open files are not read there, and no listing of a
