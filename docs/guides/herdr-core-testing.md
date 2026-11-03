@@ -309,7 +309,7 @@ the facts they took on trust, so correct
 | `/clear` and `/resume` | In an open Chat, run each in the terminal | Chat shows the new conversation by the next status change |
 | Own config dir | Start with `CLAUDE_CONFIG_DIR` naming a scratch folder, while `~/.claude` holds other sessions | Chat reads from the scratch folder |
 | Leaked variable | Start `CLAUDE_CODE_CHILD_SESSION=1 claude`, then `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1 claude`, each with the mock API | **Transcript Saving Is Off** names the variable, and the sessions folder and project folder hold what it says they do |
-| Carried by the core | Use the core from [Leaked environment](#leaked-environment), then start `claude` by hand | The same reason, also pointing at the Host's details, where **Core Environment** names it |
+| Carried by the core | Use the core from [Leaked environment](#leaked-environment), then start `CLAUDE_CODE_CHILD_SESSION=1 claude` by hand, and a plain `claude` in another Terminal | The first shows the same reason, also pointing at the Host's details, where **Core Environment** names it. The plain one inherits the core's `made-up` value, which Claude Code 2.1.316 ignored, keeping its session record, so Chat binds it |
 | Stale hint | Set the label `heeler.session` on the Terminal with `terminal.label`, holding another pid, then open Chat | The label is gone and Chat does not show the label's session |
 | No polling | With the Host's sshd logging exec requests, keep Chat open on an idle Agent for five minutes | No exec during that time. One status change costs one exec and one read of `sessions/<pid>.json` |
 | Off elsewhere | A Pi Agent on this box | It offers the terminal alone |
