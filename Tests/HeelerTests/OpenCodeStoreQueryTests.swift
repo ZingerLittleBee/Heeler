@@ -533,60 +533,56 @@ struct OpenCodeStoreQueryTests {
 
     // MARK: OpenCode 1.x
 
-    /// OpenCode 1.x's three tables as they stand in a store OpenCode 1.x and 2
-    /// share (`.schema session message part` of the owner's store, 2026-11-03).
-    private static let v1Tables = """
-        CREATE TABLE `session` (`id` text PRIMARY KEY, `project_id` text NOT NULL, `parent_id` text,
-          `slug` text NOT NULL, `directory` text NOT NULL, `title` text NOT NULL, `version` text NOT NULL,
-          `share_url` text, `summary_additions` integer, `summary_deletions` integer, `summary_files` integer,
-          `summary_diffs` text, `revert` text, `permission` text, `time_created` integer NOT NULL,
-          `time_updated` integer NOT NULL, `time_compacting` integer, `time_archived` integer, `workspace_id` text,
-          `path` text, `agent` text, `model` text, `cost` real DEFAULT 0 NOT NULL,
-          `tokens_input` integer DEFAULT 0 NOT NULL, `tokens_output` integer DEFAULT 0 NOT NULL,
-          `tokens_reasoning` integer DEFAULT 0 NOT NULL, `tokens_cache_read` integer DEFAULT 0 NOT NULL,
-          `tokens_cache_write` integer DEFAULT 0 NOT NULL, `metadata` text);
-        CREATE TABLE `message` (`id` text PRIMARY KEY, `session_id` text NOT NULL,
-          `time_created` integer NOT NULL, `time_updated` integer NOT NULL, `data` text NOT NULL);
-        CREATE INDEX `message_session_time_created_id_idx` ON `message` (`session_id`,`time_created`,`id`);
-        CREATE TABLE `part` (`id` text PRIMARY KEY, `message_id` text NOT NULL, `session_id` text NOT NULL,
-          `time_created` integer NOT NULL, `time_updated` integer NOT NULL, `data` text NOT NULL);
-        CREATE INDEX `part_session_idx` ON `part` (`session_id`);
-        CREATE INDEX `part_message_id_id_idx` ON `part` (`message_id`,`id`);
-        """
+    /// A session OpenCode 1.19.5 wrote in a store it made alone (#584):
+    /// `host-evidence/opencode/store-1.19.5.json` holds its `session`, `message`
+    /// and `part` rows, paths moved to `/work/app` and the provider's reasoning
+    /// signatures replaced. Six prompts, the fourth with a file attached, two
+    /// read calls and a bash call, and reasoning the provider sent encrypted.
+    private struct V1Recording: Decodable {
+        var session: [String: OpenCodeColumnValue]
+        var messages: [[String: OpenCodeColumnValue]]
+        var parts: [[String: OpenCodeColumnValue]]
+    }
 
-    private static let v1Session = OpenCodeSessionID("ses_e6038b72affeV1OnlySession1")
-    private static let v1Epoch: Int64 = 1_800_000_000_000
+    private static let v1Session = OpenCodeSessionID("ses_e5e7628e2ffe3OTTUgA7nkekCV")
+    /// The recorded session's last change.
+    private static let v1Updated: Int64 = 1_793_711_625_274
 
-    /// A store OpenCode 2.2.2 and 1.19.5 share, the second's session in its own
-    /// tables only, written in the shapes 1.19.5 writes (#541 Linux P3).
-    private static func v1Store() throws -> (OpenCodeSQLiteHarness, OpenCodeSessionID) {
-        let harness = try OpenCodeSQLiteHarness(
-            OpenCodeStoreFixture.named("pong"), schema: try ChatFixture.text("opencode/schema.sql") + v1Tables)
-        let session = try #require(v1Session)
-        try harness.insert(into: "session", [
-            "id": .text(session.rawValue), "project_id": .text("global"), "slug": .text("calm-river"),
-            "directory": .text("/work/app"), "title": .text("Say OK"), "version": .text("1.19.5"),
-            "time_created": .integer(v1Epoch), "time_updated": .integer(v1Epoch + 5_600),
-        ])
-        try insertV1(harness, message: "msg_a", at: v1Epoch, #"{"role":"user","time":{"created":0},"agent":"build"}"#,
-            parts: [
-                #"{"type":"text","text":"Reply with the single word OK."}"#,
-                #"{"type":"file","mime":"text/plain","filename":"notes.txt","url":"file:///work/app/notes.txt"}"#,
-                #"{"type":"text","text":"Called the Read tool","synthetic":true}"#,
-            ])
-        try insertV1(harness, message: "msg_b", at: v1Epoch + 5_000,
-            #"{"role":"assistant","time":{"created":5000,"completed":5500},"parentID":"msg_a","modelID":"fake","#
-                + #""providerID":"fake","mode":"build","finish":"stop"}"#,
-            parts: [
-                #"{"type":"step-start"}"#,
-                #"{"type":"reasoning","text":"Thinking.","time":{"start":1110,"end":1120}}"#,
-                #"{"type":"tool","callID":"call_1","tool":"bash","state":{"status":"completed","#
-                    + #""input":{"command":"echo hi"},"output":"hi\n","title":"echo hi","metadata":{},"#
-                    + #""time":{"start":1200,"end":1300}}}"#,
-                #"{"type":"text","text":"OK","time":{"start":1400,"end":1500}}"#,
-                #"{"type":"step-finish","reason":"stop"}"#,
-            ])
-        return (harness, session)
+    /// The recorded session in a store of `schema`.
+    private static func v1Store(schema: String) throws -> (OpenCodeSQLiteHarness, OpenCodeSessionID) {
+        let empty = try JSONDecoder().decode(
+            OpenCodeStoreFixture.self, from: Data(#"{"session":{},"rows":[],"inbox":[]}"#.utf8))
+        let harness = try OpenCodeSQLiteHarness(empty, schema: schema)
+        let recording = try JSONDecoder().decode(
+            V1Recording.self, from: ChatFixture.data("host-evidence/opencode/store-1.19.5.json"))
+        try harness.insert(into: "session", recording.session)
+        for message in recording.messages {
+            try harness.insert(into: "message", message)
+        }
+        for part in recording.parts {
+            try harness.insert(into: "part", part)
+        }
+        return (harness, try #require(v1Session))
+    }
+
+    /// The store OpenCode 1.19.5 makes alone: its whole schema, which has a
+    /// `session_message` and an `event_sequence` of its own but no `session_v2`.
+    private static func v1OnlyStore() throws -> (OpenCodeSQLiteHarness, OpenCodeSessionID) {
+        try v1Store(schema: ChatFixture.text("host-evidence/opencode/schema-1.19.5.sql"))
+    }
+
+    /// A store OpenCode 2 and 1.x share (#541 Linux P3): 2's tables, and 1.19.5's
+    /// `session`, `message` and `part` with their indexes.
+    private static func sharedStore() throws -> (OpenCodeSQLiteHarness, OpenCodeSessionID) {
+        let v1Tables = try ChatFixture.text("host-evidence/opencode/schema-1.19.5.sql")
+            .components(separatedBy: ";\n\n")
+            .filter { statement in
+                ["`session`", "`message`", "`part`"].contains {
+                    statement.hasPrefix("CREATE TABLE \($0) ") || statement.contains(" ON \($0) ")
+                }
+            }
+        try #require(v1Tables.count == 9)
+        return try v1Store(schema: ChatFixture.text("opencode/schema.sql") + "\n" + v1Tables.joined(separator: ";\n") + ";")
     }
 
     private static func insertV1(
@@ -607,12 +603,13 @@ struct OpenCodeStoreQueryTests {
     }
 
     @Test func aSessionOnlyOpenCode1HoldsIsReadFromItsTables() throws {
-        let (harness, session) = try Self.v1Store()
+        let (harness, session) = try Self.sharedStore()
         // OpenCode 2's tables do not hold it, so a tail goes on to 1.x's.
         #expect(try harness.response(Self.tail(session)) == .unavailable(.olderOpenCode))
         let records = try harness.records(OpenCodeQuery(session: session, kind: .tail(budget: 524_288), tables: .v1))
 
-        #expect(records.rows.map(\.seq) == [1, 2])
+        #expect(records.rows.map(\.seq) == Array(1...14))
+        #expect(records.rows.allSatisfy { $0.isFinal })
         #expect(records.firstSeq == 1)
         #expect(records.inboxLine == nil)
         guard case .session(let stored)? = records.sessionLine.map(OpenCodeLine.init) else {
@@ -620,40 +617,27 @@ struct OpenCodeStoreQueryTests {
             return
         }
         #expect(stored.version == "1.19.5")
-        #expect(stored.title == "Say OK")
-        guard case .row(let prompt) = OpenCodeLine(records.rows[0].line), case .user(let user) = prompt.content,
-            case .row(let step) = OpenCodeLine(records.rows[1].line), case .assistant(let reply) = step.content
-        else {
-            Issue.record("rows read as \(records.rows.map { String(decoding: $0.line, as: UTF8.self) })")
+        #expect(stored.title == "Verify OC1")
+        // A step's own time, and the newest of its message's and its parts'.
+        guard case .row(let step) = OpenCodeLine(records.rows[1].line), case .assistant(let reply) = step.content else {
+            Issue.record("row 2 read as \(String(decoding: records.rows[1].line, as: UTF8.self))")
             return
         }
-        #expect(user.text == "Reply with the single word OK.")
-        #expect(user.files.map(\.name) == ["notes.txt"])
-        #expect(step.isFinal)
-        #expect(records.rows[1].timeUpdated == Self.v1Epoch + 5_004)
         #expect(reply.finish == "stop")
-        #expect(reply.completed == 5_500)
-        let kinds = reply.items.map { item -> String in
-            switch item.kind {
-            case .text(let text): "text \(text.text)"
-            case .reasoning(let text): "reasoning \(text.text) \(text.started ?? 0)-\(text.completed ?? 0)"
-            case .tool(let tool): "tool \(tool.name) \(tool.status ?? "") \(tool.input.command ?? "") \(tool.output ?? "")"
-            case .other: "other"
-            }
-        }
-        // A step's start and finish parts are no item Chat shows.
-        #expect(kinds == ["other", "reasoning Thinking. 1110-1120", "tool bash completed echo hi hi\n", "text OK", "other"])
+        #expect(reply.error == nil)
+        #expect(reply.completed == 1_793_711_532_402)
+        #expect(records.rows[1].timeUpdated == 1_793_711_532_404)
 
         // Nothing changed: the counter holds. A new message moves it.
         let cursor = try Self.cursor(after: records)
         let poll = OpenCodeQuery(session: session, kind: .poll(cursor), tables: .v1)
         #expect(try harness.response(poll) == .unchanged(eventSeq: try #require(records.eventSeq)))
-        try Self.insertV1(harness, message: "msg_c", at: Self.v1Epoch + 10_000,
+        try Self.insertV1(harness, message: "msg_c", at: Self.v1Updated + 10_000,
             #"{"role":"user","time":{"created":10000}}"#, parts: [#"{"type":"text","text":"Again."}"#])
         let changed = try harness.records(poll)
         // The newest row read is read again, as on 2's tables.
-        #expect(changed.rows.map(\.seq) == [2, 3])
-        #expect(changed.windowCount == 2)
+        #expect(changed.rows.map(\.seq) == [14, 15])
+        #expect(changed.windowCount == 14)
 
         // Neither tables hold an absent session.
         let absent = try #require(OpenCodeSessionID("ses_0a1b2c3d4effAbsentSession1"))
@@ -662,12 +646,92 @@ struct OpenCodeStoreQueryTests {
                 == .sessionMissing(otherStores: []))
     }
 
+    /// What Chat shows of the recorded session through the record source: each
+    /// prompt, reply and call once, in the order OpenCode stored them, and no
+    /// step failed. The provider sent its reasoning encrypted, which shows as
+    /// nothing, as in OpenCode; one is given text here to show reasoning
+    /// reaches Chat. `opencode run` stored its prompts in quotes, and the read
+    /// of one line of three as shortened.
+    @Test func aSessionOpenCode1WroteReadsAsItsTurns() async throws {
+        let (harness, session) = try Self.v1OnlyStore()
+        try harness.execute("""
+            UPDATE part SET data = json_set(data, '$.text', 'Seventeen twenties and seventeen threes.')
+             WHERE id = 'prt_1a18a1f46001LRVdCH3O4oZweo'
+            """)
+        let store = V1HostStore(harness)
+        var source = OpenCodeRecordSource(session: session)
+        let opened = try await source.open(store.files)
+        let lines = try #require(opened)
+        #expect(await store.tables == [.v2, .v1])
+
+        var reducer = OpenCodeTranscriptReducer()
+        reducer.append(lines)
+        let transcript = reducer.transcript(ChatProjectionContext(activity: .idle))
+        #expect(transcript.diagnostics.invalidLines == 0)
+        let shown = transcript.entries.map { entry -> String in
+            switch entry.content {
+            case .user(let user): "user \(user.text) \(user.attachmentLabels)"
+            case .assistant(let reply): "reply \(reply.text)"
+            case .reasoning(let reasoning): "reasoning \(reasoning.text)"
+            case .tool(let tool): "\(tool.kind) \(tool.name) \(tool.status) \(tool.title) \(tool.preview?.text ?? "")"
+            default: "\(entry.content)"
+            }
+        }
+        #expect(
+            shown == [
+                #"user "Reply with the single word OK." []"#,
+                "reply OK",
+                #"user "Use your tools: list the files in this folder, then read notes.txt. Then tell me its first line." []"#,
+                "fileRead read succeeded /work/app <path>/work/app</path>\n<type>directory</type>\n<entries>\n.git/\n"
+                    + "hello.py\nnotes.txt\n\n(3 entries)\n</entries>",
+                "fileRead read succeeded /work/app/notes.txt <path>/work/app/notes.txt</path>\n<type>file</type>\n"
+                    + "<content>\n1: first line: alpha-7341\n\n(Showing lines 1-1 of 3. Use offset=2 to continue.)\n</content>\n"
+                    + "[OpenCode shortened this output. The full output stays on the Host.]",
+                "reply first line: alpha-7341",
+                #"user "Think it through step by step, then reply with only the number: what is 17 * 23?" []"#,
+                "reasoning Seventeen twenties and seventeen threes.",
+                "reply 391",
+                #"user "What is the second line of the attached file? Reply in one short sentence." ["notes.txt"]"#,
+                "reply The second line is: second line: beta-0958.",
+                #"user "Think it through step by step, then reply with only the number: what is 19 * 21?" []"#,
+                "reply 399",
+                #"user "Run the shell command ls -1 in this folder with your bash tool, then tell me how many entries it printed." []"#,
+                "command bash succeeded ls -1 hello.py\nnotes.txt\n",
+                "reply 2",
+            ])
+        // 1.x writes no idle row: a prompt ends the turn before it.
+        try #require(transcript.turns.count == 6)
+        #expect(transcript.turns.prefix(5).map(\.ending) == Array(repeating: .completed, count: 5))
+    }
+
+    /// The store as a Host's query reads it, and which tables each query named.
+    private actor V1HostStore {
+        private let harness: OpenCodeSQLiteHarness
+        private(set) var tables: [OpenCodeQuery.Tables] = []
+
+        init(_ harness: OpenCodeSQLiteHarness) {
+            self.harness = harness
+        }
+
+        func response(_ query: OpenCodeQuery) throws -> OpenCodeQueryResponse {
+            tables.append(query.tables)
+            return try harness.response(query)
+        }
+
+        nonisolated var files: ChatHostFiles {
+            let none = TransportError.hostFeatureUnavailable(feature: "Files")
+            return ChatHostFiles(
+                status: { _ in throw none }, list: { _ in throw none }, read: { _ in throw none },
+                home: { throw none }, queryOpenCode: { try await self.response($0) })
+        }
+    }
+
     /// 1.x's statements nest no deeper than 2's. Its `session_message` stands
     /// at the foot of the CTEs that slim rows, and SQLite adds a CTE's height to
     /// each expression that reads it, so the CTE is held to the expression limit
     /// on its own; the parser stack of older SQLite sees only what is written.
     @Test func everyOpenCode1StatementParsesOnTheParserStackOfOlderSQLite() throws {
-        let (harness, session) = try Self.v1Store()
+        let (harness, session) = try Self.sharedStore()
         let cursor = OpenCodePollCursor(
             eventSeq: 9, lowSeq: 1, highSeq: 2, knownInWindow: 2, openRows: [2], updatedSince: 0, budget: 1024)
         let kinds: [OpenCodeQuery.Kind] = [

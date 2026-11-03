@@ -512,7 +512,9 @@ extension OpenCodeProbe {
     /// `group_concat` skips and the reducer reads as no item. A message's parts
     /// gather in id order, the order `part_message_id_id_idx` reads them in, since
     /// an aggregate takes no `ORDER BY` here, and objects are built flat with
-    /// `json_set` paths.
+    /// `json_set` paths. A step's error is the one exception: a path under
+    /// `$.error` would make an empty error of a step that had none, which reads
+    /// as a failed step, so the whole error is NULL unless 1.x recorded one.
     static func v1Messages(_ session: String) -> String {
         let role = "json_extract(msg.data, '$.role')"
         let isSummary = "json_type(msg.data, '$.summary') = 'true'"
@@ -541,8 +543,9 @@ extension OpenCodeProbe {
                      WHEN \(role) = 'assistant' THEN json_set('{}',
                        '$.content', json((SELECT json_group_array(\(v1Item)) \(parts))),
                        '$.finish', json_extract(msg.data, '$.finish'),
-                       '$.error.type', replace(json_extract(msg.data, '$.error.name'), 'MessageAbortedError', 'aborted'),
-                       '$.error.message', json_extract(msg.data, '$.error.data.message'), \(time))
+                       '$.error', json(CASE WHEN json_type(msg.data, '$.error') = 'object' THEN json_object(
+                         'type', replace(json_extract(msg.data, '$.error.name'), 'MessageAbortedError', 'aborted'),
+                         'message', json_extract(msg.data, '$.error.data.message')) END), \(time))
                      ELSE json_set('{}', '$.time.created', msg.time_created) END AS data
               FROM message msg JOIN v1_seq q ON q.id = msg.id WHERE json_valid(msg.data))
             """
