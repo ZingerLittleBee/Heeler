@@ -857,6 +857,140 @@ struct HerdrCoreChatPickTests {
         rig.store.setHosts([])
     }
 
+    private static let piLaunched = "019a0000-0000-7000-8000-00000000a001"
+
+    private static func piFile(_ session: String) -> String {
+        "\(home)/.pi/agent/sessions/--work-app--/2026-11-01T07-19-26-219Z_\(session).jsonl"
+    }
+
+    private static func piTranscript(session: String, fixture: String = "pi/provider-retry.jsonl") throws -> Data {
+        let data = try ChatFixture.data(fixture)
+        let recorded = try #require(PiTranscriptLocator.sessionID(inHead: data))
+        return Data(String(decoding: data, as: UTF8.self).replacingOccurrences(of: recorded, with: session).utf8)
+    }
+
+    /// hc-lab P11: a Pi Heeler started, then `/new` in the terminal. Its launch hint
+    /// still names the first conversation and nothing on the Host says Pi left it, so
+    /// a Send from Chat stayed "Sent. It hasn't appeared…". The guard watches that
+    /// binding as it does a pick: a message missing once the turn ends drops the hint
+    /// here and on the core.
+    @Test func aPiLaunchHintTheTurnDisprovesIsDropped() async throws {
+        var record = Self.record(
+            .pi, argv: ["pi", "--session-id", Self.piLaunched],
+            labels: [HerdrCoreLaunch.sessionHintLabel: Self.piLaunched])
+        // Heeler's launch runs Pi as the Terminal's own process.
+        if case .object(var fields) = record {
+            fields["pid"] = .number(Double(Self.pid))
+            record = .object(fields)
+        }
+        let rig = Rig(host: host, program: .pi, record: record, steppedByTheTest: true)
+        await rig.files.write(try Self.piTranscript(session: Self.piLaunched), at: Self.piFile(Self.piLaunched))
+        try await rig.start([Self.process(.pi, argv: ["pi", "--session-id", Self.piLaunched])])
+        let chat = try rig.chat()
+        try await rig.stepUntil(chat, "Chat to follow it") {
+            chat.conversation.phase == .following(path: Self.piFile(Self.piLaunched))
+                && !chat.conversation.transcript.entries.isEmpty
+        }
+
+        Self.send("this goes to the conversation /new started", on: chat)
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+
+        rig.expectLeftConversation(chat)
+        func hintWrites() async -> [String] {
+            await rig.transport.labelWrites.compactMap {
+                $0["labels"]?[HerdrCoreLaunch.sessionHintLabel]?.stringValue
+            }
+        }
+        for _ in 0..<500 where await hintWrites().isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await hintWrites() == [""])
+        // Whatever the record still holds, the hint is not taken again.
+        await rig.nudgeCheck()
+        await chat.step()
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// hc-lab D1: Grok Build 1.0.70 wrote its `active_sessions.json` row 0.18 s after
+    /// the core's idle, and nothing checked after it until Check Again. While Chat
+    /// can't tell, one more check follows a few seconds after an idle report, and no
+    /// other: no clock asks again.
+    @Test func aGrokRowWrittenJustAfterIdleBindsAtTheOneLaterCheck() async throws {
+        let rig = try await grokRig(steppedByTheTest: true)
+        let chat = try rig.chat()
+        try await rig.stepUntil(chat, "Chat to say it cannot tell") {
+            chat.conversation.phase == .unavailable(.cannotTellSession(.grok))
+        }
+        try await rig.runTurn()
+        // The checks the turn's events ask for, with the row not written yet.
+        await chat.step()
+        try await Task.sleep(for: .milliseconds(50))
+        await chat.step()
+        let checks = await rig.transport.processTable.requests.count
+
+        await rig.files.write(
+            #"[{"session_id":"\#(Self.grokHeld)","pid":\#(Self.pid),"pid_start":\#(Self.start),"cwd":"/work/app"}]"#,
+            at: "\(Self.home)/.grok/active_sessions.json")
+        await chat.step()
+        #expect(await rig.transport.processTable.requests.count == checks)
+        let delay = try #require(AgentChatStore.Timing().lateEvidenceCheck[.grok])
+        #expect(chat.interval <= .seconds(delay))
+        rig.clock.advance(delay)
+        await chat.step()
+        #expect(await rig.transport.processTable.requests.count == checks + 1)
+        try await rig.stepUntil(chat, "Chat to follow the row") {
+            chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
+        }
+
+        rig.clock.advance(60)
+        await chat.step()
+        #expect(await rig.transport.processTable.requests.count == checks + 1)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// hc-lab P5: Oh My Pi 18.13.3 without its extension wrote its file with the
+    /// finished turn and held it about 6 s later, and Chat said it can't tell until
+    /// Check Again. Its one later check comes 10 s after the idle report.
+    @Test func anOhMyPiFileHeldJustAfterIdleBindsAtTheOneLaterCheck() async throws {
+        let session = "019a0000-0000-7000-8000-00000000b001"
+        let file = "\(Self.home)/.omp/agent/sessions/--work-app--/2026-11-03T05-07-57-239Z_\(session).jsonl"
+        let crumb = "\(Self.home)/.omp/agent/terminal-sessions/pts-0"
+        let rig = Rig(host: host, program: .omp, record: Self.record(.omp), steppedByTheTest: true)
+        await rig.files.write("\(Self.directory)\n\(file)\nfresh\ncwdstat 1 2\n", at: crumb)
+        try await rig.start([Self.process(.omp, files: ["/dev/pts/0"])])
+        let chat = try rig.chat()
+        try await rig.stepUntil(chat, "Chat to say it cannot tell") {
+            chat.conversation.phase == .unavailable(.cannotTellSession(.omp))
+        }
+        try await rig.runTurn {
+            // The reply writes the file and drops `fresh`; the process opens it later.
+            await rig.files.write(
+                try Self.piTranscript(session: session, fixture: "omp/approvals-asks-plan.jsonl"), at: file)
+            await rig.files.write("\(Self.directory)\n\(file)\ncwdstat 1 2\n", at: crumb)
+        }
+        await chat.step()
+        try await Task.sleep(for: .milliseconds(50))
+        await chat.step()
+        let checks = await rig.transport.processTable.requests.count
+
+        await rig.transport.processTable.add(Self.process(.omp, files: ["/dev/pts/0", file]))
+        await chat.step()
+        #expect(await rig.transport.processTable.requests.count == checks)
+        let delay = try #require(AgentChatStore.Timing().lateEvidenceCheck[.omp])
+        rig.clock.advance(delay)
+        await chat.step()
+        #expect(await rig.transport.processTable.requests.count == checks + 1)
+        try await rig.stepUntil(chat, "Chat to follow the file") {
+            chat.conversation.phase == .following(path: file)
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     /// The message the guard judged stays as an echo only until its clock runs out,
     /// and then nothing holds a timeline up over the reason.
     @Test func aMissingMessageLeavesNoTimelineOnceItsEchoEnds() async throws {
@@ -1036,12 +1170,12 @@ struct HerdrCoreChatPickTests {
         let picked = ChatSessionEvidence.picked(sessionID: Self.grokHeld, transcriptRoot: "\(Self.home)/.grok")
         #expect(try await core.checkChatSession(paneID: "t1", program: .grok) == picked)
 
-        core.dropChatPick(paneID: "t1", scope: "an earlier core")
+        core.dropChatPick(paneID: "t1", scope: "an earlier core", program: .grok)
 
         #expect(try await core.checkChatSession(paneID: "t1", program: .grok) == picked)
         #expect(await rig.pickWrites.isEmpty)
 
-        core.dropChatPick(paneID: "t1", scope: core.chatCacheScope)
+        core.dropChatPick(paneID: "t1", scope: core.chatCacheScope, program: .grok)
 
         #expect(try await core.checkChatSession(paneID: "t1", program: .grok) == .unavailable(.cannotTellSession(.grok)))
         try await Self.waitForClear(rig)

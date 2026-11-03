@@ -308,7 +308,8 @@ struct HerdrCoreMacOSSessionBinderTests {
         #expect(await rig.log.cleared == ["heeler.session", "heeler.session"])
     }
 
-    /// The id Heeler started it with, while the launch's arguments still carry it.
+    /// The id Heeler started it with, while the launch's arguments still carry it,
+    /// under the send guard a pick has.
     @Test func aPiHeelerStartedBindsFromItsLaunchHint() async throws {
         let rig = try await Rig("pi-extension")
         let id = "ccfe7187-4ea6-468d-9555-83c3827f9cd0"
@@ -316,7 +317,7 @@ struct HerdrCoreMacOSSessionBinderTests {
         #expect(
             try await rig.binder(.pi).check(
                 try rig.record(labels: [HerdrCoreLaunch.sessionHintLabel: id, "heeler.session": ""]))
-                == .bound(sessionID: id, transcriptRoot: "\(Self.lab)/pi085/agent/sessions", directory: nil))
+                == .picked(sessionID: id, transcriptRoot: "\(Self.lab)/pi085/agent/sessions"))
     }
 
     /// `/dev/ttys006` files under `ttys006`, and only the open file proves it (ADR 0034):

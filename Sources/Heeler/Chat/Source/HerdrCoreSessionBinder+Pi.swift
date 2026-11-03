@@ -31,13 +31,23 @@ extension HerdrCoreSessionBinder {
         // On Windows only the extension's label counts: Heeler's launch runs under
         // PowerShell, and open files are not read there.
         guard !isOnWindows else { return cannotTell }
-        if program == .pi, pid == record.pid.map(String.init), let id = record.piLaunchSession {
-            return bound(id)
+        // The id Pi started with, until a send guard finds Pi has left it (ADR 0034).
+        if program == .pi, pid == record.pid.map(String.init), let id = record.piLaunchSession,
+            await !isDroppedPick(id)
+        {
+            return .picked(sessionID: id, transcriptRoot: places.sessions)
         }
         if program == .omp, let file = try await confirmedBreadcrumbFile(of: process, agentDirectory: places.agent) {
             return bound(file)
         }
         return cannotTell
+    }
+
+    /// Whether a Pi's launch hint is there and no send guard dropped it, for a check
+    /// that cannot see the process to hold it against.
+    func launchHintStands(in record: HerdrCoreTerminalRecord) async -> Bool {
+        guard program == .pi, !isOnWindows, let id = record.piLaunchSession else { return false }
+        return await !isDroppedPick(id)
     }
 
     var piFamilyProcessAsk: ProcessAsk {

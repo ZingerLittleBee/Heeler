@@ -346,7 +346,7 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     @discardableResult
     func send(policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
-        noting(await sendDraft(policy: policy), route: policy.route)
+        noting(await sendDraft(policy: policy), policy: policy)
     }
 
     private func sendDraft(policy: ComposerDeliveryPolicy) async -> SendResult {
@@ -374,7 +374,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// message's own route.
     @discardableResult
     func retry(_ id: Message.ID, policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
-        noting(await retryMessage(id, policy: policy), route: policy.route)
+        noting(await retryMessage(id, policy: policy), policy: policy)
     }
 
     private func retryMessage(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
@@ -400,13 +400,23 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// A refusal shows even when Agent Status changed under the Send: the
     /// draft came back, and the notice is the only word of why. The next
     /// change that ends it still does.
-    private func noting(_ result: SendResult, route: ComposerRoute) -> SendResult {
+    private func noting(_ result: SendResult, policy: ComposerDeliveryPolicy) -> SendResult {
         if case .refused(let refusal) = result {
-            notice = ComposerNotice(refusal: refusal, route: route)
+            notice = ComposerNotice(refusal: refusal, route: policy.route, conversation: policy.conversation?())
         } else {
             notice = nil
         }
         return result
+    }
+
+    /// Chat follows another conversation, or none: a refusal about the
+    /// input box described the one it followed, so it ends. Noted after the
+    /// change, as when the Send's own check moved Chat, it stays.
+    func conversationDidChange(to conversation: Int) {
+        guard let notice, let noted = notice.conversation, noted != conversation,
+            case .inputNotReady = notice.refusal
+        else { return }
+        self.notice = nil
     }
 
     /// Removes a failed or unanswered echo and restores all of its text to the

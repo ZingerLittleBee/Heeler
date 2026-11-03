@@ -14,6 +14,13 @@ enum ChatLaunchNotice: Equatable, Sendable {
     /// the flag on one line.
     static let unbrokenNoDaemon = "\u{2011}\u{2011}no\u{2011}daemon"
 
+    /// The shared server can outlive the Codex that started it and keep the
+    /// conversation loaded, and Codex then won't resume it without the
+    /// server ("This conversation is open in another app", codex-cli
+    /// 0.165.0 on a 0.166.0 daemon, until `codex app-server daemon stop`).
+    static let stopSharedServer =
+        "If Codex says the conversation is open in another app, run codex app\u{2011}server daemon stop, which also ends any other Codex on that server, then resume again."
+
     /// The user guide's section for the notice.
     var guideURL: URL? {
         switch self {

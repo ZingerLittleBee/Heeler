@@ -515,6 +515,8 @@ struct HerdrCoreProgramBinderTests {
         let explanation = reason.explanation.replacingOccurrences(of: "\u{2011}", with: "-")
         #expect(explanation.contains("codex resume --no-daemon"))
         #expect(explanation.contains("Codex's list"))
+        // The daemon can outlive the TUI and keep the thread (hc-lab, D4).
+        #expect(explanation.contains("codex app-server daemon stop"))
         #expect(reason.offersRetry)
     }
 

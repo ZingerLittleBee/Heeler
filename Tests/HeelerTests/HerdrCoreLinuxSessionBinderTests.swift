@@ -33,10 +33,9 @@ struct HerdrCoreLinuxSessionBinderTests {
         ),
         ("opencode", .opencode, .bound(sessionID: "ses_e6a000000004Abcdefghijklmn", transcriptRoot: nil, directory: nil)),
         (
+            // The launch hint is watched as a pick is, since `/new` leaves it behind.
             "pi-launch", .pi,
-            .bound(
-                sessionID: "00000000-0000-4000-8000-000000000005", transcriptRoot: "\(home)/.pi/agent/sessions",
-                directory: nil)
+            .picked(sessionID: "00000000-0000-4000-8000-000000000005", transcriptRoot: "\(home)/.pi/agent/sessions")
         ),
         ("omp-after-reply", .omp, cannotTell(.omp)),
         ("omp-fresh-breadcrumb", .omp, cannotTell(.omp)),
@@ -86,6 +85,20 @@ struct HerdrCoreLinuxSessionBinderTests {
         let rig = try await Rig(entry.scene)
 
         #expect(try await rig.binder(entry.program).check(try rig.record()) == entry.evidence)
+        #expect(await rig.log.cleared.isEmpty)
+    }
+
+    /// An exec that answers nothing tells nothing, so a launch hint the send guard
+    /// watches stands, as a pick's label does, and Chat keeps the conversation it
+    /// shows. One a guard dropped does not.
+    @Test func aPiLaunchHintACheckCannotHoldStands() async throws {
+        let rig = try await Rig("pi-launch")
+        var binder = rig.binder(.pi)
+        binder.processes = { _ in [:] }
+
+        #expect(try await binder.check(try rig.record()) == .pickUnconfirmed(.cannotTellSession(.pi)))
+        binder.isDroppedPick = { _ in true }
+        #expect(try await binder.check(try rig.record()) == Self.cannotTell(.pi))
         #expect(await rig.log.cleared.isEmpty)
     }
 

@@ -25,10 +25,11 @@ extension ComposerDeliveryPolicy {
         confirmSession: (@MainActor () async -> String?)? = nil,
         sendConcern: @escaping @MainActor (_ outgoing: String, _ screen: ANSIScreen) -> String? = { _, _ in nil },
         willReadScreen: @escaping @MainActor () -> Void = {},
+        conversation: (@MainActor () -> Int)? = nil,
         pause: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) -> ComposerDeliveryPolicy {
         let program = rules.program
-        return ComposerDeliveryPolicy(
+        var policy = ComposerDeliveryPolicy(
             route: .chat,
             insertsIntoAttachWhenBlocked: false,
             outgoingText: { rules.outgoingText($0) },
@@ -62,6 +63,8 @@ extension ComposerDeliveryPolicy {
                 }
                 return true
             })
+        policy.conversation = conversation
+        return policy
     }
 
     private static func unreadableScreenReason(_ error: any Error) -> String {

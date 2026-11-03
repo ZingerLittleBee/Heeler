@@ -94,6 +94,10 @@ struct ComposerDeliveryPolicy: Sendable {
     /// types into: one Agent's Composer can be open in several windows, each with
     /// a viewer of its own. Nothing on a Herdr TUI Host.
     var coreAttach: AgentAttachStore?
+    /// Which conversation Chat follows, a number that changes whenever it
+    /// follows another (`AgentChatStore.conversationGeneration`). A refusal
+    /// about the input box notes it, and ends once Chat follows another.
+    var conversation: (@MainActor () -> Int)?
 
     static let terminal = ComposerDeliveryPolicy(
         route: .terminal, insertsIntoAttachWhenBlocked: true, outgoingText: { $0 },
@@ -106,4 +110,7 @@ struct ComposerNotice: Equatable {
     let refusal: ComposerRefusal
     /// The surface that was refused; only it shows the notice.
     let route: ComposerRoute
+    /// The conversation Chat followed when the refusal came
+    /// (`ComposerDeliveryPolicy.conversation`).
+    var conversation: Int?
 }

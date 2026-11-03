@@ -569,10 +569,10 @@ Code's `.key` files.
     PowerShell finds first. On the one machine that was the account's winget copy,
     even with the npm copy first on the core's own PATH, so the npm and `npx` copies
     were started over the core's pipe with `terminal.run` in New Agent's form.
-28. Run `/clear` in the terminal. Chat follows at its next check. Seen once, on
-    herdr-core 0.1.16 with Claude Code 2.1.286: after `/clear` Chat also showed a
-    **Working for 0:18** row counting up while Claude Code sat idle, until the next
-    turn. Note whether yours does.
+28. Run `/clear` in the terminal. Chat follows at its next check, with no
+    **Working for** row while Claude Code sits idle. Claude Code 2.1.286 reports no
+    status, and on herdr-core 0.1.16 an earlier build counted one up from the
+    `/clear` row until the next turn.
 29. Start Grok Build and send a message. Chat shows it, from the one row of
     `active_sessions.json` with that `pid` and `pid_start`. Record the row's fields and
     `pid_start`'s value beside the creation time: Heeler assumes they are equal. On the

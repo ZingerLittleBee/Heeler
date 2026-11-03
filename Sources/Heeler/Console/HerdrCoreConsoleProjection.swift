@@ -70,6 +70,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// reports anything else the value is forgotten, and that value arriving again
     /// is someone confirming it again (ADR 0034).
     private var droppedPicks: [String: Set<String>] = [:]
+    /// Launch hints a send guard dropped, by Terminal. Each names one launch's
+    /// session, so it is never adopted again on this core.
+    private var droppedLaunchHints: [String: Set<String>] = [:]
     /// Each Terminal's pick label when the last inventory went, for a guard's verdict
     /// reached before the next one comes (ADR 0034).
     private var pickLabelsBetweenLinks: [String: String] = [:]
@@ -1540,7 +1543,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 await self.terminalLabels(at: paneID, on: core)
             },
             isDroppedPick: { value in
-                await self.droppedPicks[paneID]?.contains(value) ?? false
+                await self.isDropped(value, at: paneID)
             },
             hostSystem: HerdrCoreHostSystem(kernel: kernel))
     }
@@ -1594,11 +1597,15 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// removal that failed leaves the label in the record for that check to find. Between
     /// links there is no record, and the value the last one held is what the next
     /// inventory is held against.
-    func dropChatPick(paneID: String, scope: String?) {
-        guard chatCacheScope == scope,
+    func dropChatPick(paneID: String, scope: String?, program: ChatProgram) {
+        guard chatCacheScope == scope else { return }
+        guard
             let value = terminalRecord(at: paneID)?.labels[HerdrCoreSessionHint.pickLabel]
                 ?? pickLabelsBetweenLinks[paneID]
-        else { return }
+        else {
+            if program == .pi { dropLaunchHint(paneID: paneID) }
+            return
+        }
         droppedPicks[paneID, default: []].insert(value)
         let core = inventoryCore
         pickRemoval = Task { [weak self] in
@@ -1612,6 +1619,22 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             {
                 self.setPickLabel(nil, at: paneID, on: core)
             }
+        }
+    }
+
+    /// A pick or launch hint a send guard dropped on this device.
+    private func isDropped(_ value: String, at paneID: String) -> Bool {
+        droppedPicks[paneID]?.contains(value) == true || droppedLaunchHints[paneID]?.contains(value) == true
+    }
+
+    /// A Pi bound by the id Heeler started it with, which `/new` left behind: no
+    /// device adopts it again (ADR 0034).
+    private func dropLaunchHint(paneID: String) {
+        guard let value = terminalRecord(at: paneID)?.labels[HerdrCoreLaunch.sessionHintLabel] else { return }
+        droppedLaunchHints[paneID, default: []].insert(value)
+        let core = inventoryCore
+        pickRemoval = Task { [weak self] in
+            try? await self?.clearStaleLabels([HerdrCoreLaunch.sessionHintLabel: value], at: paneID, on: core)
         }
     }
 

@@ -120,6 +120,40 @@ struct AgentComposerChatRouteTests {
         #expect(store.draft == "next step")
     }
 
+    /// The Mac pick run: "can't tell" stayed in the Composer after the pick
+    /// it asked for. A hold about the conversation Chat followed ends once
+    /// it follows another; one noted after the Send's own check moved Chat
+    /// stays, and a refusal of the text itself is not about the conversation.
+    @Test func aHoldOnTheConversationEndsWhenChatFollowsAnother() async {
+        final class Followed { var generation = 1 }
+        let followed = Followed()
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        store.replaceDraft(with: "next step")
+        let hold = ComposerRefusal.inputNotReady("Codex now shows another conversation.")
+        var policy = Self.chatPolicy(preflight: { _ in
+            followed.generation = 2
+            return hold
+        })
+        policy.conversation = { followed.generation }
+
+        _ = await store.send(policy: policy)
+
+        #expect(store.notice == ComposerNotice(refusal: hold, route: .chat, conversation: 2))
+        store.conversationDidChange(to: 2)
+        #expect(store.notice?.refusal == hold)
+        store.conversationDidChange(to: 3)
+        #expect(store.notice == nil)
+        #expect(store.draft == "next step")
+
+        let unsafe = ComposerRefusal.unsafeText("A leading ! runs a shell command.")
+        var textPolicy = Self.chatPolicy(validate: { _ in unsafe })
+        textPolicy.conversation = { followed.generation }
+        _ = await store.send(policy: textPolicy)
+        store.conversationDidChange(to: 4)
+        #expect(store.notice?.refusal == unsafe)
+    }
+
     @Test(arguments: [ComposerRefusal.agentBlocked, .commandAwaitsIdle("compact")])
     func everyHoldOnTheAgentEndsWithItsStatus(_ hold: ComposerRefusal) async {
         let transport = ScriptedTransport()

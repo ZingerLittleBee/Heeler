@@ -338,6 +338,14 @@ struct AgentChatSurfaceView: View {
             let earlier = Set(previous.map(\.id))
             if messages.contains(where: { !earlier.contains($0.id) }) { followRequest += 1 }
         }
+        .onChange(of: composer.draft) { _, draft in
+            chat?.draftDidChange(to: draft)
+        }
+        // Also on appearing: Chat may have followed another while it was away.
+        .onChange(of: chat?.conversationGeneration, initial: true) { _, generation in
+            guard let generation else { return }
+            composer.conversationDidChange(to: generation)
+        }
         .onChange(of: chat?.sendStatuses, initial: true) { _, statuses in
             guard let statuses else { return }
             composer.settleUnknownOutcomes(recorded: Set(statuses.filter { $0.value == .recorded }.keys))
@@ -518,10 +526,10 @@ struct AgentChatSurfaceView: View {
                 collapseControlClearance: collapseControlHeight,
                 textSize: ChatTextSettings.size(system: dynamicTypeSize, offset: textSizeOffset),
                 font: chatFont,
+                hidesFromAccessibility: presentation != .timeline,
                 actions: timelineActions)
             .padding(.top, -topInset)
             .ignoresSafeArea(.container, edges: .bottom)
-            .accessibilityHidden(presentation != .timeline)
             .modifier(HiddenConversation(isHidden: hidesConversation))
             if presentation != .timeline {
                 GeometryReader { proxy in
@@ -530,6 +538,13 @@ struct AgentChatSurfaceView: View {
                             .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                     }
                     .scrollBounceBehavior(.basedOnSize)
+                }
+                // The scroll view reaches under the Composer, whose status
+                // row has no background: a placeholder taller than the room
+                // the keyboard leaves ran under it. It still passes under
+                // the header and banners above.
+                .mask(alignment: .bottom) {
+                    Rectangle().padding(.top, -(topInset + headerObstruction + bannerHeight))
                 }
                 .padding(.top, headerObstruction + bannerHeight)
             }
@@ -825,7 +840,14 @@ struct AgentChatSurfaceView: View {
     private var sendPolicy: ComposerDeliveryPolicy {
         .chat(
             rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, confirmSession: confirmSession,
-            sendConcern: sendConcern, willReadScreen: registerSends)
+            sendConcern: sendConcern, willReadScreen: registerSends,
+            conversation: conversationStamp)
+    }
+
+    /// Which conversation Chat follows, noted with a refusal.
+    private var conversationStamp: (@MainActor () -> Int)? {
+        guard let chat else { return nil }
+        return { chat.conversationGeneration }
     }
 
     /// Whether the program still shows the conversation Chat shows, for a

@@ -122,6 +122,11 @@ final class AgentChatStore {
         /// queued send may be about to start the next turn, and Pi's return check
         /// runs in this time.
         var pickGuardSettle: TimeInterval = 2
+        /// On herdr-core, how long after the Agent reports idle Chat checks its
+        /// process once more while it can't tell, for a program that writes its
+        /// evidence just after: Grok Build its `active_sessions.json` row, and Oh
+        /// My Pi without its extension the open of its session file (ADR 0034).
+        var lateEvidenceCheck: [ChatProgram: TimeInterval] = [.grok: 3, .omp: 10]
         var backgroundWorkStaleness = ChatBackgroundWork.Staleness()
     }
 
@@ -222,6 +227,21 @@ final class AgentChatStore {
         program.mayShareSessionServer && source.processInfo != nil && !hasCheckedLaunch
     }
 
+    /// On herdr-core, a check found the program in another conversation of
+    /// its own (`/clear` in Claude Code) and Chat moved there with no Send
+    /// waiting on it. The draft may have been written for the last one, so
+    /// the next Send stops once, as a Send whose own check moves Chat does,
+    /// unless the draft changed since.
+    @ObservationIgnored private var movedSinceDraft = false
+    /// The Composer's draft as last seen (`draftDidChange`), and what it held
+    /// when Chat moved: a refused Send puts the same text back, which is no
+    /// draft written since.
+    @ObservationIgnored private var composerDraft = ""
+    @ObservationIgnored private var draftAtMove = ""
+    /// When the one check `Timing.lateEvidenceCheck` allows after an idle report
+    /// is due. Only a running loop, which a Chat on screen keeps, takes it; one
+    /// overdue when Chat opens is the check opening makes anyway.
+    @ObservationIgnored private var lateEvidenceCheckAt: Date?
     @ObservationIgnored private let source: AgentChatSource
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private let now: @Sendable () -> Date
@@ -734,7 +754,8 @@ final class AgentChatStore {
             sessionID: sessionID, transcript: conversation.transcript, activity: ChatAgentActivity(agent.status),
             polledSinceIdle: idleSince.flatMap { idle in lastReadStartedAt.map { $0 >= idle } } ?? false,
             unrecordedSendKeys: Set(recent.map(\.key)),
-            misdirectedSendKeys: Set(unrecorded.filter { misdirectedSends.contains($0.id) }.map(\.key)))
+            misdirectedSendKeys: Set(unrecorded.filter { misdirectedSends.contains($0.id) }.map(\.key)),
+            followsSessionMoves: source.sessionEvidence == nil)
     }
 
     /// The skills the Host offers, so a Codex `$name` prompt shows as the
@@ -789,6 +810,9 @@ final class AgentChatStore {
         noteActivity(activity)
         notePickGuardActivity(from: previous, to: activity)
         idleSince = activity == .idle ? now() : nil
+        lateEvidenceCheckAt =
+            activity == .idle && source.sessionEvidence != nil
+            ? timing.lateEvidenceCheck[program].map { now().addingTimeInterval($0) } : nil
         // Answering a dialog resumes the turn it interrupted.
         if activity == .working, previous != .working, previous != .blocked { turnStartedAt = now() }
         returnChecked = []
@@ -812,6 +836,10 @@ final class AgentChatStore {
     func step() async {
         await restoreIfNeeded()
         guard !Task.isCancelled else { return }
+        if let due = lateEvidenceCheckAt, now() >= due {
+            lateEvidenceCheckAt = nil
+            if evidenceReason != nil { needsAgentRefresh = true }
+        }
         if needsAgentRefresh || sessionRecheckIsDue, let fresh = await refreshAgent() {
             guard !Task.isCancelled else { return }
             await checkStartScreen(fresh)
@@ -983,6 +1011,11 @@ final class AgentChatStore {
     /// its deadline holds the Host's query lane until its watchdog ends it
     /// (ADR 0025).
     var interval: Duration {
+        guard let due = lateEvidenceCheckAt else { return loopPace }
+        return min(loopPace, .seconds(max(0, due.timeIntervalSince(now()))))
+    }
+
+    private var loopPace: Duration {
         if engine == nil { return .seconds(timing.sessionRecheck) }
         guard source.adapter.readsByQuery else { return pace(active: timing.activeInterval) }
         let pace = pace(active: timing.queryActiveInterval)
@@ -1109,7 +1142,12 @@ final class AgentChatStore {
         switch evidence {
         case .bound(let sessionID, let transcriptRoot, let directory):
             forgetPick()
+            let shown = followed
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: directory)
+            if let shown, let followed, !followed.namesSameSession(as: shown) {
+                movedSinceDraft = true
+                draftAtMove = composerDraft
+            }
         case .picked(let sessionID, let transcriptRoot):
             followsPick = true
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: nil)
@@ -1629,6 +1667,8 @@ final class AgentChatStore {
         _ sessionEvidence: @Sendable () async throws -> ChatSessionEvidence
     ) async -> String? {
         let shown = followed
+        // Read before the check: the Send emptying the draft must not end it.
+        let movedUnseen = movedSinceDraft
         let recordRevision = sessionRecordRevision
         guard let evidence = try? await sessionEvidence(), !Task.isCancelled,
             recordRevision == sessionRecordRevision
@@ -1649,9 +1689,23 @@ final class AgentChatStore {
             default: followed == shown
             }
         if !isSameConversation {
+            movedSinceDraft = false
             return "\(name) now shows another conversation. Chat is switching to it; check it, then send again."
         }
+        if movedUnseen, movedSinceDraft {
+            movedSinceDraft = false
+            return "\(name) moved to another conversation, which Chat now shows. Check it, then send again."
+        }
         return program.confirmsSessionBeforeSend ? coreTitleConcern : nil
+    }
+
+    /// The Composer's draft changed. Text written since Chat moved is for the
+    /// conversation it shows now. Emptying it, as a Send does, says nothing,
+    /// and nor does a refused Send putting the same text back.
+    func draftDidChange(to draft: String) {
+        composerDraft = draft
+        guard !draft.isEmpty, draft != draftAtMove else { return }
+        movedSinceDraft = false
     }
 
     /// No herdr reports OpenCode's moves on a core and its argv keeps the id it

@@ -80,7 +80,7 @@ extension ChatUnavailableReason {
         case .transcriptOff(let variable, let coreCarriesIt):
             variable.explanation(coreCarriesIt: coreCarriesIt)
         case .codexSharedDaemon:
-            "Codex runs on its shared background server here, where one terminal's conversation looks like another's. Exit Codex, run codex resume \(ChatLaunchNotice.unbrokenNoDaemon), and pick the conversation in Codex's list."
+            "Codex runs on its shared background server here, where one terminal's conversation looks like another's. Exit Codex, run codex resume \(ChatLaunchNotice.unbrokenNoDaemon), and pick the conversation in Codex's list. \(ChatLaunchNotice.stopSharedServer)"
         }
     }
 
@@ -105,7 +105,7 @@ extension ChatUnavailableReason {
     func explanation(launchNotice: ChatLaunchNotice?) -> String {
         switch self.launchNotice(launchNotice) {
         case .codexSharedServer?:
-            "Exit Codex, then run codex \(ChatLaunchNotice.unbrokenNoDaemon) resume."
+            "Exit Codex, then run codex \(ChatLaunchNotice.unbrokenNoDaemon) resume. \(ChatLaunchNotice.stopSharedServer)"
         case nil: explanation
         }
     }

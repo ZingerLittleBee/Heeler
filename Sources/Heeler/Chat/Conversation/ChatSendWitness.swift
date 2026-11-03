@@ -17,6 +17,11 @@ struct ChatSessionCheckInput: Sendable {
     /// however old: that session's screen keeps showing them, and one may
     /// read the same as a message of this conversation.
     var misdirectedSendKeys: Set<String> = []
+    /// Chat moves on its own to the session the program shows after `/new`
+    /// or `/clear`, as it does where herdr reports the session. On
+    /// herdr-core it binds from the Host's files, where a pick or more than
+    /// one open session keeps it where it is (ADR 0034).
+    var followsSessionMoves = true
 }
 
 /// What the Agent's screen says about the session it shows.

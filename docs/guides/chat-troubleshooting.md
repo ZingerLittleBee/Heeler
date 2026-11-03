@@ -18,7 +18,7 @@ If Codex still waits after you have sent prompts, it was probably started withou
 
 ## Codex Started Without --no-daemon
 
-Codex was started without `--no-daemon` while its background server runs, so herdr can't tell which terminal its conversation is in ([Set up the Host](chat.md#set-up-the-host)). Agents that herdr brings back after a restart also start without it, unless you use the alias in [Set up the Host](chat.md#set-up-the-host). Exit Codex and run `codex --no-daemon resume` to continue the same conversation. When a conversation already shows, a banner warns that it may be another terminal's.
+Codex was started without `--no-daemon` while its background server runs, so herdr can't tell which terminal its conversation is in ([Set up the Host](chat.md#set-up-the-host)). Agents that herdr brings back after a restart also start without it, unless you use the alias in [Set up the Host](chat.md#set-up-the-host). Exit Codex and run `codex --no-daemon resume` to continue the same conversation. If Codex says the conversation is open in another app, the background server still holds it: run `codex app-server daemon stop`, which also ends any other Codex on that server, then resume again. When a conversation already shows, a banner warns that it may be another terminal's.
 
 Codex tracks the cause in [openai/codex#48500](https://github.com/openai/codex/issues/48500): its background server runs herdr's integration with the settings of the terminal that started the server. [openai/codex#44902](https://github.com/openai/codex/issues/44902) proposes a fix, and herdr follows it in [herdrdev/herdr#4649](https://github.com/herdrdev/herdr/issues/4649).
 

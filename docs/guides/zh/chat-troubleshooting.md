@@ -19,7 +19,7 @@ herdr 还没有告诉 Heeler 这个 Agent 正在哪个对话中。
 
 ## Codex Started Without --no-daemon
 
-Codex 启动时没有加 `--no-daemon`，而它的后台服务正在运行，所以 herdr 无法判断它的对话在哪个终端里（参见[配置 Host](chat.md#配置-host)）。herdr 重启后恢复的 Agent 也不带这个参数，除非你用了[配置 Host](chat.md#配置-host) 中的别名。请退出 Codex，然后运行 `codex --no-daemon resume` 继续原来的对话。如果已经显示了对话，顶部的横幅会提醒它可能属于另一个终端。
+Codex 启动时没有加 `--no-daemon`，而它的后台服务正在运行，所以 herdr 无法判断它的对话在哪个终端里（参见[配置 Host](chat.md#配置-host)）。herdr 重启后恢复的 Agent 也不带这个参数，除非你用了[配置 Host](chat.md#配置-host) 中的别名。请退出 Codex，然后运行 `codex --no-daemon resume` 继续原来的对话。如果 Codex 提示这个对话已在另一个应用中打开，说明后台服务仍占着它：运行 `codex app-server daemon stop`（这也会结束该服务上的其他 Codex），再恢复一次。如果已经显示了对话，顶部的横幅会提醒它可能属于另一个终端。
 
 Codex 在 [openai/codex#48500](https://github.com/openai/codex/issues/48500) 中跟踪这个问题的原因：它的后台服务运行 herdr 集成时，使用的是启动该服务的那个终端的设置。[openai/codex#44902](https://github.com/openai/codex/issues/44902) 提出了修复方案，herdr 在 [herdrdev/herdr#4649](https://github.com/herdrdev/herdr/issues/4649) 中跟进。
 
