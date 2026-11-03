@@ -57,8 +57,11 @@ struct HerdrCoreEnvironmentNotice: Equatable, Sendable {
             "Programs here read as started from inside Oh My Pi, which can change what they report and record."
         case "PI_PROGRAM_STATUS":
             "Set to 0, it turns Pi's status off, so its Agents read Unknown."
-        default:
+        case "HERDR_PANE_ID":
             "Herdr's agent hooks report to the pane this names, not to the Terminal they run in."
+        default:
+            // Any other `HERDR_*` name, which may name no pane at all.
+            "Terminals here inherit it, so a program that reads Herdr's variables may act as if it runs inside Herdr."
         }
     }
 }
