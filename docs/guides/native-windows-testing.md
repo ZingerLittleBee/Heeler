@@ -407,10 +407,11 @@ By the same source it updates itself and then the core, which can move herdr-cor
 the version under test.
 
 1. Stop the core. On the phone, add the machine with Session left blank or a
-   plain name. The form says to add the Device Key line to `~/.ssh/authorized_keys`.
-   For an account in the Administrators group, Windows OpenSSH reads
-   `%ProgramData%\ssh\administrators_authorized_keys` instead, with the access list
-   in [section 4](#4-test-device-key-authentication). Server Kind detection also runs
+   plain name. The form says to add the Device Key line to `~/.ssh/authorized_keys`,
+   or for an administrator account on Windows to
+   `C:\ProgramData\ssh\administrators_authorized_keys`, which Windows OpenSSH reads
+   instead for an account in the Administrators group, with the access list in
+   [section 4](#4-test-device-key-authentication). Server Kind detection also runs
    `herdr session list --json` there (by Heeler's source), so on a machine with a
    Herdr TUI server it reaches that server's sessions and reads Herdr TUI **Found**
    beside herdr-core. Confirm **herdr-core** with **Use herdr-core**. The Host reads

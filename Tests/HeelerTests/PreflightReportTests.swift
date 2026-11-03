@@ -115,7 +115,10 @@ struct PreflightReportTests {
             Issue.record("connection check should fail")
             return
         }
-        #expect(keyHint.contains("authorized_keys"))
+        #expect(keyHint.contains("~/.ssh/authorized_keys"))
+        // Windows OpenSSH reads an administrator's keys from here alone.
+        #expect(keyHint.contains(#"C:\ProgramData\ssh\administrators_authorized_keys"#))
+        #expect(keyHint.contains("only Administrators and SYSTEM"))
         #expect(rsaHint.contains("RSA Key"))
         #expect(rsaHint.contains("SSH identities"))
         #expect(passwordHint.contains("password"))

@@ -112,7 +112,9 @@ struct HostFormView: View {
             } message: {
                 Text(
                     "Every Host using Device Key authentication will reject the replacement "
-                        + "until you add its new public key to ~/.ssh/authorized_keys.")
+                        + "until you add its new public key to ~/.ssh/authorized_keys, or for an "
+                        + "administrator account on Windows to "
+                        + #"C:\ProgramData\ssh\administrators_authorized_keys."#)
             }
             .confirmationDialog(
                 "Replace the RSA Key?",
@@ -298,7 +300,10 @@ struct HostFormView: View {
             switch draft.authMethod {
             case .deviceKey:
                 Text(
-                    "Add this line to ~/.ssh/authorized_keys on the Host. "
+                    "Add this line to ~/.ssh/authorized_keys on the Host. For an administrator "
+                        + "account on Windows, add it to "
+                        + #"C:\ProgramData\ssh\administrators_authorized_keys instead, "#
+                        + "which only Administrators and SYSTEM may access. "
                         + "The private key never leaves this device.")
             case .rsaKey:
                 Text(
