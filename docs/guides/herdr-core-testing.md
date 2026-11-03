@@ -303,7 +303,7 @@ the facts they took on trust, so correct
 | --- | --- | --- |
 | Binds at its prompt | Start Claude Code from New Agent, wait for its prompt, send one message from the terminal, open Chat | The conversation shows. Record `procStart` in `<config dir>/sessions/<pid>.json` beside field 22 of `/proc/<pid>/stat`: they are equal |
 | Started by hand | Start `claude` from a shell in a Terminal the Agents tab lists, then open Chat | The same conversation binding, with no `heeler.*` label on the Terminal |
-| Launchers | Run an npm-installed `claude`, through `npx` too, and a shell script that runs it, then open Chat | It binds. Record each process's name from `/proc/<pid>/stat`, and that each shares the Terminal's `HC_SCOPE`. Record what the native installer's binary calls itself |
+| Launchers | Run an npm-installed `claude`, through `npx` too, and a shell script that runs it, then open Chat | The npm and `npx` ones bind; the core's foreground under `npx` reads `npm exec claude`. The script lists as a Terminal, not an Agent, since a script is its own program (ADR 0032). Record each process's name from `/proc/<pid>/stat`, and that each shares the Terminal's `HC_SCOPE`. Record what the native installer's binary calls itself |
 | Before its prompt | Use a fresh config dir and stop at the trust dialog, then open Chat | **Can't Tell the Conversation**. No `*.key` file is read. Answer the dialog: Chat follows on the status change, with no Retry |
 | `/clear` and `/resume` | In an open Chat, run each in the terminal | Chat shows the new conversation by the next status change |
 | Own config dir | Start with `CLAUDE_CONFIG_DIR` naming a scratch folder, while `~/.claude` holds other sessions | Chat reads from the scratch folder |

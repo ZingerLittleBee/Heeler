@@ -52,7 +52,10 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   a known `app` counts only while that `app` names the foreground program. A
   shell in the foreground ends the Agent, whatever was reported last. The
   foreground is read after unwrapping: the desktop app's wrapper forms, `sh -c
-  <command line>`, and interpreters running an agent's script. A cleared
+  <command line>`, interpreters running an agent's script, and `npx` or `npm
+  exec` running an agent's package or command, npm's retitled `npm exec claude`
+  included. A script the shell runs is its own program, whatever it starts, so
+  a known `app` reported under it makes no Agent. A cleared
   foreground names no program, so the last sample stands until the next. With
   no sample the launch arguments stand in, except a desktop wrapper that
   continues as a shell, which only a sample can name.

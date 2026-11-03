@@ -399,7 +399,8 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   it is a native binary; its 1.0.70 rows there carry no `pid_start`, so nothing
   proves a Grok Build Agent. Under `npx` Claude Code 2.1.316 reported status and
   its record matched, but the Terminal was not listed as an Agent at all, so Chat
-  had nothing to say. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the
+  had nothing to say; the Agent rule now reads `npx` (ADR 0032), which no Host
+  has run since. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the
   launch runs under PowerShell, and open files are not read. Chat's cannot-tell there
   is its own reason, `cannotTellSessionOnWindows`, which never offers the Helper,
   and offers no candidates yet: open files are not read there, and no listing of a

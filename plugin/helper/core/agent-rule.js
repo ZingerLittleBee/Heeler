@@ -59,8 +59,25 @@ const ENTRY_POINTS = [
   [["@google", "gemini-cli", "dist", "index.js"], "gemini"],
   [["@mariozechner", "pi-coding-agent", "dist", "cli.js"], "pi"],
   [["@earendil-works", "pi-coding-agent", "dist", "cli.js"], "pi"],
+  [["@earendil-works", "pi-coding-agent", "dist", "bundle", "cli.js"], "pi"],
   [["@openai", "codex", "bin", "codex.js"], "codex"],
 ];
+// `npm exec` and its alias `npm x`, which `npx` runs.
+const PACKAGE_RUNNER_COMMANDS = new Set(["exec", "x"]);
+// Options of `npx` and `npm exec` that take no value.
+const PACKAGE_RUNNER_FLAGS = new Set(["-y", "--yes", "--no", "--prefer-offline", "--prefer-online", "--offline", "-q", "--quiet", "--silent"]);
+// Options that name the package whose command runs.
+const PACKAGE_OPTIONS = new Set(["-p", "--package"]);
+// npm packages whose name is not their program's.
+const PACKAGES = new Map([
+  ["@anthropic-ai/claude-code", "claude"],
+  ["@google/gemini-cli", "gemini"],
+  ["@mariozechner/pi-coding-agent", "pi"],
+  ["@earendil-works/pi-coding-agent", "pi"],
+  ["@openai/codex", "codex"],
+  ["opencode-ai", "opencode"],
+  ["@opencode/cli", "opencode"],
+]);
 const INTERPRETER_FLAGS = new Set(["--no-warnings", "--enable-source-maps", "--experimental-strip-types", "-u", "-B"]);
 const INTERPRETER_VALUE_OPTIONS = new Set(["-r", "--require", "--import", "--loader", "--experimental-loader"]);
 
@@ -275,11 +292,71 @@ function readShell(args, name, depth) {
   return SHELL_PROGRAM;
 }
 
+/**
+ * npm sets its process title to its command line, so on Linux the process reads as
+ * `npm exec claude` (hc-lab, `npx claude`, 2026-11-02), which the arguments hold as
+ * one word. Its words, when it is one.
+ */
+function packageRunnerTitle(word) {
+  const words = word.split(" ").filter((part) => part !== "");
+  if (words.length < 2 || word.includes("/") || word.includes("\\")) return null;
+  const isRunner = words[0] === "npx" || (words[0] === "npm" && PACKAGE_RUNNER_COMMANDS.has(words[1]));
+  return isRunner ? words : null;
+}
+
+/** A package spec's name, without its version: `@scope/name@1.2.3` is `@scope/name`. */
+function packageName(spec) {
+  const lowered = spec.toLowerCase();
+  const at = lowered.indexOf("@", lowered.startsWith("@") ? 1 : 0);
+  return at === -1 ? lowered : lowered.slice(0, at);
+}
+
+/**
+ * `npx [options] <package or command> [arguments]`: the agent the package or command
+ * names. With `--package` the word is the package's command. An option this does not
+ * know may take a value, and `--call` runs a line, so either leaves the runner as the
+ * program.
+ */
+function readPackageRunner(args, name, depth) {
+  let index = 0;
+  let namesACommand = false;
+  while (index < args.length) {
+    const argument = args[index];
+    if (argument === "--") {
+      index += 1;
+      break;
+    }
+    if (!argument.startsWith("-")) break;
+    if (PACKAGE_RUNNER_FLAGS.has(argument)) index += 1;
+    else if (PACKAGE_OPTIONS.has(argument)) {
+      namesACommand = true;
+      index += 2;
+    } else if (argument.startsWith("--package=")) {
+      namesACommand = true;
+      index += 1;
+    } else return other(name);
+  }
+  if (index >= args.length) return other(name);
+  const word = args[index];
+  if (namesACommand || (word.includes("/") && !word.startsWith("@")) || word.includes("\\")) return read([word], depth + 1);
+  const pkg = packageName(word);
+  const command = pkg.split("/").at(-1) ?? "";
+  const kind = PACKAGES.get(pkg) ?? knownKind(command);
+  if (kind !== null && kind !== undefined) return known(kind);
+  return other(command === "" ? name : command);
+}
+
 function read(args, depth = 0) {
   if (depth >= MAXIMUM_DEPTH || args.length === 0) return SHELL_PROGRAM;
+  if (args.slice(1).every((argument) => argument === "")) {
+    const title = packageRunnerTitle(args[0]);
+    if (title !== null) return read(title, depth + 1);
+  }
   const name = baseName(args[0]);
   if (SHELLS.has(name)) return readShell(args, name, depth);
   if (INTERPRETERS.has(name)) return readInterpreter(args, name);
+  if (name === "npx") return readPackageRunner(args.slice(1), name, depth);
+  if (name === "npm" && args.length > 1 && PACKAGE_RUNNER_COMMANDS.has(args[1])) return readPackageRunner(args.slice(2), name, depth);
   const kind = knownKind(name);
   return kind === null ? other(name) : known(kind);
 }

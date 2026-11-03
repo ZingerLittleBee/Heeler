@@ -4213,6 +4213,270 @@
         "known": true,
         "status": "unknown"
       }
+    },
+    {
+      "name": "npx naming a scoped package with its version in Heeler's PowerShell form is its program",
+      "source": "Native Windows (build 26200), herdr-core 0.1.16, Claude Code 2.1.316 from npm started through `npx` in Heeler's PowerShell form over the core's pipe, 2026-11-03, one Terminal, live: the process tree was powershell.exe -> cmd.exe -> node.exe (npx-cli.js) -> cmd.exe -> claude.exe, the Terminal reported status `claude-code idle`, and the foreground is the Terminal's first process (the run folder written C:\\Users\\user)",
+      "record": {
+        "address": "t1g",
+        "state": "live",
+        "pid": 63840,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-Command",
+          "& 'C:\\Users\\user\\tools\\node\\npx.cmd' '--yes' '--prefer-offline' '@anthropic-ai/claude-code@2.1.316' '--session-id' '00000000-0000-4000-8000-00000000000a'; exit $LASTEXITCODE"
+        ],
+        "cwd": "C:\\Users\\user\\projects\\npx",
+        "foreground": {
+          "pid": 63840,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-Command",
+            "& 'C:\\Users\\user\\tools\\node\\npx.cmd' '--yes' '--prefer-offline' '@anthropic-ai/claude-code@2.1.316' '--session-id' '00000000-0000-4000-8000-00000000000a'; exit $LASTEXITCODE"
+          ],
+          "cwd": "C:\\Users\\user\\projects\\npx"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "npm's retitled npm exec naming a command is that command",
+      "source": "hc-lab (Debian 13), herdr-core 0.1.13, `npx claude` typed in a bash Terminal, 2026-11-02, one Terminal, live: the core's foreground was the npm process, whose name and /proc cmdline npm rewrites to its title `npm exec claude`, with `sh -c claude` and Claude Code 2.1.316 below it, and the Terminal reported status `claude-code`",
+      "record": {
+        "address": "t4",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/bash"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 174037,
+          "name": "npm exec claude",
+          "argv": [
+            "npm exec claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "done",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "npm exec with its arguments apart names its command",
+      "source": "ADR 0032, the Agent rule: `npm exec` runs the package or command it names; the same launch as the retitled case with each word its own argument",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "npm",
+            "exec",
+            "--",
+            "@openai/codex",
+            "--no-daemon"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "npx --package names the package's command",
+      "source": "ADR 0032, the Agent rule: with `--package` the word after the options is the package's command",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "npx",
+            "-y",
+            "--package=opencode-ai",
+            "opencode"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "opencode",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "npx with an option it does not know stays npx",
+      "source": "ADR 0032, the Agent rule: an option the rule does not know may take a value, so the runner stays the program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "npx",
+            "--cache",
+            "/tmp/npm",
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "npx running a package Heeler does not know is a generic Agent named for its report",
+      "source": "ADR 0032, the Agent rule: any program but a shell, with a Program Status whose app is unknown here",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "npx",
+            "@acme/helper@1.0.0"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "acme"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "acme",
+        "known": false,
+        "status": "working"
+      }
+    },
+    {
+      "name": "node running Pi's bundled entry resolves to pi",
+      "source": "Pi 1.4.0 (`@earendil-works/pi-coding-agent@1.4.0`) as npm installs it: its `pi` shim runs `node …/pi-coding-agent/dist/bundle/cli.js` (native Windows build 26200 and hc-lab, 2026-11-02 and 2026-11-03)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node.exe",
+          "argv": [
+            "C:\\Users\\user\\tools\\node\\node.exe",
+            "C:\\Users\\user\\tools\\node_modules\\@earendil-works\\pi-coding-agent\\dist\\bundle\\cli.js",
+            "--session-id",
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "a shell script with a known app is no Agent even with the agent below it",
+      "source": "hc-lab (Debian 13), herdr-core 0.1.13, a `run-claude.sh` (dash) whose child was Claude Code 2.1.316, 2026-11-02, one Terminal, live: the core's foreground was the script and status `claude-code`. ADR 0032 reads no script's children: a known app counts only while it names the foreground",
+      "record": {
+        "address": "t5",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/bash"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 174052,
+          "name": "run-claude.sh",
+          "argv": [
+            "/bin/sh",
+            "/work/app/run-claude.sh"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "done",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
     }
   ]
 }

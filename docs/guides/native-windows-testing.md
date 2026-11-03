@@ -565,11 +565,13 @@ Code's `.key` files.
     `claude.exe`, not `node.exe`. Through `npx` the tree ran `powershell.exe`,
     `cmd.exe`, `node.exe` (`npx-cli.js`), `cmd.exe`, `claude.exe`. That 2.1.316
     reported its status and wrote a matching `sessions\<pid>.json`, but Heeler listed
-    no Agent for it, so it had no Chat, Composer or Stop: **known defect**, the Agent
-    rule does not look through `npx`. New Agent starts whichever `claude` a Terminal's
-    PowerShell finds first. On the one machine that was the account's winget copy,
-    even with the npm copy first on the core's own PATH, so the npm and `npx` copies
-    were started over the core's pipe with `terminal.run` in New Agent's form.
+    no Agent for it, so it had no Chat, Composer or Stop: the Agent rule did not look
+    through `npx`. It now reads `npx` and `npm exec` as the package they run, so the
+    `npx` Agent should list as Claude Code and bind; not run on a Host since. New
+    Agent starts whichever `claude` a Terminal's PowerShell finds first. On the one
+    machine that was the account's winget copy, even with the npm copy first on the
+    core's own PATH, so the npm and `npx` copies were started over the core's pipe
+    with `terminal.run` in New Agent's form.
 28. Run `/clear` in the terminal. Chat follows at its next check. Seen once, on
     herdr-core 0.1.16 with Claude Code 2.1.286: after `/clear` Chat also showed a
     **Working for 0:18** row counting up while Claude Code sat idle, until the next
@@ -821,7 +823,7 @@ unless it says otherwise.
     was not opened in Chat), but Send from Chat said
     **Heeler can't find the Agent's input box on screen.** before and after a turn,
     while Direct Input submitted. Grok Build 1.0.70 could not be told (step 29), and
-    Claude Code through `npx` gave no Agent (step 27).
+    Claude Code through `npx` gave no Agent (step 27), which the Agent rule now reads.
   - Seen: after `/clear`, Chat showed a **Working for 0:18** row counting up while
     Claude Code 2.1.286 sat idle, until the next turn. npm Claude Code's first check
     after its trust dialog said **Can't Tell the Conversation**, and the next, about 3
