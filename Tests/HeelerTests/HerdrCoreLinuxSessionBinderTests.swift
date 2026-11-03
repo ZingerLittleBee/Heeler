@@ -112,7 +112,12 @@ struct HerdrCoreLinuxSessionBinderTests {
 
         let requests = await rig.table.requests
         #expect(requests.count == 1)
-        #expect(await rig.files.reads.count <= 1)
+        // Beyond that one read, only a Pi or Oh My Pi that can't tell looks for
+        // Heeler's extension, which only chooses the reason's words.
+        let reads = await rig.files.reads.map(\.path)
+        let extensionLooks = reads.filter { $0.hasSuffix("/extensions/\(HostHelperScript.extensionFileName)") }
+        #expect(reads.count - extensionLooks.count <= 1)
+        #expect(extensionLooks.count <= (entry.evidence == Self.cannotTell(entry.program) ? 1 : 0))
         #expect(await rig.files.listings.isEmpty)
         let request = try #require(requests.first)
         let asked = request.valuesOf + request.namesOf
