@@ -25,8 +25,39 @@ covers the fixture and CI.
 - **No `pkill` over SSH.** A pattern matches its own session's command line and
   kills the connection you are using. Kill a pid you read from `server.status`.
 - **Key cleanup.** Authorize a throwaway key only, with a comment naming the run,
-  and remove that line when you finish, also after a failure. Never use a real
-  credential or sign in to a harness for this check.
+  and remove that line when you finish, also after a failure.
+- **No sign-in, unless the owner approves a signed-in run.** Never use a real credential
+  or sign in to a harness, except for the signed-in checks
+  ([Codex, Grok Build and OpenCode](#codex-grok-build-and-opencode),
+  [Choosing a conversation](#choosing-a-conversation), [OpenCode edit](#opencode-edit),
+  [Pi and Oh My Pi Chat](#pi-and-oh-my-pi-chat)) in a run the owner has approved. Keep
+  that run's harness configuration in directories of its own, or use the account's real
+  HOME: then back up every folder the harnesses write, with contents, modes and mtimes,
+  before the first start, and restore each one at the end. Harnesses also write caches and
+  logs outside those folders, so sweep HOME and `/tmp` by birth time (`stat -c %W`) before
+  the run's directory goes.
+- **Sign out before restoring.** Run `codex logout` and check that `codex login status`
+  reads `Not logged in`, and `grok logout`, whose second run says there is no cached
+  session, before the folders are restored. Both show the local state only: whether the
+  provider revoked the session has not been seen.
+- **The box's browser.** A device login can finish in the box's own browser and leave the
+  identity provider's session in its profile. After the logins, look for that provider's
+  cookies there, and sign out or clear them unless the owner decides to keep them.
+- **A Simulator another run shares.** Export the app's preferences before adding a Host,
+  and undo only your own: **Remove Host** in the app, then delete that Host's entries in
+  `knownHostFingerprints` and `recent-workspace-by-host`, which Remove Host leaves behind
+  (once it left a Pin too), and compare the export with the one from before. Never delete
+  `herdrCoreHosts`, `knownHostFingerprints` or another shared key whole, since another
+  run's Host lives in them too, and do not rely on `defaults import` alone: it merges, so
+  keys the run added stay.
+- **The data container.** Read it with
+  `xcrun simctl get_app_container <udid> dev.bybee.heeler data` when you need it, not from
+  earlier notes, which once named the wrong one.
+- **The clipboard.** The Simulator shares the Mac's clipboard both ways. Before a paste
+  test, put placeholder text on the Mac's clipboard, since whatever is there shows in
+  **Review Paste**. **Add Image** and **Add File** copy the staged path, and in the
+  2026-11-02 run that copy replaced the Mac's clipboard too, which then read as empty
+  text. Save the Mac's clipboard before them and put it back after.
 
 ## Scripted check
 
@@ -213,8 +244,8 @@ Run this once with OpenCode 1.x and once with 2.x, each signed in with the lab's
 | Step | What to do | What must happen |
 | --- | --- | --- |
 | Offer | Start `opencode` by hand, and on 2.x also with `hc run` and from a Template, then open Chat | **Can't Tell the Conversation** with **Let Chat Follow OpenCode…**, and nothing has changed on the Host |
-| Shown change | Tap it, then **Review the Change** | The file (`tui.json` or `tui.jsonc` on 1.x, `cli.json` on 2.x), the one line `"./heeler-opencode"`, the folder and its three files. Still nothing has changed |
-| Changed under it | Add a comment to the file on the box, then tap **Apply This Change** | **The file changed after Heeler read it, so nothing was written**, no folder appeared, and the file keeps your comment. Remove it, and tap **OK** |
+| Shown change | Tap it, then **Review the Change** | The file (`tui.json` or `tui.jsonc` on 1.x, `cli.json` on 2.x), the folder and its three files. For a file that exists, the one line `"./heeler-opencode"`; for one that does not, the whole new file, with its `$schema` and the plugin list holding `"./heeler-opencode"`. Still nothing has changed |
+| Changed under it | Add a comment to the file on the box, then tap **Apply This Change**. With no such file, write one with a comment after the review instead | **The file changed after Heeler read it, so nothing was written**, no folder appeared, and the file keeps your comment. Remove the comment, or the file you wrote, and tap **OK** |
 | Apply | Review again and tap **Apply This Change** | `diff` against the saved copy shows the one entry and the folder, and no `.heeler-` file is left beside them |
 | Binds | Quit OpenCode, start it again the same way, and open a conversation | The label `heeler.session` names it with the process's pid and start, and Chat binds. On 1.x record whether Chat reads the store or says it keeps the 1.x format |
 | `/new` | Run `/new` and send a prompt, then pick the first conversation in OpenCode's list | A new label each time, and Chat follows |
@@ -223,12 +254,14 @@ Run this once with OpenCode 1.x and once with 2.x, each signed in with the lab's
 | Undo | Tap **Undo** there | The file matches the saved copy byte for byte, or is gone again if it was absent, the folder is gone, and the row goes |
 | Undo a changed file | Apply again, change another setting in the file, and tap **Undo** | The entry goes, your setting stays, and the folder is gone |
 | Apply again | Apply once more | The same change as the first |
-| Remove the Helper | With the edit applied, remove the Host Helper | The service stops, its listed files and folders go, the entry and then the folder go, and then the Helper's directory. `diff -r` against the saved copy is clean, and the row goes |
+| Remove the Helper | With the edit applied, remove the Host Helper | The service stops, its listed files and folders go, the entry and then the folder go, and then the Helper's directory. `diff -r` against the saved copy is clean, and the row goes. **Known defect**, seen once with OpenCode 2.2.2, Host Helper 0.5.3 and herdr-core 0.1.13: with both the 1.x and 2.x edits applied and OpenCode 2.2.2 running, the removal deleted `cli.json` before `tui.json`, OpenCode migrated `tui.json` into a new `cli.json` naming the deleted folder, and `diff -r` was clean only after quitting OpenCode and deleting that file by hand. Record whether OpenCode was running |
 | No edit | Install the Helper and remove it with no edit applied | No OpenCode file is touched |
-| Others untouched | Compare `opencode.json` and every other OpenCode setting before and after | No change |
+| Others untouched | Compare `opencode.json` and every other file in `~/.config/opencode` before and after | No change. `~/.local/state/opencode` is OpenCode's own state, not a setting, and does not count: OpenCode 2.x keeps a `heeler.opencode.session` entry in its `plugin-meta.json` there after Undo and after the Helper's removal |
 | Herdr TUI | Open Chat for OpenCode on a Herdr TUI Host | Its session comes from herdr, with no offer |
 
 A Mac run of 2026-11-02 with OpenCode 2.0.32 passed Offer by hand, Shown change, Apply, Binds by hand and with `hc run`, `/new`, Wrong list, Host detail, Undo, Apply again, Remove the Helper, and Others untouched within `~/.config/opencode` ([herdr compatibility](../agents/herdr-compatibility.md)). OpenCode 1.x, Changed under it, Undo a changed file, No edit and Herdr TUI were not run there.
+
+A signed-in hc-lab run of 2026-11-03 (Debian 13, herdr-core 0.1.13, OpenCode 2.2.2 and 1.19.5 on the owner's endpoint, Host Helper 0.5.3, a debug build with every program in `confirmedLinuxCoreChatPrograms`) passed Offer with `hc run` on 2.2.2, Shown change and Changed under it with no file before, Apply, Binds and `/new` on 2.2.2 (a pick in its `/sessions` list was followed too), Host detail, Undo, Apply again, and Others untouched within `~/.config/opencode`; the `plugin-meta.json` entry that row names was seen on 2.2.2. The plugin list was `plugins` in `cli.json` on 2.2.2 and `plugin` in `tui.json` on 1.19.5. On 1.19.5 the label named each conversation and followed `/new`, but Chat read **No Messages Yet** with the status Unknown, and the 1.x edit was offered only while the login shell's `opencode` was 1.19.5: with 2.2.2 there, a 1.19.5 Agent was offered the 2.x `cli.json`, which 1.19.5 ignores. Remove the Helper failed: with both edits applied and OpenCode 2.2.2 still running, 2.2.2 migrated `tui.json` into a new `cli.json` during the removal, naming the deleted folder, and `diff -r` was clean only after quitting OpenCode and deleting that file by hand. Offer by hand and from a Template, Undo a changed file, No edit and Herdr TUI were not run there.
 
 ## Composer Send
 
@@ -239,7 +272,7 @@ link. Record each version, and each result beside the check it answers.
 | Check | What to do | What to check |
 | --- | --- | --- |
 | Claude Code, Codex, Pi | Run Claude Code and Codex against the mock API, and Pi, each in a core Terminal. Send a multi-line message from the Composer | The whole message reaches the Agent as one message and it starts working. The Composer shows it delivered |
-| Blocked | Make Claude Code ask for permission, then Send | The text appears in its input, nothing answers the dialog, and the tools keyboard comes up to submit or cancel |
+| Blocked | Make Claude Code ask for permission, then Send | The text appears in its input, nothing answers the dialog, and the tools keyboard comes up to submit or cancel. **Known defect**, seen on 2026-11-02 with Claude Code 2.1.316 on herdr-core 0.1.13: the draft cleared and the text never showed, during the dialog or after Esc, while a stand-in that logs its bytes got the paste and no Enter. Native Windows step 22 saw the same with that version |
 | Not accepting a paste | A program in a core Terminal with bracketed paste off, as `cat`, then Send | Nothing reaches it. The draft stays and the notice says **not accepting a paste** |
 | Exit race | Under each of bash, fish and dash, start an Agent stand-in that exits as it reads a paste, with the desktop app's wrapper so its shell continues under the same pid (`composerPasteThenSubmit` has the program), then Send `touch /tmp/sent-to-shell` | No file. The shell's line is empty, the draft stays, and the notice says **no longer in the terminal**. Note any shell whose line keeps the text |
 | Child note | With a Claude Code parent, make an `hc run` child exit during the two seconds after a Send, so the core types its note | Record what reached the Agent: the message, the note, and whether the note's Enter submitted them together. ADR 0035's two seconds exist to bound this |
@@ -294,11 +327,11 @@ shows.
 | Check | What to do | What to check |
 | --- | --- | --- |
 | Codex without the daemon | Start Codex from New Agent, send one message, open Chat | The conversation shows, from the rollout its native process holds under its own `CODEX_HOME`. Record the process tree and each held rollout's `session_meta` |
-| Codex by default | Start plain `codex` in a Terminal, send one message, open Chat | **Codex Started Without `--no-daemon`** names `codex resume --no-daemon`, Chat reads nothing and sends nothing. Do what it says, and the conversation shows. Record the control socket's path, which came from Codex's source |
+| Codex by default | Start plain `codex` in a Terminal, send one message, open Chat | **Codex Started Without `--no-daemon`** names `codex resume --no-daemon`, Chat reads nothing and sends nothing. Do what it says. While the shared daemon still holds the conversation, `codex resume --no-daemon` does not open it: run `codex app-server daemon stop` first, and then the conversation shows. Record the control socket's path, which came from Codex's source, and the daemon's version |
 | A second default Codex | Start a second plain `codex` on the same `CODEX_HOME`, then open its Chat | The same message, on a Terminal with no daemon under it |
-| Codex's `/new` | In an open no-daemon Chat, run `/new`, then send a message in the terminal, then another, returning to Chat after each | After `/new` alone Chat still shows the old thread, the known limit. After the first message **Can't Tell the Conversation**, with the new thread's lock held and no rollout, and a Send from Chat sends nothing. After the next, the same from two held roots. Record the held files at each step, and whether the first message still shows no turn |
-| Grok Build | Start Grok Build from New Agent, open Chat before any message, then send one | Chat waits for the first message, then shows the conversation under the `GROK_HOME` it runs with. Record its row in `active_sessions.json` beside field 22 of `/proc/<pid>/stat` |
-| Grok Build's `/new` | In an open Chat, run `/new` | **Can't Tell the Conversation**, from two rows for one process |
+| Codex's `/new` | In an open no-daemon Chat, run `/new` (in a git repository Codex first asks where the new conversation runs), then send a message in the terminal, returning to Chat after each step | Right after `/new`, Chat keeps the old thread's messages under the banner that it can't tell which conversation this Agent is in now, with **Choose a Conversation**: the new thread's lock is held beside the old rollout and its lock. With the first message Codex creates the new rollout and holds it too. The banner stays, and a Send from Chat sends nothing. Record the held files at each step |
+| Grok Build | Start Grok Build from New Agent, open Chat before any message, then send one | Chat waits for the first message, then shows the conversation under the `GROK_HOME` it runs with. Record its row in `active_sessions.json` beside field 22 of `/proc/<pid>/stat`. **Known defect**, seen once with Grok Build 1.0.70 on herdr-core 0.1.13: a Chat opened before the first message stays on **Can't Tell the Conversation** until **Check Again** |
+| Grok Build's `/new` | In an open Chat, run `/new`, then send one message in the terminal | Chat keeps the old conversation's messages under the banner that it can't tell which conversation this Agent is in now, with **Choose a Conversation**, not the full **Can't Tell the Conversation** view. `active_sessions.json` holds two rows for one process |
 | OpenCode 2.x | Start OpenCode 2.1 or later from New Agent, open Chat before any prompt, then send one from the terminal | Chat waits for the first message, then shows the conversation from the store. Record `session_part` rows and what a real provider's `data` holds |
 | OpenCode's `/new` | In an open Chat on a conversation with a title, run `/new` and Send from Chat. Send a prompt in the terminal, and Send from Chat before and after the new conversation gets its title | Chat still shows the conversation it started with. Every Send sends nothing and says why, and the terminal's conversations gain no message from Chat. Record the raw title at each step, and whether a real title model leaves `OpenCode` for long |
 | OpenCode's list | Pick another conversation in OpenCode's list, Send from Chat, then pick the first one back and Send again | The first Send names the other conversation's title and sends nothing. The second lands in the conversation Chat shows. Check the conversation's title in Chat equals the one the store holds on this version, since a title that reads differently refuses every Send |
@@ -307,6 +340,8 @@ shows.
 | OpenCode unconfirmed | Start `opencode` by hand, then OpenCode 2.0 and 1.x from New Agent, then set a stale `heeler.session` label on one | **Can't Tell the Conversation**, each time, and the stale label is gone |
 | Home folders | Start Codex and Grok Build with `CODEX_HOME` and `GROK_HOME` naming scratch folders, with other sessions in `~/.codex` and `~/.grok` | Chat reads from the scratch folders |
 | Off until passed | Before adding a program to `HostCapabilities.confirmedLinuxCoreChatPrograms` on this box, or to `confirmedMacOSCoreChatPrograms` on a macOS core Host | It offers the terminal alone there |
+
+A signed-in hc-lab run of 2026-11-03 (Debian 13, herdr-core 0.1.13), with codex-cli 0.165.0 and Grok Build 1.0.70 signed in by device code and OpenCode 2.2.2 on the owner's endpoint, in a debug build with every program in `confirmedLinuxCoreChatPrograms`, passed Codex without the daemon, Codex by default, A second default Codex, OpenCode 2.x, OpenCode's `/new`, and Off until passed on the candidate's own build. Codex's and Grok Build's `/new` ran as the rows above now read, except that no Send from Chat was tried after Codex's `/new`, where the first message showed a turn. Codex's held rollout's `session_meta` names a root thread, and a signed-in one also carries `creator_account_id` and `creator_user_id`, which a fixture must drop. The shared daemon was the box's 0.160.0, which ended with the first `/quit`; later in the run it updated itself to 0.166.0, and the restarted daemon outlived `/quit`. Its control socket `~/.codex/app-server-control/app-server-control.sock` is a symlink into `/tmp/codex-daemon-<uid>/`. Grok Build bound, its `pid_start` equal to field 22, but a Chat opened before the first message stayed on **Can't Tell the Conversation** until **Check Again**: the core's first `idle` came 0.18 s before Grok wrote its `active_sessions.json` row, and nothing checked again. OpenCode 2.2.2 left `session_part` empty with a real provider and kept the reply in `session_message`'s `data.content`, and a title replaced `OpenCode` about 2.5 s after the prompt. OpenCode's list, OpenCode's other database, OpenCode's title off, OpenCode unconfirmed and Home folders were not run there.
 
 ### Chat on a Mac
 
@@ -340,13 +375,15 @@ conversation before choosing, in light and dark, and attach them to the run's no
 | Second device | Open the same Agent's Chat on a second Simulator | It shows the same conversation. With Chat open there, confirm on the first and clear on the box: it follows both, with no Retry |
 | Process change | Quit the program and start it again in that Terminal | Chat says it cannot tell and the label is gone |
 | Session switch | On a Pi with the extension, confirm from before it wrote, then run `/new` | The session label wins and `heeler.chat` is gone |
-| Send guard | Choose the conversation on screen and Send from Chat. Switch the program to another session inside it, Send from Chat again and let that turn end | After the first Send the pick stays. Within a few seconds of the second turn's end, Chat says it cannot tell in place of the conversation, with none of its messages left, and the label is gone |
-| The in-process limit | On a Pi without the extension, confirm, then run `/new` in the terminal | Chat keeps the old conversation until a Send from Chat fails the guard, as the guide says. Record that OpenCode's title refuses the Send instead |
+| Send guard | Choose the conversation on screen, Send from Chat and let that turn end. Switch the program to another session inside it, Send from Chat again and let that turn end | After the first Send's turn ends the pick stays. Within a few seconds of the second turn's end, Chat says it cannot tell in place of the conversation, with none of its messages left, and the label is gone. A turn that ends in `error` ends no turn, so the pick stays until a later turn ends. The bubbles of Sends made after the switch still read **Sent. It hasn't appeared in the conversation yet.**, since they landed in the other session. Grok Build refuses the second Send (see the next row), so the drop shows only on another program |
+| The in-process limit | On a Pi without the extension, confirm, then run `/new` in the terminal | Chat keeps the old conversation until a Send from Chat fails the guard, as the guide says. Record that OpenCode's title and Grok Build's screen check refuse the Send instead, so neither drops the pick after `/new` |
 | Codex by default | Plain `codex` on the shared daemon | No list, only `codex resume --no-daemon` |
 | Codex behind a wrapper | A second default `codex` on that daemon, from a Template and from the desktop app under fish | No list, only `codex resume --no-daemon`. The same with `--no-daemon` on the Template's line says it can't tell, and does not ask to reopen |
 | Herdr TUI | Any Chat on a Herdr TUI Host | No list, whatever it says |
 
-A Mac run of 2026-11-02 with OpenCode 2.0.32 and Pi 1.4.0 passed OpenCode by hand, One label, Process change, Session switch, Send guard, The in-process limit and Codex by default ([herdr compatibility](../agents/herdr-compatibility.md)). Read first passed only in part: both of OpenCode's store rows and the one Pi transcript opened showed their conversation with **Use This Conversation**, but no candidate failed to read and none was held open or a Status child, so withholding the offer on one that doesn't read was not exercised. For Session switch, the extension labels Pi as it starts, so the pick from before it wrote came after clearing that label by hand with `terminal.label`. A second device, Grok Build's `/new`, a wrapper and Herdr TUI were not run there, and this box's run is still to come.
+A Mac run of 2026-11-02 with OpenCode 2.0.32 and Pi 1.4.0 passed OpenCode by hand, One label, Process change, Session switch, Send guard, The in-process limit and Codex by default ([herdr compatibility](../agents/herdr-compatibility.md)). Read first passed only in part: both of OpenCode's store rows and the one Pi transcript opened showed their conversation with **Use This Conversation**, but no candidate failed to read and none was held open or a Status child, so withholding the offer on one that doesn't read was not exercised. For Session switch, the extension labels Pi as it starts, so the pick from before it wrote came after clearing that label by hand with `terminal.label`. A second device, Grok Build's `/new`, a wrapper and Herdr TUI were not run there.
+
+A signed-in hc-lab run of 2026-11-03 (Debian 13, herdr-core 0.1.13) with codex-cli 0.165.0 `--no-daemon` and Grok Build 1.0.70, in a debug build with every program in `confirmedLinuxCoreChatPrograms`, passed Grok Build's `/new` (two conversations open in the program and one in the directory, no `s0`-style row, in zoomed light and dark screenshots), One label for both (Codex's names its native process, not the `node` launcher, with the start equal to field 22), Send guard on Codex, and Codex by default. Send guard ran as its row reads: the picked conversation stayed after a Chat Send's turn ended. After `/new`, the next Send's turn ended in `error` (the model was at capacity), so the pick stayed. The turn after that ended `done`, and 6 s later the label was gone and Chat said it can't tell. On Grok Build the pick, and its staying after a Send, passed too, but after `/new` its screen check refused the Send twice, seven minutes apart, so the drop could not happen there. Read first passed only in part: every candidate opened read and offered **Use This Conversation**, and none failed to read. OpenCode by hand, Second device, Process change, Session switch, Codex behind a wrapper and Herdr TUI were not run there, and The in-process limit was not run as written, with no Pi in that stage.
 
 ## Pi and Oh My Pi Chat
 
@@ -369,11 +406,13 @@ Unverified list in [ADR 0034](../adr/0034-herdr-core-chat-binds-sessions-from-ho
 | Own folders | Start Pi with `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR` naming scratch folders, Oh My Pi with `OMP_PROFILE` and with `PI_CONFIG_DIR`, while the default folders hold other sessions | Chat reads from the Agent's folder, not the default one |
 | Pi without the extension | Remove the Helper, start Pi from New Agent, open Chat, then send one message from the terminal | Chat waits, then shows the conversation. Now run `/new`: it stays on the old conversation |
 | Pi by hand, no extension | With the Helper still removed, start `pi` from a shell and from a Template | **Can't Tell the Conversation**, and the message names the Host Helper. Nothing binds from the folder |
-| Oh My Pi without the extension | With the Helper still removed, start `omp` and open Chat before the first message | **Can't Tell the Conversation**. Send one message: it binds only once `/proc/<pid>/fd` holds the file `terminal-sessions/pts-<n>` names. Record how long that took |
+| Oh My Pi without the extension | With the Helper still removed, start `omp` and open Chat before the first message | **Can't Tell the Conversation**. Send one message: it binds only once `/proc/<pid>/fd` holds the file `terminal-sessions/pts-<n>` names. Record how long that took. **Known defect**, seen once with Oh My Pi 18.13.3 on herdr-core 0.1.13: once the file was held, Chat stayed on **Can't Tell the Conversation** until **Check Again**, four minutes later. In the same run, with its title model returning no title, Oh My Pi never opened the file in 2.5 minutes, so the open seems to follow a title (each way seen once). Record whether a title came back |
 | Reused terminal name | Exit that `omp` and leave its breadcrumb. Start `omp` again on the same terminal name, before a message | Nothing binds to the earlier session |
 | Security scan | With an OAuth account, run Oh My Pi's security scan, then a check | Record whether the breadcrumb goes back to the session. Chat must not show the scan's file as the conversation |
 | Stale label | Set `heeler.session` with `terminal.label`, holding another pid, then open Chat | The label is gone and Chat does not show its session |
 | One read per check | With the Host's sshd logging exec requests, open Chat on an idle Agent | One exec and at most one read per check, and nothing while idle. No `HERDR_*` variable changes the result |
+
+A signed-in hc-lab run of 2026-11-03 (Debian 13, herdr-core 0.1.13, Pi 1.4.0 and Oh My Pi 18.13.3 on bun 1.4.4 against the owner's endpoint, Host Helper 0.5.3, a debug build with every program in `confirmedLinuxCoreChatPrograms`) passed Started by Heeler, `hc run` and `/new` for both programs, Template for Oh My Pi, whose label named its own pid and not its `sh -c` parent's, Pi without the extension, Pi by hand with no extension (started with `hc run` in place of a shell, and from a Template), and Reused terminal name. Pi from a Template has no saved evidence of its label or its reply, so that row is still open for Pi. Oh My Pi without the extension held its file 8.6 s after the first message, yet Chat stayed on **Can't Tell the Conversation** until **Check Again**, four minutes later. In an earlier stage of the same run, without the extension and with its title model returning no title, Oh My Pi never opened its file in 2.5 minutes, so the open seems to follow a title; each way was seen once. After Pi without the extension ran `/new`, a Send from Chat went into the new session, and its bubble still read **Sent. It hasn't appeared in the conversation yet.** six minutes later. Own folders, Security scan, Stale label and One read per check were not run.
 
 ## Chat typing
 
@@ -395,6 +434,8 @@ one of its permission dialog beside the fixtures in
 | Second viewer's size | View the Terminal from a second client at another size, then Send and Stop from Chat | The second client's size and the Terminal's stay as they were, with no `size` event |
 | Moved conversation | Run `/clear` in the terminal, then Send from Chat before the next status change | Nothing is sent, the draft stays, and Chat moves to the new conversation |
 | Exit race | Run the Composer's exit race from Chat, on bash | No file. The draft stays and the notice says **no longer in the terminal** |
+
+On hc-lab on 2026-11-02 (Debian 13, herdr-core 0.1.13), Template's stop key passed with Claude Code 2.1.316 against a fake model as the Template's command and `shift+tab` as its key: Claude Code changed its permission mode and went on working, so the Template's key took the place of its own. A Template that wrapped Claude Code in `script` was not listed as an Agent and had no Chat, so its key could not be sent from Chat.
 
 ## Done per device
 
@@ -434,6 +475,8 @@ version and result beside the check it answers.
 | Grok Build | Give Grok Build a long prompt | The Composer keeps **Send** on a blank draft and offers no Stop |
 | Shell behind | Exit an Agent under the desktop app's wrapper, so its shell continues in the Terminal | No Stop on that Terminal, although the core would press Esc there |
 
+On hc-lab on 2026-11-02 (Debian 13, herdr-core 0.1.13), Template passed: a stand-in started from a Template with `stop: ctrl+g` read byte `07` when **Stop** was tapped.
+
 ## New Agent and New Terminal
 
 Use three throwaway accounts on hc-lab whose login shells are bash, zsh and fish, and
@@ -456,6 +499,8 @@ its flags. Read each launch with `terminal.get` through
 | Mac with the desktop app | On a Mac running the Herdr desktop app, **New Terminal** in one of its spaces | It shows in a new tab of that space in the window, and `terminal.get` has `herdr.space` and a new `herdr.tab`. Never `doc.set` on this core |
 | No answer | Cut the route just after tapping **Start** | Heeler says the Host did not confirm the launch, and `terminal.list` shows at most one new Terminal |
 | Template with a slow first report | A file in `~/.config/herdr-core/templates/` with a body, whose `command` is a harmless stub that sends its first OSC 7501 report after about 28 seconds and keeps reading its input, then pick it under **Templates** in **New Agent** and start it | **New Agent** shows it starting for the whole wait of about 33 seconds, then opens it as an Agent with the Template's body typed. `terminal.get` has `argv` reading `sh -c <command>`, its `template`, `submit` and `stop`, and no `heeler.launch-session` label, and `terminal.list` shows one new Terminal. A stub that reports at 30 seconds or later still opens, but with no body typed |
+
+On hc-lab on 2026-11-02 (Debian 13, herdr-core 0.1.13), Template with a slow first report passed with stubs reporting at 28 seconds, which opened with its body typed after **New Agent** showed it starting for the whole wait, and at 31 seconds, which opened with no body typed.
 
 ## Close
 
@@ -511,6 +556,8 @@ With a core running in your unique session and two Agents listed, from inert pro
 | Core restart | SIGKILL the pid from `server.status`, with a kept Terminal so its holder restarts the core | Every Pin stays, and the pinned rows return to the top |
 | Wiped core | **Only on a throwaway session.** `server stop` by absolute path, delete `~/.local/state/herdr-core/<s>`, start the core again and start a Terminal in it | All of this Host's Pins are gone, the new Terminal is unpinned even at an address a Pin had, and a second Host's Pins stay |
 | Herdr TUI beside it | Pin an Agent on a Herdr TUI Host and close its pane on the box | The Pin stays, and the same pane id coming back is pinned |
+
+An hc-lab run of 2026-11-02 (Debian 13, herdr-core 0.1.13, inert programs and Claude Code 2.1.316 against a fake model, the app on an iOS 26.5 Simulator) passed Pin, Removed while connected, Removed while away, Core restart and Wiped core, the last on a throwaway session with another Host's Pins kept. Herdr TUI beside it was not run.
 
 ## Leaked environment
 
@@ -584,7 +631,7 @@ besides the default (`omp --profile work` makes one).
 | Damage | Change a byte in `app/main.js`, then check the Host | The row reads **Damaged**, and **Repair** puts the file back and keeps `notifications.json` |
 | Extensions listed | Read the sheet before installing | It lists `heeler-session.js` in `~/.pi/agent/extensions`, `~/.omp/agent/extensions` and `~/.omp/profiles/work/agent/extensions`, and those are the files on the Host afterwards. `installed.json` names each one, and each folder the install created |
 | Pi label | Start Pi in a core Terminal, then `/new` | The Terminal's `heeler.session` label is JSON naming the session id, its file, Pi's pid and `start`, the process's `/proc/<pid>/stat` field 22. `/new` rewrites it with the new session |
-| Oh My Pi label | Start `omp` and `omp --profile work` in core Terminals, then `/new` in one | Each carries the same label, with a session file under its own profile. `/new` rewrites it (source review only so far: the spike's run stopped at the first-run welcome) |
+| Oh My Pi label | Start `omp` and `omp --profile work` in core Terminals, then `/new` in one | Each carries the same label, with a session file under its own profile. `/new` rewrites it |
 | Inert outside | Start the same programs outside herdr-core, with no `HC_TERMINAL_ID` | They behave as before, and nothing connects to the core's socket |
 | Slow socket | Start Pi in a core Terminal with `HC_TERMINAL_SOCKET` pointing at a socket that accepts and never answers | Pi starts as usual, with no delay and no message on screen |
 | Pi status | Run Pi 1.0.4 and Pi 1.4.0 in core Terminals through a prompt | 1.0.4 reports idle, working and done through the extension, with an intact screen during the run, which the spike could not test without a model. 1.4.0 reports for itself, and `app=pi` reports do not double |
@@ -594,6 +641,8 @@ besides the default (`omp --profile work` makes one).
 Every step must leave the core as it found it: the Helper only ever follows a core,
 and never starts one. The extensions only ever write the one label on their own
 Terminal.
+
+An hc-lab run of 2026-11-02 (Debian 13, systemd 257 with no polkitd, herdr-core 0.1.13, Host Helper 0.5.3 on a throwaway account with its own Node.js v22.23.3, Pi 1.4.0 and Oh My Pi 18.13.3 against a fake model) passed Install, Privacy, Linger, Log out, Restart, Node.js gone under a running Helper, Damage, Extensions listed, Pi label, Oh My Pi label with the `work` profile and `/new`, Inert outside, Slow socket and Remove. Install's sheet was read only in part: 53 of the 62 files on the Host, each of them there. With no polkitd, **Turn On Linger** showed the Host's refusal and the `sudo loginctl enable-linger` line at the bottom of the sheet, and the sheet kept **Linger Off** after an administrator turned linger on, until the Host's detail was opened again. Node.js moved ended `failed` with result `exit-code`, not `start-limit-hit`, after "Start request repeated too quickly", and **Repair** brought it back. New profile added that profile's file, but **Repair** also rewrote the unit and the other extension files with the same bytes and restarted the Helper. Remove's listing differed from the saved one only by the sessions, caches and logs Pi and Oh My Pi had added, and the profile made for New profile. Pi status was not run, with no Pi 1.0.4 on the box. A signed-in run of 2026-11-03 installed and removed the same Helper on the box's own account: an install over a link that dropped failed with "The incomplete temporary file could not be removed safely" and left a staging folder, which the next install cleaned up, and after the removal Pi's own cache of the extension stayed in `/tmp/jiti`.
 
 ### The Helper on macOS
 
@@ -632,6 +681,8 @@ last step, and start and stop nothing else. With no device registered from the a
 | Core restarts | `kill -9` that pid from `<s>`'s `server.status`, then start `<s>` again the same way | The journal reads `connection to core pid <pid> ended`, then `connected` with the new pid |
 | Other sessions | `HC_SESSION=<s2> ~/.local/bin/herdr-core server start`, which the file does not name and no Host's Usage asked about. Stop `<s2>` the same way when done | The journal never mentions `<s2>`, and `ss -xp` shows the Helper connected only to `<s>`'s socket |
 
+The hc-lab run of 2026-11-02 above passed all four steps.
+
 ### Agent Notifications
 
 Point the Helper at a fake relay: a small HTTP server on the Host that logs each `POST
@@ -658,6 +709,8 @@ to a harness for this: use a throwaway program that reports status, or the mock 
 | Helper states | Stop the service, then hide Node.js from it | **Settings > Notifications** names **Service Failed**, then **Node.js Missing** |
 | Native Windows | Open **Settings > Notifications** with a native Windows core Host | It reads that Agent Notifications, in-app banners included, and Live Activity come with the Host Helper and are not available there yet |
 
+The hc-lab run of 2026-11-02 above, with a fake relay on the box and one Simulator, passed Turn on, Blocked, Flap, Error, Done, No Agent, Restart, Off and Native Windows. The app's **Custom Push Relay** setting in **Settings > Notifications** wrote `relay_url` into `notify.json` at registration, so the file needed no edit by hand. Envelopes were not decrypted, so the word inside was not checked. First sight held for a core the Helper had not seen and for a Blocked it had already sent, but a Blocked reached while the Helper was stopped, on a core it knew, was sent once at start, as Restart expects for Done. Per-device Done was run on one device only, and Helper states reached **Service Failed** but not **Node.js Missing**, since a Node.js stayed where the app looks. Heeler killed and Remove were not run.
+
 ### Banners and Live Activity
 
 Keep the fake relay for the first table. `activity_debounce_ms` in `notify.json` sets the Live Activity debounce, 1500 by default. A fake relay's log shows `kind: liveactivity` bodies beside the alert bodies, and the counts in them are plaintext.
@@ -678,6 +731,8 @@ Keep the fake relay for the first table. `activity_debounce_ms` in `notify.json`
 | Older Helper | Register on Host Helper 0.4.0 | Notifications work, no **Live Activity** switch, and a note asks for a newer Helper |
 | Suspended (real relay) | Start an activity on a real device, suspend Heeler, change statuses | The Lock Screen updates, then ends when nothing is left |
 
+The hc-lab run of 2026-11-02 above passed the Blocked and Done banners, the Error banner with the Blocked switch on, No registration for banners, and Token. With a token registered and Heeler in the background, no Live Activity body reached the fake relay at all, so Update, Error count and End could not be seen; the cause was not found. No Helper was seen only in part, with no banner and the switch not read. The Error banner with the entry flag off, Per-device Done, Dismissed, Older Helper and Suspended were not run.
+
 ### Usage
 
 Use a throwaway `CLAUDE_CONFIG_DIR`, for example `~/heeler-usage-lab`, that the SSH session's environment lacks, and put a small Transcript with known token counts under its `projects/`. Add a unique marker to the core's environment, `HEELER_LAB_MARKER=not-listed`. Add the Host with the session you start. Never sign in to a harness for these steps, and leave out **Claude Code limits** unless the Host has a throwaway sign-in. Remove the directory when done.
@@ -697,3 +752,5 @@ Use a throwaway `CLAUDE_CONFIG_DIR`, for example `~/heeler-usage-lab`, that the 
 | Widget alone | Add a Usage widget. With the core stopped and no Helper, reopen Heeler and do not open Usage. Repeat on an unreachable Host, and on a native Windows Host if one is on hand | The widget says **Needs the Host Helper**, **Not connected**, and **Comes with the Host Helper, not available yet**, and keeps saying so after you force-quit Heeler and reopen it. None of them reads **Not read yet** |
 
 `/proc/<pid>/environ` holds the environment the core started with, so a variable it set for itself later does not appear. A Windows Host's line is covered by unit tests, not this checklist.
+
+The hc-lab run of 2026-11-02 above passed No Helper for the tab and the Host's section, Core's environment for the tab, Only named variables, Core restarts and Suggestions. Waiting read **Waiting for the core** in the Usage tab and "Could not read Usage. Check the Host connection and try again." in the Host's section, with no new core unit. The widget was not checked, and Limits, Update, Unreachable, Usage off and Widget alone were not run.
