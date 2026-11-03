@@ -379,7 +379,6 @@ struct HostListView: View {
                         usage: usageStore?(id),
                         openUsage: openUsage.map { open in { open(id) } },
                         connectionStatus: connectionStatuses[id],
-                        standingFailure: standingFailures[id],
                         connectedRouteID: routeIDs[id],
                         syncIssue: syncIssues[id],
                         coreEnvironmentNotice: coreEnvironmentNotices[id],

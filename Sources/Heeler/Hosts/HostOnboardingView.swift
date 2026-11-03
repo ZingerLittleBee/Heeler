@@ -14,7 +14,6 @@ struct HostOnboardingView: View {
     /// outside the Console.
     let openUsage: (() -> Void)?
     let connectionStatus: EventsSessionStatus?
-    let standingFailure: TransportError?
     /// The route the Console's connection reached (ADR 0022).
     let connectedRouteID: HostRoute.ID?
     /// Why this connected Host's Agents could not be synced.
@@ -57,7 +56,6 @@ struct HostOnboardingView: View {
         usage: AgentUsageStore? = nil,
         openUsage: (() -> Void)? = nil,
         connectionStatus: EventsSessionStatus? = nil,
-        standingFailure: TransportError? = nil,
         connectedRouteID: HostRoute.ID? = nil,
         syncIssue: String? = nil,
         coreEnvironmentNotice: HerdrCoreEnvironmentNotice? = nil,
@@ -72,7 +70,6 @@ struct HostOnboardingView: View {
         self.usage = usage
         self.openUsage = openUsage
         self.connectionStatus = connectionStatus
-        self.standingFailure = standingFailure
         self.connectedRouteID = connectedRouteID
         self.syncIssue = syncIssue
         self.coreEnvironmentNotice = coreEnvironmentNotice
@@ -419,7 +416,6 @@ struct HostOnboardingView: View {
     private var routeStatus: HostRouteStatusPresentation {
         HostRouteStatusPresentation(
             status: connectionStatus,
-            standingFailure: standingFailure,
             connectedRouteID: connectedRouteID,
             isManualReconnectInFlight: isManualReconnectInFlight,
             routes: store.host.routes,
@@ -564,7 +560,6 @@ struct HostOnboardingView: View {
     private var connectionPresentation: HostOnboardingConnectionPresentation {
         HostOnboardingConnectionPresentation(
             status: connectionStatus,
-            standingFailure: standingFailure,
             syncIssue: syncIssue,
             isManualReconnectInFlight: isManualReconnectInFlight,
             usesHerdrEndpoint: store.host.herdrEndpoint != nil,
@@ -855,10 +850,11 @@ struct HostRouteStatusPresentation: Equatable {
     let routeFailures: [HostRoute.ID: String]
 
     /// A manual Reconnect in flight reads as Connecting… at once, whatever
-    /// the status still says, and drops the outcome it is replacing.
+    /// the status still says, and drops the outcome it is replacing. So does
+    /// Connecting itself: the Standing Failure stays on the Console and Hosts
+    /// list, but here it read as the new attempt's own (#587).
     init(
         status: EventsSessionStatus?,
-        standingFailure: TransportError? = nil,
         connectedRouteID: HostRoute.ID?,
         isManualReconnectInFlight: Bool = false,
         routes: [HostRoute],
@@ -882,9 +878,9 @@ struct HostRouteStatusPresentation: Equatable {
         case .connecting:
             tone = .connecting
             title = "Connecting…"
-            subtitle = standingFailure?.presentation.summary
+            subtitle = nil
             inUseRouteID = nil
-            failure = standingFailure
+            failure = nil
         case .reconnecting(_, _, let reconnectFailure):
             tone = .retrying
             title = "Reconnecting…"
@@ -1065,7 +1061,6 @@ struct HostOnboardingConnectionPresentation: Equatable {
     /// what neither says, the Recovery Suggestion.
     init(
         status: EventsSessionStatus?,
-        standingFailure: TransportError? = nil,
         syncIssue: String? = nil,
         isManualReconnectInFlight: Bool,
         usesHerdrEndpoint: Bool = false,
@@ -1083,15 +1078,13 @@ struct HostOnboardingConnectionPresentation: Equatable {
             return failure.presentation.explanation
         }
         switch status {
-        case .connecting:
-            connectionErrorMessage = standingFailure.flatMap(whole)
         case .reconnecting(_, _, let failure):
             connectionErrorMessage = explanation(failure)
         case .failed(let failure):
             connectionErrorMessage = whole(failure)
         case .connected:
             connectionErrorMessage = syncIssue
-        case .suspended, .ended, nil:
+        case .connecting, .suspended, .ended, nil:
             connectionErrorMessage = nil
         }
         isSyncIssue = if case .connected = status { syncIssue != nil } else { false }

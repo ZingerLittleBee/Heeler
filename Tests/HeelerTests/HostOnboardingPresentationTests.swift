@@ -56,31 +56,28 @@ struct HostOnboardingPresentationTests {
     @Test func footerMatrixCoversEveryHostDetailRow() {
         let failure = TransportError.streamLocalOpenFailed(path: "/tmp/herdr.sock")
         let rows: [(
-            EventsSessionStatus?, TransportError?, Bool, String?
+            EventsSessionStatus?, Bool, String?
         )] = [
-            (nil, nil, false, nil),
-            (.suspended, nil, false, nil),
-            (.connected, nil, false, nil),
-            (.ended, nil, false, nil),
-            (.connecting, nil, false, nil),
-            (.connecting, nil, true, nil),
-            (.connecting, failure, false, failure.presentation.message),
-            (.connecting, failure, true, nil),
+            (nil, false, nil),
+            (.suspended, false, nil),
+            (.connected, false, nil),
+            (.ended, false, nil),
+            (.connecting, false, nil),
+            (.connecting, true, nil),
             (
                 .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut),
-                nil, false, TransportError.timedOut.presentation.explanation
+                false, TransportError.timedOut.presentation.explanation
             ),
             (
                 .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut),
-                nil, true, nil
+                true, nil
             ),
-            (.failed(failure), nil, false, failure.presentation.message),
-            (.failed(failure), nil, true, nil),
+            (.failed(failure), false, failure.presentation.message),
+            (.failed(failure), true, nil),
         ]
-        for (status, standing, inFlight, expected) in rows {
+        for (status, inFlight, expected) in rows {
             let presentation = HostOnboardingConnectionPresentation(
                 status: status,
-                standingFailure: standing,
                 isManualReconnectInFlight: inFlight)
             #expect(presentation.footerMessage == expected)
             if inFlight {
@@ -127,13 +124,16 @@ struct HostOnboardingPresentationTests {
             isManualReconnectInFlight: false)
         #expect(automatic.footerMessage == TransportError.timedOut.presentation.explanation)
         #expect(automatic.connectionErrorMessage == automatic.footerMessage)
+    }
 
-        let connectingStanding = HostOnboardingConnectionPresentation(
-            status: .connecting,
-            standingFailure: failure,
-            isManualReconnectInFlight: true)
-        #expect(connectingStanding.footerMessage == nil)
-        #expect(connectingStanding.connectionErrorMessage == failure.presentation.message)
+    /// Windows kept "herdr-core is not installed" and its long note under
+    /// Connecting… after a Reconnect, as if the new attempt had said it (#587).
+    @Test func connectingCarriesNoTextFromTheAttemptBefore() {
+        let connecting = HostOnboardingConnectionPresentation(
+            status: .connecting, isManualReconnectInFlight: false)
+        #expect(connecting.connectionErrorMessage == nil)
+        #expect(connecting.footerMessage == nil)
+        #expect(!connecting.isSyncIssue)
     }
 
     /// The Console never prompts for trust: once onboarding pins the key and
@@ -300,12 +300,10 @@ struct HostRouteStatusPresentationTests {
 
     private func presentation(
         _ status: EventsSessionStatus?,
-        standingFailure: TransportError? = nil,
         connectedRouteID: HostRoute.ID? = nil
     ) -> HostRouteStatusPresentation {
         HostRouteStatusPresentation(
             status: status,
-            standingFailure: standingFailure,
             connectedRouteID: connectedRouteID,
             routes: [home, away],
             describe: { _ in "Direct" })
@@ -346,8 +344,10 @@ struct HostRouteStatusPresentationTests {
                     away.id: TransportError.authenticationFailed.presentation.summary,
                 ])
         }
-        let standing = presentation(.connecting, standingFailure: failure)
-        #expect(standing.routeFailures.count == 2)
+        let connecting = presentation(.connecting)
+        #expect(connecting.title == "Connecting…")
+        #expect(connecting.subtitle == nil)
+        #expect(connecting.routeFailures.isEmpty)
     }
 
     /// With each route's failure on its row and the Summary on the card,

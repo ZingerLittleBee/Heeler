@@ -628,10 +628,11 @@ it.
 It exists so Host Connection Status can report running work honestly without
 the app withdrawing the explanation at the moment the user is reading it: a
 Host re-proved on a foreground return is Connecting, and every status-derived
-surface keeps presenting the Standing Failure until the activation answers,
-except that a Reconnect Request may temporarily suppress the Host detail footer
-while its button shows request progress. The failure remains stored and
-continues to render on Agent detail, the Console, and the Hosts list.
+surface but Host detail keeps presenting the Standing Failure until the
+activation answers. Host detail, where the user asks for Reconnect, reads only
+Connecting… once the activation begins, since there the old failure read as the
+new attempt's own. The failure remains stored and continues to render on Agent
+detail, the Console, and the Hosts list.
 Only a failure that reached Failed becomes standing. A retryable failure inside
 a recovery cycle does not, because nothing stopped and Reconnecting already
 says what happened.
