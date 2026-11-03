@@ -84,11 +84,16 @@ struct HerdrCoreStagingTests {
         return .photo(DataImageSelection(data: try #require(image.pngData())))
     }
 
-    private static func pickedFile(contents: Data) throws -> (source: ComposerStagingStore.Source, url: URL) {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("core-staging-\(UUID().uuidString).txt")
+    /// A file picked by this name, alone in a folder of its own: remove `folder`.
+    private static func pickedFile(
+        named name: String = "notes.txt", contents: Data
+    ) throws -> (source: ComposerStagingStore.Source, folder: URL) {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("core-staging-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent(name)
         try contents.write(to: url)
-        return (.file(url), url)
+        return (.file(url), folder)
     }
 
     private static func hasCompleted(
@@ -109,17 +114,20 @@ struct HerdrCoreStagingTests {
         try #require(session.staging.begin(try Self.pickedPhoto()) != nil)
         try await Self.until("the image") { Self.hasCompleted(.image, session) }
         let contents = Data("notes".utf8)
-        let file = try Self.pickedFile(contents: contents)
-        defer { try? FileManager.default.removeItem(at: file.url) }
+        // The Host copy takes the picked name, cleaned as on native Windows (ADR 0006).
+        let file = try Self.pickedFile(named: "meeting notes.txt", contents: contents)
+        defer { try? FileManager.default.removeItem(at: file.folder) }
         try #require(session.staging.begin(file.source) != nil)
         try await Self.until("the file") { Self.hasCompleted(.file, session) }
 
         let staged = await fixture.scripted.stagedFiles
         #expect(staged.map(\.path) == [
-            "/tmp/heeler-stage/stage-0/image.jpg", "/tmp/heeler-stage/stage-1/file.txt",
+            "/tmp/heeler-stage/stage-0/image.jpg", "/tmp/heeler-stage/stage-1/meeting_notes.txt",
         ])
         #expect(staged.last?.contents == contents)
-        #expect(session.composer.draft == "/tmp/heeler-stage/stage-0/image.jpg /tmp/heeler-stage/stage-1/file.txt ")
+        #expect(
+            session.composer.draft
+                == "/tmp/heeler-stage/stage-0/image.jpg /tmp/heeler-stage/stage-1/meeting_notes.txt ")
 
         // The path waits in the draft; delivering it is Send's job.
         #expect(Set(await fixture.scripted.methods).isSubset(of: Self.consoleReads))
@@ -215,7 +223,7 @@ struct HerdrCoreStagingTests {
         failure: AttachmentStagingError, message: String
     ) async throws {
         let picked = try Self.pickedFile(contents: Data("notes".utf8))
-        defer { try? FileManager.default.removeItem(at: picked.url) }
+        defer { try? FileManager.default.removeItem(at: picked.folder) }
         let fixture = try await Fixture()
         await fixture.scripted.failStages(with: [failure])
         let session = try fixture.session
@@ -231,7 +239,7 @@ struct HerdrCoreStagingTests {
 
     @Test func aHostThatIsNotConnectedSaysSoAndKeepsTheRetry() async throws {
         let picked = try Self.pickedFile(contents: Data("notes".utf8))
-        defer { try? FileManager.default.removeItem(at: picked.url) }
+        defer { try? FileManager.default.removeItem(at: picked.folder) }
         let fixture = try await Fixture()
         let session = try fixture.session
         await fixture.console.suspend()
@@ -252,7 +260,7 @@ struct HerdrCoreStagingTests {
     @Test func retryAfterAFailedUploadInsertsThePathOfTheOneThatLanded() async throws {
         let contents = Data("notes".utf8)
         let picked = try Self.pickedFile(contents: contents)
-        defer { try? FileManager.default.removeItem(at: picked.url) }
+        defer { try? FileManager.default.removeItem(at: picked.folder) }
         let fixture = try await Fixture()
         await fixture.scripted.failStages(with: [.transferFailed])
         let session = try fixture.session
@@ -265,9 +273,9 @@ struct HerdrCoreStagingTests {
         try await Self.until("the file") { Self.hasCompleted(.file, session) }
 
         let staged = await fixture.scripted.stagedFiles
-        #expect(staged.map(\.path) == ["/tmp/heeler-stage/stage-0/file.txt"])
+        #expect(staged.map(\.path) == ["/tmp/heeler-stage/stage-0/notes.txt"])
         #expect(staged.first?.contents == contents)
-        #expect(session.composer.draft == "/tmp/heeler-stage/stage-0/file.txt ")
+        #expect(session.composer.draft == "/tmp/heeler-stage/stage-0/notes.txt ")
         await fixture.finish()
     }
 }
