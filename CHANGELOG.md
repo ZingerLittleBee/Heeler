@@ -9,6 +9,8 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Touch and hold an Agent on a By Workspace card and tap New Agent to start
+  one in its Workspace and directory, as the Agent's own New Agent does.
 - Browse Directories hides folders whose names start with a dot. Tap the eye
   button beside Select to list them again; Heeler remembers the choice.
   (#609)
