@@ -77,6 +77,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Round the bottom corners of a collapsed By Workspace card with nothing to
+  summarize, such as a Workspace whose Agents are all idle, instead of ending
+  it in a square-cornered strip under its header.
 - Put Show Chat or Show Agent Terminal and More with Back in iPhone Duo's
   side controls, using the system overflow menu instead of leaving their
   capsule over the content. Horizontal layouts keep their existing controls.

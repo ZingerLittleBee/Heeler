@@ -107,11 +107,15 @@ struct ConsoleWorkspaceCardRow: ViewModifier {
                     .background { if isSidebarColumn { ListRowCellFocusHalo() } })
     }
 
-    /// A card's last row, unless it is a folded worktree's header: that
-    /// header ends the card only while folded, and room it gained then
-    /// would move it as it folds. It sits clear of the corners as it is.
+    /// A card's last row, unless it is a header: a card's header ends it
+    /// only while folded with nothing to summarize, a worktree's only
+    /// while that worktree is folded, and room either gained then would
+    /// move it as it folds. Each sits clear of the corners as it is.
     private var padsBottom: Bool {
-        if case .checkout = placed.row { false } else { placed.isLast }
+        switch placed.row {
+        case .header, .checkout: false
+        case .summary, .agent: placed.isLast
+        }
     }
 
     @ViewBuilder
