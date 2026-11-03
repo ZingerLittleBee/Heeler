@@ -500,6 +500,11 @@ final class ComposerStagingStore {
                 medium: medium,
                 message: "\(medium.displayName) upload failed.",
                 isRetryable: staging.isRetryable)
+        case ImagePreparationError.clipboardHasNoImage:
+            Failure(
+                medium: medium,
+                message: "The clipboard has no image. Copy one, then tap Paste Image.",
+                isRetryable: false)
         case ImagePreparationError.selectionUnavailable:
             Failure(
                 medium: medium,

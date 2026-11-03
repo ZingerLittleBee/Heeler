@@ -55,6 +55,8 @@ protocol ImagePreparing: Sendable {
 
 enum ImagePreparationError: Error, Sendable, Equatable {
     case selectionUnavailable
+    /// Paste Image found no image on the clipboard.
+    case clipboardHasNoImage
     case invalidImage
     case sourceTooLarge
     case unableToProduceBoundedOutput

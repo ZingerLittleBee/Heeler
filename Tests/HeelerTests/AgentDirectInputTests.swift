@@ -106,7 +106,7 @@ struct AgentDirectInputTests {
             AgentActionMenuSection.navigation.items == [.backToConsole])
         #expect(
             AgentActionMenuSection.addAttachments.items
-                == [.addImage, .addFile])
+                == [.addImage, .pasteImage, .addFile])
         #expect(
             AgentActionMenuSection.sessionTools.items
                 == [
@@ -123,6 +123,7 @@ struct AgentDirectInputTests {
         let metadata: [(AgentActionMenuItem, String, AgentGlyph, Bool, Bool)] = [
             (.backToConsole, "Back to Console", .symbol("chevron.left"), false, false),
             (.addImage, "Add Image", .symbol("photo"), false, true),
+            (.pasteImage, "Paste Image", .symbol("doc.on.clipboard"), false, true),
             (.addFile, "Add File", .symbol("doc"), false, true),
             (.showChat, "Show Chat", .symbol("text.bubble"), false, false),
             (.showAgentTerminal, "Show Agent Terminal", .codeBubble, false, false),
@@ -274,6 +275,7 @@ struct AgentDirectInputTests {
             canBegin: true,
             attachLinkCount: 0,
             addImage: { steps.append(.action(.addImage)) },
+            pasteImage: { steps.append(.action(.pasteImage)) },
             addFile: { steps.append(.action(.addFile)) },
             showAttachLinks: {},
             openTerminal: { steps.append(.action(.openTerminal)) },
@@ -305,6 +307,7 @@ struct AgentDirectInputTests {
             steps == [
                 .action(.backToConsole),
                 .restore, .action(.addImage),
+                .restore, .action(.pasteImage),
                 .restore, .action(.addFile),
                 .action(.showChat),
                 .action(.showAgentTerminal),
@@ -325,7 +328,7 @@ struct AgentDirectInputTests {
         }
         #expect(
             steps == [
-                .action(.addImage), .action(.addFile),
+                .action(.addImage), .action(.pasteImage), .action(.addFile),
                 .action(.skills), .action(.snippets),
             ])
     }

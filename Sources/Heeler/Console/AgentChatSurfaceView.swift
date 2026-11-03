@@ -931,6 +931,7 @@ struct AgentChatSurfaceView: View {
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
             addImage: { isSelectingPhoto = true },
+            pasteImage: { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) },
             addFile: { isSelectingFile = true },
             showAttachLinks: {},
             openTerminal: canOpenTerminal

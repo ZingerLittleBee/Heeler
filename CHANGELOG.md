@@ -9,6 +9,9 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Paste an image from the clipboard into a message: tap **+**, then **Paste
+  Image**, or paste into the Composer from the keyboard or the edit menu.
+  Heeler uploads it to the Host and adds its path, as Add Image does.
 - Paths to images in Chat messages open the image. A path to a picture on the
   Host, written as code, as a link or in the text of your messages or the
   Agent's, shows in the tint color after a photo symbol; tap it, or choose
