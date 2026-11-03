@@ -39,3 +39,20 @@ struct AgentDetailHeaderTitleTests {
         #expect(title.directory == nil)
     }
 }
+
+@Suite("Agent detail header controls")
+struct AgentDetailHeaderControlPlacementTests {
+    @Test func followsTheResolvedSystemBar() {
+        #expect(AgentDetailHeaderControlPlacement(
+            headerSharesBar: false, usesVerticalToolbar: false) == .floating)
+        #expect(AgentDetailHeaderControlPlacement(
+            headerSharesBar: true, usesVerticalToolbar: false) == .horizontalToolbar)
+        #expect(AgentDetailHeaderControlPlacement(
+            headerSharesBar: false, usesVerticalToolbar: true) == .verticalToolbar)
+        #expect(AgentDetailHeaderControlPlacement(
+            headerSharesBar: true, usesVerticalToolbar: true) == .verticalToolbar)
+        #expect(AgentDetailHeaderControlPlacement.floating.reservesHorizontalControlWidth)
+        #expect(AgentDetailHeaderControlPlacement.horizontalToolbar.reservesHorizontalControlWidth)
+        #expect(!AgentDetailHeaderControlPlacement.verticalToolbar.reservesHorizontalControlWidth)
+    }
+}

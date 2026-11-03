@@ -411,7 +411,7 @@ struct AgentChatSurfaceView: View {
                 surfaceSwitch: terminalSurfaceSwitch,
                 title: AgentDetailHeaderTitle(agent),
                 statusTitle: console.connectionRecoveryTitle(for: agent.hostID),
-                trailingInBar: headerSharesBar)
+                controlPlacement: headerControlPlacement)
             .padding(.horizontal, 12)
             .padding(.top, backHeaderTop)
             .onChange(of: isBackHeaderExpanded) { _, expanded in
@@ -449,12 +449,13 @@ struct AgentChatSurfaceView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar(.visible, for: .navigationBar)
         .detailHeaderBarControls(
-            headerSharesBar,
+            headerControlPlacement,
             palette: .system,
             isExpanded: $isBackHeaderExpanded,
             actions: backHeaderActions,
             surfaceSwitch: terminalSurfaceSwitch,
             onBack: showsBackButton && usesVerticalToolbar ? { dismiss() } : nil)
+        .prioritizesVerticalDetailToolbar()
     }
 
     /// Over the list's bottom edge, which keeps Collapse Steps' band clear
@@ -1069,6 +1070,11 @@ struct AgentChatSurfaceView: View {
     }
 
     private var headerSharesBar: Bool { AgentDetailHeader.levelsWithBar(barRow) }
+
+    private var headerControlPlacement: AgentDetailHeaderControlPlacement {
+        AgentDetailHeaderControlPlacement(
+            headerSharesBar: headerSharesBar, usesVerticalToolbar: usesVerticalToolbar)
+    }
 
     private var terminalSurfaceSwitch: AgentDetailSurfaceSwitch {
         AgentDetailSurfaceSwitch(current: .chat) { _ in showAgentTerminal() }
