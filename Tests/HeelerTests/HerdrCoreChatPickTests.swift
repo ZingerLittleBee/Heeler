@@ -914,6 +914,44 @@ struct HerdrCoreChatPickTests {
         rig.store.setHosts([])
     }
 
+    /// hc-lab D1: Grok Build 1.0.70 wrote its `active_sessions.json` row 0.18 s after
+    /// the core's idle, and nothing checked after it until Check Again. While Chat
+    /// can't tell, one more check follows a few seconds after an idle report, and no
+    /// other: no clock asks again.
+    @Test func aGrokRowWrittenJustAfterIdleBindsAtTheOneLaterCheck() async throws {
+        let rig = try await grokRig(steppedByTheTest: true)
+        let chat = try rig.chat()
+        try await rig.stepUntil(chat, "Chat to say it cannot tell") {
+            chat.conversation.phase == .unavailable(.cannotTellSession(.grok))
+        }
+        try await rig.runTurn()
+        // The checks the turn's events ask for, with the row not written yet.
+        await chat.step()
+        try await Task.sleep(for: .milliseconds(50))
+        await chat.step()
+        let checks = await rig.transport.processTable.requests.count
+
+        await rig.files.write(
+            #"[{"session_id":"\#(Self.grokHeld)","pid":\#(Self.pid),"pid_start":\#(Self.start),"cwd":"/work/app"}]"#,
+            at: "\(Self.home)/.grok/active_sessions.json")
+        await chat.step()
+        #expect(await rig.transport.processTable.requests.count == checks)
+        let delay = try #require(AgentChatStore.Timing().lateEvidenceCheck[.grok])
+        #expect(chat.interval <= .seconds(delay))
+        rig.clock.advance(delay)
+        await chat.step()
+        #expect(await rig.transport.processTable.requests.count == checks + 1)
+        try await rig.stepUntil(chat, "Chat to follow the row") {
+            chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
+        }
+
+        rig.clock.advance(60)
+        await chat.step()
+        #expect(await rig.transport.processTable.requests.count == checks + 1)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     /// The message the guard judged stays as an echo only until its clock runs out,
     /// and then nothing holds a timeline up over the reason.
     @Test func aMissingMessageLeavesNoTimelineOnceItsEchoEnds() async throws {

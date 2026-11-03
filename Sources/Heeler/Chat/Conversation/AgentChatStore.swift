@@ -122,6 +122,11 @@ final class AgentChatStore {
         /// queued send may be about to start the next turn, and Pi's return check
         /// runs in this time.
         var pickGuardSettle: TimeInterval = 2
+        /// On herdr-core, how long after the Agent reports idle Chat checks its
+        /// process once more while it can't tell, for a program that writes its
+        /// evidence just after: Grok Build its `active_sessions.json` row, and Oh
+        /// My Pi without its extension the open of its session file (ADR 0034).
+        var lateEvidenceCheck: [ChatProgram: TimeInterval] = [.grok: 3, .omp: 10]
         var backgroundWorkStaleness = ChatBackgroundWork.Staleness()
     }
 
@@ -228,6 +233,10 @@ final class AgentChatStore {
     /// the next Send stops once, as a Send whose own check moves Chat does,
     /// unless the draft changed since.
     @ObservationIgnored private var movedSinceDraft = false
+    /// When the one check `Timing.lateEvidenceCheck` allows after an idle report
+    /// is due. Only a running loop, which a Chat on screen keeps, takes it; one
+    /// overdue when Chat opens is the check opening makes anyway.
+    @ObservationIgnored private var lateEvidenceCheckAt: Date?
     @ObservationIgnored private let source: AgentChatSource
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private let now: @Sendable () -> Date
@@ -796,6 +805,9 @@ final class AgentChatStore {
         noteActivity(activity)
         notePickGuardActivity(from: previous, to: activity)
         idleSince = activity == .idle ? now() : nil
+        lateEvidenceCheckAt =
+            activity == .idle && source.sessionEvidence != nil
+            ? timing.lateEvidenceCheck[program].map { now().addingTimeInterval($0) } : nil
         // Answering a dialog resumes the turn it interrupted.
         if activity == .working, previous != .working, previous != .blocked { turnStartedAt = now() }
         returnChecked = []
@@ -819,6 +831,10 @@ final class AgentChatStore {
     func step() async {
         await restoreIfNeeded()
         guard !Task.isCancelled else { return }
+        if let due = lateEvidenceCheckAt, now() >= due {
+            lateEvidenceCheckAt = nil
+            if evidenceReason != nil { needsAgentRefresh = true }
+        }
         if needsAgentRefresh || sessionRecheckIsDue, let fresh = await refreshAgent() {
             guard !Task.isCancelled else { return }
             await checkStartScreen(fresh)
@@ -990,6 +1006,11 @@ final class AgentChatStore {
     /// its deadline holds the Host's query lane until its watchdog ends it
     /// (ADR 0025).
     var interval: Duration {
+        guard let due = lateEvidenceCheckAt else { return loopPace }
+        return min(loopPace, .seconds(max(0, due.timeIntervalSince(now()))))
+    }
+
+    private var loopPace: Duration {
         if engine == nil { return .seconds(timing.sessionRecheck) }
         guard source.adapter.readsByQuery else { return pace(active: timing.activeInterval) }
         let pace = pace(active: timing.queryActiveInterval)

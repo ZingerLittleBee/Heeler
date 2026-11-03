@@ -22,8 +22,18 @@ never show or send into a conversation it has guessed.
   Codex holding several rollouts costs one read of each one's first line, up to
   eight, since whether there is one root takes all of them. The Host Helper takes
   no part. No clock asks, including a Send's echo timeout, and neither does
-  a Send having gone, since one check ran just before it. A leak answer that
-  names a variable also asks again, since it changes what a reason says.
+  a Send having gone, since one check ran just before it, with the one
+  exception below. A leak answer that names a variable also asks again, since
+  it changes what a reason says.
+- The exception: Grok Build and an Oh My Pi without its extension write their
+  evidence just after they report idle, so while Chat is open and can't tell, an
+  idle report asks once more a few seconds later, 3 s for Grok Build and 10 s
+  for Oh My Pi, and nothing repeats it. On hc-lab on 2026-11-03 Grok Build
+  1.0.70 wrote its `active_sessions.json` row 0.18 s after the core's first
+  idle, and Oh My Pi 18.13.3 held its session file 8.6 s after the first
+  message, about 6 s after the file appeared holding the finished turn; each
+  stayed Can't Tell until Check Again. An Oh My Pi whose title model returns no
+  title never opens its file (seen once), and stays Can't Tell.
 - A check that moves Chat to another conversation of an exact binding, with no
   Send waiting on it, holds the next Send once, as a Send whose own check moves
   Chat does, unless the draft changed since: the draft may have been written for
@@ -201,8 +211,9 @@ never show or send into a conversation it has guessed.
   macOS. On 2026-11-03 hc-lab passed Codex 0.165.0 with `--no-daemon`, Grok Build
   1.0.70, Pi 1.4.0 and Oh My Pi 18.13.3, which the Linux list now holds beside
   Claude Code, though a Grok Build whose Chat opened before its first message,
-  and an Oh My Pi without the extension, each bound only after Check Again, and a
-  Pi started from a Template left no saved evidence of its reply.
+  and an Oh My Pi without the extension, each bound only after Check Again, which
+  the one later check above now covers, and a Pi started from a Template left no
+  saved evidence of its reply.
   OpenCode stays off on Linux: 2.2.2 passed, but a 1.19.5 Agent bound through
   Heeler's plugin showed no messages, and one switch covers every release. The
   same day the owner's Windows machine passed Claude Code 2.1.286 and 2.1.316 and
