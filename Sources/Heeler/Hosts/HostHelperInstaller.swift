@@ -98,8 +98,13 @@ struct HostHelperInstaller: Sendable {
     /// either reads back as what it is, and nothing here asks twice.
     func readLoadingAgent() async throws -> HostHelperReading {
         var reading = try await read()
+        // Read again only for what a read shows: leftovers in the Helper directory,
+        // or the record. A record whose files are all still there stays.
         if reading.leftInterruptedInstall, let layout = reading.layout,
-            await tidy(layout, record: Self.record(of: reading), quietMinutes: HostHelperScript.quietMinutesBeforeTidying)
+            let said = await tidy(
+                layout, record: Self.record(of: reading), quietMinutes: HostHelperScript.quietMinutesBeforeTidying),
+            !said.contains(HostHelperScript.busyLine),
+            reading.probe?.leftovers == true || said.contains(HostHelperScript.recordRemovedLine)
         {
             reading = try await read()
         }
@@ -305,9 +310,12 @@ struct HostHelperInstaller: Sendable {
     /// until the next install: its staging, half-written files, and with no Helper
     /// in place the record and the folders it made, as `HostHelperScript` words it.
     /// With `quietMinutes`, leaves all of it while any of it is recent, as another
-    /// install's still running would be. Says whether it removed anything.
+    /// install's still running would be. Returns what the step said, nil when the
+    /// Host could not say.
     @discardableResult
-    private func tidy(_ layout: HostHelperLayout, record: HostHelperInstallRecord?, quietMinutes: Int?) async -> Bool {
+    private func tidy(
+        _ layout: HostHelperLayout, record: HostHelperInstallRecord?, quietMinutes: Int?
+    ) async -> [String]? {
         let paths = record.map {
             HostHelperScript.RecordedPaths(
                 files: $0.safeFiles, folders: ($0.safeFolders + [layout.directory]).sorted(by: Self.deepestFirst))
@@ -315,10 +323,8 @@ struct HostHelperInstaller: Sendable {
         let script = HostHelperScript(
             .tidyInterruptedInstall(directory: layout.directory, record: paths, quietMinutes: quietMinutes),
             nonce: nonce())
-        guard let result = try? await host.runHostHelperScript(script), result.exitStatus == 0,
-            let lines = try? HostHelperProbe.framedLines(stdout: result.stdout, nonce: script.nonce)
-        else { return false }
-        return !lines.contains(HostHelperScript.busyLine)
+        guard let result = try? await host.runHostHelperScript(script), result.exitStatus == 0 else { return nil }
+        return try? HostHelperProbe.framedLines(stdout: result.stdout, nonce: script.nonce)
     }
 
     private static func record(of reading: HostHelperReading) -> HostHelperInstallRecord? {

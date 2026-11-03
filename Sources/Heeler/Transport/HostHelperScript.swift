@@ -241,12 +241,18 @@ struct HostHelperScript: Sendable, Equatable {
     static let recordRemovedLine = "record-removed"
 
     /// A failed `find` reads as busy, so a Host that cannot say what is recent
-    /// loses nothing.
+    /// loses nothing. A function, so that stopping early still ends the frame and
+    /// the app reads `busy`.
     private static func tidy(directory: String, record: RecordedPaths?, quietMinutes: Int?) -> [String] {
+        ["__h_tidy() {"] + tidyBody(directory: directory, record: record, quietMinutes: quietMinutes)
+            + ["}", "__h_tidy"]
+    }
+
+    private static func tidyBody(directory: String, record: RecordedPaths?, quietMinutes: Int?) -> [String] {
         let files = record?.files ?? []
-        let busy = "{ printf '\(busyLine)\\n'; exit 0; }"
+        let busy = "{ printf '\(busyLine)\\n'; return 0; }"
         let leftovers = "./\(stagingPrefix)* ./\(appFolderName).old-* ./\(recordFileName)\(temporarySuffix)*"
-        var lines = ["umask 077", "cd \(quote(directory)) 2>/dev/null || exit 0"]
+        var lines = ["umask 077", "cd \(quote(directory)) 2>/dev/null || return 0"]
         if let quietMinutes {
             let recent = "-mmin -\(quietMinutes) -print"
             lines += [
@@ -262,9 +268,9 @@ struct HostHelperScript: Sendable, Equatable {
                         + "|| \(busy); [ -z \"$__h_recent\" ] || \(busy); fi")
             }
         }
-        lines.append("rm -rf -- \(leftovers) || exit 1")
+        lines.append("rm -rf -- \(leftovers) || return 1")
         if !files.isEmpty {
-            lines.append("rm -f -- \(files.map { quote($0) + "\(temporarySuffix)*" }.joined(separator: " ")) || exit 1")
+            lines.append("rm -f -- \(files.map { quote($0) + "\(temporarySuffix)*" }.joined(separator: " ")) || return 1")
         }
         guard let record else { return lines }
         let app = quote(appFolderName)
@@ -274,7 +280,7 @@ struct HostHelperScript: Sendable, Equatable {
         return lines + [
             "__h_others=$(find . -mindepth 1 -maxdepth 1 ! -name \(quote(recordFileName)) -print) || __h_others=unread",
             "if \(conditions.joined(separator: " && ")); then",
-            "rm -f -- \(quote(recordFileName)) || exit 1",
+            "rm -f -- \(quote(recordFileName)) || return 1",
             "cd /",
         ] + record.folders.map { "rmdir -- \(quote($0)) 2>/dev/null || :" } + [
             "printf '\(recordRemovedLine)\\n'",

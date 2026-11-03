@@ -158,6 +158,17 @@ struct HostHelperInstallTests {
         #expect(await !host.journal.contains { $0.hasPrefix("tidy") })
     }
 
+    /// A record whose files are still there stays for a removal to find, and a step
+    /// that removed nothing costs no second read.
+    @Test func aRecordWhoseFilesStayKeepsItAndIsReadOnce() async throws {
+        try await installed()
+        await host.removeFolder(app)
+        _ = try await installer.check()
+        #expect(await host.journal.filter { $0 == "probe" }.count == 1)
+        #expect(await host.journal.contains("tidy when quiet"))
+        #expect(await host.filePaths().contains("\(ScriptedHelperHost.helperDirectory)/installed.json"))
+    }
+
     private func uploadFailureMessage(_ error: any Error) async throws -> String {
         await host.configure {
             $0.failUploadsNamed = "version.json"

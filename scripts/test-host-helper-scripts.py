@@ -841,6 +841,8 @@ class TidyStepTests(HelperScriptCase):
         (self.helper_dir / "staging-8D99F76C/core/follower.js.tmp-4c1d").write_text("still coming")
         result = self.tidy()
         self.assertIn("busy", result.stdout)
+        # The app reads `busy` only inside the frame.
+        self.assertIn(f"{NONCE} end", result.stdout)
         self.assertTrue((self.helper_dir / "staging-8D99F76C/core/follower.js.tmp-4c1d").exists())
         self.assertTrue((self.helper_dir / "installed.json").exists())
 
@@ -890,6 +892,7 @@ class TidyStepTests(HelperScriptCase):
         shutil.rmtree(self.home / ".local")
         result = self.tidy()
         self.assertNotIn("record-removed", result.stdout)
+        self.assertIn(f"{NONCE} end", result.stdout)
         self.assertTrue(self.extensions[0].exists())
 
 

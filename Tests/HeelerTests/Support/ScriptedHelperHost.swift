@@ -140,6 +140,11 @@ actor ScriptedHelperHost: HostHelperHost {
         files[path] = nil
     }
 
+    /// The folder and everything in it, as someone deleting it by hand.
+    func removeFolder(_ path: String) {
+        removeTree(path)
+    }
+
     /// A new connection, once the Host can be reached again.
     func restoreLink() {
         linkDown = false
