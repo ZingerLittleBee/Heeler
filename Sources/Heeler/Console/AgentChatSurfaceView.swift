@@ -295,8 +295,9 @@ struct AgentChatSurfaceView: View {
             // SwiftUI also hands out disappears nobody caused; the router
             // says whether Chat really left.
             stageExit?.cancel()
-            stageExit = ChatStageExit.watch(isOnStage: isOnStage) { [chat, viewerID] in
+            stageExit = ChatStageExit.watch(isOnStage: isOnStage) { [chat, viewerID, composer] in
                 chat?.hide(viewerID)
+                composer.voice.composerDidLeaveScreen()
             }
         }
         .onChange(of: timelineFeed, initial: true) { _, feed in
@@ -315,9 +316,10 @@ struct AgentChatSurfaceView: View {
             if messages.contains(where: { !earlier.contains($0.id) }) { followRequest += 1 }
         }
         .onChange(of: chat.map { $0.blocked.content != .none } ?? false) { _, isReplaced in
-            // A Blocked card takes the Composer's place and the tools dock
-            // with it. iPad keeps `.tools` without focus, so nothing else
-            // would put the dock away.
+            // A Blocked card takes the Composer's place, Voice Input and the
+            // tools dock with it. iPad keeps `.tools` without focus, so
+            // nothing else would put the dock away.
+            if isReplaced { composer.voice.cancel() }
             guard isReplaced, composerKeyboardPresentation == .tools else { return }
             prepareComposerKeyboardPresentation(.hidden)
             composerKeyboardPresentation = .hidden

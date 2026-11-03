@@ -9,6 +9,11 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Speak to the Composer: tap the mic beside Send to record, tap again, and
+  the text lands at the caret for you to review and send. Voice Input uses
+  your own API key with OpenAI, DeepInfra, SiliconFlow, or any service that
+  takes OpenAI's audio/transcriptions request, set up in Settings › Voice
+  Input. Recordings go only to the service you agree to.
 - Turn Usage off in Settings to hide its tab and each Host's Usage section and
   stop reading usage from your Hosts. Usage widgets clear their figures and say
   so until you turn it back on. (#597)

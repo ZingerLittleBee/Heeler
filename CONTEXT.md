@@ -216,7 +216,8 @@ _Avoid_: favorite, star, bookmark
 
 **Composer**:
 The local input control below the Agent's live terminal: a native draft field
-that composes a message entirely on device and delivers it in one piece. Its
+that composes a message on device and delivers it in one piece. Only Voice
+Input sends anything elsewhere before delivery, and only a recording. Its
 tools keyboard sends explicit keys, including characters on its Terminal page,
 directly to the Agent without editing the draft, while its Snippet and Skill
 tools insert into that draft. A draft insertion edits the draft and nothing
@@ -430,6 +431,16 @@ any Host or Agent. Tapping one inserts its text into the Composer draft and
 nothing more; the user still delivers it. A Snippet may carry a Title: a short
 name the user gives it, shown above its text wherever Snippets are listed.
 _Avoid_: macro, template, shortcut, quick reply, tip
+
+**Voice Input**:
+The Composer's mic. A tap records, a second tap stops, and the recording goes
+to the speech service the user chose with their own API key: a built-in
+service or a Custom URL that speaks OpenAI's `audio/transcriptions` request.
+The text lands once, at the caret of the draft the recording started in, and
+nothing is sent; Send waits while a recording is on its way. It is not the
+system keyboard's dictation, which stays available in the standard keyboard,
+and its text is not a Transcript.
+_Avoid_: dictation, transcription (for the feature), speech mode
 
 **Agent Notification**:
 A notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done): an APNs push while backgrounded or killed, an in-app banner off the live event stream while foregrounded. Deep-links to the Agent's detail surface.

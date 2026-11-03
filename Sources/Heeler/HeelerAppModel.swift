@@ -38,6 +38,9 @@ final class HeelerAppModel {
     let inputMode: AgentInputModeSettings
     let detailSurface: AgentDetailSurfaceSettings
     let relaySettings: NotificationRelaySettings
+    /// The one microphone owner, since the audio session is per process,
+    /// and its settings (ADR 0036).
+    let voiceInput: VoiceInputSession
     let bannerStore: AgentNotificationBannerStore
     let liveActivities: HostLiveActivityCoordinator
     /// What a confirmed Host removal cleans up beyond the catalog (#414).
@@ -79,6 +82,7 @@ final class HeelerAppModel {
         detailSurface = AgentDetailSurfaceSettings()
         let relaySettings = NotificationRelaySettings()
         self.relaySettings = relaySettings
+        voiceInput = VoiceInputSession(settings: VoiceInputSettings())
         // Preference reads/writes borrow the Console's live per-Host SSH
         // connections (#75); the token comes from push bootstrap (#71), and
         // the custom relay URL (#76) rides along into each Host's notify.json.
@@ -208,6 +212,8 @@ final class HeelerAppModel {
             Task { await pushRegistration.refresh() }
         case .background:
             activity.didEnterBackground()
+            // Heeler has no audio background mode; what was heard is sent.
+            voiceInput.stopRecording()
             Task { await scheduleUsageRefresh() }
         default:
             break

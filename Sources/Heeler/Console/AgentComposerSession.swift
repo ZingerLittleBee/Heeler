@@ -41,9 +41,11 @@ final class AgentComposerSession {
 
     /// Cancels the upload and the drops still queued, then lets drops start
     /// again once the staging has settled. Leaves run in order, and only the
-    /// latest lets drops start, so one still ahead of it cannot.
+    /// latest lets drops start, so one still ahead of it cannot. Voice Input
+    /// is dropped too: its text would land in a draft nobody is looking at.
     @discardableResult
     func leaveStaging() -> Task<Void, Never> {
+        composer.voice.cancel()
         composer.abandonDroppedImagesForTeardown()
         leaveGeneration &+= 1
         let generation = leaveGeneration

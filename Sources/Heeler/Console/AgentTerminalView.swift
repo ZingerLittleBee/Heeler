@@ -793,6 +793,7 @@ struct AgentTerminalView: View {
             Task { @MainActor in
                 await Task.yield()
                 guard !isOnStage() else { return }
+                composer.voice.composerDidLeaveScreen()
                 directKeyboardIntent.setWantsKeyboard(false)
                 keyboardControl.dismissKeyboard()
                 usesDirectToolsKeyboard = false
@@ -800,6 +801,11 @@ struct AgentTerminalView: View {
                 keyboardHandoff.cancel(for: agent.id)
                 cancelKeyboardHandoffs()
             }
+        }
+        .onChange(of: inputMode.isDirect) { _, isDirect in
+            // Direct Input writes straight to the PTY; there is no draft
+            // for Voice Input's text to wait in.
+            if isDirect { composer.voice.cancel() }
         }
         .onChange(of: agent.agent.status) { _, status in
             // A new turn may have pushed the conversation past the screen;

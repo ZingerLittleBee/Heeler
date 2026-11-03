@@ -1,0 +1,213 @@
+import SwiftUI
+
+/// Settings › Voice Input, and the sheet the Composer's mic opens before
+/// setup. Nothing changes until Save, which asks once per destination
+/// before recordings may go to it (ADR 0036).
+struct VoiceInputSettingsView: View {
+    let settings: VoiceInputSettings
+    /// The mic's sheet has Cancel; pushed from Settings, Back does it.
+    var isSheet = false
+    @State private var service: VoiceInputService?
+    @State private var custom: VoiceInputCustomService
+    @State private var apiKey = ""
+    @State private var consentRequest: VoiceInputEndpoint?
+    @State private var saveError: String?
+    @Environment(\.dismiss) private var dismiss
+
+    init(settings: VoiceInputSettings, isSheet: Bool = false) {
+        self.settings = settings
+        self.isSheet = isSheet
+        _service = State(initialValue: settings.service)
+        _custom = State(initialValue: settings.custom)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Service", selection: $service) {
+                    Text("Off").tag(VoiceInputService?.none)
+                    ForEach(VoiceInputService.allCases) { @Sendable service in
+                        Text(service.displayName).tag(VoiceInputService?.some(service))
+                    }
+                }
+            } footer: {
+                Text(serviceFooter)
+            }
+            switch service {
+            case .preset(let preset):
+                Section {
+                    LabeledContent("Model", value: preset.model)
+                }
+                keySection
+            case .custom:
+                customSection
+                keySection
+            case nil:
+                EmptyView()
+            }
+        }
+        .navigationTitle("Voice Input")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if isSheet {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save", action: requestSave)
+                    .disabled(!canSave)
+            }
+        }
+        .alert(
+            consentRequest.map(Self.consentTitle) ?? "",
+            isPresented: Binding(
+                get: { consentRequest != nil },
+                set: { if !$0 { consentRequest = nil } }),
+            presenting: consentRequest
+        ) { _ in
+            Button("Send Recordings") { save(consented: true) }
+            Button("Cancel", role: .cancel) {}
+        } message: { endpoint in
+            Text(Self.consentMessage(endpoint))
+        }
+        .alert(
+            "Could not save Voice Input",
+            isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveError ?? "")
+        }
+    }
+
+    private var customSection: some View {
+        Section {
+            VoiceInputFormField(
+                title: "Base URL", prompt: "https://api.example.com/v1", text: $custom.baseURL,
+                keyboard: .URL)
+            VoiceInputFormField(title: "Model", prompt: "Required", text: $custom.model)
+            Toggle("Send Language", isOn: $custom.sendsLanguage)
+        } footer: {
+            Text(
+                "For services that take OpenAI's audio/transcriptions request. Send Language adds "
+                    + "your first preferred language; leave it off if the service rejects it.")
+        }
+    }
+
+    private var keySection: some View {
+        Section {
+            SecureField(hasStoredKey ? "Saved; enter a new key to replace it" : "Required", text: $apiKey)
+                .font(.body.monospaced())
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .accessibilityLabel("API Key")
+            if let endpoint = draftEndpoint, hasStoredKey {
+                Button("Remove Key", role: .destructive) {
+                    settings.removeKey(for: endpoint)
+                    if settings.service == service, !settings.hasKey(for: endpoint) {
+                        settings.turnOff()
+                    }
+                }
+            }
+        } header: {
+            Text("API Key")
+        } footer: {
+            Text("Kept in this device's Keychain and sent only with recordings to \(draftHost).")
+        }
+    }
+
+    private var serviceFooter: String {
+        switch service {
+        case .preset(let preset):
+            "Recordings go to \(preset.operatorName) under its terms, billed to your key. "
+                + "Heeler's developer receives none of them."
+        case .custom:
+            "Recordings go to the URL you enter, under the terms of whoever runs it."
+        case nil:
+            "Voice Input turns speech into Composer text through a speech service you choose, "
+                + "with your own API key."
+        }
+    }
+
+    private var draftEndpoint: VoiceInputEndpoint? {
+        service.flatMap { settings.endpoint(for: $0, custom: custom) }
+    }
+
+    private var draftHost: String {
+        draftEndpoint?.host ?? "the service"
+    }
+
+    private var hasStoredKey: Bool {
+        draftEndpoint.map(settings.hasKey(for:)) ?? false
+    }
+
+    private var canSave: Bool {
+        guard let service else { return settings.service != nil }
+        if case .success = settings.validate(service: service, custom: custom, apiKey: apiKey) {
+            return true
+        }
+        return false
+    }
+
+    private func requestSave() {
+        guard let service else {
+            settings.turnOff()
+            dismiss()
+            return
+        }
+        switch settings.validate(service: service, custom: custom, apiKey: apiKey) {
+        case .failure(let error):
+            saveError = error.message
+        case .success(let endpoint):
+            if settings.hasConsent(for: endpoint) {
+                save(consented: false)
+            } else {
+                consentRequest = endpoint
+            }
+        }
+    }
+
+    private func save(consented: Bool) {
+        guard let service else { return }
+        do {
+            try settings.save(service: service, custom: custom, apiKey: apiKey, consented: consented)
+            apiKey = ""
+            dismiss()
+        } catch {
+            saveError = error.message
+        }
+    }
+
+    static func consentTitle(_ endpoint: VoiceInputEndpoint) -> String {
+        "Send Recordings to \(endpoint.operatorName ?? endpoint.host)?"
+    }
+
+    static func consentMessage(_ endpoint: VoiceInputEndpoint) -> String {
+        let terms = endpoint.operatorName.map { "\($0)'s terms" } ?? "the terms of whoever runs it"
+        return "Each Voice Input recording is uploaded to \(endpoint.host) and turned into text "
+            + "under \(terms). Heeler keeps no copy once the text arrives."
+    }
+}
+
+private struct VoiceInputFormField: View {
+    let title: String
+    let prompt: String
+    @Binding var text: String
+    var keyboard: UIKeyboardType = .default
+
+    var body: some View {
+        LabeledContent {
+            TextField(title, text: $text, prompt: Text(prompt))
+                .multilineTextAlignment(.trailing)
+                .keyboardType(keyboard)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .accessibilityLabel(title)
+        } label: {
+            Text(title)
+        }
+    }
+}
