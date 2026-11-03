@@ -62,10 +62,12 @@ Entries reference the pull request that made the change.
 - Keep the answers on Claude Code's and Codex's folder trust cards in view
   below the folder, as a row of capsules with leaving on the left and
   trusting on the right, instead of below the card's fold on a phone.
+  (#619)
 - Show Chat's Show Agent Terminal and Check Again side by side as glass
-  capsules while it waits for a conversation.
+  capsules while it waits for a conversation. (#619)
 - Spin Check Again while Chat looks for the conversation, for at least a
   moment, then ease into what it found instead of switching at once.
+  (#619)
 - Give an Agent's title on a By Workspace card one size and color, whether
   the Agent shares its checkout or stands alone under the checkout's title,
   and set a repository's checkout titles apart from it in a quieter color.
@@ -95,7 +97,7 @@ Entries reference the pull request that made the change.
 - Show Codex's Folder access prompt in Chat as a card with Trust and continue
   and Quit. On a phone, where herdr reports Codex idle on that prompt, Chat
   used to wait for a conversation instead, and on a wider screen the generic
-  card's `1` did nothing.
+  card's `1` did nothing. (#619)
 - By Workspace keeps each repository's card while Heeler connects: saved
   Chats from a main checkout and its worktrees open under the same card the
   running Agents had, instead of as separate cards that regroup once the Host
