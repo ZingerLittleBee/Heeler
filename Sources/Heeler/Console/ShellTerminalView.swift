@@ -203,6 +203,35 @@ struct ShellTerminalView: View {
         isEnabled && keyboardMode == .text
     }
 
+    private var showsShortcutRow: Bool {
+        Self.showsShortcutRow(isEnabled: isShortcutRowEnabled, keyboardMode: keyboardMode)
+    }
+
+    /// The shortcut row's place directly above the input row. It is fixed to
+    /// the input row, which never moves, so only the row itself animates: it
+    /// slides out from behind the input row's top edge, clipped there, and
+    /// slides back behind it. Reduce Motion fades it instead.
+    private var shortcutRowSlot: some View {
+        ZStack {
+            if showsShortcutRow {
+                InputShortcutStripRow(
+                    strip: InputShortcutStripPresentation(surface: .shellTerminal),
+                    keyAccessibilityHint: "Sends this key to the terminal",
+                    sendKey: keyboardControl.sendTerminalKey
+                ) { _ in EmptyView() }
+                .transition(
+                    reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        // Full width even while empty, or the clip would cut the outgoing
+        // row off before it slides away.
+        .frame(maxWidth: .infinity)
+        .frame(height: InputChromeLayout.shortcutRowHeight)
+        .clipped()
+        .alignmentGuide(.top) { $0[.bottom] }
+        .animation(.snappy(duration: 0.24), value: showsShortcutRow)
+    }
+
     private var inputRow: ShellTerminalInputRow {
         ShellTerminalInputRow(
             mode: Binding(
@@ -253,18 +282,15 @@ struct ShellTerminalView: View {
             // Always present, keyboard up or down: with no title bar, its
             // More menu is the only visible way back or to Close Terminal.
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                VStack(spacing: 0) {
-                    if Self.showsShortcutRow(
-                        isEnabled: isShortcutRowEnabled, keyboardMode: keyboardMode)
-                    {
-                        InputShortcutStripRow(
-                            strip: InputShortcutStripPresentation(surface: .shellTerminal),
-                            keyAccessibilityHint: "Sends this key to the terminal",
-                            sendKey: keyboardControl.sendTerminalKey
-                        ) { _ in EmptyView() }
-                    }
-                    inputRow
-                }
+                inputRow
+                    .overlay(alignment: .top) { shortcutRowSlot }
+                    // Reserved outside the slot's animation, so the terminal
+                    // resizes in one step, as it does for the keyboard.
+                    .padding(
+                        .top, showsShortcutRow ? InputChromeLayout.shortcutRowHeight : 0)
+                    // The room is the row's at once, before the row has slid
+                    // into it; the terminal's own background fills the gap.
+                    .background(themePalette.background)
             }
             .padding(.bottom, keyboardLayout.contentInset)
             // This dock is always present at the system keyboard's last
