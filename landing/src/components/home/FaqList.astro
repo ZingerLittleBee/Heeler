@@ -1,0 +1,148 @@
+---
+// The first answer starts open.
+import { faq } from './content';
+---
+
+<div class="faq" data-faq>
+  {
+    faq.map((item, index) => (
+      <details class="item" open={index === 0}>
+        <summary class="q">
+          <span>{item.q}</span>
+          <span class="mark" aria-hidden="true" />
+        </summary>
+        <p class="a" set:html={item.a} />
+      </details>
+    ))
+  }
+</div>
+
+<style>
+  .faq {
+    border-top: 1px solid var(--border-hairline);
+  }
+
+  .item {
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .q {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-4);
+    min-height: 44px;
+    padding: var(--sp-3) 0;
+    font: var(--type-h5);
+    color: var(--text-primary);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .q::-webkit-details-marker {
+    display: none;
+  }
+
+  .q:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 2px;
+  }
+
+  /* A plus that turns into a minus: two hairlines, one rotates away. */
+  .mark {
+    position: relative;
+    flex: none;
+    width: 12px;
+    height: 12px;
+  }
+
+  .mark::before,
+  .mark::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 5.5px;
+    width: 12px;
+    height: 1px;
+    background: var(--text-secondary);
+    transition: transform var(--dur-base, 200ms) var(--ease-standard);
+  }
+
+  .mark::after {
+    transform: rotate(90deg);
+  }
+
+  /* The mark turns as soon as an answer starts to close, not when it ends. */
+  .item[open]:not([data-closing]) .mark::after {
+    transform: rotate(0deg);
+  }
+
+  .a {
+    margin: 0 0 var(--sp-4);
+    max-width: 640px;
+    font: var(--type-body-sm);
+    color: var(--text-secondary);
+  }
+
+  /* While its height animates, an item clips the answer it is revealing. */
+  .item[data-moving] {
+    overflow: hidden;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mark::before,
+    .mark::after {
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  // Opening and closing slide the item's height while the answer fades in,
+  // instead of the native jump. A click mid-way reverses from where the item
+  // is. Reduced motion, and anything that opens an item without a click (find
+  // in page), keep the native behaviour.
+  const still = matchMedia('(prefers-reduced-motion: reduce)');
+  const ease = 'cubic-bezier(0.22, 0.8, 0.24, 1)';
+
+  document.querySelectorAll<HTMLDetailsElement>('[data-faq] details').forEach((item) => {
+    const summary = item.querySelector('summary');
+    const answer = item.querySelector<HTMLElement>('.a');
+    if (!summary || !answer) return;
+    let motion: Animation | null = null;
+    // Unrounded border-box heights; closed, the item is its question and hairline.
+    const height = () => item.getBoundingClientRect().height;
+    const closedHeight = () => summary.getBoundingClientRect().height + parseFloat(getComputedStyle(item).borderBottomWidth);
+
+    summary.addEventListener('click', (event) => {
+      if (still.matches) return;
+      event.preventDefault();
+      const closing = item.open && !item.hasAttribute('data-closing');
+      const from = height();
+      motion?.cancel();
+      item.toggleAttribute('data-closing', closing);
+      item.setAttribute('data-moving', '');
+      item.open = true;
+      const to = closing ? closedHeight() : height();
+      const duration = Math.min(420, 220 + Math.abs(to - from) * 0.6);
+      motion = item.animate({ height: [`${from}px`, `${to}px`] }, { duration, easing: ease });
+      if (!closing) {
+        answer.animate(
+          [
+            { opacity: 0, transform: 'translateY(-6px)' },
+            { opacity: 1, transform: 'none' },
+          ],
+          { duration: duration + 60, easing: ease },
+        );
+      }
+      const current = motion;
+      current.onfinish = () => {
+        if (current !== motion) return;
+        if (closing) item.open = false;
+        item.removeAttribute('data-closing');
+        item.removeAttribute('data-moving');
+        motion = null;
+      };
+    });
+  });
+</script>

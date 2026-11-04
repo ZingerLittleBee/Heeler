@@ -77,7 +77,7 @@ suite("sidebar snapshot files", () => {
     assert.equal(statSync(join(configDir, "sidebar.json")).mode & 0o777, 0o600);
   });
 
-  test("mtime gates reparsing and rewriting, including cached invalid input", () => {
+  test("mtime gates reparsing and rewriting, and unchanged invalid input keeps its snapshot", () => {
     writeFileSync(path, '[ui]\nagent_panel_sort = "priority"\n');
     utimesSync(path, 1000, 1000);
     const first = refresh();
@@ -93,7 +93,27 @@ suite("sidebar snapshot files", () => {
     assert.equal(invalid.agent_panel_sort, "spaces");
     assert.deepEqual(invalid.diagnostics, ["parse_error"]);
     assert.equal(invalid.source.mtime_ms, 2000000);
+    const invalidStat = statSync(snapshotPath);
     assert.deepEqual(refresh(1757040300000), invalid);
+    assert.equal(statSync(snapshotPath).ino, invalidStat.ino);
+  });
+
+  test("an older plugin's rejection is replaced without a config edit", () => {
+    writeFileSync(path, "[ui.sidebar.agents.rows_by_agent]\nletta = [[\"agent\"]]\n");
+    utimesSync(path, 1000, 1000);
+    const snapshotPath = join(configDir, "sidebar.json");
+    mkdirSync(configDir, { recursive: true });
+    // What plugin 0.6.0, which did not know letta, wrote for this config.
+    writeFileSync(snapshotPath, JSON.stringify({
+      v: 1, generated_at: 1757039000,
+      source: { path, found: true, mtime_ms: 1000000 },
+      ...defaultConfig, diagnostics: ["invalid_schema"],
+    }) + "\n");
+    const updated = refresh();
+    assert.deepEqual(updated.diagnostics, []);
+    assert.deepEqual(updated.sidebar.agents.rows_by_agent, { letta: [[{ token: "agent" }]] });
+    assert.equal(updated.generated_at, 1757040000);
+    assert.deepEqual(JSON.parse(readFileSync(snapshotPath, "utf8")), updated);
   });
 
   test("source creation, deletion and path changes invalidate the cache", () => {

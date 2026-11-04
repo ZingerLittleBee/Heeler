@@ -61,7 +61,7 @@ configure_diagnostic_lane() {
                 diagnostic_selector='AgentSurfaceReplacementTests/aPossibleSuspensionRebuildsTheTerminalAndPreservesAttachState()'
             fi
             diagnostic_iteration_variable=HEELER_STAGING_RECOVERY_ITERATIONS
-            diagnostic_expected_tests=9
+            diagnostic_expected_tests=10
             [[ "$ci_diagnostic_target" != staging-method ]] || diagnostic_expected_tests=1
             ci_diagnostic_iterations="${ci_diagnostic_iterations:-20}"
             ;;
@@ -171,6 +171,7 @@ lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
 fixture_dir="$(mktemp -d /tmp/heeler-ci.XXXXXX)"
 app_derived_data_path="$fixture_dir/AppDerivedData"
 package_derived_data_path="$fixture_dir/PackageDerivedData"
+owned_app_build_directory=""
 # Stable SourcePackages tree for the app lane. Hosted CI restores this via
 # actions/cache so libghostty's XCFramework is not re-fetched every run.
 # Package-lane builds have no remote SwiftPM deps and leave this unused.
@@ -205,6 +206,21 @@ background_build_label=""
 preparation_started_at=$SECONDS
 phase_log="$fixture_dir/phases.tsv"
 
+prepare_app_build_directory() {
+    [[ "$ci_lane" == app && -n "${HEELER_CI_APP_DERIVED_DATA_PATH:-}" ]] || return 0
+    local directory=$HEELER_CI_APP_DERIVED_DATA_PATH
+    # Opt-in only: local concurrent runs retain their disposable paths. The
+    # exclusive mkdir refuses both stale products and another run's directory.
+    [[ "$directory" == /* ]] || { echo 'App DerivedData path must be absolute' >&2; return 2; }
+    mkdir -p "$(dirname "$directory")" || return 1
+    if ! mkdir "$directory"; then
+        echo "App DerivedData directory must be fresh: $directory" >&2
+        return 1
+    fi
+    owned_app_build_directory="$directory"
+    app_derived_data_path="$directory"
+}
+
 record_phase() {
     local name=$1
     local started=$2
@@ -214,12 +230,29 @@ record_phase() {
     printf '%s\t%s\t%s\n' "$name" "$elapsed" "$status" >> "${phase_log:-$fixture_dir/phases.tsv}"
 }
 
+# Opt-in build settings shared by the background and foreground
+# build-for-testing calls; test actions never receive them. Prints one
+# setting per line. Packages never use the app's compiler cache.
+opt_in_build_settings() {
+    if [[ "${HEELER_CI_DISABLE_COMPILATION_CACHE:-0}" == 1 ]]; then
+        echo COMPILATION_CACHE_ENABLE_CACHING=NO
+    elif [[ "$ci_lane" == app && -n "${HEELER_CI_COMPILATION_CACHE_DIR:-}" ]]; then
+        echo COMPILATION_CACHE_ENABLE_CACHING=YES
+        echo "COMPILATION_CACHE_CAS_PATH=$HEELER_CI_COMPILATION_CACHE_DIR"
+        echo COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS=YES
+    fi
+    if [[ "${HEELER_CI_DISABLE_DEBUG_SYMBOLS:-0}" == 1 ]]; then
+        echo GCC_GENERATE_DEBUGGING_SYMBOLS=NO
+    fi
+}
+
 start_background_build() {
     local label=$1
     local working_directory="$repo_root"
     local derived="$app_derived_data_path"
     local required=1
     local -a arguments=()
+    local setting
     [[ "$overlap_build" == 1 ]] || return 0
     [[ -z "$background_build_pid" ]] || return 1
     if [[ "$ci_lane" == package ]]; then
@@ -232,12 +265,9 @@ start_background_build() {
         [[ "$ci_app_shard" != ordinary ]] || required=0
         mkdir -p "$source_packages_dir"
     fi
-    if [[ "${HEELER_CI_DISABLE_COMPILATION_CACHE:-0}" == 1 ]]; then
-        arguments+=(COMPILATION_CACHE_ENABLE_CACHING=NO)
-    fi
-    if [[ "${HEELER_CI_DISABLE_DEBUG_SYMBOLS:-0}" == 1 ]]; then
-        arguments+=(GCC_GENERATE_DEBUGGING_SYMBOLS=NO)
-    fi
+    while IFS= read -r setting; do
+        arguments+=("$setting")
+    done < <(opt_in_build_settings)
     background_build_label="$label"
     background_build_log="$fixture_dir/background-build.log"
     background_build_timing="$fixture_dir/background-build-timing.json"
@@ -325,6 +355,7 @@ run_xcodebuild() {
     local needs_recovery=0
     local failed_udid="$simulator_udid"
     local working_directory="$repo_root"
+    local setting
     local index
     local -a arguments=()
     local -a runner=(xcodebuild)
@@ -354,12 +385,9 @@ run_xcodebuild() {
     arguments=("$@")
     if [[ "${1:-}" == build-for-testing ]]; then
         arguments+=(-showBuildTimingSummary COMPILER_INDEX_STORE_ENABLE=NO)
-        if [[ "${HEELER_CI_DISABLE_COMPILATION_CACHE:-0}" == 1 ]]; then
-            arguments+=(COMPILATION_CACHE_ENABLE_CACHING=NO)
-        fi
-        if [[ "${HEELER_CI_DISABLE_DEBUG_SYMBOLS:-0}" == 1 ]]; then
-            arguments+=(GCC_GENERATE_DEBUGGING_SYMBOLS=NO)
-        fi
+        while IFS= read -r setting; do
+            arguments+=("$setting")
+        done < <(opt_in_build_settings)
     fi
     # Keep this function in the calling shell. In particular, an outer tee
     # pipeline or package-directory subshell would discard a replacement UDID
@@ -435,6 +463,11 @@ run_xcodebuild() {
     if [[ "$status" != 0 && "$needs_recovery" == 1 ]]; then
         echo "Simulator destination recovery exhausted for UDID $failed_udid ($ci_simulator_name)." >&2
         xcrun simctl list devices available >&2 || true
+    fi
+    if [[ "${1:-}" == build-for-testing && -n "${evidence_dir:-}" ]]; then
+        mkdir -p "$evidence_dir/metrics"
+        grep -E 'hits / [0-9]+ cacheable tasks' "$output_log" \
+            > "$evidence_dir/metrics/compilation-cache.log" || true
     fi
     echo "::endgroup::"
     echo "==> $label: $((SECONDS - started_at))s (status $status)"
@@ -710,6 +743,9 @@ cleanup() {
     fi
     if [[ "$preserve_password_fixture" != "1" && -d "$fixture_dir" ]]; then
         rm -rf -- "$fixture_dir" || status=1
+    fi
+    if [[ -n "${owned_app_build_directory:-}" ]]; then
+        rm -rf -- "$owned_app_build_directory" || status=1
     fi
     # Released last: while these stand, a concurrent run treats our block and
     # our device as taken. Dropping them after the fixtures are already down,
@@ -1295,6 +1331,8 @@ claim_port_block() {
     exit 1
 }
 
+prepare_app_build_directory
+
 if [[ "$ci_lane" != app || "$ci_app_shard" != ordinary ]]; then
 claim_port_block
 printf 'Claimed fixture port block %s-%s\n' \
@@ -1498,10 +1536,14 @@ printf '%s\n' \
     'Fixture body.' \
     > "$fixture_home/.codex/skills/fixture/SKILL.md"
 # The dollar expressions below belong to the generated fixture script.
+# Like herdr 0.9.4's direct attach, the fake attach writes the startup probe
+# before anything it paints; Heeler drops it, so the output still starts with
+# TTY-OK (#451). Octal \044 spells the probe's dollar sign.
 # shellcheck disable=SC2016
 printf '%s\n' \
     '#!/bin/sh' \
     'stty -echo' \
+    'printf "\\033[?1016\\044p\\033[c"' \
     'printf "TTY-OK\\n"' \
     'printf "ARGS:%s\\n" "$*"' \
     'printf "SOCKET:%s\\n" "$HERDR_SOCKET_PATH"' \
@@ -1509,7 +1551,7 @@ printf '%s\n' \
     'while IFS= read -r line; do' \
     '    case "$line" in' \
     '        __exit__) exit 0 ;;' \
-    '        __fail__) exit 23 ;;' \
+    '        __fail__) printf "herdr: fixture attach failed\\n"; exit 23 ;;' \
     '        __end_race__)' \
     '            printf "END-RACE-READY\\n"' \
     '            sleep 1' \
@@ -1523,6 +1565,20 @@ printf '%s\n' \
     'done' \
     > "$fixture_home/.heeler-ci/fake-attach"
 chmod 755 "$fixture_home/.heeler-ci/fake-attach"
+
+# Usage executes the real plugin against scratch Transcripts, never the user's
+# installed programs or their data roots. The test copies this source snapshot
+# into its own disposable directory before asking the app's Transport to read it.
+if [[ "$ci_lane" == app ]]; then
+    usage_node_path="$(command -v node)" || {
+        echo "Node is required for the mandatory Usage worker suite" >&2
+        exit 1
+    }
+    mkdir -p "$fixture_home/.heeler-ci/usage-plugin"
+    cp -R "$repo_root/plugin/src" "$fixture_home/.heeler-ci/usage-plugin/src"
+    cp "$repo_root/plugin/package.json" "$fixture_home/.heeler-ci/usage-plugin/package.json"
+    ln -s "$usage_node_path" "$fixture_home/.heeler-ci/usage-node"
+fi
 
 # The cold-start wake runs `herdr remote-client-bridge` on the Host. The fixture
 # has no herdr server, and a real one must never be reached, so stand in for the
@@ -1603,6 +1659,9 @@ password_config="$fixture_dir/sshd-password.conf"
 # DEBUG1 logs each channel request as sshd handles it, timestamped by the
 # filter in start_unprivileged_sshd. The full logs go to the diagnostics
 # artifact; the console tail is only an excerpt.
+# Key-only fixtures run as the invoking user, not as a system login service.
+# PAM credential/session setup can stall after public-key authentication and
+# consume the first channel's deadline. Only the real-password fixture uses PAM.
 write_common_config() {
     local port=$1
     local host_key=$2
@@ -1618,7 +1677,7 @@ write_common_config() {
         "PubkeyAuthentication yes" \
         "PubkeyAcceptedAlgorithms ssh-ed25519,rsa-sha2-512" \
         "AuthorizedKeysFile $fixture_dir/authorized_keys" \
-        "UsePAM yes" \
+        "UsePAM no" \
         "PermitRootLogin no" \
         "AllowUsers $fixture_username" \
         "StrictModes no" \
@@ -1725,7 +1784,7 @@ write_pairing_config() {
         "KbdInteractiveAuthentication no" \
         "PubkeyAuthentication yes" \
         "AuthorizedKeysFile $pairing_authorized_keys" \
-        "UsePAM yes" \
+        "UsePAM no" \
         "PermitRootLogin no" \
         "AllowUsers $pairing_username" \
         "StrictModes no" \
@@ -2181,19 +2240,19 @@ run_app_fixture_suites() {
     fi
     case "$ci_app_shard" in
         session-weak)
-            run_suite WeakNetworkE2ETests 10 1 0 WeakNetworkE2ETests || return $?
+            run_suite WeakNetworkE2ETests 11 1 0 WeakNetworkE2ETests || return $?
             ;;
         all | transport)
             run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
                 HeelerSSHDirectStreamLocalE2ETests || return $?
             if [[ "$ci_app_shard" == all ]]; then
-                run_suite SharedFixtureE2ETests 116 7 0 \
+                run_suite SharedFixtureE2ETests 129 7 0 \
                     HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests \
                     HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests \
                     ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests || return $?
                 ln -s SharedFixtureE2ETests.log "$fixture_dir/WeakNetworkE2ETests.log"
             else
-                run_suite SharedFixtureE2ETests 106 6 0 \
+                run_suite SharedFixtureE2ETests 118 6 0 \
                     HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests \
                     HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests \
                     ImageStagingE2ETests PairingCeremonyE2ETests || return $?
@@ -2386,6 +2445,16 @@ assert_behavior "Events" HeelerSSHTransportBehaviorE2ETests \
 assert_behavior "absolute Unix endpoints without HOME probing" \
     HeelerSSHTransportBehaviorE2ETests \
     '"absolute Unix endpoints preserve shell characters for RPC and Events without probing HOME"'
+assert_behavior "Usage quoting and endpoint runtime" HeelerSSHTransportBehaviorE2ETests \
+    '"Usage quotes its runtime and plugin paths through an endpoint exec"'
+assert_behavior "Usage missing runtime" HeelerSSHTransportBehaviorE2ETests \
+    '"Usage reports a missing or obsolete recorded runtime without a PATH fallback"'
+assert_behavior "Usage response cap and framing" HeelerSSHTransportBehaviorE2ETests \
+    '"Usage rejects over-cap output and malformed responses on a real exec"'
+assert_behavior "Usage detached worker" HeelerSSHTransportBehaviorE2ETests \
+    '"Usage returns from SSH while its real worker keeps scanning"'
+assert_behavior "Usage deadline isolation" HeelerSSHTransportBehaviorE2ETests \
+    '"Usage times out without invalidating the Host connection"'
 assert_behavior "git stdin bytes and fixed command" HeelerSSHTransportBehaviorE2ETests \
     '"git stdin scripts preserve bytes and use only the fixed shell on direct and Jump paths"'
 assert_behavior "git deadline isolation" HeelerSSHTransportBehaviorE2ETests \
@@ -2450,11 +2519,16 @@ assert_behavior "herdr API rejection" HeelerSSHTransportBehaviorE2ETests \
     '"a herdr error envelope surfaces as a typed API rejection"'
 assert_behavior "session API rejection mapping" HeelerSSHTransportBehaviorE2ETests \
     '"the session maps a herdr rejection to apiRejected"'
-# herdr 0.7.5's `agent_pane_busy` window, which 0.8.0 no longer opens: nothing
-# live exercises this any more, so a named assertion is the only thing standing
-# between a refactor and silently dropping a documented server behaviour (#128).
+# herdr still answers `agent_pane_busy` while a startup command holds a fresh
+# pane's foreground, and 0.9.4 on macOS also refuses a launch line longer than
+# the terminal's canonical input limit until the shell's line editor starts.
+# Only the fixture scripts these refusals, so a named assertion for each is the
+# only thing standing between a refactor and silently dropping a documented
+# server behaviour (#128, #453).
 assert_behavior "agent_pane_busy retry" HeelerSSHTransportBehaviorE2ETests \
     '"agent start waits out a fresh pane'"'"'s booting shell"'
+assert_behavior "canonical-mode launch retry" HeelerSSHTransportBehaviorE2ETests \
+    '"agent start waits out a shell that cannot yet take a long launch line"'
 # Each compensation cleans up different Host state; a count alone cannot tell
 # which of them a change removed. New Workspace (#230) also names the
 # create-then-start shape and the ambiguous-failure preserve rule, because
@@ -2573,7 +2647,7 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 71 tests in 5 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 85 tests in 5 suites passed' "$package_e2e_log" \
     || ! grep -q \
         'Test "one-shot exec resumes owned reads before other exchange operations" with 2 test cases passed' \
         "$package_e2e_log" \
@@ -2582,6 +2656,12 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
         "$package_e2e_log" \
     || ! grep -q \
         'Test "exec streams discard stderr without blocking stdout" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "one-shot exec finishes when its stderr read takes the stdout reply off the socket" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "exec stream finishes when its stdout read takes the trailing stderr off the socket" passed' \
         "$package_e2e_log" \
     || ! grep -q \
         'Test "exec stream read timeout and cancellation preserve channel reuse" passed' \
@@ -2597,6 +2677,9 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
         "$package_e2e_log" \
     || ! grep -q \
         'Test "a key exchange failure is redialled once and then reported" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "an externally dialled stream carries a full session and is released on close" passed' \
         "$package_e2e_log" \
     || ! grep -q \
         'Test "handshake negotiates post-quantum key exchange" passed' \
@@ -2688,7 +2771,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all 71 tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all 85 tests" >&2
     exit 1
 fi
 exit 0

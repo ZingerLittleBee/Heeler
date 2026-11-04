@@ -837,6 +837,87 @@ struct ShellTerminalStoreTests {
             closeRemoteTerminal: closeRemoteTerminal)
     }
 
+    @Test func aReattachWaitingForItsTransportKeepsItsTerminalWhenTheHostRedials() async throws {
+        let (transport, generation, store) = try await liveStoreWithGenerationSource()
+        let surface = store.terminalID
+        let waiting = ScriptedTransportCallGate()
+        await generation.gateNextAcquisition(using: waiting)
+
+        await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
+        try #require(await eventually { store.terminalStatus == .reconnecting })
+        store.transportGenerationDidChange(2)
+        await generation.set(2)
+        await waiting.open()
+
+        try #require(await eventually { await transport.hasLiveAttachSession })
+        #expect(await transport.emitAttachOutput(Data("recovered".utf8)))
+        try #require(await eventually { store.terminalStatus == .live })
+        #expect(store.terminalID == surface)
+        #expect(await transport.attachRequests.count == 2)
+    }
+
+    @Test func aReattachHoldingAnOlderTransportIsReplacedWhenTheHostRedials() async throws {
+        let (transport, _, store) = try await liveStoreWithGenerationSource()
+        let surface = store.terminalID
+        let opening = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: opening)
+
+        await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
+        await opening.waitForEntry()
+        #expect(store.terminalStatus == .reconnecting)
+        store.transportGenerationDidChange(2)
+        await opening.open()
+
+        try #require(await eventually { store.terminalID != surface })
+    }
+
+    @Test func inputDuringAReattachWaitsForTheNewOutput() async throws {
+        let (transport, _, store) = try await liveStoreWithGenerationSource()
+        let opening = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: opening)
+
+        await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
+        await opening.waitForEntry()
+        store.viewDidResize(cols: 100, rows: 30)
+        await opening.open()
+        // The catch-up resize follows the point a writer used to be installed.
+        try #require(await eventually {
+            await transport.attachInputs.contains(.resize(cols: 100, rows: 30))
+        })
+        #expect(store.terminalStatus == .reconnecting)
+        // The channel is open, but the screen still shows the lost session.
+        store.send(Data("y".utf8))
+        store.requestPaste("y", bracketedPaste: false)
+
+        #expect(await transport.emitAttachOutput(Data("recovered".utf8)))
+        try #require(await eventually { store.terminalStatus == .live })
+        store.send(Data("n".utf8))
+        func keystrokes() async -> [Data] {
+            await transport.attachInputs.compactMap {
+                if case .keystrokes(let bytes) = $0 { bytes } else { nil }
+            }
+        }
+        try #require(await eventually { await !keystrokes().isEmpty })
+        #expect(await keystrokes() == [Data("n".utf8)])
+    }
+
+    private func liveStoreWithGenerationSource() async throws -> (
+        ScriptedTransport, ShellTerminalGenerationSource, ShellTerminalStore
+    ) {
+        let transport = ScriptedTransport()
+        let generation = ShellTerminalGenerationSource(1)
+        let store = makeShellStore { request, handler in
+            await handler.transportDidBecomeReady(await generation.acquire())
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+        store.viewDidResize(cols: 80, rows: 24)
+        try #require(await eventually { await transport.hasLiveAttachSession })
+        #expect(await transport.emitAttachOutput(Data("shell".utf8)))
+        try #require(await eventually { store.terminalStatus == .live })
+        return (transport, generation, store)
+    }
+
     private func terminalRunner(_ transport: ScriptedTransport) -> TerminalSessionRunner {
         { request, handler in
             let session = try await transport.attachTerminal(request)
@@ -892,10 +973,11 @@ struct ShellTerminalStoreTests {
         timeout: Duration = .seconds(2),
         _ condition: () async -> Bool
     ) async -> Bool {
-        let deadline = ContinuousClock.now + timeout
-        while ContinuousClock.now < deadline {
+        var budget = PollBudget(timeout)
+        while budget.hasTimeLeft {
             if await condition() { return true }
             try? await Task.sleep(for: .milliseconds(5))
+            budget.charge()
         }
         return await condition()
     }

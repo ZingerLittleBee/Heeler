@@ -1,0 +1,108 @@
+{
+ "session": {
+  "id": "ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9",
+  "project_id": "157e838f6e3ccb56d9b3d6416c0be3039c60111d",
+  "workspace_id": null,
+  "parent_id": null,
+  "fork_session_id": null,
+  "fork_boundary": null,
+  "slug": "clever-canyon",
+  "directory": "/Users/developer/work/heeler-tmp-chat/opencode-a/project",
+  "path": "",
+  "title": "Pong",
+  "version": "2.0.32",
+  "share_url": null,
+  "summary_additions": null,
+  "summary_deletions": null,
+  "summary_files": null,
+  "summary_diffs": null,
+  "metadata": null,
+  "cost": 0.0,
+  "tokens_input": 9988,
+  "tokens_output": 11,
+  "tokens_reasoning": 0,
+  "tokens_cache_read": 0,
+  "tokens_cache_write": 0,
+  "revert": null,
+  "permission": null,
+  "agent": "build",
+  "model": "{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"}",
+  "time_created": 1800000000000,
+  "time_updated": 1800000441174,
+  "time_compacting": null,
+  "time_archived": null,
+  "time_suspended": null,
+  "resume_attempts": 0,
+  "time_idle": 1800000441176,
+  "time_viewed": null,
+  "idle_outcome": "succeeded"
+ },
+ "event_seq": 124,
+ "rows": [
+  {
+   "id": "msg_0a1b2c3d4e10dIwb1ldChkFTIa",
+   "type": "user",
+   "seq": 91,
+   "time_created": 1800000407343,
+   "time_updated": 1800000407343,
+   "data": "{\"time\":{\"created\":1800000407343},\"text\":\"Create notes.txt with three lines: alpha, beta, gamma.\",\"files\":[],\"agents\":[]}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e20D0QzsGpCLG64tI",
+   "type": "assistant",
+   "seq": 92,
+   "time_created": 1800000407352,
+   "time_updated": 1800000414764,
+   "data": "{\"time\":{\"created\":1800000407352,\"streamed\":1800000414703,\"completed\":1800000414764},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"text\",\"text\":\"I'll create `notes.txt` and write the three lines in order.\",\"state\":{\"phase\":\"commentary\"}},{\"type\":\"tool\",\"id\":\"call_fgG6eTt8p2Mf76XmjY0R0Fv2\",\"name\":\"patch\",\"executed\":false,\"state\":{\"status\":\"completed\",\"input\":{\"patchText\":\"*** Begin Patch\\n*** Add File: /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n+alpha\\n+beta\\n+gamma\\n*** End Patch\"},\"content\":[{\"type\":\"text\",\"text\":\"Success. Updated the following files:\\nA notes.txt\"}],\"metadata\":{\"files\":[{\"file\":\"notes.txt\",\"patch\":\"Index: /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n===================================================================\\n--- /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n+++ /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n@@ -0,0 +1,3 @@\\n+alpha\\n+beta\\n+gamma\\n\",\"status\":\"added\",\"additions\":3,\"deletions\":0}],\"truncated\":false}},\"time\":{\"created\":1800000414067,\"ran\":1800000414602,\"completed\":1800000414606}}],\"finish\":\"tool-calls\",\"cost\":0,\"tokens\":{\"input\":211,\"output\":88,\"reasoning\":0,\"cache\":{\"read\":9856,\"write\":0}}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e30OdIgIS9rInkOuk",
+   "type": "assistant",
+   "seq": 101,
+   "time_created": 1800000414777,
+   "time_updated": 1800000417351,
+   "data": "{\"time\":{\"created\":1800000414777,\"streamed\":1800000417340,\"completed\":1800000417350},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"text\",\"text\":\"Created `notes.txt` with:\\n```text\\nalpha\\nbeta\\ngamma\\n```\",\"state\":{\"phase\":\"final_answer\"}}],\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":191,\"output\":24,\"reasoning\":0,\"cache\":{\"read\":9984,\"write\":0}}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e40vVqsD5sRt8ZVyt",
+   "type": "idle",
+   "seq": 106,
+   "time_created": 1800000417352,
+   "time_updated": 1800000417352,
+   "data": "{\"time\":{\"created\":1800000417352},\"outcome\":\"succeeded\"}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e50WTFyb8gnqxNe9Q",
+   "type": "user",
+   "seq": 109,
+   "time_created": 1800000432487,
+   "time_updated": 1800000432487,
+   "data": "{\"time\":{\"created\":1800000432487},\"text\":\"In notes.txt replace beta with BETA.\",\"files\":[],\"agents\":[]}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e606ticBV3Plo6AMd",
+   "type": "assistant",
+   "seq": 110,
+   "time_created": 1800000432494,
+   "time_updated": 1800000438257,
+   "data": "{\"time\":{\"created\":1800000432494,\"streamed\":1800000438213,\"completed\":1800000438256},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"text\",\"text\":\"I'll replace `beta` with `BETA` in `notes.txt`.\",\"state\":{\"phase\":\"commentary\"}},{\"type\":\"tool\",\"id\":\"call_cOmOXXoENxhYzn3koVJRWLAw\",\"name\":\"patch\",\"executed\":false,\"state\":{\"status\":\"completed\",\"input\":{\"patchText\":\"*** Begin Patch\\n*** Update File: /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n@@\\n-beta\\n+BETA\\n*** End Patch\"},\"content\":[{\"type\":\"text\",\"text\":\"Success. Updated the following files:\\nM notes.txt\"}],\"metadata\":{\"files\":[{\"file\":\"notes.txt\",\"patch\":\"Index: /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n===================================================================\\n--- /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n+++ /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n@@ -1,3 +1,3 @@\\n alpha\\n-beta\\n+BETA\\n gamma\\n\",\"status\":\"modified\",\"additions\":1,\"deletions\":1}],\"truncated\":false}},\"time\":{\"created\":1800000436991,\"ran\":1800000438083,\"completed\":1800000438086}}],\"finish\":\"tool-calls\",\"cost\":0,\"tokens\":{\"input\":230,\"output\":92,\"reasoning\":0,\"cache\":{\"read\":9984,\"write\":0}}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e70DSCRoO15LoDCUt",
+   "type": "assistant",
+   "seq": 119,
+   "time_created": 1800000438265,
+   "time_updated": 1800000441175,
+   "data": "{\"time\":{\"created\":1800000438265,\"streamed\":1800000441165,\"completed\":1800000441174},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"text\",\"text\":\"Replaced `beta` with `BETA` in `notes.txt`.\",\"state\":{\"phase\":\"final_answer\"}}],\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":214,\"output\":24,\"reasoning\":0,\"cache\":{\"read\":10112,\"write\":0}}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e80su7tTwkfFfgj4f",
+   "type": "idle",
+   "seq": 124,
+   "time_created": 1800000441176,
+   "time_updated": 1800000441176,
+   "data": "{\"time\":{\"created\":1800000441176},\"outcome\":\"succeeded\"}"
+  }
+ ],
+ "inbox": []
+}

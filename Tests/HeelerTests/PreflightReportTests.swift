@@ -65,10 +65,15 @@ struct PreflightReportTests {
         (.timedOut, .connection),
         // Not reachable from connect+ping; keep the closed taxonomy total.
         (.gitTimedOut, .connection),
+        (.hostFileTimedOut, .connection),
+        (.hostFileUnreadable(status: 3), .connection),
+        (.hostStoreUnreadable(detail: "OpenCode's database is busy."), .connection),
         (.cancelled, .connection),
         (.channelFailed(detail: "boom"), .connection),
+        (.attachExited(status: 1, output: "herdr: lost connection"), .connection),
         (.eventsChannelAlreadyOpen, .connection),
         (.herdrBinaryNotFound, .herdrInstalled),
+        (.herdrLauncherNotFound(path: "/opt/example/bin/herdr"), .herdrInstalled),
         (.hostFeatureUnavailable(feature: "Windows requires remote-api-bridge"), .remoteEnvironment),
         (.jumpHostFailed(.sshUnreachable(detail: "refused")), .connection),
         (.tcpForwardingUnavailable, .connection),
@@ -163,6 +168,79 @@ struct PreflightReportTests {
         }
         #expect(hint.contains("16"))
         #expect(hint.contains("17"))
+    }
+
+    @Test func missingHerdrLauncherFailsHerdrInstalledNamingTheLauncher() {
+        let report = PreflightReport.failure(
+            .herdrLauncherNotFound(path: "/Users/ada/Library/Application Support/Example/bin/herdr"),
+            authMethod: .deviceKey, usesHerdrEndpoint: true)
+        #expect(report[.remoteEnvironment] == .passed)
+        #expect(
+            report[.herdrInstalled]
+                == .failed(
+                    hint: "The herdr launcher at "
+                        + "/Users/ada/Library/Application Support/Example/bin/herdr could not run. "
+                        + "Check that this launcher exists, is executable, and can start herdr. "
+                        + "Pair the Host again if its path changed."))
+        #expect(report[.serverRunning] == .blocked)
+    }
+
+    /// Without an endpoint the socket and protocol hints stay byte for byte
+    /// what they were before ADR 0023.
+    @Test func hostsWithoutAnEndpointKeepTheirSocketAndProtocolHints() {
+        let path = "/home/dev/.config/herdr/herdr.sock"
+        let cases: [(TransportError, PreflightCheck, String)] = [
+            (
+                .socketNotFound(path: path), .herdrInstalled,
+                "No herdr socket at \(path). Install and start herdr on the Host, "
+                    + "or fix the session name."
+            ),
+            (
+                .streamLocalOpenFailed(path: path), .serverRunning,
+                "Could not open the herdr socket at \(path). Start herdr on the Host, "
+                    + "or enable SSH stream-local forwarding and run the checks again."
+            ),
+            (
+                .protocolVersionMismatch(server: 16, supported: 17), .protocolCompatible,
+                "The Host speaks herdr protocol 16; this app needs at least 17. "
+                    + "Update herdr on the Host."
+            ),
+        ]
+        for (error, check, hint) in cases {
+            let byDefault = PreflightReport.failure(error, authMethod: .deviceKey)
+            let explicit = PreflightReport.failure(
+                error, authMethod: .deviceKey, usesHerdrEndpoint: false)
+            #expect(byDefault[check] == .failed(hint: hint))
+            #expect(explicit[check] == .failed(hint: hint))
+        }
+    }
+
+    /// Endpoint recovery names the configured instance, not its provider.
+    @Test func endpointHostsPointSocketAndProtocolHintsAtTheConfiguredInstance() {
+        let path = "/Users/ada/Library/Application Support/Example/herdr/herdr.sock"
+        let cases: [(TransportError, PreflightCheck, String)] = [
+            (
+                .socketNotFound(path: path), .herdrInstalled,
+                "No herdr socket at \(path). Start the herdr instance configured for this Host "
+                    + "and verify its socket path, then run the checks again."
+            ),
+            (
+                .streamLocalOpenFailed(path: path), .serverRunning,
+                "Could not open the herdr socket at \(path). Start the herdr instance "
+                    + "configured for this Host, or enable SSH stream-local forwarding and run the "
+                    + "checks again."
+            ),
+            (
+                .protocolVersionMismatch(server: 16, supported: 17), .protocolCompatible,
+                "The Host speaks herdr protocol 16; this app needs at least 17. "
+                    + "Update the herdr instance configured for this Host."
+            ),
+        ]
+        for (error, check, hint) in cases {
+            let report = PreflightReport.failure(
+                error, authMethod: .deviceKey, usesHerdrEndpoint: true)
+            #expect(report[check] == .failed(hint: hint))
+        }
     }
 
     @Test func plainFailureAttachesTheGivenHintToTheGivenCheck() {

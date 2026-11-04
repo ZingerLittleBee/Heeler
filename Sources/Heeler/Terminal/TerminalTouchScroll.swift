@@ -152,16 +152,19 @@ struct TerminalModeTracker {
         retainIncompletePrefix()
     }
 
+    /// A wheel report lands on `cell` when the scroll has a pointer to aim
+    /// it, otherwise on the grid's centre.
     func remoteScrollSequence(
         towardOlderContent: Bool,
         columns: Int,
-        rows: Int
+        rows: Int,
+        at cell: (column: Int, row: Int)? = nil
     ) -> Data? {
         if tracksMouse {
             return mouseEncoding.report(
                 button: towardOlderContent ? .wheelUp : .wheelDown,
-                column: max(1, columns / 2),
-                row: max(1, rows / 2))
+                column: cell?.column ?? max(1, columns / 2),
+                row: cell?.row ?? max(1, rows / 2))
         }
 
         guard isAlternateScreen else { return nil }

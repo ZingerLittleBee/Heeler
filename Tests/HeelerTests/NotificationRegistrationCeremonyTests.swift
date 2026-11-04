@@ -99,6 +99,42 @@ struct NotificationRegistrationCeremonyTests {
         #expect(try keys.record(forHost: hostID) == nil)
     }
 
+    @Test func revokeDeletesOnlyOurEntryAndKeepsTheLocalKey() async throws {
+        let transport = ScriptedTransport()
+        await transport.setNotificationRegistration(
+            Data(#"{"v":1,"devices":[{"token":"ffff","key":"kk","env":"production"}]}"#.utf8))
+        let record = try await ceremony.register(
+            host: host, deviceToken: token, over: transport)
+
+        try await ceremony.revoke(host: host, over: transport)
+
+        let written = try #require(await transport.notificationRegistration)
+        let file = try NotificationRegistrationFile.decode(written)
+        #expect(!hasDevice(token.hex, in: file))
+        #expect(hasDevice("ffff", in: file))
+        #expect(try keys.record(forHost: hostID) == record)
+    }
+
+    /// The key alone marks this device's entries for the Host, so an entry
+    /// left under an older APNs token goes too (#414).
+    @Test func revokeDropsOurEntryUnderAnOlderDeviceToken() async throws {
+        let record = try await ceremony.register(
+            host: host, deviceToken: token, over: ScriptedTransport())
+        let transport = ScriptedTransport()
+        let key = record.key.base64URLEncodedString()
+        let stale = #"{"token":"0123","key":"\#(key)","env":"sandbox"}"#
+        let foreign = #"{"token":"ffff","key":"kk","env":"production"}"#
+        await transport.setNotificationRegistration(
+            Data(#"{"v":1,"devices":[\#(stale),\#(foreign)]}"#.utf8))
+
+        try await ceremony.revoke(host: host, over: transport)
+
+        let written = try #require(await transport.notificationRegistration)
+        let file = try NotificationRegistrationFile.decode(written)
+        #expect(!hasDevice("0123", in: file))
+        #expect(hasDevice("ffff", in: file))
+    }
+
     @Test func removeWithNoHostFileStillClearsTheLocalKeyWithoutWriting() async throws {
         let transport = ScriptedTransport()
         try keys.save(

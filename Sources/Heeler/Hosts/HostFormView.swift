@@ -7,6 +7,8 @@ struct HostFormView: View {
     let store: HostStore
     var editing: Host?
     var onSaved: ((Host) -> Void)?
+    /// Starts in User, for a prefill that already says where the Host is.
+    var focusesUsername = false
 
     @State private var draft: HostDraft
     @State private var authorizedKeysLine: String?
@@ -19,6 +21,11 @@ struct HostFormView: View {
     @State private var isConfirmingRSAKeyReplacement = false
     @State private var deviceKeyReplacementError: String?
     @State private var rsaKeyReplacementError: String?
+    /// The route page on screen: Add Route's, or a listed route's.
+    @State private var routePath: [HostRoutePage] = []
+    /// Reorder and delete controls for the Routes list, from its header.
+    @State private var isEditingRoutes = false
+    @FocusState private var isUsernameFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     private let credentials = HostCredentialsProvider()
@@ -32,103 +39,32 @@ struct HostFormView: View {
 
     /// Adds a new Host starting from `prefill`, as Duplicate does: saving
     /// never touches the Host the draft was copied from.
-    init(store: HostStore, prefill: HostDraft, onSaved: ((Host) -> Void)? = nil) {
+    init(
+        store: HostStore, prefill: HostDraft, focusesUsername: Bool = false,
+        onSaved: ((Host) -> Void)? = nil
+    ) {
         self.store = store
         self.editing = nil
         self.onSaved = onSaved
+        self.focusesUsername = focusesUsername
         _draft = State(initialValue: prefill)
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $routePath) {
             Form {
-                Section("Host") {
-                    TextField("Name (optional)", text: $draft.name)
-                    TextField("Address", text: $draft.address)
-                        .textContentType(.URL)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    TextField("Port", text: $draft.port)
-                        .keyboardType(.numberPad)
-                    TextField("User", text: $draft.username)
-                        .textContentType(.username)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                }
-
-                Section {
-                    Picker("Method", selection: $draft.authMethod) {
-                        Text("Device Key").tag(Host.AuthMethod.deviceKey)
-                        Text("RSA Key").tag(Host.AuthMethod.rsaKey)
-                        Text("Password").tag(Host.AuthMethod.password)
-                    }
-                    .onChange(of: draft.authMethod) {
-                        didCopyKeyLine = false
-                        if draft.authMethod == .rsaKey,
-                           rsaPublicKeyLine == nil,
-                           !rsaKeyIsCorrupt
-                        {
-                            loadRSAKey()
-                        }
-                    }
-                    switch draft.authMethod {
-                    case .deviceKey:
-                        deviceKeySection
-                    case .rsaKey:
-                        rsaKeySection
-                    case .password:
-                        SecureField(
-                            editing == nil ? "Password" : "Password (blank keeps current)",
-                            text: $draft.password)
-                    }
-                } header: {
-                    Text("Authentication")
-                } footer: {
-                    switch draft.authMethod {
-                    case .deviceKey:
-                        Text(
-                            "Add this line to ~/.ssh/authorized_keys on the Host. "
-                                + "The private key never leaves this device.")
-                    case .rsaKey:
-                        Text(
-                            "Register this public key wherever the Host accepts SSH identities. "
-                                + "The private key never leaves this device.")
-                    case .password:
-                        EmptyView()
-                    }
-                }
-
-                Section {
-                    TextField("Session name", text: $draft.sessionName)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                } header: {
-                    Text("herdr Session")
-                } footer: {
-                    Text("Leave blank for the default herdr session.")
-                }
-
-                Section {
-                    TextField("Jump Host address (optional)", text: $draft.jumpAddress)
-                        .textContentType(.URL)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    if draft.usesJumpHost {
-                        TextField("Jump Host port", text: $draft.jumpPort)
-                            .keyboardType(.numberPad)
-                        TextField("Jump Host user (blank = same as Host)", text: $draft.jumpUsername)
-                            .textContentType(.username)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                    }
-                } header: {
-                    Text("Jump Host")
-                } footer: {
-                    if draft.usesJumpHost {
-                        Text(jumpHostFooter)
-                    } else {
-                        Text("Leave blank to connect to the Host directly.")
-                    }
+                formSections
+            }
+            .environment(\.editMode, .constant(isEditingRoutes ? .active : .inactive))
+            .onChange(of: draft.routes.count) { _, count in
+                if count < 2 { isEditingRoutes = false }
+            }
+            .navigationDestination(for: HostRoutePage.self) { page in
+                switch page {
+                case .route(let routeID):
+                    HostRouteFormView(draft: $draft, routeID: routeID, otherHosts: otherHosts)
+                case .newRoute:
+                    NewHostRouteView(draft: $draft, otherHosts: otherHosts)
                 }
             }
             .navigationTitle(editing == nil ? "Add Host" : "Edit Host")
@@ -190,6 +126,7 @@ struct HostFormView: View {
                         + "until you register its new public key on that Host.")
             }
             .task {
+                if focusesUsername { isUsernameFocused = true }
                 loadDeviceKey()
                 if draft.authMethod == .rsaKey {
                     loadRSAKey()
@@ -198,19 +135,152 @@ struct HostFormView: View {
         }
     }
 
-    private var jumpHostFooter: String {
-        let credentialRequirement =
+    /// Split out of `body` so the type checker sees two smaller
+    /// expressions instead of one very long modifier chain.
+    @ViewBuilder
+    private var formSections: some View {
+        Section("Host") {
+            TextField("Name (optional)", text: $draft.name)
+            TextField("User", text: $draft.username)
+                .textContentType(.username)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .focused($isUsernameFocused)
+        }
+
+        routesSection
+
+        authenticationSection
+
+        herdrSection
+    }
+
+    /// The session name, or for a Pairing Code v2 Host its endpoint, which
+    /// replaces the session name and is not editable here.
+    @ViewBuilder
+    private var herdrSection: some View {
+        if let herdrEndpoint = draft.herdrEndpoint {
+            Section {
+                LabeledContent("Socket", value: herdrEndpoint.socketPath)
+                LabeledContent("Launcher", value: herdrEndpoint.executablePath)
+            } header: {
+                Text("herdr Endpoint")
+            } footer: {
+                Text("Set by this Host's Pairing Code.")
+            }
+        } else {
+            Section {
+                TextField("Session name", text: $draft.sessionName)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+            } header: {
+                Text("herdr Session")
+            } footer: {
+                Text("Leave blank for the default herdr session.")
+            }
+        }
+    }
+
+    /// Every route, one row each opening its own page, then Add Route.
+    private var routesSection: some View {
+        Section {
+            ForEach(draft.routes) { @Sendable [routeCount = draft.routes.count] route in
+                NavigationLink(value: HostRoutePage.route(route.id)) {
+                    HostRouteRow(route: route)
+                }
+                .deleteDisabled(routeCount < 2)
+            }
+            .onDelete { draft.removeRoutes(atOffsets: $0) }
+            .onMove { draft.moveRoutes(fromOffsets: $0, toOffset: $1) }
+            if !isEditingRoutes {
+                addRouteButton
+            }
+        } header: {
+            HStack {
+                Text("Routes")
+                Spacer()
+                if draft.routes.count > 1 {
+                    Button(isEditingRoutes ? "Done" : "Edit") {
+                        withAnimation { isEditingRoutes.toggle() }
+                    }
+                    .font(.subheadline)
+                    .textCase(nil)
+                    .accessibilityLabel(isEditingRoutes ? "Done Editing Routes" : "Edit Routes")
+                }
+            }
+        } footer: {
+            if draft.routes.isEmpty {
+                Text(
+                    "Add the address Heeler connects to: directly, over an overlay network, "
+                        + "or through a Jump Host.")
+            } else if draft.routes.count > 1 {
+                Text(
+                    "Heeler tries every route each time it connects and keeps the first that "
+                        + "reaches the Host. Routes over this device's own network start first; "
+                        + "the rest start a moment later.")
+            } else {
+                Text(
+                    "Add another way to reach this Host, such as its LAN address at home and "
+                        + "an overlay network or Jump Host elsewhere.")
+            }
+        }
+    }
+
+    private var addRouteButton: some View {
+        Button {
+            routePath.append(.newRoute)
+        } label: {
+            Label("Add Route", systemImage: "plus")
+        }
+    }
+
+    /// The Host being edited is not another Host for the peer picker to tag.
+    private var otherHosts: [Host] {
+        store.hosts.filter { $0.id != editing?.id }
+    }
+
+    private var authenticationSection: some View {
+        Section {
+            Picker("Method", selection: $draft.authMethod) {
+                Text("Device Key").tag(Host.AuthMethod.deviceKey)
+                Text("RSA Key").tag(Host.AuthMethod.rsaKey)
+                Text("Password").tag(Host.AuthMethod.password)
+            }
+            .onChange(of: draft.authMethod) {
+                didCopyKeyLine = false
+                if draft.authMethod == .rsaKey,
+                   rsaPublicKeyLine == nil,
+                   !rsaKeyIsCorrupt
+                {
+                    loadRSAKey()
+                }
+            }
             switch draft.authMethod {
             case .deviceKey:
-                "Both machines must authorize the Device Key."
+                deviceKeySection
             case .rsaKey:
-                "Both machines must authorize the RSA Key."
+                rsaKeySection
             case .password:
-                "Both machines must accept the same password; separate passwords are not supported."
+                SecureField(
+                    editing == nil ? "Password" : "Password (blank keeps current)",
+                    text: $draft.password)
             }
-        return "The Host's Address and Port are resolved from the Jump Host, usually through "
-            + "a loopback-only reverse tunnel. \(credentialRequirement) You confirm each "
-            + "machine's host key fingerprint independently on first connect."
+        } header: {
+            Text("Authentication")
+        } footer: {
+            switch draft.authMethod {
+            case .deviceKey:
+                Text(
+                    "Add this line to ~/.ssh/authorized_keys on the Host. "
+                        + "The private key never leaves this device.")
+            case .rsaKey:
+                Text(
+                    "Register this public key wherever the Host accepts SSH identities. "
+                        + "The private key never leaves this device.")
+            case .password:
+                EmptyView()
+            }
+        }
     }
 
     @ViewBuilder
@@ -225,9 +295,13 @@ struct HostFormView: View {
                 UIPasteboard.general.string = authorizedKeysLine
                 didCopyKeyLine = true
             } label: {
-                Label(
-                    didCopyKeyLine ? "Copied" : "Copy authorized_keys Line",
-                    systemImage: didCopyKeyLine ? "checkmark" : "doc.on.doc")
+                Label {
+                    Text(didCopyKeyLine ? "Copied" : "Copy authorized_keys Line")
+                } icon: {
+                    // The tall two-page glyph otherwise outgrows the text.
+                    Image(systemName: didCopyKeyLine ? "checkmark" : "doc.on.doc")
+                        .font(.footnote)
+                }
             }
         } else {
             Label(
@@ -256,9 +330,13 @@ struct HostFormView: View {
                 UIPasteboard.general.string = rsaPublicKeyLine
                 didCopyKeyLine = true
             } label: {
-                Label(
-                    didCopyKeyLine ? "Copied" : "Copy RSA Public Key",
-                    systemImage: didCopyKeyLine ? "checkmark" : "doc.on.doc")
+                Label {
+                    Text(didCopyKeyLine ? "Copied" : "Copy RSA Public Key")
+                } icon: {
+                    // The tall two-page glyph otherwise outgrows the text.
+                    Image(systemName: didCopyKeyLine ? "checkmark" : "doc.on.doc")
+                        .font(.footnote)
+                }
             }
         } else {
             Label(

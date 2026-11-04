@@ -17,16 +17,16 @@ import Testing
 /// otherwise never happen**. The keepalive is still armed across the freeze —
 /// this trip never suspends the session, so `stopKeepalive()` never runs — and
 /// `ContinuousClock` advances while a process is frozen, so its expired sleep
-/// returns promptly on thaw and the same `keepaliveDidFail` path notices the
-/// dead link within its interval plus the request timeout. Foregrounding makes
+/// returns promptly on thaw and the same connection-probe path notices the
+/// dead link within its interval plus the probe timeout. Foregrounding makes
 /// that immediate, at the moment a user is looking at whatever the answer
 /// means.
 ///
 /// That mechanism rests on **code inspection, not measurement**. A simulator
 /// never suspends the process, so nothing here — or anywhere in the suite —
 /// demonstrates that the keepalive really survives a real iOS suspension and
-/// fires on thaw. The "up to 45 s without this fix" figure is therefore read
-/// off the tree (30 s interval plus the request timeout), not observed on a
+/// fires on thaw. The "up to 60 s without foreground revalidation" figure is read
+/// off the tree (30 s interval plus the probe timeout), not observed on a
 /// device; anyone relying on the number should measure it before trusting it.
 ///
 /// These tests therefore run in the **production keepalive shape**
@@ -279,13 +279,9 @@ struct AppForegroundRecoveryTests {
         store.setHosts([])
     }
 
-    /// Every Host is re-proved at once. The ping `revalidate()` sends is
-    /// bounded only by the transport's request timeout, and a frozen Host is
-    /// exactly the case that runs it out; awaiting them one Host at a time
-    /// would hold the store's lifecycle chain — and with it any queued
-    /// `suspend()`, and the background assertion its completion releases —
-    /// for N times that bound.
-    @Test func everyHostIsReProvedConcurrently() async throws {
+    /// Each Host owns its pending probe. Neither one may hold the lifecycle
+    /// queue and delay suspension when the user leaves again.
+    @Test func everyHostIsReProvedConcurrentlyWithoutDelayingSuspension() async throws {
         let first = Host.fixture(name: "first")
         let second = Host.fixture(name: "second")
         let firstTransport = ScriptedTransport(snapshot: .fixture())
@@ -326,19 +322,22 @@ struct AppForegroundRecoveryTests {
             return firstReached && secondReached
         }
 
-        // Concurrent, but still *structured*: with both pings parked the
-        // activation has not returned, so a suspend() the user triggers by
-        // leaving again — and the didFinishSuspending() that releases the
-        // background assertion — queues behind the re-proving rather than
-        // racing it. Fire-and-forget would satisfy the check above and fail
-        // here.
-        #expect(!(await completion.isFinished))
+        try await waitUntil("activation should finish without awaiting health replies") {
+            await completion.isFinished
+        }
+        let suspension = Task { await store.suspend() }
+        try await waitUntil("both Hosts must suspend while their probes are still parked") {
+            store.hostStatuses[first.id] == .suspended
+                && store.hostStatuses[second.id] == .suspended
+        }
 
         await firstPing.open()
         await secondPing.open()
         await reactivation.value
-        #expect(store.hostStatuses[first.id] == .connected)
-        #expect(store.hostStatuses[second.id] == .connected)
+        await suspension.value
+        #expect(store.hostStatuses[first.id] == .suspended)
+        #expect(store.hostStatuses[second.id] == .suspended)
+        #expect(store.hostsCheckingConnection.isEmpty)
         store.setHosts([])
     }
 
@@ -543,7 +542,7 @@ struct AppForegroundRecoveryTests {
     }
 
     /// The recovery must not reach a Host that is already *reconnecting*.
-    /// `EventsSession.revalidate()` says why in its own doc — "one already
+    /// `EventsSession.startRevalidation()` says why in its own doc — "one already
     /// reconnecting is visibly working on it" — and restarting such a session
     /// instead would reset its backoff to the first attempt and throw away the
     /// dial already in flight. Every foreground bounce would then re-dial from
@@ -605,7 +604,7 @@ struct AppForegroundRecoveryTests {
     /// activates the session and returns once the run task is spawned, before
     /// `.connected` is published, so the projection's status is still
     /// `.suspended` when `revalidate()` looks at it. The guard must leave that
-    /// session to the dial it already has in flight — `session.revalidate()`
+    /// session to the dial it already has in flight — `session.startRevalidation()?.value`
     /// no-ops on it, having no live channel to ping.
     ///
     /// Widening the guard to `.failed, .suspended` sends this return through
@@ -1215,7 +1214,7 @@ struct AppForegroundRecoveryTests {
     /// Waits until `transport`'s events stream has settled after the initial
     /// snapshot. The projection reinstalls pane-scoped subscriptions right
     /// after that snapshot, which ends and re-opens the events stream, and
-    /// `EventsSession.revalidate()` deliberately no-ops while no stream is
+    /// `EventsSession.startRevalidation()` deliberately no-ops while no stream is
     /// live — the in-flight resubscribe is already re-proving the link. A
     /// foreground return raced into that window therefore skips the ping
     /// these tests script and assert on. The second snapshot fetch is

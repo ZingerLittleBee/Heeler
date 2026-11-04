@@ -52,8 +52,10 @@ suite("sidebar hook process boundary", () => {
     assert.equal(lock.packages[""].version, manifest.version);
     assert.equal(lock.packages[""].license, pkg.license);
     assert.equal(manifest.min_herdr_version, "0.7.5");
-    assert.deepEqual(manifest.startup, [{ command: ["node", "src/sidebar-hook.js"] }]);
-    assert.deepEqual(manifest.build, [{ command: ["npm", "ci"] }]);
+    // smol-toml 1.9 returns null-prototype objects, so compare plain copies.
+    const plain = (value) => JSON.parse(JSON.stringify(value));
+    assert.deepEqual(plain(manifest.startup), [{ command: ["node", "src/sidebar-hook.js"] }]);
+    assert.deepEqual(plain(manifest.build), [{ command: ["npm", "ci"] }]);
   });
 
   test("startup needs no event, state directory or herdr binary", () => {

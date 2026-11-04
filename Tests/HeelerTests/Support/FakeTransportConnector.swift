@@ -8,18 +8,39 @@ final actor FakeTransport: Transport {
     private let sessions: [HerdrSession]
     /// nil leaves the plugin read unscripted, like a transport without
     /// herdr's plugin registry.
-    private let plugin: Result<HeelerPluginInstallation?, TransportError>?
+    private var plugin: Result<HeelerPluginInstallation?, TransportError>?
+    private let pluginSteps: FakePluginSteps
     private(set) var isClosed = false
     /// Whether the connection was still open at each plugin read.
     private(set) var pluginReadsWhileOpen: [Bool] = []
+    /// The plugin steps run, in order.
+    private(set) var ranPluginSteps: [HeelerPluginStep] = []
+    private(set) var pluginBranchReads = 0
 
     init(
         pingResult: Result<ServerInfo, TransportError>, sessions: [HerdrSession] = [],
-        plugin: Result<HeelerPluginInstallation?, TransportError>? = nil
+        plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
+        pluginSteps: FakePluginSteps = FakePluginSteps()
     ) {
         self.pingResult = pingResult
         self.sessions = sessions
         self.plugin = plugin
+        self.pluginSteps = pluginSteps
+    }
+
+    func runHeelerPluginStep(_ step: HeelerPluginStep) async throws {
+        ranPluginSteps.append(step)
+        if let after = pluginSteps.pluginAfterStep[ranPluginSteps.count - 1] {
+            plugin = after
+        }
+        if let failure = pluginSteps.failures[ranPluginSteps.count - 1] {
+            throw failure
+        }
+    }
+
+    func readPluginBranchVersion() async throws -> PluginVersion {
+        pluginBranchReads += 1
+        return try pluginSteps.branchVersion.get()
     }
 
     func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
@@ -156,30 +177,49 @@ final actor FakeTransportConnector: TransportConnector {
     enum Outcome: Sendable {
         case connectFails(TransportError)
         case connects(pingResult: Result<ServerInfo, TransportError>)
+        /// The connect ignores cancellation for this long (an Overlay
+        /// Network still coming up), then times out.
+        case hangs(Duration)
     }
 
     private let outcome: Outcome
     /// The host key the fake "server" presents; nil skips host key
     /// evaluation entirely.
     private let presentedKeyBlob: Data?
+    /// The key the first route's Jump Host presents, evaluated before the
+    /// Host's under the Jump Host's endpoint; nil skips it.
+    private let presentedJumpKeyBlob: Data?
     private let sessions: [HerdrSession]
     private let plugin: Result<HeelerPluginInstallation?, TransportError>?
+    private let pluginSteps: FakePluginSteps
     private(set) var capturedSettings: [SSHTransportSettings] = []
     private(set) var transports: [FakeTransport] = []
 
     init(
-        outcome: Outcome, presentedKeyBlob: Data? = nil,
+        outcome: Outcome, presentedKeyBlob: Data? = nil, presentedJumpKeyBlob: Data? = nil,
         sessions: [HerdrSession] = [],
-        plugin: Result<HeelerPluginInstallation?, TransportError>? = nil
+        plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
+        pluginSteps: FakePluginSteps = FakePluginSteps()
     ) {
         self.outcome = outcome
         self.presentedKeyBlob = presentedKeyBlob
+        self.presentedJumpKeyBlob = presentedJumpKeyBlob
         self.sessions = sessions
         self.plugin = plugin
+        self.pluginSteps = pluginSteps
     }
 
     func connect(settings: SSHTransportSettings) async throws -> any Transport {
         capturedSettings.append(settings)
+        if let presentedJumpKeyBlob, let jump = settings.routes.first?.jump {
+            let presented = HostKeyFingerprint(publicKeyBlob: presentedJumpKeyBlob)
+            if let known = await settings.hostKeyPolicy.knownHosts.fingerprint(
+                host: jump.host, port: jump.port), known != presented
+            {
+                throw TransportError.jumpHostFailed(
+                    .hostKeyMismatch(known: known, presented: presented))
+            }
+        }
         if let presentedKeyBlob {
             try await evaluateHostKey(
                 HostKeyFingerprint(publicKeyBlob: presentedKeyBlob), settings: settings)
@@ -187,22 +227,35 @@ final actor FakeTransportConnector: TransportConnector {
         switch outcome {
         case .connectFails(let error):
             throw error
+        case .hangs(let duration):
+            await Task.detached { try? await Task.sleep(for: duration) }.value
+            throw TransportError.timedOut
         case .connects(let pingResult):
             let transport = FakeTransport(
-                pingResult: pingResult, sessions: sessions, plugin: plugin)
+                pingResult: pingResult, sessions: sessions, plugin: plugin,
+                pluginSteps: pluginSteps)
             transports.append(transport)
             return transport
         }
     }
 
-    /// Mirrors `HeelerSSHHostKeyVerifier.verify` at the policy level.
+    /// Mirrors `HeelerSSHHostKeyVerifier.verify` at the policy level,
+    /// including a catalog Host adopting its endpoint's pre-Routes trust.
     private func evaluateHostKey(
         _ fingerprint: HostKeyFingerprint, settings: SSHTransportSettings
     ) async throws {
         let policy = settings.hostKeyPolicy
-        if let known = await policy.knownHosts.fingerprint(
-            host: settings.host, port: settings.port)
+        let key = settings.hostKeyTrust.storageKey(host: settings.host, port: settings.port)
+        if settings.hostKeyTrust != .endpoint,
+           await policy.knownHosts.fingerprints(host: key.host, port: key.port).isEmpty
         {
+            for adopted in await policy.knownHosts.fingerprints(
+                host: settings.host, port: settings.port)
+            {
+                await policy.knownHosts.setFingerprint(adopted, host: key.host, port: key.port)
+            }
+        }
+        if let known = await policy.knownHosts.fingerprint(host: key.host, port: key.port) {
             guard known == fingerprint else {
                 throw TransportError.hostKeyMismatch(known: known, presented: fingerprint)
             }
@@ -213,7 +266,23 @@ final actor FakeTransportConnector: TransportConnector {
         guard await policy.confirmFirstConnect(candidate) else {
             throw TransportError.hostKeyRejected(presented: fingerprint)
         }
-        await policy.knownHosts.setFingerprint(
-            fingerprint, host: settings.host, port: settings.port)
+        await policy.knownHosts.setFingerprint(fingerprint, host: key.host, port: key.port)
+    }
+}
+
+/// How a `FakeTransport` answers plugin steps, by the step's index on
+/// that connection: the plugin a step leaves on the Host, and the error it
+/// throws after. `branchVersion` answers the plugin branch read.
+struct FakePluginSteps: Sendable {
+    var pluginAfterStep: [Int: Result<HeelerPluginInstallation?, TransportError>] = [:]
+    var failures: [Int: any Error] = [:]
+    var branchVersion: Result<PluginVersion, any Error> = .success(HeelerPluginCompatibility.bundled)
+}
+
+extension KnownHostsStore {
+    /// The fingerprint trusted for `host` itself, whichever route reached it.
+    func fingerprint(trustedFor host: Host) async -> HostKeyFingerprint? {
+        let key = HostKeyTrust.hostKey(host.id)
+        return await fingerprint(host: key.host, port: key.port)
     }
 }

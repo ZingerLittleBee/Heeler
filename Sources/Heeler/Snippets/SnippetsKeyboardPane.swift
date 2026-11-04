@@ -20,13 +20,15 @@ struct SnippetsKeyboardPane: View {
                     if store.snippets.isEmpty {
                         emptyState
                     } else {
-                        ForEach(store.snippets) { snippet in
-                            SnippetRowButton(snippet: snippet) { onSend(snippet) }
-                                .contextMenu {
-                                    Button("Manage Snippets", systemImage: "slider.horizontal.3") {
-                                        onManage()
-                                    }
+                        ForEach(store.snippets) { @Sendable snippet in
+                            MainActorContent {
+                                SnippetRowButton(snippet: snippet) { onSend(snippet) }
+                            }
+                            .contextMenu {
+                                Button("Manage Snippets", systemImage: "slider.horizontal.3") {
+                                    onManage()
                                 }
+                            }
                             Divider().padding(.leading, 16)
                         }
                     }

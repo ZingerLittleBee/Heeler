@@ -31,7 +31,7 @@ struct NotificationDisclosureContent: View {
         VStack(alignment: .leading, spacing: 10) {
             Label(title, systemImage: systemImage)
                 .font(.headline)
-            ForEach(items, id: \.self) { item in
+            ForEach(items, id: \.self) { @Sendable item in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("\u{2022}")
                         .foregroundStyle(.secondary)

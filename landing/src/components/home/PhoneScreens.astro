@@ -1,0 +1,75 @@
+---
+// A row of iPhone screenshots with short captions, for a chapter whose
+// subject is the screens themselves. Two columns below 720px.
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+
+interface Props {
+  screens: { image: ImageMetadata; alt: string; caption: string }[];
+}
+
+const { screens } = Astro.props;
+---
+
+<ul class="screens">
+  {
+    screens.map((screen) => (
+      <li>
+        <figure>
+          <Picture
+            src={screen.image}
+            alt={screen.alt}
+            formats={['avif', 'webp']}
+            widths={[240, 480, 720]}
+            sizes="(max-width: 720px) calc(50vw - 40px), 200px"
+            loading="lazy"
+          />
+          <figcaption>{screen.caption}</figcaption>
+        </figure>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .screens {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--sp-5);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  figure {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    margin: 0;
+  }
+
+  figure :global(img) {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--border-default);
+    border-radius: 24px;
+    background: var(--surface-card);
+  }
+
+  figcaption {
+    color: var(--text-muted);
+    font: var(--type-mono-sm);
+  }
+
+  @media (max-width: 720px) {
+    .screens {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--sp-4);
+    }
+
+    figure :global(img) {
+      border-radius: 18px;
+    }
+  }
+</style>

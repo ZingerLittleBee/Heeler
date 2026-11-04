@@ -155,6 +155,12 @@ final class AgentSceneDirectory {
         var activationOrder: UInt64 = 0
         /// The Agent whose detail shows a Shell Terminal in this window.
         var shellTerminalAgent: ConsoleAgent.ID?
+        /// The Agent whose detail shows Chat in this window. Chat reads the
+        /// Agent's transcript, not its PTY, so it claims no channel.
+        var chatAgent: ConsoleAgent.ID?
+        /// The Agent a pushed Shell Terminal stands over in this window: still
+        /// on the path, so Back returns to it, but not what the window shows.
+        var coveredAgent: ConsoleAgent.ID?
     }
 
     @ObservationIgnored private var entries: [UUID: Entry] = [:]
@@ -238,6 +244,23 @@ final class AgentSceneDirectory {
         reconcileTerminalOwnership()
     }
 
+    /// Whether a window's Agent detail shows Chat, and for which Agent. A
+    /// window showing Chat leaves its Host's channel to the others, unless
+    /// a Shell Terminal opened from that Chat needs it.
+    func chatSurfaceDidChange(sceneID: UUID, agent: ConsoleAgent.ID?) {
+        guard entries[sceneID] != nil, entries[sceneID]?.chatAgent != agent
+        else { return }
+        entries[sceneID]?.chatAgent = agent
+        reconcileTerminalOwnership()
+    }
+
+    /// Whether a Shell Terminal is pushed over a window's Agent detail, and
+    /// over which Agent. The Agent's banners show again while it is covered.
+    func agentCoverDidChange(sceneID: UUID, agent: ConsoleAgent.ID?) {
+        guard entries[sceneID] != nil else { return }
+        entries[sceneID]?.coveredAgent = agent
+    }
+
     func terminalAccess(sceneID: UUID, hostID: Host.ID) -> HostTerminalAccess {
         terminalOwnership.access(sceneID: sceneID, hostID: hostID, claims: terminalClaims)
     }
@@ -257,7 +280,8 @@ final class AgentSceneDirectory {
     private func reconcileTerminalOwnership() {
         let claims = order.compactMap { id -> HostTerminalClaim? in
             guard let entry = liveEntry(id), let agent = entry.router.path.last,
-                entry.router.isKnownAgent(agent)
+                entry.router.isKnownAgent(agent),
+                entry.chatAgent != agent || entry.shellTerminalAgent == agent
             else { return nil }
             return HostTerminalClaim(
                 sceneID: id, hostID: agent.hostID,
@@ -296,10 +320,15 @@ final class AgentSceneDirectory {
     }
 
     /// What the key window shows; the in-app banner suppresses itself for it.
+    /// An Agent under a pushed Shell Terminal is not shown, so its banner
+    /// comes through and a tap on it returns to the Agent.
     var keyScenePresentedAgent: ConsoleAgent.ID? {
         let scenes = scenes
-        guard let key = AgentDeepLinkPolicy.keyScene(in: scenes) else { return nil }
-        return scenes.first(where: { $0.id == key })?.presentedAgent
+        guard let key = AgentDeepLinkPolicy.keyScene(in: scenes),
+            let presented = scenes.first(where: { $0.id == key })?.presentedAgent,
+            entries[key]?.coveredAgent != presented
+        else { return nil }
+        return presented
     }
 
     /// Routes one deep link under the single-window rule. `preferredSceneID`
@@ -363,6 +392,16 @@ struct AgentSceneRouting: Equatable {
     @MainActor
     func shellTerminalDidChange(agent: ConsoleAgent.ID?) {
         directory.shellTerminalDidChange(sceneID: sceneID, agent: agent)
+    }
+
+    @MainActor
+    func chatSurfaceDidChange(agent: ConsoleAgent.ID?) {
+        directory.chatSurfaceDidChange(sceneID: sceneID, agent: agent)
+    }
+
+    @MainActor
+    func agentCoverDidChange(agent: ConsoleAgent.ID?) {
+        directory.agentCoverDidChange(sceneID: sceneID, agent: agent)
     }
 }
 

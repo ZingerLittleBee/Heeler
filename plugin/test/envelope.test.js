@@ -108,3 +108,56 @@ suite("encodePairingCode", () => {
     assert.equal(decoded.expiresAt, 1753305600);
   });
 });
+
+const vectorsV2 = JSON.parse(
+  readFileSync(new URL("../test-vectors/pairing-code-v2.json", import.meta.url), "utf8"),
+);
+
+/** Map a code's wire JSON to the encode input shape, keeping absent keys absent. */
+function payloadFromCode(code) {
+  const wire = JSON.parse(Buffer.from(code.split(":")[2], "base64url").toString("utf8"));
+  return {
+    addresses: wire.addrs,
+    port: wire.port,
+    username: wire.user,
+    hostKeyFingerprint: wire.fp,
+    socketPath: wire.sock,
+    herdrPath: wire.herdr,
+    ...(wire.seed !== undefined && { bootstrapSeed: Buffer.from(wire.seed, "base64url") }),
+    ...(wire.exp !== undefined && { expiresAt: wire.exp }),
+  };
+}
+
+suite("Pairing Code v2 encoding", () => {
+  const canonical = vectorsV2.valid.filter(
+    (vector) => !vector.decodeOnly && vector.code.startsWith("HERDR-PAIR:2:"),
+  );
+
+  test("encodes every canonical v2 vector exactly", () => {
+    assert.equal(canonical.length, 4);
+    for (const vector of canonical) {
+      assert.equal(encodePairingCode(fromVectorShape(vector.payload)), vector.code, vector.name);
+    }
+  });
+
+  for (const vector of vectorsV2.invalid) {
+    test(`rejects invalid v2 vector: ${vector.name}`, () => {
+      assert.throws(
+        () => encodePairingCode(payloadFromCode(vector.code)),
+        (error) => error instanceof PairingCodeError && error.code === "bad_payload",
+      );
+    });
+  }
+
+  test("a payload without endpoint fields still encodes v1", () => {
+    const { socketPath, herdrPath, ...v1 } = canonical[0].payload;
+    assert.ok(encodePairingCode(fromVectorShape(v1)).startsWith("HERDR-PAIR:1:"));
+  });
+
+  test("decoding still rejects version 2", () => {
+    assert.throws(
+      () => decodePairingCode(canonical[0].code),
+      (error) => error instanceof PairingCodeError && error.code === "unsupported_version",
+    );
+  });
+});

@@ -55,6 +55,8 @@ uses the user's live server needs authorization for its writes.
 prints the Host settings and `knownHostFingerprints` entry to seed; `stop`
 removes it. See its `--help`.
 
+For App Store and README images, follow [the store screenshot runbook](store-screenshots.md).
+
 ## Capture and inspect
 
 Capture requires the selected simulator to be available and already Booted:
@@ -132,3 +134,25 @@ Report which evidence was actually collected: source review, subview render,
 real simulator activity, touch interaction, or physical-device observation.
 Include the missing matrix cases and leave a requested inspection handoff
 untouched.
+
+## Home Screen and Lock Screen widgets
+
+A Simulator build is signed ad hoc, so the system cannot tie the widget
+extension to a team and does not register its App Intents entities. Every
+**Edit Widget** choice is then dropped: the extension logs `Failed to build
+EntityIdentifier. UsageScopeEntity is not a registered AppEntity identifier`
+and renders the defaults. Before checking a widget configuration, re-sign the
+built app with an Apple Development identity of the project team, extensions
+first, then install it. Take `IDENTITY` (a SHA-1) from `security find-identity
+-v -p codesigning`; the name alone is ambiguous when the keychain holds two.
+
+```sh
+APP=build/DerivedData-simulator/Build/Products/Debug-iphonesimulator/Heeler.app
+for bundle in "$APP"/PlugIns/*.appex "$APP"; do
+  codesign --force --sign "$IDENTITY" --timestamp=none \
+    --preserve-metadata=entitlements,identifier "$bundle"
+done
+```
+
+`xcodebuild test` reinstalls the app and removes its Home Screen widgets;
+Lock Screen accessories stay.

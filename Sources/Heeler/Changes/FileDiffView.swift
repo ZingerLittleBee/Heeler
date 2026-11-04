@@ -54,7 +54,7 @@ struct FileDiffView: View {
 
 /// Flattening the document makes each line a direct lazy child: one large
 /// hunk must not cause SwiftUI to lay out every line when its header appears.
-private struct FileDiffDocumentView<Footer: View>: View {
+private struct FileDiffDocumentView<Footer: View & SendableMetatype>: View {
     let patch: FilePatch
     /// The Changes list's file: its kind, staging, and line counts.
     let file: ChangedFile
@@ -143,13 +143,17 @@ private struct FileDiffDocumentView<Footer: View>: View {
                             .foregroundStyle(.secondary)
                             .padding()
                     }
-                    ForEach(decision.layout == .sideBySide ? pairedRows : rows) { row in
+                    ForEach(decision.layout == .sideBySide ? pairedRows : rows) { @Sendable row in
                         // Keep one concrete lazy child even when reference
                         // menus change the row's conditional view structure.
-                        VStack(alignment: .leading, spacing: 0) {
-                            rowView(row)
+                        MainActorContent {
+                            VStack(alignment: .leading, spacing: 0) {
+                                rowView(row)
+                            }
                         }
-                        .anchorPreference(key: DiffLineFramesKey.self, value: .bounds) { frame in
+                        .anchorPreference(
+                            key: DiffLineFramesKey.self, value: .bounds
+                        ) { @Sendable frame in
                             lineFrameAnchor(for: row, frame)
                         }
                         .id(row.id)
@@ -237,7 +241,7 @@ private struct FileDiffDocumentView<Footer: View>: View {
                 if decision.toggle != .hidden {
                     ToolbarItem(placement: .topBarTrailing) {
                         Picker("Diff Layout", selection: layoutSelection) {
-                            ForEach(DiffLayout.allCases) { option in
+                            ForEach(DiffLayout.allCases) { @Sendable option in
                                 Text(option.title).tag(option)
                             }
                         }
@@ -256,7 +260,11 @@ private struct FileDiffDocumentView<Footer: View>: View {
 
     /// Line and pair rows publish the frame that tracks the readable edge.
     /// File and hunk headers publish nothing.
-    private func lineFrameAnchor(for row: Row, _ frame: Anchor<CGRect>) -> [Int: Anchor<CGRect>] {
+    ///
+    /// Nonisolated, as the row's `ForEach` content is (#471).
+    private nonisolated func lineFrameAnchor(
+        for row: Row, _ frame: Anchor<CGRect>
+    ) -> [Int: Anchor<CGRect>] {
         switch row {
         case .line(let line): [line.id: frame]
         case .pair(let pair): [pair.id: frame]

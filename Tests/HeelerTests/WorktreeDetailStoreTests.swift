@@ -100,7 +100,7 @@ struct WorktreeDetailStoreTests {
             remove: { _ in
                 throw HerdrAPIError(
                     code: "dirty_worktree_requires_force",
-                    message: "dirty")
+                    message: Self.dirtyMessage)
             })
         store.prepareConfirmation()
         let request = try #require(store.beginRemoval())
@@ -199,15 +199,16 @@ struct WorktreeDetailStoreTests {
         let store = try await refusedStore(
             showChanges: { handed.append($0) },
             error: HerdrAPIError(
-                code: "dirty_worktree_requires_force", message: "dirty"))
+                code: "dirty_worktree_requires_force", message: Self.dirtyMessage))
 
         #expect(store.refusalOffersChanges)
         #expect(store.showsFeedback)
-        guard case .failed(let message) = store.removalPhase else {
-            Issue.record("a dirty Worktree should stay on the detail")
-            return
-        }
-        #expect(message.contains("modified or untracked files"))
+        #expect(
+            store.removalPhase
+                == .failed(
+                    "herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry."
+                ))
+        #expect(store.refusalCommand == nil)
 
         store.showChanges()
 
@@ -222,9 +223,10 @@ struct WorktreeDetailStoreTests {
         let store = try await refusedStore(
             showChanges: { handed.append($0) },
             error: TransportError.apiRejected(
-                code: "dirty_worktree_requires_force", message: "dirty"))
+                code: "dirty_worktree_requires_force", message: Self.dirtyMessage))
 
         #expect(store.refusalOffersChanges)
+        #expect(store.refusalCommand == nil)
         store.showChanges()
         #expect(handed == ["/work/Heeler-wt"])
         #expect(store.removalPhase == .idle)
@@ -249,13 +251,216 @@ struct WorktreeDetailStoreTests {
         let store = try await refusedStore(
             showChanges: { _ in },
             error: HerdrAPIError(
-                code: "dirty_worktree_requires_force", message: "dirty"))
+                code: "dirty_worktree_requires_force", message: Self.dirtyMessage))
 
         #expect(store.refusalOffersChanges)
         store.dismissFeedback()
         #expect(!store.refusalOffersChanges)
         #expect(!store.showsFeedback)
         #expect(store.removalPhase == .idle)
+    }
+
+    /// git refuses a Worktree with checked-out submodules before it looks for
+    /// changes, so the refusal names the submodules, still points at Changes,
+    /// and hands over the command that forces the removal.
+    @Test func aSubmoduleRefusalNamesSubmodulesAndTheForcedRemoval() async throws {
+        var handed: [String] = []
+        let store = try await refusedStore(
+            showChanges: { handed.append($0) },
+            error: HerdrAPIError(
+                code: "dirty_worktree_requires_force", message: Self.submoduleMessage))
+
+        #expect(
+            store.removalPhase
+                == .failed(
+                    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr worktree remove --workspace w1 --force"
+                ))
+        #expect(store.refusalCommand == "herdr worktree remove --workspace w1 --force")
+        #expect(store.refusalOffersChanges)
+
+        store.showChanges()
+
+        #expect(handed == ["/work/Heeler-wt"])
+        #expect(store.removalPhase == .idle)
+        #expect(store.refusalCommand == nil)
+    }
+
+    @Test func aSubmoduleRefusalOverTheTransportReadsTheSame() async throws {
+        var handed: [String] = []
+        let store = try await refusedStore(
+            showChanges: { handed.append($0) },
+            error: TransportError.apiRejected(
+                code: "dirty_worktree_requires_force", message: Self.submoduleMessage))
+
+        #expect(
+            store.removalPhase
+                == .failed(
+                    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr worktree remove --workspace w1 --force"
+                ))
+        #expect(store.refusalCommand == "herdr worktree remove --workspace w1 --force")
+        #expect(store.refusalOffersChanges)
+
+        store.showChanges()
+
+        #expect(handed == ["/work/Heeler-wt"])
+    }
+
+    /// herdr finds git's text in any case anywhere in the message, so the
+    /// refusal is read the same way.
+    @Test func theSubmoduleTextIsFoundInAnyCaseWithinTheMessage() async throws {
+        let store = try await refusedStore(
+            showChanges: { _ in },
+            error: HerdrAPIError(
+                code: "dirty_worktree_requires_force",
+                message: "Removal failed. WORKING TREES Containing Submodules cannot be moved or removed!"
+            ))
+
+        #expect(store.refusalCommand == "herdr worktree remove --workspace w1 --force")
+        #expect(store.refusalOffersChanges)
+    }
+
+    /// herdr 0.9.0 sends git's submodule refusal as a plain removal failure,
+    /// which shows herdr's text and offers nothing more.
+    @Test func theSubmoduleTextUnderAnotherCodeGetsHerdrsText() async throws {
+        let store = try await refusedStore(
+            showChanges: { _ in },
+            error: HerdrAPIError(
+                code: "worktree_remove_failed", message: Self.submoduleMessage))
+
+        #expect(
+            store.removalPhase
+                == .failed(
+                    "herdr couldn't remove this worktree: fatal: working trees containing submodules cannot be moved or removed"
+                ))
+        #expect(store.refusalCommand == nil)
+        #expect(!store.refusalOffersChanges)
+    }
+
+    /// herdr's CLI asks the default session unless told otherwise, so a Host
+    /// that targets a named session gets a command that names it.
+    @Test func aNamedSessionScopesTheForcedRemoval() async throws {
+        let store = try await refusedStore(
+            sessionName: "work",
+            showChanges: { _ in },
+            error: HerdrAPIError(
+                code: "dirty_worktree_requires_force", message: Self.submoduleMessage))
+
+        #expect(
+            store.removalPhase
+                == .failed(
+                    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr --session work worktree remove --workspace w1 --force"
+                ))
+        #expect(
+            store.refusalCommand
+                == "herdr --session work worktree remove --workspace w1 --force")
+    }
+
+    @Test func anEndpointScopesTheForcedRemovalInsteadOfTheSession() async throws {
+        let endpoint = try #require(HerdrEndpoint(
+            socketPath: "/tmp/custom herdr/herdr/herdr.sock",
+            executablePath: "/tmp/custom herdr/launch"))
+        let store = try await refusedStore(
+            sessionName: "wrong", endpoint: endpoint,
+            showChanges: { _ in },
+            error: HerdrAPIError(
+                code: "dirty_worktree_requires_force", message: Self.submoduleMessage))
+        let command = #"/bin/sh -c 'export HERDR_SOCKET_PATH="$1"; shift; exec "$@"' herdr '/tmp/custom herdr/herdr/herdr.sock' '/tmp/custom herdr/launch' worktree remove --workspace w1 --force"#
+        #expect(store.refusalCommand == command)
+        guard case .failed(let message) = store.removalPhase else {
+            Issue.record("Expected a refusal with a recovery command")
+            return
+        }
+        #expect(message.contains(command))
+        #expect(store.refusalOffersChanges)
+    }
+
+    @Test func dismissingASubmoduleRefusalWithdrawsTheCommand() async throws {
+        let store = try await refusedStore(
+            showChanges: { _ in },
+            error: HerdrAPIError(
+                code: "dirty_worktree_requires_force", message: Self.submoduleMessage))
+        try #require(store.refusalCommand != nil, "the refusal should hand over a command")
+
+        store.dismissFeedback()
+
+        #expect(store.refusalCommand == nil)
+        #expect(!store.refusalOffersChanges)
+        #expect(store.removalPhase == .idle)
+        #expect(store.canRemove)
+    }
+
+    /// herdr takes an id such as `--session=other` as its own option however
+    /// it is quoted, so no command can name that workspace. The refusal still
+    /// names the submodules and points at Changes.
+    @Test(arguments: ["--session", "--session=other", "--handoff", "--remote=other"], ["", "work"])
+    func aWorkspaceIDHerdrTakesAsAnOptionGetsNoCommand(
+        workspaceID: String, sessionName: String
+    ) async throws {
+        var handed: [String] = []
+        let store = try await refusedStore(
+            workspaceID: workspaceID,
+            sessionName: sessionName,
+            showChanges: { handed.append($0) },
+            error: HerdrAPIError(
+                code: "dirty_worktree_requires_force", message: Self.submoduleMessage))
+
+        #expect(
+            store.removalPhase
+                == .failed(
+                    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first."
+                ))
+        #expect(store.refusalCommand == nil)
+        #expect(store.refusalOffersChanges)
+
+        store.showChanges()
+
+        #expect(handed == ["/work/Heeler-wt"])
+    }
+
+    /// An id that only resembles one of herdr's options reaches
+    /// `--workspace`, so its refusal still hands over the command.
+    @Test func aWorkspaceIDThatOnlyResemblesAnOptionKeepsTheCommand() async throws {
+        let store = try await refusedStore(
+            workspaceID: "--sessions",
+            showChanges: { _ in },
+            error: HerdrAPIError(
+                code: "dirty_worktree_requires_force", message: Self.submoduleMessage))
+
+        #expect(
+            store.removalPhase
+                == .failed(
+                    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr worktree remove --workspace --sessions --force"
+                ))
+        #expect(store.refusalCommand == "herdr worktree remove --workspace --sessions --force")
+        #expect(store.refusalOffersChanges)
+    }
+
+    /// herdr sends one code both while another operation runs on the checkout
+    /// and, since 0.9.4, while it re-validates restored Worktrees, so only its
+    /// own message states the cause. Either way the removal can be retried.
+    @Test(arguments: [
+        (
+            "worktree operation is already in progress for this checkout",
+            "herdr couldn't remove this worktree: worktree operation is already in progress for this checkout"
+        ),
+        (
+            "Restored worktree is still loading. Try again shortly.",
+            "herdr couldn't remove this worktree: Restored worktree is still loading. Try again shortly."
+        ),
+    ])
+    func anOperationInProgressShowsHerdrsReason(message: String, copy: String) async throws {
+        let store = try await refusedStore(
+            showChanges: { _ in },
+            error: HerdrAPIError(code: "worktree_operation_in_progress", message: message))
+
+        #expect(store.removalPhase == .failed(copy))
+        #expect(store.refusalCommand == nil)
+        #expect(!store.refusalOffersChanges)
+
+        store.dismissFeedback()
+
+        #expect(store.removalPhase == .idle)
+        #expect(store.canRemove)
     }
 
     @Test func noChangesWhileRemovingOrWithoutAHandler() async throws {
@@ -338,29 +543,28 @@ struct WorktreeDetailStoreTests {
         #expect(handed == ["/work/Heeler-wt"])
     }
 
-    @Test func dirtyClassificationMatchesTheRefusalCode() {
-        let dirty = HerdrAPIError(
-            code: "dirty_worktree_requires_force", message: "dirty")
-        #expect(WorktreeRemovalRefusal.dirtyCode == "dirty_worktree_requires_force")
-        #expect(WorktreeRemovalRefusal.isDirty(dirty))
-        #expect(
-            WorktreeRemovalRefusal.isDirty(
-                TransportError.apiRejected(
-                    code: "dirty_worktree_requires_force", message: "dirty")))
-        #expect(
-            !WorktreeRemovalRefusal.isDirty(
-                HerdrAPIError(code: "workspace_not_found", message: "gone")))
-        #expect(
-            !WorktreeRemovalRefusal.isDirty(
-                TransportError.sshUnreachable(detail: "down")))
-        #expect(!WorktreeRemovalRefusal.isDirty(WorktreeRemovalError.staleIdentity))
-    }
+    /// herdr's refusal for a Worktree with changes, in git's words, naming the
+    /// checkout path.
+    private static let dirtyMessage =
+        "fatal: '/work/Heeler-wt' contains modified or untracked files, use --force to delete it"
 
+    /// herdr's refusal for a Worktree with checked-out submodules since
+    /// 0.9.1, in git's words, whether or not the Worktree has changes.
+    private static let submoduleMessage =
+        "fatal: working trees containing submodules cannot be moved or removed"
+
+    /// A blank `sessionName` is the Host's default herdr session.
     private func refusedStore(
+        workspaceID: String = "w1",
+        sessionName: String = "",
+        endpoint: HerdrEndpoint? = nil,
         showChanges: @escaping (String) -> Void,
         error: some Error
     ) async throws -> WorktreeDetailStore {
         let store = makeStore(
+            workspaceID: workspaceID,
+            sessionName: sessionName,
+            endpoint: endpoint,
             list: { _ in Self.list(branch: "feat/issue-99") },
             remove: { _ in throw error },
             showChanges: showChanges)
@@ -371,6 +575,9 @@ struct WorktreeDetailStoreTests {
     }
 
     private func makeStore(
+        workspaceID: String = "w1",
+        sessionName: String = "",
+        endpoint: HerdrEndpoint? = nil,
         list: @escaping (String) async throws -> WorktreeListResponse,
         remove: @escaping (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt,
         showChanges: ((String) -> Void)? = nil
@@ -384,9 +591,11 @@ struct WorktreeDetailStoreTests {
         return WorktreeDetailStore(
             request: WorktreeRemovalRequest(
                 identity: WorktreeIdentity(
-                    hostID: UUID(), workspaceID: "w1", checkout: checkout)),
+                    hostID: UUID(), workspaceID: workspaceID, checkout: checkout)),
             workspaceLabel: "issue-99",
             checkout: checkout,
+            sessionName: sessionName,
+            endpoint: endpoint,
             list: list,
             remove: remove,
             hasWorkingAgent: { true },

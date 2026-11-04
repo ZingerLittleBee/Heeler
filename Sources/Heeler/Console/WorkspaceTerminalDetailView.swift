@@ -12,6 +12,8 @@ struct WorkspaceTerminalDetailView: View {
     /// Keyboard state in from the screen that selected this terminal and
     /// out to an Agent the drawer routes to; see `ShellTerminalView`.
     var keyboardHandoff: TerminalKeyboardHandoff? = nil
+    /// Where Back goes: the Console, or the Agent this was pushed over.
+    var backTitle = "Back to Console"
     let onBack: () -> Void
 
     @State private var ownerID = UUID()
@@ -68,7 +70,7 @@ struct WorkspaceTerminalDetailView: View {
                         palette: themePalette,
                         dimsBackground: false
                     ) {
-                        Button("Back to Console") { onBack() }
+                        Button(backTitle) { onBack() }
                             .buttonStyle(.terminalStatusSecondary)
                     }
                 }
@@ -84,7 +86,7 @@ struct WorkspaceTerminalDetailView: View {
                     managesLifecycle: false,
                     surfaceRetention: entry.surfaceRetention,
                     title: terminal.displayTitle,
-                    backTitle: "Back to Console",
+                    backTitle: backTitle,
                     workspaceDrawer: workspaceDrawer,
                     keyboardHandoff: keyboardHandoff,
                     backReturnsToAgent: false,
@@ -100,7 +102,7 @@ struct WorkspaceTerminalDetailView: View {
                     ) {
                         Button("Try Again") { retryID += 1 }
                             .buttonStyle(.terminalStatusPrimary)
-                        Button("Back to Console") { onBack() }
+                        Button(backTitle) { onBack() }
                             .buttonStyle(.terminalStatusSecondary)
                     }
                 }

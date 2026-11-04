@@ -195,6 +195,7 @@ extension HeelerTerminalView {
     @discardableResult
     func sendQuickKey(_ key: AgentQuickKey, modifiers: TerminalKeyModifiers = []) -> Bool {
         guard let press = Self.keyPress(key, modifiers: modifiers) else { return false }
+        forgetTypedLine()
         return sendKey(press)
     }
 

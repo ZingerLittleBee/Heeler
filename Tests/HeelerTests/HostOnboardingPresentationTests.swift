@@ -147,6 +147,24 @@ struct HostOnboardingPresentationTests {
             (true, .failed(rejected), false, .retry),
             (true, .failed(mismatch), false, .retry),
             (true, .failed(.jumpHostFailed(rejected)), false, .retry),
+            // A route that cannot reach another machine failed on the key.
+            (
+                true,
+                .failed(
+                    .noRouteReached([
+                        RouteFailure(route: "192.168.1.5", mayNameAnotherMachine: true, error: .timedOut),
+                        RouteFailure(route: "box over Home", mayNameAnotherMachine: false, error: mismatch),
+                    ])), false, .retry
+            ),
+            // Only a LAN address failed on the key: another machine elsewhere.
+            (
+                true,
+                .failed(
+                    .noRouteReached([
+                        RouteFailure(route: "192.168.1.5", mayNameAnotherMachine: true, error: mismatch),
+                        RouteFailure(route: "box over Home", mayNameAnotherMachine: false, error: .timedOut),
+                    ])), false, .disarm
+            ),
             // A manual Reconnect is already retrying: decide after it.
             (true, .failed(rejected), true, .wait),
             // The Console has not settled yet.
@@ -165,6 +183,138 @@ struct HostOnboardingPresentationTests {
             let input = HostOnboardingConsoleRecovery.Input(
                 isArmed: isArmed, status: status, isManualReconnectInFlight: inFlight)
             #expect(HostOnboardingConsoleRecovery.action(for: input) == expected)
+        }
+    }
+
+    /// The check prints the fingerprint of the host key file sshd serves for
+    /// the presented key's algorithm.
+    @Test func changedKeyCheckNamesTheHostKeyFileOfThePresentedAlgorithm() {
+        let rows: [(algorithm: String, file: String)] = [
+            ("ssh-ed25519", "ssh_host_ed25519_key.pub"),
+            ("ecdsa-sha2-nistp256", "ssh_host_ecdsa_key.pub"),
+            ("rsa-sha2-512", "ssh_host_rsa_key.pub"),
+            ("ssh-rsa", "ssh_host_rsa_key.pub"),
+            (HostKeyFingerprint.unknownAlgorithm, "ssh_host_ed25519_key.pub"),
+        ]
+        for (algorithm, file) in rows {
+            let replacement = HostKeyReplacement(
+                known: HostKeyFingerprint(digest: Data(repeating: 0, count: 32)),
+                presented: HostKeyFingerprint(
+                    digest: Data(repeating: 1, count: 32), algorithm: algorithm))
+            #expect(replacement.fingerprintCommand == "ssh-keygen -lf /etc/ssh/\(file)")
+        }
+    }
+}
+
+@Suite("Host detail route status")
+struct HostRouteStatusPresentationTests {
+    private let home = HostRoute(address: "192.168.1.20")
+    private let away = HostRoute(address: "box.example.com", port: 2222)
+
+    private func presentation(
+        _ status: EventsSessionStatus?,
+        standingFailure: TransportError? = nil,
+        connectedRouteID: HostRoute.ID? = nil
+    ) -> HostRouteStatusPresentation {
+        HostRouteStatusPresentation(
+            status: status,
+            standingFailure: standingFailure,
+            connectedRouteID: connectedRouteID,
+            routes: [home, away],
+            describe: { _ in "Direct" })
+    }
+
+    @Test func connectedNamesTheRouteItReached() {
+        let connected = presentation(.connected, connectedRouteID: away.id)
+        #expect(connected.tone == .connected)
+        #expect(connected.subtitle == "box.example.com:2222 · Direct")
+        #expect(connected.inUseRouteID == away.id)
+        #expect(connected.routeFailures.isEmpty)
+    }
+
+    /// A route id from before the Host was edited names nothing now.
+    @Test func connectedThroughAnUnknownRouteMarksNone() {
+        let connected = presentation(.connected, connectedRouteID: UUID())
+        #expect(connected.subtitle == nil)
+        #expect(connected.inUseRouteID == nil)
+    }
+
+    @Test func noRouteReachedTagsEachRouteWithItsOwnFailure() {
+        let failure = TransportError.noRouteReached([
+            RouteFailure(
+                route: "192.168.1.20", mayNameAnotherMachine: true, error: .timedOut,
+                routeID: home.id),
+            RouteFailure(
+                route: "box.example.com:2222", mayNameAnotherMachine: false,
+                error: .authenticationFailed, routeID: away.id),
+        ])
+        for status: EventsSessionStatus in [
+            .failed(failure), .reconnecting(attempt: 1, delay: .seconds(1), failure: failure),
+        ] {
+            let failed = presentation(status)
+            #expect(failed.inUseRouteID == nil)
+            #expect(
+                failed.routeFailures == [
+                    home.id: TransportError.timedOut.presentation.summary,
+                    away.id: TransportError.authenticationFailed.presentation.summary,
+                ])
+        }
+        let standing = presentation(.connecting, standingFailure: failure)
+        #expect(standing.routeFailures.count == 2)
+    }
+
+    /// With each route's failure on its row and the Summary on the card,
+    /// the footer adds only the Recovery Suggestion.
+    @Test func itemizedRoutesLeaveTheFooterOnlyTheSuggestion() throws {
+        let failure = TransportError.noRouteReached([
+            RouteFailure(
+                route: "192.168.1.20", mayNameAnotherMachine: true, error: .timedOut,
+                routeID: home.id)
+        ])
+        let suggestion = try #require(failure.presentation.recoverySuggestion)
+        let failed = HostOnboardingConnectionPresentation(
+            status: .failed(failure), isManualReconnectInFlight: false, itemizesRoutes: true)
+        #expect(failed.footerMessage == suggestion)
+        let retrying = HostOnboardingConnectionPresentation(
+            status: .reconnecting(attempt: 1, delay: .seconds(1), failure: failure),
+            isManualReconnectInFlight: false, itemizesRoutes: true)
+        #expect(retrying.footerMessage == nil)
+        let single = HostOnboardingConnectionPresentation(
+            status: .failed(.timedOut), isManualReconnectInFlight: false, itemizesRoutes: true)
+        #expect(single.footerMessage == TransportError.timedOut.presentation.message)
+    }
+
+    /// One route's failure is the card's to say; the row stays untagged.
+    @Test func aSingleFailureTagsNoRoute() {
+        let failed = presentation(.failed(.timedOut))
+        #expect(failed.tone == .failed)
+        #expect(failed.subtitle == TransportError.timedOut.presentation.summary)
+        #expect(failed.routeFailures.isEmpty)
+    }
+
+    /// A Reconnect press shows on the card alone, before the status moves.
+    @Test func aManualReconnectReadsAsConnecting() {
+        let failure = TransportError.noRouteReached([
+            RouteFailure(
+                route: "192.168.1.20", mayNameAnotherMachine: true, error: .timedOut,
+                routeID: home.id)
+        ])
+        for status: EventsSessionStatus in [.connected, .failed(failure)] {
+            let pressed = HostRouteStatusPresentation(
+                status: status, connectedRouteID: home.id, isManualReconnectInFlight: true,
+                routes: [home, away], describe: { _ in "Direct" })
+            #expect(pressed.tone == .connecting)
+            #expect(pressed.title == "Connecting…")
+            #expect(pressed.inUseRouteID == nil)
+            #expect(pressed.routeFailures.isEmpty)
+        }
+    }
+
+    @Test func idleStatusesSayNotConnected() {
+        for status: EventsSessionStatus? in [nil, .suspended, .ended] {
+            let idle = presentation(status, connectedRouteID: home.id)
+            #expect(idle.tone == .idle)
+            #expect(idle.inUseRouteID == nil)
         }
     }
 }

@@ -1,0 +1,40 @@
+
+
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mCogitated for 7s · done 1:50 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the Edit tool to change the word probe to probe2 in q.txt.[0m[48;2;55;55;55m                                                       [0m
+
+[0m[38;2;255;107;128m⏺ [0m[1mUpdate[0m(q.txt)
+[0m[38;2;153;153;153m  ⎿  [0m[38;2;80;80;80mUser rejected update to [0m[1m[38;2;80;80;80mq.txt[0m
+     [0m[2m[38;2;220;90;90m[48;2;61;1;0m 1 -[0m[2m[38;2;248;248;242m[48;2;61;1;0mprobe                                                                                                  [0m
+     [0m[2m[38;2;80;200;80m[48;2;2;40;0m 1 +[0m[2m[38;2;248;248;242m[48;2;2;40;0mprobe2                                                                                                 [0m
+     
+[0m[38;2;153;153;153m✻ Crunched for 2s · done 1:51 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the WebFetch tool to fetch https://example.com and tell me the page title.[0m[48;2;55;55;55m                                       [0m
+
+[0m[38;2;255;107;128m⏺ [0m[1mFetch[0m(https://example.com)
+[0m[38;2;153;153;153m  ⎿  Interrupted · What should Claude do instead?[0m
+
+[0m[38;2;153;153;153m✻ Worked for 2s · done 1:52 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the Agent tool to launch one general-purpose subagent whose only task is to run the Bash command: touch sub.txt [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55m(in the current directory). Do not run any command yourself.[0m[48;2;55;55;55m                                                         [0m
+
+[0m[38;2;78;186;101m⏺ [0m[1mAgent[0m(Run touch sub.txt)
+[0m[38;2;153;153;153m  ⎿  [0mBackgrounded agent[0m[38;2;153;153;153m (↓ to manage · ctrl+o to expand)[0m
+
+[0m[38;2;177;185;249m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mBash command[0m [0m[38;2;153;153;153m· [0mfrom the general-purpose agent
+ [0m[1mTip: auto mode handles these prompts for you — choose "switch to auto mode" below[0m
+ [0m[38;2;153;153;153mCreate empty file sub.txt[0m
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ touch sub.txt && echo ok
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ Do you want to proceed?
+ [0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes[0m
+   [0m[38;2;153;153;153m2. [0mYes, and always allow access to [0m[1m/private/tmp/heeler-tmp-chat2/probe-claude [0mfrom this project
+   [0m[38;2;153;153;153m3. [0mYes, and switch to auto mode[0m[38;2;153;153;153m · auto mode handles these prompts for you[0m
+   [0m[38;2;153;153;153m4. [0mNo
+
+ [0m[38;2;153;153;153mEsc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents[0m

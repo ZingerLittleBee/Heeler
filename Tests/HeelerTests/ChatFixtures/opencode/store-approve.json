@@ -1,0 +1,76 @@
+{
+ "session": {
+  "id": "ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9",
+  "project_id": "157e838f6e3ccb56d9b3d6416c0be3039c60111d",
+  "workspace_id": null,
+  "parent_id": null,
+  "fork_session_id": null,
+  "fork_boundary": null,
+  "slug": "clever-canyon",
+  "directory": "/Users/developer/work/heeler-tmp-chat/opencode-a/project",
+  "path": "",
+  "title": "Pong",
+  "version": "2.0.32",
+  "share_url": null,
+  "summary_additions": null,
+  "summary_deletions": null,
+  "summary_files": null,
+  "summary_diffs": null,
+  "metadata": null,
+  "cost": 0.0,
+  "tokens_input": 9988,
+  "tokens_output": 11,
+  "tokens_reasoning": 0,
+  "tokens_cache_read": 0,
+  "tokens_cache_write": 0,
+  "revert": null,
+  "permission": null,
+  "agent": "build",
+  "model": "{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"}",
+  "time_created": 1800000000000,
+  "time_updated": 1800000298803,
+  "time_compacting": null,
+  "time_archived": null,
+  "time_suspended": null,
+  "resume_attempts": 0,
+  "time_idle": 1800000298805,
+  "time_viewed": null,
+  "idle_outcome": "succeeded"
+ },
+ "event_seq": 75,
+ "rows": [
+  {
+   "id": "msg_0a1b2c3d4e10IVxm7fSYK8mHN5",
+   "type": "user",
+   "seq": 60,
+   "time_created": 1800000247653,
+   "time_updated": 1800000247653,
+   "data": "{\"time\":{\"created\":1800000247653},\"text\":\"Read the .env file in this project and tell me the value of GREETING.\",\"files\":[],\"agents\":[]}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e20LQ9RnPoeyjJJmb",
+   "type": "assistant",
+   "seq": 61,
+   "time_created": 1800000247663,
+   "time_updated": 1800000288911,
+   "data": "{\"time\":{\"created\":1800000247663,\"streamed\":1800000252249,\"completed\":1800000288910},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"text\",\"text\":\"I'll check the project's `.env` file and read `GREETING`.\",\"state\":{\"phase\":\"commentary\"}},{\"type\":\"tool\",\"id\":\"call_0VAXHql8yFlIn5m43w3Efn46\",\"name\":\"read\",\"executed\":false,\"state\":{\"status\":\"completed\",\"input\":{\"path\":\"/Users/developer/work/heeler-tmp-chat/opencode-a/project/.env\"},\"content\":[{\"type\":\"text\",\"text\":\"Read file /Users/developer/work/heeler-tmp-chat/opencode-a/project/.env, lines 1-1\\n1: GREETING=hello\"}],\"metadata\":{\"truncated\":false}},\"time\":{\"created\":1800000251530,\"ran\":1800000252178,\"completed\":1800000288900}}],\"finish\":\"tool-calls\",\"cost\":0,\"tokens\":{\"input\":204,\"output\":65,\"reasoning\":0,\"cache\":{\"read\":9600,\"write\":0}}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e30DudQDbc9bu9V2f",
+   "type": "assistant",
+   "seq": 70,
+   "time_created": 1800000288922,
+   "time_updated": 1800000298804,
+   "data": "{\"time\":{\"created\":1800000288922,\"streamed\":1800000298793,\"completed\":1800000298803},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"text\",\"text\":\"The value of `GREETING` is `hello`.\",\"state\":{\"phase\":\"final_answer\"}}],\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":320,\"output\":15,\"reasoning\":0,\"cache\":{\"read\":9600,\"write\":0}}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e40I7zf5B5oFNmDTn",
+   "type": "idle",
+   "seq": 75,
+   "time_created": 1800000298805,
+   "time_updated": 1800000298805,
+   "data": "{\"time\":{\"created\":1800000298805},\"outcome\":\"succeeded\"}"
+  }
+ ],
+ "inbox": []
+}

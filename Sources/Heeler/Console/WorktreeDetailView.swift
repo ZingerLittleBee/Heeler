@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct WorktreeDetailView: View {
     @State private var store: WorktreeDetailStore
@@ -81,10 +82,7 @@ struct WorktreeDetailView: View {
                 feedbackTitle,
                 isPresented: feedbackPresented
             ) {
-                if store.refusalOffersChanges {
-                    Button("Show Changes") { store.showChanges() }
-                }
-                Button("OK", role: .cancel) { store.dismissFeedback() }
+                feedbackActions
             } message: {
                 Text(feedbackMessage)
             }
@@ -109,6 +107,22 @@ struct WorktreeDetailView: View {
             set: { presented in
                 if !presented { store.dismissFeedback() }
             })
+    }
+
+    @ViewBuilder
+    private var feedbackActions: some View {
+        if store.refusalOffersChanges {
+            Button("Show Changes") { store.showChanges() }
+        }
+        if let command = store.refusalCommand {
+            // Captured when the alert is built, so the copy does not depend
+            // on whether this action or the alert's dismissal runs first.
+            Button("Copy Command") {
+                UIPasteboard.general.string = command
+                store.dismissFeedback()
+            }
+        }
+        Button("OK", role: .cancel) { store.dismissFeedback() }
     }
 
     private var feedbackTitle: String {

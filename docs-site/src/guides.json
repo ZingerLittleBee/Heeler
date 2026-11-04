@@ -1,0 +1,107 @@
+{
+  "$comment": "The guides published from docs/guides/ (and translated in docs/guides/zh/), in sidebar order. Each slug is a basename (without .md) and becomes /<slug> in English and /zh/<slug> in Simplified Chinese. Read by src/lib/guides.ts and scripts/check-links.mjs. Each section's title is localized by locale code (en, zh). sidebarTitles[locale] overrides a page's sidebar label in that language (its H1 title otherwise); keep labels short enough for one sidebar line, in sentence case in English except for domain terms such as Host. The GuideCard links in content/index.mdx and content/zh/index.mdx show the same localized sidebar label and shared icon. icons names the Lucide icon (https://lucide.dev/icons, PascalCase) shown beside each page in the sidebar; every page needs one.",
+  "sections": [
+    {
+      "title": {
+        "en": "Get started",
+        "zh": "快速开始"
+      },
+      "guides": ["pairing"]
+    },
+    {
+      "title": {
+        "en": "Overlay networks",
+        "zh": "Overlay Network"
+      },
+      "guides": ["overlay-networks", "tailscale", "zerotier", "easytier"]
+    },
+    {
+      "title": {
+        "en": "Cloudflare Tunnel",
+        "zh": "Cloudflare Tunnel"
+      },
+      "guides": ["cloudflare-tunnel"]
+    },
+    {
+      "title": {
+        "en": "Jump Host",
+        "zh": "Jump Host"
+      },
+      "guides": ["vps-jump-host-setup", "vps-jump-host"]
+    },
+    {
+      "title": {
+        "en": "Hosts",
+        "zh": "Host"
+      },
+      "guides": ["host-routes", "windows-setup", "selinux"]
+    },
+    {
+      "title": {
+        "en": "Chat",
+        "zh": "Chat"
+      },
+      "guides": ["chat", "chat-troubleshooting"]
+    },
+    {
+      "title": {
+        "en": "Usage",
+        "zh": "Usage"
+      },
+      "guides": ["usage"]
+    }
+  ],
+  "sidebarTitles": {
+    "en": {
+      "index": "Introduction",
+      "pairing": "Pair by scanning",
+      "overlay-networks": "Overview",
+      "tailscale": "Tailscale",
+      "zerotier": "ZeroTier",
+      "easytier": "EasyTier",
+      "cloudflare-tunnel": "Cloudflare Tunnel",
+      "vps-jump-host-setup": "Set up a Jump Host",
+      "vps-jump-host": "Jump Host in depth",
+      "host-routes": "Multiple routes",
+      "windows-setup": "Windows setup",
+      "selinux": "Fedora/RHEL SELinux",
+      "chat": "Chat with an Agent",
+      "chat-troubleshooting": "Troubleshooting",
+      "usage": "Usage and widgets"
+    },
+    "zh": {
+      "index": "简介",
+      "pairing": "扫码配对",
+      "overlay-networks": "概览",
+      "tailscale": "Tailscale",
+      "zerotier": "ZeroTier",
+      "easytier": "EasyTier",
+      "cloudflare-tunnel": "Cloudflare Tunnel",
+      "vps-jump-host-setup": "配置 Jump Host",
+      "vps-jump-host": "Jump Host 详解",
+      "host-routes": "多条路由",
+      "windows-setup": "Windows 配置",
+      "selinux": "SELinux（Fedora/RHEL）",
+      "chat": "在 Chat 中使用 Agent",
+      "chat-troubleshooting": "疑难排解",
+      "usage": "Usage 与小组件"
+    }
+  },
+  "icons": {
+    "index": "BookOpen",
+    "pairing": "ScanQrCode",
+    "overlay-networks": "Compass",
+    "tailscale": "Waypoints",
+    "zerotier": "Orbit",
+    "easytier": "Network",
+    "cloudflare-tunnel": "Cloud",
+    "vps-jump-host-setup": "ListChecks",
+    "vps-jump-host": "ShieldCheck",
+    "host-routes": "Route",
+    "windows-setup": "MonitorCog",
+    "selinux": "ShieldAlert",
+    "chat": "MessagesSquare",
+    "chat-troubleshooting": "MessageSquareWarning",
+    "usage": "Gauge"
+  }
+}

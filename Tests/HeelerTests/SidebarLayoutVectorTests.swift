@@ -18,11 +18,10 @@ struct SidebarLayoutVectorTests {
         ["state_icon", "workspace", "tab"], ["agent"],
     ]
 
-    /// Guards against silently loading an empty or truncated vector file;
-    /// mirrors the same assertion in the Node suite.
+    /// Guards against silently loading an empty or truncated vector file.
     @Test func sharedVectorFileHasCases() {
-        #expect(Self.vectors.valid.count >= 12)
-        #expect(Self.vectors.invalid.count >= 37)
+        #expect(Self.vectors.valid.count >= 25)
+        #expect(Self.vectors.invalid.count >= 52)
         #expect(Set(Self.vectors.valid.map(\.name)).count == Self.vectors.valid.count)
         #expect(Set(Self.vectors.invalid.map(\.name)).count == Self.vectors.invalid.count)
         #expect(Self.vectors.valid.allSatisfy { $0.snapshot.v == 1 })
@@ -39,7 +38,7 @@ struct SidebarLayoutVectorTests {
     func decodesValidVector(vector: SidebarLayoutVectorFile.Valid) throws {
         let snapshot = try #require(
             AgentRowLayoutSnapshot.decode(try vector.snapshot.jsonData()))
-        let expected = try layout(from: vector.snapshot)
+        let expected = layout(from: vector.snapshot)
         let expectedSort = try sort(vector.snapshot.agentPanelSort)
 
         #expect(snapshot.layout == expected)
@@ -53,6 +52,31 @@ struct SidebarLayoutVectorTests {
         for (kind, rows) in vector.snapshot.sidebar.agents.rowsByAgent {
             expectTokens(try #require(snapshot.layout.rowsByAgent[kind]), match: rows)
         }
+    }
+
+    /// `decodesValidVector` feeds the app the plugin's whole snapshot:
+    /// re-encoding a vector keeps every field the plugin exported, `rules`
+    /// included, so those tests also show that the app ignores rules.
+    @Test(arguments: vectors.valid)
+    func reencodingKeepsEveryExportedField(vector: SidebarLayoutVectorFile.Valid) throws {
+        let file = try JSONSerialization.jsonObject(with: SidebarLayoutVectorFile.fileData())
+        let valid = try #require((file as? NSDictionary)?["valid"] as? [NSDictionary])
+        let exported = try #require(
+            valid.first { $0["name"] as? String == vector.name }?["snapshot"] as? NSDictionary)
+        let reencoded = try JSONSerialization.jsonObject(with: vector.snapshot.jsonData())
+        #expect(reencoded as? NSDictionary == exported)
+    }
+
+    /// herdr 0.9.0 and later put `machine` second in the default first row.
+    /// Heeler does not render it, so herdr's documented default block keeps
+    /// the rows Heeler shows today, and a row of only `machine` stays empty.
+    @Test func machineDropsSoHerdrsDefaultBlockKeepsTodaysRows() throws {
+        func decoded(_ name: String) throws -> AgentRowLayout {
+            let vector = try #require(Self.vectors.valid.first { $0.name == name })
+            return try #require(AgentRowLayoutSnapshot.decode(try vector.snapshot.jsonData())).layout
+        }
+        #expect(try decoded("herdr 0.9.4 documented default block") == .heelerDefault)
+        #expect(try decoded("machine styled alone in a row").rows == [[], [.init(.agent)]])
     }
 
     /// Invalid vectors encode the plugin's rejected-TOML contract: a complete
@@ -83,20 +107,28 @@ struct SidebarLayoutVectorTests {
                 == [[.stateIcon, .workspace, .tab], [.agent]])
     }
 
-    private func layout(from snapshot: SidebarLayoutVectorFile.Snapshot) throws -> AgentRowLayout {
-        func row(_ tokens: [SidebarLayoutVectorFile.Snapshot.Token]) throws -> AgentRow {
-            try tokens.map { token in
-                let name = try #require(
-                    AgentRowToken(rawValue: token.token),
-                    Comment(rawValue: token.token))
-                return AgentRowStyledToken(
-                    name, fg: token.fg.flatMap(HexColor.init), bold: token.bold, dim: token.dim)
+    /// The plugin exports herdr tokens the app does not model, such as
+    /// `machine`. The app's lenient decoder drops each of them and keeps a
+    /// row that becomes empty, so the expected rows do the same.
+    private func modeled(
+        _ rows: [[SidebarLayoutVectorFile.Snapshot.Token]]
+    ) -> [[SidebarLayoutVectorFile.Snapshot.Token]] {
+        rows.map { row in row.filter { AgentRowToken(rawValue: $0.token) != nil } }
+    }
+
+    private func layout(from snapshot: SidebarLayoutVectorFile.Snapshot) -> AgentRowLayout {
+        func row(_ tokens: [SidebarLayoutVectorFile.Snapshot.Token]) -> AgentRow {
+            tokens.compactMap { token in
+                AgentRowToken(rawValue: token.token).map {
+                    AgentRowStyledToken(
+                        $0, fg: token.fg.flatMap(HexColor.init), bold: token.bold, dim: token.dim)
+                }
             }
         }
         return AgentRowLayout(
-            rows: try snapshot.sidebar.agents.rows.map(row),
+            rows: snapshot.sidebar.agents.rows.map(row),
             rowGap: snapshot.sidebar.agents.rowGap,
-            rowsByAgent: try snapshot.sidebar.agents.rowsByAgent.mapValues { try $0.map(row) })
+            rowsByAgent: snapshot.sidebar.agents.rowsByAgent.mapValues { $0.map(row) })
     }
 
     private func sort(_ raw: String) throws -> AgentPanelSort {
@@ -106,8 +138,9 @@ struct SidebarLayoutVectorTests {
 
     private func expectTokens(
         _ actual: [AgentRow],
-        match expected: [[SidebarLayoutVectorFile.Snapshot.Token]]
+        match exported: [[SidebarLayoutVectorFile.Snapshot.Token]]
     ) {
+        let expected = modeled(exported)
         #expect(actual.map { $0.map(\.token.rawValue) } == expected.map { $0.map(\.token) })
         #expect(actual.map { $0.map(\.fg?.rawValue) } == expected.map { $0.map(\.fg) })
         #expect(actual.map { $0.map(\.bold) } == expected.map { $0.map(\.bold) })

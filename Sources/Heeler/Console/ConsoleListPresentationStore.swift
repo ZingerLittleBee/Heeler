@@ -1,12 +1,13 @@
 import Foundation
 import Observation
 
-/// The two Console Agent-list presentations. Flat remains the default so
+/// The Console Agent-list presentations. Flat remains the default so
 /// introducing grouped-list support does not change the existing surface
 /// until the UI explicitly selects it.
 enum ConsoleListPresentationMode: String, CaseIterable, Identifiable, Sendable {
     case flat
     case grouped
+    case byWorkspace
 
     var id: Self { self }
 
@@ -15,6 +16,7 @@ enum ConsoleListPresentationMode: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .flat: "All Agents"
         case .grouped: "By Host"
+        case .byWorkspace: "By Workspace"
         }
     }
 
@@ -24,6 +26,257 @@ enum ConsoleListPresentationMode: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .flat: "list.bullet"
         case .grouped: "list.bullet.indent"
+        case .byWorkspace: "rectangle.3.group"
+        }
+    }
+}
+
+/// Workspace identity includes the Host: pane and Workspace ids are local
+/// to one herdr session, and labels can be shared or renamed.
+struct ConsoleWorkspaceSection: Identifiable, Equatable, Sendable {
+    struct ID: Hashable, Codable, Sendable {
+        let hostID: Host.ID
+        let workspaceID: String
+    }
+
+    let id: ID
+    let title: String
+    let hostName: String
+    let agents: [ConsoleAgent]
+    let isCollapsed: Bool
+    /// The main-checkout section this linked-worktree section nests under;
+    /// nil for a top-level section.
+    var parentID: ID?
+    /// The git checkout the Workspace reported, if any.
+    var checkout: RepositoryCheckout?
+    /// The checkout's path as rows print directories, with `~` for home.
+    var pathText: String?
+
+    var isNested: Bool { parentID != nil }
+    var statusCounts: ConsoleHostAgentStatusCounts { .init(agents: agents) }
+    var accessibilityValue: String {
+        let count = agents.count == 1 ? "1 Agent" : "\(agents.count) Agents"
+        return [count, isCollapsed ? "Collapsed" : "Expanded",
+                ConsoleHostSectionHeaderPresentation.statusText(items: statusCounts.items)]
+            .compactMap { $0 }.joined(separator: ", ")
+    }
+}
+
+/// One By Workspace card: a top-level Workspace and the linked worktrees
+/// nested under it, which make it its repository's card. A card titles each
+/// checkout once, so its rows drop what the card already says.
+struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
+    enum Row: Equatable, Sendable {
+        /// A repository's header, or the header of a Workspace with several
+        /// Agents.
+        case header
+        /// A collapsed card's summary under its header: a row of its own,
+        /// so a fold adds or removes rows and never resizes the header.
+        /// With nothing to summarize the header ends the card instead, as
+        /// an empty row would be too short for the card's corners.
+        case summary
+        /// A checkout with several Agents inside a repository's card.
+        case checkout(ConsoleWorkspaceSection)
+        /// `standsAlone`: the only Agent of its checkout or Workspace, so
+        /// its row carries that checkout's title.
+        case agent(ConsoleAgent, of: ConsoleWorkspaceSection, standsAlone: Bool)
+    }
+
+    /// The rule a row draws above itself. Agents of one checkout have none
+    /// between them, as in the other presentations.
+    enum Rule: Equatable, Sendable {
+        case none
+        /// Between checkouts: across the card.
+        case full
+    }
+
+    struct Placed: Identifiable, Equatable, Sendable {
+        enum ID: Hashable, Sendable {
+            case header(ConsoleWorkspaceSection.ID)
+            case summary(ConsoleWorkspaceSection.ID)
+            case checkout(ConsoleWorkspaceSection.ID)
+            case agent(ConsoleAgent.ID)
+        }
+
+        let id: ID
+        let row: Row
+        let rule: Rule
+        let isFirst: Bool
+        let isLast: Bool
+        /// Right under a card's or checkout's header.
+        let followsHeader: Bool
+    }
+
+    let primary: ConsoleWorkspaceSection
+    let nested: [ConsoleWorkspaceSection]
+
+    var id: ConsoleWorkspaceSection.ID { primary.id }
+    var isRepository: Bool { !nested.isEmpty }
+    var isCollapsed: Bool { primary.isCollapsed }
+    /// The checkouts that have Agents to list, the main checkout first. A
+    /// search can keep a main checkout none of whose Agents match.
+    var checkouts: [ConsoleWorkspaceSection] { ([primary] + nested).filter { !$0.agents.isEmpty } }
+    var agents: [ConsoleAgent] { primary.agents + nested.flatMap(\.agents) }
+    /// Whether a collapsed card has anything to say under its header: who
+    /// needs the user and, for a repository, its checkouts.
+    var hasSummary: Bool {
+        !ConsoleHostAgentStatusCounts(agents: agents).items.isEmpty || (isRepository && !checkouts.isEmpty)
+    }
+
+    var rows: [Placed] {
+        var items: [(Row, Rule)] = []
+        func list(_ section: ConsoleWorkspaceSection) {
+            for agent in section.agents {
+                items.append((.agent(agent, of: section, standsAlone: false), .none))
+            }
+        }
+        if isRepository {
+            items.append((.header, .none))
+            if isCollapsed {
+                if hasSummary { items.append((.summary, .none)) }
+            } else {
+                for (index, checkout) in checkouts.enumerated() {
+                    let rule: Rule = index == 0 ? .none : .full
+                    if checkout.agents.count == 1 {
+                        items.append((.agent(checkout.agents[0], of: checkout, standsAlone: true), rule))
+                    } else {
+                        items.append((.checkout(checkout), rule))
+                        // The main checkout folds with its card.
+                        if !(checkout.isNested && checkout.isCollapsed) { list(checkout) }
+                    }
+                }
+            }
+        } else if primary.agents.count == 1 {
+            items.append((.agent(primary.agents[0], of: primary, standsAlone: true), .none))
+        } else {
+            items.append((.header, .none))
+            if !isCollapsed {
+                list(primary)
+            } else if hasSummary {
+                items.append((.summary, .none))
+            }
+        }
+        return items.enumerated().map { index, item in
+            let id: Placed.ID =
+                switch item.0 {
+                case .header: .header(primary.id)
+                case .summary: .summary(primary.id)
+                case .checkout(let section): .checkout(section.id)
+                case .agent(let agent, _, _): .agent(agent.id)
+                }
+            let followsHeader: Bool =
+                switch index > 0 ? items[index - 1].0 : nil {
+                case .header?, .checkout?: true
+                default: false
+                }
+            return Placed(
+                id: id, row: item.0, rule: item.1,
+                isFirst: index == 0, isLast: index == items.count - 1, followsHeader: followsHeader)
+        }
+    }
+
+    var visibleAgentIDs: [ConsoleAgent.ID] {
+        rows.compactMap { if case .agent(let agent, _, _) = $0.row { agent.id } else { nil } }
+    }
+
+    var accessibilityValue: String {
+        let count = agents.count == 1 ? "1 Agent" : "\(agents.count) Agents"
+        return [count, isCollapsed ? "Collapsed" : "Expanded",
+                ConsoleHostSectionHeaderPresentation.statusText(
+                    items: ConsoleHostAgentStatusCounts(agents: agents).items)]
+            .compactMap { $0 }.joined(separator: ", ")
+    }
+
+    /// Sections in `workspaceSections` order: each top-level section, then
+    /// the sections nested under it.
+    static func cards(_ sections: [ConsoleWorkspaceSection]) -> [Self] {
+        var cards: [Self] = []
+        for section in sections {
+            if let parentID = section.parentID,
+                let index = cards.lastIndex(where: { $0.id == parentID })
+            {
+                cards[index] = Self(primary: cards[index].primary, nested: cards[index].nested + [section])
+            } else {
+                cards.append(Self(primary: section, nested: []))
+            }
+        }
+        return cards
+    }
+
+    /// The fields a row in a card leaves to the card: the Workspace, the
+    /// Host where a header names it, and a directory that is the checkout
+    /// at `checkoutPath`, its section's.
+    static func hiddenTokens(
+        for agent: ConsoleAgent, checkoutPath: String?, showsHost: Bool
+    ) -> Set<AgentRowToken> {
+        var hidden: Set<AgentRowToken> = [.workspace]
+        if !showsHost { hidden.insert(.host) }
+        if let checkoutPath, agent.agent.cwd == checkoutPath {
+            hidden.insert(.directory)
+        }
+        return hidden
+    }
+}
+
+/// How a repository's card titles a checkout: the main checkout by its
+/// branch, a worktree by its Workspace with the branch after it when that
+/// says something more.
+struct ConsoleCheckoutTitle: Equatable, Sendable {
+    /// What the title names, which VoiceOver says where the icon shows it.
+    enum Role: Equatable, Sendable {
+        /// A Workspace on its own card.
+        case workspace
+        case mainCheckout
+        case worktree
+    }
+
+    let title: String
+    let detail: String?
+    /// The main checkout's branch is not read yet: its Workspace stands in,
+    /// quieter.
+    let isPending: Bool
+    let role: Role
+
+    static let detachedText = "detached"
+
+    init(title: String, detail: String? = nil, isPending: Bool = false, role: Role = .workspace) {
+        self.title = title
+        self.detail = detail
+        self.isPending = isPending
+        self.role = role
+    }
+
+    /// `branch` is nil until a read of the checkout has named it.
+    init(label: String, isMainCheckout: Bool, branch: CheckoutHead.Branch?) {
+        let role: Role = isMainCheckout ? .mainCheckout : .worktree
+        switch (isMainCheckout, branch) {
+        case (true, .named(let name)?): self.init(title: name, role: role)
+        case (true, nil): self.init(title: label, isPending: true, role: role)
+        case (_, .detached?): self.init(title: label, detail: Self.detachedText, role: role)
+        case (false, .named(let name)?):
+            self.init(title: label, detail: name == label ? nil : name, role: role)
+        case (false, nil): self.init(title: label, role: role)
+        }
+    }
+
+    /// The branch an Agent's Changes read found, when that read is of the
+    /// checkout at `path`: an Agent can work in another checkout than its
+    /// Workspace's.
+    static func branch(at path: String?, in reads: [CheckoutChanges]) -> CheckoutHead.Branch? {
+        guard let path else { return nil }
+        return reads.first { String(decoding: $0.checkout.topLevel, as: UTF8.self) == path }?.head.branch
+    }
+
+    var accessibilityLabel: String {
+        switch role {
+        case .workspace:
+            return title
+        case .mainCheckout:
+            if detail != nil { return "\(title), detached" }
+            return isPending ? title : "Branch \(title)"
+        case .worktree:
+            let branch = detail.map { $0 == Self.detachedText ? "detached" : "branch \($0)" }
+            return ["\(title), worktree", branch].compactMap { $0 }.joined(separator: ", ")
         }
     }
 }
@@ -80,18 +333,141 @@ struct ConsoleHostAgentStatusCount: Identifiable, Equatable {
     var id: String { status.rawValue }
 }
 
-/// Persists the Console presentation choice and per-Host collapsed state,
+/// Persists the Console presentation choice and Host/Workspace collapse state,
 /// and projects grouped sections without taking ownership of Agent sorting.
 /// Collapsed Host ids are deliberately retained when a Host disconnects or
 /// leaves the catalog so a reconnect or later return restores the choice.
 @MainActor
 @Observable
 final class ConsoleListPresentationStore {
+    /// Hosts follow catalog order; Workspaces follow their first Agent in
+    /// the supplied priority order. Grouping never re-sorts Agents or pins.
+    /// `savedStructures` holds the Workspace structure of each Host whose
+    /// rows may be saved Chat entries, which report no checkout: its
+    /// Workspaces had Agents at the last snapshot and count as Workspaces
+    /// with Agents, so the cards keep the shape the live Agents gave them.
+    func workspaceSections(
+        hosts: [Host], agents: [ConsoleAgent],
+        savedStructures: [Host.ID: [ChatCachedWorkspace]] = [:],
+        filteredHostID: Host.ID? = nil, searchQuery: String = ""
+    ) -> [ConsoleWorkspaceSection] {
+        let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let collapsedIDs = collapsedWorkspaceIDs
+        return sections(
+            hosts: hosts, agents: agents, filteredHostID: filteredHostID, searchQuery: searchQuery
+        ).flatMap { host in
+            let buckets = Dictionary(grouping: host.agents, by: \.agent.workspaceID)
+            var order: [String] = []
+            for agent in host.agents where !order.contains(agent.agent.workspaceID) {
+                order.append(agent.agent.workspaceID)
+            }
+
+            // Nesting is decided on every Agent of the Host, so a search
+            // that matches only a worktree still finds its main checkout.
+            // Workspaces exist here only through their Agents, or through
+            // the saved structure, whose Workspaces had Agents at the last
+            // snapshot: a main checkout with neither is not projected and
+            // cannot be a parent.
+            let everyAgent = agents.filter { $0.hostID == host.id }
+            let allBuckets = Dictionary(grouping: everyAgent, by: \.agent.workspaceID)
+            let saved = savedStructures[host.id] ?? []
+            let savedByID = Dictionary(saved.map { ($0.id, $0) }) { first, _ in first }
+            var allOrder: [String] = []
+            for agent in everyAgent where !allOrder.contains(agent.agent.workspaceID) {
+                allOrder.append(agent.agent.workspaceID)
+            }
+            for workspace in saved where !allOrder.contains(workspace.id) {
+                allOrder.append(workspace.id)
+            }
+            func checkout(_ workspaceID: String) -> RepositoryCheckout? {
+                allBuckets[workspaceID]?.compactMap(\.repositoryCheckout).first
+                    ?? savedByID[workspaceID]?.checkout
+            }
+            func mainCheckouts(_ repoKey: String, in ids: [String]) -> [String] {
+                ids.filter {
+                    let info = checkout($0)
+                    return info?.repoKey == repoKey && info?.isLinkedWorktree == false
+                }
+            }
+            func parent(of workspaceID: String) -> String? {
+                guard let info = checkout(workspaceID), info.isLinkedWorktree else { return nil }
+                return mainCheckouts(info.repoKey, in: order).first
+                    ?? mainCheckouts(info.repoKey, in: allOrder).first
+            }
+            var parentOf: [String: String] = [:]
+            for workspaceID in order {
+                if let parent = parent(of: workspaceID) { parentOf[workspaceID] = parent }
+            }
+            var childrenOf: [String: [String]] = [:]
+            for workspaceID in order {
+                if let parent = parentOf[workspaceID] { childrenOf[parent, default: []].append(workspaceID) }
+            }
+            // A saved worktree none of whose Agents is listed yet still makes
+            // its main checkout's card a repository's. It has no rows; a
+            // search, which lists only matches, leaves it out.
+            if !isSearching {
+                for workspace in saved where buckets[workspace.id] == nil {
+                    guard let parent = parent(of: workspace.id) else { continue }
+                    parentOf[workspace.id] = parent
+                    childrenOf[parent, default: []].append(workspace.id)
+                }
+            }
+
+            func members(_ workspaceID: String) -> [ConsoleAgent] { buckets[workspaceID] ?? [] }
+            func section(_ workspaceID: String) -> ConsoleWorkspaceSection {
+                let label = ((allBuckets[workspaceID] ?? []).map(\.workspaceLabel) + [savedByID[workspaceID]?.label])
+                    .compactMap { $0 }
+                    .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                let id = ConsoleWorkspaceSection.ID(hostID: host.id, workspaceID: workspaceID)
+                let parentID = parentOf[workspaceID].map {
+                    ConsoleWorkspaceSection.ID(hostID: host.id, workspaceID: $0)
+                }
+                var section = ConsoleWorkspaceSection(
+                    id: id, title: label ?? (workspaceID.isEmpty ? "Unknown Workspace" : workspaceID),
+                    hostName: host.hostDisplayName, agents: members(workspaceID),
+                    isCollapsed: !isSearching && collapsedIDs.contains(id),
+                    parentID: parentID)
+                if let info = checkout(workspaceID) {
+                    section.checkout = info
+                    // Every Agent of a Host shortens its paths alike.
+                    section.pathText = (allBuckets[workspaceID]?.first ?? everyAgent.first)?
+                        .displayPath(info.checkoutPath)
+                }
+                return section
+            }
+
+            var emitted: Set<String> = []
+            var result: [ConsoleWorkspaceSection] = []
+            func emit(_ workspaceID: String) {
+                guard emitted.insert(workspaceID).inserted else { return }
+                result.append(section(workspaceID))
+            }
+            for workspaceID in order {
+                let top = parentOf[workspaceID] ?? workspaceID
+                emit(top)
+                for child in childrenOf[top] ?? [] { emit(child) }
+            }
+            return result
+        }
+    }
+
+    func toggleWorkspace(_ id: ConsoleWorkspaceSection.ID) {
+        if !collapsedWorkspaceIDs.insert(id).inserted {
+            collapsedWorkspaceIDs.remove(id)
+        }
+        let sorted = collapsedWorkspaceIDs.sorted {
+            ($0.hostID.uuidString, $0.workspaceID) < ($1.hostID.uuidString, $1.workspaceID)
+        }
+        defaults.set(try? JSONEncoder().encode(sorted), forKey: Self.collapsedWorkspacesDefaultsKey)
+    }
+
     private static let modeDefaultsKey = "console-list.presentation-mode"
     private static let collapsedHostsDefaultsKey = "console-list.collapsed-hosts"
+    private static let collapsedWorkspacesDefaultsKey = "console-list.collapsed-workspaces"
 
     private(set) var mode: ConsoleListPresentationMode
     private var collapsedHostIDs: Set<Host.ID>
+    private var collapsedWorkspaceIDs: Set<ConsoleWorkspaceSection.ID>
     // UserDefaults is documented thread-safe; Sendable modulo that promise.
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
 
@@ -103,6 +479,9 @@ final class ConsoleListPresentationStore {
         collapsedHostIDs = Set(
             (defaults.stringArray(forKey: Self.collapsedHostsDefaultsKey) ?? [])
                 .compactMap(UUID.init(uuidString:)))
+        collapsedWorkspaceIDs = Set(
+            defaults.data(forKey: Self.collapsedWorkspacesDefaultsKey)
+                .flatMap { try? JSONDecoder().decode([ConsoleWorkspaceSection.ID].self, from: $0) } ?? [])
     }
 
     func select(_ mode: ConsoleListPresentationMode) {
@@ -141,13 +520,27 @@ final class ConsoleListPresentationStore {
     ) -> [ConsoleHostSection] {
         sections(
             hosts: hosts,
-            agents: console.agents,
+            agents: console.chatDisplayAgents,
             hostStatuses: console.hostStatuses,
             hostStandingFailures: console.hostStandingFailures,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
             hostSyncErrors: console.hostSyncErrors,
             filteredHostID: filteredHostID,
             searchQuery: searchQuery)
+    }
+
+    /// Reads the same inventory as `sections(hosts:console:)`, so saved Chat
+    /// entry points of an unproven Host appear By Workspace too.
+    func workspaceSections(
+        hosts: [Host],
+        console: ConsoleStore,
+        filteredHostID: Host.ID? = nil,
+        searchQuery: String = ""
+    ) -> [ConsoleWorkspaceSection] {
+        workspaceSections(
+            hosts: hosts, agents: console.chatDisplayAgents,
+            savedStructures: console.savedWorkspaceStructures,
+            filteredHostID: filteredHostID, searchQuery: searchQuery)
     }
 
     /// Projects one section per catalog Host, in catalog order. `agents` is

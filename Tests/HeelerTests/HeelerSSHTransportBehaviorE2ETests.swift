@@ -396,7 +396,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
         await replacement.end()
     }
 
-    @Test("nonzero Attach exit reports the primary channel failure and wakes input")
+    @Test("nonzero Attach exit reports herdr's exit and last line and wakes input")
     func failedAttachExitFreesChannel() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         let transport = try await HeelerSSHTransport.connect(settings: environment.directSettings())
@@ -408,9 +408,10 @@ struct HeelerSSHTransportBehaviorE2ETests {
         var output = ""
         try await expectAttachOutput(&iterator, accumulated: &output, contains: "TTY-OK")
         failed.send(Data("__fail__\n".utf8))
+        // The fixture's last line rides along with the status (#431).
         await #expect(
-            throws: TransportError.channelFailed(
-                detail: "attach channel: remote exit status 23")
+            throws: TransportError.attachExited(
+                status: 23, output: "herdr: fixture attach failed")
         ) {
             while try await iterator.next() != nil {}
         }
@@ -906,11 +907,12 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(after - before == 12)
     }
 
-    /// CLAUDE.md's load-bearing herdr 0.7.5 fact: `agent.start` on a pane whose
-    /// shell has not reached its prompt is refused with `agent_pane_busy`, and
-    /// the Transport waits the shell out rather than surfacing it. herdr 0.8.0
-    /// answers asynchronously instead, so nothing live exercises this any more
-    /// — only the fixture can hold the older server's behavior still.
+    /// herdr refuses `agent.start` with `agent_pane_busy` while a startup
+    /// command holds a fresh pane's foreground (live on 0.9.4, fish drew 146
+    /// such refusals before its launch went through at about 2.4 s), and the
+    /// Transport waits the shell out rather than surfacing it. Only the
+    /// fixture holds that window still; see the `agent.start` observation in
+    /// docs/agents/herdr-compatibility.md.
     @Test("agent start waits out a fresh pane's booting shell")
     func agentStartRetriesWhileTheFreshPaneShellBoots() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
@@ -929,12 +931,45 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(agent.paneID == "pane:\(token)")
         let recorded = try await Self.recordedRequests(from: transport, token: token)
         #expect(recorded.filter { $0.hasPrefix("agent.start ") }.count == 3)
-        // The agent's name rides into tab.create as the label, so the tab
-        // bar never shows a positional default for a named agent.
+        // The Agent keeps its name on agent.start; the tab stays available
+        // to automatic title providers.
         #expect(
             recorded[0]
-                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"label":"fixture","workspace_id":"workspace-1"}"#
+                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"workspace_id":"workspace-1"}"#
         )
+        #expect(!recorded.contains { $0.hasPrefix("pane.close ") })
+    }
+
+    /// herdr 0.9.4 on macOS also refuses a launch line longer than the
+    /// terminal's 1,024-byte canonical input limit until the fresh shell's
+    /// line editor starts, and a booting shell can answer busy and canonical
+    /// in turn. Both refusals share the one wait, and every attempt resends
+    /// the same request, long argument included, to the same pane.
+    @Test("agent start waits out a shell that cannot yet take a long launch line")
+    func agentStartRetriesWhileTheFreshShellIsInCanonicalMode() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("canon3")
+        let argument = String(repeating: "x", count: 1_100)
+        let agent = try await transport.startAgent(
+            AgentLaunchRequest(
+                kind: "codex",
+                name: "fixture",
+                arguments: [argument],
+                workspaceID: "workspace-1",
+                cwd: "/fixture/\(token)"))
+
+        #expect(agent.paneID == "pane:\(token)")
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        // Three refusals, then the launch: four identical requests.
+        let start =
+            #"agent.start {"args":["\#(argument)"],"kind":"codex","name":"fixture","pane_id":"pane:\#(token)"}"#
+        #expect(
+            recorded.filter { $0.hasPrefix("agent.start ") }
+                == Array(repeating: start, count: 4))
         #expect(!recorded.contains { $0.hasPrefix("pane.close ") })
     }
 
@@ -1048,15 +1083,13 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(agent.paneID == "pane:\(token)")
         #expect(agent.workspaceID == "workspace:\(token)")
         let recorded = try await Self.recordedRequests(from: transport, token: token)
-        // workspace.create, agent.start, then the cosmetic tab rename that
-        // gives the fresh tab the agent's name.
-        try #require(recorded.count == 3)
+        try #require(recorded.count == 2)
         #expect(
             recorded[0]
                 == #"workspace.create {"cwd":"/fixture/\#(token)","focus":false,"label":"App"}"#
         )
         #expect(recorded[1].hasPrefix("agent.start "))
-        #expect(recorded[2] == #"tab.rename {"label":"fixture","tab_id":"tab:\#(token)"}"#)
+        #expect(!recorded.contains { $0.hasPrefix("tab.rename ") })
         #expect(!recorded.contains { $0.hasPrefix("tab.create ") })
     }
 
@@ -1112,10 +1145,9 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(!recorded.contains { $0.hasPrefix("tab.create ") })
     }
 
-    /// The worktree's fresh tab carries the worktree label, not the agent's
-    /// name; the launch renames it once the agent is real.
-    @Test("a worktree agent start renames the fresh tab to the agent's name")
-    func worktreeAgentStartRenamesTheFreshTab() async throws {
+    /// Omitting a tab name must leave automatic titles available in worktrees too.
+    @Test("a worktree agent start leaves the fresh tab available for automatic titles")
+    func worktreeAgentStartPreservesAutomaticTabTitles() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         let transport = try await HeelerSSHTransport.connect(
             settings: environment.directSettings())
@@ -1130,10 +1162,10 @@ struct HeelerSSHTransportBehaviorE2ETests {
             worktree: WorktreeSpec(branch: "task/\(token)", base: "main"))
 
         let recorded = try await Self.recordedRequests(from: transport, token: token)
-        try #require(recorded.count == 3)
+        try #require(recorded.count == 2)
         #expect(recorded[0].hasPrefix("worktree.create "))
         #expect(recorded[1].hasPrefix("agent.start "))
-        #expect(recorded[2] == #"tab.rename {"label":"fixture","tab_id":"tab:\#(token)"}"#)
+        #expect(!recorded.contains { $0.hasPrefix("tab.rename ") })
     }
 
     /// A refused `tab.rename` is cosmetic: the agent already exists, so the
@@ -1147,7 +1179,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
 
         let token = Self.scriptToken("renamefail")
         let agent = try await transport.startAgentInNewWorkspace(
-            AgentLaunchRequest(kind: "codex", name: "fixture"),
+            AgentLaunchRequest(kind: "codex", name: "fixture", tabLabel: "Fix login bug"),
             workspace: NewWorkspaceSpec(directory: "/fixture/\(token)", label: "App"))
 
         #expect(agent.paneID == "pane:\(token)")
@@ -1248,7 +1280,7 @@ struct HeelerSSHTransportBehaviorE2ETests {
         let recorded = try await Self.recordedRequests(from: transport, token: token)
         #expect(
             recorded.first
-                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"label":"fixture","workspace_id":"workspace-1"}"#
+                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"workspace_id":"workspace-1"}"#
         )
     }
 
@@ -1299,6 +1331,27 @@ struct HeelerSSHTransportBehaviorE2ETests {
             recorded[0]
                 == #"workspace.create {"cwd":"/fixture/\#(token)","focus":false,"label":"App"}"#
         )
+        #expect(recorded[2] == #"tab.rename {"label":"Fix login bug","tab_id":"tab:\#(token)"}"#)
+    }
+
+    @Test("a custom tab label drives the post-start rename of a new worktree's tab")
+    func customTabLabelDrivesTheNewWorktreeTabRename() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("ok")
+        _ = try await transport.startAgentInNewWorktree(
+            AgentLaunchRequest(
+                kind: "codex", name: "fixture", workspaceID: "workspace-1",
+                tabLabel: "Fix login bug"),
+            worktree: WorktreeSpec(branch: "task/\(token)", base: "main"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 3)
+        #expect(recorded[0].hasPrefix("worktree.create "))
+        #expect(recorded[1].hasPrefix("agent.start "))
         #expect(recorded[2] == #"tab.rename {"label":"Fix login bug","tab_id":"tab:\#(token)"}"#)
     }
 
@@ -1590,10 +1643,12 @@ struct HeelerSSHTransportBehaviorE2ETests {
         await session.end()
     }
 
-    /// What the `startfails` script answers `agent.start` with. Any code but
-    /// `agent_pane_busy` takes the compensating path, so the fixture uses one
-    /// of its own rather than guessing at herdr's — 0.7.5's refusal of an
-    /// unsupported kind is recorded by its message alone.
+    /// What the `startfails` script answers `agent.start` with. Any refusal
+    /// but the two the shell-readiness wait resends (`agent_pane_busy` and
+    /// herdr 0.9.4's canonical-mode refusal) takes the compensating path at
+    /// once, so the fixture uses a code of its own rather than guessing at
+    /// herdr's: 0.7.5's refusal of an unsupported kind is recorded by its
+    /// message alone.
     private static let refusedStart = HerdrAPIError(
         code: "fixture_agent_start_refused",
         message: "scripted non-retryable agent.start failure")
@@ -1640,7 +1695,9 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(try await transport.sessionSnapshot().agents.isEmpty)
         #expect(
             try await transport.readHeelerPlugin()
-                == HeelerPluginInstallation(version: "0.6.0", source: .github))
+                == HeelerPluginInstallation(
+                    pluginRoot: "/plugins/heeler", version: "0.6.0", source: .github,
+                    repository: "ZingerLittleBee/Heeler"))
         #expect(
             try await transport.readPane(PaneReadParams(paneID: "pane-1", source: .recent)).text
                 == "fixture output")

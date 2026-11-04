@@ -36,11 +36,11 @@ struct TerminalAppearancePane: View {
             .background(.quaternary, in: .rect(cornerRadius: 10))
 
             Menu {
-                ForEach(fonts.availableOptions) { option in
+                ForEach(fonts.availableOptions) { @Sendable [selection = fonts.selection] option in
                     Button {
                         fonts.select(option)
                     } label: {
-                        if option == fonts.selection {
+                        if option == selection {
                             Label(option.title, systemImage: "checkmark")
                         } else {
                             Text(option.title)
@@ -86,18 +86,20 @@ struct TerminalAppearancePane: View {
     /// and that terminal is rendering the current appearance's slot.
     private var themeGrid: some View {
         LazyVGrid(columns: columns, spacing: 10) {
-            ForEach(TerminalThemeOption.allCases) { option in
-                Button {
-                    themes.select(option, for: colorScheme)
-                } label: {
-                    TerminalThemeSwatch(
-                        option: option,
-                        isSelected: themes.selection(for: colorScheme) == option)
+            ForEach(TerminalThemeOption.allCases) { @Sendable option in
+                MainActorContent {
+                    Button {
+                        themes.select(option, for: colorScheme)
+                    } label: {
+                        TerminalThemeSwatch(
+                            option: option,
+                            isSelected: themes.selection(for: colorScheme) == option)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(option.title)
+                    .accessibilityValue(
+                        themes.selection(for: colorScheme) == option ? "Selected" : "")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(option.title)
-                .accessibilityValue(
-                    themes.selection(for: colorScheme) == option ? "Selected" : "")
             }
         }
     }

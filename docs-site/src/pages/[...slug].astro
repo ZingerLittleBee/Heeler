@@ -1,0 +1,49 @@
+---
+import { render } from 'astro:content';
+import defaultMdxComponents from '@fumadocs/base-ui/mdx';
+import { Docs } from '@/components/docs';
+import Layout from '@/components/layout.astro';
+import { serializedPageTrees, source } from '@/lib/source.ts';
+import { stepNumbers, tableOfContents } from '@/lib/toc.ts';
+
+export function getStaticPaths() {
+  return source.getPages().map((page) => ({
+    params: { slug: page.url.slice(1) || undefined },
+    props: { page },
+  }));
+}
+
+type Props = ReturnType<typeof getStaticPaths>[number]['props'];
+
+const { page } = Astro.props;
+const { entry, title, description, sourceUrl } = page.data;
+const { Content, headings, remarkPluginFrontmatter } = await render(entry);
+const isGuide = entry.collection === 'guides';
+// From the Markdown pipeline (src/lib/markdown.ts): the guide's lead paragraph
+// as HTML, shown under the title, and the ids of its numbered step headings.
+const { lead, steps } = remarkPluginFrontmatter;
+---
+
+<Layout title={title} description={description} isGuide={isGuide}>
+  <Docs
+    trees={serializedPageTrees}
+    pathname={page.url}
+    params={Astro.params}
+    page={{
+      title,
+      description: isGuide ? undefined : description,
+      lead: typeof lead === 'string' ? lead : undefined,
+      toc: tableOfContents(headings, stepNumbers(steps)),
+      sourceUrl,
+      markdownUrl: isGuide ? `${page.url}.md` : undefined,
+    }}
+    client:load
+    transition:persist="docs-shell"
+  >
+    <Content components={defaultMdxComponents} />
+  </Docs>
+</Layout>
+
+<script>
+  import '@/scripts/content.ts';
+</script>

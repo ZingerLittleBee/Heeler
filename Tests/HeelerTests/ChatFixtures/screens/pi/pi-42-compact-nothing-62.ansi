@@ -1,0 +1,41 @@
+[0m[38;2;102;102;102mask-matt, better-accessibility, better-colors,                [0m
+[0m[38;2;102;102;102mbetter-interface, better-layout, better-typography, better-ui,[0m
+[0m[38;2;102;102;102mbetter-writing, code-review, codebase-design,                 [0m
+[0m[38;2;102;102;102mdesign-taste-frontend, diagnosing-bugs, dispatch-tickets,     [0m
+[0m[38;2;102;102;102mdockerman-cli, domain-modeling, ego-browser, emil-design-eng, [0m
+[0m[38;2;102;102;102mfind-animation-opportunities, find-docs, find-skills,         [0m
+[0m[38;2;102;102;102mgrill-me, grill-with-docs, grilling, handoff, herdr,          [0m
+[0m[38;2;102;102;102mherdr-fleet, implement, implement-spec, improve,              [0m
+[0m[38;2;102;102;102mimprove-animations, improve-codebase-architecture,            [0m
+[0m[38;2;102;102;102mkill-ai-slop, pick-ui-library, prototype, publish-release,    [0m
+[0m[38;2;102;102;102mreject-attribution, research, retro, review-animations,       [0m
+[0m[38;2;102;102;102msetup-matt-pocock-skills, show-me, state-machine, tdd, teach, [0m
+[0m[38;2;102;102;102mtestloop, to-questionnaire, to-spec, to-tickets, triage,      [0m
+[0m[38;2;102;102;102mui-research, unslop, vercel-react-best-practices, wait-what,  [0m
+[0m[38;2;102;102;102mwayfinder, web-design-guidelines, wizard, writing-for-agents[0m  
+
+[0m[38;2;240;198;116m[Extensions][0m                                                  
+[0m[38;2;102;102;102m  herdr-agent-state.ts, orca-agent-status.ts, orca-prefill.ts,[0m
+[0m[38;2;102;102;102morca-titlebar-spinner.ts[0m                                      
+
+
+[0m[38;2;255;255;0m──────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;255;255;0mUpdate Available[0m                                             
+ [0m[38;2;128;128;128mNew version 1.3.0 is available. Run [0m[38;2;138;190;183mpi update[0m                
+ [0m[38;2;128;128;128mChangelog: [0m[38;2;138;190;183mhttps://pi.dev/changelog[0m                          
+[0m[38;2;255;255;0m──────────────────────────────────────────────────────────────[0m
+
+[0m[48;2;52;53;65m                                                              [0m
+[0m[48;2;52;53;65m [0m[38;2;212;212;212m[48;2;52;53;65mhi[0m[48;2;52;53;65m                                                           [0m
+[0m[48;2;52;53;65m                                                              [0m
+
+ Hi. What would you like to work on?                          
+
+ [0m[38;2;204;102;102mError: Compaction failed: Nothing to compact (session too    [0m
+ [0m[38;2;204;102;102msmall)[0m                                                       
+
+[0m[38;2;95;135;175m──────────────────────────────────────────────────────────────[0m
+[0m[7m [0m                                                             
+[0m[38;2;95;135;175m──────────────────────────────────────────────────────────────[0m
+[0m[38;2;102;102;102m/private/tmp/heeler-iso-4v/proj-pi (master)[0m
+[0m[38;2;102;102;102m↑6.5k ↓31 R384 CH5.6% $0.013 (sub) 1.4%/500k (auto)  grok-4.5 [0m

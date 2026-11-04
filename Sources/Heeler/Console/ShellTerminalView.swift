@@ -55,10 +55,15 @@ struct ShellTerminalView: View {
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackButton) private var showsBackButton
+    @Environment(\.usesVerticalToolbar) private var usesVerticalToolbar
     /// Shared with Agent detail's header: folding it is one reading
     /// preference across both kinds of terminal.
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
-    /// The Workspace drawer's panel, while the back header's button owns it.
+    /// The optional shortcut row above the input row. Its own preference,
+    /// not Agent detail's input mode: hiding it here must not move every
+    /// Agent back to the Composer. Off by default.
+    @AppStorage(Self.shortcutRowDefaultsKey) private var isShortcutRowEnabled = false
+    /// The Workspace drawer's panel, while the back header's menu owns it.
     @State private var isHeaderDrawerOpen = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The window's own controls over this screen's top-leading corner, on
@@ -86,6 +91,7 @@ struct ShellTerminalView: View {
         }
         screen.keyboardControl = keyboardControl
         screen.isLocalInputEnabled = true
+        screen.isRemoteScrollEnabled = store.input.isEnabled && store.terminalStatus == .live
         // The first surface of this screen takes the keyboard only if the
         // screen it came from left it up. A later surface on the same screen
         // (a recovered pipeline) is a replacement, not an arrival: it keeps
@@ -187,13 +193,72 @@ struct ShellTerminalView: View {
         keyboardMode == .controls
     }
 
+    static let shortcutRowDefaultsKey = "shell-terminal.shortcut-row"
+
+    /// The shortcut row shows while it is turned on and the system keyboard's
+    /// Text mode is in use; the Keys keyboard already carries every key on it.
+    static func showsShortcutRow(
+        isEnabled: Bool, keyboardMode: TerminalKeyboardMode
+    ) -> Bool {
+        isEnabled && keyboardMode == .text
+    }
+
+    private var showsShortcutRow: Bool {
+        Self.showsShortcutRow(isEnabled: isShortcutRowEnabled, keyboardMode: keyboardMode)
+    }
+
+    /// The shortcut row's place directly above the input row. It is fixed to
+    /// the input row, which never moves, so only the row itself animates: it
+    /// slides out from behind the input row's top edge, clipped there, and
+    /// slides back behind it. Reduce Motion fades it instead.
+    private var shortcutRowSlot: some View {
+        ZStack {
+            if showsShortcutRow {
+                InputShortcutStripRow(
+                    strip: InputShortcutStripPresentation(surface: .shellTerminal),
+                    keyAccessibilityHint: "Sends this key to the terminal",
+                    sendKey: keyboardControl.sendTerminalKey
+                ) { _ in EmptyView() }
+                .transition(
+                    reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        // Full width even while empty, or the clip would cut the outgoing
+        // row off before it slides away.
+        .frame(maxWidth: .infinity)
+        .frame(height: InputChromeLayout.shortcutRowHeight)
+        .clipped()
+        .alignmentGuide(.top) { $0[.bottom] }
+        .animation(.snappy(duration: 0.24), value: showsShortcutRow)
+    }
+
+    private var inputRow: ShellTerminalInputRow {
+        ShellTerminalInputRow(
+            mode: Binding(
+                get: { keyboardMode },
+                set: { setKeyboardMode($0) }),
+            paste: { keyboardControl.paste($0) },
+            isKeyboardUp: isKeyboardShown,
+            toggleKeyboard: toggleKeyboard,
+            isShortcutRowEnabled: $isShortcutRowEnabled,
+            more: ShellTerminalMoreMenu(
+                title: title,
+                backTitle: backTitle,
+                isReturning: isReturning,
+                isClosingTerminal: isClosingTerminal,
+                onBack: { Task { await goBack() } },
+                isConfirmingClose: $isConfirmingClose,
+                onCloseTerminal: onCloseTerminal == nil
+                    ? nil : { closeTerminal() }))
+    }
+
     var body: some View {
         terminalScreen
             .id(store.terminalID)
             .overlay {
                 if let workspaceDrawer {
                     let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
-                    // The back header's button stands in for the edge handle
+                    // The back header's menu stands in for the edge handle
                     // while the header is out; folded, the handle comes back.
                     if isBackHeaderExpanded {
                         drawer.openedFromHeader(
@@ -207,31 +272,28 @@ struct ShellTerminalView: View {
             .overlay { statusOverlay }
             // The input row and controls dock must stay above the edge
             // gesture's hit region, including their leftmost buttons.
+            // Beside a sidebar the split view's own swipe brings it out,
+            // following the finger; a strip here would take the touch first.
             .overlay(alignment: .leading) {
-                if !usesSystemBackSwipe {
-                    ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
-                        if let revealDetailSidebar { revealDetailSidebar() } else { await goBack() }
-                    }
+                if !usesSystemBackSwipe, revealDetailSidebar == nil {
+                    ShellTerminalEdgeBackGesture(isEnabled: !isReturning) { await goBack() }
                 }
             }
             // Always present, keyboard up or down: with no title bar, its
             // More menu is the only visible way back or to Close Terminal.
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                ShellTerminalInputRow(
-                    mode: Binding(
-                        get: { keyboardMode },
-                        set: { setKeyboardMode($0) }),
-                    paste: { keyboardControl.paste($0) },
-                    isKeyboardUp: isKeyboardShown,
-                    toggleKeyboard: toggleKeyboard,
-                    more: ShellTerminalMoreMenu(
-                        title: title,
-                        backTitle: backTitle,
-                        isReturning: isReturning,
-                        isClosingTerminal: isClosingTerminal,
-                        onBack: { Task { await goBack() } },
-                        onCloseTerminal: onCloseTerminal == nil
-                            ? nil : { isConfirmingClose = true }))
+                inputRow
+                    .overlay(alignment: .top) { shortcutRowSlot }
+                    // Reserved outside the slot's animation, so the terminal
+                    // resizes in one step, as it does for the keyboard.
+                    .padding(
+                        .top, showsShortcutRow ? InputChromeLayout.shortcutRowHeight : 0)
+                    // On the keyboard while it opens and closes, as Agent
+                    // detail's Composer; the Keys dock is not a keyboard that
+                    // moves.
+                    .ridesKeyboard(
+                        keyboardInset, layoutInset: keyboardLayout.contentInset,
+                        isEnabled: !isKeysDockPresented)
             }
             .padding(.bottom, keyboardLayout.contentInset)
             // This dock is always present at the system keyboard's last
@@ -259,12 +321,13 @@ struct ShellTerminalView: View {
                 AgentDetailHeader(
                     palette: themePalette,
                     isExpanded: $isBackHeaderExpanded,
-                    onBack: showsBackButton
+                    onBack: showsBackButton && !usesVerticalToolbar
                         ? {
                             guard !isReturning else { return }
                             Task { await goBack() }
                         } : nil,
-                    actions: backHeaderActions)
+                    actions: backHeaderActions,
+                    controlPlacement: headerControlPlacement)
                 .environment(
                     \.colorScheme,
                     terminal.themes.selection(for: colorScheme)
@@ -279,10 +342,17 @@ struct ShellTerminalView: View {
             .background {
                 // Keyboard geometry and the status bar inset follow this
                 // view's own window, not whichever window of the app is key.
-                WindowReader { window in
-                    keyboardInset.attach(to: window)
-                    mountedWindow.attach(window)
-                }
+                // The reader also anchors the keyboard measurement to this
+                // screen's own bottom edge, which a tab bar can hold above
+                // the window's (see `TerminalKeyboardInset.contentBottomInset`).
+                WindowReader(
+                    onWindow: { window in
+                        keyboardInset.attach(to: window)
+                        mountedWindow.attach(window)
+                    },
+                    onView: { window, view in
+                        keyboardInset.attach(to: window, contentAnchor: view)
+                    })
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
@@ -308,21 +378,16 @@ struct ShellTerminalView: View {
             .toolbarBackground(Color.clear, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar(.visible, for: .navigationBar)
-            .confirmationDialog(
-                "Close Terminal?", isPresented: $isConfirmingClose, titleVisibility: .visible
-            ) {
-                Button("Close Terminal", role: .destructive) {
-                    if backReturnsToAgent {
-                        armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
-                    }
-                    onCloseTerminal?()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(
-                    "This closes the pane on the Host, ending anything running in it. "
-                        + "Going Back instead leaves it for desktop handoff.")
-            }
+            .detailHeaderBarControls(
+                headerControlPlacement, palette: themePalette,
+                isExpanded: $isBackHeaderExpanded,
+                actions: backHeaderActions,
+                onBack: showsBackButton && usesVerticalToolbar
+                    ? {
+                        guard !isReturning else { return }
+                        Task { await goBack() }
+                    } : nil)
+            .prioritizesVerticalDetailToolbar()
             .sheet(
                 isPresented: Binding(
                     get: { store.pendingPaste != nil },
@@ -392,18 +457,28 @@ struct ShellTerminalView: View {
         AgentDetailHeader.top(outputTop: terminalTopInset, barRow: barRow)
     }
 
+    private var headerSharesBar: Bool { AgentDetailHeader.levelsWithBar(barRow) }
+
+    private var headerControlPlacement: AgentDetailHeaderControlPlacement {
+        AgentDetailHeaderControlPlacement(
+            headerSharesBar: headerSharesBar, usesVerticalToolbar: usesVerticalToolbar)
+    }
+
     /// A terminal pushed over the Console list goes back the system's way,
     /// following the finger. One opened from an Agent stands in for that
     /// Agent on the same screen, so a system swipe there would leave the
-    /// Agent too; it keeps the edge gesture that returns to it.
+    /// Agent too; it keeps the edge gesture that returns to it. Beside a
+    /// sidebar neither applies: the split view's swipe brings the list out.
     private var usesSystemBackSwipe: Bool {
         showsBackButton && !backReturnsToAgent
     }
 
     private var backHeaderActions: [AgentDetailHeaderAction] {
         guard workspaceDrawer != nil else { return [] }
-        return [AgentDetailHeaderAction(title: "Workspace Terminals", systemImage: "terminal") {
+        return [AgentDetailHeaderAction(title: "Terminals", systemImage: "apple.terminal.on.rectangle") {
             withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
+                // Folded, the menu unfolds the header the panel drops from.
+                isBackHeaderExpanded = true
                 isHeaderDrawerOpen.toggle()
             }
         }]
@@ -415,6 +490,11 @@ struct ShellTerminalView: View {
         _ mode: TerminalKeyboardMode, restoresSystemKeyboard: Bool = true
     ) {
         guard mode != keyboardMode else { return }
+        // The input row already rests on the Keys dock's footprint, which the
+        // returning system keyboard takes over; it must not ride that up.
+        if keyboardMode == .controls {
+            keyboardInset.skipKeyboardRideLeavingToolsDock()
+        }
         Self.prepareKeyboardMode(mode, inset: keyboardInset)
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -458,6 +538,15 @@ struct ShellTerminalView: View {
         } else {
             keyboardControl.requestKeyboard()
         }
+    }
+
+    /// Confirmed Close Terminal: the keyboard state goes back to the Agent
+    /// as it does on Back.
+    private func closeTerminal() {
+        if backReturnsToAgent {
+            armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
+        }
+        onCloseTerminal?()
     }
 
     /// Back leaves for the Agent (or the Console): the keyboard state goes
@@ -592,7 +681,12 @@ struct ShellTerminalMoreMenu: View {
     let isReturning: Bool
     let isClosingTerminal: Bool
     let onBack: () -> Void
-    /// Nil hides Close Terminal entirely (previews, tests).
+    /// The confirmation hangs off this button, so on iOS 26, where it is a
+    /// popover, its arrow points at the menu it came from rather than at
+    /// the middle of the screen.
+    @Binding var isConfirmingClose: Bool
+    /// Runs once Close Terminal is confirmed. Nil hides the entry entirely
+    /// (previews, tests).
     let onCloseTerminal: (() -> Void)?
 
     var body: some View {
@@ -602,8 +696,8 @@ struct ShellTerminalMoreMenu: View {
                     Label(backTitle, systemImage: "chevron.left")
                 }
                 .disabled(isReturning)
-                if let onCloseTerminal {
-                    Button(role: .destructive, action: onCloseTerminal) {
+                if onCloseTerminal != nil {
+                    Button(role: .destructive) { isConfirmingClose = true } label: {
                         Label("Close Terminal", systemImage: "trash")
                     }
                     .disabled(isClosingTerminal || isReturning)
@@ -620,6 +714,16 @@ struct ShellTerminalMoreMenu: View {
         }
         .accessibilityLabel("More")
         .accessibilityHint("Opens terminal actions")
+        .confirmationDialog(
+            "Close Terminal?", isPresented: $isConfirmingClose, titleVisibility: .visible
+        ) {
+            Button("Close Terminal", role: .destructive) { onCloseTerminal?() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This closes the pane on the Host, ending anything running in it. "
+                    + "Going Back instead leaves it for desktop handoff.")
+        }
     }
 }
 
@@ -628,12 +732,15 @@ struct ShellTerminalInputRow: View {
     let paste: (String) -> Void
     let isKeyboardUp: Bool
     let toggleKeyboard: () -> Void
+    /// The shortcut row's preference; the row itself is the parent's.
+    @Binding var isShortcutRowEnabled: Bool
     let more: ShellTerminalMoreMenu
     /// Matches the Composer chrome's small glyphs, or the row's icons read as
     /// borrowed from a different set.
     static let glyphPointSize: CGFloat = 12
     @Environment(\.displayScale) private var displayScale
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
 
     private var sizeClass: InputShortcutStripPresentation.SizeClass {
         horizontalSizeClass == .regular ? .regular : .compact
@@ -645,19 +752,17 @@ struct ShellTerminalInputRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            PasteButton(payloadType: String.self) { strings in
-                guard let text = strings.first else { return }
-                paste(text)
+            // Painting the fill with the row's own background leaves the
+            // glyph reading as a bare icon, like the row's other buttons.
+            HStack(spacing: 0) {
+                PinnedPasteControl(backgroundColor: .secondarySystemBackground, paste: paste)
+                    .id(colorScheme)
+                    .accessibilityHint("Pastes the clipboard into the terminal")
+                    .frame(
+                        width: InputChromeLayout.shellAccessoryButtonWidth,
+                        height: InputChromeLayout.shortcutRowHeight)
+                more
             }
-            .labelStyle(.iconOnly)
-            .buttonBorderShape(.capsule)
-            // The system default is an accent-tinted tile, which shouts next
-            // to the mode control. Painting the fill with the row's own
-            // background leaves the glyph reading as a bare icon.
-            .tint(Color(uiColor: .secondarySystemBackground))
-            .frame(
-                width: InputChromeLayout.shellAccessoryButtonWidth,
-                height: InputChromeLayout.shortcutRowHeight)
             .frame(width: Self.sideWidth, alignment: .leading)
 
             Spacer(minLength: 4)
@@ -672,9 +777,14 @@ struct ShellTerminalInputRow: View {
             Spacer(minLength: 4)
 
             // A line break without submitting (Shift+Enter) lives on the Keys
-            // keyboard; the row keeps only what Text mode cannot do itself.
+            // keyboard and the optional shortcut row; this row keeps only
+            // what Text mode cannot do itself. The shortcut row toggle sits
+            // beside the keyboard toggle: both change what the keyboard area
+            // shows.
             HStack(spacing: 0) {
-                more
+                if mode == .text {
+                    shortcutRowToggle
+                }
                 keyboardToggle
             }
             .frame(width: Self.sideWidth, alignment: .trailing)
@@ -689,12 +799,39 @@ struct ShellTerminalInputRow: View {
         .background(Color(uiColor: .secondarySystemBackground))
     }
 
+    /// Shows or hides the shortcut row with Agent detail's Direct Input
+    /// glyph, in the row's label color in both states: the row itself shows
+    /// whether it is on. Text mode only: the Keys keyboard already carries
+    /// every key on the row, so the row and its toggle both hide there.
+    private var shortcutRowToggle: some View {
+        Button {
+            isShortcutRowEnabled.toggle()
+        } label: {
+            Image(systemName: "rectangle.bottomhalf.inset.filled")
+                .font(.system(size: Self.glyphPointSize))
+                .foregroundStyle(Color(uiColor: .label))
+                .frame(
+                    width: InputChromeLayout.shellAccessoryButtonWidth,
+                    height: InputChromeLayout.shortcutRowHeight)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isShortcutRowEnabled ? "Hide shortcut row" : "Show shortcut row")
+        .accessibilityHint("Puts Esc, Tab and arrow keys above the input row")
+    }
+
     private var keyboardToggle: some View {
-        Button(action: toggleKeyboard) {
+        Button {
+            // The glyph swaps inside this action, as the keyboard starts to
+            // move. Animated with the button's release, the old glyph fades
+            // out where the row was while the row rides the keyboard away.
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { toggleKeyboard() }
+        } label: {
             Image(systemName: isKeyboardUp ? "keyboard.chevron.compact.down" : "keyboard")
                 .font(.system(size: Self.glyphPointSize))
                 .foregroundStyle(Color(uiColor: .label))
-                .contentTransition(.symbolEffect(.replace))
                 .frame(
                     width: InputChromeLayout.shellAccessoryButtonWidth,
                     height: InputChromeLayout.shortcutRowHeight)
@@ -736,22 +873,25 @@ struct ShellTerminalKeysDock: View {
 
             Divider()
             HStack(spacing: 4) {
-                ForEach(Self.tabs) { tab in
-                    Button {
-                        selectedTab = tab
-                    } label: {
-                        Image(systemName: tab.systemImageName)
-                            .font(.body)
-                            .foregroundStyle(selectedTab == tab ? Color.accentColor : .secondary)
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .background(
-                                selectedTab == tab ? Color(uiColor: .secondarySystemFill) : .clear,
-                                in: .rect(cornerRadius: 8))
-                            .contentShape(.rect)
+                ForEach(Self.tabs) { @Sendable tab in
+                    MainActorContent {
+                        let isSelected = selectedTab == tab
+                        Button {
+                            selectedTab = tab
+                        } label: {
+                            Image(systemName: tab.systemImageName)
+                                .font(.body)
+                                .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                                .frame(maxWidth: .infinity, minHeight: 40)
+                                .background(
+                                    isSelected ? Color(uiColor: .secondarySystemFill) : .clear,
+                                    in: .rect(cornerRadius: 8))
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(tab.accessibilityLabel)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(tab.accessibilityLabel)
-                    .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
                 }
             }
             .padding(.horizontal, 10)
@@ -763,8 +903,7 @@ struct ShellTerminalKeysDock: View {
     }
 }
 
-/// Goes back on an edge swipe, or beside an iPad's sidebar brings the
-/// sidebar out instead.
+/// Goes back on an edge swipe.
 private struct ShellTerminalEdgeBackGesture: View {
     let isEnabled: Bool
     let onBack: @MainActor () async -> Void

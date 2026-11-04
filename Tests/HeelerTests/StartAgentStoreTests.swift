@@ -43,13 +43,13 @@ struct StartAgentStoreTests {
         }
     }
 
-    /// A throwaway defaults domain per test, so the remembered-workspace
+    /// A throwaway defaults domain per test, so the remembered-launch
     /// persistence is real but isolated.
-    private func makeRecents() -> RecentWorkspaceStore {
-        let name = "recent-workspace-test-\(UUID().uuidString)"
+    private func makeRecents() -> RecentLaunchStore {
+        let name = "recent-launch-test-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
-        return RecentWorkspaceStore(defaults: defaults)
+        return RecentLaunchStore(defaults: defaults)
     }
 
     private func makeStore(
@@ -62,7 +62,7 @@ struct StartAgentStoreTests {
         remoteHome: @escaping (Host.ID) async throws -> String = { _ in "/home/you" },
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void = { _ in },
         origin: StartAgentStore.LaunchOrigin? = nil,
-        recents: RecentWorkspaceStore? = nil,
+        recents: RecentLaunchStore? = nil,
         recorder: StartRecorder
     ) -> StartAgentStore {
         StartAgentStore(
@@ -757,16 +757,63 @@ struct StartAgentStoreTests {
         let workspaces: (Host.ID) -> [ConsoleWorkspace] = { _ in
             [ConsoleWorkspace(id: "w1", label: "Proj"), ConsoleWorkspace(id: "w2", label: "Other")]
         }
+        let kinds: (Host.ID) async throws -> [SupportedAgentKind] = { _ in [.pi, .codex] }
         let store = makeStore(
-            hosts: [host], workspaces: workspaces, recents: recents, recorder: recorder)
+            hosts: [host], workspaces: workspaces, agentKinds: kinds, recents: recents,
+            recorder: recorder)
         store.selectedWorkspaceID = "w2"
         store.name = "reviewer"
         await store.discoverAgents()
+        store.selectedAgentKind = .codex
         await store.submit()
 
         let next = makeStore(
-            hosts: [host], workspaces: workspaces, recents: recents, recorder: StartRecorder())
+            hosts: [host], workspaces: workspaces, agentKinds: kinds, recents: recents,
+            recorder: StartRecorder())
+        await next.discoverAgents()
         #expect(next.selectedWorkspaceID == "w1")
+        #expect(next.selectedAgentKind == .pi)
+    }
+
+    /// One preference across Hosts (#601): the kind started last is the
+    /// default wherever the Host has it installed.
+    @Test func defaultsToTheAgentKindLastStartedOnAnyHost() async {
+        let host = Host.fixture()
+        let other = Host.fixture(address: "b.example")
+        let recents = makeRecents()
+        let workspaces: (Host.ID) -> [ConsoleWorkspace] = { _ in
+            [ConsoleWorkspace(id: "w1", label: "Proj")]
+        }
+
+        let first = makeStore(
+            hosts: [host], workspaces: workspaces,
+            agentKinds: { _ in [.pi, .claude, .codex] },
+            recents: recents, recorder: StartRecorder())
+        await first.discoverAgents()
+        #expect(first.selectedAgentKind == .pi)
+        first.selectedAgentKind = .codex
+        await first.submit()
+        #expect(first.state == started(on: host))
+
+        let elsewhere = makeStore(
+            hosts: [other], workspaces: workspaces,
+            agentKinds: { _ in [.pi, .codex] },
+            recents: recents, recorder: StartRecorder())
+        await elsewhere.discoverAgents()
+        #expect(elsewhere.selectedAgentKind == .codex)
+    }
+
+    @Test func aHostWithoutTheRememberedKindSelectsItsFirst() async {
+        let host = Host.fixture()
+        let recents = makeRecents()
+        recents.rememberAgentKind(.codex)
+        let store = makeStore(
+            hosts: [host], agentKinds: { _ in [.pi, .claude] }, recents: recents,
+            recorder: StartRecorder())
+
+        await store.discoverAgents()
+
+        #expect(store.selectedAgentKind == .pi)
     }
 
     @Test func submitForwardsTheAssembledParamsAndSucceeds() async {
@@ -796,8 +843,8 @@ struct StartAgentStoreTests {
     }
 
     /// The tab label is free text next to the slug-constrained agent name:
-    /// trimmed on the way out, and dropped when empty so the Transport
-    /// falls back to the agent's name.
+    /// trimmed on the way out, and dropped when empty so automatic tab
+    /// titles stay available.
     @Test func submitForwardsATrimmedTabLabelAndDropsAnEmptyOne() async {
         let host = Host.fixture()
         let recorder = StartRecorder()
@@ -814,14 +861,12 @@ struct StartAgentStoreTests {
 
         #expect(store.state == started(on: host))
         #expect(recorder.params.first?.tabLabel == "Fix login bug")
-        #expect(recorder.params.first?.resolvedTabLabel == "Fix login bug")
 
         store.tabLabel = " \t "
         await store.submit()
 
         #expect(recorder.params.count == 2)
         #expect(recorder.params.last?.tabLabel == nil)
-        #expect(recorder.params.last?.resolvedTabLabel == "reviewer")
     }
 
     @Test func submitDispatchesAgentStartWithQwenKind() async {
@@ -881,6 +926,71 @@ struct StartAgentStoreTests {
                         + "Update herdr on this Host to v0.9.0 or later for Muse support, "
                         + "or choose another supported Agent."))
         #expect(recorder.params.map(\.kind) == ["muse"])
+    }
+
+    /// herdr 0.9.4 on a macOS Host refuses a long launch line until the fresh
+    /// shell's line editor starts, and the Transport waits that out, so the
+    /// refusal reaches New Agent only when the wait ran out, as it does for
+    /// dash. herdr's own text says to wait for the prompt; the copy says what
+    /// the user can change instead.
+    @Test func submitAsksToShortenArgumentsTheHostsShellNeverAccepted() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        recorder.error = HerdrAPIError(
+            code: "agent_start_input_failed",
+            message: "input contains a 1108-byte line but the terminal is in canonical mode "
+                + "with a 1024-byte limit; wait for the shell prompt and retry")
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.arguments = String(repeating: "x", count: 1_100)
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(
+            store.state
+                == .failed(
+                    "The Host's shell didn't accept a launch command this long within 10 seconds. "
+                        + "On a Mac, herdr accepts at most 1,024 bytes until the shell's line "
+                        + "editor starts, and some shells, such as dash, never start one. "
+                        + "Shorten the arguments and try again."))
+    }
+
+    /// Only the canonical-mode refusal gets that copy. A wait that ends busy
+    /// says nothing about the launch line's length, and herdr's sibling
+    /// "could not determine canonical input capacity" is a different failure,
+    /// so both keep herdr's own text.
+    @Test func submitKeepsHerdrsTextForOtherShellRefusals() async {
+        let host = Host.fixture()
+        let workspaces: (Host.ID) -> [ConsoleWorkspace] = { _ in
+            [ConsoleWorkspace(id: "w1", label: "Proj")]
+        }
+
+        let busy = StartRecorder()
+        busy.error = HerdrAPIError(
+            code: "agent_pane_busy",
+            message: "agent target pane w1:pA is not an available shell")
+        let first = makeStore(hosts: [host], workspaces: workspaces, recorder: busy)
+        await first.discoverAgents()
+        await first.submit()
+        #expect(
+            first.state
+                == .failed(
+                    "herdr rejected the command: agent target pane w1:pA is not an available shell"
+                ))
+
+        let capacity = StartRecorder()
+        capacity.error = HerdrAPIError(
+            code: "agent_start_input_failed",
+            message: "could not determine canonical input capacity")
+        let second = makeStore(hosts: [host], workspaces: workspaces, recorder: capacity)
+        await second.discoverAgents()
+        await second.submit()
+        #expect(
+            second.state
+                == .failed("herdr rejected the command: could not determine canonical input capacity"))
     }
 
     @Test func submitKeepsGenericCopyForUnrelatedAgentStartErrors() async {
@@ -1034,7 +1144,7 @@ struct StartAgentStoreTests {
     @Test func originWorkspaceOutranksTheRememberedAndReportedOnes() async {
         let host = Host.fixture()
         let recents = makeRecents()
-        recents.remember("w7", for: host.id)
+        recents.rememberWorkspace("w7", for: host.id)
         let recorder = StartRecorder()
         let store = makeStore(
             hosts: [host],

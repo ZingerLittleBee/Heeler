@@ -274,6 +274,40 @@ struct WeakNetworkE2ETests {
         try await transport.close()
     }
 
+    /// A Chat query on a stalled link ends at its own deadline as a Host file
+    /// timeout. Its exec keeps the channel and the query lane until the link
+    /// thaws and the script ends, so nothing redials the Host and the next
+    /// query answers as the first did.
+    @Test("a stalled OpenCode query times out without redialing the Host")
+    func aStalledOpenCodeQueryTimesOutWithoutRedial() async throws {
+        let fixture = try #require(WeakNetworkFixture.current)
+        try await fixture.control.reset()
+        try await fixture.control.apply(.degraded)
+
+        let transport = try await HeelerSSHTransport.connect(settings: fixture.settings())
+        let session = try #require(OpenCodeSessionID("ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9"))
+        let query = OpenCodeQuery(session: session, kind: .tail(budget: 524_288))
+        // The fixture account has no OpenCode store, and the query says so;
+        // the query after the stall must answer the same.
+        let first = try await transport.queryOpenCode(query)
+        let acceptedBefore = try await fixture.control.stats().acceptedConnections
+
+        try await fixture.control.apply(.starved)
+        let deadline = SSHTransportSettings.defaultChatQueryTimeout
+        let started = ContinuousClock.now
+        await #expect(throws: TransportError.hostFileTimedOut) {
+            _ = try await transport.queryOpenCode(query)
+        }
+        let elapsed = started.duration(to: .now)
+        #expect(elapsed >= deadline && elapsed < deadline + .seconds(3), "timed out after \(elapsed)")
+
+        try await fixture.control.apply(.degraded)
+        #expect(try await transport.queryOpenCode(query) == first)
+        #expect(try await transport.ping().protocolVersion == 17)
+        #expect(try await fixture.control.stats().acceptedConnections == acceptedBefore)
+        try await transport.close()
+    }
+
     /// `EventsSession.ensureTransport` chooses between resubscribing in place
     /// and redialling on this one property. If it stays true on a dead
     /// connection, Events resubscribes forever onto nothing — the failure

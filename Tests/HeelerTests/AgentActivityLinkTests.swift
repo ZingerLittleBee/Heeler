@@ -161,4 +161,51 @@ struct AgentLinkHostLookupTests {
             try opened("heeler://agent?host=studio.local&workspace=w1&tab=w1%3At1&pane=w1%3Ap1")
                 == AgentNotificationTarget(hostID: Self.studio.id, paneID: "w1:p1"))
     }
+
+    /// A Pairing Code v2 Host targets its endpoint's socket, which no link's
+    /// `session` names, so another app's link never opens it: not by address,
+    /// not by name, and not on the session its socket serves.
+    @Test(arguments: [
+        "heeler://agent?host=studio.local&pane=w1%3Ap1",
+        "heeler://agent?host=studio.local&session=work&pane=w1%3Ap1",
+        "heeler://agent?host=studio%20app&pane=w1%3Ap1",
+        "heeler://agent?host=studio%20work%20app&session=work&pane=w1%3Ap1",
+    ])
+    func endpointHostsDoNotAnswerLookups(link: String) throws {
+        #expect(try opened(link, in: Self.endpointHosts()) == nil)
+    }
+
+    /// Regular Hosts on the same address answer exactly as without the
+    /// endpoint Hosts beside them.
+    @Test(arguments: [
+        ("heeler://agent?host=studio.local&pane=w1%3Ap1", studio.id),
+        ("heeler://agent?host=studio.local&session=default&pane=w1%3Ap1", studio.id),
+        ("heeler://agent?host=studio.local&session=work&pane=w1%3Ap1", studioWork.id),
+        ("heeler://agent?host=build%20box&pane=w1%3Ap1", buildBox.id),
+    ])
+    func regularHostsStillAnswerBesideEndpointHosts(link: String, hostID: UUID) throws {
+        let hosts = try Self.endpointHosts() + Self.hosts
+
+        #expect(
+            try opened(link, in: hosts) == AgentNotificationTarget(hostID: hostID, paneID: "w1:p1"))
+    }
+
+    /// Endpoint Hosts on the studio's address, one serving herdr's default
+    /// session and one serving `work`, each the only Host its link names.
+    private static func endpointHosts() throws -> [Host] {
+        let base = "/Users/dev/Library/Application Support/Example/herdr"
+        let launcher = "/Users/dev/Library/Application Support/Example/bin/herdr"
+        let defaultEndpoint = try #require(
+            HerdrEndpoint(socketPath: "\(base)/herdr.sock", executablePath: launcher))
+        let workEndpoint = try #require(
+            HerdrEndpoint(socketPath: "\(base)/sessions/work/herdr.sock", executablePath: launcher))
+        return [
+            Host(
+                name: "Studio app", address: "studio.local", username: "dev",
+                herdrEndpoint: defaultEndpoint),
+            Host(
+                name: "Studio work app", address: "studio.local", username: "dev",
+                herdrEndpoint: workEndpoint),
+        ]
+    }
 }

@@ -1,0 +1,116 @@
+---
+title: Heeler Docs
+description: Set up Heeler, an independent herdr mobile client for iPhone and iPad. Use Claude Code and Codex over SSH, with native Chat, notifications, and Usage widgets.
+---
+
+import { Step, Steps } from '@fumadocs/base-ui/components/steps';
+import { GuideCard } from '@/components/guide-card';
+
+Heeler is an independent [herdr](https://herdr.dev) mobile client for iPhone and iPad, connecting you to Claude Code, Codex, and other coding Agents over SSH.
+Agents run on your Host, the computer running herdr, rather than on your phone.
+Use these guides to connect a Host, send instructions in [native Chat](/chat), and set up [Usage widgets](/usage#add-a-widget).
+
+Explore [Heeler for iPhone and iPad](https://heeler.bybee.dev/) or [download Heeler on the App Store](https://apps.apple.com/app/id6797263135).
+
+<Callout title="New here?">
+  With a Mac or Linux Host on the same network as your iPhone or iPad, such as the same Wi-Fi, the quickest start is
+  to [pair by scanning a code](/pairing). Otherwise, follow the three steps below. If you are not sure which network to
+  use, start with Tailscale.
+</Callout>
+
+## Get started
+
+<Cards>
+  <GuideCard slug="pairing">Install the Heeler plugin, show a Pairing Code on the Host, and scan it. No form to fill in.</GuideCard>
+</Cards>
+
+## Set up by hand
+
+<Steps>
+<Step>
+
+### Prepare the Host
+
+On the Mac that runs herdr, install herdr, turn on Remote Login, note the Mac's SSH fingerprint, and choose how
+Heeler signs in: [Prepare the Host](/overlay-networks#prepare-the-host). Going through a Jump Host? Skip the sign-in
+part; [its guide](/vps-jump-host-setup) sets up the key. For a Windows Host, follow [Windows setup](/windows-setup)
+instead.
+
+</Step>
+<Step>
+
+### Choose how to reach it
+
+On the same network, Heeler connects to the Mac directly. From anywhere else, use an overlay network such as
+[Tailscale](/tailscale), or a [Jump Host](/vps-jump-host-setup) on a Debian or Ubuntu VPS that you run. A Host can
+have [multiple routes](/host-routes), so it works both at home and away.
+
+</Step>
+<Step>
+
+### Add the Host in Heeler
+
+Open **Hosts**, tap **Add Host**, and [fill in the form](/overlay-networks#connect-from-heeler) (through a Jump Host,
+use [these values](/vps-jump-host-setup#step-13-add-the-host-in-heeler)). Tap **Trust** only if the fingerprint
+matches the one you noted; through a Jump Host, Heeler asks about the VPS first, then the Mac. Then
+[verify the connection](/overlay-networks#verify-the-connection), including over cellular. Already paired? Add the
+Host's address on that network as [another route](/host-routes#add-a-route) instead.
+
+</Step>
+</Steps>
+
+## Overlay networks
+
+Heeler joins the network by itself, so your iPhone or iPad needs no VPN app. The Mac runs the provider's software.
+
+<Cards>
+  <GuideCard slug="overlay-networks">Prepare the Host, pick a provider, and connect from Heeler.</GuideCard>
+  <GuideCard slug="tailscale">Heeler joins your tailnet; the Mac runs the Tailscale app, or Tailscale from Terminal without a VPN. Start here if you are new.</GuideCard>
+  <GuideCard slug="zerotier">A private ZeroTier network; the Mac runs ZeroTier One.</GuideCard>
+  <GuideCard slug="easytier">No account needed. Away from home, it needs a relay or a Mac reachable from the internet.</GuideCard>
+</Cards>
+
+## Cloudflare Tunnel
+
+Cloudflare's own app on the phone carries the connection, and the Mac opens no port. The phone runs a system VPN
+instead, so this suits people who would rather not run an overlay network.
+
+<Cards>
+  <GuideCard slug="cloudflare-tunnel">A private network route with no domain, or a VPS running the tunnel client, then a Direct route in Heeler.</GuideCard>
+</Cards>
+
+## Jump Host
+
+If you run a Debian or Ubuntu VPS, the Mac can keep a reverse SSH tunnel open to it, and Heeler connects through
+the VPS's normal SSH port. No overlay network or provider account is needed, and the Mac's SSH port is never exposed
+to the internet.
+
+<Cards>
+  <GuideCard slug="vps-jump-host-setup">A copy-and-check walkthrough, one device at a time.</GuideCard>
+  <GuideCard slug="vps-jump-host">The trust model, key rotation, and moving to a new VPS.</GuideCard>
+</Cards>
+
+## Hosts
+
+<Cards>
+  <GuideCard slug="host-routes">Give a Host its LAN address and a route for away; Heeler keeps the first that connects.</GuideCard>
+  <GuideCard slug="windows-setup">SSH login and automatic startup of SSH and herdr on Windows 11.</GuideCard>
+  <GuideCard slug="selinux">Let SSH open herdr's socket on Fedora, RHEL, and their derivatives when SELinux blocks it.</GuideCard>
+</Cards>
+
+## Chat
+
+Use Claude Code and Codex on iPhone or iPad through native Chat. Read conversations, send instructions, and answer supported Agent questions with buttons instead of terminal keys.
+
+<Cards>
+  <GuideCard slug="chat">Open Chat, set up the Host for each program, send messages, and answer a Blocked Agent.</GuideCard>
+  <GuideCard slug="chat-troubleshooting">What each Chat message means and what to do about it.</GuideCard>
+</Cards>
+
+## Usage
+
+See how close your Claude Code and Codex accounts are to their Usage Limits, and what your Agents used.
+
+<Cards>
+  <GuideCard slug="usage">Read Usage Limits and Token Usage across Hosts, and keep them on the Home Screen and Lock Screen with widgets.</GuideCard>
+</Cards>

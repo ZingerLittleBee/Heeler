@@ -6,7 +6,8 @@ import VisionKit
 /// Scan to Pair (#62, #66, #204): the camera entry for Pairing Codes, with
 /// a paste path for the same string, the permission prompt, and a usable
 /// denied path. Once a code parses, the pairing ceremony runs immediately —
-/// one scan or paste, no confirmation step — and on success the persisted
+/// one scan or paste, no confirmation step, except for a code that names a
+/// launcher without a Bootstrap Key (ADR 0023) — and on success the persisted
 /// Host is handed to `onPaired`, entering the same preflight a manually
 /// added Host does.
 struct PairingScanView: View {
@@ -157,12 +158,20 @@ struct PairingScanView: View {
 
 /// The ceremony in flight (#66): the scanned Host, per-step progress, and on
 /// failure that step's copy with its recovery actions. The ceremony starts on
-/// arrival; Try Again reruns it with the same code while its TTL holds, so a
-/// network blip never forces a rescan.
+/// arrival, or on Pair for a code that needs confirmation; Try Again reruns it
+/// with the same code while its TTL holds, so a network blip never forces a
+/// rescan.
 private struct PairingCeremonyView: View {
     let code: PairingCode
     let store: PairingScanStore
     @State private var attempt = 0
+    @State private var confirmed: Bool
+
+    init(code: PairingCode, store: PairingScanStore) {
+        self.code = code
+        self.store = store
+        _confirmed = State(initialValue: !code.needsConfirmation)
+    }
 
     private enum StepStatus {
         case pending
@@ -182,11 +191,30 @@ private struct PairingCeremonyView: View {
                 if code.port != 22 {
                     LabeledContent("Port", value: String(code.port))
                 }
+                // A version 2 code names a launcher the app will run on the
+                // Host; show it, and the socket, while pairing.
+                if let endpoint = code.endpoint {
+                    LabeledContent("herdr Socket", value: endpoint.socketPath)
+                    LabeledContent("herdr Launcher", value: endpoint.executablePath)
+                }
+            }
+
+            if !confirmed {
+                Section {
+                    Button("Pair", systemImage: "link") {
+                        confirmed = true
+                        attempt += 1
+                    }
+                } footer: {
+                    Text(
+                        "Pairing runs this launcher as \(code.username) on the Host. "
+                            + "Pair only with a code your own Host showed you.")
+                }
             }
 
             Section {
-                ForEach(ceremonySteps, id: \.self) { step in
-                    stepRow(step)
+                ForEach(ceremonySteps, id: \.self) { @Sendable step in
+                    MainActorContent { stepRow(step) }
                 }
             } header: {
                 Text("Pairing")
@@ -210,7 +238,10 @@ private struct PairingCeremonyView: View {
                 }
             }
         }
-        .task(id: attempt) { await store.pair() }
+        .task(id: attempt) {
+            guard confirmed else { return }
+            await store.pair()
+        }
     }
 
     /// The steps this code's ceremony performs. A config-only code carries no

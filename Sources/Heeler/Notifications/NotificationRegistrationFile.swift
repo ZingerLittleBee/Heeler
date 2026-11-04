@@ -177,6 +177,16 @@ struct NotificationRegistrationFile: Sendable, Equatable {
         NotificationRegistrationFile(devices: devices.filter { !owner.owns($0) })
     }
 
+    /// Drops every entry carrying this Notification Key, whatever its device
+    /// token. The key is random per Host and never leaves this device's
+    /// Keychain, so each such entry is this device's own for that Host, an
+    /// older APNs token's included.
+    func removing(key: Data) -> NotificationRegistrationFile {
+        let encoded = key.base64URLEncodedString()
+        return NotificationRegistrationFile(
+            devices: devices.filter { $0["key"]?.stringValue != encoded })
+    }
+
     /// Moves the Host's own entry to the session the Host targets now. An
     /// entry from an older app (no `session`) or from before a session edit
     /// is rewritten in place, keeping `live_activity` and unknown fields —

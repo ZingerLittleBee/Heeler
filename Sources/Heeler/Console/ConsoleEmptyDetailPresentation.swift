@@ -89,7 +89,7 @@ struct ConsoleEmptyDetailView: View {
         } description: {
             Text(presentation.message)
         } actions: {
-            ForEach(presentation.actions) { action in
+            ForEach(presentation.actions) { @Sendable [minimumActionWidth] action in
                 Button {
                     perform(action)
                 } label: {

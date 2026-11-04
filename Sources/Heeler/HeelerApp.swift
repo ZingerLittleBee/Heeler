@@ -32,6 +32,13 @@ struct HeelerApp: App {
             #endif
         }
         .commands { ConsoleCommands() }
+        // Keeps the Usage widgets current while the app is closed.
+        .backgroundTask(.appRefresh(AgentUsageBackgroundRefresh.identifier)) { [pushDelegate] in
+            #if DEBUG && targetEnvironment(simulator)
+                guard !DemoScreenshotMode.isEnabled else { return }
+            #endif
+            await pushDelegate.appModel.refreshUsageInBackground()
+        }
         .onChange(of: scenePhase) {
             #if DEBUG && targetEnvironment(simulator)
                 guard !DemoScreenshotMode.isEnabled else { return }

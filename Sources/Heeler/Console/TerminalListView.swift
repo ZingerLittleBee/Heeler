@@ -89,8 +89,8 @@ struct TerminalListView: View {
                             .listRowBackground(Color.clear)
                     }
                 }
-                ForEach(workspaces) { workspace in
-                    workspaceSection(workspace, showsHost: true)
+                ForEach(workspaces) { @Sendable workspace in
+                    MainActorContent { workspaceSection(workspace, showsHost: true) }
                 }
             }
             .listStyle(.insetGrouped)
@@ -111,21 +111,25 @@ struct TerminalListView: View {
             // while its Workspaces scroll under it. Workspaces are rows of the
             // Host's section, drawn as cards by `TerminalCardRow`.
             List(selection: $selection) {
-                ForEach(groups) { group in
-                    Section {
-                        if !isFolded(group) {
-                            if let issue = group.issue {
-                                ConsoleHostIssueRow(issue: issue, onOpenHost: onOpenHost)
-                                    .modifier(TerminalCardRow(isFirst: true, isLast: true))
+                ForEach(groups) { @Sendable group in
+                    MainActorContent {
+                        Section {
+                            if !isFolded(group) {
+                                if let issue = group.issue {
+                                    ConsoleHostIssueRow(issue: issue, onOpenHost: onOpenHost)
+                                        .modifier(TerminalCardRow(isFirst: true, isLast: true))
+                                }
+                                ForEach(group.workspaces) { @Sendable workspace in
+                                    MainActorContent { workspaceRows(workspace) }
+                                }
                             }
-                            ForEach(group.workspaces) { workspaceRows($0) }
-                        }
-                    } header: {
-                        TerminalHostHeader(group: group) {
-                            if group.opensConnectionDetail {
-                                onOpenHost(group.hostID)
-                            } else {
-                                toggle(group.hostID)
+                        } header: {
+                            TerminalHostHeader(group: group) {
+                                if group.opensConnectionDetail {
+                                    onOpenHost(group.hostID)
+                                } else {
+                                    toggle(group.hostID)
+                                }
                             }
                         }
                     }
@@ -157,12 +161,14 @@ struct TerminalListView: View {
         .selectionDisabled()
         if !workspace.isCollapsed {
             let terminals = workspace.terminals
-            ForEach(Array(terminals.enumerated()), id: \.element.id) { index, terminal in
-                terminalRow(terminal, showsTab: terminals.count > 1, liftsCard: true)
-                    .modifier(
-                        TerminalCardRow(
-                            isFirst: index == 0, isLast: false,
-                            isSelected: isShownSelected(terminal)))
+            ForEach(Array(terminals.enumerated()), id: \.element.id) { @Sendable index, terminal in
+                MainActorContent {
+                    terminalRow(terminal, showsTab: terminals.count > 1, liftsCard: true)
+                        .modifier(
+                            TerminalCardRow(
+                                isFirst: index == 0, isLast: false,
+                                isSelected: isShownSelected(terminal)))
+                }
             }
             newTerminalRow(workspace)
                 .modifier(TerminalCardRow(isFirst: terminals.isEmpty, isLast: true))
@@ -196,9 +202,11 @@ struct TerminalListView: View {
     ) -> some View {
         Section {
             if !workspace.isCollapsed {
-                ForEach(workspace.terminals) {
-                    terminalRow($0, showsTab: workspace.terminals.count > 1)
-                        .listRowBackground(cardSlice(isSelected: isShownSelected($0)))
+                ForEach(workspace.terminals) { @Sendable terminal in
+                    MainActorContent {
+                        terminalRow(terminal, showsTab: workspace.terminals.count > 1)
+                            .listRowBackground(cardSlice(isSelected: isShownSelected(terminal)))
+                    }
                 }
                 // Every card ends in New Terminal, clear of the header's
                 // collapse control: a mistap there would open a real tab.

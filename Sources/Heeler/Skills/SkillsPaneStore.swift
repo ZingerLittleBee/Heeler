@@ -23,6 +23,9 @@ final class SkillsPaneStore {
     /// The invocation prefixes this agent's skill sources use, known before
     /// anything is fetched so typing one can open suggestions immediately.
     private let commandPrefixes: [String]
+    /// Which fetched skills this surface lists; Chat keeps out what its
+    /// sends would not accept.
+    private let include: (AgentSkill) -> Bool
     private let fetch: (_ forceRefresh: Bool) async throws -> [AgentSkill]
     /// Flipped synchronously before the first await so a re-selected pane
     /// racing a manual refresh cannot dispatch a second probe.
@@ -30,9 +33,11 @@ final class SkillsPaneStore {
 
     init(
         commandPrefixes: [String] = ["/"],
+        include: @escaping (AgentSkill) -> Bool = { _ in true },
         fetch: @escaping (_ forceRefresh: Bool) async throws -> [AgentSkill]
     ) {
         self.commandPrefixes = commandPrefixes
+        self.include = include
         self.fetch = fetch
     }
 
@@ -81,7 +86,7 @@ final class SkillsPaneStore {
         defer { isFetching = false }
         phase = .loading
         do {
-            skills = try await fetch(forceRefresh)
+            skills = try await fetch(forceRefresh).filter(include)
             phase = .loaded
         } catch is CancellationError {
             // The pane went away mid-load; the next appearance starts fresh.

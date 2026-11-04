@@ -1,0 +1,71 @@
+/* Type and layout roles shared by the homepage's sections. Imported once by
+ * the page, so these are global; components keep their own scoped styles. */
+
+.home-h2 {
+  font: var(--fw-semibold) clamp(28px, 5.4vw, var(--fs-h1)) / 1.15 var(--font-sans);
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.home-h4 {
+  font: var(--type-h5);
+  color: var(--text-primary);
+}
+
+.home-lede {
+  font: var(--type-body-lg);
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.home-body {
+  font: var(--type-body);
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.home-sm {
+  font: var(--type-body-sm);
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+/* A vertical run of blocks with one gap, set per use through --gap. */
+.home-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap, var(--sp-4));
+  min-width: 0;
+}
+
+/* Two-or-more column split; columns come from --cols and stack below 960px. */
+.home-grid {
+  display: grid;
+  grid-template-columns: var(--cols, 1fr 1fr);
+  gap: var(--gap, 64px);
+  align-items: var(--align, start);
+}
+
+.home-grid > * {
+  min-width: 0;
+}
+
+@media (max-width: 960px) {
+  .home-grid {
+    grid-template-columns: 1fr;
+    gap: var(--gap-narrow, 40px);
+  }
+}
+
+.home-arrow-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  min-height: 44px;
+  font: var(--type-label);
+  color: var(--text-primary);
+}
+
+.home-arrow-link span {
+  color: var(--text-muted);
+}

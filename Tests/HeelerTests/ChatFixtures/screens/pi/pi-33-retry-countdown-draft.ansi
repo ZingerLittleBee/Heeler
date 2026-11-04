@@ -1,0 +1,40 @@
+
+ [0m[1m[38;2;138;190;183mpi[0m[38;2;102;102;102m v0.85.1[0m                                                                                                             
+ [0m[38;2;102;102;102mescape[0m[38;2;128;128;128m interrupt · [0m[38;2;102;102;102mctrl+c/ctrl+d[0m[38;2;128;128;128m clear/exit · [0m[38;2;102;102;102m/[0m[38;2;128;128;128m commands · [0m[38;2;102;102;102m![0m[38;2;128;128;128m bash · [0m[38;2;102;102;102mctrl+o[0m[38;2;128;128;128m more[0m                                        
+ [0m[38;2;102;102;102mPress ctrl+o to show full startup help and loaded resources.[0m                                                           
+                                                                                                                        
+ [0m[38;2;102;102;102mPi can explain its own features and look up its docs. Ask it how to use or extend Pi.[0m                                  
+
+[0m[38;2;240;198;116m[Skills][0m                                                                                                                
+[0m[38;2;102;102;102m  agent-browser, anatomy, animation-vocabulary, apple-design, ask-matt, better-accessibility, better-colors,            [0m
+[0m[38;2;102;102;102mbetter-interface, better-layout, better-typography, better-ui, better-writing, code-review, codebase-design,            [0m
+[0m[38;2;102;102;102mdesign-taste-frontend, diagnosing-bugs, dispatch-tickets, dockerman-cli, domain-modeling, ego-browser, emil-design-eng, [0m
+[0m[38;2;102;102;102mfind-animation-opportunities, find-docs, find-skills, grill-me, grill-with-docs, grilling, handoff, herdr, herdr-fleet, [0m
+[0m[38;2;102;102;102mimplement, implement-spec, improve, improve-animations, improve-codebase-architecture, kill-ai-slop, pick-ui-library,   [0m
+[0m[38;2;102;102;102mprototype, publish-release, reject-attribution, research, retro, review-animations, setup-matt-pocock-skills, show-me,  [0m
+[0m[38;2;102;102;102mstate-machine, tdd, teach, testloop, to-questionnaire, to-spec, to-tickets, triage, ui-research, unslop,                [0m
+[0m[38;2;102;102;102mvercel-react-best-practices, wait-what, wayfinder, web-design-guidelines, wizard, writing-for-agents[0m                    
+
+[0m[38;2;240;198;116m[Extensions][0m                                                                                                            
+[0m[38;2;102;102;102m  herdr-agent-state.ts, orca-agent-status.ts, orca-prefill.ts, orca-titlebar-spinner.ts[0m                                 
+
+
+[0m[38;2;255;255;0m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;255;255;0mUpdate Available[0m                                                                                                       
+ [0m[38;2;128;128;128mNew version 1.2.0 is available. Run [0m[38;2;138;190;183mpi update[0m                                                                          
+ [0m[38;2;128;128;128mChangelog: [0m[38;2;138;190;183mhttps://pi.dev/changelog[0m                                                                                    
+[0m[38;2;255;255;0m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[0m[48;2;52;53;65m                                                                                                                        [0m
+[0m[48;2;52;53;65m [0m[38;2;212;212;212m[48;2;52;53;65mIn two short sentences, why is the sky blue?[0m[48;2;52;53;65m                                                                           [0m
+[0m[48;2;52;53;65m                                                                                                                        [0m
+
+ [0m[38;2;204;102;102mError: Connection error.[0m                                                                                               
+
+ [0m[38;2;255;255;0m⠋[0m [0m[38;2;128;128;128mRetrying (1/3) in 2s... (escape to cancel)[0m                                                                           
+
+[0m[38;2;178;148;187m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+draft typed while working[0m[7m [0m                                                                                              
+[0m[38;2;178;148;187m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;102;102;102m/private/tmp/heeler-iso-pi3/proj (master)[0m
+[0m[38;2;102;102;102m$0.000 (sub) 0.0%/500k (auto)                                                                            grok-4.5 • high[0m

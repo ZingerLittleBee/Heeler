@@ -1,8 +1,9 @@
 import Foundation
 
 /// A Host header's short readiness and the tone of the badge on its server
-/// glyph (`HostStatusGlyph`). The header shows only the glyph; the text is
-/// what VoiceOver reads.
+/// glyph (`HostStatusGlyph`). VoiceOver reads the text; the Agents list's
+/// header also shows it while the Host is not connected, as do the saved
+/// Chat entry points listed under it.
 struct HostReadiness: Equatable {
     let text: String
     let tone: HostConnectionTone

@@ -12,9 +12,10 @@ struct TransportErrorPresentation: Equatable, Sendable {
     let recoverySuggestion: String?
 
     /// `summary` [+ ": " + `detail`] + "." — what happened, no instruction.
+    /// A detail cut short with an ellipsis already ends the sentence.
     var explanation: String {
         if let detail {
-            return "\(summary): \(detail)."
+            return detail.hasSuffix("…") ? "\(summary): \(detail)" : "\(summary): \(detail)."
         }
         return "\(summary)."
     }
@@ -43,6 +44,10 @@ extension TransportError {
                     "Check that the Host is awake and reachable, then verify its address and port.")
         case .jumpHostFailed(let underlying):
             Self.jumpHostPresentation(underlying)
+        case .overlayFailed(let network, let reason):
+            Self.overlayPresentation(network: network, reason: reason)
+        case .noRouteReached(let failures):
+            Self.noRouteReachedPresentation(failures)
         case .tcpForwardingUnavailable:
             TransportErrorPresentation(
                 summary: "SSH TCP forwarding is disabled",
@@ -92,6 +97,13 @@ extension TransportError {
                 detail: nil,
                 recoverySuggestion:
                     "Put herdr's install directory on the account's non-interactive SSH PATH.")
+        case .herdrLauncherNotFound(let path):
+            TransportErrorPresentation(
+                summary: "The herdr launcher could not run",
+                detail: path,
+                recoverySuggestion:
+                    "Check that this launcher exists, is executable, and can start herdr. "
+                    + "Pair the Host again if its path changed.")
         case .streamLocalOpenFailed:
             TransportErrorPresentation(
                 summary: "herdr is not running on this Host",
@@ -127,6 +139,26 @@ extension TransportError {
                 summary: "Reading Changes timed out",
                 detail: nil,
                 recoverySuggestion: nil)
+        case .hostFileTimedOut:
+            TransportErrorPresentation(
+                summary: "Reading the conversation timed out",
+                detail: nil,
+                recoverySuggestion: nil)
+        case .hostFileUnreadable(let status):
+            TransportErrorPresentation(
+                summary: "The conversation file cannot be read",
+                detail: "SFTP status \(status)",
+                recoverySuggestion: "Check the file's permissions on the Host.")
+        case .hostStoreUnreadable(let detail):
+            // A whole sentence explains itself. A reader's own line cut
+            // short keeps its ellipsis rather than gaining a period.
+            detail.hasSuffix("…")
+                ? TransportErrorPresentation(
+                    summary: "OpenCode's database couldn't be read", detail: detail,
+                    recoverySuggestion: nil)
+                : TransportErrorPresentation(
+                    summary: Self.droppingTrailingPeriods(detail), detail: nil,
+                    recoverySuggestion: nil)
         case .cancelled:
             TransportErrorPresentation(
                 summary: "Connection cancelled",
@@ -147,7 +179,34 @@ extension TransportError {
                 summary: "Connection dropped",
                 detail: detail,
                 recoverySuggestion: nil)
+        case .attachExited(let status, let output):
+            TransportErrorPresentation(
+                summary: "herdr exited with status \(status)",
+                detail: output.map(Self.droppingTrailingPeriods).flatMap {
+                    $0.isEmpty ? nil : $0
+                },
+                recoverySuggestion: nil)
         }
+    }
+
+    /// `presentation` for a Host. An endpoint Host's socket comes from its
+    /// Pairing Code (ADR 0023): no session setting can bring a missing one
+    /// back; recovery targets the configured instance.
+    func presentation(usesHerdrEndpoint: Bool) -> TransportErrorPresentation {
+        let shared: TransportErrorPresentation = presentation
+        guard usesHerdrEndpoint, case .socketNotFound = self else { return shared }
+        return TransportErrorPresentation(
+            summary: shared.summary, detail: shared.detail,
+            recoverySuggestion:
+                "Start the herdr instance configured for this Host and verify its socket path.")
+    }
+
+    /// herdr's own sentence may already end in a period; `explanation`
+    /// supplies the closing one.
+    private static func droppingTrailingPeriods(_ text: String) -> String {
+        var text = Substring(text)
+        while text.last == "." { text = text.dropLast() }
+        return String(text)
     }
 
     /// A changed host key is a security refusal, not an ordinary outage.
@@ -157,7 +216,93 @@ extension TransportError {
         switch self {
         case .hostKeyMismatch: true
         case .jumpHostFailed(let underlying): underlying.isHostKeySecurityFailure
+        // A LAN address answered by another machine away from home is
+        // expected while another route is down, so its changed key counts
+        // only when every route failed on its key. Any other route's changed
+        // key counts on its own.
+        case .noRouteReached(let failures):
+            (!failures.isEmpty && failures.allSatisfy(\.error.isHostKeySecurityFailure))
+                || failures.contains(where: \.isHostKeySecurityFailure)
         default: false
+        }
+    }
+
+    /// Every route's own failure, in order. A changed key that counts as a
+    /// security failure leads, as it would for a Host with one route, so it
+    /// does not read as an ordinary outage.
+    private static func noRouteReachedPresentation(
+        _ failures: [RouteFailure]
+    ) -> TransportErrorPresentation {
+        let detail = failures.map { "\($0.route): \($0.error.presentation.summary)" }
+            .joined(separator: "; ")
+        if let changed = failures.first(where: \.isHostKeySecurityFailure) {
+            let presentation = changed.error.presentation
+            return TransportErrorPresentation(
+                summary: presentation.summary,
+                detail: detail,
+                recoverySuggestion: presentation.recoverySuggestion)
+        }
+        return TransportErrorPresentation(
+            summary: "No route reached the Host",
+            detail: detail,
+            recoverySuggestion: "Check that the Host is awake, then review its routes.")
+    }
+
+    /// Overlay failures name the network, not the Host: the Host was never
+    /// contacted, and the fix lives in Settings › Overlay Networks.
+    private static func overlayPresentation(
+        network: String, reason: OverlayFailure
+    ) -> TransportErrorPresentation {
+        switch reason {
+        case .notConfigured:
+            TransportErrorPresentation(
+                summary: "This Host's overlay network no longer exists",
+                detail: nil,
+                recoverySuggestion: "Choose another network in Edit Host.")
+        case .catalogUnreadable:
+            TransportErrorPresentation(
+                summary: "The saved overlay networks could not be read",
+                detail: nil,
+                recoverySuggestion: "Update Heeler, then reconnect.")
+        case .notReady(let detail):
+            TransportErrorPresentation(
+                summary: "Overlay network “\(network)” is not ready yet",
+                detail: detail,
+                recoverySuggestion:
+                    "If it is waiting for approval, authorize this device in the network's "
+                    + "admin console.")
+        case .misconfigured(let detail):
+            TransportErrorPresentation(
+                summary: "Overlay network “\(network)” is misconfigured",
+                detail: detail,
+                recoverySuggestion: "Fix it in Settings › Overlay Networks.")
+        case .loginRequired:
+            TransportErrorPresentation(
+                summary: "Overlay network “\(network)” needs sign-in",
+                detail: nil,
+                recoverySuggestion: "Sign in from Settings › Overlay Networks.")
+        case .signedOut:
+            TransportErrorPresentation(
+                summary: "This device is signed out of overlay network “\(network)”",
+                detail: nil,
+                recoverySuggestion: "Connect it again in Settings › Overlay Networks.")
+        case .startFailed(let detail):
+            TransportErrorPresentation(
+                summary: "Overlay network “\(network)” could not start",
+                detail: detail,
+                recoverySuggestion: "Check its settings in Settings › Overlay Networks.")
+        case .unreachable(let detail):
+            TransportErrorPresentation(
+                summary: "Unreachable over overlay network “\(network)”",
+                detail: detail,
+                recoverySuggestion:
+                    "Check that the machine has joined the network, then verify its overlay "
+                    + "address and port.")
+        case .timedOut:
+            TransportErrorPresentation(
+                summary: "Overlay network “\(network)” did not answer in time",
+                detail: nil,
+                recoverySuggestion: nil)
         }
     }
 

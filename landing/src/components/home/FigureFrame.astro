@@ -1,0 +1,57 @@
+---
+// A figure page from public/figures/ in a frame sized to its card; see
+// figures.ts for the numbers.
+import type { FigureEmbed } from './figures';
+
+interface Props {
+  figure: FigureEmbed;
+}
+
+const { figure } = Astro.props;
+// Astro dev serves public files verbatim; Workers normalizes HTML paths.
+const src = `/figures/${figure.slug}${import.meta.env.DEV ? '.html' : ''}`;
+---
+
+<div
+  class:list={['frame', { 'stage-crop': figure.stageCrop }]}
+  style={`--ratio: ${figure.ratio}; --narrow-ratio: ${figure.narrowRatio}; --narrow-bottom: ${figure.narrowBottom}px`}
+>
+  <iframe src={src} title={figure.label} loading="lazy"></iframe>
+</div>
+
+<style>
+  /* The figure's own card colour, so the frame shows no seam while it loads. */
+  .frame {
+    container-type: inline-size;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-card);
+    overflow: hidden;
+    background: #131313;
+  }
+
+  iframe {
+    display: block;
+    width: 100%;
+    height: calc((100cqw - 48px) * var(--ratio) + 104px);
+    border: 0;
+    color-scheme: dark;
+  }
+
+  @container (max-width: 560px) {
+    iframe {
+      height: calc((100cqw - 24px) * var(--ratio) + 48px + var(--narrow-bottom));
+    }
+  }
+
+  @container (max-width: 543.98px) {
+    .stage-crop iframe {
+      height: calc((100cqw - 24px) * var(--narrow-ratio) + 48px + var(--narrow-bottom));
+    }
+  }
+
+  @container (max-width: 520px) {
+    iframe {
+      height: calc((100cqw - 24px) * var(--narrow-ratio) + 48px + var(--narrow-bottom));
+    }
+  }
+</style>

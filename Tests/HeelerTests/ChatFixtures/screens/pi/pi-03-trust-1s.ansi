@@ -1,0 +1,18 @@
+SOCK=/tmp/heeler-iso-pi2/home/.config/herdr/herdr.sock HOME=/Users/developer
+developer@probe-host-placeholder-01 proj % pi
+[0m[38;2;95;135;255m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+ [0m[1m[38;2;138;190;183mTrust project folder?[0m[38;2;138;190;183m                                                                                                 [0m
+ [0m[1m[38;2;138;190;183m/private/tmp/heeler-iso-pi2/proj[0m[38;2;138;190;183m                                                                                      [0m
+ [0m[38;2;138;190;183m                                                                                                                      [0m
+ [0m[1m[38;2;138;190;183mThis allows pi to load .pi settings and resources, install missing project packages, and execute project extensions.[0m  
+
+ [0m[38;2;138;190;183m→ Trust[0m                                                                                                               
+   [0m[38;2;212;212;212mTrust parent folder (/private/tmp/heeler-iso-pi2)[0m                                                                   
+   [0m[38;2;212;212;212mTrust (this session only)[0m                                                                                           
+   [0m[38;2;212;212;212mDo not trust[0m                                                                                                        
+   [0m[38;2;212;212;212mDo not trust (this session only)[0m                                                                                    
+
+ [0m[38;2;102;102;102m↑↓[0m[38;2;128;128;128m navigate[0m  [0m[38;2;102;102;102menter[0m[38;2;128;128;128m select[0m  [0m[38;2;102;102;102mescape/ctrl+c[0m[38;2;128;128;128m cancel[0m                                                                       
+
+[0m[38;2;95;135;255m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m

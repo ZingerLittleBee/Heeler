@@ -1,0 +1,603 @@
+import Foundation
+import Testing
+
+@testable import Heeler
+
+@MainActor
+@Suite("Console cached Chat entry points")
+struct ConsoleChatCacheTests {
+    private static let sessionA = "12345678-1234-4234-8234-123456789abc"
+    private static let sessionB = "22345678-1234-4234-8234-123456789abc"
+
+    @Test func coldOfflineConsoleOpensSavedChatWithoutPublishingLiveInventory() async throws {
+        let host = Host(address: "offline.invalid", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let agent = Self.agent(host: host, session: Self.sessionA)
+        await cache.saveAgentDirectory([ChatCachedAgent(agent)], for: host)
+        let reference = try #require(Self.reference(agent))
+        let entry = ChatEntry(id: ChatEntryID("saved"), sourceOffset: 10,
+                              content: .assistant(ChatAssistantMessage(text: "Saved before disconnect.")))
+        await cache.save(ChatCacheDocument(
+            key: ChatCacheKey(hostID: host.id, socketLocation: host.socketLocation, reference: reference),
+            adapterRevision: CodexRolloutReducer.revision, transcriptPath: "/tmp/transcript.jsonl", head: Data(),
+            coverageStart: 0, coverageEnd: 20, reachedStart: true, title: nil, entries: [entry], savedAt: Date()))
+        let console = ConsoleStore(chatCache: cache)
+        defer { console.setHosts([]) }
+        console.setHosts([host])
+        let composer = console.composerStore(for: agent)
+        composer.replaceDraft(with: "Keep this lime draft while connecting.")
+        await console.cachedChats.settled()
+        #expect(console.agents.isEmpty)
+        let displayed = try #require(console.chatDisplayAgents.first)
+        #expect(displayed.id == agent.id)
+        #expect(displayed.agent.status == .unknown)
+        #expect(console.chatProgram(for: displayed) == .codex)
+        let chat = try #require(console.chatStore(for: displayed, program: .codex))
+        await chat.step()
+        #expect(chat.conversation.transcript.entries == [entry])
+        #expect(console.savedChatEntries[agent.id]?.text == "Connecting…")
+        let banner = ChatBannerLine.lines(
+            hostStatus: console.hostStatuses[host.id], conversation: chat.conversation,
+            hasPendingEchoes: false)
+        #expect(banner.map(\.text) == ["Connecting to the Host… Showing saved messages."])
+        #expect(console.composerStore(for: displayed) === composer)
+        #expect(composer.draft == "Keep this lime draft while connecting.")
+        #expect(console.agents.isEmpty)
+    }
+
+    @Test func coldOfflineSavedChatIsListedByWorkspace() async throws {
+        let host = Host(address: "offline.invalid", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let agent = Self.agent(host: host, session: Self.sessionA)
+        await cache.saveAgentDirectory([ChatCachedAgent(agent)], for: host)
+        let console = ConsoleStore(chatCache: cache)
+        defer { console.setHosts([]) }
+        console.setHosts([host])
+        await console.cachedChats.settled()
+        let suiteName = "hm-console-chat-cache-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let presentation = ConsoleListPresentationStore(defaults: defaults)
+
+        let sections = presentation.workspaceSections(hosts: [host], console: console)
+
+        #expect(console.agents.isEmpty)
+        #expect(sections.map(\.id.workspaceID) == ["w1"])
+        #expect(sections.flatMap(\.agents).map(\.id) == [agent.id])
+    }
+
+    /// Chat saves only some of a repository's Agents: here neither the main
+    /// checkout's nor one worktree's, whose Agents reported no session.
+    @Test func coldOfflineSavedChatsKeepTheCardsTheLiveAgentsHad() async throws {
+        let host = Host(address: "offline.invalid", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        func checkout(_ path: String, linked: Bool) -> RepositoryCheckout {
+            RepositoryCheckout(
+                repoKey: "/src/heeler/.git", repoName: "heeler", repoRoot: "/src/heeler",
+                checkoutPath: path, isLinkedWorktree: linked)
+        }
+        let live = [
+            Self.agent(host: host, session: nil, terminalID: "t0", workspaceID: "wM", paneID: "wM:p1",
+                       label: "heeler", checkout: checkout("/src/heeler", linked: false)),
+            Self.agent(host: host, session: Self.sessionA, terminalID: "t1", workspaceID: "wA", paneID: "wA:p1",
+                       label: "fix-inset", checkout: checkout("/wt/fix-inset", linked: true)),
+            Self.agent(host: host, session: Self.sessionB, terminalID: "t2", workspaceID: "wB", paneID: "wB:p1",
+                       label: "nest", checkout: checkout("/wt/nest", linked: true)),
+            Self.agent(host: host, session: nil, terminalID: "t3", workspaceID: "wC", paneID: "wC:p1",
+                       label: "docs", checkout: checkout("/wt/docs", linked: true)),
+        ]
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+        directory.observe(live, on: host)
+        await directory.settled()
+        let suiteName = "hm-console-chat-cache-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let presentation = ConsoleListPresentationStore(defaults: defaults)
+        let liveSections = presentation.workspaceSections(hosts: [host], agents: live)
+
+        let console = ConsoleStore(chatCache: cache)
+        defer { console.setHosts([]) }
+        console.setHosts([host])
+        await console.cachedChats.settled()
+        let sections = presentation.workspaceSections(hosts: [host], console: console)
+
+        #expect(console.agents.isEmpty)
+        #expect(Set(console.chatDisplayAgents.map(\.id)) == [live[1].id, live[2].id])
+        func shape(_ sections: [ConsoleWorkspaceSection]) -> [String: String] {
+            Dictionary(uniqueKeysWithValues: sections.map { ($0.id.workspaceID, $0.parentID?.workspaceID ?? "") })
+        }
+        #expect(shape(sections) == ["wM": "", "wA": "wM", "wB": "wM", "wC": "wM"])
+        #expect(shape(sections) == shape(liveSections))
+        let card = try #require(ConsoleWorkspaceCard.cards(sections).first)
+        #expect(card.isRepository)
+        #expect(card.primary.checkout?.repoName == "heeler")
+        #expect(card.primary.pathText == "/src/heeler")
+        #expect(Set(card.visibleAgentIDs) == [live[1].id, live[2].id])
+    }
+
+    @Test func aRecordedBranchSurvivesRelaunchAndTheNextSnapshot() async {
+        let host = Host(address: "host", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let checkout = RepositoryCheckout(
+            repoKey: "/src/heeler/.git", repoName: "heeler", repoRoot: "/src/heeler",
+            checkoutPath: "/src/heeler", isLinkedWorktree: false)
+        let live = Self.agent(
+            host: host, session: Self.sessionA, workspaceID: "wM", paneID: "wM:p1", label: "heeler",
+            checkout: checkout)
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+        directory.observe([live], on: host)
+        directory.record(.named("release/1.4"), atCheckoutPath: "/src/heeler", on: host)
+        directory.record(.named("elsewhere"), atCheckoutPath: "/src/other", on: host)
+        await directory.settled()
+
+        let relaunched = ConsoleChatCache(cache: cache)
+        relaunched.setHosts([host])
+        await relaunched.settled()
+        #expect(relaunched.structure(on: host).map(\.branch) == [.named("release/1.4")])
+        relaunched.observe([live], on: host)
+        #expect(relaunched.structure(on: host).map(\.branch) == [.named("release/1.4")])
+        await relaunched.settled()
+
+        // A read that lands during the disk read waits for it.
+        let restoring = ConsoleChatCache(cache: cache)
+        restoring.setHosts([host])
+        restoring.record(.detached, atCheckoutPath: "/src/heeler", on: host)
+        await restoring.settled()
+        #expect(restoring.structure(on: host).map(\.branch) == [.detached])
+        #expect(await cache.loadAgentDirectory(for: host).workspaces.map(\.branch) == [.detached])
+    }
+
+    /// The Agent here is not a Chat entry: the structure and its branches
+    /// are kept for every Host the list reads Changes on.
+    @Test func aRowsChangesReadSavesItsCheckoutsBranchForTheNextLaunch() async throws {
+        let host = Host.fixture()
+        let read = try ChangesStoreTests.read(GitProbeRecordings.hostile)
+        let path = String(decoding: read.changes.checkout.topLevel, as: UTF8.self)
+        let wireAgent = AgentInfo.fixture(paneID: "w1:p1", workspaceID: "w1")
+        let transport = ScriptedTransport(snapshot: .fixture(
+            agents: [wireAgent],
+            workspaces: [.fixture(workspaceID: "w1", label: "app", repoName: "app", checkoutPath: path)]))
+        await transport.scriptChangesReads([.success(read)])
+        let cache = VolatileChatTranscriptCache()
+        let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10), chatCache: cache) { _, subscriptions in
+            EventsSession(subscriptions: subscriptions, connect: { transport }, keepalive: nil)
+        }
+        console.setHosts([host])
+        defer { console.setHosts([]) }
+        await console.resume()
+        let agentID = ConsoleAgent.ID(hostID: host.id, paneID: wireAgent.paneID)
+        try await Self.waitUntil {
+            console.agents.contains { $0.id == agentID }
+                && console.cachedChats.structure(on: host).map(\.checkout.checkoutPath) == [path]
+        }
+        let agent = try #require(console.agents.first { $0.id == agentID })
+        #expect(console.savedBranch(on: host.id, atCheckoutPath: path) == nil)
+
+        console.rowChanges.rowAppeared(agent)
+        defer { console.rowChanges.rowDisappeared(agent.id) }
+        try await Self.waitUntil { console.savedBranch(on: host.id, atCheckoutPath: path) != nil }
+        await console.cachedChats.settled()
+
+        #expect(read.changes.head.branch == .named("main"))
+        #expect(console.savedBranch(on: host.id, atCheckoutPath: path) == .named("main"))
+        #expect(await cache.loadAgentDirectory(for: host).workspaces.map(\.branch) == [.named("main")])
+    }
+
+    @Test func coldOfflineSavedChatReadsAsItsHostsHeader() async throws {
+        let host = Host(address: "offline.invalid", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let agent = Self.agent(host: host, session: Self.sessionA)
+        await cache.saveAgentDirectory([ChatCachedAgent(agent)], for: host)
+        let console = ConsoleStore(chatCache: cache)
+        defer { console.setHosts([]) }
+        console.setHosts([host])
+        await console.cachedChats.settled()
+        let suiteName = "hm-console-chat-cache-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let presentation = ConsoleListPresentationStore(defaults: defaults)
+
+        let section = try #require(presentation.sections(hosts: [host], console: console).first)
+        let readiness = try #require(console.savedChatEntries[agent.id])
+
+        #expect(console.savedChatEntries.count == 1)
+        #expect(readiness == ConsoleHostSectionHeaderPresentation(section: section).readiness)
+        #expect(readiness.tone != .connected)
+    }
+
+    @Test func liveAgentWithoutSessionOpensItsExactSavedConversation() async throws {
+        let host = Host(address: "offline.invalid", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let saved = Self.agent(host: host, session: Self.sessionA)
+        await cache.saveAgentDirectory([ChatCachedAgent(saved)], for: host)
+        let entry = try await Self.saveTranscript(for: saved, on: host, in: cache)
+        let console = ConsoleStore(chatCache: cache)
+        console.setHosts([host])
+        await console.cachedChats.settled()
+        let live = Self.agent(host: host, session: nil)
+        console.cachedChats.observe([live], on: host)
+        let chat = try #require(console.chatStore(for: live, program: .codex))
+
+        await chat.step()
+
+        #expect(chat.conversation.transcript.entries == [entry])
+        #expect(chat.conversation.isFromCache)
+        #expect(chat.conversation.phase == .unavailable(.noSession(.codex)))
+        #expect(console.agents.isEmpty)
+        console.setHosts([])
+    }
+
+    @Test func liveMissingBindingWaitsForTheColdDirectoryInsteadOfErasingIt() async throws {
+        let host = Host(address: "offline.invalid", username: "reader")
+        let cache = DirectoryGateCache()
+        let saved = Self.agent(host: host, session: Self.sessionA)
+        await cache.saveAgentDirectory([ChatCachedAgent(saved)], for: host)
+        let entry = try await Self.saveTranscript(for: saved, on: host, in: cache)
+        let console = ConsoleStore(chatCache: cache)
+        console.setHosts([host])
+        try await Self.waitUntil { await cache.isWaiting }
+        let live = Self.agent(host: host, session: nil)
+        console.cachedChats.observe([live], on: host)
+        console.cachedChats.confirm(live.agent, for: live, on: host)
+        let chat = try #require(console.chatStore(for: live, program: .codex))
+        let step = Task { await chat.step() }
+
+        await cache.release()
+        await step.value
+        await console.cachedChats.settled()
+
+        #expect(chat.conversation.transcript.entries == [entry])
+        #expect(chat.conversation.phase == .unavailable(.noSession(.codex)))
+        #expect(chat.conversation.isFromCache)
+        #expect(await cache.loadAgentDirectory(for: host).agents.first?.agentSession?.value == Self.sessionA)
+        console.setHosts([])
+    }
+
+    @Test func anExplicitLiveSessionWinsOverTheSavedBinding() async throws {
+        let host = Host(address: "offline.invalid", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let saved = Self.agent(host: host, session: Self.sessionA)
+        let live = Self.agent(host: host, session: Self.sessionB)
+        await cache.saveAgentDirectory([ChatCachedAgent(saved)], for: host)
+        _ = try await Self.saveTranscript(for: saved, on: host, in: cache)
+        let expected = try await Self.saveTranscript(for: live, on: host, in: cache)
+        let console = ConsoleStore(chatCache: cache)
+        console.setHosts([host])
+        let chat = try #require(console.chatStore(for: live, program: .codex))
+
+        await chat.step()
+
+        #expect(chat.conversation.transcript.entries == [expected])
+        console.setHosts([])
+    }
+
+    @Test(arguments: ["terminal", "workspace", "tab", "kind", "pane", "host"])
+    func aNewChatNeverUsesAnotherAgentIdentitysBinding(changed: String) async throws {
+        let host = Host(address: "offline.invalid", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let saved = Self.agent(host: host, session: Self.sessionA)
+        await cache.saveAgentDirectory([ChatCachedAgent(saved)], for: host)
+        _ = try await Self.saveTranscript(for: saved, on: host, in: cache)
+        var activeHost = host
+        if changed == "host" { activeHost.routes[0].address = "replacement.invalid" }
+        let live = Self.agent(
+            host: activeHost, session: nil, terminalID: changed == "terminal" ? "t2" : "t1",
+            workspaceID: changed == "workspace" ? "w2" : "w1",
+            tabID: changed == "tab" ? "tab2" : "tab1",
+            kind: changed == "kind" ? "claude" : "codex", paneID: changed == "pane" ? "w1:p2" : "w1:p1")
+        let console = ConsoleStore(chatCache: cache)
+        console.setHosts([activeHost])
+        let program = try #require(ChatProgram(rawValue: live.agent.kind))
+        let chat = try #require(console.chatStore(for: live, program: program))
+
+        await chat.step()
+
+        #expect(chat.conversation.transcript.entries.isEmpty)
+        #expect(chat.conversation.phase == .unavailable(.noSession(program)))
+        console.setHosts([])
+    }
+
+    @Test(arguments: ["empty", "replacement", "explicit"])
+    func newerLiveDirectoryUpdatesWinEvenWhenTheDiskLoadIsDelayed(update: String) async throws {
+        let host = Host(address: "host", username: "reader")
+        let cache = DirectoryGateCache()
+        await cache.saveAgentDirectory([ChatCachedAgent(Self.agent(host: host, session: Self.sessionA))], for: host)
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        try await Self.waitUntil { await cache.isWaiting }
+        let live = Self.agent(host: host, session: update == "explicit" ? Self.sessionB : nil,
+                              terminalID: update == "replacement" ? "t2" : "t1")
+        directory.observe(update == "empty" ? [] : [live], on: host)
+
+        await cache.release()
+        await directory.settled()
+
+        if update == "explicit" {
+            #expect(directory.agents(on: host).first?.agent.agentSession?.value == Self.sessionB)
+            #expect(await cache.loadAgentDirectory(for: host).agents.first?.agentSession?.value == Self.sessionB)
+        } else {
+            #expect(directory.agents(on: host).isEmpty)
+            #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
+        }
+    }
+
+    @Test func newerQueriedSessionSurvivesUnchangedSnapshotAndRelaunch() async throws {
+        let host = Host(address: "host", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+        let old = Self.agent(host: host, session: Self.sessionA)
+        directory.observe([old], on: host)
+        directory.confirm(Self.agent(host: host, session: Self.sessionB).agent, for: old, on: host)
+        directory.observe([old], on: host)
+        await directory.settled()
+        let reopened = ConsoleChatCache(cache: cache)
+        reopened.setHosts([host])
+        await reopened.settled()
+        #expect(reopened.agents(on: host).first?.agent.agentSession?.value == Self.sessionB)
+        // A missing field during reconnect retains the last confirmed binding.
+        directory.observe([Self.agent(host: host, session: nil)], on: host)
+        await directory.settled()
+        #expect(directory.agents(on: host).first?.agent.agentSession?.value == Self.sessionB)
+        directory.confirm(Self.agent(host: host, session: nil).agent,
+                          for: Self.agent(host: host, session: nil), on: host)
+        await directory.settled()
+        #expect(await cache.loadAgentDirectory(for: host).agents.first?.agentSession?.value == Self.sessionB)
+        // An explicit new binding supersedes the saved one.
+        reopened.observe([Self.agent(host: host, session: Self.sessionA)], on: host)
+        await reopened.settled()
+        #expect(reopened.agents(on: host).first?.agent.agentSession?.value == Self.sessionA)
+    }
+
+    @Test func completedEmptySnapshotWinsOverColdRestore() async {
+        let host = Host(address: "host", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        await cache.saveAgentDirectory([ChatCachedAgent(Self.agent(host: host, session: Self.sessionA))], for: host)
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        directory.observe([], on: host)
+        await directory.settled()
+        #expect(directory.agents(on: host).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
+    }
+
+    /// Trusting a replaced host key leaves the Host record as it was, so
+    /// only the next connection's revalidation can tell another machine.
+    @Test func removingASavedChatTakesItOffTheDeviceWithoutAHost() async throws {
+        let host = Host(address: "offline.invalid", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let removed = Self.agent(host: host, session: Self.sessionA)
+        let kept = Self.agent(host: host, session: Self.sessionB, paneID: "w1:p2")
+        await cache.saveAgentDirectory([ChatCachedAgent(removed), ChatCachedAgent(kept)], for: host)
+        _ = try await Self.saveTranscript(for: removed, on: host, in: cache)
+        _ = try await Self.saveTranscript(for: kept, on: host, in: cache)
+        let removedKey = try Self.cacheKey(for: removed, on: host)
+        let keptKey = try Self.cacheKey(for: kept, on: host)
+        let console = ConsoleStore(chatCache: cache)
+        defer { console.setHosts([]) }
+        console.setHosts([host])
+        await console.cachedChats.settled()
+        console.togglePin(hostID: host.id, paneID: removed.agent.paneID)
+        let chat = try #require(console.chatStore(for: removed, program: .codex))
+
+        #expect(console.isSavedChat(removed.id))
+        #expect(console.removeSavedChat(removed))
+        await console.cachedChats.settled()
+
+        #expect(console.chatDisplayAgents.map(\.id) == [kept.id])
+        #expect(console.savedChatEntries[removed.id] == nil)
+        #expect(!console.isSavedChat(removed.id))
+        #expect(!console.pins.isPinned(hostID: host.id, paneID: removed.agent.paneID))
+        #expect(console.chatStore(for: removed, program: .codex) !== chat)
+        #expect(await cache.loadAgentDirectory(for: host).agents.map(\.paneID) == [kept.agent.paneID])
+        if case .hit = await cache.load(removedKey) { Issue.record("The removed Chat's messages stayed") }
+        guard case .hit = await cache.load(keptKey) else {
+            Issue.record("Another Chat's messages went with it")
+            return
+        }
+    }
+
+    @Test func aSavedChatRemovedDuringRevalidationStaysRemoved() async {
+        let host = Host(address: "host", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let agent = Self.agent(host: host, session: Self.sessionA)
+        await cache.saveAgentDirectory([ChatCachedAgent(agent)], for: host)
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+
+        directory.revalidate(on: host)
+        directory.remove(paneID: agent.agent.paneID, on: host)
+        await directory.settled()
+
+        #expect(directory.agents(on: host).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
+    }
+
+    @Test func aConversationAnotherEntryShowsKeepsItsMessages() async throws {
+        let host = Host(address: "host", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let agent = Self.agent(host: host, session: Self.sessionA)
+        let sibling = Self.agent(host: host, session: Self.sessionA, paneID: "w1:p2")
+        await cache.saveAgentDirectory([ChatCachedAgent(agent), ChatCachedAgent(sibling)], for: host)
+        _ = try await Self.saveTranscript(for: agent, on: host, in: cache)
+        let key = try Self.cacheKey(for: agent, on: host)
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+
+        directory.remove(paneID: agent.agent.paneID, on: host)
+        await directory.settled()
+
+        #expect(directory.agents(on: host).map(\.id) == [sibling.id])
+        guard case .hit = await cache.load(key) else {
+            Issue.record("The sibling's messages went with the removed entry")
+            return
+        }
+    }
+
+    @Test func aReplacedHostKeyDropsSavedBindingsOnRevalidation() async {
+        let host = Host(address: "host", username: "reader")
+        let knownHosts = InMemoryKnownHostsStore()
+        let trust = HostKeyTrust.hostKey(host.id)
+        func trustKey(_ byte: UInt8) async {
+            await knownHosts.setFingerprint(
+                HostKeyFingerprint(digest: Data(repeating: byte, count: 32), algorithm: "ssh-ed25519"),
+                host: trust.host, port: trust.port)
+        }
+        await trustKey(1)
+        let cache = VolatileChatTranscriptCache(knownHosts: knownHosts)
+        await cache.saveAgentDirectory([ChatCachedAgent(Self.agent(host: host, session: Self.sessionA))], for: host)
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+        let live = Self.agent(host: host, session: nil)
+
+        directory.revalidate(on: host)
+        directory.observe([live], on: host)
+        await directory.settled()
+        #expect(await directory.cachedSession(for: live.agent, on: host)?.value == Self.sessionA)
+
+        await trustKey(2)
+        directory.revalidate(on: host)
+        directory.observe([live], on: host)
+        await directory.settled()
+        #expect(await directory.cachedSession(for: live.agent, on: host) == nil)
+        #expect(directory.agents(on: host).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
+    }
+
+    @Test func editingHostCannotRestoreAnotherServersEntryPoints() async {
+        var host = Host(address: "first", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        await cache.saveAgentDirectory([ChatCachedAgent(Self.agent(host: host, session: Self.sessionA))], for: host)
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        host.routes[0].address = "second"
+        directory.setHosts([host])
+        await directory.settled()
+        #expect(directory.agents(on: host).isEmpty)
+    }
+
+    /// An OpenCode Agent reports a session Chat binds, so the directory
+    /// lists and saves it beside the other programs' Agents.
+    @Test func cachesOpenCodeAgentsOnceChatOffersThem() async {
+        let host = Host(address: "host", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+        let codex = Self.agent(host: host, session: Self.sessionA)
+        let openCode = Self.agent(
+            host: host, session: "ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9", terminalID: "t2", kind: "opencode",
+            paneID: "w1:p2")
+        #expect(ChatCachedAgent(openCode).isValid(for: host))
+
+        directory.observe([codex, openCode], on: host)
+        directory.confirm(openCode.agent, for: openCode, on: host)
+        await directory.settled()
+
+        #expect(directory.agents(on: host).map(\.id) == [codex.id, openCode.id])
+        #expect(
+            await cache.loadAgentDirectory(for: host).agents.map(\.paneID) == [codex.agent.paneID, openCode.agent.paneID])
+        #expect(directory.agents(on: host).last?.agent.agentSession == openCode.agent.agentSession)
+    }
+
+    @Test func reusedPaneDoesNotInheritThePreviousTerminalSession() async {
+        let host = Host(address: "host", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+        let previous = Self.agent(host: host, session: nil)
+        directory.observe([previous], on: host)
+        directory.confirm(Self.agent(host: host, session: Self.sessionA).agent, for: previous, on: host)
+        #expect(!directory.agents(on: host).isEmpty)
+        let replacement = Self.agent(host: host, session: nil, terminalID: "replacement")
+        directory.observe([replacement], on: host)
+        directory.confirm(Self.agent(host: host, session: Self.sessionA).agent, for: replacement, on: host)
+        await directory.settled()
+        #expect(directory.agents(on: host).isEmpty)
+    }
+
+    private static func agent(
+        host: Host, session: String?, terminalID: String = "t1", workspaceID: String = "w1",
+        tabID: String = "tab1", kind: String = "codex", paneID: String = "w1:p1",
+        label: String = "Project", checkout: RepositoryCheckout? = nil
+    ) -> ConsoleAgent {
+        ConsoleAgent(hostID: host.id, hostName: host.displayName, agent: Agent(
+            terminalID: terminalID, kind: kind, title: "Cached task", status: .working,
+            workspaceID: workspaceID, tabID: tabID, paneID: paneID, cwd: "/project", revision: 1,
+            agentSession: session.map { AgentSessionInfo(agent: kind, kind: .id, source: "herdr:\(kind)", value: $0) }),
+            workspaceLabel: label, repositoryCheckout: checkout)
+    }
+
+    private static func cacheKey(for agent: ConsoleAgent, on host: Host) throws -> ChatCacheKey {
+        ChatCacheKey(
+            hostID: host.id, socketLocation: host.socketLocation, reference: try #require(Self.reference(agent)))
+    }
+
+    private static func saveTranscript(
+        for agent: ConsoleAgent, on host: Host, in cache: any ChatTranscriptCache
+    ) async throws -> ChatEntry {
+        let reference = try #require(Self.reference(agent))
+        let entry = ChatEntry(id: ChatEntryID(reference.sessionID), sourceOffset: 10,
+                              content: .assistant(ChatAssistantMessage(text: reference.sessionID)))
+        await cache.save(ChatCacheDocument(
+            key: ChatCacheKey(hostID: host.id, socketLocation: host.socketLocation, reference: reference),
+            adapterRevision: CodexRolloutReducer.revision, transcriptPath: "/tmp/transcript.jsonl", head: Data(),
+            coverageStart: 0, coverageEnd: 20, reachedStart: true, title: nil, entries: [entry], savedAt: Date()))
+        return entry
+    }
+
+    private static func waitUntil(_ condition: @MainActor () async -> Bool) async throws {
+        for _ in 0..<400 {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        Issue.record("Timed out waiting for the directory read")
+    }
+
+    /// Suspends only the initial directory load. Documents and persistence
+    /// use the real in-memory cache implementation.
+    private actor DirectoryGateCache: ChatTranscriptCache {
+        private let backing = VolatileChatTranscriptCache()
+        private var gate: CheckedContinuation<Void, Never>?
+        private var released = false
+        var isWaiting: Bool { gate != nil }
+
+        func release() {
+            released = true
+            gate?.resume()
+            gate = nil
+        }
+
+        func loadAgentDirectory(for host: Host) async -> ChatAgentDirectory.Contents {
+            let saved = await backing.loadAgentDirectory(for: host)
+            if !released { await withCheckedContinuation { gate = $0 } }
+            return saved
+        }
+
+        func saveAgentDirectory(_ contents: ChatAgentDirectory.Contents, for host: Host) async {
+            await backing.saveAgentDirectory(contents, for: host)
+        }
+
+        func load(_ key: ChatCacheKey) async -> ChatCacheLoadResult { await backing.load(key) }
+        func save(_ document: ChatCacheDocument) async { await backing.save(document) }
+        func remove(_ key: ChatCacheKey) async { await backing.remove(key) }
+        func retainHosts(_ hostIDs: Set<UUID>) async { await backing.retainHosts(hostIDs) }
+        func removeAll() async { await backing.removeAll() }
+        func diskUsage() async -> Int64 { await backing.diskUsage() }
+        func prune() async { await backing.prune() }
+    }
+
+    private static func reference(_ agent: ConsoleAgent) -> ConversationReference? {
+        guard case .bound(let reference) = ConversationReference.resolve(agent.agent.agentSession) else { return nil }
+        return reference
+    }
+}

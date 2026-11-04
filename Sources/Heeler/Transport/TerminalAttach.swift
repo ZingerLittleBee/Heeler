@@ -115,6 +115,337 @@ struct AttachBootstrapGate {
     }
 }
 
+/// Drops herdr's direct-attach startup probe from attach output (#451).
+///
+/// herdr 0.9.4's `agent attach` and `terminal attach` set the terminal up
+/// before their handshake and, once in the alternate screen, query it: a
+/// DECRQM for SGR pixel mouse, then DA1. herdr waits up to 250 ms for the
+/// answer. One that arrives later, as it does over a slow link, reaches the
+/// Pane as typed input. With the probe gone, the terminal never answers.
+///
+/// The probe starts 138 bytes after the bootstrap marker in 0.9.4's output,
+/// so only the first 4 KiB after the marker are searched, and only the first
+/// probe found there is removed. Every byte after it, or after the window,
+/// passes unchanged. At most 15 bytes, the start of a probe split across
+/// reads, are held back until the next read settles them; `finish()` hands
+/// them on when the output ends.
+struct HerdrStartupProbeFilter {
+    /// The probe shapes herdr writes: direct attach's, and its client
+    /// shell's, which adds the kitty keyboard query.
+    static let probes = [
+        Data("\u{1B}[?1016$p\u{1B}[c".utf8),
+        Data("\u{1B}[?1016$p\u{1B}[?u\u{1B}[c".utf8),
+    ]
+
+    /// How far after the marker a probe may start and still be herdr's.
+    static let scanWindow = 4 * 1024
+
+    private var isScanning: Bool
+    /// The bytes after the marker already handed on.
+    private var scanned = 0
+    /// A trailing partial probe, held until the next read completes or
+    /// refutes it.
+    private var held = Data()
+
+    /// A disabled filter passes every byte through, for a channel that never
+    /// carries the probe.
+    init(isEnabled: Bool) {
+        isScanning = isEnabled
+    }
+
+    /// The bytes the terminal should paint, given the next bytes after the
+    /// bootstrap marker.
+    mutating func filter(_ bytes: Data) -> Data {
+        guard isScanning else { return bytes }
+        var data = held
+        data.append(bytes)
+        held = Data()
+        // Offsets into `data` below this still lie inside the window.
+        let limit = Self.scanWindow - scanned
+        if let probe = Self.earliestProbe(in: data) {
+            isScanning = false
+            if data.distance(from: data.startIndex, to: probe.lowerBound) < limit {
+                data.removeSubrange(probe)
+            }
+            return data
+        }
+        let heldStart = data.count - Self.trailingProbePrefixLength(of: data)
+        guard heldStart < limit else {
+            isScanning = false
+            return data
+        }
+        held = Data(data.dropFirst(heldStart))
+        scanned += heldStart
+        return Data(data.prefix(heldStart))
+    }
+
+    /// The partial probe still held when the output ends: no read is left to
+    /// complete it, so it is output like any other.
+    mutating func finish() -> Data {
+        isScanning = false
+        defer { held = Data() }
+        return held
+    }
+
+    private static func earliestProbe(in data: Data) -> Range<Data.Index>? {
+        probes.compactMap { data.range(of: $0) }.min { $0.lowerBound < $1.lowerBound }
+    }
+
+    /// The length of the longest suffix of `data` that is a proper prefix of
+    /// a probe.
+    private static func trailingProbePrefixLength(of data: Data) -> Int {
+        probes.map { probe in
+            for length in stride(from: min(probe.count - 1, data.count), to: 0, by: -1)
+            where data.suffix(length).elementsEqual(probe.prefix(length)) {
+                return length
+            }
+            return 0
+        }.max() ?? 0
+    }
+}
+
+/// The last thing an attach command said before it exited, as one line a
+/// failure message can quote (#431).
+///
+/// herdr's own error line ("herdr: lost connection to server: ...") reaches
+/// the terminal, but the Session Ended card covers it, and the exit status
+/// alone does not say which herdr failed or why. This keeps a bounded tail of
+/// the output that was outside the alternate screen and extracts one line
+/// from it.
+///
+/// Alternate-screen content is never retained: it is a TUI's screen, which
+/// can show anything, secrets included. Output recorded before the first
+/// alternate-screen entry, or after the last leave, is ordinary command
+/// output. A command that exits while still inside the alternate screen has
+/// no line to quote.
+///
+/// One flag is enough because the only alternate-screen switches in an attach
+/// stream are herdr's own: `herdr terminal attach` draws the pane through its
+/// cell-diff renderer (`RenderEncoding::TerminalAnsi` in herdr 0.8.2 and
+/// later), which never forwards the inner application's mode switches.
+struct AttachExitDiagnostic {
+    /// The retained tail. herdr's failure is its last line or two.
+    static let maximumRetainedBytes = 4 * 1024
+    /// The quoted line's ceiling, in characters, including the ellipsis.
+    static let maximumLineLength = 120
+    /// Longest escape sequence held back while waiting for the rest of a
+    /// mode switch split across chunks. Real mode switches are far shorter.
+    private static let maximumCarriedBytes = 32
+
+    private var isInAlternateScreen = false
+    /// Output outside the alternate screen since the last leave, or since the
+    /// start when it was never entered. Bounded to the tail.
+    private var retained: [UInt8] = []
+    private var didTruncate = false
+    /// A trailing escape sequence that may be an incomplete mode switch.
+    private var carried: [UInt8] = []
+
+    /// Feeds the next chunk of attach output, in arrival order.
+    mutating func record(_ chunk: Data) {
+        guard !chunk.isEmpty else { return }
+        var bytes = carried
+        carried = []
+        bytes.append(contentsOf: chunk)
+
+        var index = 0
+        var runStart = 0
+        while index < bytes.count {
+            guard bytes[index] == 0x1B else {
+                index += 1
+                continue
+            }
+            switch Self.modeSwitch(in: bytes, at: index) {
+            case .incomplete:
+                retain(bytes[runStart..<index])
+                carried = Array(bytes[index...])
+                return
+            case .notAModeSwitch:
+                index += 1
+            case .modeSwitch(let entersAlternateScreen, let end):
+                retain(bytes[runStart..<index])
+                if let entersAlternateScreen {
+                    if entersAlternateScreen != isInAlternateScreen {
+                        retained = []
+                        didTruncate = false
+                    }
+                    isInAlternateScreen = entersAlternateScreen
+                }
+                index = end
+                runStart = end
+            }
+        }
+        retain(bytes[runStart...])
+    }
+
+    /// The line to quote, or nil when the command left nothing quotable.
+    var line: String? {
+        guard !isInAlternateScreen else { return nil }
+        var bytes = Array(retained.suffix(Self.maximumRetainedBytes))
+        bytes.append(contentsOf: carried)
+        var text = String(decoding: bytes, as: UTF8.self)
+        if didTruncate || retained.count > Self.maximumRetainedBytes,
+            let firstBreak = text.firstIndex(where: \.isNewline)
+        {
+            // The first line was cut mid-way, possibly inside an escape
+            // sequence or a UTF-8 scalar; drop it rather than quote debris.
+            text = String(text[text.index(after: firstBreak)...])
+        }
+        return Self.line(fromOutput: text)
+    }
+
+    /// Picks the line to quote from command output already decoded as text.
+    static func line(fromOutput output: String) -> String? {
+        let lines = sanitized(output)
+            // `isNewline`, because "\r\n" is one Character equal to neither.
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        // An explicit error line beats whatever usage text follows it: clap
+        // prints "error: ...", herdr "herdr: ...", a Rust main "Error: ...".
+        let chosen =
+            lines.last(where: { line in
+                let lowered = line.lowercased()
+                return lowered.hasPrefix("error:") || lowered.hasPrefix("herdr:")
+            })
+            ?? lines.last(where: { !isHint($0) })
+            ?? lines.last
+        guard let chosen else { return nil }
+        guard chosen.count > maximumLineLength else { return chosen }
+        return String(chosen.prefix(maximumLineLength - 1)) + "…"
+    }
+
+    /// Trailing advice that never explains a failure on its own.
+    private static func isHint(_ line: String) -> Bool {
+        let lowered = line.lowercased()
+        return lowered.hasPrefix("note:") || lowered.hasPrefix("for more information")
+    }
+
+    private mutating func retain(_ bytes: ArraySlice<UInt8>) {
+        guard !isInAlternateScreen, !bytes.isEmpty else { return }
+        retained.append(contentsOf: bytes)
+        // Trim in batches so a long stream is not shifted on every chunk.
+        if retained.count > 2 * Self.maximumRetainedBytes {
+            retained.removeFirst(retained.count - Self.maximumRetainedBytes)
+            didTruncate = true
+        }
+    }
+
+    private enum ModeSwitchScan {
+        case incomplete
+        case notAModeSwitch
+        /// A DEC private mode set or reset ending before `end`. The flag is
+        /// nil when it names no alternate-screen mode.
+        case modeSwitch(entersAlternateScreen: Bool?, end: Int)
+    }
+
+    /// Recognizes `ESC [ ? Pm h` and `ESC [ ? Pm l` at `start`. Modes 1049,
+    /// 1047, and 47 all switch to the alternate screen.
+    private static func modeSwitch(in bytes: [UInt8], at start: Int) -> ModeSwitchScan {
+        let introducer: [UInt8] = [0x1B, UInt8(ascii: "["), UInt8(ascii: "?")]
+        for offset in 1..<introducer.count {
+            guard start + offset < bytes.count else {
+                return bytes.count - start <= maximumCarriedBytes ? .incomplete : .notAModeSwitch
+            }
+            guard bytes[start + offset] == introducer[offset] else { return .notAModeSwitch }
+        }
+        var index = start + introducer.count
+        var parameters: [Int] = []
+        var current = 0
+        while index < bytes.count {
+            let byte = bytes[index]
+            switch byte {
+            case UInt8(ascii: "0")...UInt8(ascii: "9"):
+                current = min(current * 10 + Int(byte - UInt8(ascii: "0")), 100_000)
+            case UInt8(ascii: ";"):
+                parameters.append(current)
+                current = 0
+            case UInt8(ascii: "h"), UInt8(ascii: "l"):
+                parameters.append(current)
+                let switchesScreen = parameters.contains { [1049, 1047, 47].contains($0) }
+                return .modeSwitch(
+                    entersAlternateScreen: switchesScreen ? byte == UInt8(ascii: "h") : nil,
+                    end: index + 1)
+            default:
+                return .notAModeSwitch
+            }
+            index += 1
+            if index - start > maximumCarriedBytes { return .notAModeSwitch }
+        }
+        return .incomplete
+    }
+
+    /// Removes escape sequences, control characters, and bidirectional
+    /// formatting, keeping line breaks and tabs.
+    private static func sanitized(_ text: String) -> String {
+        enum State {
+            case text
+            case escape
+            case escapeIntermediate
+            case controlSequence
+            case controlString
+            case controlStringEscape
+        }
+        var result = String.UnicodeScalarView()
+        var state = State.text
+        for scalar in text.unicodeScalars {
+            let value = scalar.value
+            switch state {
+            case .text:
+                if value == 0x1B {
+                    state = .escape
+                } else if value == 0x0A || value == 0x0D || value == 0x09 {
+                    result.append(scalar)
+                } else if value < 0x20 || (0x7F...0x9F).contains(value)
+                    || isBidiFormatting(value)
+                {
+                    continue
+                } else {
+                    result.append(scalar)
+                }
+            case .escape:
+                switch value {
+                case 0x5B:  // [
+                    state = .controlSequence
+                case 0x5D, 0x50, 0x58, 0x5E, 0x5F:  // ] P X ^ _
+                    state = .controlString
+                case 0x20...0x2F:
+                    state = .escapeIntermediate
+                case 0x1B:
+                    state = .escape
+                default:
+                    state = .text
+                }
+            case .escapeIntermediate:
+                if !(0x20...0x2F).contains(value) { state = .text }
+            case .controlSequence:
+                if (0x40...0x7E).contains(value) {
+                    state = .text
+                } else if value == 0x1B {
+                    state = .escape
+                } else if value == 0x0A || value == 0x0D {
+                    // A line break aborts a malformed sequence; keep the break.
+                    result.append(scalar)
+                    state = .text
+                }
+            case .controlString:
+                if value == 0x07 {
+                    state = .text
+                } else if value == 0x1B {
+                    state = .controlStringEscape
+                }
+            case .controlStringEscape:
+                state = value == 0x5C ? .text : (value == 0x1B ? .controlStringEscape : .controlString)
+            }
+        }
+        return String(result)
+    }
+
+    private static func isBidiFormatting(_ value: UInt32) -> Bool {
+        value == 0x200E || value == 0x200F || value == 0x061C
+            || (0x202A...0x202E).contains(value) || (0x2066...0x2069).contains(value)
+    }
+}
+
 /// Input riding down a live Attach session. Keystrokes and resizes are
 /// reliable, while touch scrolling is bounded and may be coalesced.
 enum TerminalAttachInput: Sendable, Equatable {
@@ -128,23 +459,25 @@ enum TerminalAttachInput: Sendable, Equatable {
 /// Keystrokes and resizes are reliable and ordered. Touch scrolling is an
 /// ephemeral viewport intent: keeping every momentum row under backpressure
 /// only makes stale scrolling delay later keyboard input. Scroll rows are
-/// therefore coalesced, bounded, and discarded as soon as a reliable key
-/// arrives. The writer asks for one item only after the previous SSH write
-/// completes, so priority is decided at the last useful moment.
+/// therefore coalesced, bounded, expired after 200 ms, and discarded as soon
+/// as a reliable key arrives. The writer takes an item only after the previous
+/// SSH write completes, so freshness is checked at the last useful moment.
 final class TerminalAttachInputQueue: Sendable {
     static let maximumPendingScrollRows = 12
     static let maximumScrollRowsPerWrite = 3
     static let scrollPacingInterval = Duration.milliseconds(33)
+    static let scrollLifetime = Duration.milliseconds(200)
 
     private struct PendingScroll: Sendable {
         let sequence: Data
         var rows: Int
+        let expiresAt: ContinuousClock.Instant
     }
 
     private struct State: ~Copyable {
         var reliable: [TerminalAttachInput] = []
         var pendingScroll: PendingScroll?
-        var waiter: CheckedContinuation<TerminalAttachInput?, Never>?
+        var waiter: CheckedContinuation<Void, Never>?
         var isFinished = false
     }
 
@@ -154,6 +487,11 @@ final class TerminalAttachInputQueue: Sendable {
     }
 
     private let state = Mutex(State())
+    private let now: @Sendable () -> ContinuousClock.Instant
+
+    init(now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }) {
+        self.now = now
+    }
 
     func send(_ keystrokes: Data) {
         guard !keystrokes.isEmpty else { return }
@@ -163,40 +501,33 @@ final class TerminalAttachInputQueue: Sendable {
     func scroll(_ sequence: Data, rows: Int) {
         guard !sequence.isEmpty, rows > 0 else { return }
 
-        var resumed: (CheckedContinuation<TerminalAttachInput?, Never>, TerminalAttachInput)?
+        var waiter: CheckedContinuation<Void, Never>?
         state.withLock { state in
             guard !state.isFinished else { return }
-
-            if let waiter = state.waiter {
-                state.waiter = nil
-                let deliveredRows = min(rows, Self.maximumScrollRowsPerWrite)
-                let remainingRows = min(
-                    rows - deliveredRows,
-                    Self.maximumPendingScrollRows - deliveredRows)
-                if remainingRows > 0 {
-                    state.pendingScroll = PendingScroll(
-                        sequence: sequence,
-                        rows: remainingRows)
-                }
-                resumed = (waiter, .scroll(Self.repeated(sequence, count: deliveredRows)))
-                return
-            }
-
-            if var pending = state.pendingScroll, pending.sequence == sequence {
+            let instant = now()
+            if var pending = state.pendingScroll,
+                pending.expiresAt > instant, pending.sequence == sequence
+            {
                 pending.rows = min(
                     Self.maximumPendingScrollRows,
                     pending.rows + rows)
+                // New rows must never extend the lifetime of old momentum.
                 state.pendingScroll = pending
             } else {
-                // A direction change makes the previous momentum stale.
+                // Expiry or a direction change replaces the previous intent.
                 state.pendingScroll = PendingScroll(
                     sequence: sequence,
-                    rows: min(rows, Self.maximumPendingScrollRows))
+                    rows: min(rows, Self.maximumPendingScrollRows),
+                    expiresAt: instant + Self.scrollLifetime)
             }
+            waiter = state.waiter
+            state.waiter = nil
         }
-        if let resumed {
-            resumed.0.resume(returning: resumed.1)
-        }
+        waiter?.resume()
+    }
+
+    func discardPendingScroll() {
+        state.withLock { $0.pendingScroll = nil }
     }
 
     func resize(cols: Int, rows: Int) {
@@ -204,17 +535,21 @@ final class TerminalAttachInputQueue: Sendable {
     }
 
     func next() async -> TerminalAttachInput? {
-        await withCheckedContinuation { continuation in
+        while true {
             let decision = state.withLock { state -> NextDecision in
                 if !state.reliable.isEmpty {
                     return .resume(state.reliable.removeFirst())
+                }
+                if let scroll = state.pendingScroll, scroll.expiresAt <= now() {
+                    state.pendingScroll = nil
                 }
                 if let scroll = state.pendingScroll {
                     let deliveredRows = min(scroll.rows, Self.maximumScrollRowsPerWrite)
                     let remainingRows = scroll.rows - deliveredRows
                     state.pendingScroll =
                         remainingRows > 0
-                        ? PendingScroll(sequence: scroll.sequence, rows: remainingRows)
+                        ? PendingScroll(
+                            sequence: scroll.sequence, rows: remainingRows, expiresAt: scroll.expiresAt)
                         : nil
                     return .resume(
                         .scroll(Self.repeated(scroll.sequence, count: deliveredRows)))
@@ -222,19 +557,27 @@ final class TerminalAttachInputQueue: Sendable {
                 if state.isFinished {
                     return .resume(nil)
                 }
-                precondition(state.waiter == nil, "Attach input has more than one consumer")
-                state.waiter = continuation
                 return .wait
             }
 
-            if case .resume(let input) = decision {
-                continuation.resume(returning: input)
+            if case .resume(let input) = decision { return input }
+            // Wake the writer, rather than handing it bytes here. A suspended
+            // writer must recheck expiry and recovery cancellation when it runs.
+            await withCheckedContinuation { continuation in
+                let waiting = state.withLock { state in
+                    guard state.reliable.isEmpty, state.pendingScroll == nil, !state.isFinished
+                    else { return false }
+                    precondition(state.waiter == nil, "Attach input has more than one consumer")
+                    state.waiter = continuation
+                    return true
+                }
+                if !waiting { continuation.resume() }
             }
         }
     }
 
     func finish() {
-        var waiter: CheckedContinuation<TerminalAttachInput?, Never>?
+        var waiter: CheckedContinuation<Void, Never>?
         state.withLock { state in
             guard !state.isFinished else { return }
             state.isFinished = true
@@ -244,27 +587,24 @@ final class TerminalAttachInputQueue: Sendable {
             waiter = state.waiter
             state.waiter = nil
         }
-        waiter?.resume(returning: nil)
+        waiter?.resume()
     }
 
     private func enqueueReliable(
         _ input: TerminalAttachInput,
         discardingPendingScroll: Bool
     ) {
-        var waiter: CheckedContinuation<TerminalAttachInput?, Never>?
+        var waiter: CheckedContinuation<Void, Never>?
         state.withLock { state in
             guard !state.isFinished else { return }
             if discardingPendingScroll {
                 state.pendingScroll = nil
             }
-            if state.reliable.isEmpty, let waiting = state.waiter {
-                state.waiter = nil
-                waiter = waiting
-            } else {
-                state.reliable.append(input)
-            }
+            state.reliable.append(input)
+            waiter = state.waiter
+            state.waiter = nil
         }
-        waiter?.resume(returning: input)
+        waiter?.resume()
     }
 
     /// Drains the queue onto a live PTY channel until the queue finishes or
@@ -348,6 +688,11 @@ final class TerminalAttachSession: Sendable {
     /// momentum after the user's intent has changed.
     func scroll(_ sequence: Data, rows: Int) {
         input.scroll(sequence, rows: rows)
+    }
+
+    /// Cancels unsent viewport intent without discarding reliable input.
+    func discardPendingScroll() {
+        input.discardPendingScroll()
     }
 
     /// Propagates a terminal geometry change (rotation, split view) to the

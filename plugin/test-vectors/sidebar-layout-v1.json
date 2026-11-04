@@ -480,8 +480,8 @@
       }
     },
     {
-      "name": "canonical herdr 0.9.0 agent override keys",
-      "toml": "[ui.sidebar.agents.rows_by_agent]\npi = [[\"agent\"]]\nclaude = [[\"agent\"]]\ncodex = [[\"agent\"]]\ngemini = [[\"agent\"]]\ncursor = [[\"agent\"]]\ndevin = [[\"agent\"]]\nagy = [[\"agent\"]]\ncline = [[\"agent\"]]\nomp = [[\"agent\"]]\nmastracode = [[\"agent\"]]\nopencode = [[\"agent\"]]\ncopilot = [[\"agent\"]]\nkimi = [[\"agent\"]]\nkiro = [[\"agent\"]]\ndroid = [[\"agent\"]]\namp = [[\"agent\"]]\ngrok = [[\"agent\"]]\nhermes = [[\"agent\"]]\nkilo = [[\"agent\"]]\nqodercli = [[\"agent\"]]\nqwen = [[\"agent\"]]\nmaki = [[\"agent\"]]\nmuse = [[\"agent\"]]\n",
+      "name": "canonical herdr 0.9.4 agent override keys",
+      "toml": "[ui.sidebar.agents.rows_by_agent]\npi = [[\"agent\"]]\nclaude = [[\"agent\"]]\ncodex = [[\"agent\"]]\ngemini = [[\"agent\"]]\ncursor = [[\"agent\"]]\ndevin = [[\"agent\"]]\nagy = [[\"agent\"]]\ncline = [[\"agent\"]]\nomp = [[\"agent\"]]\nmastracode = [[\"agent\"]]\nopencode = [[\"agent\"]]\ncopilot = [[\"agent\"]]\nkimi = [[\"agent\"]]\nkiro = [[\"agent\"]]\ndroid = [[\"agent\"]]\namp = [[\"agent\"]]\ngrok = [[\"agent\"]]\nhermes = [[\"agent\"]]\nkilo = [[\"agent\"]]\nqodercli = [[\"agent\"]]\nqwen = [[\"agent\"]]\nletta = [[\"agent\"]]\nmaki = [[\"agent\"]]\nmuse = [[\"agent\"]]\n",
       "snapshot": {
         "v": 1,
         "generated_at": 1757040000,
@@ -660,6 +660,13 @@
                   }
                 ]
               ],
+              "letta": [
+                [
+                  {
+                    "token": "agent"
+                  }
+                ]
+              ],
               "maki": [
                 [
                   {
@@ -675,6 +682,525 @@
                 ]
               ]
             }
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "letta override",
+      "toml": "[ui]\nagent_panel_sort = \"priority\"\n[ui.sidebar.agents]\nrows = [[\"state_icon\", \"agent\"], [\"workspace\"]]\n[ui.sidebar.agents.rows_by_agent]\nletta = [[\"terminal_title_stripped\"]]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "priority",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "agent"
+                }
+              ],
+              [
+                {
+                  "token": "workspace"
+                }
+              ]
+            ],
+            "rows_by_agent": {
+              "letta": [
+                [
+                  {
+                    "token": "terminal_title_stripped"
+                  }
+                ]
+              ]
+            }
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "machine plain",
+      "toml": "[ui]\nagent_panel_sort = \"priority\"\n[ui.sidebar.agents]\nrows = [[\"state_icon\", \"machine\", \"agent\"], [\"workspace\"]]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "priority",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "machine"
+                },
+                {
+                  "token": "agent"
+                }
+              ],
+              [
+                {
+                  "token": "workspace"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "machine styled alone in a row",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"machine\", fg = \"#61afef\" }], [\"agent\"]]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "machine",
+                  "fg": "#61afef"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "herdr 0.9.4 documented default block",
+      "toml": "[ui.sidebar.agents]\nrow_gap = 0\nrows = [\n  [\"state_icon\", \"machine\", \"workspace\", \"tab\"],\n  [\"agent\"],\n]\n\n[ui.sidebar.spaces]\nrow_gap = 0\nrows = [\n  [\"state_icon\", \"workspace\"],\n  [\"branch\", \"git_status\"],\n]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "machine"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "empty rules on state_icon",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"state_icon\", rules = [] }]]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "herdr 0.9.4 documented rules example",
+      "toml": "[ui.sidebar.agents]\nrows = [\n  [\"state_icon\", \"workspace\", \"tab\"],\n  [{ token = \"machine\", fg = \"#fff\", rules = [{ equals = \"Local\", fg = \"#f55\" }, { equals = \"Fedora\", ignore_case = true, fg = \"#51a2da\" }] }, \"agent\"],\n  [{ token = \"$load\", fg = \"#fff\", rules = [{ gt = 80, fg = \"#f55\", bold = true }, { gt = 50, fg = \"#fc0\" }] }],\n]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "machine",
+                  "fg": "#fff",
+                  "rules": [
+                    {
+                      "equals": "Local",
+                      "fg": "#f55"
+                    },
+                    {
+                      "equals": "Fedora",
+                      "ignore_case": true,
+                      "fg": "#51a2da"
+                    }
+                  ]
+                },
+                {
+                  "token": "agent"
+                }
+              ],
+              [
+                {
+                  "token": "$load",
+                  "fg": "#fff",
+                  "rules": [
+                    {
+                      "gt": 80,
+                      "fg": "#f55",
+                      "bold": true
+                    },
+                    {
+                      "gt": 50,
+                      "fg": "#fc0"
+                    }
+                  ]
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "integer and float rule thresholds",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"$load\", rules = [{ gt = 80 }, { lt = 20.5 }] }]]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "$load",
+                  "rules": [
+                    {
+                      "gt": 80
+                    },
+                    {
+                      "lt": 20.5
+                    }
+                  ]
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "rules inside an override",
+      "toml": "[ui.sidebar.agents]\nrows = [[\"agent\"]]\n[ui.sidebar.agents.rows_by_agent]\npi = [[{ token = \"$load\", rules = [{ gt = 80, dim = false }, { lt = 20.5, dim = true }] }]]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {
+              "pi": [
+                [
+                  {
+                    "token": "$load",
+                    "rules": [
+                      {
+                        "gt": 80,
+                        "dim": false
+                      },
+                      {
+                        "lt": 20.5,
+                        "dim": true
+                      }
+                    ]
+                  }
+                ]
+              ]
+            }
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "rule hide",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"machine\", fg = \"#61afef\", rules = [{ equals = \"Local\", hide = true }] }, \"agent\"]]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "machine",
+                  "fg": "#61afef",
+                  "rules": [
+                    {
+                      "equals": "Local",
+                      "hide": true
+                    }
+                  ]
+                },
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "leading byte-order mark",
+      "toml": "\ufeff[ui]\nagent_panel_sort = \"priority\"\n[ui.sidebar.agents]\nrows = [[\"state_icon\", \"agent\"], [\"workspace\"]]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "priority",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "agent"
+                }
+              ],
+              [
+                {
+                  "token": "workspace"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "byte-order mark displaced to a line start",
+      "toml": "onboarding = false\n\ufeff[ui]\nagent_panel_sort = \"priority\"\n[ui.sidebar.agents]\nrows = [[\"state_icon\", \"agent\"], [\"workspace\"]]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "priority",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "agent"
+                }
+              ],
+              [
+                {
+                  "token": "workspace"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "byte-order mark displaced to a CRLF line start",
+      "toml": "onboarding = false\r\n\ufeff[ui]\r\nagent_panel_sort = \"priority\"\r\n[ui.sidebar.agents]\r\nrows = [[\"state_icon\", \"agent\"], [\"workspace\"]]\r\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "priority",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "agent"
+                }
+              ],
+              [
+                {
+                  "token": "workspace"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "U+FEFF at a line start inside a multi-line rule string is kept",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"$load\", rules = [{ equals = \"\"\"\nfirst\n\ufeffsecond\"\"\" }] }]]\n",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "$load",
+                  "rules": [
+                    {
+                      "equals": "first\n\ufeffsecond"
+                    }
+                  ]
+                }
+              ]
+            ],
+            "rows_by_agent": {}
           }
         },
         "diagnostics": []
@@ -2233,6 +2759,636 @@
         },
         "diagnostics": [
           "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "rules on state_icon",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"state_icon\", rules = [{ equals = \"x\" }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "seventeen rules",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"$load\", rules = [{ equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }, { equals = 'x' }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "rule without a condition",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"agent\", rules = [{ bold = true }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "rule with two conditions",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"agent\", rules = [{ equals = \"x\", contains = \"x\" }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "ignore_case next to gt",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"$load\", rules = [{ gt = 80, ignore_case = false }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "non-finite rule threshold",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"$load\", rules = [{ gt = inf }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "unknown rule key",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"agent\", rules = [{ equals = \"x\", underline = true }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "nonboolean rule hide",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"$load\", rules = [{ lt = 50, hide = \"yes\" }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "malformed rule color",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"agent\", rules = [{ equals = \"x\", fg = \"red\" }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "non-string rule condition",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"agent\", rules = [{ equals = 80 }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "non-numeric rule threshold",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"$load\", rules = [{ gt = \"80\" }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "nonboolean rule ignore_case",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"agent\", rules = [{ equals = \"x\", ignore_case = \"true\" }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "nonboolean rule bold",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"agent\", rules = [{ equals = \"x\", bold = \"yes\" }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "nonboolean rule dim",
+      "toml": "[ui.sidebar.agents]\nrows = [[{ token = \"agent\", rules = [{ equals = \"x\", dim = 1 }] }]]\n",
+      "error": "invalid_schema",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "invalid_schema"
+        ]
+      }
+    },
+    {
+      "name": "byte-order mark inside a line",
+      "toml": "[ui]\nagent_panel_sort = \ufeff\"priority\"\n",
+      "error": "parse_error",
+      "snapshot": {
+        "v": 1,
+        "generated_at": 1757040000,
+        "source": {
+          "path": "/home/u/.config/herdr/config.toml",
+          "found": true,
+          "mtime_ms": 1757039000123
+        },
+        "agent_panel_sort": "spaces",
+        "sidebar": {
+          "agents": {
+            "row_gap": 0,
+            "rows": [
+              [
+                {
+                  "token": "state_icon"
+                },
+                {
+                  "token": "workspace"
+                },
+                {
+                  "token": "tab"
+                }
+              ],
+              [
+                {
+                  "token": "agent"
+                }
+              ]
+            ],
+            "rows_by_agent": {}
+          }
+        },
+        "diagnostics": [
+          "parse_error"
         ]
       }
     }

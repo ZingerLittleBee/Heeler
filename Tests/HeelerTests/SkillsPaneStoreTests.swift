@@ -116,6 +116,32 @@ struct SkillsPaneStoreTests {
         #expect(store.triggerPrefixes == ["/skill:", "$", "/"])
     }
 
+    @Test func anIncludeFilterHidesEntriesFromEveryList() async {
+        let store = SkillsPaneStore(
+            commandPrefixes: ["/skill:", "/"], include: { $0.commandPrefix == "/skill:" }
+        ) { _ in
+            [
+                AgentSkill(scope: .project, name: "share", description: "A prompt template"),
+                AgentSkill(
+                    scope: .project, name: "pdf", description: "Read PDFs", commandPrefix: "/skill:"),
+                AgentSkill(scope: .global, name: "quit", description: "A prompt template"),
+                AgentSkill(
+                    scope: .global, name: "review", description: "Review the diff",
+                    commandPrefix: "/skill:"),
+            ]
+        }
+        await store.loadIfNeeded()
+
+        #expect(store.skills.map(\.name) == ["pdf", "review"])
+        #expect(store.projectSkills.map(\.name) == ["pdf"])
+        #expect(store.globalSkills.map(\.name) == ["review"])
+        #expect(store.matching("").map(\.name) == ["pdf", "review"])
+        #expect(store.matching("template").isEmpty)
+
+        await store.refresh()
+        #expect(store.skills.map(\.name) == ["pdf", "review"])
+    }
+
     @Test func cancellationReturnsToIdleSoTheNextAppearanceRetries() async {
         var attempts = 0
         let store = SkillsPaneStore { _ in

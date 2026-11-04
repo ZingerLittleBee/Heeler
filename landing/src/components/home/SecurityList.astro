@@ -1,0 +1,70 @@
+---
+import { security } from './content';
+---
+
+<ul class="grid">
+  {
+    security.map((item, index) => (
+      <li>
+        <span class="index">{String(index + 1).padStart(2, '0')}</span>
+        <h3 class="home-h4">{item.title}</h3>
+        <p class="home-sm">{item.body}</p>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .index {
+    font: var(--type-eyebrow);
+    color: var(--text-muted);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--border-hairline);
+  }
+
+  .grid > li {
+    display: grid;
+    align-content: start;
+    gap: var(--sp-3);
+    padding: var(--sp-6) var(--sp-6) 0 0;
+  }
+
+  .grid > li + li {
+    padding-left: var(--sp-6);
+    border-left: 1px solid var(--border-hairline);
+  }
+
+  @media (max-width: 960px) {
+    .grid {
+      grid-template-columns: 1fr 1fr;
+      row-gap: var(--sp-8);
+    }
+
+    .grid > li:nth-child(odd) {
+      padding-left: 0;
+      border-left: 0;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .grid {
+      grid-template-columns: 1fr;
+      row-gap: 0;
+      border-top: 0;
+    }
+
+    .grid > li,
+    .grid > li + li {
+      padding: var(--sp-5) 0;
+      border-left: 0;
+      border-top: 1px solid var(--border-hairline);
+    }
+  }
+</style>

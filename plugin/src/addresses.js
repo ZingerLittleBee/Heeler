@@ -7,6 +7,7 @@
 // likely non-Docker candidate when the primary has none. Docker addresses
 // remain available for manual selection at the end of the list.
 
+import { isIP } from "node:net";
 import os from "node:os";
 
 function ipv4Octets(address) {
@@ -118,4 +119,31 @@ export function candidateAddresses(
         candidate.address === defaultCandidate.address,
     }))
     .sort((a, b) => Number(b.preChecked) - Number(a.preChecked));
+}
+
+/**
+ * Put the addresses configured in `pair.json` ahead of the enumerated
+ * candidates. Configured addresses are pre-checked: the operator named them
+ * because the interfaces cannot show them (a container behind a published
+ * port, a NAT, a DNS name). Enumerated candidates follow unchecked, minus any
+ * address already configured.
+ *
+ * @param {ReturnType<typeof candidateAddresses>} candidates
+ * @param {string[]} configured
+ */
+export function withConfiguredAddresses(candidates, configured) {
+  if (configured.length === 0) return candidates;
+  const family = (address) => ({ 4: "IPv4", 6: "IPv6" })[isIP(address)] ?? "name";
+  const listed = new Set(configured);
+  return [
+    ...configured.map((address) => ({
+      address,
+      family: family(address),
+      interfaceName: "pair.json",
+      preChecked: true,
+    })),
+    ...candidates
+      .filter(({ address }) => !listed.has(address))
+      .map((candidate) => ({ ...candidate, preChecked: false })),
+  ];
 }

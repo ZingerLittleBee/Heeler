@@ -1,0 +1,77 @@
+{
+ "session": {
+  "id": "ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9",
+  "project_id": "157e838f6e3ccb56d9b3d6416c0be3039c60111d",
+  "workspace_id": null,
+  "parent_id": null,
+  "fork_session_id": null,
+  "fork_boundary": null,
+  "slug": "quiet-meadow",
+  "directory": "/Users/developer/work/heeler-tmp-chat/opencode-a/project",
+  "path": "",
+  "title": "Unexpected types",
+  "version": "2.0.32",
+  "share_url": null,
+  "summary_additions": null,
+  "summary_deletions": null,
+  "summary_files": null,
+  "summary_diffs": null,
+  "metadata": null,
+  "cost": 0.0,
+  "tokens_input": 0,
+  "tokens_output": 0,
+  "tokens_reasoning": 0,
+  "tokens_cache_read": 0,
+  "tokens_cache_write": 0,
+  "revert": null,
+  "permission": null,
+  "agent": "build",
+  "model": "{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"}",
+  "time_created": 1800000000000,
+  "time_updated": 1800000000600,
+  "time_compacting": null,
+  "time_archived": null,
+  "time_suspended": null,
+  "resume_attempts": 0,
+  "time_idle": 1800000000602,
+  "time_viewed": null,
+  "idle_outcome": "succeeded"
+ },
+ "event_seq": 9,
+ "rows": [
+  {
+   "id": "msg_0a1b2c3d4e10R2t3Y4u5I6o7P8",
+   "type": "user",
+   "seq": 4,
+   "time_created": 1800000000000,
+   "time_updated": 1800000000000,
+   "data": "{\"time\":{\"created\":1800000000000},\"text\":\"Describe diagram.png.\",\"files\":[{\"name\":\"diagram.png\",\"mime\":\"image/png\",\"mention\":false},\"stray\"],\"agents\":[]}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e20A9s0D1f2G3h4J5",
+   "type": "assistant",
+   "seq": 5,
+   "time_created": 1800000000010,
+   "time_updated": 1800000000590,
+   "data": "{\"time\":{\"created\":1800000000010,\"completed\":1800000000590},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"reasoning\",\"text\":\"Checking the file.\",\"time\":1800000000020},{\"type\":\"tool\",\"id\":\"call_K6l7Z8x9C0v1B2n3M4q5W6e7\",\"name\":\"shell\",\"executed\":false,\"state\":{\"status\":\"error\",\"input\":\"file diagram.png\",\"error\":\"Command failed with exit code 2\"},\"time\":1800000000030},{\"type\":\"image\",\"url\":\"file:///tmp/diagram.png\"},\"stray item\",{\"type\":\"text\",\"text\":\"The shell command failed.\",\"state\":{\"openai\":{\"phase\":\"final_answer\"}}}],\"finish\":\"stop\",\"cost\":0}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e30R8t9Y0u1I2o3P4",
+   "type": "idle",
+   "seq": 8,
+   "time_created": 1800000000592,
+   "time_updated": 1800000000592,
+   "data": "{\"time\":{\"created\":1800000000592},\"outcome\":\"succeeded\"}"
+  }
+ ],
+ "inbox": [
+  {
+   "id": "msg_0a1b2c3d4e40S5d6F7g8H9j0K1",
+   "type": "user",
+   "payload": "{\"text\":42,\"files\":\"none\"}",
+   "delivery": "steer",
+   "enqueued_seq": 9,
+   "time_created": 1800000000595
+  }
+ ]
+}

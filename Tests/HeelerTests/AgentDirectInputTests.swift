@@ -98,16 +98,21 @@ struct AgentDirectInputTests {
             AgentActionMenuPolicy.composerAddSections == [.addAttachments])
         #expect(
             AgentActionMenuPolicy.composerMoreSections
-                == [.sessionTools, .agentLifecycle])
+                == [.navigation, .sessionTools, .agentLifecycle])
         #expect(
             AgentActionMenuPolicy.directInputMoreSections
-                == [.addAttachments, .sessionTools, .agentLifecycle])
+                == [.navigation, .addAttachments, .sessionTools, .agentLifecycle])
+        #expect(
+            AgentActionMenuSection.navigation.items == [.backToConsole])
         #expect(
             AgentActionMenuSection.addAttachments.items
-                == [.addImage, .addFile])
+                == [.addImage, .pasteImage, .addFile])
         #expect(
             AgentActionMenuSection.sessionTools.items
-                == [.openTerminal, .changes, .newAgent, .skills, .snippets])
+                == [
+                    .showChat, .showAgentTerminal, .openTerminal, .changes, .newAgent, .skills,
+                    .snippets,
+                ])
         #expect(
             AgentActionMenuSection.agentLifecycle.items
                 == [.worktreeDetails, .renameAgent, .renameWorkspace, .closeAgent])
@@ -115,31 +120,45 @@ struct AgentDirectInputTests {
             AgentActionMenuItem.allCases
                 == AgentActionMenuSection.allCases.flatMap(\.items))
 
-        let metadata: [(AgentActionMenuItem, String, String, Bool, Bool)] = [
-            (.addImage, "Add Image", "photo", false, true),
-            (.addFile, "Add File", "doc", false, true),
-            (.openTerminal, "Open Terminal", "apple.terminal", false, false),
-            (.changes, "Changes", "plus.forwardslash.minus", false, false),
-            (.newAgent, "New Agent", "plus", false, false),
-            (.skills, "Skills", "sparkles", false, true),
-            (.snippets, "Snippets", "quote.bubble", false, true),
-            (.worktreeDetails, "Worktree Details", "arrow.triangle.branch", false, false),
-            (.renameAgent, "Rename Agent", "pencil", false, false),
-            (.renameWorkspace, "Rename Workspace", "pencil.line", false, false),
-            (.closeAgent, "Close Agent", "trash", true, false),
+        let metadata: [(AgentActionMenuItem, String, AgentGlyph, Bool, Bool)] = [
+            (.backToConsole, "Back to Console", .symbol("chevron.left"), false, false),
+            (.addImage, "Add Image", .symbol("photo"), false, true),
+            (.pasteImage, "Paste Image", .symbol("doc.on.clipboard"), false, true),
+            (.addFile, "Add File", .symbol("doc"), false, true),
+            (.showChat, "Show Chat", .symbol("text.bubble"), false, false),
+            (.showAgentTerminal, "Show Agent Terminal", .codeBubble, false, false),
+            (.openTerminal, "Open Terminal", .symbol("macwindow.badge.plus"), false, false),
+            (.changes, "Changes", .symbol("plus.forwardslash.minus"), false, false),
+            (.newAgent, "New Agent", .symbol("plus"), false, false),
+            (.skills, "Skills", .symbol("sparkles"), false, true),
+            (.snippets, "Snippets", .symbol("quote.bubble"), false, true),
+            (.worktreeDetails, "Worktree Details", .symbol("arrow.triangle.branch"), false, false),
+            (.renameAgent, "Rename Agent", .symbol("pencil"), false, false),
+            (.renameWorkspace, "Rename Workspace", .symbol("pencil.line"), false, false),
+            (.closeAgent, "Close Agent", .symbol("trash"), true, false),
         ]
-        for (item, title, systemImage, isDestructive, isDraftOwned) in metadata {
+        for (item, title, glyph, isDestructive, isDraftOwned) in metadata {
             #expect(item.title == title)
-            #expect(item.systemImage == systemImage)
+            #expect(item.glyph == glyph)
             #expect((item.role == .destructive) == isDestructive)
             #expect(item.isDraftOwned == isDraftOwned)
         }
     }
 
+    @MainActor
+    @Test func codeBubbleGlyphSharesTextBubbleCanvas() throws {
+        let configuration = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular, scale: .medium)
+        let textBubble = try #require(UIImage(systemName: "text.bubble", withConfiguration: configuration))
+        let glyph = CodeBubbleGlyph.image(pointSize: 17)
+
+        #expect(glyph.size == textBubble.size)
+        #expect(glyph.renderingMode == .alwaysTemplate)
+    }
+
     @Test func sharedActionMenuAvailabilityAndDispatchCoverAllGates() {
         enum Event: Equatable {
-            case addImage, addFile, openTerminal, changes, startAgent, skills, snippets
-            case worktree, renameAgent, renameWorkspace, closeAgent
+            case back, addImage, addFile, showChat, showAgentTerminal, openTerminal, changes
+            case startAgent, skills, snippets, worktree, renameAgent, renameWorkspace, closeAgent
         }
         var events: [Event] = []
         let gated = AgentComposerActions(
@@ -157,7 +176,8 @@ struct AgentDirectInputTests {
             showWorktreeDetails: nil,
             renameAgent: { events.append(.renameAgent) },
             renameWorkspace: { events.append(.renameWorkspace) },
-            closeAgent: { events.append(.closeAgent) })
+            closeAgent: { events.append(.closeAgent) },
+            backToConsole: { events.append(.back) })
         let busy = AgentComposerActions(
             canBegin: true,
             attachLinkCount: 0,
@@ -173,7 +193,8 @@ struct AgentDirectInputTests {
             showWorktreeDetails: { events.append(.worktree) },
             renameAgent: { events.append(.renameAgent) },
             renameWorkspace: { events.append(.renameWorkspace) },
-            closeAgent: { events.append(.closeAgent) })
+            closeAgent: { events.append(.closeAgent) },
+            backToConsole: { events.append(.back) })
         let ready = AgentComposerActions(
             canBegin: true,
             attachLinkCount: 0,
@@ -189,11 +210,20 @@ struct AgentDirectInputTests {
             showWorktreeDetails: { events.append(.worktree) },
             renameAgent: { events.append(.renameAgent) },
             renameWorkspace: { events.append(.renameWorkspace) },
-            closeAgent: { events.append(.closeAgent) })
+            closeAgent: { events.append(.closeAgent) },
+            backToConsole: { events.append(.back) },
+            showChat: { events.append(.showChat) },
+            showAgentTerminal: { events.append(.showAgentTerminal) })
 
         let availability: [(AgentActionMenuItem, AgentComposerActions, Bool, Bool)] = [
             (.addImage, gated, true, false),
             (.addFile, gated, true, false),
+            // Each switch shows only where the other surface is on screen,
+            // and only for an Agent that has Chat.
+            (.showChat, gated, false, true),
+            (.showChat, ready, true, true),
+            (.showAgentTerminal, gated, false, true),
+            (.showAgentTerminal, ready, true, true),
             (.openTerminal, gated, true, false),
             (.openTerminal, busy, true, false),
             (.openTerminal, ready, true, true),
@@ -211,19 +241,27 @@ struct AgentDirectInputTests {
             (.renameAgent, ready, true, true),
             (.renameWorkspace, ready, true, true),
             (.closeAgent, ready, true, true),
+            (.backToConsole, gated, true, true),
         ]
         for (item, actions, visible, enabled) in availability {
             #expect(AgentActionMenuPolicy.isVisible(item, actions: actions) == visible)
             #expect(AgentActionMenuPolicy.isEnabled(item, actions: actions) == enabled)
         }
 
+        #expect(AgentActionMenuPolicy.title(of: .closeAgent, actions: ready) == "Close Agent")
+        var saved = ready
+        saved.removesSavedChat = true
+        #expect(AgentActionMenuPolicy.title(of: .closeAgent, actions: saved) == "Remove Saved Chat")
+        #expect(AgentActionMenuPolicy.title(of: .renameAgent, actions: saved) == "Rename Agent")
+
         for item in AgentActionMenuItem.allCases {
             AgentActionMenuPolicy.perform(item, actions: ready)
         }
         #expect(
             events == [
-                .addImage, .addFile, .openTerminal, .changes, .startAgent, .skills, .snippets,
-                .worktree, .renameAgent, .renameWorkspace, .closeAgent,
+                .back, .addImage, .addFile, .showChat, .showAgentTerminal, .openTerminal,
+                .changes, .startAgent, .skills, .snippets, .worktree, .renameAgent,
+                .renameWorkspace, .closeAgent,
             ])
     }
 
@@ -237,6 +275,7 @@ struct AgentDirectInputTests {
             canBegin: true,
             attachLinkCount: 0,
             addImage: { steps.append(.action(.addImage)) },
+            pasteImage: { steps.append(.action(.pasteImage)) },
             addFile: { steps.append(.action(.addFile)) },
             showAttachLinks: {},
             openTerminal: { steps.append(.action(.openTerminal)) },
@@ -248,7 +287,10 @@ struct AgentDirectInputTests {
             showWorktreeDetails: { steps.append(.action(.worktreeDetails)) },
             renameAgent: { steps.append(.action(.renameAgent)) },
             renameWorkspace: { steps.append(.action(.renameWorkspace)) },
-            closeAgent: { steps.append(.action(.closeAgent)) })
+            closeAgent: { steps.append(.action(.closeAgent)) },
+            backToConsole: { steps.append(.action(.backToConsole)) },
+            showChat: { steps.append(.action(.showChat)) },
+            showAgentTerminal: { steps.append(.action(.showAgentTerminal)) })
         let restoreComposerThen: (@escaping () -> Void) -> Void = { action in
             steps.append(.restore)
             action()
@@ -263,8 +305,12 @@ struct AgentDirectInputTests {
 
         #expect(
             steps == [
+                .action(.backToConsole),
                 .restore, .action(.addImage),
+                .restore, .action(.pasteImage),
                 .restore, .action(.addFile),
+                .action(.showChat),
+                .action(.showAgentTerminal),
                 .action(.openTerminal),
                 .action(.changes),
                 .action(.newAgent),
@@ -282,7 +328,7 @@ struct AgentDirectInputTests {
         }
         #expect(
             steps == [
-                .action(.addImage), .action(.addFile),
+                .action(.addImage), .action(.pasteImage), .action(.addFile),
                 .action(.skills), .action(.snippets),
             ])
     }
@@ -326,7 +372,7 @@ struct AgentDirectInputTests {
             try await transport.promptAgent(params)
         }
         composer.replaceDraft(with: "keep me")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
 
@@ -362,6 +408,35 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    @Test func chromeStabilityWaitsForTheNewInsetAcrossAnObservedInterval() {
+        var height: CGFloat = 336
+        var bottom: CGFloat = 500
+        let probe = KeyboardTransitionProbe(
+            notificationCenter: NotificationCenter(), insetHeight: { height })
+        defer { probe.stop() }
+        probe.setChromeSample {
+            KeyboardChromeSample(insetHeight: height, switcherBottom: bottom)
+        }
+        for time in [0.0, 0.05, 0.1, 0.2, 0.3, 0.4] {
+            probe.captureChromeSample(at: time)
+        }
+        #expect(probe.hasStableTail())
+
+        // A runner stall drops the old samples out of the time window. Four
+        // notifications at the new inset do not prove its layout has settled.
+        height = 309
+        for time in [1.0, 1.01, 1.02, 1.03] {
+            probe.captureChromeSample(at: time)
+        }
+        #expect(!probe.hasStableTail())
+
+        bottom = 527
+        for time in [1.05, 1.1, 1.2, 1.3, 1.41] {
+            probe.captureChromeSample(at: time)
+        }
+        #expect(probe.hasStableTail())
+    }
+
     @Test func composerAndDirectInputTransferVisibleKeyboardWithoutReloading() async throws {
         let center = NotificationCenter.default
         let inset = TerminalKeyboardInset(notificationCenter: center)
@@ -374,7 +449,7 @@ struct AgentDirectInputTests {
             try await transport.promptAgent(params)
         }
         composer.replaceDraft(with: "do not send")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -405,11 +480,18 @@ struct AgentDirectInputTests {
         composerInput.becomeFirstResponder()
         try #require(await Self.eventually { composerInput.isFirstResponder })
         try #require(await Self.eventually { composerInput.inputView == nil })
-        try #require(await Self.eventually {
+        let keyboardPresented = try await Self.eventually {
             inset.height > 0
                 && (keyboardTransitions.willShowCount > 0
                     || keyboardTransitions.willChangeFrameCount > 0)
-        })
+        }
+        try #require(
+            keyboardPresented,
+            """
+            Composer keyboard: inset=\(inset.height), show=\(keyboardTransitions.willShowCount), \
+            change=\(keyboardTransitions.willChangeFrameCount), keyWindow=\(window.isKeyWindow), \
+            window=\(window.frame), guide=\(window.keyboardLayoutGuide.layoutFrame)
+            """)
         let keyboardHeight = inset.height
         #expect(window.isKeyWindow)
         #expect(composerInput.window === window)
@@ -516,7 +598,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { params in
             try await transport.promptAgent(params)
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let controller = UIHostingController(
@@ -571,6 +653,91 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    @Test func composerStopPressesOnePlainEscAndLeavesAnArmedControl() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        let transport = ScriptedTransport()
+        let stopWindow = ScriptedTransportCallGate()
+        let stopWaits = SleepRecorder()
+        let composer = AgentComposerStore(
+            target: "w1:p1", initialStatus: .working,
+            stop: AgentComposerStopStore(sleep: { duration in
+                await stopWaits.record(duration)
+                await stopWindow.waitUntilOpen()
+            })
+        ) { params in
+            try await transport.promptAgent(params)
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport)
+        let (inputMode, cleanup) = try Self.makeInputMode()
+        defer { cleanup() }
+        let interactions = AgentTerminalInteractionProbe()
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                agent: Self.makeAgent(status: .working),
+                attachStore: owner, composer: composer, inputMode: inputMode,
+                keyboardInset: inset, interactionProbe: interactions))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live && interactions.isConnected
+        })
+
+        // Real SwiftUI actions require the hosted accessibility support in
+        // iOS 27; there, ⌃ is armed first and must outlast Stop.
+        let armsControl: Bool
+        if #available(iOS 27, *) { armsControl = true } else { armsControl = false }
+        if armsControl {
+            let editor = try #require(Self.firstView(in: controller.view) {
+                $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+            } as? UITextView)
+            editor.becomeFirstResponder()
+            center.post(
+                name: UIResponder.keyboardWillShowNotification, object: nil,
+                userInfo: [UIResponder.keyboardFrameEndUserInfoKey:
+                    CGRect(x: 0, y: 500, width: 402, height: 370)])
+            try #require(await Self.eventually { editor.isFirstResponder && inset.height == 336 })
+            try #require(try await Self.activateControl(
+                labeled: "Show tools keyboard", in: controller.view, probe: { false }))
+            try #require(try await Self.activateControl(
+                labeled: "Terminal keyboard page", in: controller.view, probe: { false }))
+            try #require(try await Self.activateControl(
+                labeled: "Control modifier", in: controller.view, probe: { false }))
+        }
+
+        try #require(try await Self.activateControl(
+            labeled: "Stop", in: controller.view, probe: { interactions.stopAgent() }))
+        try #require(await Self.eventually {
+            await transport.attachInputs.contains(.keystrokes(Data([0x1B])))
+        })
+        #expect(composer.stop.isStopping)
+        await stopWindow.waitForEntry()
+        #expect(await stopWaits.durations == [.seconds(3)], "the terminal's Stop waits as Esc does")
+        _ = try await Self.activateControl(
+            labeled: "Stop", in: controller.view, probe: { interactions.stopAgent() })
+        for _ in 0..<20 { await Task.yield() }
+        #expect(
+            await transport.attachInputs.filter { $0 == .keystrokes(Data([0x1B])) }.count == 1,
+            "a second tap waits for the status")
+
+        if armsControl {
+            try #require(try await Self.activateControl(
+                labeled: "a", in: controller.view, probe: { false }))
+            try #require(await Self.eventually {
+                await transport.attachInputs.contains(.keystrokes(Data([0x01])))
+            })
+        }
+        #expect(await transport.agentPromptParams.isEmpty)
+        await stopWindow.open()
+        try #require(await Self.eventually { composer.stop.phase == .unconfirmed })
+        #expect(composer.stop.notice == "Esc went, but the Agent still shows Working.")
+        #expect(await stopWaits.durations == [.seconds(3)])
+        await owner.leave().value
+    }
+
     @Test(arguments: [AgentInputMode.composer, .direct], [false, true])
     func toolsSnippetsInsertIntoTheActiveInputWithoutSubmitting(
         mode: AgentInputMode, bracketed: Bool
@@ -593,7 +760,7 @@ struct AgentDirectInputTests {
             try await transport.promptAgent(params)
         }
         composer.replaceDraft(with: "keep this local: ")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: mode)
         defer { cleanup() }
         let controller = UIHostingController(
@@ -673,7 +840,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -737,7 +904,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -793,7 +960,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let probe = AgentTerminalInteractionProbe()
@@ -842,10 +1009,8 @@ struct AgentDirectInputTests {
         let secondComposer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let firstOwner = try await Self.makeLiveAttach(
-            transport: ScriptedTransport(), composer: firstComposer)
-        let secondOwner = try await Self.makeLiveAttach(
-            transport: ScriptedTransport(), composer: secondComposer)
+        let firstOwner = try await Self.makeLiveAttach(transport: ScriptedTransport())
+        let secondOwner = try await Self.makeLiveAttach(transport: ScriptedTransport())
         let firstProbe = AgentTerminalInteractionProbe()
         let secondProbe = AgentTerminalInteractionProbe()
         let controller = UIHostingController(rootView: AnyView(Self.makeDetailView(
@@ -898,7 +1063,7 @@ struct AgentDirectInputTests {
             Agent(.fixture(paneID: "w1:p1"))
         }
         composer.replaceDraft(with: "waiting draft")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -941,7 +1106,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1006,8 +1171,10 @@ struct AgentDirectInputTests {
                 Self.firstAccessibleFrame(labeled: "Dismiss keyboard", in: controller.view))
             let enterFrame = try #require(
                 Self.firstAccessibleFrame(labeled: "Enter", in: controller.view))
+            // The detail header has a More menu too; take the row's.
             let moreFrame = try #require(
-                Self.firstAccessibleFrame(labeled: "More", in: controller.view))
+                Self.accessibleFrames(labeled: "More", in: controller.view)
+                    .first { abs($0.midY - enterFrame.midY) < enterFrame.height / 2 })
             #expect(escapeFrame.maxY <= dismissFrame.minY + 1)
             #expect(moreFrame.minX >= enterFrame.maxX)
             #expect(Self.accessibleCount(labeled: "Dismiss keyboard", in: controller.view) == 1)
@@ -1062,7 +1229,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1174,7 +1341,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1238,7 +1405,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -1287,7 +1454,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -1319,13 +1486,70 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    /// A slow reply pauses what reaches the Host, not the keyboard: losing it
+    /// would also resize the terminal on every blip of a weak network.
+    @Test func connectionRecoveryKeepsTheDirectKeyboardUp() async throws {
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport)
+        let (inputMode, cleanup) = try Self.makeInputMode()
+        defer { cleanup() }
+        let interactions = AgentTerminalInteractionProbe()
+
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner,
+                composer: composer,
+                inputMode: inputMode,
+                interactionProbe: interactions))
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+                && interactions.isConnected
+        })
+
+        try #require(try await Self.activateControl(
+            labeled: AgentDirectInputPresentation.hideComposerAccessibilityLabel,
+            in: controller.view,
+            probe: { interactions.selectInputMode(.direct) }))
+        try #require(await Self.eventually { inputMode.mode == AgentInputMode.direct })
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        try #require(await Self.eventually { terminal.isFirstResponder })
+
+        owner.input.isEnabled = false
+        try await Task.sleep(for: .milliseconds(200))
+        controller.view.layoutIfNeeded()
+        #expect(terminal.isFirstResponder)
+        #expect(terminal.isLocalInputEnabled)
+        #expect(!owner.input.send(Data("dropped".utf8)))
+
+        owner.input.isEnabled = true
+        try await Task.sleep(for: .milliseconds(200))
+        controller.view.layoutIfNeeded()
+        #expect(terminal.isFirstResponder)
+        let typed = Data("typed".utf8)
+        #expect(owner.input.send(typed))
+        try #require(await Self.eventually {
+            await transport.attachInputs.contains(.keystrokes(typed))
+        })
+        #expect(await !transport.attachInputs.contains(.keystrokes(Data("dropped".utf8))))
+
+        await owner.leave().value
+    }
+
     @Test func terminalReplacementWhileDirectOwnsKeyboardClaimsIntent() async throws {
         let transport = ScriptedTransport()
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
         composer.replaceDraft(with: "keep")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1389,7 +1613,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let handoff = TerminalKeyboardHandoff()
@@ -1490,7 +1714,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -1560,10 +1784,7 @@ struct AgentDirectInputTests {
         return (settings, { defaults.removePersistentDomain(forName: suiteName) })
     }
 
-    private static func makeLiveAttach(
-        transport: ScriptedTransport,
-        composer: AgentComposerStore
-    ) async throws -> AgentAttachStore {
+    private static func makeLiveAttach(transport: ScriptedTransport) async throws -> AgentAttachStore {
         let owner = AgentAttachStore(
             target: "w1:p1",
             paneTitle: "Claude",
@@ -1573,9 +1794,6 @@ struct AgentDirectInputTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: { _, _ in throw TransportError.cancelled },
-            stageFile: { _, _ in throw TransportError.cancelled },
-            composer: composer,
             closePane: {})
         // Fresh stores start `.active` with `.waitingForSize`. `rejoin()` is a
         // no-op until leave/rejoinRequired, so open the channel the same way
@@ -1628,7 +1846,7 @@ struct AgentDirectInputTests {
             isOnStage: isOnStage,
             onSwitch: onSwitch,
             onClosed: {},
-            composer: composer,
+            session: AgentComposerSession(composer: composer),
             attachStore: attachStore,
             interactionProbe: interactionProbe)
     }
@@ -1754,10 +1972,10 @@ struct AgentDirectInputTests {
             chromeSample = sample
         }
 
-        func captureChromeSample() {
+        func captureChromeSample(at time: CFTimeInterval = CACurrentMediaTime()) {
             if let chromeSample {
                 chromeSamples.append(chromeSample())
-                chromeSampleTimes.append(CACurrentMediaTime())
+                chromeSampleTimes.append(time)
             }
         }
 
@@ -1775,18 +1993,21 @@ struct AgentDirectInputTests {
         ) -> Bool {
             guard let baseline = chromeSamples.last,
                   let lastTime = chromeSampleTimes.last,
-                  let firstTime = chromeSampleTimes.first,
                   baseline.switcherBottom != nil,
-                  abs(baseline.insetHeight - insetHeight()) <= 1,
-                  lastTime - firstTime >= duration
+                  abs(baseline.insetHeight - insetHeight()) <= 1
             else { return false }
-            let tail = zip(chromeSamples, chromeSampleTimes)
-                .filter { lastTime - $0.1 <= duration }
-                .map(\.0)
-            return tail.count >= frameCount && tail.allSatisfy { sample in
-                abs(sample.insetHeight - baseline.insetHeight) <= 1
-                    && Self.close(sample.switcherBottom, baseline.switcherBottom)
+            var firstStableIndex = chromeSamples.count - 1
+            while firstStableIndex > 0 {
+                let previous = chromeSamples[firstStableIndex - 1]
+                guard abs(previous.insetHeight - baseline.insetHeight) <= 1,
+                      Self.close(previous.switcherBottom, baseline.switcherBottom)
+                else { break }
+                firstStableIndex -= 1
             }
+            // Measure time actually observed at this inset and position.
+            // A sampling gap must not turn four fresh samples into 350ms.
+            return chromeSamples.count - firstStableIndex >= frameCount
+                && lastTime - chromeSampleTimes[firstStableIndex] >= duration
         }
 
         func observedHandoffWindow(_ duration: TimeInterval = 0.65) -> Bool {
@@ -1928,14 +2149,15 @@ struct AgentDirectInputTests {
         in root: UIView,
         timeout: Duration = .seconds(5)
     ) async throws -> HeelerTerminalView? {
-        let deadline = ContinuousClock.now + timeout
-        while ContinuousClock.now < deadline {
+        var budget = PollBudget(timeout)
+        while budget.hasTimeLeft {
             root.setNeedsLayout()
             root.layoutIfNeeded()
             if let terminal = terminals(in: root).first(where: { feed.isAttached(to: $0) }) {
                 return terminal
             }
             try await Task.sleep(for: .milliseconds(5))
+            budget.charge()
         }
         root.setNeedsLayout()
         root.layoutIfNeeded()
@@ -1982,22 +2204,26 @@ struct AgentDirectInputTests {
     }
 
     private static func firstAccessibleFrame(labeled label: String, in root: UIView) -> CGRect? {
+        accessibleFrames(labeled: label, in: root).first
+    }
+
+    private static func accessibleFrames(labeled label: String, in root: UIView) -> [CGRect] {
         // Reuse visitAccessible so frame probes share the same container walk as
         // label lookups. Skip zero-size matches and keep searching — same rule
         // TerminalAttachTests uses for hosted SwiftUI chrome.
-        var match: CGRect?
+        var matches: [CGRect] = []
         visitAccessible(in: root) { node in
-            guard match == nil, node.accessibilityLabel == label else { return }
+            guard node.accessibilityLabel == label else { return }
             if let view = node as? UIView {
                 guard view.bounds.width > 0, view.bounds.height > 0 else { return }
-                match = view.convert(view.bounds, to: root)
+                matches.append(view.convert(view.bounds, to: root))
             } else {
                 let frame = node.accessibilityFrame
                 guard frame.width > 0, frame.height > 0 else { return }
-                match = root.convert(frame, from: nil)
+                matches.append(root.convert(frame, from: nil))
             }
         }
-        return match
+        return matches
     }
 
     private static func accessibleCount(labeled label: String, in root: UIView) -> Int {
@@ -2069,10 +2295,11 @@ struct AgentDirectInputTests {
         timeout: Duration = .seconds(5),
         _ condition: @escaping () async -> Bool
     ) async throws -> Bool {
-        let deadline = ContinuousClock.now + timeout
-        while ContinuousClock.now < deadline {
+        var budget = PollBudget(timeout)
+        while budget.hasTimeLeft {
             if await condition() { return true }
             try await Task.sleep(for: .milliseconds(5))
+            budget.charge()
         }
         return await condition()
     }

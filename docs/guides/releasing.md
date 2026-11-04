@@ -43,6 +43,8 @@ to the tool that produced it:
 `plugin/package.json` and `relay/package.json` are `"private": true`. A
 package that is never published declares nothing, so their `version`
 fields are not part of a release and `make publish` leaves them alone.
+The herdr plugin has a release of its own:
+[Publishing the herdr plugin](#publishing-the-herdr-plugin).
 
 ## Version resolution
 
@@ -61,10 +63,14 @@ passed explicitly.
 ## What `make publish` does, in order
 
 1. **Preflight.** Tooling present and `gh` authenticated; clean tree; on
-   `main` and level with `origin/main`; `[Unreleased]` non-empty; the
-   target tag absent locally *and* on the remote — a local-only check
-   passes right up until the push fails, by which time the release
-   commit has already landed.
+   `main` and level with `origin/main`; the `plugin` branch carrying the
+   plugin version in `plugin/herdr-plugin.toml`
+   ([Publishing the herdr plugin](#publishing-the-herdr-plugin)); the
+   newest tag released on GitHub, not as a draft (a tag without a release
+   is still in its release run, or needs [recovery](#failure-and-recovery)
+   first); `[Unreleased]` non-empty; the target tag absent locally *and* on
+   the remote — a local-only check passes right up until the push fails,
+   by which time the release commit has already landed.
 2. **Print the plan and ask.** Resolved version, every file it will
    touch, every command it will run, and the release notes. `DRY_RUN=1`
    prints exactly this and exits without touching anything.
@@ -92,13 +98,14 @@ The tag starts [`release.yml`](../../.github/workflows/release.yml):
 | Job | What it does |
 |---|---|
 | `meta` | Checks the tag: `vX.Y.Z`, annotated, on `main`, equal to `MARKETING_VERSION` in `project.yml` and in the committed project, no GitHub release yet. Takes the `[X.Y.Z]` CHANGELOG section as the release notes. |
-| `test` | Runs both `ci.yml` lanes against the tag. |
-| `archive` | Runs in the `release` environment. Archives the committed project with manual App Store signing, exports the IPA, checks its versions, bundle IDs, and entitlements, validates it with App Store Connect, and uploads it. |
-| `release` | Creates the GitHub release with the notes as its body and checks that it is published, not a draft. |
+| `test` | Runs the complete app and SSH package suites in `ci-full.yml` against the tag. The fast build workflow (`ci.yml`) is not a release test gate. |
+| `archive` | Runs in the `release` environment. Archives the committed project with manual App Store signing, exports the IPA, checks its versions, bundle IDs, and entitlements, validates it with App Store Connect, checks that the tag still names the run's commit, and uploads it. |
+| `release` | Creates the GitHub release with the notes as its body and checks that it is not a draft. |
 
 There is no approval step: only admins can create `v*` tags, so pushing
-the tag is the decision to release. The build reaches TestFlight once App
-Store Connect finishes processing it.
+the tag is the decision to release. App Store Connect lists the build in
+TestFlight as processing soon after the upload; testers can install it
+once processing finishes.
 
 The GitHub release carries the notes and the tag only. There is no
 downloadable asset: an App Store-signed `.ipa` installs nowhere, and the
@@ -114,21 +121,34 @@ no build number is consumed, and no release is created.
 
 ### Failure and recovery
 
-A pushed tag is never moved or deleted. App Store Connect never accepts a
-build number twice, and the tag already names the release, so a tag whose
-build never reached TestFlight is void: fix the cause and cut the next
-version. Version gaps are fine.
+A failed release keeps its version as long as its run published nothing:
+no build from the run is in TestFlight, not even one still processing,
+and no GitHub release exists. Until a version is approved for the App
+Store, App Store Connect accepts more builds of it, each with a higher
+build number, so such a release re-runs its failed jobs or is re-cut as
+the same version. Once anything is published, its tag is never moved or
+deleted: finish a missing step by hand, and ship a fix as the next
+version.
 
 | Failure | Recovery |
 |---|---|
-| `meta` | Nothing was built. Fix the cause, [reopen the void version's notes](#cutting-the-next-version-after-a-void-tag), and `make publish`. |
-| `test` | Fix on `main`, reopen the void version's notes, and `make publish`. |
-| `archive`, before the upload step | If the cause was external (runner, network, an Apple outage), re-run failed jobs. For a signing or credential error, fix the `release` environment (see below), rehearse, then re-run failed jobs. For a code error, fix it, reopen the void version's notes, and `make publish`. |
-| `archive`, upload step or later | Check TestFlight first. If the build did not arrive, re-run failed jobs. If it arrived, do not re-run anything: `archive` would upload the same build number again, which App Store Connect rejects, and `release` stays skipped while `archive` reads as failed. Create the GitHub release by hand instead (below). |
+| `meta` | Nothing was built. If the cause was external (runner, network), re-run failed jobs. Otherwise fix the cause on `main`, then [re-cut the same version](#re-cutting-an-unpublished-version). |
+| `test` | If the failure looks flaky (a test known to be flaky, or one that passes on the same commit elsewhere, such as its `main` CI run), re-run failed jobs once. If it fails again, fix it on `main`, then re-cut the same version. |
+| `archive`, before the upload step | If the cause was external (runner, network, an Apple outage), re-run failed jobs. For a signing or credential error, fix the `release` environment (see below), rehearse, then re-run failed jobs. For a code error, or a build App Store Connect validation rejected (such as a build number it already holds for this version), fix the cause on `main` if there is one, then re-cut the same version. |
+| `archive`, upload step or later | Check TestFlight first, counting a build that is still processing. If the build is not there, re-run failed jobs, unless App Store Connect rejected the build itself: a re-run repeats that, so fix it on `main` and re-cut the same version (or ship the next version, if it rejected the version number). If the build is there, do not re-run anything: `archive` would upload the same build number again, which App Store Connect rejects, and `release` stays skipped while `archive` reads as failed. Create the GitHub release by hand instead (below). |
 | `release` | Re-run failed jobs; the job skips creating a release that already exists. |
 
-Use **Re-run failed jobs**, not "Re-run all jobs", so the tests are not
-repeated needlessly.
+Use **Re-run failed jobs** (`gh run rerun <run-id> --failed`), not "Re-run
+all jobs", so the tests are not repeated needlessly. Re-run only the run
+that the current tag started:
+
+```sh
+gh run list --workflow release.yml --commit "$(git rev-parse 'vX.Y.Z^{commit}')"
+```
+
+After a re-cut, an older run of the same tag stops before its upload,
+because the tag no longer names its commit. GitHub allows re-runs for 30
+days after a run; after that, re-cut the same version.
 
 To create the GitHub release by hand, take the notes from the run's
 `release-notes` artifact:
@@ -138,20 +158,41 @@ gh run download <run-id> --name release-notes --dir /tmp/heeler-notes
 gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file /tmp/heeler-notes/notes.md
 ```
 
-### Cutting the next version after a void tag
+### Re-cutting an unpublished version
 
-`make publish` moved the void version's notes from `[Unreleased]` into
-its `## [X.Y.Z]` section, so `[Unreleased]` is empty and publish refuses
-to run. Reopen them on `main`:
+When the fix needs a change on `main`, the tag names the commit without
+it, so the tag goes and the same version is cut again:
 
-1. Move the body of `## [X.Y.Z] - YYYY-MM-DD` back under `## [Unreleased]`,
-   alongside any newer entries.
-2. Keep the `## [X.Y.Z]` heading, with the single line
-   `_Not released: the vX.Y.Z build never reached TestFlight._` as its
-   body. Publish checks the newest heading against the newest tag, so
-   deleting it would stop the next cut.
-3. Commit, push, and `make publish`. It picks `X.Y.(Z+1)` and the next
-   build number.
+1. Wait for the release run to finish, then confirm that it published
+   nothing: `gh release view vX.Y.Z` finds no release, and TestFlight has
+   no build from the run, not even one still processing. That build is
+   X.Y.Z (N), with N from the `release: X.Y.Z (N)` line of the run
+   summary. A run that failed before its upload step never sent one, and
+   interim `make testflight` builds do not count. From then on, do not
+   re-run that run.
+2. On `main`, move the body of `## [X.Y.Z] - YYYY-MM-DD` back under
+   `## [Unreleased]`, merged with any newer entries (one `### Added`, one
+   `### Fixed`, and so on), and delete the heading. Land this on `main`
+   with the fix: publish refuses a dirty tree or a `main` that differs
+   from `origin/main`.
+3. Right before deleting, check step 1 again. If anything was published
+   in the meantime, stop: put the `## [X.Y.Z]` heading back over the
+   notes that shipped, and ship the fix as the next version. Otherwise
+   delete the tag on GitHub and locally, skipping whichever is already
+   gone. The "Protect release tags" ruleset lets only admins do this:
+
+   ```sh
+   git push origin :refs/tags/vX.Y.Z
+   git tag -d vX.Y.Z
+   ```
+
+   Another clone that fetched the old tag keeps it, because `git fetch`
+   neither moves nor deletes an existing tag. Before publishing from that
+   clone, run `git tag -d vX.Y.Z` there, then `git fetch --tags origin`,
+   which brings back the new tag once the re-cut has pushed it.
+4. Run `make publish VERSION=X.Y.Z`. Its plan shows
+   `MARKETING_VERSION X.Y.Z -> X.Y.Z`; the build number moves on to the
+   next one, and the skipped number is harmless.
 
 ## Signing and credentials
 
@@ -207,9 +248,62 @@ Once, before the first release:
    repository level.
 2. **Tag ruleset**: target tags matching `v*`; restrict creation, updates,
    and deletions, with only the admin role allowed to bypass. Creating a
-   release tag is then an admin's decision, and a pushed tag never moves.
+   release tag is then an admin's decision, and so is deleting one for a
+   [re-cut](#re-cutting-an-unpublished-version) of a version that
+   published nothing; a published tag never moves.
 3. **Rehearse**: run the workflow from `main`. It must pass before the
    first `make publish`.
+
+## Publishing the herdr plugin
+
+The herdr plugin ships separately from the app, from the `plugin` branch:
+
+```sh
+make plugin                     # publish plugin/ from origin/main
+make plugin DRY_RUN=1           # build and check it, push nothing
+make plugin YES=1               # skip the confirmation prompt
+make plugin SOURCE=<commit>     # publish an earlier commit on main
+```
+
+Users install it with
+`herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes`. The
+branch holds only what the plugin runs (`herdr-plugin.toml`,
+`package.json`, `package-lock.json`, `src/`, `README.md`) plus the
+repository `LICENSE`, at its root, so an install fetches about 3 MB
+instead of the whole repository. Development and tests stay in `plugin/`
+on `main`; nobody commits to the `plugin` branch by hand. `make publish`
+and `release.yml` never touch it.
+
+[`scripts/publish-plugin.sh`](../../scripts/publish-plugin.sh), in order:
+
+1. **Fetch** `origin/main` and `origin/plugin`. The tree comes from
+   `SOURCE`, which defaults to `origin/main` and must be on it, so local
+   commits and uncommitted edits never reach the branch.
+2. **Refuse** an entry of `plugin/` that is listed as neither shipped nor
+   dev-only, a `herdr-plugin.toml` version that differs from
+   `package.json`, and changed files under a version that is not newer
+   than the published one. An unchanged tree publishes nothing.
+3. **Check** the tree: `npm ci` the way herdr's build step runs it, then
+   the plugin tests against it.
+4. **Print the plan and ask**, then append one commit,
+   `chore(plugin): publish X.Y.Z`, whose body names the source commit, and
+   push it. The push is never forced, so every published version stays
+   installable with `--ref <commit>`.
+
+When the app depends on a new plugin version, bump it on `main` (see the
+plugin README's "Releasing a plugin version"), run `make plugin`, and only
+then cut the app release that bundles it. An app that expects a version
+the branch lacks tells users to update, and the update reinstalls the old
+one, so `make publish` refuses to cut a release until the `plugin` branch
+carries the version in `plugin/herdr-plugin.toml`
+([`scripts/check-plugin-published.sh`](../../scripts/check-plugin-published.sh)).
+
+Hosts installed with the old command
+(`ZingerLittleBee/Heeler/plugin --ref main`) keep updating from `main`, and
+released apps still show it, so `plugin/` on `main` must stay installable.
+Installing with the new command replaces such an install in place: herdr
+0.7.5 and later replace any GitHub-installed plugin with the same id and
+refuse only a linked one, which the app's notice uninstalls first.
 
 ## `make publish` versus `make bump && make testflight`
 
@@ -221,8 +315,15 @@ Two paths to TestFlight, different jobs:
   the tags stay where they are. Leaves `project.yml` and
   `project.pbxproj` dirty. Commit and push the bump to `main` before the
   next `make publish`, which refuses a dirty or unpushed tree. Discarding
-  the bump instead makes publish reuse the uploaded build number, and App
-  Store Connect validation then voids the tag.
+  the bump is harmless while `main` still names the previous release's
+  version. Once `main` names the pending version, an interim build is a
+  build of that version, so publish must number the release above it:
+  commit the bump. After a failed release, that also rules out re-running
+  the release, whose build number is now the lower one; re-cut it
+  instead. Since its marketing version does not identify the commit, the
+  build records the commit it was archived from (About ›
+  Acknowledgements), but only when that commit is pushed and nothing but
+  the build number is uncommitted; push first.
 - `make publish` — a **release**. Everything above, with a version,
   notes, a tag, a reviewed CI build, and a GitHub release.
 

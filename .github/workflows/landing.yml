@@ -59,6 +59,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check SEO output
+        run: npm run check:seo
+
       # Only main deploys; a pull request stops at a verified build.
       - name: Deploy to Cloudflare
         if: github.event_name == 'push'

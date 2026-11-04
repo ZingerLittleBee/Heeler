@@ -1,0 +1,141 @@
+---
+// Four numbers Heeler actually runs on, each with the source line it comes
+// from. The markup holds the final value; the page script counts up to it.
+const REPO = 'https://github.com/ZingerLittleBee/Heeler/blob/main/';
+
+const stats = [
+  {
+    value: 120,
+    unit: 's',
+    label: 'A pairing’s single-use Bootstrap line, then it expires',
+    source: 'plugin/src/pairing-session.js',
+    line: 25,
+  },
+  {
+    value: 400,
+    unit: 'ms',
+    label: 'Direct Routes race alone before the rest join',
+    source: 'Sources/Heeler/Transport/HeelerSSHTransport.swift',
+    line: 391,
+  },
+  {
+    value: 5,
+    unit: '',
+    label: 'Loaded terminal connections per Host, at most',
+    source: 'Sources/Heeler/Console/TerminalRetentionBudget.swift',
+    line: 38,
+  },
+  {
+    value: 20,
+    unit: 's',
+    label: 'SSH stays open after you leave Heeler, then only pushes reach you',
+    source: 'Sources/Heeler/Support/AppActivityCoordinator.swift',
+    line: 97,
+  },
+];
+const file = (path: string) => path.split('/').pop();
+---
+
+<ul class="stats">
+  {
+    stats.map((stat) => (
+      <li class="stat">
+        <p class="value">
+          <span data-count={stat.value}>{stat.value}</span>
+          {stat.unit && <span class="unit">{stat.unit}</span>}
+        </p>
+        <p class="home-sm label">{stat.label}</p>
+        <a class="source" href={`${REPO}${stat.source}#L${stat.line}`}>
+          {file(stat.source)}:{stat.line}
+        </a>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--border-hairline);
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    min-width: 0;
+    padding: var(--sp-8) var(--sp-6);
+  }
+
+  .stat + .stat {
+    border-left: 1px solid var(--border-hairline);
+  }
+
+  .stat:first-child {
+    padding-left: 0;
+  }
+
+  .value {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font: var(--fw-regular) clamp(44px, 6vw, 72px) / 1 var(--font-mono);
+    letter-spacing: -0.05em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+  }
+
+  .unit {
+    font-size: 0.36em;
+    letter-spacing: 0;
+    color: var(--text-muted);
+  }
+
+  .label {
+    flex: 1;
+    max-width: 240px;
+  }
+
+  .source {
+    overflow: hidden;
+    font: var(--fw-regular) 11px / 1.4 var(--font-mono);
+    color: var(--text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color var(--dur-fast) var(--ease-standard);
+  }
+
+  .source:hover {
+    color: var(--text-primary);
+  }
+
+  @media (max-width: 960px) {
+    .stats {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .stat:nth-child(3) {
+      padding-left: 0;
+      border-left: 0;
+    }
+
+    .stat:nth-child(n + 3) {
+      border-top: 1px solid var(--border-hairline);
+    }
+  }
+
+  @media (max-width: 560px) {
+    .stat {
+      padding: var(--sp-6) var(--sp-4);
+    }
+
+    .stat:nth-child(odd) {
+      padding-left: 0;
+    }
+  }
+</style>

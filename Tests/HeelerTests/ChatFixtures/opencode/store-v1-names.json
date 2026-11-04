@@ -1,0 +1,68 @@
+{
+ "session": {
+  "id": "ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9",
+  "project_id": "157e838f6e3ccb56d9b3d6416c0be3039c60111d",
+  "workspace_id": null,
+  "parent_id": null,
+  "fork_session_id": null,
+  "fork_boundary": null,
+  "slug": "quiet-meadow",
+  "directory": "/Users/developer/work/heeler-tmp-chat/opencode-a/project",
+  "path": "",
+  "title": "Older tool names",
+  "version": "2.0.32",
+  "share_url": null,
+  "summary_additions": null,
+  "summary_deletions": null,
+  "summary_files": null,
+  "summary_diffs": null,
+  "metadata": null,
+  "cost": 0.0,
+  "tokens_input": 0,
+  "tokens_output": 0,
+  "tokens_reasoning": 0,
+  "tokens_cache_read": 0,
+  "tokens_cache_write": 0,
+  "revert": null,
+  "permission": null,
+  "agent": "build",
+  "model": "{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"}",
+  "time_created": 1800000000000,
+  "time_updated": 1800000002000,
+  "time_compacting": null,
+  "time_archived": null,
+  "time_suspended": null,
+  "resume_attempts": 0,
+  "time_idle": 1800000002002,
+  "time_viewed": null,
+  "idle_outcome": "succeeded"
+ },
+ "event_seq": 12,
+ "rows": [
+  {
+   "id": "msg_0a1b2c3d4e10Q1w2E3r4T5y6U7",
+   "type": "user",
+   "seq": 4,
+   "time_created": 1800000000000,
+   "time_updated": 1800000000000,
+   "data": "{\"time\":{\"created\":1800000000000},\"text\":\"Use the older tools on notes.txt.\",\"files\":[],\"agents\":[]}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e20I8o9P0a1S2d3F4",
+   "type": "assistant",
+   "seq": 5,
+   "time_created": 1800000000010,
+   "time_updated": 1800000001990,
+   "data": "{\"time\":{\"created\":1800000000010,\"completed\":1800000001990},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"text\",\"text\":\"I'll use the older tools.\",\"state\":{\"phase\":\"commentary\"}},{\"type\":\"tool\",\"id\":\"call_G5h6J7k8L9z0X1c2V3b4N5m6\",\"name\":\"bash\",\"executed\":false,\"state\":{\"status\":\"completed\",\"input\":{\"command\":\"ls\",\"description\":\"List files\"},\"metadata\":{\"output\":\"notes.txt\\n\",\"exit\":0,\"description\":\"List files\",\"truncated\":false},\"content\":[{\"type\":\"text\",\"text\":\"notes.txt\\n\"}]},\"time\":{\"created\":1800000000100,\"ran\":1800000000105,\"completed\":1800000000140}},{\"type\":\"tool\",\"id\":\"call_Q7w8E9r0T1y2U3i4O5p6A7s8\",\"name\":\"task\",\"executed\":false,\"state\":{\"status\":\"completed\",\"input\":{\"description\":\"Count files\",\"prompt\":\"Count the files in the project.\",\"subagent_type\":\"general\"},\"metadata\":{\"sessionId\":\"ses_0a1b2c3d4e7bH5kR1dYs4NpC6z\",\"truncated\":false},\"content\":[{\"type\":\"text\",\"text\":\"There is 1 file.\"}]},\"time\":{\"created\":1800000000300,\"ran\":1800000000305,\"completed\":1800000000340}},{\"type\":\"tool\",\"id\":\"call_D9f0G1h2J3k4L5z6X7c8V9b0\",\"name\":\"apply_patch\",\"executed\":false,\"state\":{\"status\":\"completed\",\"input\":{\"patchText\":\"*** Begin Patch\\n*** Update File: /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n@@\\n alpha\\n-beta\\n+BETA\\n*** End Patch\"},\"metadata\":{\"diff\":\"Index: /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n===================================================================\\n--- /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n+++ /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n@@ -1,3 +1,3 @@\\n alpha\\n-beta\\n+BETA\\n gamma\\n\",\"files\":[{\"filePath\":\"/Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\",\"relativePath\":\"notes.txt\",\"type\":\"update\",\"diff\":\"Index: /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n===================================================================\\n--- /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n+++ /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n@@ -1,3 +1,3 @@\\n alpha\\n-beta\\n+BETA\\n gamma\\n\",\"before\":\"alpha\\nbeta\\ngamma\\n\",\"after\":\"alpha\\nBETA\\ngamma\\n\",\"additions\":1,\"deletions\":1}],\"truncated\":false},\"content\":[{\"type\":\"text\",\"text\":\"Success. Updated the following files:\\nM notes.txt\"}]},\"time\":{\"created\":1800000000600,\"ran\":1800000000605,\"completed\":1800000000640}},{\"type\":\"tool\",\"id\":\"call_N1m2Q3w4E5r6T7y8U9i0O1p2\",\"name\":\"todowrite\",\"executed\":false,\"state\":{\"status\":\"completed\",\"input\":{\"todos\":[{\"content\":\"Rename beta\",\"status\":\"completed\",\"priority\":\"high\"},{\"content\":\"Rename gamma\",\"status\":\"in_progress\",\"priority\":\"medium\"}]},\"metadata\":{\"todos\":[{\"content\":\"Rename beta\",\"status\":\"completed\",\"priority\":\"high\"},{\"content\":\"Rename gamma\",\"status\":\"in_progress\",\"priority\":\"medium\"}],\"truncated\":false},\"content\":[{\"type\":\"text\",\"text\":\"[\\n  {\\n    \\\"content\\\": \\\"Rename beta\\\",\\n    \\\"status\\\": \\\"completed\\\",\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"content\\\": \\\"Rename gamma\\\",\\n    \\\"status\\\": \\\"in_progress\\\",\\n    \\\"priority\\\": \\\"medium\\\"\\n  }\\n]\"}]},\"time\":{\"created\":1800000000900,\"ran\":1800000000905,\"completed\":1800000000940}},{\"type\":\"tool\",\"id\":\"call_A3s4D5f6G7h8J9k0L1z2X3c4\",\"name\":\"edit\",\"executed\":false,\"state\":{\"status\":\"completed\",\"input\":{\"filePath\":\"/Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\",\"oldString\":\"gamma\",\"newString\":\"GAMMA\"},\"metadata\":{\"diff\":\"Index: /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n===================================================================\\n--- /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n+++ /Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\\n@@ -1,3 +1,3 @@\\n alpha\\n BETA\\n-gamma\\n+GAMMA\\n\",\"filediff\":{\"file\":\"/Users/developer/work/heeler-tmp-chat/opencode-a/project/notes.txt\",\"before\":\"alpha\\nBETA\\ngamma\\n\",\"after\":\"alpha\\nBETA\\nGAMMA\\n\",\"additions\":1,\"deletions\":1},\"truncated\":false},\"content\":[{\"type\":\"text\",\"text\":\"Edit applied successfully.\"}]},\"time\":{\"created\":1800000001200,\"ran\":1800000001205,\"completed\":1800000001240}}],\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":900,\"output\":120,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e30V5b6N7m8Q9w0E1",
+   "type": "idle",
+   "seq": 11,
+   "time_created": 1800000001992,
+   "time_updated": 1800000001992,
+   "data": "{\"time\":{\"created\":1800000001992},\"outcome\":\"succeeded\"}"
+  }
+ ],
+ "inbox": []
+}

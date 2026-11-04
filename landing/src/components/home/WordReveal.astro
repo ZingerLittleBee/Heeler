@@ -1,0 +1,97 @@
+---
+// One statement that lights word by word as the page scrolls through a tall
+// section. Every word is readable at rest: the dimming exists only inside the
+// motion blocks, so reduced motion, unsupported browsers without the script,
+// and a disabled script all show the finished sentence.
+interface Props {
+  text: string;
+  /** The section's accessible name. */
+  label: string;
+}
+
+const { text, label } = Astro.props;
+const words = text.split(' ');
+const span = 76 / words.length;
+---
+
+<section class="reveal" data-reveal aria-label={label}>
+  <div class="pin">
+    <p class="container statement">
+      {
+        words.map((word, index) => (
+          <span class="word" style={`--a: ${(8 + index * span).toFixed(2)}; --b: ${(8 + (index + 1.6) * span).toFixed(2)}; --i: ${index}`}>
+            {word}{' '}
+          </span>
+        ))
+      }
+    </p>
+  </div>
+</section>
+
+<style>
+  .reveal {
+    view-timeline: --say block;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .pin {
+    display: flex;
+    align-items: center;
+    min-height: 70vh;
+    padding: 96px 0;
+  }
+
+  .statement {
+    font: var(--fw-medium) clamp(30px, 5.6vw, 64px) / 1.08 var(--font-sans);
+    letter-spacing: -0.035em;
+    text-wrap: balance;
+    color: var(--text-primary);
+  }
+
+  .word {
+    display: inline;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      /* Tall enough that the pinned sentence has room to light. */
+      .reveal {
+        height: 220vh;
+      }
+
+      .pin {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        min-height: 0;
+        padding: 0;
+      }
+
+      .word {
+        /* Longhands on purpose: the build's CSS minifier folds animation-timeline
+           into the animation shorthand, which browsers then reject. */
+        animation-name: word-light;
+        animation-timing-function: linear;
+        animation-fill-mode: both;
+        animation-timeline: --say;
+        animation-range: contain calc(var(--a) * 1%) contain calc(var(--b) * 1%);
+      }
+
+      @keyframes word-light {
+        from {
+          opacity: 0.18;
+        }
+      }
+    }
+
+    :global(.io) .word {
+      opacity: 0.18;
+      transition: opacity var(--dur-slower) var(--ease-standard);
+      transition-delay: calc(var(--i) * 60ms);
+    }
+
+    :global(.io) .reveal.in .word {
+      opacity: 1;
+    }
+  }
+</style>

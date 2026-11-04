@@ -1,0 +1,170 @@
+---
+// A chapter opener: an outlined mono numeral that fills when its chapter
+// is current, a two-tone headline, and an optional inverted highlight bar.
+interface Props {
+  index: number;
+  label: string;
+  /** The headline's bright half, then its muted half. */
+  lead: string;
+  rest: string;
+  /** Uppercase mono highlight, a phrase the page already uses. */
+  bar?: string;
+  /** Body copy; may hold inline markup. */
+  body: string;
+}
+
+const { index, label, lead, rest, bar, body } = Astro.props;
+const number = String(index + 1).padStart(2, '0');
+---
+
+<header class="head">
+  <div class="numeral" aria-hidden="true">
+    <span class="ghost">{number}</span>
+    <span class="fill">{number}</span>
+  </div>
+  <p class="label"><span>[{number}]</span> {label}</p>
+  <h2 class="title">{lead} <span class="rest">{rest}</span></h2>
+  {
+    bar && (
+      <p class="bar" data-bar>
+        <span class="bar-in">
+          <span class="bar-text">{bar}</span>
+        </span>
+      </p>
+    )
+  }
+  <p class="home-body body" set:html={body} />
+</header>
+
+<style>
+  .head {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    max-width: 680px;
+  }
+
+  .numeral {
+    position: relative;
+    margin-bottom: var(--sp-2);
+    font: var(--fw-regular) clamp(88px, 15vw, 168px) / 0.82 var(--font-mono);
+    letter-spacing: -0.06em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ghost {
+    display: block;
+    color: transparent;
+    -webkit-text-stroke: 1px var(--n-500);
+  }
+
+  /* The filled copy sits on the outline and only fades, so the change is
+     opacity alone. */
+  .fill {
+    position: absolute;
+    inset: 0;
+    color: var(--text-primary);
+    -webkit-text-stroke: 1px var(--text-primary);
+    opacity: 0;
+    transition: opacity var(--dur-slower) var(--ease-out);
+  }
+
+  :global([data-active]) .fill {
+    opacity: 1;
+  }
+
+  .label {
+    font: var(--fw-regular) 12px / 1 var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .label span {
+    color: var(--text-secondary);
+  }
+
+  .title {
+    font: var(--fw-semibold) clamp(28px, 4.8vw, 44px) / 1.1 var(--font-sans);
+    letter-spacing: -0.035em;
+    text-wrap: balance;
+    color: var(--text-primary);
+  }
+
+  .rest {
+    color: var(--text-muted);
+  }
+
+  /* An inverted mono bar. Its wipe is two opposite translations under an
+     overflow clip, so it animates transform alone; without motion it shows. */
+  .bar {
+    display: flex;
+  }
+
+  .bar-in {
+    display: inline-block;
+    overflow: hidden;
+    background: var(--text-primary);
+  }
+
+  .bar-text {
+    display: inline-block;
+    padding: 5px 8px 4px;
+    font: var(--fw-medium) 12px / 1.2 var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-inverse);
+  }
+
+  .body {
+    max-width: 600px;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      .bar-in {
+        /* Longhands on purpose: the build's CSS minifier folds animation-timeline
+           into the animation shorthand, which browsers then reject. */
+        animation-name: bar-wipe;
+        animation-timing-function: linear;
+        animation-fill-mode: both;
+        animation-timeline: view();
+        animation-range: entry 40% cover 45%;
+      }
+
+      .bar-text {
+        animation-name: bar-hold;
+        animation-timing-function: linear;
+        animation-fill-mode: both;
+        animation-timeline: view();
+        animation-range: entry 40% cover 45%;
+      }
+    }
+
+    @keyframes bar-wipe {
+      from {
+        transform: translateX(-101%);
+      }
+    }
+
+    @keyframes bar-hold {
+      from {
+        transform: translateX(101%);
+      }
+    }
+
+    :global(.io) .bar-in,
+    :global(.io) .bar-text {
+      transition: transform var(--dur-slower) var(--ease-out);
+    }
+
+    :global(.io) .bar:not(.in) .bar-in {
+      transform: translateX(-101%);
+    }
+
+    :global(.io) .bar:not(.in) .bar-text {
+      transform: translateX(101%);
+    }
+  }
+</style>

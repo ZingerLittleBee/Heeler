@@ -1,0 +1,60 @@
+{
+ "session": {
+  "id": "ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9",
+  "project_id": "157e838f6e3ccb56d9b3d6416c0be3039c60111d",
+  "workspace_id": null,
+  "parent_id": null,
+  "fork_session_id": null,
+  "fork_boundary": null,
+  "slug": "clever-canyon",
+  "directory": "/Users/developer/work/heeler-tmp-chat/opencode-a/project",
+  "path": "",
+  "title": "Pong",
+  "version": "2.0.32",
+  "share_url": null,
+  "summary_additions": null,
+  "summary_deletions": null,
+  "summary_files": null,
+  "summary_diffs": null,
+  "metadata": null,
+  "cost": 0.0,
+  "tokens_input": 9988,
+  "tokens_output": 11,
+  "tokens_reasoning": 0,
+  "tokens_cache_read": 0,
+  "tokens_cache_write": 0,
+  "revert": null,
+  "permission": null,
+  "agent": "build",
+  "model": "{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"}",
+  "time_created": 1800000000000,
+  "time_updated": 1800000767397,
+  "time_compacting": null,
+  "time_archived": null,
+  "time_suspended": null,
+  "resume_attempts": 0,
+  "time_idle": 1800000776638,
+  "time_viewed": null,
+  "idle_outcome": "succeeded"
+ },
+ "event_seq": 214,
+ "rows": [
+  {
+   "id": "msg_0a1b2c3d4e107YWDFivnBRVaqN",
+   "type": "compaction",
+   "seq": 210,
+   "time_created": 1800000767401,
+   "time_updated": 1800000776637,
+   "data": "{\"time\":{\"created\":1800000767401},\"status\":\"completed\",\"reason\":\"manual\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"summary\":\"## Objective\\n- The user ran short-reply, file read/write and shell command tests; the latest request is done.\\n\\n## Requirements\\n- Reply with the content and format each request asks for.\\n\\n## Work State\\n### Completed\\n- Created `notes.txt` and replaced `beta` with `BETA`; it now holds three lines: `alpha`, `BETA`, `gamma`.\\n- The first read of `.env` confirmed `GREETING=hello`.\\n- Ran `sleep 15; echo one`, which printed `one`; then replied `two` as the user asked.\\n\\n### Active\\n- (none)\\n\\n### Blocked\\n- (none)\\n\\n## Next Move\\n1. Wait for the user's next request.\\n\\n## Relevant Files\\n- `notes.txt`: created and edited in this session, not committed.\\n\\n## Important Context\\n- The user declined the tool call that read `.env` again; it was not retried.\\n- `sleep 30; echo done` and `sleep 20; echo finished` both returned `Tool execution interrupted` with no output; the user then switched to other commands.\",\"recent\":\"[User]: /compact\\n\\n[Assistant reasoning]: **Summarizing the current context**\\n[Assistant]: Current context: `notes.txt` was created with three lines, `alpha`, `BETA` and `gamma`. The last command printed `one`, then `two` was the reply as asked. No pending tasks.\",\"cost\":0,\"tokens\":{\"input\":760,\"output\":249,\"reasoning\":0,\"cache\":{\"read\":10752,\"write\":0}}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e20KJEc9MKAj0RboN",
+   "type": "idle",
+   "seq": 213,
+   "time_created": 1800000776638,
+   "time_updated": 1800000776638,
+   "data": "{\"time\":{\"created\":1800000776638},\"outcome\":\"succeeded\"}"
+  }
+ ],
+ "inbox": []
+}

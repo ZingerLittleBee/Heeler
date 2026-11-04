@@ -170,9 +170,10 @@ struct TerminalBackspaceButtonTests {
     private func repeatsReaching(
         _ target: Int, within timeout: Duration = .seconds(5), count: () -> Int
     ) async -> Int {
-        let deadline = ContinuousClock.now.advanced(by: timeout)
-        while count() < target, ContinuousClock.now < deadline {
+        var budget = PollBudget(timeout)
+        while count() < target, budget.hasTimeLeft {
             try? await Task.sleep(for: .milliseconds(10))
+            budget.charge()
         }
         return count()
     }
@@ -265,20 +266,30 @@ struct TerminalBackspaceButtonTests {
         for point in nearEdges { #expect(!button.point(inside: point, with: nil)) }
     }
 
-    @Test func holdStartsBeforeHalfASecondAndStopsWithoutAnExtraRelease() async throws {
+    @Test(arguments: [false, true])
+    func holdStartsBeforeHalfASecondAndStopsWithoutAnExtraRelease(
+        delayedObservation: Bool
+    ) async throws {
         var count = 0
-        let (button, window) = try await host { count += 1 }
+        var firstRepeatAt: ContinuousClock.Instant?
+        let (button, window) = try await host {
+            if firstRepeatAt == nil { firstRepeatAt = .now }
+            count += 1
+        }
         defer { window.isHidden = true }
         let press = Press(button)
         let start = ContinuousClock.now
         press.begin()
-        try await Task.sleep(for: .milliseconds(150))
         #expect(count == 0)
-        while count == 0 && start.duration(to: .now) < .milliseconds(450) {
-            try await Task.sleep(for: .milliseconds(10))
+        try #require(await repeatsReaching(1) { count } >= 1)
+        if delayedObservation {
+            // A queued test continuation may observe a timely key much later.
+            try await Task.sleep(for: .milliseconds(400))
         }
-        #expect(count > 0)
-        #expect(start.duration(to: .now) < .milliseconds(500))
+        let firstRepeat = try #require(firstRepeatAt)
+        let firstRepeatDelay = start.duration(to: firstRepeat)
+        #expect(firstRepeatDelay >= .milliseconds(150), "A hold must not delete immediately")
+        #expect(firstRepeatDelay < .milliseconds(500), "Measure emission, not when this task resumes")
         #expect(await repeatsReaching(3) { count } >= 3)
         let beforeRelease = count
         press.end()

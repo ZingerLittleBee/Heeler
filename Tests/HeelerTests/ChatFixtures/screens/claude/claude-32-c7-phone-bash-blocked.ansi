@@ -1,0 +1,41 @@
+
+[0m[38;2;153;153;153m✻ Baked for 7s · done 1:45 AM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRun the Bash command: touch c2q7.txt. Do nothing else.[0m[48;2;55;55;55m      [0m
+
+  [0m[38;2;153;153;153mRan [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m shell command [0m
+[0m[38;2;153;153;153m  ⎿  Interrupted · What should Claude do instead?[0m
+
+[0m[38;2;153;153;153m✻ Sautéed for 2s · done 1:46 AM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRun the Bash command: touch c3q7.txt. Do nothing else.[0m[48;2;55;55;55m      [0m
+
+  [0m[38;2;153;153;153mRan [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m shell command [0m
+
+[0m[38;2;255;255;255m⏺[0m skipped
+
+[0m[38;2;153;153;153m✻ Baked for 3s · done 1:51 AM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRun the Bash command: touch c3bq7.txt. Do nothing else.[0m[48;2;55;55;55m     [0m
+
+[0m[38;2;153;153;153m  [0mCreating empty c3bq7.txt in current directory
+[0m[38;2;153;153;153m  ⎿  $ touch c3bq7.txt[0m
+
+[0m[38;2;177;185;249m──────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mBash command[0m
+ [0m[1mTip: auto mode handles these prompts for you — choose [0m
+ [0m[1m"switch to auto mode" below[0m
+ [0m[38;2;153;153;153mCreate empty c3bq7.txt in current directory[0m
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ touch c3bq7.txt
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ Do you want to proceed?
+ [0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes[0m
+   [0m[38;2;153;153;153m2. [0mYes, and always allow access to
+      [0m[1m/private/tmp/heeler-iso-4h/proj-claude-b [0mfrom this
+      project
+   [0m[38;2;153;153;153m3. [0mYes, and switch to auto mode[0m[38;2;153;153;153m · auto mode handles these [0m
+      [0m[38;2;153;153;153mprompts for you[0m
+   [0m[38;2;153;153;153m4. [0mNo
+
+ [0m[38;2;153;153;153mEsc to cancel · Tab to amend[0m

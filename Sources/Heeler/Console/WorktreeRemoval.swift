@@ -116,52 +116,90 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
     }
 }
 
-enum WorktreeRemovalRefusal {
-    /// herdr refuses removal while the Worktree still has uncommitted changes.
-    static let dirtyCode = "dirty_worktree_requires_force"
+/// How Worktree Details explains a removal that failed.
+struct WorktreeRemovalRefusal {
+    let message: String
+    /// The Worktree may hold uncommitted work, so the alert offers Changes.
+    let offersChanges: Bool
+    /// The herdr command that forces the removal, for the user to run on the
+    /// Host.
+    let command: String?
 
-    static func isDirty(_ error: any Error) -> Bool {
-        switch error {
-        case let api as HerdrAPIError:
-            api.code == dirtyCode
-        case let TransportError.apiRejected(code, _):
-            code == dirtyCode
-        default:
-            false
-        }
-    }
+    /// herdr's code for a removal that only `--force` can do.
+    private static let forceRequiredCode = "dirty_worktree_requires_force"
+    /// git's refusal for a Worktree with checked-out submodules, which herdr
+    /// also sends under `forceRequiredCode` since 0.9.1. herdr finds it in
+    /// git's message ignoring case (`is_dirty_worktree_remove_error`), and so
+    /// does this.
+    private static let submodulesRefusal =
+        "working trees containing submodules cannot be moved or removed"
 
-    static func message(for error: any Error) -> String {
+    /// The endpoint overrides the Host's session, as it does for API requests.
+    init(
+        _ error: any Error, request: WorktreeRemovalRequest, sessionName: String,
+        endpoint: HerdrEndpoint? = nil
+    ) {
         switch error {
         case let removal as WorktreeRemovalError:
-            removal.message
+            self.init(message: removal.message)
         case let api as HerdrAPIError:
-            apiMessage(code: api.code, serverMessage: api.message)
+            self.init(
+                code: api.code, serverMessage: api.message,
+                request: request, sessionName: sessionName, endpoint: endpoint)
         case let TransportError.apiRejected(code, message):
-            apiMessage(code: code, serverMessage: message)
+            self.init(
+                code: code, serverMessage: message,
+                request: request, sessionName: sessionName, endpoint: endpoint)
         case TransportError.sshUnreachable:
-            "The Host is not connected."
+            self.init(message: "The Host is not connected.")
         case TransportError.timedOut:
-            "The Host did not answer in time."
+            self.init(message: "The Host did not answer in time.")
         case TransportError.cancelled:
-            "Worktree removal was cancelled."
+            self.init(message: "Worktree removal was cancelled.")
         default:
-            "Removing the worktree failed: \(error)"
+            self.init(message: "Removing the worktree failed: \(error)")
         }
     }
 
-    private static func apiMessage(code: String, serverMessage: String) -> String {
+    private init(message: String, offersChanges: Bool = false, command: String? = nil) {
+        self.message = message
+        self.offersChanges = offersChanges
+        self.command = command
+    }
+
+    private init(
+        code: String, serverMessage: String,
+        request: WorktreeRemovalRequest, sessionName: String, endpoint: HerdrEndpoint?
+    ) {
         switch code {
-        case dirtyCode:
-            "herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry."
+        case Self.forceRequiredCode
+        where serverMessage.range(of: Self.submodulesRefusal, options: .caseInsensitive) != nil:
+            let workspaceID = request.identity.workspaceID
+            let warning =
+                "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes \(request.identity.checkoutPath) and any uncommitted changes in it, so check its Changes first."
+            if HerdrCommandLine.readsAsGlobalOption(workspaceID) {
+                // herdr would take this id as its own option, so no command
+                // can hand it to `--workspace`.
+                self.init(message: warning, offersChanges: true)
+            } else {
+                let command = HerdrCommandLine.render(
+                    session: sessionName, endpoint: endpoint,
+                    arguments: ["worktree", "remove", "--workspace", workspaceID, "--force"])
+                self.init(
+                    message: "\(warning) To force it, run on the Host: \(command)",
+                    offersChanges: true,
+                    command: command)
+            }
+        case Self.forceRequiredCode:
+            self.init(
+                message: "herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry.",
+                offersChanges: true)
         case "not_linked_worktree":
-            "herdr couldn't remove this worktree because the workspace is not a linked worktree."
+            self.init(message: "herdr couldn't remove this worktree because the workspace is not a linked worktree.")
         case "workspace_not_found":
-            "herdr couldn't remove this worktree because the workspace is no longer on the Host."
-        case "worktree_operation_in_progress":
-            "herdr is already changing a worktree on this Host. Wait a moment, then retry."
+            self.init(message: "herdr couldn't remove this worktree because the workspace is no longer on the Host.")
         default:
-            "herdr couldn't remove this worktree: \(serverMessage)"
+            self.init(message: "herdr couldn't remove this worktree: \(serverMessage)")
         }
     }
 }

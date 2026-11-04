@@ -19,8 +19,7 @@ struct TerminalFontSettingsTests {
         // would silently render as something else.
         let families = TerminalFontCatalog.registerBundledFonts()
 
-        #expect(families.contains("JetBrains Mono"))
-        #expect(families.contains("IBM Plex Mono"))
+        #expect(families == ["IBM Plex Mono"])
     }
 
     @Test func everyOfferedOptionResolves() throws {
@@ -29,9 +28,9 @@ struct TerminalFontSettingsTests {
 
         let settings = TerminalFontSettings(defaults: defaults)
 
-        #expect(settings.availableOptions.contains(.system))
+        // Menlo and Courier New come with iOS, so every option is offered.
         #expect(settings.availableOptions == TerminalFontOption.allCases)
-        #expect(settings.selection == .system)
+        #expect(settings.selection == .jetBrainsMono)
         #expect(settings.familyName == nil)
     }
 
@@ -40,23 +39,37 @@ struct TerminalFontSettingsTests {
         defer { cleanup() }
 
         let settings = TerminalFontSettings(defaults: defaults)
-        settings.select(.jetBrainsMono)
+        settings.select(.menlo)
 
-        #expect(settings.familyName == "JetBrains Mono")
-        #expect(TerminalFontSettings(defaults: defaults).selection == .jetBrainsMono)
+        #expect(settings.familyName == "Menlo")
+        #expect(TerminalFontSettings(defaults: defaults).selection == .menlo)
     }
 
-    @Test func aStoredFontThatCannotBeResolvedFallsBackToTheSystem() throws {
+    @Test(arguments: ["system", "jetbrains-mono"])
+    func bothJetBrainsMonoChoicesReadAsLibghosttysOwn(stored: String) throws {
+        // "system" always rendered libghostty's embedded JetBrains Mono, and
+        // "jetbrains-mono" a bundled copy of the same face.
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
-        defaults.set("jetbrains-mono", forKey: "terminal-font-family")
+        defaults.set(stored, forKey: "terminal-font-family")
+
+        let settings = TerminalFontSettings(defaults: defaults)
+
+        #expect(settings.selection == .jetBrainsMono)
+        #expect(settings.familyName == nil)
+    }
+
+    @Test func aStoredFontThatCannotBeResolvedFallsBackToTheDefault() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        defaults.set("ibm-plex-mono", forKey: "terminal-font-family")
 
         // An empty bundle registers nothing, standing in for a face that
         // failed to load. The stored choice must not be honoured blind.
         let settings = TerminalFontSettings(defaults: defaults, bundle: Bundle(for: EmptyMarker.self))
 
-        #expect(settings.availableOptions == [.system])
-        #expect(settings.selection == .system)
+        #expect(!settings.availableOptions.contains(.ibmPlexMono))
+        #expect(settings.selection == .jetBrainsMono)
     }
 }
 

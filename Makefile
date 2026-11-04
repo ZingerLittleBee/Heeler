@@ -3,6 +3,7 @@
 #   make install-ipad            # same, on the connected iPad
 #   make bump && make testflight # interim TestFlight build, no version cut
 #   make publish                 # cut a release: see docs/guides/releasing.md
+#   make plugin                  # publish plugin/ to the plugin branch
 
 PROJECT := Heeler.xcodeproj
 SCHEME  := Heeler
@@ -27,7 +28,7 @@ IOS_WATCH_DEBOUNCE ?= 1s
 DEVICE ?= $(shell python3 scripts/find-ios-device.py iPhone)
 DEVICE_IPAD ?= $(shell python3 scripts/find-ios-device.py iPad)
 
-.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight bump publish clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
+.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight bump publish plugin clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
 
 # Command-line DERIVED overrides remain supported for either platform.
 test-app test-directory-browser-ui sim build-sim sim-id: DERIVED = $(DERIVED_SIMULATOR)
@@ -52,6 +53,25 @@ build: generate ## Build Debug for a physical device without installing
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
 		-destination 'generic/platform=iOS' -derivedDataPath $(DERIVED) \
 		-allowProvisioningUpdates build
+
+.PHONY: build-ci-app
+build-ci-app: ## Compile the committed app, extensions and test bundle without running tests or booting a Simulator
+	xcodebuild build-for-testing -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
+		-destination 'generic/platform=iOS Simulator' ARCHS="$$(uname -m)" \
+		-derivedDataPath '$(CURDIR)/.ci/app-derived' \
+		-clonedSourcePackagesDirPath '$(CURDIR)/.ci/source-packages' \
+		COMPILATION_CACHE_ENABLE_CACHING=YES \
+		'COMPILATION_CACHE_CAS_PATH=$(CURDIR)/.ci/app-compilation-cache' \
+		COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS=YES \
+		GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO
+
+.PHONY: build-ci-package
+build-ci-package: ## Compile HeelerSSH and its tests without running tests or booting a Simulator
+	cd Packages/HeelerSSH && xcodebuild build-for-testing -scheme HeelerSSH \
+		-destination 'generic/platform=iOS Simulator' ARCHS="$$(uname -m)" \
+		-derivedDataPath '$(CURDIR)/.ci/package-derived' \
+		COMPILATION_CACHE_ENABLE_CACHING=NO \
+		GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO
 
 test-app: generate ## Run app tests and verify execution (SIM_DESTINATION, TEST_SELECTOR, TEST_FLAGS)
 	python3 scripts/run-app-simulator-tests.py -project $(PROJECT) -scheme $(SCHEME) \
@@ -98,12 +118,17 @@ check-test-membership: ## Check that the committed project compiles every app te
 	python3 scripts/check-test-target-membership.py
 
 test-tools: check-agent-docs check-test-membership ## Test agent tooling without Xcode or a simulator
+	python3 scripts/test-format-release-notes.py
 	python3 scripts/test-native-test-lifecycle.py
 	python3 scripts/test-check-agent-docs.py
 	python3 scripts/test-check-test-target-membership.py
 	python3 scripts/test-run-app-simulator-tests.py
 	python3 scripts/test-simulator-ui.py
 	python3 scripts/test-isolated-herdr-backend.py
+	python3 scripts/test-store-shots.py
+	python3 scripts/test-node-toolchain-probe.py
+	sh scripts/test-source-revision.sh
+	bash scripts/test-publish-plugin.sh
 	$(MAKE) test-ci-evidence
 	$(MAKE) test-weak-network-proxy
 	$(MAKE) test-ci-diagnostic-controls
@@ -194,9 +219,11 @@ sim-id: build-sim ## Install and launch the app on SIMULATOR_UDID only
 	xcrun simctl launch --terminate-running-process '$(SIMULATOR_UDID)' $(APP_ID)
 
 archive: generate ## Archive a Release build for distribution
+	@# HEELER_SOURCE_REVISION names the commit in About › Acknowledgements;
+	@# empty unless HEAD is pushed and only the build number is uncommitted.
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
 		-destination 'generic/platform=iOS' -archivePath $(ARCHIVE) \
-		-allowProvisioningUpdates archive
+		-allowProvisioningUpdates HEELER_SOURCE_REVISION=$$(scripts/source-revision.sh) archive
 
 upload: ## Upload the existing archive to App Store Connect (TestFlight)
 	xcodebuild -exportArchive -archivePath $(ARCHIVE) \
@@ -229,6 +256,10 @@ bump: ## Increment CURRENT_PROJECT_VERSION in project.yml (app + extension stay 
 # rejects unknown long options, so a flag would never reach the recipe.
 publish: ## Cut a release from CHANGELOG [Unreleased] (VERSION=x.y.z DRY_RUN=1 YES=1)
 	@VERSION='$(VERSION)' DRY_RUN='$(DRY_RUN)' YES='$(YES)' scripts/publish.sh
+
+# Phony as well: plugin/ is a directory, so make would call the target up to date.
+plugin: ## Publish plugin/ from origin/main to the plugin branch (SOURCE=<rev> DRY_RUN=1 YES=1)
+	@SOURCE='$(SOURCE)' DRY_RUN='$(DRY_RUN)' YES='$(YES)' scripts/publish-plugin.sh
 
 clean: ## Remove local build products
 	rm -rf build

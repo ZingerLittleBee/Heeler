@@ -104,9 +104,9 @@ class LifecycleContracts(unittest.TestCase):
         self.assertIn("SurfaceCleanupFailure.injected", regression)
         self.assertIn("owner.terminalStatus == .stopped", regression)
         self.assertIn("transport.hasLiveAttachSession == false", regression)
-        self.assertEqual(len(re.findall(r"(?m)^\s*@Test\b", source)), 9)
+        self.assertEqual(len(re.findall(r"(?m)^\s*@Test\b", source)), 10)
         diagnostic = read("scripts/test-ci-ios-diagnostics.sh")
-        self.assertIn("AgentSurfaceReplacementTests HEELER_STAGING_RECOVERY_ITERATIONS 9 20", diagnostic)
+        self.assertIn("AgentSurfaceReplacementTests HEELER_STAGING_RECOVERY_ITERATIONS 10 20", diagnostic)
 
     def test_starvation_recovers_at_the_timeout_boundary_without_changing_deadlines(self):
         source = read("Tests/HeelerTests/WeakNetworkE2ETests.swift")
@@ -175,7 +175,7 @@ class LifecycleContracts(unittest.TestCase):
 
     def test_package_log_gate_requires_the_new_method_and_both_cases(self):
         source = read("scripts/run-ci-ios-tests.sh")
-        self.assertIn("Test run with 71 tests in 5 suites passed", source)
+        self.assertIn("Test run with 85 tests in 5 suites passed", source)
         self.assertIn('Test "one-shot exec resumes owned reads before other exchange operations" with 2 test cases passed', source)
         self.assertNotIn("Test run with 70 tests in 5 suites passed", source)
 

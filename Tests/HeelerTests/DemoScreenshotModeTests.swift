@@ -384,16 +384,22 @@
             }
             #expect(expected.count == 5)
 
-            // The Console reopens its last tab; the Agents are on Agents.
+            // The Console reopens its last tab and presentation. Show every
+            // Agent row even if another test left a Workspace collapsed.
             let lastTab = UserDefaults.standard.object(forKey: "console.last-list-tab")
             UserDefaults.standard.removeObject(forKey: "console.last-list-tab")
             defer { UserDefaults.standard.set(lastTab, forKey: "console.last-list-tab") }
+            let presentation = ConsoleListPresentationStore()
+            let previousMode = presentation.mode
+            presentation.select(.flat)
+            defer { presentation.select(previousMode) }
             let view = ConsoleView(
                 hosts: composition.hosts, console: composition.console,
                 terminal: TerminalSettings(
                     themes: composition.terminalThemes, zoom: composition.terminalZoom,
                     fonts: composition.terminalFonts, snippets: composition.snippets),
-                inputMode: composition.inputMode, appearance: composition.appearance,
+                inputMode: composition.inputMode, detailSurface: composition.detailSurface,
+                appearance: composition.appearance,
                 pushRegistration: composition.pushRegistration,
                 notificationPreferences: composition.notificationPreferences,
                 relaySettings: composition.relaySettings,

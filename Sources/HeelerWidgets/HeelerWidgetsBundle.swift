@@ -5,5 +5,7 @@ import WidgetKit
 struct HeelerWidgetsBundle: WidgetBundle {
     var body: some Widget {
         AgentLiveActivityWidget()
+        UsageWidget()
+        UsageLimitsWidget()
     }
 }

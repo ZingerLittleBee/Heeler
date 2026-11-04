@@ -1,0 +1,60 @@
+{
+ "session": {
+  "id": "ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9",
+  "project_id": "36be0f4ced4a03a54aef8451a246a95925f0bb77",
+  "workspace_id": null,
+  "parent_id": null,
+  "fork_session_id": null,
+  "fork_boundary": null,
+  "slug": "playful-pixel",
+  "directory": "/Users/developer/work/heeler-tmp-chat/opencode-b/project",
+  "path": "",
+  "title": "Exact one-word reply request",
+  "version": "2.0.32",
+  "share_url": null,
+  "summary_additions": null,
+  "summary_deletions": null,
+  "summary_files": null,
+  "summary_diffs": null,
+  "metadata": null,
+  "cost": 0.0,
+  "tokens_input": 10259,
+  "tokens_output": 435,
+  "tokens_reasoning": 101,
+  "tokens_cache_read": 98304,
+  "tokens_cache_write": 0,
+  "revert": null,
+  "permission": null,
+  "agent": "build",
+  "model": "{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"}",
+  "time_created": 1800000000000,
+  "time_updated": 1800000594340,
+  "time_compacting": null,
+  "time_archived": null,
+  "time_suspended": null,
+  "resume_attempts": 0,
+  "time_idle": 1800000619763,
+  "time_viewed": 1800000619763,
+  "idle_outcome": "succeeded"
+ },
+ "event_seq": 111,
+ "rows": [
+  {
+   "id": "msg_0a1b2c3d4e107JfNwaDurmNvPc",
+   "type": "user",
+   "seq": 107,
+   "time_created": 1800000591414,
+   "time_updated": 1800000591415,
+   "data": "{\"time\":{\"created\":1800000591414},\"text\":\"Use the question tool to ask me whether I prefer red or blue, then reply with exactly my choice.\",\"files\":[],\"agents\":[]}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e209ecxMyRuwgbXTu",
+   "type": "assistant",
+   "seq": 108,
+   "time_created": 1800000591425,
+   "time_updated": 1800000594340,
+   "data": "{\"time\":{\"created\":1800000591425,\"streamed\":1800000594340},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"tool\",\"id\":\"call_hcrSLLaaATjmTdXTbaOQlnIV\",\"name\":\"question\",\"executed\":false,\"state\":{\"status\":\"running\",\"input\":{\"questions\":[{\"question\":\"Which do you prefer, red or blue?\",\"header\":\"Color preference\",\"options\":[{\"label\":\"red\",\"description\":\"Choose red\"},{\"label\":\"blue\",\"description\":\"Choose blue\"}]}]},\"metadata\":{}},\"time\":{\"created\":1800000593395,\"ran\":1800000594335}}]}"
+  }
+ ],
+ "inbox": []
+}

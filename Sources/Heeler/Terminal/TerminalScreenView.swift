@@ -234,6 +234,8 @@ struct TerminalScreenView: UIViewRepresentable {
     /// drive remote scroll without holding the UIKit view itself.
     var scrollControl: TerminalScrollControl?
     var isLocalInputEnabled = true
+    /// Independent of keyboard mode: Composer still permits remote scrolling.
+    var isRemoteScrollEnabled = true
     /// Applied before the first focus claim, including Agent tools handoffs.
     var initialKeyboardMode = TerminalKeyboardMode.text
     var textInputStyle = TerminalTextInputStyle.terminal
@@ -278,6 +280,7 @@ struct TerminalScreenView: UIViewRepresentable {
         }
         view.setTextInputStyle(textInputStyle)
         view.setLocalInputEnabled(isLocalInputEnabled)
+        view.setRemoteScrollEnabled(isRemoteScrollEnabled)
         // The feed holds the surface weakly so a replaced UIKit view cannot be
         // kept alive by an obsolete terminal pipeline.
         feed.attach(view)
@@ -327,8 +330,10 @@ struct TerminalScreenView: UIViewRepresentable {
             onSend: onSend,
             onScroll: onScroll,
             onPaste: onPaste)
-        keyboardControl?.terminal = view
-        scrollControl?.terminal = view
+        // Ownership is established in makeUIView. An outgoing surface can
+        // still update while its replacement is mounted; reclaiming these
+        // observable controls here makes the two surfaces invalidate each
+        // other indefinitely and routes input back to the retired surface.
         view.onKeyboardHandoffEnded = { [weak view, weak keyboardControl] id, outcome in
             guard let view else { return }
             if let keyboardControl, keyboardControl.terminal !== view { return }
@@ -339,6 +344,7 @@ struct TerminalScreenView: UIViewRepresentable {
             && (claimsKeyboard?() ?? false)
         view.setTextInputStyle(textInputStyle)
         view.setLocalInputEnabled(isLocalInputEnabled)
+        view.setRemoteScrollEnabled(isRemoteScrollEnabled)
         if claimsKeyboardOnEnable, let keyboardHandoffID {
             DispatchQueue.main.async { [weak view, weak keyboardControl] in
                 guard let view,
@@ -454,7 +460,6 @@ final class TerminalSessionCallbackBridge {
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
     var isSizeReportCurrent: ((_ columns: Int, _ rows: Int) -> Bool)?
     var onReliableInput: (() -> Void)?
-    var onTerminalInput: ((Data) -> Void)?
     /// Reports every freeze transition. The return to `.live` carries the grid
     /// the thaw forwarded, or `nil` when the freeze had none to forward —
     /// the difference between "the settled grid reached the Host" and "the
@@ -496,7 +501,6 @@ final class TerminalSessionCallbackBridge {
     nonisolated func send(_ data: Data) {
         Task { @MainActor [weak self] in
             self?.onReliableInput?()
-            self?.onTerminalInput?(data)
             self?.onSend?(data)
         }
     }
@@ -699,6 +703,23 @@ private struct ArmedModifierEchoSuppression {
     let expectBackspace: Bool
 }
 
+/// A pan fed by trackpad and mouse-wheel scroll events alone. A scroll event
+/// is not a touch, so it reaches a pan only through `allowedScrollTypesMask`;
+/// refusing every other event keeps fingers on the touch-scroll pan.
+private final class TerminalPointerScrollGestureRecognizer: UIPanGestureRecognizer {
+    override init(target: Any?, action: Selector?) {
+        super.init(target: target, action: action)
+        allowedScrollTypesMask = .all
+        cancelsTouchesInView = false
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+    }
+
+    override func shouldReceive(_ event: UIEvent) -> Bool {
+        event.type == .scroll
+    }
+}
+
 /// The app-owned seam around libghostty-spm. It keeps keyboard policy and the
 /// host-managed session lifecycle out of the SwiftUI screen.
 final class HeelerTerminalView: UITerminalView, TerminalByteSink {
@@ -791,14 +812,19 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     var wantsKeyboard: Bool { responderGate.userWantsKeyboard }
     private var viewportSnapshotTask: Task<Void, Never>?
     private(set) var isLocalInputEnabled = true
+    private var isRemoteScrollEnabled = true
     private var textInputStyle = TerminalTextInputStyle.terminal
     private var defaultLeadingAssistantGroups: [UIBarButtonItemGroup]?
     private var defaultTrailingAssistantGroups: [UIBarButtonItemGroup]?
-    // Ghostty keeps only marked text in its UITextInput document. UIKit needs
-    // committed text to remain in that document so Backspace can observe a
-    // shrinking selection and continue its native key repeat.
+    // Ghostty keeps only marked text in its UITextInput document. Keyboards
+    // read the line typed so far from this one: UIKit's Backspace watches the
+    // selection shrink to keep repeating, and third-party keyboards (Gboard)
+    // derive their pastes and corrections from it. Text is recorded as it is
+    // committed, before UIKit hears the text changed, or a keyboard reading
+    // the line after its own edit finds it missing.
     private var textInputStorage = ""
     private var textInputSelection = NSRange(location: 0, length: 0)
+    private var koreanResyllabification = HangulInput.ResyllabificationTransaction()
     private var terminalGridSize = (columns: 80, rows: 24)
     private var hasTerminalGridMetrics = false
     private var terminalCellSize = CGSize(width: 8, height: 16)
@@ -806,6 +832,8 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private var touchScrollMomentumDisplayLink: CADisplayLink?
     private var touchScrollMomentumVelocityY: CGFloat = 0
     private var touchScrollMomentumTimestamp: CFTimeInterval = 0
+    /// Where the pointer sat when its scroll began.
+    private var pointerScrollLocation: CGPoint?
     /// Presses whose began event was rewritten through armed modifiers, so
     /// Ghostty must not also see their ended/cancelled counterparts.
     private var pressesConsumedByArmedModifiers: Set<ObjectIdentifier> = []
@@ -820,6 +848,10 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private lazy var touchScrollGesture = UIPanGestureRecognizer(
         target: self,
         action: #selector(handleHerdrTouchScrollGesture(_:)))
+
+    private lazy var pointerScrollGesture = TerminalPointerScrollGestureRecognizer(
+        target: self,
+        action: #selector(handleHerdrPointerScrollGesture(_:)))
 
     private lazy var zoomGesture = UIPinchGestureRecognizer(
         target: self,
@@ -1058,9 +1090,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         // The view is its own surface delegate so orphan-layer cleanup runs
         // wherever the view is used, not only under the SwiftUI representable.
         delegate = self
-        callbackBridge.onTerminalInput = { [weak self] data in
-            self?.recordTerminalInput(data)
-        }
         pasteConfiguration = UIPasteConfiguration(forAccepting: String.self)
         inputAccessoryItems = []
         configuration = TerminalSurfaceOptions(backend: .inMemory(terminalSession))
@@ -1290,6 +1319,18 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
     }
 
+    func setRemoteScrollEnabled(_ isEnabled: Bool) {
+        isRemoteScrollEnabled = isEnabled
+        if !canScrollCurrentScreen {
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+        }
+    }
+
+    private var canScrollCurrentScreen: Bool {
+        isRemoteScrollEnabled || (!modeTracker.isAlternateScreen && !modeTracker.tracksMouse)
+    }
+
     /// Ends local input for a surface leaving the stage or being replaced,
     /// without resigning first responder on the spot.
     ///
@@ -1365,10 +1406,61 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         if applyArmedModifiers(toInsertedText: text) {
             return
         }
-        if text == "\n" {
-            super.insertText("\r")
+        if applyKoreanComposition(text) {
             return
         }
+        if text == "\n" {
+            // Ghostty sends Return as a key, which ends the line without
+            // telling UIKit; the keyboard must not keep it as context.
+            inputDelegate?.textWillChange(self)
+            recordCommittedText(text)
+            super.insertText("\r")
+            inputDelegate?.textDidChange(self)
+            return
+        }
+        commitText(text)
+    }
+
+    /// Ghostty's own `replace` inserts without removing the range. Ranges
+    /// ending at the caret are erased with one Backspace per character, which
+    /// is what a remote line editor understands.
+    override func replace(_ range: UITextRange, withText text: String) {
+        guard isLocalInputEnabled else { return }
+        guard markedTextRange == nil,
+              let range = range as? TerminalInputTextRange,
+              range.location + range.length == textInputSelection.location
+        else {
+            recordCommittedText(text)
+            super.replace(range, withText: text)
+            return
+        }
+        let replaced = NSRange(location: range.location, length: range.length)
+        let replacedText = (textInputStorage as NSString).substring(with: replaced)
+
+        inputDelegate?.textWillChange(self)
+        inputDelegate?.selectionWillChange(self)
+        for _ in replacedText {
+            super.deleteBackward()
+        }
+        deleteFromTextInputStorage(in: replaced)
+        inputDelegate?.selectionDidChange(self)
+        inputDelegate?.textDidChange(self)
+
+        if !text.isEmpty {
+            commitText(text)
+        }
+    }
+
+    override func unmarkText() {
+        if let markedTextRange, let committed = text(in: markedTextRange) {
+            recordCommittedText(committed)
+        }
+        super.unmarkText()
+    }
+
+    /// Ghostty brackets the send with `textWillChange`/`textDidChange`.
+    private func commitText(_ text: String) {
+        recordCommittedText(text)
         super.insertText(text)
     }
 
@@ -1387,24 +1479,26 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
 
         guard let deletionRange = textInputDeletionRange() else {
+            koreanResyllabification.reset()
             super.deleteBackward()
             return
         }
+        trackKoreanDeletion(in: deletionRange)
 
+        // The Korean keyboard composes by selecting the trailing syllables it
+        // is rebuilding and deleting them in one call ("지ㅇ" + ㅜ → select 2,
+        // delete, insert "지", "우"). The PTY holds one cell per character, so
+        // it needs one Backspace per deleted character, not one per call.
+        let deletedCharacters = (textInputStorage as NSString)
+            .substring(with: deletionRange).count
         inputDelegate?.textWillChange(self)
         inputDelegate?.selectionWillChange(self)
         deleteFromTextInputStorage(in: deletionRange)
-        super.deleteBackward()
+        for _ in 0..<max(deletedCharacters, 1) {
+            super.deleteBackward()
+        }
         inputDelegate?.selectionDidChange(self)
         inputDelegate?.textDidChange(self)
-    }
-
-    private func recordTerminalInput(_ data: Data) {
-        guard !data.contains(0x1B), !data.contains(0x7F),
-              !data.contains(where: { $0 < 0x20 && $0 != 0x0A && $0 != 0x0D }),
-              let text = String(data: data, encoding: .utf8)
-        else { return }
-        recordCommittedText(text)
     }
 
     private func recordCommittedText(_ text: String) {
@@ -1420,6 +1514,105 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         textInputSelection = NSRange(
             location: textInputStorage.utf16.count,
             length: 0)
+    }
+
+    // MARK: Korean composition
+
+    private var isKoreanTextInput: Bool {
+        textInputMode?.primaryLanguage?.hasPrefix("ko") == true
+    }
+
+    private var isCaretAtEndOfTextInput: Bool {
+        markedTextRange == nil
+            && textInputSelection.length == 0
+            && textInputSelection.location == textInputStorage.utf16.count
+    }
+
+    /// Rewrites a Korean keyboard commit the way a text view would compose it
+    /// ("하" + "ㄴ" → "한", "핫" + "ㅔ" → "하세"), replacing the trailing
+    /// syllable on the PTY. Returns true when the commit was handled.
+    private func applyKoreanComposition(_ text: String) -> Bool {
+        guard isKoreanTextInput, isCaretAtEndOfTextInput else {
+            koreanResyllabification.reset()
+            return false
+        }
+
+        switch koreanResyllabification.consumeInsertion(text) {
+        case .prefixReinserted:
+            return false
+        case let .replacement(edit):
+            let replaced = String(textInputStorage.suffix(edit.charactersToDelete))
+            guard edit.charactersToDelete <= textInputStorage.count,
+                  edit.textToInsert.hasPrefix(replaced)
+            else { return false }
+            replaceTrailingTextInput(edit.charactersToDelete, with: edit.textToInsert)
+            return true
+        case .noMatch:
+            break
+        }
+
+        guard text.count == 1, let jamo = text.first,
+              let previous = textInputStorage.last
+        else { return false }
+        if HangulInput.vowelIndexByJamo[jamo] != nil,
+           let edit = HangulInput.resyllabificationEdit(base: previous, followingVowel: jamo)
+        {
+            replaceTrailingTextInput(edit.charactersToDelete, with: edit.textToInsert)
+            return true
+        }
+        if let composed = HangulInput.composeCompoundVowel(base: previous, followingVowel: jamo)
+            ?? HangulInput.finalIndexByJamo[jamo].flatMap({
+                HangulInput.composeSyllable(base: previous, finalIndex: $0)
+            })
+            ?? HangulInput.composeDoubleFinal(base: previous, consonant: jamo)
+        {
+            replaceTrailingTextInput(1, with: String(composed))
+            return true
+        }
+        return false
+    }
+
+    /// Records a selection delete that may open the keyboard's
+    /// resyllabification sequence (delete → prefix reinsert → syllable).
+    private func trackKoreanDeletion(in range: NSRange) {
+        guard isKoreanTextInput, markedTextRange == nil,
+              range.length > 0,
+              NSMaxRange(range) == textInputStorage.utf16.count
+        else {
+            koreanResyllabification.reset()
+            return
+        }
+        koreanResyllabification.begin(
+            deletedText: (textInputStorage as NSString).substring(with: range))
+    }
+
+    /// Deletes `count` trailing characters (one Backspace each) and sends
+    /// `text` in their place, keeping the document in step with the PTY.
+    private func replaceTrailingTextInput(_ count: Int, with text: String) {
+        inputDelegate?.textWillChange(self)
+        inputDelegate?.selectionWillChange(self)
+        for _ in 0..<count {
+            guard let range = textInputDeletionRange() else { break }
+            deleteFromTextInputStorage(in: range)
+            super.deleteBackward()
+        }
+        commitText(text)
+        inputDelegate?.selectionDidChange(self)
+        inputDelegate?.textDidChange(self)
+    }
+
+    /// App-owned keys and snippets reach the pane past this document, so the
+    /// line the keyboard knew about no longer describes what precedes the
+    /// remote cursor.
+    func forgetTypedLine() {
+        koreanResyllabification.reset()
+        guard !textInputStorage.isEmpty else { return }
+        inputDelegate?.textWillChange(self)
+        inputDelegate?.selectionWillChange(self)
+        textInputStorage = ""
+        textInputSelection = NSRange(location: 0, length: 0)
+        inputDelegate?.selectionDidChange(self)
+        inputDelegate?.textDidChange(self)
     }
 
     private func textInputDeletionRange() -> NSRange? {
@@ -1830,13 +2023,16 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             scale: window?.screen.nativeScale ?? traitCollection.displayScale)
     }
 
+    /// `point` is where a trackpad or mouse pointer sits; a finger has none,
+    /// so its wheel reports aim at the grid's centre.
     @discardableResult
-    func scrollTouch(translationY: CGFloat) -> Int {
+    func scrollTouch(translationY: CGFloat, at point: CGPoint? = nil) -> Int {
+        guard canScrollCurrentScreen else { return 0 }
         let rows = touchScrollAccumulator.rows(
             for: translationY,
             pointsPerRow: max(8, terminalCellSize.height))
         guard rows != 0 else { return 0 }
-        applyScroll(towardOlderContent: rows > 0, rowCount: abs(rows))
+        applyScroll(towardOlderContent: rows > 0, rowCount: abs(rows), at: point)
         onTouchScroll?(rows > 0)
         return rows
     }
@@ -1855,12 +2051,14 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// Remote wheel / cursor sequence when the mode tracker supplies one;
     /// otherwise local `scroll_page_lines`. Shared by touch and the jump
     /// control so they cannot drift. `refs #268`.
-    private func applyScroll(towardOlderContent: Bool, rowCount: Int) {
+    private func applyScroll(towardOlderContent: Bool, rowCount: Int, at point: CGPoint? = nil) {
         if let sequence = modeTracker.remoteScrollSequence(
             towardOlderContent: towardOlderContent,
             columns: terminalGridSize.columns,
-            rows: terminalGridSize.rows)
+            rows: terminalGridSize.rows,
+            at: point.flatMap { gridPointMapper.cell(at: $0) })
         {
+            guard isRemoteScrollEnabled else { return }
             callbackBridge.scroll(sequence, rows: rowCount)
         } else {
             let localRows = towardOlderContent ? -rowCount : rowCount
@@ -1872,6 +2070,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     private func installTouchScrolling() {
         let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)
+        // Ghostty's touch and wheel pans both scroll its local screen rather
+        // than the remote application. The wheel pan accepts every touch type
+        // by default, so this also retires it; `pointerScrollGesture` replaces it.
         for case let pan as UIPanGestureRecognizer in gestureRecognizers ?? []
         where pan.allowedTouchTypes.contains(directTouch) {
             pan.isEnabled = false
@@ -1882,6 +2083,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         touchScrollGesture.cancelsTouchesInView = false
         touchScrollGesture.delegate = self
         addGestureRecognizer(touchScrollGesture)
+
+        pointerScrollGesture.delegate = self
+        addGestureRecognizer(pointerScrollGesture)
 
         tapGesture.allowedTouchTypes = [directTouch]
         tapGesture.numberOfTouchesRequired = 1
@@ -1957,7 +2161,26 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             next?.pressesBegan(sceneCommands, with: event)
         }
         guard !forwarded.isEmpty else { return }
+        for press in forwarded where press.key?.keyCode == .keyboardDeleteOrBackspace
+            && press.key?.modifierFlags.isDisjoint(with: [.command, .control, .alternate]) == true
+        {
+            deleteBackwardFromTextInputForHardwareKey()
+        }
         super.pressesBegan(forwarded, with: event)
+    }
+
+    /// A hardware Backspace reaches the PTY through Ghostty's key path, not
+    /// `deleteBackward`, so the document would keep the deleted character —
+    /// and the Korean keyboard, which rebuilds syllables from that document,
+    /// would bring it back on the next keystroke ("지원" ⌫ "안" → "원안").
+    private func deleteBackwardFromTextInputForHardwareKey() {
+        guard markedTextRange == nil, let range = textInputDeletionRange() else { return }
+        koreanResyllabification.reset()
+        inputDelegate?.textWillChange(self)
+        inputDelegate?.selectionWillChange(self)
+        deleteFromTextInputStorage(in: range)
+        inputDelegate?.selectionDidChange(self)
+        inputDelegate?.textDidChange(self)
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
@@ -2263,7 +2486,43 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
     }
 
+    /// Trackpad and mouse-wheel scrolling take the touch path to the remote
+    /// application. Like Ghostty's own wheel handler, this adds no momentum;
+    /// a scroll only halts a running flick. The row remainder carries across
+    /// gestures because a wheel notch can be shorter than a row. Wheel reports
+    /// aim at the pointer's cell, so a split TUI (tmux, vim) scrolls the pane
+    /// under it. A scroll pan's location moves with its translation as though
+    /// a finger dragged, already by the recognition threshold at `.began`, so
+    /// the pointer sits at the location less the translation.
+    @objc private func handleHerdrPointerScrollGesture(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began, .changed, .ended:
+            if gesture.state == .began {
+                stopTouchScrollMomentum()
+                let location = gesture.location(in: self)
+                let translation = gesture.translation(in: self)
+                pointerScrollLocation = CGPoint(
+                    x: location.x - translation.x,
+                    y: location.y - translation.y)
+            }
+            _ = scrollTouch(
+                translationY: gesture.translation(in: self).y,
+                at: pointerScrollLocation ?? gesture.location(in: self))
+            gesture.setTranslation(.zero, in: self)
+            if gesture.state == .ended {
+                pointerScrollLocation = nil
+            }
+        default:
+            pointerScrollLocation = nil
+        }
+    }
+
     func startTouchScrollMomentum(velocityY: CGFloat) {
+        guard canScrollCurrentScreen else {
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+            return
+        }
         guard abs(velocityY) >= 80 else {
             touchScrollAccumulator.reset()
             return
@@ -2279,7 +2538,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     }
 
     @objc private func advanceTouchScrollMomentum(_ displayLink: CADisplayLink) {
-        guard abs(touchScrollMomentumVelocityY) >= 20 else {
+        guard canScrollCurrentScreen, abs(touchScrollMomentumVelocityY) >= 20 else {
             stopTouchScrollMomentum()
             touchScrollAccumulator.reset()
             return
@@ -2311,6 +2570,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// Ghostty `sendInput`, so it calls this instead of relying on that hook.
     func noteReliableInputBegan() {
         reliableInputDidBegin()
+        forgetTypedLine()
     }
 }
 

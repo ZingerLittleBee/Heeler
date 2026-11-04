@@ -52,13 +52,15 @@ struct SnippetsManagementView: View {
             ContentUnavailableView.search(text: query)
         } else {
             List {
-                ForEach(results) { snippet in
-                    Button {
-                        editing = .existing(snippet)
-                    } label: {
-                        SnippetRow(snippet: snippet)
+                ForEach(results) { @Sendable snippet in
+                    MainActorContent {
+                        Button {
+                            editing = .existing(snippet)
+                        } label: {
+                            SnippetRow(snippet: snippet)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 .onDelete { offsets in
                     for snippet in offsets.map({ results[$0] }) {

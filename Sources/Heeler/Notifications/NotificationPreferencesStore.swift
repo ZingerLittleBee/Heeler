@@ -134,6 +134,65 @@ final class NotificationPreferencesStore {
         }
     }
 
+    // MARK: Host removal (#414)
+
+    /// Whether this device holds a Notification Key for the Host, i.e.
+    /// removing the Host deletes one. A Keychain that cannot be read counts
+    /// as holding one: the removal will try to delete it.
+    func hasNotificationKey(for hostID: Host.ID) -> Bool {
+        do {
+            return try ceremony.keys.record(forHost: hostID) != nil
+        } catch {
+            return true
+        }
+    }
+
+    /// Best effort, before a Host is removed: drops this device's own entries
+    /// from the Host's registration file so its plugin stops pushing here,
+    /// keeping the Notification Key (`forgetNotificationKey` deletes it).
+    /// Entries are matched by the key alone, so no device token is needed.
+    /// Only a connected Host with a stored key is asked; anything else
+    /// touches no network. The whole revoke, gate wait included, is
+    /// abandoned after `timeout`: a dead link waits out its own request
+    /// deadline and redial, and removal must not. Failures are swallowed;
+    /// the removal goes ahead either way. A revoke the Host confirmed reads
+    /// unregistered at once, so a removal that then fails keeps the Host
+    /// with notifications off.
+    func revokeRegistration(
+        for host: Host, isConnected: Bool, timeout: Duration = .seconds(6)
+    ) async {
+        guard isConnected, (try? ceremony.keys.record(forHost: host.id)) != nil else { return }
+        let ceremony = ceremony
+        let transports = transports
+        do {
+            try await AsyncDeadline.run(for: timeout) {
+                try await transports.withNotificationTransport(for: host.id) { transport in
+                    try await ceremony.revoke(host: host, over: transport)
+                }
+            }
+        } catch {
+            return
+        }
+        markUnregistered(host.id)
+    }
+
+    /// Deletes the Host's Notification Key record (Keychain and app-group
+    /// mirror) as part of its removal. Without a key no entry on the Host is
+    /// this device's own, so a confirmed state now reads unregistered: a
+    /// removal that fails after this keeps the Host with notifications off.
+    func forgetNotificationKey(for hostID: Host.ID) throws {
+        try ceremony.keys.removeRecord(forHost: hostID)
+        markUnregistered(hostID)
+    }
+
+    /// Settles a confirmed state on unregistered; one still loading or
+    /// updating is left for its own read or write to settle.
+    private func markUnregistered(_ hostID: Host.ID) {
+        guard confirmedSettings(for: hostID) != nil else { return }
+        states[hostID] = .idle(
+            HostSettings(isRegistered: false, notify: NotificationTriggerPreferences()))
+    }
+
     private func load(_ host: Host) async {
         if case .updating = states[host.id] { return }
         guard let token = deviceToken() else {
@@ -250,7 +309,8 @@ final class NotificationPreferencesStore {
     static func message(for error: any Error) -> String {
         switch error {
         case NotificationRegistrationError.pluginNotInstalled:
-            "Install the Heeler plugin on this Host, then check again."
+            "The Heeler plugin is missing or turned off on this Host. "
+                + "See this Host's page in Hosts, then check again."
         case NotificationRegistrationError.pluginProbeFailed:
             "Could not check the Heeler plugin on this Host. "
                 + "Check the connection and try again."
@@ -270,6 +330,8 @@ final class NotificationPreferencesStore {
             "The Host did not answer in time."
         case TransportError.herdrBinaryNotFound:
             TransportError.herdrBinaryNotFound.presentation.message
+        case TransportError.herdrLauncherNotFound(let path):
+            TransportError.herdrLauncherNotFound(path: path).presentation.message
         case is TransportError:
             "The connection to the Host failed."
         default:

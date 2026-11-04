@@ -36,8 +36,6 @@ enum HostConnectionTone: Equatable, CaseIterable {
 struct HostStatusGlyph: View {
     let tone: HostConnectionTone
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     private static let badgeSize: CGFloat = 8
     /// Clear ring between badge and glyph.
     private static let cutoutRing: CGFloat = 2
@@ -63,15 +61,23 @@ struct HostStatusGlyph: View {
                     .compositingGroup()
             }
             .overlay(alignment: .bottomTrailing) {
-                badge
+                HostToneBadge(tone: tone)
                     .frame(width: Self.badgeSize, height: Self.badgeSize)
                     .offset(x: Self.overhang, y: Self.overhang)
             }
             .accessibilityHidden(true)
     }
+}
 
-    @ViewBuilder
-    private var badge: some View {
+/// A connection state on its own: the badge on `HostStatusGlyph`'s corner,
+/// and the mark beside a Host's name where no glyph leads it. It fills the
+/// frame it is given.
+struct HostToneBadge: View {
+    let tone: HostConnectionTone
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
         switch tone {
         case .reconnecting:
             // Driven by the clock rather than a repeating animation, which

@@ -14,6 +14,40 @@ struct TransportErrorPresentationTests {
         #expect(failure.presentation.recoverySuggestion == nil)
     }
 
+    @Test func chatFileFailuresAreNotRetryable() {
+        let timeout = TransportError.hostFileTimedOut
+        #expect(!timeout.isRetryable)
+        #expect(timeout.presentation.summary == "Reading the conversation timed out")
+        #expect(timeout.presentation.detail == nil)
+
+        let refused = TransportError.hostFileUnreadable(status: 3)
+        #expect(!refused.isRetryable)
+        #expect(refused.presentation.summary == "The conversation file cannot be read")
+        #expect(refused.presentation.detail == "SFTP status 3")
+        #expect(refused.presentation.recoverySuggestion == "Check the file's permissions on the Host.")
+    }
+
+    /// The detail is the whole message. A reader's own line cut at its limit
+    /// keeps its ellipsis, under a summary that says what failed.
+    @Test func hostStoreUnreadableExplainsItself() {
+        let busy = TransportError.hostStoreUnreadable(detail: "OpenCode's database is busy.")
+        #expect(!busy.isRetryable)
+        #expect(busy.presentation.summary == "OpenCode's database is busy")
+        #expect(busy.presentation.detail == nil)
+        #expect(busy.presentation.recoverySuggestion == nil)
+        #expect(busy.presentation.explanation == "OpenCode's database is busy.")
+
+        let line = TransportError.hostStoreUnreadable(detail: "Error: disk I/O error")
+        #expect(line.presentation.explanation == "Error: disk I/O error.")
+
+        let long = "Runtime error near line 9: " + String(repeating: "x", count: 172) + "…"
+        let cut = TransportError.hostStoreUnreadable(detail: long)
+        #expect(!cut.isRetryable)
+        #expect(cut.presentation.summary == "OpenCode's database couldn't be read")
+        #expect(cut.presentation.detail == long)
+        #expect(cut.presentation.explanation == "OpenCode's database couldn't be read: \(long)")
+    }
+
     private static let homebrewPATH =
         "Put herdr's install directory on the account's non-interactive SSH PATH."
 
@@ -98,7 +132,7 @@ struct TransportErrorPresentationTests {
 
     // MARK: Retryable set
 
-    @Test func retryableSummariesAndSuggestions() {
+    @Test func retryableSummariesAndSuggestions() throws {
         let unreachable = TransportError.sshUnreachable(detail: "connection refused")
         #expect(unreachable.presentation.summary == "SSH unavailable")
         #expect(unreachable.presentation.detail == "connection refused")
@@ -118,6 +152,29 @@ struct TransportErrorPresentationTests {
         #expect(dropped.presentation.detail == "connection reset")
         #expect(dropped.presentation.recoverySuggestion == nil)
 
+        let exited = TransportError.attachExited(
+            status: 1, output: "herdr: lost connection to server: server closed connection")
+        #expect(exited.isRetryable)
+        #expect(exited.presentation.summary == "herdr exited with status 1")
+        #expect(
+            exited.presentation.detail
+                == "herdr: lost connection to server: server closed connection")
+        #expect(exited.presentation.recoverySuggestion == nil)
+        // herdr's own closing period is not doubled.
+        #expect(
+            TransportError.attachExited(status: 3, output: "Error: no such pane.")
+                .presentation.message == "herdr exited with status 3: Error: no such pane.")
+        #expect(
+            TransportError.attachExited(status: 1, output: nil).presentation.message
+                == "herdr exited with status 1.")
+        // A line cut short at its ellipsis gets no period after it.
+        let cut = try #require(
+            AttachExitDiagnostic.line(
+                fromOutput: "herdr: \(String(repeating: "x", count: 300))\n"))
+        #expect(
+            TransportError.attachExited(status: 1, output: cut).presentation.message
+                == "herdr exited with status 1: \(cut)")
+
         let rejected = TransportError.apiRejected(
             code: "pane_not_found", message: "pane w11:p9 not found")
         #expect(rejected.presentation.summary == "herdr rejected the request")
@@ -131,6 +188,7 @@ struct TransportErrorPresentationTests {
             .timedOut,
             .cancelled,
             .channelFailed(detail: "reset"),
+            .attachExited(status: 1, output: "herdr: lost connection to server"),
             .apiRejected(code: "busy", message: "try later"),
             .jumpHostFailed(.sshUnreachable(detail: "down")),
             .jumpHostFailed(.timedOut),
@@ -242,6 +300,7 @@ struct TransportErrorPresentationTests {
             .socketNotFound(path: "/tmp/herdr.sock"),
             .streamLocalOpenFailed(path: "/tmp/herdr.sock"),
             .herdrBinaryNotFound,
+            .herdrLauncherNotFound(path: "/opt/example/bin/herdr"),
             .protocolVersionMismatch(server: 18, supported: 19),
             .homeDirectoryUnresolvable(detail: "echo $HOME failed"),
             .malformedResponse("{"),
@@ -286,6 +345,39 @@ struct TransportErrorPresentationTests {
         #expect(
             presentation.message
                 == "The herdr socket was not found: /tmp/herdr.sock. Check this Host's session.")
+    }
+
+    /// An endpoint Host has no session to fix (ADR 0023). Every other error,
+    /// and every Host without an endpoint, keeps the shared copy.
+    @Test func endpointHostsAreToldToStartTheConfiguredInstance() {
+        let missing = TransportError.socketNotFound(path: "/tmp/herdr/herdr.sock")
+        #expect(
+            missing.presentation(usesHerdrEndpoint: true).message
+                == "The herdr socket was not found: /tmp/herdr/herdr.sock. "
+                + "Start the herdr instance configured for this Host and verify its socket path.")
+        #expect(missing.presentation(usesHerdrEndpoint: false) == missing.presentation)
+        let mismatch = TransportError.protocolVersionMismatch(server: 16, supported: 17)
+        #expect(mismatch.presentation(usesHerdrEndpoint: true) == mismatch.presentation)
+    }
+
+    @Test func missingHerdrLauncherNamesItsPathAndHowToRepairIt() {
+        let failure = TransportError.herdrLauncherNotFound(
+            path: "/Users/ada/Library/Application Support/Example/bin/herdr")
+        #expect(!failure.isRetryable)
+        #expect(!TransportError.jumpHostFailed(failure).isRetryable)
+        let presentation = failure.presentation
+        #expect(presentation.summary == "The herdr launcher could not run")
+        #expect(presentation.detail == "/Users/ada/Library/Application Support/Example/bin/herdr")
+        #expect(
+            presentation.recoverySuggestion
+                == "Check that this launcher exists, is executable, and can start herdr. "
+                + "Pair the Host again if its path changed.")
+        #expect(
+            presentation.message
+                == "The herdr launcher could not run: "
+                + "/Users/ada/Library/Application Support/Example/bin/herdr. "
+                + "Check that this launcher exists, is executable, and can start herdr. "
+                + "Pair the Host again if its path changed.")
     }
 
     @Test func protocolVersionMismatchNamesTheUpdate() {
@@ -334,6 +426,7 @@ struct TransportErrorPresentationTests {
             .streamLocalOpenFailed(path: "/s"),
             .protocolVersionMismatch(server: 18, supported: 19),
             .herdrBinaryNotFound,
+            .herdrLauncherNotFound(path: "/opt/example/bin/herdr"),
             .socketNotFound(path: "/s"),
         ]
         for error in errors {

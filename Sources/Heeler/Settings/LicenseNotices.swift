@@ -26,8 +26,9 @@ struct LicenseNotice: Identifiable, Equatable, Sendable {
 /// fails loudly.
 ///
 /// `dependencyCoverage` is the two-way join between repository dependency
-/// *declarations* (Package.resolved pins, local binary targets, project
-/// package links, bundled font families) and inventory component ids. Completeness
+/// *declarations* (Package.resolved pins, local binary targets, overlay native
+/// products, project package links, bundled font families) and inventory
+/// component ids. Completeness
 /// tests discover the declarations from the repo and require every one to be
 /// named here with inventory ids that exist in `components`.
 struct LicenseInventory: Equatable, Sendable {
@@ -48,6 +49,11 @@ struct LicenseInventory: Equatable, Sendable {
         let packageResolved: [String: [String]]
         /// `Packages/HeelerSSH/Package.swift` `.binaryTarget` `name` → component ids.
         let heelerSSHBinaryTargets: [String: [String]]
+        /// Product `name` of the `heeler-overlay-natives` package that
+        /// `Packages/HeelerOverlay/Package.swift` depends on (CTailscale,
+        /// CZeroTier, CEasyTier) → component ids. Also covers that package's
+        /// own `Package.resolved` pin.
+        let heelerOverlayNatives: [String: [String]]
         /// `project.yml` `packages:` entry name linked from the Heeler app
         /// target → component ids.
         let projectPackages: [String: [String]]
@@ -198,6 +204,7 @@ enum LicenseNoticeCatalog {
     private struct DependencyCoverageDTO: Decodable {
         let packageResolved: [String: [String]]
         let heelerSSHBinaryTargets: [String: [String]]
+        let heelerOverlayNatives: [String: [String]]
         let projectPackages: [String: [String]]
         let bundledFontFamilies: [String: [String]]
     }
@@ -300,6 +307,8 @@ enum LicenseNoticeCatalog {
             packageResolved: try normalize(dto.packageResolved, label: "packageResolved"),
             heelerSSHBinaryTargets: try normalize(
                 dto.heelerSSHBinaryTargets, label: "heelerSSHBinaryTargets"),
+            heelerOverlayNatives: try normalize(
+                dto.heelerOverlayNatives, label: "heelerOverlayNatives"),
             projectPackages: try normalize(dto.projectPackages, label: "projectPackages"),
             bundledFontFamilies: try normalize(
                 dto.bundledFontFamilies, label: "bundledFontFamilies"))

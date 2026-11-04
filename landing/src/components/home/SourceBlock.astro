@@ -1,0 +1,35 @@
+---
+import CodeCard from './CodeCard.astro';
+import { source } from './content';
+---
+
+<div class="home-grid" style="--cols: 1fr 1fr; --align: center">
+  <div class="home-col" style="--gap: var(--sp-5)">
+    <p class="eyebrow">Source</p>
+    <h2 class="home-h2">{source.title}</h2>
+    <p class="home-body">{source.lede}</p>
+    <ul class="links">
+      {
+        source.links.map((link) => (
+          <li>
+            <a class="home-arrow-link" href={link.href}>
+              {link.label} <span aria-hidden="true">&rarr;</span>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+  <CodeCard label="Build" lang="bash" lines={source.buildLines} />
+</div>
+
+<style>
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: var(--sp-6);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+</style>

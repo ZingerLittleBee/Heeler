@@ -21,7 +21,7 @@ struct WorkspaceTerminalDrawer: View {
     var onNewTerminal: (() -> Void)? = nil
     /// A creation in flight: the button shows progress and takes no hit.
     var isCreatingTerminal = false
-    /// Set while a header button opens the panel in place of the handle.
+    /// Set while a header menu opens the panel in place of the handle.
     var headerExpansion: Binding<Bool>?
     /// Where the panel's top edge sits, in global space, while a header
     /// opens it: just below the header.
@@ -91,7 +91,7 @@ struct WorkspaceTerminalDrawer: View {
         return min(max(centred, 0), max(0, height - panelHeight))
     }
 
-    /// Hands the panel to a header button: the handle steps aside, and the
+    /// Hands the panel to a header menu: the handle steps aside, and the
     /// panel drops from the top instead of growing out of the edge.
     func openedFromHeader(_ isExpanded: Binding<Bool>, panelTop: CGFloat) -> Self {
         var copy = self
@@ -223,8 +223,8 @@ struct WorkspaceTerminalDrawer: View {
             .frame(height: Self.headerHeight)
             ScrollView(.vertical) {
                 VStack(spacing: Self.rowSpacing) {
-                    ForEach(orderedTerminals) { item in
-                        row(item)
+                    ForEach(orderedTerminals) { @Sendable item in
+                        MainActorContent { row(item) }
                     }
                 }
                 .padding(.horizontal, 6)

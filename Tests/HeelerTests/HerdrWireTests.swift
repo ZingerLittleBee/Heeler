@@ -219,9 +219,10 @@ import Testing
     }
 
     @Test func mismatchedErrorIDStillThrowsAPIError() throws {
-        // events.subscribe probe failures use a derived id
-        // (`<requestID>:sub:<index>:probe`) that does not echo the request id.
-        // Same fallback as empty-id: the error is the actionable part.
+        // herdr 0.8.0 to 0.9.1 answer events.subscribe probe failures with a
+        // derived id (`<requestID>:sub:<index>:probe`) that does not echo the
+        // request id; 0.9.2 and later echo it. Same fallback as empty-id: the
+        // error is the actionable part.
         let line =
             #"{"id":"req-1:sub:0:probe","error":{"code":"pane_not_found","message":"pane not found"}}"#
 

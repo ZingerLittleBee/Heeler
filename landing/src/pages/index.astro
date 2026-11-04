@@ -1,21 +1,1006 @@
 ---
-import Connect from '../components/Connect.astro';
-import Cta from '../components/Cta.astro';
-import Faq from '../components/Faq.astro';
-import Features from '../components/Features.astro';
-import Hero from '../components/Hero.astro';
-import Security from '../components/Security.astro';
+// The homepage: a tilted screen wall for a hero, then six chapters beside a
+// sticky contents list, each with an interactive figure that the scroll steps
+// through, a light Security section, numbers, FAQ and the close. Motion is CSS
+// scroll-driven animation where the browser has it, with an
+// IntersectionObserver fallback; the one inline script also moves each step
+// figure with the scroll, counts the stats and copies the command.
+import ChapterHead from '../components/home/ChapterHead.astro';
+import HeroWall from '../components/home/HeroWall.astro';
+import StatRow from '../components/home/StatRow.astro';
+import StepFigure, { type FigureStep } from '../components/home/StepFigure.astro';
+import WordReveal from '../components/home/WordReveal.astro';
+import AddSteps from '../components/home/AddSteps.astro';
+import CodeCard from '../components/home/CodeCard.astro';
+import { connect, consoleCopy, faq, hero, links, pairLines, steerCopy } from '../components/home/content';
+import FaqList from '../components/home/FaqList.astro';
+import { figures } from '../components/home/figures';
+import HopPath from '../components/home/HopPath.astro';
+import PhoneScreens from '../components/home/PhoneScreens.astro';
+import SecurityList from '../components/home/SecurityList.astro';
+import SourceBlock from '../components/home/SourceBlock.astro';
+import StoreActions from '../components/home/StoreActions.astro';
+import '../components/home/home.css';
 import Layout from '../layouts/Layout.astro';
+import usageShot from '../assets/screens/usage-iphone.png';
+import widgetsLimitsShot from '../assets/screens/widgets-limits-iphone.png';
+import widgetsLockShot from '../assets/screens/widgets-lock-iphone.png';
+import widgetsShot from '../assets/screens/widgets-iphone.png';
 
 const description =
-  'Heeler is a native iOS companion for herdr: every coding agent on your machines in one status-sorted console, steered over plain SSH.';
+  'Heeler is an independent herdr mobile client for iPhone and iPad. Control Claude Code and Codex over SSH, with encrypted alerts and Usage widgets.';
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${Astro.site}#website`,
+      name: 'Heeler',
+      url: Astro.site?.href,
+      inLanguage: 'en',
+    },
+    {
+      '@type': 'MobileApplication',
+      name: 'Heeler',
+      url: Astro.site?.href,
+      description,
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'iOS, iPadOS',
+      downloadUrl: links.appStore,
+      image: new URL('/logo.png', Astro.site).href,
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: faq.map(({ q, a }) => ({
+        '@type': 'Question',
+        name: q,
+        acceptedAnswer: { '@type': 'Answer', text: a },
+      })),
+    },
+  ],
+};
+
+const chapters = [
+  { id: 'pair', label: 'Pair' },
+  { id: 'connect', label: 'Connect' },
+  { id: 'watch', label: 'Watch' },
+  { id: 'steer', label: 'Steer' },
+  { id: 'review', label: 'Review' },
+  { id: 'away', label: 'While you’re away' },
+  { id: 'usage', label: 'Usage' },
+];
+
+const usageScreens = [
+  {
+    image: usageShot,
+    alt: 'Usage tab with 30 days of estimated API cost, Usage Limits, and a daily chart',
+    caption: 'Usage, across every Host',
+  },
+  {
+    image: widgetsShot,
+    alt: 'Home Screen with Usage and Usage Limits widgets in small and medium sizes',
+    caption: 'Home Screen widgets',
+  },
+  {
+    image: widgetsLimitsShot,
+    alt: 'Large Usage Limits widget with each window’s share and reset time',
+    caption: 'Every window and its reset',
+  },
+  {
+    image: widgetsLockShot,
+    alt: 'Lock Screen with Usage and Usage Limits widgets',
+    caption: 'Lock Screen widgets',
+  },
+];
+
+// Each beat names a pose the figure's window.heelerFigure.go() plays to.
+const pairSteps: FigureStep[] = [
+  {
+    beat: 'confirm',
+    title: 'Run heeler.pair',
+    body: 'Enter issues a one-time ticket that lasts 120&nbsp;s.',
+  },
+  {
+    beat: 'reach',
+    title: 'Scan the Pairing Code',
+    body: 'The phone checks the Host key before it sends anything.',
+  },
+  {
+    beat: 'saved',
+    title: 'Host saved',
+    body: 'Only the public key travels. The Device Key stays on your phone.',
+  },
+];
+
+const reviewSteps: FigureStep[] = [
+  {
+    beat: 'read',
+    title: 'Pull to refresh',
+    body: 'Each pull runs git on the Host. Only its text comes back.',
+  },
+  {
+    beat: 'tap',
+    title: 'Tap a file',
+    body: 'Its diff opens as its own page, read only then.',
+  },
+  {
+    beat: 'ref',
+    title: 'Insert a line reference',
+    body: 'The file and line go into the Agent’s draft. Nothing is sent.',
+  },
+];
+
+const routeSteps: FigureStep[] = [
+  {
+    beat: 'race',
+    title: 'Direct goes first',
+    body: 'Direct starts at 0&nbsp;ms and the rest 400&nbsp;ms later. The first trusted key wins.',
+  },
+  {
+    beat: 'impostor',
+    title: 'Wrong key, turned away',
+    body: 'Another machine on the Direct address shows a different key and is rejected.',
+  },
+  {
+    beat: 'home',
+    title: 'At home, Direct wins',
+    body: 'On the home Wi-Fi, Direct answers within 400&nbsp;ms, so the rest never start.',
+  },
+];
+
+const boardSteps: FigureStep[] = [
+  {
+    beat: 'blocked',
+    title: 'Blocked comes first',
+    body: 'An Agent waiting on you sorts to the top, right under your Pins.',
+  },
+  {
+    beat: 'answer',
+    title: 'Answer it',
+    body: 'You answer in its live terminal. herdr reports it Working and it moves down.',
+  },
+  {
+    beat: 'next',
+    title: 'The next one rises',
+    body: 'When droid goes Blocked, it takes the top.',
+  },
+];
+
+const composeSteps: FigureStep[] = [
+  {
+    beat: 'type',
+    title: 'Write a draft',
+    body: 'Typing edits the draft on your phone. Nothing is sent.',
+  },
+  {
+    beat: 'add',
+    title: 'Add an image',
+    body: 'The photo goes to the Host over SFTP. Only its path enters the draft.',
+  },
+  {
+    beat: 'send',
+    title: 'Send',
+    body: 'One <span class="mono">agent.prompt</span> delivers the draft and presses Enter.',
+  },
+];
+
+const awaySteps: FigureStep[] = [
+  {
+    beat: 'tap',
+    title: 'Tap an alert',
+    body: 'Heeler opens and reconnects over SSH.',
+  },
+  {
+    beat: 'leave',
+    title: 'Leave Heeler',
+    body: 'SSH closes after a 20&nbsp;s grace. Only pushes reach you now.',
+  },
+  {
+    beat: 'away',
+    title: 'Sealed alerts arrive',
+    body: 'The Push Relay and APNs see only the outside.',
+  },
+];
 ---
 
-<Layout title="Heeler — an agent console for herdr" description={description}>
-  <Hero />
-  <Features />
-  <Connect />
-  <Security />
-  <Faq />
-  <Cta />
+<Layout title="Heeler — Claude Code & Codex on iPhone and iPad" description={description}>
+  <script is:inline slot="head" type="application/ld+json" set:html={JSON.stringify(structuredData).replace(/</g, '\\u003c')} />
+  <section class="hero" id="top">
+    <HeroWall />
+    <div class="hero-fade" aria-hidden="true"></div>
+    <div class="container hero-shift">
+      <div class="hero-copy">
+        <p class="mono-eyebrow"><span class="dot" aria-hidden="true"></span>herdr mobile client</p>
+        <h1 class="hero-title">
+          Every coding agent on your machines, <span class="rest">sorted by who needs you.</span>
+        </h1>
+        <p class="home-lede lede" set:html={hero.lede} />
+        <StoreActions />
+      </div>
+    </div>
+  </section>
+
+  <WordReveal
+    label="Heeler in one sentence"
+    text="Plain SSH to herdr’s own API. No server changes. Your keys stay on your phone, and your alerts stay sealed."
+  />
+
+  <div class="container chapters" id="how-it-works">
+    <aside class="index" aria-label="Contents">
+      <p class="eyebrow index-title">Contents</p>
+      <ol class="index-list" data-index>
+        {
+          chapters.map((chapter, index) => (
+            <li>
+              <a class="index-link" href={`#${chapter.id}`} data-chapter={chapter.id}>
+                <span class="index-number">[{String(index + 1).padStart(2, '0')}]</span>
+                {chapter.label}
+              </a>
+            </li>
+          ))
+        }
+      </ol>
+    </aside>
+
+    <div class="chapter-list">
+      <section class="chapter" id="pair" data-chapter-section>
+        <ChapterHead
+          index={0}
+          label="Pair"
+          lead="Scan once."
+          rest="The machine is a Host."
+          bar="One scan, one key"
+          body={connect.pairNote}
+        />
+        <StepFigure figure={figures.pairing} steps={pairSteps} />
+        <div class="media-640" data-rv>
+          <CodeCard label="Add a machine" lang="bash" lines={pairLines} />
+        </div>
+      </section>
+
+      <section class="chapter" id="connect" data-chapter-section>
+        <ChapterHead
+          index={1}
+          label="Connect"
+          lead="Plain SSH."
+          rest="Every Route races to one trusted Host."
+          bar="First trusted key wins"
+          body={connect.lede}
+        />
+        <StepFigure figure={figures.routes} steps={routeSteps} />
+        <div data-rv><HopPath /></div>
+      </section>
+
+      <section class="chapter" id="watch" data-chapter-section>
+        <ChapterHead
+          index={2}
+          label="Watch"
+          lead="An agent console,"
+          rest="not a terminal app."
+          bar="Sorted by who needs you"
+          body={consoleCopy.body}
+        />
+        <StepFigure figure={figures.callBoard} steps={boardSteps} />
+      </section>
+
+      <section class="chapter" id="steer" data-chapter-section>
+        <ChapterHead
+          index={3}
+          label="Steer"
+          lead="Read and steer"
+          rest="the Agent’s real live terminal."
+          body={steerCopy.body}
+        />
+        <StepFigure figure={figures.compose} steps={composeSteps} />
+      </section>
+
+      <section class="chapter" id="review" data-chapter-section>
+        <ChapterHead
+          index={4}
+          label="Review"
+          lead="See what changed."
+          rest="git runs on the Host, every time you look."
+          bar="The Checkout, not one Agent"
+          body="Changes lists every uncommitted file in the Checkout, whichever Agent wrote it; each read runs git on the Host, and a file’s diff opens as its own page."
+        />
+        <StepFigure figure={figures.changes} steps={reviewSteps} />
+      </section>
+
+      <section class="chapter" id="away" data-chapter-section>
+        <ChapterHead
+          index={5}
+          label="While you’re away"
+          lead="Leave Heeler."
+          rest="The Lock Screen keeps watch."
+          body="Get encrypted notifications when Claude Code, Codex, or another Agent goes Blocked or Done. After Heeler closes SSH in the background, alerts and Live Activity updates arrive as sealed pushes. <a class='text-link' href='https://docs.heeler.bybee.dev/pairing#after-pairing'>Enable Agent notifications</a>."
+        />
+        <StepFigure figure={figures.away} steps={awaySteps} />
+      </section>
+
+      <section class="chapter" id="usage" data-chapter-section>
+        <ChapterHead
+          index={6}
+          label="Usage"
+          lead="Know your limits"
+          rest="before an Agent runs into them."
+          bar="Usage Limits per Host"
+          body="Check Claude Code and Codex Usage Limits and reset times with Home Screen and Lock Screen widgets. In Usage, see up to 30 days of Token Usage and estimated API cost across Hosts. <a class='text-link' href='https://docs.heeler.bybee.dev/usage#add-a-widget'>Set up Usage widgets</a>."
+        />
+        <div data-rv><PhoneScreens screens={usageScreens} /></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="light" id="security" data-light>
+    <div class="light-ground" aria-hidden="true"><div class="light-ground-out"></div></div>
+    <div class="light-in">
+      <div class="container light-body">
+        <div class="light-head">
+          <p class="mono-eyebrow">Security</p>
+          <h2 class="light-title">
+            Keys stay on device. <span class="rest">The relay reads only ciphertext.</span>
+          </h2>
+        </div>
+        <SecurityList variant="grid" />
+      </div>
+    </div>
+  </section>
+
+  <section class="section numbers">
+    <div class="container home-col" style="--gap: 48px">
+      <div class="home-col" data-rv>
+        <p class="mono-eyebrow">From the source</p>
+        <h2 class="home-h2">Four numbers Heeler runs on. <span class="rest">Each one links to its line.</span></h2>
+      </div>
+      <StatRow />
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="container home-grid" style="--cols: 380px 1fr">
+      <div class="home-col" data-rv>
+        <p class="mono-eyebrow">FAQ</p>
+        <h2 class="home-h2">Questions, answered.</h2>
+      </div>
+      <FaqList />
+    </div>
+  </section>
+
+  <section class="section close" id="add">
+    <div class="container home-col" style="--gap: var(--sp-6)" data-rv>
+      <p class="mono-eyebrow">Add a machine</p>
+      <h2 class="home-h2">Three steps. <span class="rest">Nothing to type.</span></h2>
+      <AddSteps />
+    </div>
+  </section>
+
+  <section class="section source">
+    <div class="container">
+      <SourceBlock />
+    </div>
+  </section>
 </Layout>
+
+<script is:inline>
+  (() => {
+    const root = document.documentElement;
+
+    // In-page links scroll here: Chrome ignores a fragment link clicked while
+    // an earlier smooth scroll is still running, so a second chapter or step
+    // link would not move the page. scrollIntoView keeps each target's
+    // scroll-margin and the root's smooth scrolling (off under reduced motion).
+    document.addEventListener('click', (event) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = event.target.closest('a[href*="#"]');
+      if (!link || link.origin !== location.origin || link.pathname !== location.pathname) return;
+      const id = decodeURIComponent(link.hash.slice(1));
+      const target = id && document.getElementById(id);
+      if (!target) return;
+      event.preventDefault();
+      target.scrollIntoView();
+      if (location.hash !== `#${id}`) history.pushState(null, '', `#${id}`);
+    });
+
+    // The closing steps' copy button, shown only when it can work.
+    document.querySelectorAll('[data-copy]').forEach((button) => {
+      const block = button.parentElement;
+      const command = block.querySelector('[data-command]');
+      const label = block.querySelector('[data-copy-label]');
+      const status = block.querySelector('[data-copy-status]');
+      if (!navigator.clipboard || !command) return;
+      let timer = 0;
+      button.hidden = false;
+      button.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(command.textContent.trim());
+          label.textContent = 'Copied';
+          status.textContent = 'Commands copied';
+        } catch {
+          label.textContent = 'Select';
+          status.textContent = 'Copy failed; select the commands instead';
+        }
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          label.textContent = 'Copy';
+          status.textContent = '';
+        }, 1800);
+      });
+    });
+
+    // Step figures: the current step is the last one whose top has passed the
+    // reading line, so a fast scroll never skips one. The figure plays up to
+    // its beat through the figure page's hook. Beside the figure the line
+    // sits mid-screen. Stacked, it sits low on the screen and each step's run
+    // is the gap between it and the pinned figure, so the current step stays
+    // in view below the figure. A step's link scrolls it onto the line. Until
+    // the first step arrives, the figure runs its own tour.
+    const stacked = matchMedia('(max-width: 960px)');
+    document.querySelectorAll('[data-steps]').forEach((block) => {
+      const pin = block.querySelector('[data-pin]');
+      const frame = block.querySelector('iframe');
+      const steps = [...block.querySelectorAll('[data-beat]')];
+      let line = 0;
+      let current = null;
+      let queued = false;
+      const play = () => {
+        try {
+          const hook = frame.contentWindow && frame.contentWindow.heelerFigure;
+          if (current && hook) hook.go(current.dataset.beat);
+        } catch {
+          // Not loaded yet: the load listener plays it.
+        }
+      };
+      const measure = () => {
+        const height = window.innerHeight;
+        const below = pin.offsetHeight + parseFloat(getComputedStyle(pin).top);
+        line = Math.round(stacked.matches ? Math.min(Math.max(height * 0.86, below + 120), height - 60) : height * 0.45);
+        block.style.setProperty('--line', `${line}px`);
+        block.style.setProperty('--run', `${Math.max(120, line - below)}px`);
+      };
+      const update = () => {
+        queued = false;
+        let step = null;
+        for (const s of steps) if (s.getBoundingClientRect().top <= line + 1) step = s;
+        if (!step || step === current) return;
+        current = step;
+        steps.forEach((s) => s.toggleAttribute('data-current', s === step));
+        play();
+      };
+      const queue = () => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(update);
+      };
+      frame.addEventListener('load', play);
+      window.addEventListener('scroll', queue, { passive: true });
+      window.addEventListener('resize', () => {
+        measure();
+        queue();
+      });
+      measure();
+      update();
+      block.classList.add('steps-live');
+    });
+
+    if (!('IntersectionObserver' in window)) return;
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const scrollDriven = window.CSS && CSS.supports('animation-timeline: view()');
+    const fallback = !still && !scrollDriven;
+    if (fallback) root.classList.add('io');
+
+    // Contents: the chapter crossing the upper third is current; its index
+    // link and numeral light, and the strip keeps its chip in view.
+    const list = document.querySelector('[data-index]');
+    const links = new Map([...list.querySelectorAll('a[data-chapter]')].map((a) => [a.dataset.chapter, a]));
+    const sections = [...document.querySelectorAll('[data-chapter-section]')];
+    const activate = (id) => {
+      sections.forEach((section) => section.toggleAttribute('data-active', section.id === id));
+      links.forEach((link, key) => {
+        if (key === id) link.setAttribute('aria-current', 'true');
+        else link.removeAttribute('aria-current');
+      });
+      const link = links.get(id);
+      if (link && list.scrollWidth > list.clientWidth) {
+        list.scrollTo({ left: link.offsetLeft - 20, behavior: still ? 'auto' : 'smooth' });
+      }
+    };
+    const chapterObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) if (entry.isIntersecting) activate(entry.target.id);
+      },
+      { rootMargin: '-30% 0px -65% 0px' },
+    );
+    sections.forEach((section) => chapterObserver.observe(section));
+
+    // Without scroll timelines, entrances and the light section key off
+    // visibility instead.
+    if (fallback) {
+      const once = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add('in');
+            once.unobserve(entry.target);
+          }
+        },
+        { rootMargin: '0px 0px -15% 0px' },
+      );
+      document.querySelectorAll('[data-rv], [data-bar], [data-reveal]').forEach((el) => once.observe(el));
+      const light = document.querySelector('[data-light]');
+      new IntersectionObserver(([entry]) => light.classList.toggle('lit', entry.isIntersecting), {
+        rootMargin: '-30% 0px -30% 0px',
+      }).observe(light);
+    }
+
+    if (still) return;
+
+    // Stats count up once, from zero, in their final width.
+    const counter = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          counter.unobserve(entry.target);
+          const el = entry.target;
+          const target = Number(el.dataset.count);
+          const start = performance.now();
+          const frame = (now) => {
+            const t = Math.min(1, (now - start) / 900);
+            el.textContent = String(Math.round(target * (1 - Math.pow(1 - t, 3))));
+            if (t < 1) requestAnimationFrame(frame);
+          };
+          requestAnimationFrame(frame);
+        }
+      },
+      { rootMargin: '0px 0px -20% 0px' },
+    );
+    document.querySelectorAll('[data-count]').forEach((el) => {
+      el.style.minWidth = `${el.dataset.count.length}ch`;
+      el.style.display = 'inline-block';
+      el.style.textAlign = 'right';
+      el.textContent = '0';
+      counter.observe(el);
+    });
+  })();
+</script>
+
+<style>
+  :global(html) {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(html) {
+      scroll-behavior: auto;
+    }
+  }
+
+  .rest {
+    color: var(--text-muted);
+  }
+
+  .mono-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font: var(--fw-regular) 12px / 1 var(--font-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-primary);
+  }
+
+  /* ---------------------------------------------------------------- hero */
+
+  .hero {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    min-height: min(calc(100svh - var(--h-header)), 860px);
+    overflow: hidden;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .hero-fade {
+    position: absolute;
+    inset: 0;
+    background:
+      var(--fade-bottom) bottom / 100% 70% no-repeat,
+      linear-gradient(90deg, var(--surface-canvas) 0%, rgb(10 10 10 / 0.82) 42%, transparent 78%);
+  }
+
+  .hero-shift {
+    position: relative;
+    padding-block: 160px 72px;
+  }
+
+  .hero-copy {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-6);
+    max-width: 760px;
+  }
+
+  .hero-title {
+    font: var(--type-display);
+    font-size: clamp(40px, 7vw, var(--fs-display-1));
+    letter-spacing: var(--tr-display);
+    text-wrap: balance;
+  }
+
+  .lede {
+    max-width: 540px;
+  }
+
+  @media (max-width: 560px) {
+    .hero {
+      min-height: 760px;
+    }
+
+    .hero-fade {
+      background:
+        var(--fade-bottom) bottom / 100% 82% no-repeat,
+        linear-gradient(rgb(10 10 10 / 0.35), rgb(10 10 10 / 0.35));
+    }
+
+    .hero-shift {
+      padding-block: 240px 48px;
+    }
+  }
+
+  /* ---------------------------------------------------------------- chapters */
+
+  .chapters {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 64px;
+  }
+
+  /* Header links land below the sticky header. */
+  .chapters,
+  .section {
+    scroll-margin-top: var(--h-header);
+  }
+
+  .index {
+    position: sticky;
+    top: calc(var(--h-header) - 40px);
+    align-self: start;
+    padding-top: 96px;
+  }
+
+  .index-title {
+    margin-bottom: var(--sp-4);
+  }
+
+  .index-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .index-link {
+    position: relative;
+    display: flex;
+    gap: var(--sp-2);
+    padding: 12px 0 12px 16px;
+    border-left: 1px solid var(--border-hairline);
+    font: var(--type-body-sm);
+    color: var(--text-muted);
+    transition: color var(--dur-base) var(--ease-standard);
+  }
+
+  .index-link::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -1px;
+    width: 1px;
+    background: var(--text-primary);
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease-standard);
+  }
+
+  .index-number {
+    font-family: var(--font-mono);
+    font-size: var(--fs-label);
+  }
+
+  .index-link:hover {
+    color: var(--text-secondary);
+  }
+
+  .index-link[aria-current] {
+    color: var(--text-primary);
+  }
+
+  .index-link[aria-current]::before {
+    opacity: 1;
+  }
+
+  .chapter {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    padding: 96px 0;
+    border-bottom: 1px dashed var(--border-hairline);
+    scroll-margin-top: var(--h-header);
+  }
+
+  .chapter:last-child {
+    border-bottom: 0;
+  }
+
+  .media-640 {
+    max-width: 640px;
+  }
+
+  @media (max-width: 960px) {
+    .chapters {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+    }
+
+    .index {
+      top: var(--h-header);
+      z-index: 2;
+      margin: 0 calc(-1 * var(--gutter-x));
+      padding: 0;
+      border-bottom: 1px solid var(--border-hairline);
+      background: var(--surface-canvas);
+    }
+
+    .index-title {
+      display: none;
+    }
+
+    .index-list {
+      display: flex;
+      gap: var(--sp-2);
+      padding: 10px var(--gutter-x);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .index-list::-webkit-scrollbar {
+      display: none;
+    }
+
+    .index-link {
+      flex: none;
+      align-items: center;
+      height: 32px;
+      padding: 0 12px;
+      border: 1px solid var(--border-hairline);
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .index-link::before {
+      display: none;
+    }
+
+    .index-link[aria-current] {
+      border-color: var(--text-primary);
+    }
+
+    .chapter {
+      padding: 64px 0;
+      scroll-margin-top: calc(var(--h-header) + 53px);
+    }
+  }
+
+  /* ---------------------------------------------------------------- light section */
+
+  /* The section flips the page's text and line tokens; its ground fades in
+     beneath them. The security grid reads these. */
+  .light {
+    --surface-canvas: #f2f2ef;
+    --text-primary: #0a0a0a;
+    --text-secondary: #4a4a48;
+    --text-muted: #656562;
+    --text-inverse: #f2f2ef;
+    --border-hairline: #d9d9d4;
+    --border-default: #c9c9c4;
+    position: relative;
+    isolation: isolate;
+    padding: 120px 0;
+    color: var(--text-primary);
+    scroll-margin-top: var(--h-header);
+  }
+
+  .light-ground,
+  .light-ground-out {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: 32px;
+  }
+
+  .light-ground-out {
+    background: #f2f2ef;
+  }
+
+  .light-body {
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+  }
+
+  .light-head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    max-width: 760px;
+  }
+
+  .light-title {
+    font: var(--fw-semibold) clamp(30px, 5.4vw, 56px) / 1.06 var(--font-sans);
+    letter-spacing: -0.04em;
+    text-wrap: balance;
+  }
+
+  @media (max-width: 720px) {
+    .light {
+      padding: 72px 0;
+    }
+
+    .light-ground,
+    .light-ground-out {
+      border-radius: 20px;
+    }
+  }
+
+  /* ---------------------------------------------------------------- numbers and close */
+
+  .numbers .home-h2,
+  .close .home-h2 {
+    max-width: 760px;
+  }
+
+  .close {
+    border-bottom: 0;
+  }
+
+  .source {
+    border-top: 1px solid var(--border-hairline);
+    border-bottom: 0;
+  }
+
+  /* ---------------------------------------------------------------- motion */
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-copy > * {
+      animation: hero-in var(--dur-slower) var(--ease-out) both;
+    }
+
+    .hero-copy > :nth-child(2) {
+      animation-delay: 80ms;
+    }
+
+    .hero-copy > :nth-child(3) {
+      animation-delay: 160ms;
+    }
+
+    .hero-copy > :nth-child(4) {
+      animation-delay: 240ms;
+    }
+
+    @keyframes hero-in {
+      from {
+        opacity: 0;
+        transform: translateY(16px);
+      }
+    }
+
+    @supports (animation-timeline: view()) {
+      .hero-shift {
+        /* Longhands on purpose: the build's CSS minifier folds animation-timeline
+           into the animation shorthand, which browsers then reject. */
+        animation-name: hero-drift;
+        animation-timing-function: linear;
+        animation-fill-mode: both;
+        animation-timeline: scroll(root);
+        animation-range: 0 80vh;
+      }
+
+      @keyframes hero-drift {
+        to {
+          opacity: 0.2;
+          transform: translateY(-64px);
+        }
+      }
+
+      [data-rv] {
+        animation-name: rise;
+        animation-timing-function: linear;
+        animation-fill-mode: both;
+        animation-timeline: view();
+        animation-range: entry 0% entry 40%;
+      }
+
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(32px);
+        }
+      }
+
+      /* Into the light: the ground rises and fades in, then the content.
+         Out of it, the rounded panel scrolls away and its ground fades only
+         once the dark page below fills most of the view; that fade sits on
+         an inner layer, so the two animations never share a property. */
+      .light-ground {
+        animation-name: ground-in;
+        animation-timing-function: linear;
+        animation-fill-mode: both;
+        animation-timeline: view();
+        animation-range: entry 0% entry 55%;
+      }
+
+      .light-ground-out {
+        animation-name: fade-out;
+        animation-timing-function: linear;
+        animation-fill-mode: both;
+        animation-timeline: view();
+        animation-range: exit 55% exit 100%;
+      }
+
+      .light-in {
+        animation-name: rise;
+        animation-timing-function: linear;
+        animation-fill-mode: both;
+        animation-timeline: view();
+        animation-range: entry 25% entry 70%;
+      }
+
+      @keyframes ground-in {
+        from {
+          opacity: 0;
+          transform: translateY(12vh);
+        }
+      }
+
+      @keyframes fade-out {
+        to {
+          opacity: 0;
+        }
+      }
+    }
+
+    :global(.io) [data-rv],
+    :global(.io) .light-in {
+      transition:
+        opacity var(--dur-slower) var(--ease-out),
+        transform var(--dur-slower) var(--ease-out);
+    }
+
+    :global(.io) [data-rv]:not(.in) {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+
+    :global(.io) .light-ground {
+      transition:
+        opacity var(--dur-slower) var(--ease-standard),
+        transform var(--dur-slower) var(--ease-out);
+    }
+
+    :global(.io) .light:not(.lit) .light-ground {
+      opacity: 0;
+      transform: translateY(48px);
+    }
+
+    :global(.io) .light:not(.lit) .light-in {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+  }
+</style>

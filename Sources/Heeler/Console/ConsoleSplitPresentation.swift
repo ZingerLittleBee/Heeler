@@ -30,12 +30,15 @@ struct ConsoleSplitPresentation: Equatable {
             sidebarWidth = ColumnWidth(minimum: 320, ideal: 380, maximum: nil)
             return
         }
+        // The divider is user-draggable up to a fixed cap. A cap that follows the
+        // window size would make a same-aspect resize a new presentation and reset
+        // the user's sidebar visibility.
         if isLandscape {
             defaultVisibility = .all
-            sidebarWidth = ColumnWidth(minimum: 320, ideal: 380, maximum: 440)
+            sidebarWidth = ColumnWidth(minimum: 320, ideal: 380, maximum: 600)
         } else {
             defaultVisibility = .detailOnly
-            sidebarWidth = ColumnWidth(minimum: 320, ideal: 380, maximum: 400)
+            sidebarWidth = ColumnWidth(minimum: 320, ideal: 380, maximum: 600)
         }
     }
 }

@@ -15,7 +15,7 @@ export const ipadScreens = [
   },
   {
     image: consoleShot,
-    alt: 'Agent sidebar beside a Claude Code conversation and the Composer on iPad',
+    alt: 'Agent sidebar beside a Claude Code conversation waiting on a command approval on iPad',
     title: 'Every Agent. One Console.',
     caption: 'Keep the Agent list visible alongside the selected conversation.',
   },
@@ -39,13 +39,13 @@ export const ipadScreens = [
   },
   {
     image: changesShot,
-    alt: "Changes listing a Checkout's staged, unstaged, and untracked files beside the Agent sidebar on iPad",
+    alt: "Changes listing a Checkout's modified and untracked files beside the Agent sidebar on iPad",
     title: 'See what changed',
     caption: "Everything uncommitted in the Agent's Checkout, beside your Agents.",
   },
   {
     image: diffShot,
-    alt: 'A Swift file compared side by side with its edited words highlighted on iPad',
+    alt: 'A JavaScript file compared side by side with its edited words highlighted on iPad',
     title: 'Every change, line by line',
     caption: 'Read any changed file side by side or unified.',
   },

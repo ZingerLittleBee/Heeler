@@ -50,7 +50,7 @@ An iOS connection then uses two independent SSH handshakes:
 3. Heeler performs a second SSH handshake with the Mac through that
    forwarded byte stream.
 4. After authenticating to the Mac, the app reaches the herdr Unix socket
-   through SSH exec channels and opens Attach through an SSH PTY.
+   through `direct-streamlocal` channels and opens Attach through an SSH PTY.
 
 The VPS terminates the first SSH connection and the Mac-to-VPS tunnel, but the
 payload passed between them is another SSH connection. The VPS can observe
@@ -441,20 +441,19 @@ no user logs in, this user-level tunnel is not yet running.
 
 ## 9. Configure Heeler
 
-Create or edit the Host:
+In **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the tunnel and Jump Host fields, tap **Save** on the route page, and fill in the remaining Host fields:
 
-```text
-Host address: 127.0.0.1
-Host port: 2222
-Host user: MAC_USER
+| Field | Value |
+|---|---|
+| User | `MAC_USER` |
+| Address (in Route) | `127.0.0.1` |
+| Port (in Route) | `2222` |
+| Jump Host address (in Route) | `VPS_PUBLIC_IP` |
+| Jump Host port (in Route) | `22` |
+| Jump Host user (in Route) | `herdr-jump` |
+| Authentication | `Device Key` |
 
-Jump Host address: VPS_PUBLIC_IP
-Jump Host port: 22
-Jump Host user: herdr-jump
-Authentication: Device Key
-```
-
-Confirm both host keys independently:
+Tap **Save** on **Add Host** to start the **Preflight** checks, and confirm both host keys independently:
 
 - the public VPS endpoint;
 - the Mac host key presented through `127.0.0.1:2222`.
@@ -564,24 +563,23 @@ process once and prove the new LaunchAgent reconnects.
 
 ### Phase 3: Move Heeler
 
-Edit only the Jump Host fields:
+Open the Host in Heeler, tap **Edit**, open the route under **Routes** (or add a new route), and update only the Jump Host fields:
 
-```text
-Jump Host address: NEW_VPS_PUBLIC_IP
-Jump Host port: NEW_VPS_SSH_PORT
-Jump Host user: new restricted Jump account
-```
+| Field | Value |
+|---|---|
+| Jump Host address (in Route) | `NEW_VPS_PUBLIC_IP` |
+| Jump Host port (in Route) | `NEW_VPS_SSH_PORT` |
+| Jump Host user (in Route) | new restricted Jump account |
 
-The Host remains:
+The route target and Host user remain:
 
-```text
-Address: 127.0.0.1
-Port: 2222
-User: MAC_USER
-```
+| Field | Value |
+|---|---|
+| Address (in Route) | `127.0.0.1` |
+| Port (in Route) | `2222` |
+| User | `MAC_USER` |
 
-Confirm the new VPS fingerprint when prompted, then complete app preflight and
-open an Agent through Attach. This is the functional cutover point.
+Tap **Save** on the route (if adding a new route) and tap **Save** on **Edit Host**. Confirm the new VPS fingerprint when prompted, then complete the **Preflight** checks and open an Agent through Attach. This is the functional cutover point.
 
 ### Phase 4: Retire the Old VPS
 

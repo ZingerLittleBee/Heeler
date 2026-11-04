@@ -74,9 +74,19 @@ branch="$(git rev-parse --abbrev-ref HEAD)"
 [ "$branch" = "$DEFAULT_BRANCH" ] || die "on branch '$branch', expected '$DEFAULT_BRANCH'"
 
 git rev-parse --verify --quiet "refs/heads/$DEFAULT_BRANCH" >/dev/null || die "no $DEFAULT_BRANCH branch"
-git fetch --quiet --tags "$REMOTE"
+# Keep git's output for the message: a tag that a re-cut replaced on the
+# remote is refused here as "would clobber existing tag".
+fetch_output="$(git fetch --tags "$REMOTE" 2>&1)" \
+    || die "git fetch --tags $REMOTE failed:
+$fetch_output
+If it would clobber a tag, a re-cut replaced that tag on $REMOTE: git fetch --tags --force $REMOTE"
 [ "$(git rev-parse HEAD)" = "$(git rev-parse "$REMOTE/$DEFAULT_BRANCH")" ] \
     || die "$DEFAULT_BRANCH differs from $REMOTE/$DEFAULT_BRANCH; pull or push first"
+
+# The release bundles plugin/'s version and sends Hosts with an older plugin
+# to the plugin branch, so that branch must already have it.
+plugin_version="$(scripts/check-plugin-published.sh)" \
+    || die "the plugin branch lacks the plugin this release bundles (docs/guides/releasing.md, \"Publishing the herdr plugin\")"
 
 grep -q '^## \[Unreleased\]' "$CHANGELOG" || die "$CHANGELOG has no '## [Unreleased]' heading"
 
@@ -86,15 +96,6 @@ notes="$(awk '
     inside && /^## / { exit }
     inside { print }
 ' "$CHANGELOG")"
-if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
-    # After a void tag the notes sit in that version's section instead.
-    newest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)"
-    if [ -n "$newest_tag" ] && ! gh release view "$newest_tag" >/dev/null 2>&1; then
-        die "[Unreleased] is empty and $newest_tag has no GitHub release. If its build never reached TestFlight, reopen its notes first: docs/guides/releasing.md, \"Cutting the next version after a void tag\"."
-    fi
-    die "[Unreleased] is empty — there is nothing to release. Entries belong there as they merge."
-fi
-
 # Drop the blank line that follows the heading; $( ) already ate the trailing ones.
 notes="$(printf '%s\n' "$notes" | awk 'NF == 0 && !seen { next } { seen = 1; print }')"
 
@@ -102,7 +103,7 @@ notes="$(printf '%s\n' "$notes" | awk 'NF == 0 && !seen { next } { seen = 1; pri
 
 # The newest released heading and the newest tag must agree: if they disagree
 # one of them is lying, and guessing which is how a release gets cut from the
-# wrong base.
+# wrong base. A re-cut removes both before it publishes again.
 released_heading="$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' "$CHANGELOG" | tr -d '#[] ' || true)"
 latest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)"
 
@@ -110,8 +111,34 @@ if [ -n "$released_heading" ] || [ -n "$latest_tag" ]; then
     [ -n "$released_heading" ] || die "git has tag $latest_tag but $CHANGELOG has no released section"
     [ -n "$latest_tag" ] || die "$CHANGELOG has [$released_heading] but there is no matching git tag"
     [ "v$released_heading" = "$latest_tag" ] \
-        || die "$CHANGELOG's newest release [$released_heading] disagrees with the newest tag $latest_tag"
+        || die "$CHANGELOG's newest release [$released_heading] disagrees with the newest tag $latest_tag. In the middle of a re-cut that is expected until both the heading and the tag are gone: docs/guides/releasing.md, \"Re-cutting an unpublished version\"."
 fi
+
+# A tag without a published GitHub release belongs to a release that is still
+# running, failed before publishing anything, or uploaded a build whose
+# release step did not finish. Settle it first: a version that published
+# nothing keeps its number instead of being skipped by the next cut. Ask the
+# repository the tags go to rather than whichever one gh would pick, since gh
+# answers "release not found" for a wrong repository too.
+if [ -n "$latest_tag" ]; then
+    release_repo="${GH_REPO:-$(git remote get-url "$REMOTE")}"
+    if ! release_lookup="$(gh release view "$latest_tag" --repo "$release_repo" --json isDraft --jq .isDraft 2>&1)"; then
+        case "$release_lookup" in
+            *"release not found"*)
+                die "$latest_tag has no GitHub release in $release_repo. If its release run is still going, wait for it. If it published nothing, re-run its failed jobs or re-cut $latest_tag; if its build is in TestFlight, even still processing, create the release by hand or re-run its failed release job: docs/guides/releasing.md, \"Failure and recovery\"." ;;
+            *)
+                die "could not look up the GitHub release for $latest_tag in $release_repo: $release_lookup" ;;
+        esac
+    fi
+    [ "$release_lookup" = false ] \
+        || die "$latest_tag's GitHub release is still a draft; publish it first: gh release edit $latest_tag --repo $release_repo --draft=false"
+fi
+
+# Checked last: right after a failed release, or in a re-cut that deleted the
+# tag before reopening the notes, [Unreleased] is empty, and the tag checks
+# above say why.
+[ -n "$(printf '%s' "$notes" | tr -d '[:space:]')" ] \
+    || die "[Unreleased] is empty — there is nothing to release. Entries belong there as they merge."
 
 if [ -n "$VERSION" ]; then
     version="${VERSION#v}"
@@ -162,6 +189,7 @@ row "$CHANGELOG" "[Unreleased] -> [$version] - $today, new empty [Unreleased]"
 row "$PROJECT_YML" "MARKETING_VERSION $current_marketing -> $version ($marketing_lines targets, in lockstep)"
 row "$PROJECT_YML" "CURRENT_PROJECT_VERSION $current_build -> $next_build (App Store Connect rejects reused build numbers)"
 row "$XCODEPROJ" 'regenerate via `xcodegen generate`'
+row "plugin" "$plugin_version, already on $REMOTE/plugin"
 echo
 row "commit" "chore: release $tag"
 row "tag" "$tag (annotated)"

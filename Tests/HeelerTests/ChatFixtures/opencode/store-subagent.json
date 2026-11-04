@@ -1,0 +1,146 @@
+{
+ "session": {
+  "id": "ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9",
+  "project_id": "157e838f6e3ccb56d9b3d6416c0be3039c60111d",
+  "workspace_id": null,
+  "parent_id": null,
+  "fork_session_id": null,
+  "fork_boundary": null,
+  "slug": "brave-harbor",
+  "directory": "/Users/developer/work/heeler-tmp-chat/opencode-a/project",
+  "path": "",
+  "title": "Fresh",
+  "version": "2.0.32",
+  "share_url": null,
+  "summary_additions": null,
+  "summary_deletions": null,
+  "summary_files": null,
+  "summary_diffs": null,
+  "metadata": null,
+  "cost": 0.0,
+  "tokens_input": 9988,
+  "tokens_output": 11,
+  "tokens_reasoning": 0,
+  "tokens_cache_read": 0,
+  "tokens_cache_write": 0,
+  "revert": null,
+  "permission": null,
+  "agent": "build",
+  "model": "{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"}",
+  "time_created": 1800000000000,
+  "time_updated": 1800000956574,
+  "time_compacting": null,
+  "time_archived": null,
+  "time_suspended": null,
+  "resume_attempts": 0,
+  "time_idle": 1800000956576,
+  "time_viewed": null,
+  "idle_outcome": "succeeded"
+ },
+ "event_seq": 30,
+ "rows": [
+  {
+   "id": "msg_0a1b2c3d4e10YF6snQ3Wcsuhip",
+   "type": "user",
+   "seq": 16,
+   "time_created": 1800000950292,
+   "time_updated": 1800000950292,
+   "data": "{\"time\":{\"created\":1800000950292},\"text\":\"Use the subagent tool with the general agent to answer: what is 2+2? Then reply with just its answer.\",\"files\":[],\"agents\":[]}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e20DkC4QCbpt2HZQx",
+   "type": "assistant",
+   "seq": 17,
+   "time_created": 1800000950300,
+   "time_updated": 1800000955190,
+   "data": "{\"time\":{\"created\":1800000950300,\"streamed\":1800000953062,\"completed\":1800000955189},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"tool\",\"id\":\"call_FFJQn6skBI2mS3nnkgg72OOH\",\"name\":\"subagent\",\"executed\":false,\"state\":{\"status\":\"completed\",\"input\":{\"agent\":\"general\",\"description\":\"Calculate two plus two\",\"prompt\":\"What is 2+2? Reply with just the answer.\"},\"content\":[{\"type\":\"text\",\"text\":\"<subagent sessionID=\\\"ses_0a1b2c3d4e10fn1YIRc07x6WEB\\\" state=\\\"completed\\\">\\n4\\n</subagent>\"}],\"metadata\":{\"sessionID\":\"ses_0a1b2c3d4e10fn1YIRc07x6WEB\",\"status\":\"completed\",\"truncated\":false}},\"time\":{\"created\":1800000952044,\"ran\":1800000953038,\"completed\":1800000955179}}],\"finish\":\"tool-calls\",\"cost\":0,\"tokens\":{\"input\":9504,\"output\":41,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e60Qnw2YPPIcreHrh",
+   "type": "assistant",
+   "seq": 24,
+   "time_created": 1800000955200,
+   "time_updated": 1800000956575,
+   "data": "{\"time\":{\"created\":1800000955200,\"streamed\":1800000956560,\"completed\":1800000956574},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"text\",\"text\":\"4\",\"state\":{\"phase\":\"final_answer\"}}],\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":248,\"output\":5,\"reasoning\":0,\"cache\":{\"read\":9344,\"write\":0}}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e70dR4eCMZTyjkGwG",
+   "type": "idle",
+   "seq": 29,
+   "time_created": 1800000956576,
+   "time_updated": 1800000956577,
+   "data": "{\"time\":{\"created\":1800000956576},\"outcome\":\"succeeded\"}"
+  }
+ ],
+ "inbox": [],
+ "otherSessions": [
+  {
+   "session": {
+    "id": "ses_0a1b2c3d4e10fn1YIRc07x6WEB",
+    "project_id": "157e838f6e3ccb56d9b3d6416c0be3039c60111d",
+    "workspace_id": null,
+    "parent_id": "ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9",
+    "fork_session_id": null,
+    "fork_boundary": null,
+    "slug": "cosmic-river",
+    "directory": "/Users/developer/work/heeler-tmp-chat/opencode-a/project",
+    "path": "",
+    "title": "Calculate two plus two",
+    "version": "2.0.32",
+    "share_url": null,
+    "summary_additions": null,
+    "summary_deletions": null,
+    "summary_files": null,
+    "summary_diffs": null,
+    "metadata": null,
+    "cost": 0.0,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "tokens_reasoning": 0,
+    "tokens_cache_read": 0,
+    "tokens_cache_write": 0,
+    "revert": null,
+    "permission": null,
+    "agent": "general",
+    "model": "{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"}",
+    "time_created": 1800000953078,
+    "time_updated": 1800000955175,
+    "time_compacting": null,
+    "time_archived": null,
+    "time_suspended": null,
+    "resume_attempts": 0,
+    "time_idle": 1800000955177,
+    "time_viewed": null,
+    "idle_outcome": "succeeded"
+   },
+   "event_seq": 10,
+   "rows": [
+    {
+     "id": "msg_0a1b2c3d4e30zZzeY1wBQf4t71",
+     "type": "user",
+     "seq": 4,
+     "time_created": 1800000953078,
+     "time_updated": 1800000953078,
+     "data": "{\"time\":{\"created\":1800000953078},\"text\":\"You are a subagent spawned by another session.\\nWhat is 2+2? Reply with just the answer.\"}"
+    },
+    {
+     "id": "msg_0a1b2c3d4e40jDNH63RsyeHRoe",
+     "type": "assistant",
+     "seq": 5,
+     "time_created": 1800000953085,
+     "time_updated": 1800000955176,
+     "data": "{\"time\":{\"created\":1800000953085,\"streamed\":1800000955161,\"completed\":1800000955175},\"agent\":\"general\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"text\",\"text\":\"4\",\"state\":{\"phase\":\"final_answer\"}}],\"finish\":\"stop\",\"cost\":0,\"tokens\":{\"input\":8782,\"output\":5,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}"
+    },
+    {
+     "id": "msg_0a1b2c3d4e50PcMbzZIgTi1COH",
+     "type": "idle",
+     "seq": 10,
+     "time_created": 1800000955177,
+     "time_updated": 1800000955177,
+     "data": "{\"time\":{\"created\":1800000955177},\"outcome\":\"succeeded\"}"
+    }
+   ],
+   "inbox": []
+  }
+ ]
+}

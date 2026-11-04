@@ -61,9 +61,10 @@ func isNavigationSettled(_ root: UIViewController?) -> Bool {
 /// transition, which later keyboard tests then read.
 @MainActor
 func hideTestWindowWhenSettled(_ window: UIWindow, timeout: Duration = .seconds(2)) async {
-    let deadline = ContinuousClock.now + timeout
-    while !isNavigationSettled(window.rootViewController), ContinuousClock.now < deadline {
+    var budget = PollBudget(timeout)
+    while !isNavigationSettled(window.rootViewController), budget.hasTimeLeft {
         try? await Task.sleep(for: .milliseconds(10))
+        budget.charge()
     }
     window.isHidden = true
 }

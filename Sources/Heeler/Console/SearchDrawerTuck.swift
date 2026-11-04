@@ -56,6 +56,8 @@ private struct SearchDrawerTucker: UIViewRepresentable {
         /// bar's own animation.
         private static let tuckedFields = NSHashTable<UISearchController>.weakObjects()
         private var hasTucked = false
+        /// Whether a tuck waits for the navigation transition under way.
+        private var awaitsTransition = false
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
@@ -72,6 +74,22 @@ private struct SearchDrawerTucker: UIViewRepresentable {
                 let searchController = controller.navigationItem.searchController,
                 let scrollView = Self.firstScrollView(in: controller.view)
             else { return }
+            // Never inside a navigation transition. A relaunch that restores
+            // an Agent detail first lays the list out inside that push; a
+            // scroll then leaves an offset the bar cannot settle on, and
+            // Back hangs the app: through the pop the bar collapses and
+            // restores its large title on every layout pass. The tuck waits
+            // for the transition to end, and for the list's next showing
+            // when that transition took it off screen.
+            if let coordinator = controller.transitionCoordinator {
+                guard !awaitsTransition else { return }
+                awaitsTransition = coordinator.animate(alongsideTransition: nil) {
+                    [weak self] _ in
+                    self?.awaitsTransition = false
+                    self?.setNeedsLayout()
+                }
+                return
+            }
             hasTucked = true
             guard !Self.tuckedFields.contains(searchController) else { return }
             Self.tuckedFields.add(searchController)

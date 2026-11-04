@@ -10,6 +10,9 @@ final class HostConsoleProjection {
     let session: EventsSession
 
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
+    /// Display-only metadata for a selected detail during recovery. Never
+    /// used as live inventory, and replaced even by an empty fresh snapshot.
+    private(set) var lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var status: EventsSessionStatus?
@@ -21,6 +24,10 @@ final class HostConsoleProjection {
     /// connection, mirrored from `EventsSession.currentLatency` so a
     /// measurement never outlives the connection that proved it.
     private(set) var latency: Duration?
+    private(set) var isCheckingConnection = false
+    /// The catalog route the current connection reached, mirrored from
+    /// `EventsSession.currentRouteID` exactly as `latency` is.
+    private(set) var routeID: UUID?
     private(set) var syncError: String?
     private(set) var transportGeneration: UInt64 = 0
     private(set) var sidebarRevision: UInt64 = 0
@@ -28,6 +35,18 @@ final class HostConsoleProjection {
     /// snapshot. `.connected` arrives before that request completes, so an
     /// empty projection in this window means "unknown", not "no Agents".
     private(set) var isAwaitingSnapshot = true
+    /// Until a snapshot proves what the Host runs, its Console rows may be
+    /// saved Chat entries.
+    var showsSavedChats: Bool { status != .connected || isAwaitingSnapshot }
+    /// The Transport the applied snapshot was requested on. A silent
+    /// replacement keeps the inventory, which stays presentable but is no
+    /// longer proof of the Host's state.
+    private var snapshotTransportGeneration: UInt64?
+    /// Whether input must wait: unlike `isAwaitingSnapshot`, this also covers
+    /// a connection replaced without any non-connected status.
+    var isAwaitingFreshSnapshot: Bool {
+        isAwaitingSnapshot || snapshotTransportGeneration != session.currentTransportGeneration
+    }
     /// Stable success surfaces keyed by every Agent that belonged to the
     /// exact validated worktree at dispatch.
     var removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] {
@@ -167,7 +186,7 @@ final class HostConsoleProjection {
             beginNewActivation()
             await session.retry()
         } else {
-            await session.revalidate()
+            await session.startRevalidation()
         }
     }
 
@@ -175,9 +194,19 @@ final class HostConsoleProjection {
         await session.suspend()
     }
 
+    func pauseHealthChecks() async {
+        await session.pauseHealthChecks()
+    }
+
     func retry() async {
         beginNewActivation()
         await session.retry()
+    }
+
+    /// Stops a connection attempt the user no longer wants to wait for;
+    /// the Host then reads Paused until a retry or the next foreground.
+    func cancelConnecting() async {
+        await session.cancelConnecting()
     }
 
     /// Makes the new activation visible on this projection before the
@@ -190,6 +219,7 @@ final class HostConsoleProjection {
     private func beginNewActivation() {
         status = .connecting
         latency = nil
+        routeID = nil
         invalidateSnapshot()
         publish()
     }
@@ -232,7 +262,7 @@ final class HostConsoleProjection {
     func createShellTerminal(
         _ request: ShellTerminalCreationRequest
     ) async throws -> ShellTerminalIdentity {
-        let identity = try await session.withTransport { transport in
+        let identity = try await session.withTransportOnce { transport in
             try await transport.createShellTerminal(request)
         }
         await refreshTerminalInventory()
@@ -242,7 +272,7 @@ final class HostConsoleProjection {
     func createShellWorkspace(
         _ workspace: NewWorkspaceSpec, tabLabel: String?
     ) async throws -> ShellTerminalIdentity {
-        let identity = try await session.withTransport { transport in
+        let identity = try await session.withTransportOnce { transport in
             try await transport.createShellWorkspace(workspace, tabLabel: tabLabel)
         }
         await refreshTerminalInventory()
@@ -288,6 +318,45 @@ final class HostConsoleProjection {
         }
     }
 
+    /// Chat's transcript reads (ADR 0024) and OpenCode store queries (ADR
+    /// 0025), on this connection's session. Their timeouts and refusals are
+    /// Chat's own errors, which never redial.
+    func chatHostFiles() -> ChatHostFiles {
+        let session = session
+        return ChatHostFiles(
+            status: { path in
+                try await session.withTransport { try await $0.fileStatus(atPath: path) }
+            },
+            list: { request in
+                try await session.withTransport { try await $0.listFiles(request) }
+            },
+            read: { range in
+                try await session.withTransport { try await $0.readHostFileRange(range) }
+            },
+            home: {
+                try await session.withTransport { try await $0.hostHomeDirectory() }
+            },
+            queryOpenCode: { query in
+                try await session.withTransport { try await $0.queryOpenCode(query) }
+            })
+    }
+
+    /// One Agent's current record, which Chat re-reads to notice a changed
+    /// session: no event reports one.
+    func agentInfo(paneID: String) async throws -> Agent {
+        try await session.withTransport { transport in
+            try await transport.agentInfo(AgentTarget(target: paneID))
+        }
+    }
+
+    /// The processes in the Agent's foreground job, which say how its
+    /// program was launched.
+    func processInfo(paneID: String) async throws -> PaneProcessInfo {
+        try await session.withTransport { transport in
+            try await transport.paneProcessInfo(paneID: paneID)
+        }
+    }
+
     func fileStager() -> FileStager {
         let session = session
         return { file, reporter in
@@ -301,7 +370,7 @@ final class HostConsoleProjection {
 
     @discardableResult
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
-        let agent = try await session.withTransport { transport in
+        let agent = try await session.withTransportOnce { transport in
             try await transport.startAgent(request)
         }
         scheduleResync()
@@ -312,7 +381,7 @@ final class HostConsoleProjection {
     func startAgentInNewWorktree(
         _ request: AgentLaunchRequest, worktree: WorktreeSpec
     ) async throws -> Agent {
-        let agent = try await session.withTransport { transport in
+        let agent = try await session.withTransportOnce { transport in
             try await transport.startAgentInNewWorktree(request, worktree: worktree)
         }
         scheduleResync()
@@ -323,7 +392,7 @@ final class HostConsoleProjection {
     func startAgentInNewWorkspace(
         _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
     ) async throws -> Agent {
-        let agent = try await session.withTransport { transport in
+        let agent = try await session.withTransportOnce { transport in
             try await transport.startAgentInNewWorkspace(request, workspace: workspace)
         }
         scheduleResync()
@@ -337,14 +406,14 @@ final class HostConsoleProjection {
     }
 
     func closePane(_ paneID: String) async throws {
-        try await session.withTransport { transport in
+        try await session.withTransportOnce { transport in
             try await transport.closePane(PaneTarget(paneID: paneID))
         }
         scheduleResync()
     }
 
     func closeTab(_ tabID: String) async throws {
-        try await session.withTransport { transport in
+        try await session.withTransportOnce { transport in
             try await transport.closeTab(TabTarget(tabID: tabID))
         }
         scheduleResync()
@@ -396,7 +465,7 @@ final class HostConsoleProjection {
         worktreeRemovalOperations[request.id] = WorktreeRemovalOperation(request: request)
 
         do {
-            let response = try await session.withTransport { transport in
+            let response = try await session.withTransportOnce { transport in
                 try await transport.removeWorktree(
                     request,
                     authorize: { request in
@@ -546,7 +615,7 @@ final class HostConsoleProjection {
         }
         guard agent.agent.status == .done else { throw CancellationError() }
         let epoch = snapshotEpoch
-        try await session.withTransport { transport in
+        try await session.withTransportOnce { transport in
             try Task.checkCancellation()
             try await transport.focusAgent(AgentTarget(target: paneID))
         }
@@ -564,7 +633,7 @@ final class HostConsoleProjection {
     /// continuously. Renames made by other clients therefore surface only on
     /// the next resync.
     func renameAgent(_ paneID: String, name: String?) async throws {
-        try await session.withTransport { transport in
+        try await session.withTransportOnce { transport in
             try await transport.renameAgent(AgentRenameParams(target: paneID, name: name))
         }
         scheduleResync()
@@ -575,7 +644,7 @@ final class HostConsoleProjection {
     /// post-RPC resync just makes our own rename land without waiting on the
     /// event round trip.
     func renameWorkspace(_ workspaceID: String, label: String) async throws {
-        try await session.withTransport { transport in
+        try await session.withTransportOnce { transport in
             try await transport.renameWorkspace(
                 WorkspaceRenameParams(label: label, workspaceID: workspaceID))
         }
@@ -584,7 +653,11 @@ final class HostConsoleProjection {
 
     private func handle(_ update: EventsSessionUpdate) {
         guard !hasEnded else { return }
+        isCheckingConnection = session.isCheckingConnection
         switch update {
+        case .connectionHealthChanged:
+            latency = session.currentLatency
+            publish()
         case .status(let status):
             self.status = status
             // A latency belongs to the connection that measured it, and the
@@ -595,6 +668,7 @@ final class HostConsoleProjection {
             // a new connection proved before announcing itself is already
             // here when its `.connected` lands.
             latency = session.currentLatency
+            routeID = session.currentRouteID
             switch status {
             case .failed(let failure):
                 standingFailure = failure
@@ -665,6 +739,7 @@ final class HostConsoleProjection {
         let epochBeforeSnapshot = snapshotEpoch
         let statusRevisionBeforeSnapshot = statusChangeRevision
         let paneRevisionBeforeSnapshot = paneChangeRevision
+        let transportGenerationBeforeSnapshot = session.currentTransportGeneration
         do {
             let snapshot = try await session.withTransport { transport in
                 try await transport.sessionSnapshot()
@@ -677,6 +752,9 @@ final class HostConsoleProjection {
             resyncRetryTask?.cancel()
             resyncRetryTask = nil
             syncError = nil
+            // A replacement during this request reschedules through its
+            // `.connected`, so the older generation here cannot reopen input.
+            snapshotTransportGeneration = transportGenerationBeforeSnapshot
             apply(
                 snapshot,
                 preservingStatusChangesAfter: statusRevisionBeforeSnapshot,
@@ -968,6 +1046,7 @@ final class HostConsoleProjection {
 
     private func publish() {
         guard !hasEnded else { return }
+        if !isAwaitingSnapshot { lastKnownAgentsByPane = agentsByPane }
         onChange()
     }
 

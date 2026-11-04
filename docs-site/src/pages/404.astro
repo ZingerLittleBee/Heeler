@@ -1,0 +1,47 @@
+---
+import { House } from 'lucide-react';
+import { Docs } from '@/components/docs';
+import Layout from '@/components/layout.astro';
+import { serializedPageTrees } from '@/lib/source.ts';
+---
+
+<Layout title="Page not found" description="This page does not exist on Heeler Docs." noindex>
+  <script is:inline>
+    if (location.pathname === '/zh' || location.pathname.startsWith('/zh/')) {
+      document.documentElement.lang = 'zh-CN';
+      document.title = '未找到页面 | Heeler 文档';
+    }
+  </script>
+  <Docs
+    trees={serializedPageTrees}
+    pathname={Astro.url.pathname}
+    params={{}}
+    client:load
+    transition:persist="docs-shell"
+  >
+    <!-- Fumadocs' DefaultNotFound, with the page title as the h1 and links to both homes. -->
+    <main class="flex flex-1 flex-col items-center justify-center gap-4 px-8 py-16 text-center">
+      <p aria-hidden="true" class="text-6xl font-bold text-fd-muted-foreground">404</p>
+      <h1 class="text-2xl font-semibold">Page not found</h1>
+      <p class="max-w-md text-fd-muted-foreground">
+        There is no guide at this address. Search the guides or pick one from the sidebar.
+      </p>
+      <div class="mt-4 flex flex-wrap items-center justify-center gap-3">
+        <a
+          href="/"
+          class="inline-flex items-center justify-center gap-1.5 rounded-md bg-fd-primary px-3 py-2 text-sm font-medium text-fd-primary-foreground transition-colors duration-100 hover:bg-fd-primary/90"
+        >
+          <House className="size-4" aria-hidden="true" />
+          Back to home
+        </a>
+        <a
+          href="/zh"
+          lang="zh-CN"
+          class="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium text-fd-muted-foreground transition-colors duration-100 hover:bg-fd-accent hover:text-fd-accent-foreground"
+        >
+          中文首页
+        </a>
+      </div>
+    </main>
+  </Docs>
+</Layout>

@@ -1,0 +1,49 @@
+{
+  "name": "heeler-docs",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "User guides for Heeler (docs.heeler.bybee.dev), built with Fumadocs on Astro and deployed to Cloudflare Workers",
+  "type": "module",
+  "packageManager": "pnpm@11.11.0",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "test": "node --test src/lib/*.test.ts",
+    "check:links": "node scripts/check-links.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.3.2",
+    "@astrojs/mdx": "^8.0.3",
+    "@astrojs/react": "^7.0.1",
+    "@astrojs/sitemap": "3.7.4",
+    "@fumadocs/base-ui": "^16.17.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "astro": "^7.3.8",
+    "fumadocs-core": "^16.17.1",
+    "lucide-react": "^1.55.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "remark-gfm": "^4.0.1",
+    "remark-mdx": "^3.1.1",
+    "remark-parse": "^11.0.0",
+    "tailwindcss": "^4.3.3",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@types/hast": "^3.0.5",
+    "@types/mdast": "^4.0.4",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.149.0"
+  }
+}

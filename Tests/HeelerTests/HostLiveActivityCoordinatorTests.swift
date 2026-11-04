@@ -164,10 +164,11 @@ struct HostLiveActivityCoordinatorTests {
         _ comment: Comment, timeout: Duration = .seconds(2),
         condition: () async throws -> Bool
     ) async throws {
-        let deadline = ContinuousClock.now + timeout
-        while ContinuousClock.now < deadline {
+        var budget = PollBudget(timeout)
+        while budget.hasTimeLeft {
             if try await condition() { break }
             try await Task.sleep(for: .milliseconds(5))
+            budget.charge()
         }
         let satisfied = try await condition()
         if !satisfied { printTrace() }
@@ -788,6 +789,241 @@ struct HostLiveActivityCoordinatorTests {
                 let pins = try await filePinnedPaneIDs()
                 return token == "bb" && pins == ["w:p-work"]
             }
+        }
+    }
+
+    // MARK: Removed Hosts (#414)
+
+    @Test func forgettingAHostEndsItsActivityAndWritesNothingAfterward() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            // A duplicate of the Host (#413): its own id, opt-in, and key.
+            let sibling = Host.fixture(name: "mbp copy", address: "mbp.local", username: "z")
+            try NotificationKeyStore(secrets: secrets).save(
+                NotificationKeyRecord(
+                    hostID: sibling.id, hostName: "mbp copy",
+                    key: NotificationKeyStore.generateKey()))
+            world.knownHostIDs.insert(sibling.id)
+            world.statuses[sibling.id] = .connected
+            // No transport for the sibling, so the counts below are the
+            // removed Host's alone.
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.setEnabled(true, for: sibling.id)
+            coordinator.start()
+            let agents = [
+                agent(observedPaneID, .working),
+                agent("w:p-copy", .working, hostID: sibling.id),
+            ]
+            coordinator.agentsDidChange(agents)
+            try await waitUntil("both Hosts should start an activity") {
+                controller.requestedHandles.count == 2
+            }
+            let activityID = try #require(
+                controller.requestedHandles.first { $0.hostID == host.id }?.id)
+            controller.emitToken(id: activityID, Data([0xde, 0xad]))
+            try await waitUntil("the push token should land on the Host") {
+                try await liveActivityToken() == "dead"
+            }
+            let reads = await transport.notificationRegistrationReads
+            let writes = await transport.replacedNotificationRegistrations.count
+
+            // HostStore.remove has already dropped it from the catalog.
+            world.knownHostIDs.remove(host.id)
+            coordinator.forgetHost(host.id)
+
+            #expect(controller.ended.map(\.id) == [activityID])
+            #expect(controller.ended.first?.immediate == true)
+            #expect(!coordinator.isEnabled(for: host.id))
+            #expect(!LiveActivityPreferences(defaults: defaults).isEnabled(for: host.id))
+            #expect(coordinator.reconcileNotes[host.id] == nil)
+            #expect(coordinator.isEnabled(for: sibling.id))
+
+            // The Console still lists the removed Host's Agents until it
+            // drops the projection; with its opt-in and session gone, nothing
+            // may bring the activity back. A Host that leaves the catalog
+            // without forgetHost is pinned separately below.
+            coordinator.agentsDidChange(agents)
+            coordinator.connectionsDidChange()
+            coordinator.reconcile()
+            coordinator.pinsDidChange()
+            coordinator.layoutsDidChange()
+            try await waitPastSettle()
+
+            #expect(controller.requestedHandles.count == 2)
+            #expect(controller.ended.map(\.id) == [activityID])
+            #expect(await transport.notificationRegistrationReads == reads)
+            #expect(await transport.replacedNotificationRegistrations.count == writes)
+            #expect(controller.currentActivities().map(\.hostID) == [sibling.id])
+        }
+    }
+
+    @Test func aDirtyClearRetriesOnlyWhileItsHostIsInTheCatalog() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+            controller.emitToken(id: activityID, Data([0xde, 0xad]))
+            try await waitUntil("the push token should land on the Host") {
+                try await liveActivityToken() == "dead"
+            }
+
+            await transport.setNotificationRegistrationWriteFailure(.writeFailed(detail: "offline"))
+            coordinator.agentsDidChange([])
+            @MainActor func failedWrites() -> Int {
+                world.trace.filter { $0.hasSuffix("writer completed success=false pending=true dirty=true") }
+                    .count
+            }
+            try await waitUntil("the clear should fail and stay dirty") { failedWrites() == 1 }
+
+            // Still in the catalog: a foreground return retries it.
+            coordinator.reconcile()
+            try await waitUntil("a known Host's dirty clear should retry") { failedWrites() == 2 }
+
+            // Out of the catalog: the clear has nothing to write through,
+            // neither on reconnect alone nor on a foreground return.
+            world.knownHostIDs = []
+            let reads = await transport.notificationRegistrationReads
+            coordinator.connectionsDidChange()
+            try await waitPastSettle()
+            #expect(await transport.notificationRegistrationReads == reads)
+            #expect(failedWrites() == 2)
+
+            coordinator.reconcile()
+            coordinator.connectionsDidChange()
+            coordinator.reconcile()
+            try await waitPastSettle()
+            #expect(await transport.notificationRegistrationReads == reads)
+            #expect(failedWrites() == 2)
+        }
+    }
+
+    @Test func aHostOutsideTheCatalogWritesNothingWhileItsActivityIsLive() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            let agents = [agent(observedPaneID, .working)]
+            coordinator.agentsDidChange(agents)
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+            controller.emitToken(id: activityID, Data([0xde, 0xad]))
+            try await waitUntil("the push token should land on the Host") {
+                try await liveActivityToken() == "dead"
+            }
+            let reads = await transport.notificationRegistrationReads
+            let writes = await transport.replacedNotificationRegistrations.count
+            let updates = controller.updates.count
+
+            // No forgetHost: an unreadable catalog also reads as no Hosts.
+            // The Host stays opted in with a live session, so only the
+            // catalog checks keep its Agents, pins, and layout from writing.
+            world.knownHostIDs = []
+            coordinator.agentsDidChange(agents + [agent("w:p-new", .blocked)])
+            coordinator.pinsDidChange()
+            coordinator.layoutsDidChange()
+            coordinator.connectionsDidChange()
+            try await waitPastSettle()
+
+            #expect(controller.requestedHandles.count == 1)
+            #expect(controller.updates.count == updates)
+            #expect(controller.ended.isEmpty)
+            #expect(await transport.notificationRegistrationReads == reads)
+            #expect(await transport.replacedNotificationRegistrations.count == writes)
+
+            // A foreground return ends the activity without a clear it has
+            // no Console projection to write through.
+            coordinator.reconcile()
+            try await waitPastSettle()
+            #expect(controller.ended.map(\.id) == [activityID])
+            #expect(controller.requestedHandles.count == 1)
+            #expect(await transport.notificationRegistrationReads == reads)
+            #expect(await transport.replacedNotificationRegistrations.count == writes)
+            #expect(coordinator.isEnabled(for: host.id))
+        }
+    }
+
+    @Test func aWriteInFlightWhenItsHostLeavesTheCatalogLeavesNoPipe() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+            // The held write fails once released, which would leave a dirty
+            // pipe behind.
+            await transport.setNotificationRegistrationWriteFailure(.writeFailed(detail: "offline"))
+            let gate = CancellablePhaseGate()
+            await transport.holdNotificationRegistrationWrites(on: gate)
+            controller.emitToken(id: activityID, Data([0xde, 0xad]))
+            try await waitUntil("the token write should reach the barrier") {
+                await transport.notificationRegistrationWriteIsBlocked
+            }
+
+            // No forgetHost and no reconcile, so the writer is not cancelled
+            // and finishes on its own.
+            world.knownHostIDs = []
+            await gate.release()
+            try await waitUntil("the released write should fail") {
+                world.trace.contains { $0.contains("writer error category=writeFailed") }
+            }
+            try await waitPastSettle()
+            #expect(!world.trace.contains { $0.contains("writer completed") })
+
+            // The catalog comes back: no dirty pipe is left for a reconnect
+            // to retry.
+            let reads = await transport.notificationRegistrationReads
+            world.knownHostIDs = [host.id]
+            coordinator.connectionsDidChange()
+            try await waitPastSettle()
+            #expect(await transport.notificationRegistrationReads == reads)
+            #expect(!world.trace.contains { $0.contains("writer completed") })
+        }
+    }
+
+    @Test func aWriteInFlightWhenItsHostIsForgottenLeavesNoPipe() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+            let writes = await transport.replacedNotificationRegistrations.count
+            // forgetHost cancels the held write; were it to finish anyway, it
+            // would fail and leave a dirty pipe. The catalog check a writer
+            // that is not cancelled reaches is pinned by the case above.
+            await transport.setNotificationRegistrationWriteFailure(.writeFailed(detail: "offline"))
+            let gate = CancellablePhaseGate()
+            await transport.holdNotificationRegistrationWrites(on: gate)
+            controller.emitToken(id: activityID, Data([0xde, 0xad]))
+            try await waitUntil("the token write should reach the barrier") {
+                await transport.notificationRegistrationWriteIsBlocked
+            }
+
+            world.knownHostIDs.remove(host.id)
+            coordinator.forgetHost(host.id)
+            await gate.release()
+            try await waitUntil("the held write should finish") {
+                await !transport.notificationRegistrationWriteIsBlocked
+            }
+            try await waitPastSettle()
+            let reads = await transport.notificationRegistrationReads
+
+            coordinator.connectionsDidChange()
+            coordinator.reconcile()
+            try await waitPastSettle()
+            #expect(await transport.notificationRegistrationReads == reads)
+            #expect(await transport.replacedNotificationRegistrations.count == writes)
+            #expect(!world.trace.contains { $0.contains("writer completed") })
         }
     }
 

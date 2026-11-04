@@ -155,7 +155,7 @@ struct EventsSessionLatencyTests {
         // A revalidate ping goes out on the live connection and is held there.
         let parked = ScriptedTransportCallGate()
         await first.gateNextPing(using: parked)
-        let revalidation = Task { await session.revalidate() }
+        let revalidation = Task { await session.startRevalidation()?.value }
         try await waitUntil("the revalidate ping should be in flight") {
             await parked.entryCount == 1
         }

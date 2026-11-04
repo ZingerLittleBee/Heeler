@@ -8,18 +8,42 @@ struct TerminalAgentSwitcherItem: Equatable, Sendable {
     let title: String
     let status: AgentStatus
     let isPinned: Bool
+    /// The program name after the title when another chip reads the same;
+    /// see `AgentTitleQualifier`.
+    var qualifier: String? = nil
 }
 
 extension TerminalAgentSwitcherItem {
     /// Maps a Console row through the same pin store the list uses, so a pin
     /// made on either surface shows up on the other.
     @MainActor
-    init(agent: ConsoleAgent, pins: PinnedAgentsStore, layout: AgentRowLayout = .heelerDefault) {
+    init(
+        agent: ConsoleAgent, pins: PinnedAgentsStore, layout: AgentRowLayout = .heelerDefault,
+        qualifier: String? = nil
+    ) {
         self.init(
             id: agent.id,
             title: AgentCardPresentation(agent: agent, layout: layout).switcherTitle,
             status: agent.agent.status,
-            isPinned: pins.isPinned(hostID: agent.hostID, paneID: agent.agent.paneID))
+            isPinned: pins.isPinned(hostID: agent.hostID, paneID: agent.agent.paneID),
+            qualifier: qualifier)
+    }
+
+    /// The strip's chips, in the Console's order. A chip shows only Row 1,
+    /// so chips whose Row 1 reads the same carry their program's name.
+    @MainActor
+    static func items(
+        for agents: [ConsoleAgent], pins: PinnedAgentsStore,
+        layout: (Host.ID) -> AgentRowLayout
+    ) -> [TerminalAgentSwitcherItem] {
+        let qualifiers = AgentTitleQualifier.qualifiers(for: agents) { agent in
+            let card = AgentCardPresentation(agent: agent, layout: layout(agent.hostID))
+            return .init(title: card.switcherTitle, namesAgent: card.namesAgent(inFirst: 1))
+        }
+        return agents.map {
+            TerminalAgentSwitcherItem(
+                agent: $0, pins: pins, layout: layout($0.hostID), qualifier: qualifiers[$0.id])
+        }
     }
 }
 
@@ -137,6 +161,7 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
     private var items: [TerminalAgentSwitcherItem] = []
     private var selectedID: ConsoleAgent.ID?
     private var scrollsToSelectionOnLayout = false
+    private var pendingUpdate: (items: [TerminalAgentSwitcherItem], selectedID: ConsoleAgent.ID?)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -146,6 +171,28 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is unavailable")
+    }
+
+    /// Takes SwiftUI's latest items from `updateUIView`, which runs inside
+    /// SwiftUI's own graph update. A reorder slides by laying out inside
+    /// `UIView.animate`; that layout can reach the hosting view above, which
+    /// then renders the same graph from inside its update, and AttributeGraph
+    /// spins on the cycle forever (the app hangs at 100% CPU). So the latest
+    /// items apply on the next main-queue turn instead, outside the update.
+    /// The first items apply at once, so the strip never draws empty.
+    func scheduleUpdate(items: [TerminalAgentSwitcherItem], selectedID: ConsoleAgent.ID?) {
+        guard !chips.isEmpty || pendingUpdate != nil else {
+            update(items: items, selectedID: selectedID)
+            return
+        }
+        let isScheduled = pendingUpdate != nil
+        pendingUpdate = (items, selectedID)
+        guard !isScheduled else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let pending = self.pendingUpdate else { return }
+            self.pendingUpdate = nil
+            self.update(items: pending.items, selectedID: pending.selectedID)
+        }
     }
 
     func update(items: [TerminalAgentSwitcherItem], selectedID: ConsoleAgent.ID?) {
@@ -186,6 +233,14 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
                 chip.apply(item, selected: item.id == selectedID)
             }
             self.syncArrangedSubviews(ordered, removing: stale)
+            // A reorder moves chips inside a row whose width stays the same,
+            // so nothing lays the strip out again on its own, and the open
+            // Agent's chip can slide off screen: an Agent restarted in its
+            // pane arrives last, then moves to its sorted place. Inside the
+            // slide this pass scrolls along with it.
+            if layoutChanged, self.scrollsToSelectionOnLayout {
+                self.setNeedsLayout()
+            }
         }
 
         if shouldAnimate {
@@ -414,11 +469,15 @@ final class TerminalAgentChip: UIControl {
     static let spacing: CGFloat = 6
     private static let height: CGFloat = 28
     private static let maximumWidth: CGFloat = 148
+    private static let qualifierSpacing: CGFloat = 4
     private static let dotSize: CGFloat = 8
     private static let pulseKey = "herdr.agentChip.pulse"
 
     let id: ConsoleAgent.ID
     var title: String? { label.text }
+    /// The program name shown after the title, nil when the title stands
+    /// alone.
+    var qualifier: String? { qualifierLabel.isHidden ? nil : qualifierText }
     /// Whether the Working dot is animating. Reads the layer, so it also
     /// answers "did leaving the window strip the animation?".
     var isPulsing: Bool { dot.layer.animation(forKey: Self.pulseKey) != nil }
@@ -428,6 +487,9 @@ final class TerminalAgentChip: UIControl {
 
     private let dot = UIView()
     private let label = UILabel()
+    private let qualifierLabel = UILabel()
+    private var qualifierText: String?
+    private var widthLimit: NSLayoutConstraint?
     private let pinView = UIImageView()
     private var isWorking = false
 
@@ -458,6 +520,9 @@ final class TerminalAgentChip: UIControl {
         isSelected = selected
         label.text = item.title
         label.textColor = selected ? .label : .secondaryLabel
+        qualifierText = item.qualifier
+        qualifierLabel.text = item.qualifier.map { "· \($0)" }
+        qualifierLabel.textColor = label.textColor
         // UIStackView balances arranged-subview hidden flips made inside
         // animation blocks with an internal counter; assigning the value the
         // view already has unbalances it, after which the opposite
@@ -466,14 +531,22 @@ final class TerminalAgentChip: UIControl {
         if pinView.isHidden != !item.isPinned {
             pinView.isHidden = !item.isPinned
         }
+        if qualifierLabel.isHidden != (item.qualifier == nil) {
+            qualifierLabel.isHidden = item.qualifier == nil
+        }
+        // The program name adds to the chip rather than taking from the
+        // title, which keeps the room an unqualified chip gives it.
+        widthLimit?.constant = Self.maximumWidth
+            + (item.qualifier == nil
+                ? 0 : qualifierLabel.intrinsicContentSize.width + Self.qualifierSpacing)
         dot.backgroundColor = item.status.inkUIColor
         backgroundColor = selected ? .tertiarySystemBackground : .clear
         isWorking = item.status == .working
         updatePulse()
 
-        accessibilityLabel = item.title
-        let statusValue = item.status.rawValue.capitalized
-        accessibilityValue = item.isPinned ? "Pinned, \(statusValue)" : statusValue
+        accessibilityLabel = item.qualifier.map { "\(item.title), \($0)" } ?? item.title
+        let value = [item.isPinned ? "Pinned" : nil, item.status.displayTitle].compactMap { $0 }
+        accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
         accessibilityTraits = selected ? [.button, .selected] : .button
         accessibilityHint = selected ? nil : "Switches to that Agent"
     }
@@ -492,6 +565,19 @@ final class TerminalAgentChip: UIControl {
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
+        // The title truncates first: the program name is what tells two
+        // same-titled chips apart.
+        qualifierLabel.font = label.font
+        qualifierLabel.isHidden = true
+        qualifierLabel.setContentHuggingPriority(.required, for: .horizontal)
+        qualifierLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // Nested so the name sits a word space from the title, closer than
+        // the dot and pin glyph sit.
+        let titleRow = UIStackView(arrangedSubviews: [label, qualifierLabel])
+        titleRow.axis = .horizontal
+        titleRow.alignment = .firstBaseline
+        titleRow.spacing = Self.qualifierSpacing
+
         pinView.translatesAutoresizingMaskIntoConstraints = false
         pinView.image = UIImage(systemName: "pin.fill")
         pinView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
@@ -501,7 +587,7 @@ final class TerminalAgentChip: UIControl {
         pinView.setContentHuggingPriority(.required, for: .horizontal)
         pinView.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        let content = UIStackView(arrangedSubviews: [dot, label, pinView])
+        let content = UIStackView(arrangedSubviews: [dot, titleRow, pinView])
         content.translatesAutoresizingMaskIntoConstraints = false
         content.axis = .horizontal
         content.alignment = .center
@@ -511,6 +597,7 @@ final class TerminalAgentChip: UIControl {
 
         let width = widthAnchor.constraint(lessThanOrEqualToConstant: Self.maximumWidth)
         width.priority = .required
+        widthLimit = width
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Self.height),
             width,
@@ -680,7 +767,7 @@ struct TerminalAgentSwitcherRow: View {
         func updateUIView(_ bar: TerminalAgentSwitcherBar, context _: Context) {
             bar.onSelect = switcher.onSelect
             bar.onTogglePin = switcher.onTogglePin
-            bar.update(items: switcher.items, selectedID: switcher.selectedID)
+            bar.scheduleUpdate(items: switcher.items, selectedID: switcher.selectedID)
         }
     }
 }

@@ -59,8 +59,10 @@ struct TerminalFullKeyboard: View {
                 HStack(spacing: layout.keySpacing) {
                     modifierKey(.shift, title: "Shift", image: "shift", label: "Shift modifier")
                         .frame(width: layout.sideKeyWidth(characterCount: showsSymbols ? 6 : 7))
-                    ForEach(Array(showsSymbols ? ".,?!'`" : "zxcvbnm"), id: \.self) { character in
-                        characterKey(character)
+                    ForEach(
+                        Array(showsSymbols ? ".,?!'`" : "zxcvbnm"), id: \.self
+                    ) { @Sendable character in
+                        MainActorContent { characterKey(character) }
                             .frame(width: layout.characterWidth)
                     }
                     TerminalBackspaceButton(usesSymbol: true) {
@@ -115,8 +117,10 @@ struct TerminalFullKeyboard: View {
         HStack(spacing: spacing) {
             key(.escape)
             if showsFunctionKeys {
-                ForEach(Array(TerminalFunctionKey.allCases.prefix(6)), id: \.self) { function in
-                    key(.function(function))
+                ForEach(
+                    Array(TerminalFunctionKey.allCases.prefix(6)), id: \.self
+                ) { @Sendable function in
+                    MainActorContent { key(.function(function)) }
                 }
             } else {
                 key(.tab)
@@ -138,8 +142,10 @@ struct TerminalFullKeyboard: View {
         if showsFunctionKeys {
             HStack(spacing: layout.keySpacing) {
                 key(.tab)
-                ForEach(Array(TerminalFunctionKey.allCases.suffix(6)), id: \.self) { function in
-                    key(.function(function))
+                ForEach(
+                    Array(TerminalFunctionKey.allCases.suffix(6)), id: \.self
+                ) { @Sendable function in
+                    MainActorContent { key(.function(function)) }
                 }
             }
         } else {
@@ -149,8 +155,8 @@ struct TerminalFullKeyboard: View {
 
     private func characterRow(_ characters: String, layout: TerminalFullKeyboardLayout) -> some View {
         HStack(spacing: layout.keySpacing) {
-            ForEach(Array(characters), id: \.self) { character in
-                characterKey(character)
+            ForEach(Array(characters), id: \.self) { @Sendable character in
+                MainActorContent { characterKey(character) }
                     .frame(width: layout.characterWidth)
             }
         }

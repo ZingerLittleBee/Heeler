@@ -1,0 +1,52 @@
+---
+interface Props {
+  label: string;
+  lang: string;
+  /** One markup string per line, using the tk-* token classes. */
+  lines: string[];
+}
+
+const { label, lang, lines } = Astro.props;
+---
+
+<div class="code">
+  <div class="bar">
+    <span class="eyebrow">{label}</span>
+    <span class="lang">{lang}</span>
+  </div>
+  <pre set:html={lines.join('\n')}></pre>
+</div>
+
+<style>
+  .code {
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface-code);
+    min-width: 0;
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 40px;
+    padding: 0 var(--sp-4);
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .lang {
+    font: var(--type-mono-sm);
+    letter-spacing: var(--tr-mono);
+    color: var(--text-muted);
+  }
+
+  pre {
+    margin: 0;
+    padding: var(--sp-4) 18px;
+    font: var(--fw-regular) var(--fs-label) / 1.75 var(--font-mono);
+    font-variant-ligatures: none;
+    color: var(--syn-plain);
+    overflow-x: auto;
+  }
+</style>

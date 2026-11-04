@@ -31,7 +31,7 @@ struct AppActivityCoordinatorTests {
     }
 
     /// Deliberately configured away from `defaultGracePeriod`, and with an
-    /// absence that straddles the two: 30s is past the 20s default but short
+    /// absence that straddles the two: 30s is past the 15s default but short
     /// of this coordinator's own 60s. A comparison written against the static
     /// default instead of the injected value passes every other test in this
     /// suite and fails only here.
@@ -41,7 +41,7 @@ struct AppActivityCoordinatorTests {
             gracePeriod: .seconds(60),
             granter: FakeBackgroundExecutionGranter(),
             now: { clock })
-        #expect(AppActivityCoordinator.defaultGracePeriod == .seconds(20))
+        #expect(AppActivityCoordinator.defaultGracePeriod == .seconds(15))
 
         coordinator.didEnterBackground()
         clock = clock.advanced(by: .seconds(30))
@@ -164,7 +164,7 @@ struct AppActivityCoordinatorTests {
         #expect(coordinator.lastAbsenceMayHaveSuspended)
     }
 
-    @Test func systemReclaimingItsTimeSuspendsAndReturnsTheAssertion() async throws {
+    @Test func systemReclaimingItsTimeSuspendsAndReturnsTheAssertion() {
         let granter = FakeBackgroundExecutionGranter()
         let coordinator = AppActivityCoordinator(
             gracePeriod: .seconds(60), granter: granter)
@@ -172,12 +172,11 @@ struct AppActivityCoordinatorTests {
         coordinator.didEnterBackground()
         granter.expireAll()
 
-        try await waitUntil("expiration should force a suspension") {
-            coordinator.phase == .suspended
-        }
-        // Holding an expired assertion is how an app gets killed, so it is
-        // returned before the teardown rather than after it.
+        // Holding an expired assertion is how an app gets killed: UIKit
+        // wants it back before the expiration handler returns, so it is
+        // returned within the handler, before the teardown.
         #expect(granter.liveTokenCount == 0)
+        #expect(coordinator.phase == .suspended)
 
         coordinator.didBecomeActive()
         #expect(coordinator.lastAbsenceMayHaveSuspended)

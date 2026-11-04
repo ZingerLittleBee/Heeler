@@ -4,14 +4,28 @@ import HeelerSSH
 /// Applies the app-owned TOFU policy to Host Keys surfaced by the SSH
 /// transport. Authentication must not begin until this verifier returns
 /// successfully.
+///
+/// With `.host` trust, the fingerprints live under the Host's id rather
+/// than the endpoint dialled. A Host whose id holds none yet adopts what its
+/// endpoint was trusted with before Routes (ADR 0022), so upgrading never
+/// asks again for a key the user already confirmed.
 struct HeelerSSHHostKeyVerifier: Sendable {
+    /// The endpoint dialled, as the first-connect prompt shows it.
+    private let endpointHost: String
+    private let endpointPort: Int
+    /// Where the fingerprints are read and written.
     private let host: String
     private let port: Int
+    private let adoptsEndpointTrust: Bool
     private let policy: HostKeyPolicy
 
-    init(host: String, port: Int, policy: HostKeyPolicy) {
-        self.host = host
-        self.port = port
+    init(host: String, port: Int, trust: HostKeyTrust = .endpoint, policy: HostKeyPolicy) {
+        endpointHost = host
+        endpointPort = port
+        let key = trust.storageKey(host: host, port: port)
+        self.host = key.host
+        self.port = key.port
+        adoptsEndpointTrust = trust != .endpoint
         self.policy = policy
     }
 
@@ -22,6 +36,9 @@ struct HeelerSSHHostKeyVerifier: Sendable {
     }
 
     private func failure(publicKeyBlob: Data) async -> TransportError? {
+        if adoptsEndpointTrust {
+            await adoptEndpointTrust()
+        }
         let fingerprint = HostKeyFingerprint(publicKeyBlob: publicKeyBlob)
         if let known = await policy.knownHosts.fingerprint(
             host: host,
@@ -46,7 +63,8 @@ struct HeelerSSHHostKeyVerifier: Sendable {
             return .hostKeyMismatch(known: known, presented: fingerprint)
         }
 
-        let candidate = HostKeyCandidate(host: host, port: port, fingerprint: fingerprint)
+        let candidate = HostKeyCandidate(
+            host: endpointHost, port: endpointPort, fingerprint: fingerprint)
         guard await policy.confirmFirstConnect(candidate) else {
             return .hostKeyRejected(presented: fingerprint)
         }
@@ -54,5 +72,16 @@ struct HeelerSSHHostKeyVerifier: Sendable {
         // credentials on the same Host must not cause a second trust prompt.
         await policy.knownHosts.setFingerprint(fingerprint, host: host, port: port)
         return nil
+    }
+
+    /// Copies the endpoint's fingerprints to the Host's key when the Host
+    /// has none of its own yet. Only a Host saved before Routes has trust
+    /// under an endpoint, and only for its one route.
+    private func adoptEndpointTrust() async {
+        let knownHosts = policy.knownHosts
+        guard await knownHosts.fingerprints(host: host, port: port).isEmpty else { return }
+        for fingerprint in await knownHosts.fingerprints(host: endpointHost, port: endpointPort) {
+            await knownHosts.setFingerprint(fingerprint, host: host, port: port)
+        }
     }
 }

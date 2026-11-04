@@ -67,6 +67,77 @@ struct SolvingOrbRendererTests {
         #expect(resting.amounts.allSatisfy { $0 == 0 })
     }
 
+    /// Frames come from precomputed lattice states plus one partial turn;
+    /// they must match, bit for bit, the original renderer that turned every
+    /// dot through each started move on every frame.
+    @Test(arguments: [10.0, 12.0, 16.0, 64.0])
+    func precomputedFramesMatchTurningEveryMove(size: Double) {
+        let renderer = SolvingOrbRenderer(size: size)
+        let cycle = 2 * Double(SolvingOrbRenderer.moveCount) * SolvingOrbRenderer.slotDuration
+            + SolvingOrbRenderer.restDuration
+        #expect(renderer.lattice.states.count == SolvingOrbRenderer.moveCount + 1)
+        for t in stride(from: 0.0, through: 2 * cycle, by: 0.013) {
+            #expect(renderer.dots(at: t) == Self.referenceDots(renderer, at: t))
+        }
+    }
+
+    /// The pre-#434 renderer, kept verbatim as the reference.
+    private static func referenceDots(
+        _ renderer: SolvingOrbRenderer, at t: Double
+    ) -> [SolvingOrbRenderer.Dot] {
+        let size = renderer.size
+        let preset = renderer.preset
+        let center = size / 2
+        let radius = size / 2 * 0.82
+        let yaw = t * 0.55
+        let tilt = 0.35 + 0.1 * sin(t * 0.9)
+        let (sy, cy) = (sin(yaw), cos(yaw))
+        let (st, ct) = (sin(tilt), cos(tilt))
+        let radiusScale = pow(size / 300, 0.6)
+        let (amounts, active) = SolvingOrbRenderer.solveCycle(at: t)
+
+        var dots: [SolvingOrbRenderer.Dot] = []
+        for ring in 0...preset.latRings {
+            let lat = -Double.pi / 2 + Double(ring) / Double(preset.latRings) * .pi
+            let cosLat = cos(lat)
+            let sinLat = sin(lat)
+            let lonCount = max(1, Int((abs(cosLat) * preset.lonDensity).rounded()))
+            for step in 0..<lonCount {
+                let lon = Double(step) / Double(lonCount) * 2 * .pi
+                var (x, y, z) = (cosLat * cos(lon), sinLat, cosLat * sin(lon))
+                var inActive = false
+                for i in 0..<SolvingOrbRenderer.moves.count where amounts[i] > 0 {
+                    let move = SolvingOrbRenderer.moves[i]
+                    let coordinate = move.axis == 0 ? x : move.axis == 1 ? y : z
+                    guard coordinate >= move.lo, coordinate < move.lo + 0.5 else { continue }
+                    if i == active { inActive = true }
+                    let a = move.angle * amounts[i]
+                    let ca = cos(a)
+                    let sa = sin(a)
+                    switch move.axis {
+                    case 0: (y, z) = (y * ca - z * sa, y * sa + z * ca)
+                    case 1: (x, z) = (x * ca + z * sa, -x * sa + z * ca)
+                    default: (x, y) = (x * ca - y * sa, x * sa + y * ca)
+                    }
+                }
+                let x1 = x * cy + z * sy
+                let z1 = -x * sy + z * cy
+                let y1 = y * ct - z1 * st
+                let z2 = y * st + z1 * ct
+                let depth = (z2 + 1) / 2
+                dots.append(SolvingOrbRenderer.Dot(
+                    x: center + x1 * radius,
+                    y: center - y1 * radius,
+                    z: z2,
+                    radius: (preset.dotBase + preset.dotDepth * depth
+                        + (inActive ? preset.dotActive : 0)) * radiusScale,
+                    white: 0.62 - 0.54 * depth - (inActive ? 0.14 : 0)))
+            }
+        }
+        dots.sort { $0.z < $1.z }
+        return dots
+    }
+
     /// The rest pose recurs every cycle at the same phase, so the orb
     /// returns to solved rather than accumulating twist over time.
     @Test func solvedPoseRecursEveryCycle() {

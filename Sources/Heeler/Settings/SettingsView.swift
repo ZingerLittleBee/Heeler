@@ -45,8 +45,23 @@ enum SettingsAgentListDestination: String, Sendable {
     }
 }
 
+/// Settings › Overlay Networks, under the same identity/metatype/destination
+/// convention as the other routes.
+enum SettingsOverlayNetworksDestination: String, Sendable {
+    case networks = "settings.overlayNetworks"
+
+    var destinationTypeName: String { String(reflecting: OverlayNetworksSettingsView.self) }
+
+    @MainActor
+    func destinationView(
+        store: OverlayNetworkStore, onHostAdded: @escaping (Host.ID) -> Void
+    ) -> OverlayNetworksSettingsView {
+        OverlayNetworksSettingsView(store: store, onHostAdded: onHostAdded)
+    }
+}
+
 /// The Settings tab's root, or on iPad a sheet's: a shallow menu into Agent
-/// fields, appearance and notifications.
+/// fields, notifications and appearance (theme, terminal and Chat).
 /// Keeping it a menu means the per-Host notification rows can grow without
 /// pushing the appearance controls out of reach, and vice versa.
 struct SettingsView: View {
@@ -58,13 +73,19 @@ struct SettingsView: View {
     let liveActivities: HostLiveActivityCoordinator
     let console: ConsoleStore
     let hosts: [Host]
+    let onHostAdded: (Host.ID) -> Void
     /// Closes Settings where it is presented as a sheet, as on iPad; nil
     /// where it is a tab.
     var onDone: (@MainActor () -> Void)? = nil
+    /// Injected app-wide by `ContentView`; absent in previews, where the
+    /// Overlay Networks row is left out.
+    @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
 
     static let agentListDestination = SettingsAgentListDestination.fields
+    static let overlayNetworksDestination = SettingsOverlayNetworksDestination.networks
 
     static let repositoryURL = URL(string: "https://github.com/ZingerLittleBee/Heeler")
+    static let documentationURL = URL(string: "https://docs.heeler.bybee.dev")
 
     /// Semantic identity of the About → Acknowledgements route.
     ///
@@ -76,8 +97,14 @@ struct SettingsView: View {
     /// Rows in the About section, in display order. The body iterates this
     /// list; the Acknowledgements entry is a navigation destination, not a
     /// static label, and its id is `acknowledgementsRouteID`.
+    static let usageFooter =
+        "Turn off to hide the Usage tab and stop reading usage from your Hosts. Usage widgets clear their figures."
+
     static var aboutRows: [AboutRow] {
         var rows: [AboutRow] = [.version, .setupGuide]
+        if documentationURL != nil {
+            rows.append(.documentation)
+        }
         if repositoryURL != nil {
             rows.append(.starOnGitHub)
         }
@@ -93,6 +120,7 @@ struct SettingsView: View {
     enum AboutRow: Equatable, Identifiable {
         case version
         case setupGuide
+        case documentation
         case starOnGitHub
         case acknowledgements
         case privacyPolicy
@@ -102,6 +130,7 @@ struct SettingsView: View {
             case .version: "settings.about.version"
             case .setupGuide: SettingsAboutDestination.setupGuide.rawValue
             case .acknowledgements: SettingsView.acknowledgementsRouteID
+            case .documentation: "settings.about.documentation"
             case .starOnGitHub: "settings.about.starOnGitHub"
             case .privacyPolicy: "settings.about.privacyPolicy"
             }
@@ -117,7 +146,7 @@ struct SettingsView: View {
             .setupGuide
         case .acknowledgements:
             .acknowledgements
-        case .version, .starOnGitHub, .privacyPolicy:
+        case .version, .documentation, .starOnGitHub, .privacyPolicy:
             nil
         }
     }
@@ -145,17 +174,44 @@ struct SettingsView: View {
                     } label: {
                         Label("Notifications", systemImage: "bell.badge")
                     }
-                    appearancePicker
                     NavigationLink {
-                        TerminalAppearanceSettingsView(terminal: terminal)
+                        AppearanceSettingsView(terminal: terminal, appearance: appearance)
                     } label: {
-                        Label("Terminal Appearance", systemImage: "paintpalette")
+                        Label("Appearance", systemImage: "paintpalette")
                     }
                 }
 
                 Section {
-                    ForEach(Self.aboutRows) { row in
-                        aboutRow(row)
+                    Toggle(isOn: Binding(
+                        get: { console.isUsageEnabled },
+                        set: { console.setUsageEnabled($0) }
+                    )) {
+                        Label(ConsoleTab.usage.title, systemImage: "chart.bar.xaxis")
+                    }
+                    .accessibilityIdentifier("settings.usage")
+                } footer: {
+                    Text(Self.usageFooter)
+                }
+
+                if let overlayNetworks {
+                    Section {
+                        NavigationLink {
+                            Self.overlayNetworksDestination.destinationView(
+                                store: overlayNetworks, onHostAdded: onHostAdded)
+                        } label: {
+                            Label("Overlay Networks", systemImage: "point.3.connected.trianglepath.dotted")
+                        }
+                        .accessibilityIdentifier(Self.overlayNetworksDestination.rawValue)
+                    } header: {
+                        Text("Connections")
+                    }
+                }
+
+                ChatCacheSettingsSection(cache: console.chatCache)
+
+                Section {
+                    ForEach(Self.aboutRows) { @Sendable row in
+                        MainActorContent { aboutRow(row) }
                     }
                 } header: {
                     Text("About")
@@ -197,6 +253,10 @@ struct SettingsView: View {
                 }
                 .accessibilityIdentifier(destination.rawValue)
             }
+        case .documentation:
+            if let documentationURL = Self.documentationURL {
+                ExternalLinkRow("Documentation", systemImage: "text.book.closed", destination: documentationURL)
+            }
         case .starOnGitHub:
             if let repositoryURL = Self.repositoryURL {
                 ExternalLinkRow("Star on GitHub", systemImage: "star", destination: repositoryURL)
@@ -216,22 +276,6 @@ struct SettingsView: View {
             if let privacyURL = NotificationPrivacyCopy.privacyPolicyURL {
                 ExternalLinkRow("Privacy Policy", systemImage: "hand.raised", destination: privacyURL)
             }
-        }
-    }
-
-    /// The app's own light/dark override. A menu picker, not a pushed screen:
-    /// three options do not earn a navigation level.
-    private var appearancePicker: some View {
-        Picker(
-            selection: Binding(
-                get: { appearance.selection },
-                set: { appearance.select($0) })
-        ) {
-            ForEach(AppAppearanceOption.allCases) { option in
-                Text(option.title).tag(option)
-            }
-        } label: {
-            Label("Appearance", systemImage: "circle.lefthalf.filled")
         }
     }
 

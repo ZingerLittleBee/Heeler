@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import Heeler
@@ -161,7 +162,10 @@ struct NotificationPreferencesStoreTests {
             Issue.record("expected .unavailable, got \(String(describing: store.states[host.id]))")
             return
         }
-        #expect(message == "Install the Heeler plugin on this Host, then check again.")
+        #expect(
+            message
+                == "The Heeler plugin is missing or turned off on this Host. "
+                + "See this Host's page in Hosts, then check again.")
     }
 
     @Test func removingAHostFromTheCatalogDropsItsState() async throws {
@@ -562,6 +566,158 @@ struct NotificationPreferencesStoreTests {
         #expect(file.preferences(for: try owner(host)) != nil)
     }
 
+    // MARK: Revoking before a Host's removal (#414)
+
+    @Test func revokingOneHostLeavesItsSiblingOnAnotherSession() async throws {
+        let transport = ScriptedTransport()
+        let store = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(
+                transports: [host.id: transport, workHost.id: transport]),
+            deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host, workHost])
+        await store.refresh()
+        await store.setNotificationsEnabled(true, for: host)
+        await store.setNotificationsEnabled(true, for: workHost)
+        let workKey = try #require(try keys.record(forHost: workHost.id))
+
+        await store.revokeRegistration(for: host, isConnected: true)
+
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        #expect(file.devices.count == 1)
+        #expect(file.preferences(for: try owner(workHost)) != nil)
+        #expect(try keys.record(forHost: workHost.id) == workKey)
+        #expect(try keys.record(forHost: host.id) != nil, "the removal deletes it next")
+    }
+
+    /// A Duplicate Host (#413) on the same session that registered later
+    /// already took over the entry; revoking the original writes nothing.
+    @Test func revokingAHostWhoseEntryASiblingTookOverWritesNothing() async throws {
+        let transport = ScriptedTransport()
+        let duplicate = Host(name: "mac-studio 2", address: "10.0.0.2", username: "z")
+        let store = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(
+                transports: [host.id: transport, duplicate.id: transport]),
+            deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host, duplicate])
+        await store.refresh()
+        await store.setNotificationsEnabled(true, for: host)
+        await store.setNotificationsEnabled(true, for: duplicate)
+        let writes = await transport.replacedNotificationRegistrations.count
+        let before = await transport.notificationRegistration
+        let duplicateKey = try #require(try keys.record(forHost: duplicate.id))
+
+        await store.revokeRegistration(for: host, isConnected: true)
+
+        #expect(await transport.replacedNotificationRegistrations.count == writes)
+        #expect(await transport.notificationRegistration == before)
+        let file = try NotificationRegistrationFile.decode(before)
+        #expect(file.preferences(for: try owner(duplicate)) != nil)
+        #expect(try keys.record(forHost: duplicate.id) == duplicateKey)
+    }
+
+    @Test(arguments: ["not connected", "no key"])
+    func revokingWithoutAReachableOwnEntryTouchesNoTransport(_ missing: String) async throws {
+        let transport = ScriptedTransport()
+        if missing != "no key" {
+            await transport.setNotificationRegistration(
+                try ownEntryFile(notify: #"{"blocked":true,"done":true}"#))
+        }
+        let store = makeStore(transport: transport)
+
+        await store.revokeRegistration(for: host, isConnected: missing != "not connected")
+
+        #expect(await transport.notificationRegistrationReads == 0)
+        #expect(await transport.replacedNotificationRegistrations.isEmpty)
+    }
+
+    /// Before APNs answers, or with notification permission withdrawn,
+    /// there is no device token; the key alone still finds the entry.
+    @Test func revokingWithoutADeviceTokenStillDropsTheOwnEntry() async throws {
+        let transport = ScriptedTransport()
+        await transport.setNotificationRegistration(
+            try ownEntryFile(notify: #"{"blocked":true,"done":true}"#))
+        let store = makeStore(
+            provider: ScriptedTransportProvider(transports: [host.id: transport]),
+            deviceToken: nil)
+
+        await store.revokeRegistration(for: host, isConnected: true)
+
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        #expect(file.devices.isEmpty)
+        #expect(try keys.record(forHost: host.id) != nil, "the removal deletes it next")
+    }
+
+    /// The Host no longer holds this device's entry, so its toggle and the
+    /// in-app banner gate read off before the key is deleted: a removal that
+    /// fails at the Keychain keeps the Host with notifications off.
+    @Test func aConfirmedRevokeReadsUnregisteredWhileTheKeyRemains() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport)
+        await store.refresh()
+        await store.setNotificationsEnabled(true, for: host)
+        #expect(store.confirmedTriggers(for: host.id) != nil)
+
+        await store.revokeRegistration(for: host, isConnected: true)
+
+        #expect(
+            store.states[host.id]
+                == .idle(.init(isRegistered: false, notify: NotificationTriggerPreferences())))
+        #expect(store.confirmedTriggers(for: host.id) == nil)
+        #expect(store.hasNotificationKey(for: host.id))
+    }
+
+    /// The time limit turns a missing deadline into a failure rather than
+    /// an hour-long stall.
+    @Test(.timeLimit(.minutes(1)))
+    func aRevokeThatNeverFinishesIsAbandonedAtTheDeadline() async throws {
+        _ = try ownEntryFile(notify: #"{"blocked":true,"done":true}"#)
+        let provider = StallingTransportProvider()
+        let store = NotificationPreferencesStore(
+            transports: provider,
+            deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host])
+        let clock = ContinuousClock()
+
+        let elapsed = await clock.measure {
+            await store.revokeRegistration(
+                for: host, isConnected: true, timeout: .milliseconds(50))
+        }
+
+        #expect(elapsed < .seconds(5))
+        // The deadline does not wait for the borrow to begin; give it a
+        // bounded moment, so a guard that skipped the revoke still fails.
+        let waitStart = clock.now
+        while provider.borrows == 0, clock.now - waitStart < .seconds(5) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(provider.borrows == 1, "the revoke reached the stalled connection")
+    }
+
+    @Test func forgettingTheKeyReadsAsUnregistered() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport)
+        await store.refresh()
+        await store.setNotificationsEnabled(true, for: host)
+        #expect(store.hasNotificationKey(for: host.id))
+
+        try store.forgetNotificationKey(for: host.id)
+
+        #expect(!store.hasNotificationKey(for: host.id))
+        #expect(try keys.record(forHost: host.id) == nil)
+        #expect(
+            store.states[host.id]
+                == .idle(.init(isRegistered: false, notify: NotificationTriggerPreferences())))
+        await store.refresh()
+        #expect(
+            store.states[host.id]
+                == .idle(.init(isRegistered: false, notify: NotificationTriggerPreferences())))
+    }
+
     @Test func onRegisteredFiresOnceForAConfirmedRegistration() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport)
@@ -579,5 +735,22 @@ struct NotificationPreferencesStoreTests {
 
         await store.setNotificationsEnabled(false, for: host)
         #expect(registered == [host.id])
+    }
+}
+
+/// A Host whose connection reads as up but never answers: every borrow is
+/// counted, then waits until it is cancelled.
+private final class StallingTransportProvider: NotificationTransportProvider {
+    private let borrowCount = Mutex(0)
+
+    var borrows: Int { borrowCount.withLock { $0 } }
+
+    func withNotificationTransport<Value: Sendable>(
+        for hostID: Host.ID,
+        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        borrowCount.withLock { $0 += 1 }
+        try await Task.sleep(for: .seconds(3600))
+        throw CancellationError()
     }
 }

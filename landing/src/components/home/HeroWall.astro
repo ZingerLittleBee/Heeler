@@ -1,0 +1,171 @@
+---
+// The hero: a tilted wall of every iPhone screen behind the headline. Each
+// row repeats its screens once so the drift can loop at -50%; the copies are
+// hidden from assistive tech, and the whole wall is decorative.
+import { getImage } from 'astro:assets';
+import agentShot from '../../assets/screens/agent-iphone.png';
+import changesShot from '../../assets/screens/changes-iphone.png';
+import chatShot from '../../assets/screens/chat-iphone.png';
+import consoleShot from '../../assets/screens/console-iphone.png';
+import hostsShot from '../../assets/screens/hosts-iphone.png';
+import liveActivityShot from '../../assets/screens/live-activity-iphone.png';
+import liveTerminalShot from '../../assets/screens/live-terminal-iphone.png';
+import skillsShot from '../../assets/screens/skills-iphone.png';
+import terminalShot from '../../assets/screens/terminal-iphone.png';
+import usageShot from '../../assets/screens/usage-iphone.png';
+import widgetsLockShot from '../../assets/screens/widgets-lock-iphone.png';
+import widgetsShot from '../../assets/screens/widgets-iphone.png';
+
+// Three rows of four, in this order.
+const screens = [
+  consoleShot,
+  liveTerminalShot,
+  chatShot,
+  widgetsShot,
+  agentShot,
+  changesShot,
+  terminalShot,
+  usageShot,
+  skillsShot,
+  hostsShot,
+  liveActivityShot,
+  widgetsLockShot,
+];
+
+const WIDTH = 220;
+const images = await Promise.all(
+  screens.map(async (image) => {
+    const [one, two] = await Promise.all([
+      getImage({ src: image, width: WIDTH, format: 'webp' }),
+      getImage({ src: image, width: WIDTH * 2, format: 'webp' }),
+    ]);
+    return { src: one.src, srcset: `${one.src} 1x, ${two.src} 2x`, height: Math.round((WIDTH * image.height) / image.width) };
+  }),
+);
+const rows = [images.slice(0, 4), images.slice(4, 8), images.slice(8, 12)].map((row, index) =>
+  // Offset each row so no two rows line up the same screen.
+  [...row.slice(index), ...row.slice(0, index)],
+);
+---
+
+<div class="wall" aria-hidden="true">
+  <div class="shift">
+    <div class="plane">
+      {
+        rows.map((row, index) => (
+          <div class="row" data-dir={index % 2 ? 'right' : 'left'}>
+            {[...row, ...row, ...row, ...row].map((image) => (
+              <img src={image.src} srcset={image.srcset} width={WIDTH} height={image.height} alt="" loading="eager" decoding="async" />
+            ))}
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</div>
+
+<style>
+  .wall {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .shift {
+    position: absolute;
+    top: -18%;
+    left: 24%;
+    width: 140%;
+    perspective: 1800px;
+  }
+
+  .plane {
+    display: grid;
+    gap: 28px;
+    transform: rotateX(28deg) rotateY(-16deg) rotateZ(10deg);
+    transform-origin: 30% 30%;
+  }
+
+  /* Spacing sits on each screen, not as a gap, so a quarter of the row is
+     exactly one set and the loop has no seam. */
+  .row {
+    display: flex;
+    width: max-content;
+  }
+
+  .row:nth-child(2) {
+    margin-left: -140px;
+  }
+
+  img {
+    flex: none;
+    width: 220px;
+    margin-right: 28px;
+    height: auto;
+    border: 1px solid var(--border-default);
+    border-radius: 28px;
+    background: var(--surface-card);
+  }
+
+  @media (max-width: 960px) {
+    .shift {
+      left: 8%;
+      top: -6%;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .shift {
+      left: -10%;
+      top: -4%;
+      width: 200%;
+    }
+
+    .plane {
+      gap: 18px;
+    }
+
+    img {
+      width: 150px;
+      margin-right: 18px;
+      border-radius: 20px;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* Each row holds its screens four times; one set is a quarter of it. */
+    .row {
+      animation: drift 90s linear infinite;
+    }
+
+    .row[data-dir='right'] {
+      animation-direction: reverse;
+      animation-duration: 110s;
+    }
+
+    @keyframes drift {
+      to {
+        transform: translateX(-25%);
+      }
+    }
+
+    @supports (animation-timeline: scroll()) {
+      .shift {
+        /* Longhands on purpose: the build's CSS minifier folds animation-timeline
+           into the animation shorthand, which browsers then reject. */
+        animation-name: wall-parallax;
+        animation-timing-function: linear;
+        animation-fill-mode: both;
+        animation-timeline: scroll(root);
+        animation-range: 0 100vh;
+      }
+
+      @keyframes wall-parallax {
+        to {
+          transform: translateY(-14vh);
+        }
+      }
+    }
+  }
+</style>

@@ -1,0 +1,19 @@
+# Cloudflare Workers deployment for the Heeler docs site.
+#
+# Assets-only Worker: there is no `main` handler, Cloudflare just serves the
+# static build output. Deploy with `pnpm run build && pnpm run deploy` (or let
+# .github/workflows/docs-site.yml do it on a push to main).
+
+name = "heeler-docs"
+compatibility_date = "2026-07-01"
+workers_dev = false
+
+[assets]
+directory = "./dist"
+# `dist/404.html` answers unmatched paths (astro build format = "file").
+# The default html_handling serves `dist/tailscale.html` at `/tailscale`.
+not_found_handling = "404-page"
+
+[[routes]]
+pattern = "docs.heeler.bybee.dev"
+custom_domain = true

@@ -9,7 +9,14 @@ enum HostSetupGuide {
     static let herdrInstallURL = URL(string: "https://herdr.dev/docs/install/")
     static let windowsGuideURL = URL(
         string: "https://github.com/ZingerLittleBee/Heeler/blob/main/docs/guides/windows-setup.md")
-    static let pluginInstallCommand = "herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes"
+    /// The GitHub repository the plugin installs from.
+    static let pluginRepository = "ZingerLittleBee/Heeler"
+    /// The generated branch the plugin ships from (ADR 0026).
+    static let pluginBranch = "plugin"
+    static let pluginInstallArguments = [
+        "plugin", "install", pluginRepository, "--ref", pluginBranch, "--yes",
+    ]
+    static let pluginInstallCommand = (["herdr"] + pluginInstallArguments).joined(separator: " ")
     static let pairCommand = "herdr plugin action invoke heeler.pair"
 }
 
@@ -47,7 +54,7 @@ struct HostSetupGuideView: View {
         Form {
             Section {
                 Picker("Platform", selection: $platform) {
-                    ForEach(HostSetupPlatform.allCases) { platform in
+                    ForEach(HostSetupPlatform.allCases) { @Sendable platform in
                         Text(platform.title).tag(platform)
                     }
                 }

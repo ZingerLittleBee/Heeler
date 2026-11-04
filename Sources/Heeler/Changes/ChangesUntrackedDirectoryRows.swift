@@ -75,18 +75,20 @@ struct ChangesUntrackedDirectoryRows: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 18)
             }
-            ForEach(listing.entries) { entry in
-                if entry.path.last == UInt8(ascii: "/") {
-                    ChangesFileRow(file: entry)
-                        .padding(.leading, 18)
-                        .changedFileReferenceMenu(entry, store: store)
-                } else {
-                    Button { store.openDiff(entry) } label: {
+            ForEach(listing.entries) { @Sendable entry in
+                MainActorContent {
+                    if entry.path.last == UInt8(ascii: "/") {
                         ChangesFileRow(file: entry)
+                            .padding(.leading, 18)
+                            .changedFileReferenceMenu(entry, store: store)
+                    } else {
+                        Button { store.openDiff(entry) } label: {
+                            ChangesFileRow(file: entry)
+                        }
+                        .buttonStyle(.plain)
+                        .changedFileReferenceMenu(entry, store: store)
+                        .padding(.leading, 18)
                     }
-                    .buttonStyle(.plain)
-                    .changedFileReferenceMenu(entry, store: store)
-                    .padding(.leading, 18)
                 }
             }
             if let notice = listing.limitNotice {

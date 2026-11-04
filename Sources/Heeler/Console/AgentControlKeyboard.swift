@@ -112,11 +112,16 @@ struct AgentControlKeyboard: View {
     }
 }
 
-private struct AgentQuickKeyPad: View {
+/// Esc, Tab, Backspace, the arrows, Shift-Tab and Enter: the tools dock's
+/// Agent page, and the keys a Blocked card offers for a prompt it can't
+/// read.
+struct AgentQuickKeyPad: View {
     let isEnabled: Bool
+    /// The dock's margins; a card lines the keys up with its own content.
+    var insets = EdgeInsets(top: 4, leading: 10, bottom: 8, trailing: 10)
     let send: (AgentQuickKey) -> Void
 
-    private static let rows: [[AgentQuickKey]] = [
+    private nonisolated static let rows: [[AgentQuickKey]] = [
         [.escape, .tab, .backspace],
         [.left, .up, .right],
         [.shiftTab, .down, .enter],
@@ -124,10 +129,10 @@ private struct AgentQuickKeyPad: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            ForEach(Self.rows.indices, id: \.self) { row in
+            ForEach(Self.rows.indices, id: \.self) { @Sendable row in
                 HStack(spacing: 8) {
-                    ForEach(Self.rows[row], id: \.self) { key in
-                        Group {
+                    ForEach(Self.rows[row], id: \.self) { @Sendable key in
+                        MainActorContent {
                             if key == .backspace {
                                 TerminalBackspaceButton {
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -147,9 +152,7 @@ private struct AgentQuickKeyPad: View {
                 .frame(maxHeight: .infinity)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 4)
-        .padding(.bottom, 8)
+        .padding(insets)
     }
 
     private func keyButton(_ key: AgentQuickKey) -> some View {

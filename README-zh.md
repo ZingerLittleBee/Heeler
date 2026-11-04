@@ -4,8 +4,8 @@
 
 # Heeler
 
-<a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge-zh.svg" alt="在 TestFlight 下载" height="40" /></a>
 <a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/zh-cn?size=250x83" alt="在 App Store 下载" height="40" /></a>
+<a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge-zh.svg" alt="在 TestFlight 下载" height="40" /></a>
 
 **[herdr](https://herdr.dev) 的原生 iOS 伴侣应用 —— herdr 是一个 agent 优先的终端运行时。**
 
@@ -24,25 +24,29 @@
 
 ---
 
-Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding agent 汇成一个原生仪表盘，按「谁需要你」排序。打开一个 Agent 即可阅读并操控它的实时终端，在原生 Composer 里用完整的 iOS 键盘起草，一次 Send 投递完整消息 —— 全程只走普通 SSH。
+Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控制台，用于远程操作 Claude Code、Codex 和其他编程 Agent。Agent 在你自己的 Host 上通过 herdr 运行，Heeler 通过 SSH 连接。跨机器查看多个 Agent，按「谁需要你」排序，再打开实时终端或支持的 Chat 对话发送指令。
 
 ## 截图
 
-| Agent Console + 搜索 | Direct Input + Terminal 键盘 | 实时终端 |
+| Agent Console | 实时终端 | Chat |
 | --- | --- | --- |
-| <img src="docs/images/console-iphone.png" width="240" alt="iPhone 上支持置顶、状态显示和搜索的 Agent Console" /> | <img src="docs/images/agent-iphone.png" width="240" alt="iPhone 上使用 Direct Input、快捷键和完整 Terminal 键盘的 Agent 终端" /> | <img src="docs/images/live-terminal-iphone.png" width="240" alt="iPhone 上使用 Direct Input 的 Agent 实时终端" /> |
+| <img src="docs/images/console-iphone.png" width="240" alt="iPhone 上跨 Host 列出 Agent 及其状态的 Agent Console" /> | <img src="docs/images/live-terminal-iphone.png" width="240" alt="iPhone 上使用 Direct Input 的 Agent 实时终端" /> | <img src="docs/images/chat-iphone.png" width="240" alt="iPhone 上以原生消息显示 Agent 对话的 Chat" /> |
 
-| Changes | 文件 diff | Shell + Terminal 键盘 |
+| Keyboard | Changes | Terminals |
 | --- | --- | --- |
-| <img src="docs/images/changes-iphone.png" width="240" alt="iPhone 上列出 Checkout 已暂存和未暂存文件的 Changes" /> | <img src="docs/images/diff-iphone.png" width="240" alt="iPhone 上高亮改动词的 JSON 文件 diff" /> | <img src="docs/images/terminal-iphone.png" width="240" alt="iPhone 上使用 Keys 模式和完整 Terminal 键盘的 Shell 终端" /> |
+| <img src="docs/images/agent-iphone.png" width="240" alt="iPhone 上使用 Direct Input、快捷键和完整 Terminal Keyboard 的 Agent 终端" /> | <img src="docs/images/changes-iphone.png" width="240" alt="iPhone 上列出 Checkout 已暂存和未暂存文件的 Changes" /> | <img src="docs/images/terminal-iphone.png" width="240" alt="iPhone 上按 Host 和工作区列出 shell 窗格的 Terminals 标签页" /> |
 
 | Skills | Hosts | 实时活动 |
 | --- | --- | --- |
 | <img src="docs/images/skills-iphone.png" width="240" alt="iPhone 上 Composer 的 Skills 建议" /> | <img src="docs/images/hosts-iphone.png" width="240" alt="iPhone 上按连接状态分组并显示延迟的 Hosts 列表" /> | <img src="docs/images/live-activity-iphone.png" width="240" alt="iPhone 锁屏上实时跟踪 Agent 的实时活动" /> |
 
-<a href="docs/ipad-screenshots.md"><img src="docs/images/windowed-ipad.png" width="760" alt="Heeler in a floating iPad window" /></a>
+| Usage | 小组件 | 锁屏小组件 |
+| --- | --- | --- |
+| <img src="docs/images/usage-iphone.png" width="240" alt="iPhone 上显示 30 天估算 API 费用、Usage Limits 和每日图表的 Usage 标签页" /> | <img src="docs/images/widgets-iphone.png" width="240" alt="iPhone 主屏上小号和中号的 Usage 与 Usage Limits 小组件" /> | <img src="docs/images/widgets-lock-iphone.png" width="240" alt="iPhone 锁屏上的 Usage 与 Usage Limits 小组件" /> |
 
-[View iPad screenshots](docs/ipad-screenshots.md)
+<a href="docs/ipad-screenshots.md"><img src="docs/images/windowed-ipad.png" width="760" alt="iPad 浮动窗口中的 Heeler" /></a>
+
+[查看 iPad 截图](docs/ipad-screenshots.md)
 
 ## 功能
 
@@ -51,6 +55,9 @@ Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding 
 - **Attach** —— libghostty 渲染的 Agent 真实终端：原生历史回看、也能驱动全屏
   TUI 的惯性触摸滚动、长按选择、接管失效的终端占用者，并静默收集网页链接
   供稍后打开。
+- **Chat** —— 以原生消息而不是终端画面阅读 Agent 的对话，在 Composer 里
+  回复，并用按钮回答 Blocked 的 Agent；支持 Claude Code、Codex、Pi、
+  Oh My Pi、Grok Build 和 OpenCode（[了解更多](https://docs.heeler.bybee.dev/zh/chat)）。
 - **Composer** —— 在本地用完整的 iOS 键盘起草（自动纠错、输入法、听写），
   一次 Send 投递；工具键盘另有 Agent 控制键、Agent Skills、可复用的
   Snippets 和终端外观。
@@ -63,6 +70,9 @@ Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding 
 - **通知 + 实时活动** —— Agent 进入 Blocked 或 Done 时的端到端加密推送，
   以及锁屏 / 灵动岛上实时跟踪 Agent 的横幅；中继永远读不到内容
   （[PRIVACY.md](PRIVACY.md)）。
+- **Usage** —— Claude Code 与 Codex 的 Usage Limits 及重置时间，以及最多
+  30 天的 Token Usage 和估算 API 费用，可汇总所有 Host 或只看一台；主屏和
+  锁屏小组件随时可见（[了解更多](https://docs.heeler.bybee.dev/zh/usage)）。
 - **Worktrees** —— 让 Agent 从工作区仓库的干净检出上启动。
 - **外观** —— 跟随系统 / 浅色 / 深色；30 个终端主题，浅色深色各有独立
   槽位；内置 JetBrains Mono 与 IBM Plex Mono；双指缩放字号。
@@ -78,10 +88,16 @@ herdr —— 不改服务器、不装额外软件包。SSH 服务器需允许 st
 
 Windows 原生 Host（herdr >= 0.9.3）通过 SSH 连接，需手动添加。
 
+如需通过 Tailscale、ZeroTier 或 EasyTier 访问机器，请参阅 [Overlay Network 设置教程](docs/guides/zh/overlay-networks.md)。教程涵盖 macOS 安装、Mac 上不装 VPN 的 Tailscale 方案、Heeler 配置和连接验证。Heeler 在应用内加入这些网络，无需配置 iOS 系统 VPN；需要带有 **Settings > Overlay Networks** 的 Heeler 版本。
+
+[查看 Heeler 配置截图](docs/guides/zh/overlay-networks.md#heeler-配置界面截图)，包括 Tailscale、ZeroTier 以及 EasyTier 两种模式（Network 与 Config Server）的设置界面。
+
 不可直连的机器可以放在 SSH 跳板机之后：
 
-- [逐步搭建远程访问](docs/guides/vps-jump-host-setup.md)
-- [架构、安全边界与 VPS 迁移手册](docs/guides/vps-jump-host.md)
+- [逐步搭建远程访问](docs/guides/zh/vps-jump-host-setup.md)
+- [架构、安全边界与 VPS 迁移手册](docs/guides/zh/vps-jump-host.md)
+
+一个 Host 可以有多条路由，例如在家用局域网地址，在外走 Overlay Network 或跳板机：[多路由使用教程](docs/guides/zh/host-routes.md)。
 
 ## 安装
 
@@ -89,7 +105,7 @@ Windows 原生 Host（herdr >= 0.9.3）通过 SSH 连接，需手动添加。
 [TestFlight](https://testflight.apple.com/join/aXSxRn4r) 安装 Heeler。
 
 - **macOS / Linux：** 安装 [herdr](https://herdr.dev/docs/install/)，启用 SSH，再按下方步骤配对。
-- **Windows 原生环境：** 参见 [Windows 设置指南](docs/guides/windows-setup.md)。
+- **Windows 原生环境：** 参见 [Windows 设置指南](docs/guides/zh/windows-setup.md)。
 
 ## 添加机器
 
@@ -97,13 +113,28 @@ Windows 原生 Host（herdr >= 0.9.3）通过 SSH 连接，需手动添加。
 —— macOS 上是 **系统设置 > 通用 > 共享 > 远程登录**）：
 
 ```bash
-herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes
+herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 herdr plugin action invoke heeler.pair
 ```
 
 用应用扫描弹出的 Pairing Code 二维码，机器即被添加为 Host —— 地址、
 host key 指纹和 SSH 密钥注册全部由配对码承载。在应用里为该 Host 启用通知
-后，同一个[插件](plugin/README.md)负责投递加密通知。
+后，同一个[插件](plugin/README.md)负责投递加密通知。完整步骤、弹窗按键和排错
+方法见[扫码配对指南](https://docs.heeler.bybee.dev/zh/pairing)。
+
+## 从其他应用打开 Agent
+
+其他应用可以通过如下链接在 Heeler 中直接打开某个 Agent：
+
+```text
+heeler://agent?host=my-mac&session=work&pane=w1%3Ap1
+```
+
+- `host` 指定该会话下已保存的 Host：优先匹配地址，若该会话下没有匹配该地址的 Host，则匹配 Host 名称（忽略大小写）。
+- `session` 是 herdr 会话名称。留空或传入 `default` 表示默认会话。
+- `pane` 是 herdr 的窗格 ID（pane id）。留空则直接打开 Console。
+
+请对每个参数值进行百分号编码，且空格需编码为 `%20`：`+` 会被保留为加号本身，因此表单编码（如 JavaScript 的 `URLSearchParams`）无法匹配像 `Build Box` 这样带空格的名称。如果该会话下没有匹配的已保存 Host，或匹配到多个 Host，链接会打开 Console。
 
 ## 技术栈
 

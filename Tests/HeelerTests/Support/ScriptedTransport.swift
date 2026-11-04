@@ -15,6 +15,53 @@ final actor ScriptedTransport: Transport {
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
+    private var chatFiles: ChatHostFiles?
+    private var chatAgent: Agent?
+    private(set) var chatAgentReads: [AgentTarget] = []
+
+    func scriptChat(files: ChatHostFiles, agent: Agent) {
+        chatFiles = files
+        chatAgent = agent
+    }
+
+    func agentInfo(_ target: AgentTarget) async throws -> Agent {
+        chatAgentReads.append(target)
+        guard let chatAgent, chatAgent.paneID == target.target else {
+            throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        }
+        return chatAgent
+    }
+
+    func hostHomeDirectory() async throws -> String {
+        guard let chatFiles else { throw TransportError.hostFeatureUnavailable(feature: "Chat") }
+        return try await chatFiles.home()
+    }
+
+    /// Host paths `fileStatus` answers when no Chat files are scripted;
+    /// any other path does not exist.
+    private var scriptedFileStatuses: [String: RemoteFileStatus]?
+    private(set) var fileStatusPaths: [String] = []
+
+    func setFileStatuses(_ statuses: [String: RemoteFileStatus]) {
+        scriptedFileStatuses = statuses
+    }
+
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+        fileStatusPaths.append(path)
+        if chatFiles == nil, let scriptedFileStatuses { return scriptedFileStatuses[path] }
+        guard let chatFiles else { throw TransportError.hostFeatureUnavailable(feature: "Chat") }
+        return try await chatFiles.status(path)
+    }
+
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+        guard let chatFiles else { throw TransportError.hostFeatureUnavailable(feature: "Chat") }
+        return try await chatFiles.list(request)
+    }
+
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        guard let chatFiles else { throw TransportError.hostFeatureUnavailable(feature: "Chat") }
+        return try await chatFiles.read(range)
+    }
     private(set) var agentPromptParams: [AgentPromptParams] = []
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
@@ -91,6 +138,7 @@ final actor ScriptedTransport: Transport {
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
     private var subscriptionObservers: [UUID: AsyncStream<[EventSubscription]>.Continuation] = [:]
     private var nextSubscriptionGate: ScriptedTransportCallGate?
+    private var nextEventEndGate: ScriptedTransportCallGate?
     private var nextAttachID: UInt64 = 0
     private var liveAttachID: UInt64?
     private var nextAttachGate: ScriptedTransportCallGate?
@@ -151,12 +199,17 @@ final actor ScriptedTransport: Transport {
     private var filePatchReadOutcomes: [Result<FilePatch, any Error>] = []
     private var nextFilePatchReadGate: ScriptedTransportCallGate?
 
+    /// The catalog route this fake reports reaching (ADR 0022).
+    nonisolated let routeID: UUID?
+
     init(
         snapshot: SessionSnapshot = .fixture(),
-        serverInfo: ServerInfo = ServerInfo(version: "0.7.5-fake", protocolVersion: 17)
+        serverInfo: ServerInfo = ServerInfo(version: "0.7.5-fake", protocolVersion: 17),
+        routeID: UUID? = nil
     ) {
         self.snapshot = snapshot
         self.serverInfo = serverInfo
+        self.routeID = routeID
     }
 
     // MARK: Scripting
@@ -301,6 +354,10 @@ final actor ScriptedTransport: Transport {
         nextSubscriptionGate = gate
     }
 
+    func gateNextEventEnd(using gate: ScriptedTransportCallGate) {
+        nextEventEndGate = gate
+    }
+
     /// Wait for actual stream installation, not merely a captured request.
     /// AsyncStream cancellation ends the wait if the test is canceled.
     func waitForLiveSubscription(containing expected: [EventSubscription]) async throws {
@@ -409,7 +466,80 @@ final actor ScriptedTransport: Transport {
         sidebarLayoutReadFailure = failure
     }
 
+    /// The Host's `usage-accounts.json` bytes; nil scripts "no Account added".
+    private(set) var usageAccountFile: Data?
+    /// Every Account file replace received, in order.
+    private(set) var replacedUsageAccountFiles: [Data] = []
+    private(set) var usageAccountFileReads = 0
+    private var usageAccountFileReadFailure: (any Error)?
+    private var usageAccountFileWriteFailure: (any Error)?
+    private var nextUsageAccountFileWriteGate: ScriptedTransportCallGate?
+
+    func setUsageAccountFile(_ data: Data?) {
+        usageAccountFile = data
+    }
+
+    func setUsageAccountFileReadFailure(_ failure: (any Error)?) {
+        usageAccountFileReadFailure = failure
+    }
+
+    /// Makes every subsequent Account file replace throw `failure` without
+    /// landing.
+    func setUsageAccountFileWriteFailure(_ failure: (any Error)?) {
+        usageAccountFileWriteFailure = failure
+    }
+
+    /// Holds the next Account file replace, after it is counted, until
+    /// `gate` opens.
+    func gateNextUsageAccountFileWrite(_ gate: ScriptedTransportCallGate) {
+        nextUsageAccountFileWriteGate = gate
+    }
+
+    func readUsageAccountFile() async throws -> Data? {
+        usageAccountFileReads += 1
+        if let usageAccountFileReadFailure { throw usageAccountFileReadFailure }
+        return usageAccountFile
+    }
+
+    func replaceUsageAccountFile(_ contents: Data) async throws {
+        let gate = nextUsageAccountFileWriteGate
+        nextUsageAccountFileWriteGate = nil
+        if let gate { await gate.waitUntilOpen() }
+        if let usageAccountFileWriteFailure { throw usageAccountFileWriteFailure }
+        usageAccountFile = contents
+        replacedUsageAccountFiles.append(contents)
+    }
+
     /// Scripts what every subsequent Heeler plugin read answers.
+    private var agentUsage: Result<AgentUsageReport, any Error> = .failure(AgentUsageError.invalidReport)
+    private(set) var agentUsageReads = 0
+    private(set) var agentUsageClaudeLimits: [Bool] = []
+    private(set) var agentUsageTimeZones: [String] = []
+    private(set) var agentUsagePluginRoots: [String] = []
+    private var nextAgentUsageGate: ScriptedTransportCallGate?
+
+    func gateNextAgentUsageRead(_ gate: ScriptedTransportCallGate) {
+        nextAgentUsageGate = gate
+    }
+
+    func setAgentUsage(_ result: Result<AgentUsageReport, any Error>) {
+        agentUsage = result
+    }
+
+    func readAgentUsage(
+        timeZone: String, claudeLimits: Bool, pluginRoot: String
+    ) async throws -> AgentUsageReport {
+        agentUsageReads += 1
+        agentUsageClaudeLimits.append(claudeLimits)
+        agentUsageTimeZones.append(timeZone)
+        agentUsagePluginRoots.append(pluginRoot)
+        let result = agentUsage
+        let gate = nextAgentUsageGate
+        nextAgentUsageGate = nil
+        if let gate { await gate.waitUntilOpen() }
+        return try result.get()
+    }
+
     func setHeelerPlugin(_ result: Result<HeelerPluginInstallation?, any Error>) {
         heelerPlugin = result
     }
@@ -883,7 +1013,10 @@ final actor ScriptedTransport: Transport {
 
     /// Explicit `end()` on the stream: finishes it gracefully, exactly like
     /// the real channel closed by its consumer.
-    private func endStream(id: UInt64) {
+    private func endStream(id: UInt64) async {
+        let gate = nextEventEndGate
+        nextEventEndGate = nil
+        await gate?.waitUntilOpen()
         guard liveStreamID == id else { return }
         eventContinuation?.finish()
         eventContinuation = nil

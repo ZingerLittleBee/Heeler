@@ -1,6 +1,15 @@
 {
-  "originHash" : "1eb7bc133c05ff978e1adbf4d80a6e56345a4cb391db3b40045bd0ae61a2abeb",
+  "originHash" : "e3459be4d1087436b0d3f223d79de6d38eb7d5faf076bef180fb84f4a19688b7",
   "pins" : [
+    {
+      "identity" : "heeler-overlay-natives",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Ylarod/heeler-overlay-natives.git",
+      "state" : {
+        "revision" : "6a2817fc02aeb552df251d9478753c22fd4738bb",
+        "version" : "1.0.3"
+      }
+    },
     {
       "identity" : "libghostty-spm",
       "kind" : "remoteSourceControl",

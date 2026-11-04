@@ -132,7 +132,9 @@ struct AgentActivityLockScreenView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 header
-                ForEach(visibleAgents.dropFirst(), id: \.paneID) { agent in
+                ForEach(
+                    visibleAgents.dropFirst(), id: \.paneID
+                ) { @Sendable [rowMinimumHeight] agent in
                     AgentActivityLinkedRow(
                         hostID: hostID,
                         agent: agent,
@@ -389,7 +391,7 @@ struct AgentActivityIslandTrailingTokens: View {
         let rest = Array(counts.attentionItems.dropFirst())
         if !rest.isEmpty {
             HStack(spacing: 7) {
-                ForEach(rest, id: \.status) { item in
+                ForEach(rest, id: \.status) { @Sendable item in
                     AgentActivityStatusToken(status: item.status, count: item.count)
                 }
             }
@@ -449,7 +451,7 @@ struct AgentActivityIslandRows: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AgentActivityIslandMetrics.rowSpacing) {
-            ForEach(presentation.expandedAgents, id: \.paneID) { agent in
+            ForEach(presentation.expandedAgents, id: \.paneID) { @Sendable agent in
                 AgentActivityLinkedRow(
                     hostID: hostID,
                     agent: agent,
@@ -564,7 +566,7 @@ private struct AgentActivityCountChips: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            ForEach(counts.chipItems, id: \.status) { item in
+            ForEach(counts.chipItems, id: \.status) { @Sendable item in
                 Text("\(item.count) \(item.status)")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(AgentActivityStatusStyle.ink(for: item.status, on: surface))
@@ -654,7 +656,9 @@ struct AgentActivityRowView: View {
         HStack(alignment: .top, spacing: 7) {
             marker
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(AgentActivityFields.rows(for: agent).enumerated()), id: \.offset) { index, row in
+                ForEach(
+                    Array(AgentActivityFields.rows(for: agent).enumerated()), id: \.offset
+                ) { @Sendable index, row in
                     Text(AgentActivityFields.attributedText(row, rowIndex: index, surface: surface))
                         .lineLimit(1)
                 }

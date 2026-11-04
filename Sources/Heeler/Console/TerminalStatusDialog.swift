@@ -40,6 +40,12 @@ struct TerminalStatusPresentation: Equatable {
         message: nil,
         dimsBackground: false)
 
+    static let reconnecting = TerminalStatusPresentation(
+        kind: .connecting,
+        title: "Reconnecting…",
+        message: nil,
+        dimsBackground: false)
+
     static func ended(message: String) -> TerminalStatusPresentation {
         TerminalStatusPresentation(
             kind: .ended,
@@ -52,6 +58,8 @@ struct TerminalStatusPresentation: Equatable {
         switch status {
         case .waitingForSize, .connecting:
             self = .connecting
+        case .reconnecting:
+            self = .reconnecting
         case .ended(let message):
             self = .ended(message: message)
         case .live, .stopped:

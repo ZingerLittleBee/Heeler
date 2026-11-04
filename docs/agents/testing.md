@@ -2,8 +2,50 @@
 
 Use `make help` for available targets. Choose the lane from the changed owner
 in [navigation.md](navigation.md), and record the candidate and executed-test
-counts in [the review handoff](review-handoff.md). A successful command that
-selected no tests is a failed verification.
+counts in [the review handoff](review-handoff.md). A successful test command that
+selected no tests is a failed verification. Build-only success establishes
+compilation, not behavior or test coverage.
+
+## Fast build and full verification
+
+The [fast iOS build](../../.github/workflows/ci.yml) runs on PRs and pushes to
+`main` that change app, test, package, project or shared-vector paths, the
+Makefile, or the two scripts it executes. It compiles the committed app,
+extensions and HeelerTests bundle once with `make build-ci-app`
+(`build-for-testing` against the generic Simulator SDK, stable paths and
+compiler caching), so an app change that breaks test sources fails before
+merge. It never boots a Simulator or runs a test. That build compiles
+HeelerSSH only as a library, so [the HeelerSSH build](../../.github/workflows/ci-package.yml)
+runs `make build-ci-package` (the package and its tests, not run) when
+`Packages/HeelerSSH` changes. Other script and `ci-full.yml` changes skip both
+builds; [the script self-tests](../../.github/workflows/ci-scripts.yml) run
+`scripts/test-vps-ssh-access-scripts.sh`, `make test-ci-watchdog`,
+`make test-ci-guards` and `make test-ci-diagnostic-controls` on macOS, under
+the `/bin/bash` 3.2 that full verification executes.
+`make test-ci-diagnostic-controls`, which Agent tooling runs on Ubuntu for
+every PR, pins each fast workflow's trigger paths and commands.
+Documentation-only edits get the Ubuntu tooling checks; Node and site checks
+keep their own path filters.
+
+Run focused behavior tests for the feature being changed. The
+[full native workflow](../../.github/workflows/ci-full.yml) retains all app,
+UI, real-SSH and weak-network tests, package E2E and coverage checks. It runs
+daily on the latest `main` commit at 20:17 UTC (04:17 UTC+8), using the sharded
+layout and warm caches. The schedule takes effect only after the workflow is
+merged into the default branch; GitHub may delay its start under load. PRs and
+pushes retain fast feedback without starting this full native workflow.
+A failed scheduled run opens or comments on the issue "Scheduled full iOS
+verification is failing" ([the alert workflow](../../.github/workflows/ci-full-alert.yml));
+the next passing scheduled run closes it. Run it manually for broader
+acceptance of a candidate branch; manual runs default to warm caches, and
+`cache_mode=cold` measures a first build. `release.yml` still requires it
+against the release tag before signing a release; tag runs compile without the
+cross-run compiler cache. A scheduled run or fast build cannot substitute for
+verifying a different candidate.
+
+```sh
+gh workflow run ci-full.yml --ref <candidate-branch>
+```
 
 ## Focused app tests
 
@@ -41,14 +83,18 @@ preparation and can miss SwiftUI labels on a clean Simulator (#339).
 
 | Change | Entry point | What it establishes |
 | --- | --- | --- |
+| App and test compilation | `make build-ci-app` | Committed app, extensions and test bundle compile; no tests executed |
+| HeelerSSH and test compilation | `make build-ci-package` | HeelerSSH and its tests compile for the Simulator SDK; no tests executed |
 | App stores, parsers, SwiftUI hosting | `make test-app TEST_SELECTOR='HeelerTests/<Suite>'` | Selected app behavior on the named candidate and Simulator |
 | Full local app and SSH package suites | `make test` or `make test-ipad` | App tests followed by the separate HeelerSSH test plan |
 | `Packages/HeelerSSH` | `make test-ci-package` | Committed-project package CI lane with disposable SSH fixtures and count gates |
+| `Packages/HeelerOverlay` | `xcodebuild test -scheme HeelerOverlay` in that directory (see its README for the live suites) | Overlay nodes against the heeler-overlay-natives release it pins; not part of `make test` |
 | App transport/fixture integration | `make test-ci-app SIMULATOR_UDID=<UDID>` | Committed-project app CI lane, real-SSH fixture suites, required test counts |
 | Test/tool runners or agent-doc contracts | `make test-tools` | Local tool tests and document checks; no iOS build |
 | CI suite/count/skip guard changes | `make test-ci-guards` | Guard behavior through supplied log fixtures; no native SSH or iOS acceptance |
 | Agent documentation | `make check-agent-docs` | Document pointers and repository navigation invariants |
 | Plugin or relay | `npm test` in its directory | Node behavior; no install step, Node >= 20 |
+| Docs site | `pnpm install --frozen-lockfile` and the other pnpm commands in [its README](../../docs-site/README.md#commands), from `docs-site/` | Markdown pipeline tests, Astro checks, static build, and internal links |
 | Landing | Its `package.json` `check` and `build` scripts | Astro checks and static build |
 
 App `-only-testing:HeelerTests/...` selectors do not select the HeelerSSH package
@@ -57,12 +103,12 @@ plan. The standalone package runner is
 For CI parity, use the appropriate `test-ci-*` target. CI does not regenerate
 the Xcode project, so a regenerated local build cannot prove the committed
 project is complete. `make check-test-membership`, which `make test-tools` and
-the merge gate run, fails when the committed HeelerTests target omits a Swift
+full verification run, fails when the committed HeelerTests target omits a Swift
 file under `Tests/HeelerTests` or the shared scheme skips tests.
 
 ## CI evidence constraints
 
-The merge gate records every registered method and parameterized argument case
+Full verification records every registered method and parameterized argument case
 from each native result bundle, then requires the shards together to cover the
 whole target ([the recorder](../../scripts/verify-ci-ios-evidence.py)). Two
 test-writing rules follow:
@@ -78,16 +124,69 @@ test-writing rules follow:
 
 ## Intermittent CI diagnosis
 
-The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml), called through the existing `ci.yml` entrypoint, builds once and repeats the original TOFU, staging recovery, weak-network Changes, or diff-layout assertions with fresh per-round state. `staging` selects the whole nine-method suite to retain preceding window lifecycles and the failed-owner cleanup regression; `staging-method` isolates the recovery method. `layout` selects all eight `FileDiffLayoutViewTests` methods in the ordinary shard and repeats the topmost-line method with a fresh window and settings each round. Defaults are 50 SSH, 20 staging or layout, and 10 weak rounds. `all` selects only SSH, staging, and weak; layout requires an explicit selection and adds no work to normal merge CI or the existing `all` diagnostic.
+The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml) builds once and repeats the original TOFU, staging recovery, weak-network Changes, or diff-layout assertions with fresh per-round state. `staging` selects the whole nine-method suite to retain preceding window lifecycles and the failed-owner cleanup regression; `staging-method` isolates the recovery method. `layout` selects all eight `FileDiffLayoutViewTests` methods in the ordinary shard and repeats the topmost-line method with a fresh window and settings each round. Defaults are 50 SSH, 20 staging or layout, and 10 weak rounds. `all` selects only SSH, staging, and weak; layout requires an explicit selection and adds no work to the fast build, full verification or the existing `all` diagnostic.
 
-Repeated weak and layout diagnostics have a 30-minute outer deadlock limit. Normal merge CI retains the weak suite's two-minute limit and the layout suite's one-minute limit; every weak read still asserts its original 10-second deadline, and both layout setup waits retain eight seconds. Diagnostic artifacts capture the selected test counts, completion markers and fixture logs; they never establish complete coverage or replace the normal merge gate.
+Repeated weak and layout diagnostics have a 30-minute outer deadlock limit. Full verification retains the weak suite's two-minute limit and the layout suite's one-minute limit; every weak read still asserts its original 10-second deadline, and both layout setup waits retain eight seconds. Diagnostic artifacts capture the selected test counts, completion markers and fixture logs; they never establish complete coverage or replace full verification.
 
 ```sh
-gh workflow run ci.yml --ref <candidate-branch> -f diagnostic_target=all
-gh workflow run ci.yml --ref <candidate-branch> -f diagnostic_target=layout -f diagnostic_iterations=20
+gh workflow run ci-diagnostics.yml --ref <candidate-branch> -f target=all
+gh workflow run ci-diagnostics.yml --ref <candidate-branch> -f target=layout -f iterations=20
 ```
 
 The committed-project entrypoint is `make test-ci-diagnostics` with `HEELER_CI_DIAGNOSTIC_TARGET` and optional `HEELER_CI_DIAGNOSTIC_ITERATIONS` environment variables. Counts must be integers from 1 through 100. For layout, the runner passes the count as `HEELER_DIFF_LAYOUT_ITERATIONS` and requires eight executed tests plus `[diff-layout-test] completed N iterations`. Every selected test and requested round must pass; a missing or mismatched completion marker or any skip fails the diagnostic command. Fixture and iteration variables follow a replacement Simulator during destination recovery and are cleared from the shell and current Simulator during runner cleanup. `make test-ci-diagnostic-controls` verifies the workflow isolation, source contracts and fake native-boundary execution guards without Xcode; it does not prove native layout behavior. `make test-weak-network-proxy` exercises propagation, bandwidth, bounded buffering and cleanup over real local TCP.
+
+### Navigation surface replacement
+
+A 60-second Shell Terminal return timeout can be a main-thread update loop,
+not a slow Attach shutdown. Compare the timeout's spindump with
+`TerminalAttachTests.anOutgoingSurfaceUpdateCannotReclaimTheReplacementsControls`.
+It keeps the outgoing and replacement surfaces alive together: only creation
+may claim their shared keyboard/scroll controls; a later outgoing update must
+not steal input or invalidate both representables indefinitely.
+
+Run that regression alongside `AgentDetailShellTerminalPushTests` with
+`TEST_FLAGS='-test-iterations 20 -parallel-testing-enabled NO'` on one pinned
+Simulator. Repetitions must all pass, not stop at the first success. Verify
+each test's 20 `Repetition` children with `xcresulttool get test-results tests`;
+the app wrapper's executed-test count counts method identities, not repetitions.
+Record the candidate SHA and toolchain separately from full-lane coverage.
+
+### Keyboard geometry sampling
+
+`AgentDirectInputTests` requires a real software keyboard before measuring the
+Composer/Direct Input handoff. A zero inset with no keyboard-show notification
+is a setup failure, not evidence of a geometry regression. Record that failure
+separately; do not remove the presentation precondition.
+
+The sampling probe must observe the current inset and chrome position for the
+whole settling interval. Time before an inset change, including a gap with no
+samples, does not establish stability afterward. The controlled-timestamp
+regression covers this gap; the hosted handoff test still checks the actual
+geometry, responder ownership, draft, and one-point movement tolerance.
+
+### Backspace hold timing
+
+Measure the first repeated key inside the key-action callback, relative to the
+press, not when the awaiting test task resumes. The callback must still occur
+between 150 and 500 milliseconds. A delayed observer is a separate regression
+case, not permission for late key delivery. Keep the release, cancellation, and
+subsequent-tap assertions so timing fixes cannot hide a stuck repeat timer.
+
+### SSH fixture session setup
+
+Correlate the client's exchange timeout with the same connection in the
+timestamped `sshd-modern.log`. In run
+[39149165119](https://github.com/ZingerLittleBee/Heeler/actions/runs/39149165119),
+public-key authentication completed before an eight-second gap between
+`PAM: establishing credentials` and the user session handling its first
+channel. Only 1.599 seconds remained in the response-exchange phase when the
+ten-second operation expired.
+
+The unprivileged key-only and Pairing fixtures disable PAM account/session
+processing. They still authenticate real keys and enforce the forwarding
+policies; the separate real-password fixture retains PAM. Do not replace this
+isolation with a larger request deadline, a smaller partial-I/O payload, or
+retries. The original 4 MiB request and ten-second exchange bound remain intact.
 
 ## Build outputs and concurrency
 

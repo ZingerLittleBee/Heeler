@@ -16,6 +16,667 @@ Entries reference the pull request that made the change.
   inside one status shows at the next event. Pushes in this mode are
   deduplicated on the bytes sent and rate limited per device. (#TBD)
 
+## [0.1.17] - 2026-11-04
+
+### Added
+
+- Paste an image from the clipboard into a message: tap **+**, then **Paste
+  Image**, or paste into the Composer from the keyboard or the edit menu.
+  Heeler uploads it to the Host and adds its path, as Add Image does.
+  (#617)
+- Paths to images in Chat messages open the image. A path to a picture on the
+  Host, written as code, as a link or in the text of your messages or the
+  Agent's, shows in the tint color after a photo symbol; tap it, or choose
+  Preview Image from the message's menu, to open it with zoom. Paths relative
+  to the Agent's folder and paths starting at `~` open too. (#618)
+- Touch and hold an Agent on a By Workspace card and tap New Agent to start
+  one in its Workspace and directory, as the Agent's own New Agent does.
+  (#616)
+- Browse Directories hides folders whose names start with a dot. Tap the eye
+  button beside Select to list them again; Heeler remembers the choice.
+  (#609)
+- The Shell Terminal can show the shortcut row from Direct Input (Esc, Tab,
+  arrows, Backspace and Enter) above its input row, so you can reach those
+  keys while typing on the iOS keyboard. Turn it on with the new button beside
+  the keyboard button. It's off by default, and the row and its button
+  hide in Keys mode. (#611)
+- New Agent opens on the Agent you started last, when the Host has it
+  installed. (#608)
+- Chat shows the images Agents read or make as thumbnails under their rows;
+  tap one to open it with zoom. Claude Code, Codex, Grok Build, Pi, Oh My Pi
+  and OpenCode are covered, and image rows no longer fold into tool groups.
+  Images over 8 MB load on a tap, and a deleted image or an offline Host says
+  so in the thumbnail's place. (#600)
+- Turn Usage off in Settings to hide its tab and each Host's Usage section and
+  stop reading usage from your Hosts. Usage widgets clear their figures and say
+  so until you turn it back on. (#597)
+- Pull the grabber on the Composer's top edge down to hide the keyboard.
+  (#594)
+- Pair a herdr that runs with its own config home, such as a per-project
+  instance or a profile started by a wrapper script. Its pairing popup now
+  shows a Pairing Code v2 that names its socket and a launcher the plugin
+  writes and tests itself, so the phone lists, attaches to and wakes that
+  herdr instead of the one in `~/.config/herdr`. `launcher` in the plugin's
+  `pair.json` overrides the generated one. Update the Heeler plugin to 0.7.1
+  on the Host. (#521)
+- Check a changed host key before trusting it: the Host's page shows the new
+  key and a command to copy that prints it on the Host or Jump Host. (#531)
+- Choose what ends each Agent row on the right in Agent List Fields: any
+  field, the Host name, the status capsule (`status_badge`), or the
+  Checkout's Changes totals, per Host. Sync from plugin keeps them. (#591)
+- Give every Host the same Agent row fields: Apply to All Hosts on a Host's
+  page in Agent List Fields copies its rows, right sides included, to the
+  other Hosts. (#591)
+- Count several Claude Code sign-ins on one Host. Usage shows each Claude
+  Code Account, one config directory each, with its own Usage Limits and
+  its share of Token Usage, in the app and in the Usage Limits widgets.
+  Heeler suggests directories that running Agents or your home folder use,
+  and you can choose another; a Host has up to four Accounts. When herdr's
+  environment sets `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward
+  it until you add it as an Account. Update the Heeler plugin to 0.8.0 on
+  the Host. (#529; PR #533)
+- Open the documentation from About in Settings. (#594)
+
+### Changed
+
+- Raise and lower the Shell Terminal's input row with the keyboard, in step
+  with it, as the Composer does, instead of jumping ahead of it. (#611)
+- Keep the answers on Claude Code's and Codex's folder trust cards in view
+  below the folder, as a row of capsules with leaving on the left and
+  trusting on the right, instead of below the card's fold on a phone.
+  (#619)
+- Show Chat's Show Agent Terminal and Check Again side by side as glass
+  capsules while it waits for a conversation. (#619)
+- Spin Check Again while Chat looks for the conversation, for at least a
+  moment, then ease into what it found instead of switching at once.
+  (#619)
+- Give an Agent's title on a By Workspace card one size and color, whether
+  the Agent shares its checkout or stands alone under the checkout's title,
+  and set a repository's checkout titles apart from it in a quieter color.
+  (#598)
+- Raise and lower the Composer with the keyboard, in step with it, and move
+  Chat's conversation and fold along instead of jumping ahead of it. (#594)
+- Run animation at up to 120Hz on iPhones with ProMotion. (#594)
+- Lead each Agents list row with its program's mark, such as Claude Code's
+  or Codex's, inside a ring that shows its status, the Working ring turning,
+  in place of the status capsule; add `status_badge` to a row's right side
+  in Agent List Fields to bring the capsule back. A row no longer repeats
+  the program's name beside other fields, or after a title it shares with
+  another Agent's; programs without a mark show their initial and keep
+  their name. (#591)
+- Set the Agents list's rows closer together, without rules between them;
+  By Workspace cards keep only the rules between checkouts. (#591)
+- Show the Agents list By Workspace as cards, with Workspaces on a linked
+  git worktree in their repository's card: the main checkout under its
+  current branch, each worktree beneath it, and a collapsed card still
+  shows which checkouts need you. (#522)
+- On a hardware keyboard, Return sends the Composer draft, in Chat and above
+  the Agent's terminal, and Shift-Return starts a new line. Command-Return
+  still sends. (#512; PR #528)
+
+### Fixed
+
+- Show Codex's Folder access prompt in Chat as a card with Trust and continue
+  and Quit. On a phone, where herdr reports Codex idle on that prompt, Chat
+  used to wait for a conversation instead, and on a wider screen the generic
+  card's `1` did nothing. (#619)
+- By Workspace keeps each repository's card while Heeler connects: saved
+  Chats from a main checkout and its worktrees open under the same card the
+  running Agents had, instead of as separate cards that regroup once the Host
+  answers. Each checkout keeps the branch it was last read on as its title
+  until Heeler reads it again. (#618)
+- Round the bottom corners of a collapsed By Workspace card with nothing to
+  summarize, such as a Workspace whose Agents are all idle, instead of ending
+  it in a square-cornered strip under its header. (#616)
+- Put Show Chat or Show Agent Terminal and More with Back in iPhone Duo's
+  side controls, using the system overflow menu instead of leaving their
+  capsule over the content. Horizontal layouts keep their existing controls.
+  (#612)
+- Put Back with the system controls along an iPhone Duo's side on Agent Chat,
+  Agent Terminal and Shell Terminal details, instead of leaving it floating at
+  the opposite top corner. (#610)
+- Give the website and bilingual docs clean search URLs, sitemaps, app metadata,
+  browser icons, landscape sharing cards, and permanent canonical redirects.
+  Keep error pages, raw guides, and search data out of search results, and add
+  direct App Store links to both docs home pages. Explain remote Claude Code
+  and Codex use on iPhone and iPad, with setup, Chat, notification, and Usage
+  widget guidance on the existing pages, and identify Heeler as an independent
+  herdr mobile client. (#605)
+- Chat fills in earlier messages page by page and keeps up with the Agent while
+  it does, so returning to a long conversation no longer shows a few old rows
+  under a spinner and a blank screen until a whole turn has loaded. Messages
+  above a compaction show as they load rather than all at once at the end, and
+  one Load Earlier Messages is enough in a long conversation reopened from the
+  device. (#598)
+- An Agent's Changes totals end the line above when the card already shows the
+  directory field beside them, instead of holding a line of their own. (#598)
+- Keep the Host connection row atop the Agents and Terminals lists one
+  height while Hosts connect, so the list below no longer jumps. Statuses
+  stay on one line; those that do not fit fold into a count, and the row's
+  sheet lists every Host. (#594)
+- Keep an Agent's terminal and draft on screen while its connection recovers,
+  with the status and a loading indicator in the title, even when the title is
+  folded. New input waits until the Host is ready, and the keyboard stays up.
+  A stall no longer replaces a connection that still answers, unless a request
+  timed out opening a channel on it, and a send whose reply was lost is never
+  sent twice. Scrolling still queued on the phone after 200 ms is dropped;
+  rows already sent can arrive when the connection comes back. Typing or
+  scrolling through a stall no longer reattaches the terminal when the link
+  returns. A cut connection on a Unix Host now shows Reconnecting… on a Shell
+  instead of flashing Session Ended, and a terminal that is reattaching ignores
+  input until the new session paints. Chat shows a query lost to the link only
+  when the next one is lost too. (#523; PR #595)
+- Bring out the Agents list when swiping in from the left edge of an
+  Agent or Shell Terminal beside a hidden sidebar, such as on an iPhone
+  Duo's inner display or a Pro Max in landscape, instead of closing it to
+  No Agent Selected. The sidebar now follows the finger, on iPad too. (#592)
+- Remove a Saved Chat while its Host is not connected. Closing one always
+  failed with "The Host is not connected"; its row and More menu now offer
+  Remove, which takes it and its saved messages off this device and leaves
+  the Host alone. (#594)
+- Keep each row's fields in Agent List Fields on their own line. The last
+  one, often the add button, could drop below the row onto the next.
+  (#591)
+- Keep the Composer, Direct Input and Shell Terminal input rows on top of
+  the keyboard on an iPhone Duo's inner display, where the Console's tab
+  bar stays below them. A gap the height of the tab bar opened between
+  them. (#534)
+- Keep the paste button on a terminal's keyboard row visible: it could
+  appear as an empty space when the terminal opened. In light mode it is
+  now a plain glyph like the row's other buttons, without a gray backing.
+  (#536)
+- Show a new Claude Code Agent's Chat, such as one started in a new
+  worktree, as No Messages Yet until its first message, instead of
+  Conversation Not Found. (#530)
+- Ask to trust the new host key as soon as an edit to a Host's routes
+  reaches a machine whose key changed, and show Trust New Host Key under
+  the Host's connection status instead of at the bottom of its page. (#531)
+- Offer to trust a Jump Host's new key after it changes, which Heeler had
+  no way to accept before. (#531)
+- Scroll the Agent and Shell terminals with a trackpad or a mouse wheel on
+  iPad, not only by touch. (#512; PR #528)
+- Reattach a terminal on its own when the Host's connection drops under it,
+  such as on a stalled Tailscale route soon after returning to Heeler. The
+  terminal shows Reconnecting… while Heeler redials, instead of Session
+  Ended. (#523; PR #527)
+- Stop a healthy Host from briefly showing Connecting… on its own. A
+  background check that finished could sit unnoticed until it timed out,
+  and Heeler then redialled the Host. (#523; PR #527)
+- Play a sound with Agent Notifications instead of showing a silent banner.
+  To silence them, turn off Sounds under Settings > Notifications > Heeler.
+  (#526)
+- Send from Chat while Claude Code shows a prompt suggestion in its input
+  box, instead of holding the message with "Heeler can't find the Agent's
+  input box on screen." (#525)
+
+## [0.1.16] - 2026-10-27
+
+### Added
+
+- See Usage Limits and Token Usage on a new Usage tab, across all Hosts or
+  one at a time: reset times, up to 30 days of local token totals, a daily
+  chart and calendar, model and directory breakdowns, and estimated API
+  cost. Usage Limits stay per Host. On iPad, Usage is also a sidebar list.
+  Requires plugin 0.7.0. (#506, #517)
+- Add Usage and Usage Limits widgets to the Home Screen and Lock Screen:
+  estimated cost or tokens on All Hosts or one Host, and a Host's Usage
+  Limits with their time to reset. They update when Heeler returns to the
+  foreground and, with Background App Refresh on, while it is closed. (#517)
+- Update the Heeler plugin from a Host's page: when the plugin is missing,
+  outdated or turned off, the plugin sheet runs the fix on the Host over SSH
+  and says why when it cannot finish. The install finds Node.js from nvm,
+  fnm, Volta, asdf, mise and other version managers, system packages, or the
+  login shell's setup, and does not start over a plugin newer than the
+  published one. (#516)
+- Pairing Codes can advertise addresses the plugin cannot see on the
+  machine's interfaces, such as a NAS address for herdr running in a Docker
+  container behind a published port, via `addresses` in the plugin's
+  `pair.json`. They are listed first in the checklist and pre-checked.
+  Update the Heeler plugin to 0.6.2 on the Host. (#489)
+- Read a guide on why SELinux blocks Heeler's herdr socket on Fedora, RHEL,
+  CentOS Stream, AlmaLinux and Rocky Linux, how to confirm it from the audit
+  log, and the small policy module that allows it, in English or Simplified
+  Chinese. (#477)
+- Read how to use Chat, including setting up the Host for each program,
+  sending messages, and answering a Blocked Agent, and look up what each Chat
+  message means, in English or Simplified Chinese. (#511)
+- See the Agent's task title in the detail header, with its harness and
+  working directory on a second line. (#480)
+- Chat shows Grok Build conversations on macOS and Linux Hosts: messages,
+  reasoning, tools with their file changes, subagents and compactions. Chat
+  sends prompts and skills, stops a turn with Ctrl+C while Grok Build shows
+  it working, answers its permission and single-choice question cards, and
+  holds a message, with the reason, when Grok Build shows a draft, a menu,
+  its dashboard or another session. In an agent opened from the dashboard,
+  Chat sends only when the screen shows this conversation's newest message.
+  A message Grok Build recorded in another session says so, and Chat holds
+  later ones until you switch back. (#482)
+- Read OpenCode 2.x conversations in Chat on macOS and Linux Hosts, with
+  sends, Stop and cards for its permission and question dialogs. Chat reads
+  OpenCode's own database with a short read-only query on the Host, which
+  needs sqlite3 or python3, and says when OpenCode has left the
+  conversation it shows. (#483)
+- Reach a Mac through Cloudflare Tunnel instead of an overlay network: a
+  Cloudflare client on the phone carries the connection, so the Mac opens no
+  port, and a Host connects through either a private network route or a VPS
+  running the tunnel client. English or Simplified Chinese. (#487)
+- Chat says when a Codex Agent was started without `--no-daemon` while
+  Codex's shared background server runs: Chat explains how to restart it,
+  with a link to the guide, and a banner over a conversation warns that it
+  may be another terminal's. (#513)
+
+### Changed
+
+- Install the Heeler plugin with
+  `herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes`. It
+  downloads about 3 MB instead of the whole 150 MB repository. The Setup
+  Guide and the plugin update notice use the new command; a Host installed
+  with the old one keeps updating from it until it runs the new one, which
+  replaces the old install. (#514)
+- A working Grok Build Agent's terminal Composer keeps Send instead of
+  showing Stop, because Esc doesn't stop a Grok Build turn. Stop it with
+  Chat's Stop, which presses Ctrl+C, or with Ctrl+C in the terminal. (#482)
+- The Agent detail header shows one button for the surface not on screen,
+  Chat or the Agent terminal, instead of a two-segment switch. (#480)
+- The detail header's Workspace Terminals, Changes and Hide Header buttons
+  move into a More menu at its trailing end, as Terminals, Changes and
+  Collapse, so the header covers less output. (#480)
+- Chat's Collapse Steps and Jump to Latest buttons are glass icons like the
+  detail header's, and Collapse Steps uses a clearer collapse glyph. (#480)
+- Saved Chats from a Host that is not connected read as saved in the
+  Agents list: a Saved badge instead of a status, a quieter title, and the
+  Host's name marked with its connection state, and they open on Chat. By
+  Host headers say when their Host is connecting, reconnecting or
+  unavailable. (#486)
+- Chat loads earlier messages when you pull down past the top of a
+  conversation and let go, instead of as soon as you scroll near the top.
+  The top of the list says Pull, then Release with a tap of haptic
+  feedback once the pull goes far enough, then shows a spinner while they
+  load. Pushing back before you let go cancels it. A conversation too short
+  to fill the screen still loads them by itself. (#507)
+- Chat's Collapse Steps and Jump to Latest buttons are smaller, so they
+  cover less of the conversation; they are as easy to tap. (#507)
+- The expanded Agent title centres on the screen. (#485, #510)
+
+### Fixed
+
+- Leave Agent tabs available to automatic title plugins when the optional
+  tab name is blank, including launches in new Workspaces and Worktrees.
+  Explicit tab names are still applied. (#519)
+- On iPad, Show Chat and the More menu at the top of an Agent or Shell
+  Terminal respond to taps again; they now sit in the bar beside Show
+  Sidebar, and Chat's buttons sit in the same place. Show Chat uses a
+  single text bubble drawn at the bar's own icon size and weight, and
+  Show Agent Terminal a chat bubble with code; Open Terminal now shows a
+  window with a plus so the two stay apart in the More menu. (#510)
+- Show Connecting and saved Chats on cold launch while configured Hosts
+  start connecting, instead of briefly showing Agent Gone or No Agents.
+  (#504)
+- Keep Blocked card answers reachable by scrolling at large text sizes
+  when the keyboard leaves less room, including from sidebar search. (#505)
+- Line up a running tool's spinner in Chat with the first line of its
+  title, instead of below it. (#507)
+- Stop Chat from jumping when you pull past the newest message, the list
+  bounces back from it, or you catch it mid-bounce, such as while the Agent
+  is working. (#507, #510)
+- Prevent a freeze when returning from a Shell Terminal to the Agent while
+  the outgoing terminal surface is still updating. (#481)
+- Center the subagent glyph on its Chat row's title instead of riding
+  above it. (#480)
+- Stop Chat freezing, then closing, when the keyboard comes up under a
+  tall Composer and Background Work strip. (#480)
+- Rest Chat's newest rows just above the Composer, instead of out of
+  sight while the keyboard is up or partly under it once it goes down. (#480)
+- Show five whole lines of a long Composer draft, with the line being
+  typed clear of the edge, instead of the last line cut off; the draft
+  fades out at the edge it scrolls past. (#480)
+- Show long Composer notices whole, up to six lines, instead of cutting
+  them after three, which could hide what to do next. (#482)
+- Move the Agents and Terminals filter, presentation and new-item controls
+  to the bottom right of the sidebar, on an iPhone Duo's inner display and in
+  landscape on large iPhones, so they are within reach and the sidebar title
+  stays whole. On those layouts, the sidebar can also be dragged wider, up
+  to 600 points. (#485)
+
+## [0.1.15] - 2026-10-19
+
+### Added
+
+- Collapse the current turn's expanded reasoning and tool details from a
+  floating Chat button, bringing its header back into view without adding
+  blank space below a short last turn. (#464)
+- Extend native Chat to Pi and Oh My Pi Agents, with messages, reasoning,
+  paired tool results, edit diffs, current-branch history and compaction
+  boundaries. Reads the JSONL session path reported by herdr, including custom
+  session directories, and shows a new conversation as empty until its first
+  reply is saved, instead of as missing. Skill invocations show as `/name`
+  commands; Oh My Pi questions keep their options and answers, denied
+  approvals and dismissed questions read as declined, Stop during a Pi tool
+  reads as an interruption, and an Oh My Pi plan proposal reads as ready for
+  review. A message that steers a running turn shows inside it, marked Sent
+  while working, and an Oh My Pi conversation survives Oh My Pi rewriting its
+  session file. Oh My Pi's `$` Python runs show as notices, a file it writes
+  shows its text as added lines ("Wrote 1 file"), its plan hand-off adds no
+  file row, and compaction and branch summaries preview as plain text.
+  Unrecognized input surfaces remain available in the terminal. Extends the
+  Chat infrastructure in #425. (#464)
+- Send to Pi and Oh My Pi from Chat. Chat recognizes Oh My Pi 18.11's
+  nerd-font status band and Pi's editor in any project directory. Pi takes
+  messages while it works, which steer the turn, and a steer that Stop puts
+  back in the input box shows as not delivered; for Oh My Pi, Chat holds a
+  message while a turn runs or an approval or question panel is open. Sending
+  refuses Oh My Pi's exit words, `$` Python, Continue and queue shorthands,
+  and pastes of 100 lines or more. The `/` menu and Skills list offer only
+  skills, sent as `/skill:name`, including Oh My Pi's `.omp/skills`,
+  `~/.omp/agent/skills`, `~/.agents/skills` and `~/.agent/skills`; prompt
+  templates stay in the terminal. (#464)
+- Answer Oh My Pi tool approvals and single-select questions from native
+  Blocked cards. Approve presses ctrl+q once Oh My Pi accepts it and Deny
+  presses Esc; questions are answered with arrow keys, page by page through
+  the review, and the card says so when a draft in Oh My Pi's prompt would
+  take the keys. Multi-select questions and typed answers stay in the
+  terminal. (#464)
+- Approve an Oh My Pi 18.12 tool for the rest of the session from its
+  Blocked card when the approval offers it ("Approve edit for this session").
+  The card moves to that row one arrow key at a time, checking the selection
+  after each, and stops without answering if it doesn't move; a draft in Oh
+  My Pi's prompt leaves this choice to the terminal. (#425)
+- Chat for Claude Code and Codex Agents: the Agent's conversation as native
+  rows in the terminal's place, read from the transcript its program writes on
+  the Host, with nothing installed there. Chat folds finished turns, groups
+  tool calls, shows file changes as diffs, answers Blocked dialogs with native
+  cards, lists background agents and Workflows, and stays readable offline
+  from its cache. Sending checks the Agent's input box before and after and
+  never resends. Chat and the terminal swap from a pair of buttons beside
+  Show Header. Settings › Appearance sets Chat's font (System, Rounded,
+  Serif or Monospaced) and text size, a little smaller than the system's by
+  default. (#425)
+- Pair a Host whose herdr runs outside your own config, such as one bundled
+  in a desktop app, from a version 2 Pairing Code. The Host keeps that
+  herdr's socket and launcher, shows them in Host detail, and runs every
+  connection and herdr command through them, including the commands Heeler
+  suggests for plugin management and forced Worktree removal. macOS and
+  Linux Hosts only. Such a code without a one-time key waits for you to tap
+  Pair, since pairing runs its launcher on the Host. A Pairing Code version
+  this app does not know now asks you to update Heeler. (#432)
+
+### Changed
+
+- Settings › Appearance gathers the app's theme, the terminal's font, text
+  size and themes, and Chat's appearance, in place of the separate
+  Appearance picker and Terminal Appearance page. (#425)
+- The terminal font "System" is now named JetBrains Mono, the face it
+  always drew, and the duplicate JetBrains Mono choice folds into it. Menlo
+  and Courier New join IBM Plex Mono as other choices. (#425)
+- Chat's conversation runs edge to edge: messages scroll under the status
+  bar and behind the Composer down to the home indicator, softening under
+  the chrome instead of stopping at a blank band. (#425)
+- The Agent detail header's Agent Terminal segment shows a code glyph and
+  Workspace Terminals shows stacked terminals, so the two buttons no longer
+  share one icon. (#425)
+- Where Agent detail is pushed over the list (iPhone, or a compact iPad
+  window), Open Terminal in an Agent's More menu opens the Shell Terminal over
+  the Agent, so Back in the terminal's header, or the edge swipe, returns to
+  the Agent's Chat or terminal instead of the Agents list. The Agent's notifications still show as banners there, and
+  tapping one returns to the Agent. Beside the list it still selects the
+  terminal there. (#425)
+- On a connected Host, Agent Gone says the Agent may have exited while its
+  pane stays open, and that the Agent shows again once one starts in that
+  pane. (#425)
+- Chat shows Claude Code narration that its transcript records as thinking as
+  the Agent's text, as the terminal does, rather than as a collapsed Reasoning
+  row. (#425)
+- Chat titles Claude Code task rows by their subject and status ("Task #2:
+  completed") and ToolSearch rows by the tools they loaded ("Loaded
+  WebFetch"). A spawned teammate reads Started, not Done, and choosing "Chat
+  about this" reads Chat Instead, not Declined. (#425)
+- Chat counts a directory listing as a listed folder rather than a search,
+  counts images in a step group without calling them viewed, counts every
+  file a Codex patch touched rather than one per patch, counts a file changed
+  more than once in a group once, under its first change (a file created and
+  then edited reads "Created 1 file"), and folds Codex's waits for subagents
+  into the turn instead of pinning a row for each. (#425)
+- A message that reached a running turn is marked Sent while working instead
+  of Queued, which stays true once the turn ends or is stopped. (#425)
+
+### Fixed
+
+- Chat for an Agent whose Host is offline, with nothing of its conversation
+  saved on the device, says it waits for the Host instead of looking for the
+  conversation forever. (#425)
+- Chat renders Markdown tables as aligned columns with wrapping cells, inline
+  formatting and header styling; wide tables scroll within the message. (#464)
+- Chat restores a saved conversation when a live Agent temporarily omits its
+  session ID, including while the local directory is still loading. (#425)
+- Chat keeps disclosure headers in place while expanding downward, including
+  short conversations, and aligns tool icons with the first title line. (#425)
+- Opening a short last turn no longer leaves its newest rows under the
+  floating Collapse Steps button, where a tap meant for a row collapsed the
+  turn; the list moves up just enough to show them above it. (#425)
+- Chat preloads conversations after connecting, restores saved conversations
+  before contacting the Host, and keeps them available from the Agent list
+  after an offline relaunch while reconnecting. (#425)
+- Chat previews recorded image files on long press, including images a Claude
+  Code Read showed, opens them with zoom, and aligns tool icons with their
+  titles above subtitles. (#425)
+- Chat groups each Subagent's activity into one card per turn, with
+  a Lucide Bot icon beside its title and expandable history, and no longer marks message exchanges
+  as completed work. (#425)
+- Chat explains a missing session ID without incorrectly suggesting that the
+  integration needs installing, and shows failed session queries with a retry
+  while keeping messages already loaded. (#425)
+- Two Agents whose Agents list title or switcher chip reads the same, such as
+  different programs in one Workspace, now show which program each one is
+  ("proj · Pi"). (#425)
+- The app no longer hangs when the Agent switcher reorders its chips after
+  an Agent's status changes, and the strip keeps the open Agent's chip in
+  view when it reorders, such as after an Agent restarts in its pane. (#425)
+- The app no longer hangs on iPhone when going back to the Agents list from
+  an Agent the app reopened at launch. (#425)
+- Chat explains a `/` command the running Claude Code doesn't know, such as a
+  skill added after the Agent started, instead of leaving the message waiting
+  with no reason, and its `/` menu leaves out skills marked
+  `user-invocable: false`, which Claude Code refuses as commands. A
+  `/compact` that Pi or Oh My Pi refuses with nothing to compact now says so,
+  and one still compacting no longer reads as not yet in the conversation.
+  (#425)
+- Context compacted previews skip Claude Code's fixed preamble, every
+  program's compaction summary and Pi's branch summaries show without their
+  Markdown marks, and VoiceOver reads only a compaction's preview lines. Inline
+  code is tinted, so it stands out in Chinese text too. (#425)
+- An expanded Declined, Interrupted or Stopped row no longer says "No output."
+  for a call that never ran. (#425)
+- Codex rows show a failed turn's API error message instead of its JSON, read
+  a patch aborted before it applied as Interrupted instead of Failed, also
+  when Codex 0.163 declines it in code mode without recording the patch, and
+  show an answer's note without its `user_note:` key. (#425)
+- Oh My Pi rows show a `write` as a written file with its text and line
+  counts, show `$` Python runs as notices, and no longer show the plan
+  hand-off to `xd://propose` as a created file. An edit of its plan file
+  reads by its `local://` name rather than the account's session path.
+  (#425)
+- Blocked cards appear for Claude Code's question review page and questions
+  with previews, which herdr reports as idle, with the question row reading
+  Waiting rather than "No result", and Claude Code's Read file
+  dialog gets its own card. After "The Agent hasn't responded yet." the
+  answers stay off on the same dialog, so a second tap can't send the key
+  again; Stop and the terminal still work. (#425)
+- A Claude Code question form that stops on a page Heeler can't read names the
+  next question rather than the one already answered, the folder-access option
+  says it lasts the session instead of saving a rule, and the folded card's
+  buttons stay on one line. (#425)
+- Generic cards for Codex lists show only the option labels, an Oh My Pi
+  panel's text shows without borders or private-use glyphs, an Oh My Pi
+  question's answers are off while a draft would take the keys, and a Codex
+  asynchronous answer confirms as soon as its question leaves the screen and
+  is marked on the question asked in the running turn, not on an earlier
+  turn's question with the same title. (#425)
+- A send that Codex holds names its "Implement this plan?" selector or a
+  message Stop put back in the input box, and Waiting for Conversation
+  explains that Codex reports a resumed conversation after its first prompt.
+  (#425)
+- Chat follows Claude Code's `/clear` and Pi's and Oh My Pi's `/new` or
+  `/resume` typed in the terminal within about ten seconds while the Agent
+  stays idle, and a steer cleared in the terminal no
+  longer stays under a newer turn. (#425)
+- While the Host is away or the conversation comes from the cache, the newest
+  turn no longer ticks "Working for" and running rows read Running when last
+  seen instead of spinning; the connecting banner says it shows saved
+  messages. (#425)
+- The Console stops looking for a hidden Agent's missing conversation after a
+  few tries, until the Agent's status or session changes, instead of searching
+  the Host every half minute. (#425)
+- A command Codex leaves running after a turn ends no longer unfolds that
+  turn when it finishes, below the answer; it joins the turn's folded steps.
+  (#425)
+- Chat stops reading an Agent's conversation once you leave it on iPhone,
+  instead of reading it every few seconds in the background until the app
+  relaunches. (#425)
+- Hosts no longer stay Paused after you return to Heeler while an overlay
+  network is still shutting down from the previous trip to the background.
+  Hosts reconnect right away. Hosts reached through that overlay network
+  say it is still shutting down and keep retrying until it has, instead of
+  waiting without a word. Heeler now closes its connections 15 seconds
+  after you leave it instead of 20, so they finish closing before iOS
+  takes back its background time. (#476)
+- Closing a connection through a Tailscale network no longer risks shutting
+  down an unrelated connection that reused its file descriptor. Tailscale
+  networks now run libtailscale 0.2.0 with Tailscale v1.104.1. (#463)
+- Gboard and other third-party keyboards no longer drop doubled letters
+  (`https` became `htps`) or leave the misspelled word behind when they
+  paste or autocorrect in Direct Input and shell terminals. (#461)
+- On iOS 18, Heeler no longer crashes while it shows an Agent's Changes as
+  file counts, as it does when the Checkout has changes but no added or
+  removed lines (only untracked files, for example). (#473)
+- Heeler no longer risks being terminated by iOS when it is still
+  disconnecting from its Hosts as its time in the background runs out.
+  (#473)
+
+## [0.1.14] - 2026-10-15
+
+### Added
+
+- Read and search Heeler's connection guides in English or Simplified Chinese
+  on the new documentation site, with navigation for overlay networks, Jump
+  Hosts, Host Routes, and Windows setup, and copy any guide as Markdown. (#442)
+- Group the Agents list By Workspace from its presentation menu. Collapse
+  Workspaces to focus on one project while keeping status counts visible;
+  the choice and collapsed Workspaces persist across launches. (refs #364)
+- Return to the Console from an Agent's More menu. Back to Console does
+  what swiping in from the left edge does, so the way back no longer
+  depends on knowing the gesture; the Agent keeps running on the Host. (#439)
+- Give a Host more than one route — its LAN address for home, say, and an
+  overlay network or Jump Host for everywhere else. Add Route in Edit Host;
+  Heeler tries every route each time it connects and keeps the first that
+  reaches the Host, starting routes over this device's own network a moment
+  ahead, so at home the LAN address wins without an overlay network ever
+  starting. Pairing adds every address the Pairing Code offers. A Host's key
+  is trusted once for all of its routes: another machine answering one of
+  its addresses is refused, and adding an overlay address no longer asks to
+  confirm the key again. (#437)
+- See which route a Host is connected through. Its detail page opens with
+  the connection's status and a Reconnect or Stop button, lists every route
+  with the one in use marked, and when no route reaches the Host shows why
+  each one failed. Edit Host lists routes as rows that each open their own
+  page, and a new Host starts from Add Route. Run Checks Again moves beside
+  the Preflight heading. (#438)
+- Reach a Host through Tailscale, ZeroTier, or EasyTier without turning on a
+  VPN. Add a network in Settings › Overlay Networks, then choose it under
+  Network when editing the Host. Heeler joins the network itself while it is
+  open, and only for its own connections. A network's screen shows this
+  device's addresses and node ID (copyable, for authorizing on ZeroTier) and
+  its peers; Tailscale networks can sign out, ZeroTier networks can orbit
+  moons or use a custom planet of their own (so networks on ZeroTier Central
+  and on self-hosted roots connect side by side), and EasyTier can use a
+  fixed address or take its networks from an EasyTier config server (web
+  console). Several EasyTier networks, manual or from config servers, run
+  side by side, even on the same subnet; a config server may assign up to
+  eight, listed on its network's screen, and a Host reaches the one its
+  address or name is on. A config server must offer EasyTier's encrypted
+  connection unless Require Encryption is turned off for it; the form warns
+  about clear-text and unverified transports. ZeroTier networks that give
+  this device the same address stay apart too, each Host reaching the peer
+  on its own network. A Host address that is not on the tailnet, or that its
+  ZeroTier network has no route to, fails at once instead of waiting for the
+  connection timeout. (#426)
+- Pick a Host from a Tailscale or EasyTier network instead of typing its
+  address: Choose from Tailnet… in the Host form connects the network if
+  needed and lists its peers to search, filling in the peer's IP address
+  (or Tailscale machine name) and a blank Host name; the form then names
+  the chosen machine and the list marks it. Add beside a machine on a
+  network's screen in Settings adds it as a Host too, and machines that
+  already are a Host say so. (#426)
+- A ZeroTier network's screen has Diagnostics: the network's status,
+  addresses, routes, roots and members with their paths, and recent events,
+  with Copy All for reporting a problem. Its peers are listed as members and
+  roots. A device awaiting authorization shows as Waiting and keeps trying
+  until an admin approves it. (#426)
+- Stop waiting for a network that is slow to connect: Connect on a
+  network's screen, Choose from Tailnet…, a Host's checks, and a Host the
+  Console is still connecting each offer Cancel (or Stop Connecting), which
+  returns at once without a timeout error. A ZeroTier network stays joined
+  so a later authorization still applies; a stopped Host stays paused until
+  you reconnect it. (#426)
+
+### Changed
+
+- The solving orb on working Agents draws at 30 frames per second and pauses while it is off screen or Heeler is in the background, so a working Agent keeps the main thread far less busy and the phone cooler; the animation looks the same. (#436)
+- Settings › About › Acknowledgements shows each component's source and, where recorded, its version, and a distributed build names the commit it was made from, with a link to that source. (#426)
+- Redesign Settings › Overlay Networks: each network has a switch to connect or disconnect it (Cancel while it connects, Sign In before its first login), a status card with this device's address to copy, and its machines with Add or Host beside each, searchable. Adding a Tailscale network picks the kind from cards, keeps the coordination server and auth key under Advanced, and goes straight to browser sign-in (or connects with its auth key); Edit, Sign Out and Delete sit in the network's menu. A Tailscale device awaiting admin approval shows Waiting for approval and joins once approved, and the Host form puts Network first once an overlay network exists. ZeroTier and EasyTier networks connect as soon as they are added, keep moons, custom planets, fixed addresses and encryption under Advanced, and show the ZeroTier node ID or EasyTier machine ID to authorize on the status card (ZeroTier creates its node ID on the first connect, not when its form opens, so an unused one no longer sits in the network list); a ZeroTier network waiting for authorization offers Open ZeroTier Central, its roots move to Diagnostics, and an EasyTier config server's networks each list their address and peers, or why they don't run. (#426)
+
+### Fixed
+
+- Removing a Host now ends its Live Activity and forgets its Live Activity
+  setting, and Heeler no longer keeps retrying Live Activity updates for the
+  removed Host. (#444)
+- Removing a connected Host now also stops its notifications to this
+  device: Heeler first takes this device off the Host's notification list,
+  then deletes the Host's Notification Key along with its saved password. If
+  the Host isn't connected, the confirmation says so and suggests connecting
+  first; a Host removed without being reached may keep sending this device
+  generic "Agent update" notifications. (#445)
+- When a Host's Heeler plugin is turned off, the steps on the Host's page
+  now always end with the command that turns it back on: after updating an
+  outdated plugin, which herdr 0.9.4 leaves off, and after removing a copy
+  left under the plugin's former name. That command names the Host's herdr
+  session, so it works when the default session isn't running.
+  Notification settings now say the plugin is missing or turned off and
+  point to the Host's page. (#458)
+- Close Agent and Close Terminal now ask from the More button you tapped,
+  instead of a bubble floating in the middle of the terminal. (#440)
+- New Agent with long Arguments on a macOS Host running herdr 0.9.4 now
+  waits for the new shell to take the launch command instead of failing at
+  once and removing what it created. If the shell never takes it, as with
+  dash, New Agent asks you to shorten the Arguments. (#458)
+- When attaching to an Agent or terminal on a macOS or Linux Host fails
+  because herdr exits, the message now quotes herdr's own error, such as an
+  older herdr earlier on the SSH PATH losing its connection to the server,
+  instead of only an exit status. (#443)
+- On a macOS or Linux Host with herdr 0.9.4, opening an Agent or a Shell
+  Terminal over a slow connection no longer types stray characters into
+  the Agent or shell: Heeler no longer answers the terminal query herdr
+  sends when it attaches, whose late answer herdr passed on as typing.
+  (#458)
+- Start Tailscale browser authorization with one Sign In button and reconnect automatically after returning from the browser. (#426)
+- Show Connected and remove the sign-in prompt when Tailscale browser authorization completes, without requiring another Connect. (#426)
+- Open a Host's connection checks after adding it from an overlay network's peer list, so its SSH host key can be trusted on the first connection. (#426)
+- Agent cards keep a Host's herdr sidebar fields and Agent order when its
+  herdr sidebar settings use the letta agent, the machine field, field
+  rules, or a UTF-8 byte-order mark, instead of falling back to herdr's
+  defaults. Update the Heeler plugin to 0.6.1 on each Host. Sync from
+  plugin no longer blames herdr when the plugin can't read a Host's
+  settings. (#458)
+- Type Korean straight into the terminal with the iOS Korean keyboard:
+  syllables now compose as typed instead of arriving as repeated or loose
+  jamo ("한글 지원", not "한한한글글글글지지지원"), with the software keyboard
+  and a hardware keyboard alike, including after Backspace. (#441)
+- Removing a Worktree that has checked-out submodules now says that the
+  submodules block it, instead of blaming modified or untracked files.
+  Show Changes stays, and Copy Command hands you the herdr command that
+  forces the removal. While herdr is still loading restored Worktrees
+  after a restart, the message gives herdr's own reason instead of
+  saying a worktree change is already underway. (#458)
+
 ## [0.1.13] - 2026-10-07
 
 ### Added

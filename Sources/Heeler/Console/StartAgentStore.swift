@@ -143,7 +143,9 @@ final class StartAgentStore {
     /// the form: empty falls back to a kind-derived name (`claude`,
     /// `claude-2`, …), mirroring how the herdr TUI labels unnamed agents.
     var name: String = ""
-    /// The canonical kind selected from the Host availability probe.
+    /// The canonical kind selected from the Host availability probe. Each
+    /// probe defaults it to the kind last started, when this Host has it,
+    /// else the Host's first.
     var selectedAgentKind: SupportedAgentKind?
     /// Optional native arguments, parsed into argv without invoking a shell.
     /// The editor disables smart punctuation at the UIKit input-trait layer;
@@ -190,8 +192,9 @@ final class StartAgentStore {
     /// becomes nil so herdr applies its default.
     var newWorkspaceLabel: String = ""
     /// Optional label for the tab the launch creates. Empty or whitespace
-    /// becomes nil and the tab takes the agent's name. Unlike the agent's
-    /// name it is free text: herdr's slug rule applies to agents, not tabs.
+    /// becomes nil so herdr or a title plugin names the tab. Unlike the
+    /// agent's name it is free text: herdr's slug rule applies to agents,
+    /// not tabs.
     var tabLabel: String = ""
     /// Whether the launch targets a fresh git worktree of the selected
     /// workspace's repository instead of the workspace itself (#97).
@@ -227,7 +230,7 @@ final class StartAgentStore {
     /// lands; waiting here keeps the opened detail from flashing its
     /// missing-Agent placeholder over a launch that just succeeded.
     private let awaitAgentVisible: (ConsoleAgent.ID) async -> Void
-    @ObservationIgnored private let recents: RecentWorkspaceStore
+    @ObservationIgnored private let recents: RecentLaunchStore
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
     /// before `state == .starting` disables the button.
@@ -242,7 +245,7 @@ final class StartAgentStore {
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
         origin: LaunchOrigin? = nil,
-        recents: RecentWorkspaceStore = RecentWorkspaceStore()
+        recents: RecentLaunchStore = RecentLaunchStore()
     ) {
         self.hosts = hosts
         self.origin = origin
@@ -356,7 +359,11 @@ final class StartAgentStore {
             let kinds = try await discoverAgentKinds(hostID)
             guard selectedHostID == hostID else { return }
             availableAgentKinds = kinds
-            selectedAgentKind = kinds.first
+            if let remembered = recents.agentKind, kinds.contains(remembered) {
+                selectedAgentKind = remembered
+            } else {
+                selectedAgentKind = kinds.first
+            }
             agentDiscoveryState = .loaded
         } catch is CancellationError {
             guard selectedHostID == hostID else { return }
@@ -436,10 +443,11 @@ final class StartAgentStore {
         do {
             let agent = try await start(request, destination, hostID)
             if case .newWorkspace = destination {
-                recents.remember(agent.workspaceID, for: hostID)
+                recents.rememberWorkspace(agent.workspaceID, for: hostID)
             } else if let workspaceID {
-                recents.remember(workspaceID, for: hostID)
+                recents.rememberWorkspace(workspaceID, for: hostID)
             }
+            recents.rememberAgentKind(kind)
             let startedID = ConsoleAgent.ID(hostID: hostID, paneID: agent.paneID)
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.
@@ -668,11 +676,26 @@ final class StartAgentStore {
             "herdr rejected the command: \(apiError.message). "
                 + "Update herdr on this Host to v0.9.0 or later for Muse support, "
                 + "or choose another supported Agent."
+        case let apiError as HerdrAPIError where apiError.isCanonicalModeRefusal:
+            // The Transport resends this refusal for its whole shell-readiness
+            // wait, so it lands here only once that wait ran out; "10 seconds"
+            // mirrors `HeelerSSHTransport.shellReadinessBudget`.
+            "The Host's shell didn't accept a launch command this long within 10 seconds. "
+                + "On a Mac, herdr accepts at most 1,024 bytes until the shell's line "
+                + "editor starts, and some shells, such as dash, never start one. "
+                + "Shorten the arguments and try again."
         case let apiError as HerdrAPIError:
             "herdr rejected the command: \(apiError.message)"
         default:
             "Starting the agent failed: \(error)"
         }
+    }
+}
+
+extension StartAgentStore.LaunchOrigin {
+    /// Beside `agent`: its Host, Workspace, and launch directory.
+    init(beside agent: ConsoleAgent) {
+        self.init(hostID: agent.hostID, workspaceID: agent.agent.workspaceID, cwd: agent.agent.cwd)
     }
 }
 

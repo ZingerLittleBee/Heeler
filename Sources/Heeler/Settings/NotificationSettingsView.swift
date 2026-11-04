@@ -27,8 +27,8 @@ struct NotificationSettingsView: View {
             // Per-Host preferences (#75): registration on/off plus the
             // separate Done flag, once this device holds a push token.
             if pushRegistration.deviceToken != nil {
-                ForEach(notificationPreferences.hosts) { host in
-                    hostNotificationSection(host)
+                ForEach(notificationPreferences.hosts) { @Sendable host in
+                    MainActorContent { hostNotificationSection(host) }
                 }
             }
 
@@ -205,7 +205,7 @@ struct NotificationSettingsView: View {
                 {
                     Text("Live Activity: \(note)")
                 }
-                ForEach(pluginRequirements(for: host), id: \.feature) { requirement in
+                ForEach(pluginRequirements(for: host), id: \.feature) { @Sendable requirement in
                     PluginRequirementNote(text: requirement.note)
                         .accessibilityIdentifier(
                             "settings.notifications.pluginRequirement.\(host.id.uuidString)"

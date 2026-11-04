@@ -35,9 +35,45 @@ struct ConsoleDetailPresentationTests {
     private static let socketGuidance =
         "herdr is not running on this Host. If it is running, check SSH stream-local forwarding."
 
-    private static let paneGoneMessage = "This Agent's pane is no longer reported."
+    private static let paneGoneMessage =
+        "The Agent in this pane has exited, or the pane was closed. It shows here again if an Agent starts in the pane."
 
     private static let reconnectingSummary = TransportError.timedOut.presentation.summary
+
+    @Test func aConfiguredHostConnectsBeforeItsSessionStarts() throws {
+        let host = Host.fixture()
+        let console = makeStore(transport: ScriptedTransport(snapshot: .fixture()))
+        let hosts = HostStore(volatileHosts: [host])
+        defer { console.setHosts([]) }
+
+        console.setHosts([host])
+
+        // No yield or resume: these are the first values a cold view reads.
+        #expect(console.hostStatuses[host.id] == .connecting)
+        #expect(console.hostsAwaitingSnapshot.contains(host.id))
+        let presentation = MissingAgentPresentation(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            console: console, hosts: hosts)
+        #expect(presentation.cause == .hostConnecting)
+        #expect(presentation.title == "Connecting…")
+        #expect(presentation.message == "\(host.displayName): Opening the connection.")
+        #expect(presentation.renderingMode == .progress)
+        let issue = try #require(ConsoleHostStatusPresentation(
+            host: host, status: console.hostStatuses[host.id], syncError: nil))
+        #expect(issue.status == "Connecting…")
+        #expect(ConsoleAgentsSurface(
+            hostCount: hosts.hosts.count, filteredHostName: nil,
+            filteredAgentCount: console.chatDisplayAgents.count,
+            visibleIssueCount: [issue].count) == .rows)
+
+        console.setHosts([])
+        let deleted = MissingAgentPresentation(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            console: console, hosts: HostStore(volatileHosts: []))
+        #expect(deleted.cause == .paneGone)
+        #expect(deleted.title == "Agent Gone")
+        #expect(deleted.message == "This Agent's pane is no longer reported.")
+    }
 
     /// The case the ticket names: a Host actually driven to `.failed`, and
     /// what the screen renders once its Agent list has emptied.
@@ -73,7 +109,7 @@ struct ConsoleDetailPresentationTests {
         #expect(presentation.renderingMode == .staticUnavailable)
         #expect(presentation.message == "\(host.displayName): \(Self.socketGuidance)")
         // Not the Agent's fault, and not both stories at once.
-        #expect(!presentation.message.contains("pane is no longer reported"))
+        #expect(!presentation.message.contains("has exited, or the pane was closed"))
         store.setHosts([])
     }
 
@@ -192,7 +228,7 @@ struct ConsoleDetailPresentationTests {
         #expect(presentation.title == "Loading Agents…")
         #expect(presentation.renderingMode == .progress)
         #expect(presentation.message == "\(host.displayName): Fetching the latest Agents.")
-        #expect(!presentation.message.contains("no longer reported"))
+        #expect(!presentation.message.contains("has exited, or the pane was closed"))
     }
 
     /// The selection's own Host decides. Reading any-failed-Host, or the first
@@ -243,7 +279,7 @@ struct ConsoleDetailPresentationTests {
         #expect(onDropped.cause == .hostReconnecting)
         #expect(onDropped.title == "Reconnecting…")
         #expect(onDropped.message == "\(dropped.displayName): \(Self.reconnectingSummary)")
-        #expect(!onDropped.message.contains("no longer reported"))
+        #expect(!onDropped.message.contains("has exited, or the pane was closed"))
     }
 
     /// A reconnecting Host says so, rather than reporting the Agent as gone
@@ -347,7 +383,7 @@ struct ConsoleDetailPresentationTests {
             #expect(!failure.presentation.message.isEmpty)
             #expect(!presentation.message.contains(failure.presentation.message))
             // Nor may it fall back to blaming the Agent.
-            #expect(!presentation.message.contains("no longer reported"))
+            #expect(!presentation.message.contains("has exited, or the pane was closed"))
         }
     }
 
@@ -391,26 +427,29 @@ struct ConsoleDetailPresentationTests {
             // whichever Host the list does still hold.
             #expect(!presentation.message.contains(host.displayName))
             #expect(!presentation.message.contains(survivor.displayName))
-            #expect(!presentation.message.contains("no longer reported"))
+            #expect(!presentation.message.contains("has exited, or the pane was closed"))
         }
     }
 
     /// A healthy, ended, or deleted Host still gets the placeholder. `nil`
     /// stays Agent Gone because it also covers a deleted Host whose
-    /// projection is gone from both maps.
-    @Test func aHealthyOrDeletedHostStillSaysTheAgentIsGone() {
+    /// projection is gone from both maps. Only a connected Host's inventory
+    /// says the Agent may come back in its pane.
+    @Test(arguments: [
+        (EventsSessionStatus?.some(.connected), "The Agent in this pane has exited, or the pane was closed. It shows here again if an Agent starts in the pane."),
+        (EventsSessionStatus?.some(.ended), "This Agent's pane is no longer reported."),
+        (EventsSessionStatus?.none, "This Agent's pane is no longer reported."),
+    ])
+    func aHealthyOrDeletedHostStillSaysTheAgentIsGone(status: EventsSessionStatus?, message: String) {
         let host = Host.fixture()
-        let atRest: [EventsSessionStatus?] = [.connected, .ended, nil]
-        for status in atRest {
-            let presentation = MissingAgentPresentation(
-                agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
-                hostStatuses: status.map { [host.id: $0] } ?? [:],
-                hosts: [host])
-            #expect(presentation.cause == .paneGone)
-            #expect(presentation.title == "Agent Gone")
-            #expect(presentation.renderingMode == .staticUnavailable)
-            #expect(presentation.message == Self.paneGoneMessage)
-        }
+        let presentation = MissingAgentPresentation(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            hostStatuses: status.map { [host.id: $0] } ?? [:],
+            hosts: status == nil ? [] : [host])
+        #expect(presentation.cause == .paneGone)
+        #expect(presentation.title == "Agent Gone")
+        #expect(presentation.renderingMode == .staticUnavailable)
+        #expect(presentation.message == message)
     }
 
     @Test func aSuspendedHostSaysTheConnectionIsPaused() {
@@ -426,7 +465,7 @@ struct ConsoleDetailPresentationTests {
         #expect(
             presentation.message
                 == "\(host.displayName): The connection is paused until Heeler becomes active.")
-        #expect(!presentation.message.contains("no longer reported"))
+        #expect(!presentation.message.contains("has exited, or the pane was closed"))
         #expect(!presentation.message.contains("Connecting"))
     }
 

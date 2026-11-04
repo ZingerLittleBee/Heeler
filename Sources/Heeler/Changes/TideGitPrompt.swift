@@ -145,7 +145,9 @@ struct TideGitPrompt: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                ForEach(Array(item.counts.enumerated()), id: \.offset) { _, count in
+                // Sendable for SwiftUI's async render thread, as in
+                // ChangesRowTotals.fileCounts(_:style:) (#471).
+                ForEach(Array(item.counts.enumerated()), id: \.offset) { @Sendable _, count in
                     Text(verbatim: count)
                         .foregroundStyle(.secondary)
                         .fixedSize()

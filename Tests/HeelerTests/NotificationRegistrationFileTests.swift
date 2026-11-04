@@ -15,6 +15,20 @@ struct NotificationRegistrationFileTests {
     }
     private var owner: NotificationRegistrationOwner { entry.owner }
 
+    /// Installed plugins drop a Live Activity layout with a field they do
+    /// not know, and the right side never reaches a Live Activity.
+    @Test func theRightSideAndItsTotalsStayOutOfThePluginsRowLayout() throws {
+        let original = try NotificationRegistrationFile().registering(entry).settingLiveActivity(
+            token: "abcd", startedAt: Date(timeIntervalSince1970: 0), for: owner, pinnedPaneIDs: [])
+        let layout = AgentRowLayout(
+            rows: [[.init(.workspace), .init(.changes)]], trailing: [[.init(.host)], [], [.init(.changes)]])
+        let updated = try original.settingLiveActivityRowLayout(layout, hostName: "Studio Mac", for: owner)
+        let reloaded = try NotificationRegistrationFile.decode(updated.encoded())
+        let rowLayout = try #require(reloaded.devices.first?["live_activity"]?["row_layout"])
+        #expect(rowLayout["rows"] == .array([.array([.object(["token": .string("workspace")])])]))
+        #expect(rowLayout["trailing"] == nil)
+    }
+
     @Test func liveActivityLayoutUpdatesPreserveTokensPinsAndOtherDevices() throws {
         let original = try NotificationRegistrationFile().registering(entry).settingLiveActivity(
             token: "abcd", startedAt: Date(timeIntervalSince1970: 0), for: owner,

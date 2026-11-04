@@ -80,6 +80,30 @@ struct SidebarLayoutVectorFile: Decodable, Sendable {
             let fg: String?
             let bold: Bool?
             let dim: Bool?
+            /// Carried so the re-encoded snapshot the app decodes still holds
+            /// herdr's rules, which the app ignores.
+            let rules: [Rule]?
+        }
+
+        /// One herdr sidebar rule as the plugin exports it: only the fields
+        /// the configuration gave.
+        struct Rule: Codable, Sendable, Equatable {
+            let equals: String?
+            let contains: String?
+            let startsWith: String?
+            let gt: Double?
+            let lt: Double?
+            let ignoreCase: Bool?
+            let fg: String?
+            let bold: Bool?
+            let dim: Bool?
+            let hide: Bool?
+
+            enum CodingKeys: String, CodingKey {
+                case equals, contains, gt, lt, fg, bold, dim, hide
+                case startsWith = "starts_with"
+                case ignoreCase = "ignore_case"
+            }
         }
 
         func jsonData() throws -> Data {
@@ -88,19 +112,24 @@ struct SidebarLayoutVectorFile: Decodable, Sendable {
     }
 
     static let shared: SidebarLayoutVectorFile = {
-        guard
-            let url = Bundle(for: BundleLocator.self)
-                .url(forResource: "sidebar-layout-v1", withExtension: "json")
-        else {
-            fatalError("sidebar-layout-v1.json is missing from the test bundle")
-        }
         do {
-            return try JSONDecoder().decode(
-                SidebarLayoutVectorFile.self, from: Data(contentsOf: url))
+            return try JSONDecoder().decode(SidebarLayoutVectorFile.self, from: fileData())
         } catch {
             fatalError("shared sidebar layout vectors failed to load: \(error)")
         }
     }()
+
+    /// The bundled vector file as the plugin repository holds it.
+    static func fileData() throws -> Data {
+        guard
+            let url = Bundle(for: BundleLocator.self)
+                .url(forResource: "sidebar-layout-v1", withExtension: "json")
+        else {
+            throw CocoaError(
+                .fileNoSuchFile, userInfo: [NSFilePathErrorKey: "sidebar-layout-v1.json"])
+        }
+        return try Data(contentsOf: url)
+    }
 
     private final class BundleLocator {}
 }

@@ -16,6 +16,7 @@ struct TerminalAgentSwitcherTests {
         workspace: String? = nil,
         repo: String? = nil,
         name: String? = nil,
+        kind: String = "claude",
         status: AgentStatus = .idle,
         host: UUID = UUID()
     ) -> ConsoleAgent {
@@ -23,7 +24,7 @@ struct TerminalAgentSwitcherTests {
             hostID: host,
             hostName: "devbox",
             agent: Agent(
-                terminalID: "term_\(pane)", kind: "claude", title: "",
+                terminalID: "term_\(pane)", kind: kind, title: "",
                 status: status, workspaceID: "w", tabID: "w:t", paneID: pane,
                 cwd: "/work", revision: 1, name: name),
             workspaceLabel: workspace,
@@ -62,6 +63,94 @@ struct TerminalAgentSwitcherTests {
         let title = AgentCardPresentation(agent: long).switcherTitle
         #expect(title.count == 48 && title.hasSuffix("…"))
         #expect(AgentCardPresentation(agent: project, layout: .init(rows: [])).switcherTitle == "claude")
+    }
+
+    /// Two programs in one workspace both lead with the workspace, so their
+    /// chips read the same; each then carries its program's name, the way a
+    /// notification names it. Chips that already differ stay as they are.
+    @MainActor
+    @Test func chipsThatReadTheSameCarryTheirProgramName() throws {
+        let suiteName = "hm-switcher-qualifiers-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let pins = PinnedAgentsStore(defaults: defaults)
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "proj-omp", kind: "omp", host: host),
+            Self.makeAgent(pane: "p2", workspace: "proj-omp", kind: "pi", host: host),
+            Self.makeAgent(pane: "p3", workspace: "docs", kind: "pi", host: host),
+        ]
+
+        let items = TerminalAgentSwitcherItem.items(
+            for: agents, pins: pins, layout: { _ in .heelerDefault })
+        #expect(items.map(\.title) == ["proj-omp", "proj-omp", "docs"])
+        #expect(items.map(\.qualifier) == ["OMP", "Pi", nil])
+
+        let bar = TerminalAgentSwitcherBar()
+        bar.update(items: items, selectedID: agents[0].id)
+        #expect(bar.chips.map(\.qualifier) == ["OMP", "Pi", nil])
+        #expect(bar.chips.map(\.accessibilityLabel) == ["proj-omp, OMP", "proj-omp, Pi", "docs"])
+
+        // The qualifier leaves with the collision.
+        bar.update(items: [items[1], items[2]].map {
+            TerminalAgentSwitcherItem(
+                id: $0.id, title: $0.title, status: $0.status, isPinned: $0.isPinned)
+        }, selectedID: agents[1].id)
+        #expect(bar.chips.map(\.qualifier) == [nil, nil])
+        #expect(bar.chips.first?.accessibilityLabel == "proj-omp")
+    }
+
+    /// The program name adds to the chip instead of squeezing the title, so
+    /// a qualified title keeps the room an unqualified chip gives it.
+    @MainActor
+    @Test func aProgramNameAddsToTheChipRatherThanTakingFromTheTitle() {
+        let agent = Self.makeAgent(pane: "p1", workspace: "a-workspace-with-a-long-name")
+        let title = AgentCardPresentation(agent: agent).switcherTitle
+        func widestFit(qualifier: String?) -> CGFloat {
+            let chip = TerminalAgentChip(id: agent.id)
+            chip.apply(
+                TerminalAgentSwitcherItem(
+                    id: agent.id, title: title, status: .idle, isPinned: false,
+                    qualifier: qualifier),
+                selected: false)
+            return chip.systemLayoutSizeFitting(
+                CGSize(width: 1000, height: 28),
+                withHorizontalFittingPriority: .fittingSizeLevel,
+                verticalFittingPriority: .required
+            ).width
+        }
+        let plain = widestFit(qualifier: nil)
+        let qualified = widestFit(qualifier: "Gemini CLI")
+        #expect(plain == 148)
+        #expect(qualified > plain + 40, "the name took \(qualified - plain) pt")
+    }
+
+    /// A program name only helps when it differs, and a chip whose own title
+    /// already names the Agent needs none.
+    @MainActor
+    @Test func chipsKeepTheirTitleWhenTheProgramCannotTellThemApart() throws {
+        let suiteName = "hm-switcher-qualifiers-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let pins = PinnedAgentsStore(defaults: defaults)
+        let host = UUID()
+        let twins = [
+            Self.makeAgent(pane: "p1", workspace: "proj", kind: "claude", host: host),
+            Self.makeAgent(pane: "p2", workspace: "proj", kind: "claude", host: host),
+        ]
+        let sameProgram = TerminalAgentSwitcherItem.items(
+            for: twins, pins: pins, layout: { _ in .heelerDefault })
+        #expect(sameProgram.map(\.qualifier) == [nil, nil])
+
+        let named = [
+            Self.makeAgent(pane: "p1", workspace: "proj", name: "omp", kind: "omp", host: host),
+            Self.makeAgent(pane: "p2", workspace: "proj", name: "omp", kind: "pi", host: host),
+        ]
+        let agentFirst = AgentRowLayout(rows: [[.init(.agent)], [.init(.workspace)]])
+        let namedItems = TerminalAgentSwitcherItem.items(
+            for: named, pins: pins, layout: { _ in agentFirst })
+        #expect(namedItems.map(\.title) == ["omp", "omp"])
+        #expect(namedItems.map(\.qualifier) == [nil, nil])
     }
 
     @MainActor
@@ -426,6 +515,87 @@ struct TerminalAgentSwitcherTests {
         #expect(!bar.chips[2].showsPinIndicator)
     }
 
+    /// SwiftUI's updates reach the strip from inside its graph update, where
+    /// a reorder's synchronous layout once re-entered the render and hung the
+    /// app. The first items show at once; later ones apply together on the
+    /// next main-queue turn, the latest winning.
+    @MainActor
+    @Test func scheduledUpdatesApplyTheLatestItemsOnTheNextTurn() async throws {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+            Self.makeAgent(pane: "p3", workspace: "gamma", host: host),
+        ]
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let bar = TerminalAgentSwitcherBar()
+        window.addSubview(bar)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        bar.frame = CGRect(
+            x: 0, y: 0, width: 402, height: TerminalAgentSwitcherBar.preferredHeight)
+
+        let items = agents.map { Self.makeItem($0) }
+        bar.scheduleUpdate(items: items, selectedID: agents[0].id)
+        #expect(bar.arrangedChips.map(\.id) == agents.map(\.id))
+        bar.layoutIfNeeded()
+        let original = bar.chips
+
+        let reversed = Array(items.reversed())
+        let pinned = [Self.makeItem(agents[1], isPinned: true), items[0], items[2]]
+        bar.scheduleUpdate(items: reversed, selectedID: agents[0].id)
+        bar.scheduleUpdate(items: pinned, selectedID: agents[0].id)
+        #expect(bar.arrangedChips.map(\.id) == agents.map(\.id))
+
+        try await Task.sleep(for: .milliseconds(100))
+        bar.layoutIfNeeded()
+        expectStripMatches(bar, items: pinned, identity: original)
+    }
+
+    /// SwiftUI's updates reach the strip through `updateUIView`, which must
+    /// not reorder inside SwiftUI's own update (that hangs the app): a Pin
+    /// and an Unpin show on the next main-queue turn, flush and with the
+    /// same chips.
+    @MainActor
+    @Test(.timeLimit(.minutes(1)))
+    func aHostedPinAndUnpinReorderOnTheNextTurn() async throws {
+        let host = UUID()
+        let agents = [
+            Self.makeAgent(pane: "p1", workspace: "alpha", host: host),
+            Self.makeAgent(pane: "p2", workspace: "beta", host: host),
+            Self.makeAgent(pane: "p3", workspace: "gamma", host: host),
+        ]
+        func row(_ items: [TerminalAgentSwitcherItem]) -> TerminalAgentSwitcherRow {
+            TerminalAgentSwitcherRow(
+                switcher: TerminalAgentSwitcher(
+                    items: items, selectedID: agents[0].id, onSelect: { _ in }, onTogglePin: { _ in }),
+                isKeyboardUp: true, toggleKeyboard: {}, switchKeyboard: {})
+        }
+        let unpinned = agents.map { Self.makeItem($0) }
+        let controller = UIHostingController(rootView: row(unpinned))
+        let width: CGFloat = 402
+        let window = try makeWindow(width: width, rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.frame = CGRect(x: 0, y: 0, width: width, height: TerminalAgentSwitcherBar.preferredHeight)
+        controller.view.layoutIfNeeded()
+        let bar = try #require(Self.firstStrip(in: controller.view))
+        bar.layoutIfNeeded()
+        let original = bar.chips
+        #expect(original.map(\.id) == unpinned.map(\.id))
+
+        let pinGamma = [Self.makeItem(agents[2], isPinned: true), unpinned[0], unpinned[1]]
+        for items in [pinGamma, unpinned] {
+            controller.rootView = row(items)
+            // The hosting view runs SwiftUI's update in its layout.
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            #expect(bar.chips.map(\.id) != items.map(\.id), "reordered inside SwiftUI's update")
+            try await Task.sleep(for: .milliseconds(100))
+            bar.layoutIfNeeded()
+            expectStripMatches(bar, items: items, identity: original)
+        }
+    }
+
     /// Pin/unpin cycles must leave the strip flush every time: no gap
     /// between neighbours after layout, and the same chip views throughout.
     @MainActor
@@ -668,6 +838,38 @@ struct TerminalAgentSwitcherTests {
         bar.setNeedsLayout()
         bar.layoutIfNeeded()
         #expect(strip.contentOffset.x == 0)
+    }
+
+    /// An Agent restarted in its pane comes back last, with no status yet,
+    /// and moves to its sorted place a moment later. The open Agent's chip
+    /// must follow it there instead of leaving the strip scrolled to the end.
+    @MainActor
+    @Test func aReorderKeepsTheOpenAgentInView() async throws {
+        let controller = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 700),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+
+        let host = UUID()
+        let agents = (0..<8).map {
+            Self.makeAgent(pane: "p\($0)", workspace: "project-\($0)", host: host)
+        }
+        let bar = TerminalAgentSwitcherBar()
+        bar.frame = CGRect(x: 0, y: 0, width: 240, height: 40)
+        // On screen, as in the app: a same-membership reorder then slides.
+        controller.view.addSubview(bar)
+        let opened = agents[1]
+        let arriving = agents.filter { $0.id != opened.id } + [opened]
+        bar.update(items: arriving.map { Self.makeItem($0) }, selectedID: opened.id)
+        bar.layoutIfNeeded()
+        let strip = try #require(bar.subviews.compactMap { $0 as? UIScrollView }.first)
+        #expect(strip.contentOffset.x > 0)
+
+        bar.update(items: agents.map { Self.makeItem($0) }, selectedID: opened.id)
+        bar.layoutIfNeeded()
+        let chip = try #require(bar.chips.first { $0.id == opened.id })
+        #expect(bar.bounds.contains(chip.convert(chip.bounds, to: bar)))
     }
 
     /// Motion is the Working signal here, exactly as the orb is on the card.

@@ -1,0 +1,41 @@
+[0m[38;2;153;153;153m⏺ [0mUser answered Claude's questions:
+[0m[38;2;153;153;153m  ⎿  · Which colors? → Red, Blue[0m
+
+[0m[38;2;255;255;255m⏺ [0mRed, Blue
+
+[0m[38;2;153;153;153m✻ Crunched for 3s · done 2:53 AM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the AskUserQuestion tool once with one multiSelect [0m[48;2;55;55;55m     [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mquestion 'Which colors?' header Colors, options Red, Green [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mand Blue. Then reply with my answers.[0m[48;2;55;55;55m                       [0m
+
+[0m[38;2;153;153;153m⏺ [0mUser answered Claude's questions:
+[0m[38;2;153;153;153m  ⎿  · Which colors? → Red, Blue[0m
+
+[0m[38;2;255;255;255m⏺ [0mRed, Blue
+
+[0m[38;2;153;153;153m✻ Brewed for 4s · done 2:54 AM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the AskUserQuestion tool once with two questions: first[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55m'Which colors?' header Colors, multiSelect, options Red, [0m[48;2;55;55;55m   [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mGreen, Blue; second 'Which size?' header Size, options [0m[48;2;55;55;55m     [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mSmall and Large. Then reply with my answers.[0m[48;2;55;55;55m                [0m
+[0m[38;2;153;153;153m──────────────────────────────────────────────────────────────[0m
+←  ☒ Colors [0m[38;2;0;0;0m[48;2;177;185;249m ☐ Size [0m ✔ Submit  →
+
+[0m[1m[38;2;255;255;255mWhich size?[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mSmall[0m
+     [0m[38;2;153;153;153mSmall size[0m
+  [0m[38;2;153;153;153m2.[0m Large
+     [0m[38;2;153;153;153mLarge size[0m
+  [0m[38;2;153;153;153m3. Type something.[0m
+[0m[38;2;153;153;153m──────────────────────────────────────────────────────────────[0m
+  4. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · Tab/Arrow keys to navigate · Esc to cancel[0m
+  
+  
+
+
+[0m[38;2;136;136;136m───────────────────────────────────────── create-q-txt-probe ─[0m

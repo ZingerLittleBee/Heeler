@@ -380,7 +380,7 @@ def verify_records(records: list[dict], layout: str) -> tuple[set[str], set[str]
         phase = value["phase"]
         memberships = {suite(test["identity"]) for test in tests}
         if value["lane"] == "package":
-            require(len(tests) == 71 and memberships - {None} == PACKAGE_SUITES, "Package suite/count contract changed")
+            require(len(tests) == 85 and memberships - {None} == PACKAGE_SUITES, "Package suite/count contract changed")
             require(value["summary"]["skipped"] == 0, "Package mandatory tests skipped")
             expected_prefix = "HeelerSSHTests/"
         else:
@@ -393,8 +393,8 @@ def verify_records(records: list[dict], layout: str) -> tuple[set[str], set[str]
                         "Full ordinary lane executed fewer than 769 tests")
             else:
                 count, suites = {
-                    SESSION: (13, {SESSION}), DIRECT: (9, {DIRECT}), WEAK: (10, {WEAK}),
-                    "SharedFixtureE2ETests": (116, SHARED | {WEAK}) if layout == "serial" else (106, SHARED),
+                    SESSION: (13, {SESSION}), DIRECT: (9, {DIRECT}), WEAK: (11, {WEAK}),
+                    "SharedFixtureE2ETests": (129, SHARED | {WEAK}) if layout == "serial" else (118, SHARED),
                 }[phase]
                 require(len(tests) == count and memberships == suites, f"Fixture suite/count contract changed: {phase}")
                 require(value["summary"]["skipped"] == 0, f"Mandatory fixture tests skipped: {phase}")

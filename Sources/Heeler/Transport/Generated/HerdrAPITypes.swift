@@ -25,6 +25,7 @@ struct AgentInfo: Codable, Equatable, Sendable {
     let agent: String?
     let agentSession: AgentSessionInfo?
     let agentStatus: AgentStatus
+    let completionSeq: Int?
     let cwd: String?
     let displayAgent: String?
     let focused: Bool
@@ -55,6 +56,7 @@ struct AgentInfo: Codable, Equatable, Sendable {
         workspaceID: String,
         agent: String? = nil,
         agentSession: AgentSessionInfo? = nil,
+        completionSeq: Int? = nil,
         cwd: String? = nil,
         displayAgent: String? = nil,
         foregroundCwd: String? = nil,
@@ -78,6 +80,7 @@ struct AgentInfo: Codable, Equatable, Sendable {
         self.workspaceID = workspaceID
         self.agent = agent
         self.agentSession = agentSession
+        self.completionSeq = completionSeq
         self.cwd = cwd
         self.displayAgent = displayAgent
         self.foregroundCwd = foregroundCwd
@@ -97,6 +100,7 @@ struct AgentInfo: Codable, Equatable, Sendable {
         case agent
         case agentSession = "agent_session"
         case agentStatus = "agent_status"
+        case completionSeq = "completion_seq"
         case cwd
         case displayAgent = "display_agent"
         case focused
@@ -341,6 +345,7 @@ struct PaneInfo: Codable, Equatable, Sendable {
     let foregroundCwd: String?
     let label: String?
     let paneID: String
+    let restoreError: String?
     let revision: Int
     let scroll: PaneScrollInfo?
     let stateLabels: [String: String]?
@@ -366,6 +371,7 @@ struct PaneInfo: Codable, Equatable, Sendable {
         displayAgent: String? = nil,
         foregroundCwd: String? = nil,
         label: String? = nil,
+        restoreError: String? = nil,
         scroll: PaneScrollInfo? = nil,
         stateLabels: [String: String]? = nil,
         terminalTitle: String? = nil,
@@ -386,6 +392,7 @@ struct PaneInfo: Codable, Equatable, Sendable {
         self.displayAgent = displayAgent
         self.foregroundCwd = foregroundCwd
         self.label = label
+        self.restoreError = restoreError
         self.scroll = scroll
         self.stateLabels = stateLabels
         self.terminalTitle = terminalTitle
@@ -404,6 +411,7 @@ struct PaneInfo: Codable, Equatable, Sendable {
         case foregroundCwd = "foreground_cwd"
         case label
         case paneID = "pane_id"
+        case restoreError = "restore_error"
         case revision
         case scroll
         case stateLabels = "state_labels"
@@ -502,6 +510,89 @@ struct PaneLayoutSplit: Codable, Equatable, Sendable {
         self.id = id
         self.ratio = ratio
         self.rect = rect
+    }
+}
+
+/// herdr schema `$defs/PaneProcessInfo`.
+struct PaneProcessInfo: Codable, Equatable, Sendable {
+    let foregroundProcessGroupID: Int?
+    let foregroundProcesses: [PaneProcessInfoProcess]?
+    let paneID: String
+    let shellPid: Int?
+    let tty: String?
+
+    init(
+        paneID: String,
+        foregroundProcessGroupID: Int? = nil,
+        foregroundProcesses: [PaneProcessInfoProcess]? = nil,
+        shellPid: Int? = nil,
+        tty: String? = nil
+    ) {
+        self.paneID = paneID
+        self.foregroundProcessGroupID = foregroundProcessGroupID
+        self.foregroundProcesses = foregroundProcesses
+        self.shellPid = shellPid
+        self.tty = tty
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case foregroundProcessGroupID = "foreground_process_group_id"
+        case foregroundProcesses = "foreground_processes"
+        case paneID = "pane_id"
+        case shellPid = "shell_pid"
+        case tty
+    }
+}
+
+/// herdr schema `$defs/PaneProcessInfoParams`.
+struct PaneProcessInfoParams: Codable, Equatable, Sendable {
+    let paneID: String?
+
+    init(paneID: String? = nil) {
+        self.paneID = paneID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case paneID = "pane_id"
+    }
+}
+
+/// herdr schema `$defs/PaneProcessInfoProcess`.
+struct PaneProcessInfoProcess: Codable, Equatable, Sendable {
+    let argv: [String]?
+    let argv0: String?
+    let cmdline: String?
+    let cwd: String?
+    let name: String
+    let pid: Int
+
+    init(
+        name: String,
+        pid: Int,
+        argv: [String]? = nil,
+        argv0: String? = nil,
+        cmdline: String? = nil,
+        cwd: String? = nil
+    ) {
+        self.name = name
+        self.pid = pid
+        self.argv = argv
+        self.argv0 = argv0
+        self.cmdline = cmdline
+        self.cwd = cwd
+    }
+}
+
+/// The `"type":"pane_process_info"` result payload of herdr's success_response schema.
+struct PaneProcessInfoResponse: Codable, Equatable, Sendable {
+    let processInfo: PaneProcessInfo
+
+    init(processInfo: PaneProcessInfo) {
+        self.processInfo = processInfo
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case processInfo = "process_info"
     }
 }
 
@@ -607,6 +698,25 @@ struct PaneScrollInfo: Codable, Equatable, Sendable {
     }
 }
 
+/// herdr schema `$defs/PaneSendInputParams`.
+struct PaneSendInputParams: Codable, Equatable, Sendable {
+    let keys: [String]?
+    let paneID: String
+    let text: String?
+
+    init(paneID: String, keys: [String]? = nil, text: String? = nil) {
+        self.paneID = paneID
+        self.keys = keys
+        self.text = text
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case keys
+        case paneID = "pane_id"
+        case text
+    }
+}
+
 /// herdr schema `$defs/PaneTarget`.
 struct PaneTarget: Codable, Equatable, Sendable {
     let paneID: String
@@ -625,6 +735,19 @@ struct PluginListParams: Codable, Equatable, Sendable {
     let pluginID: String?
 
     init(pluginID: String? = nil) {
+        self.pluginID = pluginID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pluginID = "plugin_id"
+    }
+}
+
+/// herdr schema `$defs/PluginSetEnabledParams`.
+struct PluginSetEnabledParams: Codable, Equatable, Sendable {
+    let pluginID: String
+
+    init(pluginID: String) {
         self.pluginID = pluginID
     }
 
@@ -690,6 +813,7 @@ struct ServerCapabilities: Codable, Equatable, Sendable {
     let endpointProtocolGeneration: Int?
     let healthCheck: Bool?
     let liveHandoff: Bool
+    let sshAgentRegistration: Bool?
     let surfaceInterest: Bool?
 
     init(
@@ -697,12 +821,14 @@ struct ServerCapabilities: Codable, Equatable, Sendable {
         detachedServerDaemon: Bool? = nil,
         endpointProtocolGeneration: Int? = nil,
         healthCheck: Bool? = nil,
+        sshAgentRegistration: Bool? = nil,
         surfaceInterest: Bool? = nil
     ) {
         self.liveHandoff = liveHandoff
         self.detachedServerDaemon = detachedServerDaemon
         self.endpointProtocolGeneration = endpointProtocolGeneration
         self.healthCheck = healthCheck
+        self.sshAgentRegistration = sshAgentRegistration
         self.surfaceInterest = surfaceInterest
     }
 
@@ -711,6 +837,7 @@ struct ServerCapabilities: Codable, Equatable, Sendable {
         case endpointProtocolGeneration = "endpoint_protocol_generation"
         case healthCheck = "health_check"
         case liveHandoff = "live_handoff"
+        case sshAgentRegistration = "ssh_agent_registration"
         case surfaceInterest = "surface_interest"
     }
 }

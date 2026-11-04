@@ -1,7 +1,7 @@
 import { test, suite } from "node:test";
 import assert from "node:assert/strict";
 
-import { candidateAddresses } from "../src/addresses.js";
+import { candidateAddresses, withConfiguredAddresses } from "../src/addresses.js";
 
 function iface(address, family, internal = false) {
   return { address, family, internal };
@@ -205,5 +205,37 @@ suite("candidateAddresses", () => {
 
   test("returns an empty list when nothing is routable", () => {
     assert.deepEqual(candidateAddresses({ lo0: [iface("127.0.0.1", "IPv4", true)] }), []);
+  });
+});
+
+suite("withConfiguredAddresses", () => {
+  const enumerated = [
+    { address: "172.17.0.2", family: "IPv4", interfaceName: "eth0", preChecked: true },
+    { address: "192.168.1.10", family: "IPv4", interfaceName: "eth1", preChecked: false },
+  ];
+
+  test("leaves the enumeration alone without configured addresses", () => {
+    assert.deepEqual(withConfiguredAddresses(enumerated, []), enumerated);
+  });
+
+  test("lists configured addresses first and pre-checks only them", () => {
+    const candidates = withConfiguredAddresses(enumerated, [
+      "nas.example.com",
+      "192.168.1.10",
+      "fd7a:115c:a1e0::1",
+    ]);
+    assert.deepEqual(candidates, [
+      { address: "nas.example.com", family: "name", interfaceName: "pair.json", preChecked: true },
+      { address: "192.168.1.10", family: "IPv4", interfaceName: "pair.json", preChecked: true },
+      { address: "fd7a:115c:a1e0::1", family: "IPv6", interfaceName: "pair.json", preChecked: true },
+      { address: "172.17.0.2", family: "IPv4", interfaceName: "eth0", preChecked: false },
+    ]);
+  });
+
+  test("offers configured addresses when no interface has one", () => {
+    assert.deepEqual(
+      withConfiguredAddresses([], ["192.168.1.10"]).map((c) => c.address),
+      ["192.168.1.10"],
+    );
   });
 });

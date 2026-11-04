@@ -5,15 +5,57 @@ A native iOS agent console for herdr. One context: the app. Terms owned by herdr
 ## Language
 
 **Host**:
-A remote machine reachable over SSH that runs a herdr server. The unit a user adds, names, and authenticates against.
+A remote machine reachable over SSH that runs a herdr server. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them.
 _Avoid_: server, machine, connection
+
+**Route**:
+One way to reach a Host: an address and port, optionally resolved from a Jump
+Host, with the first hop optionally carried by an Overlay Network. A Host lists
+its Routes in order; the first is its primary Route, the address shown for it.
+Every connection races the Host's Routes and keeps the first that reaches the
+Host, Routes over the device's own network a moment ahead of the rest — no
+rule picks a Route by Wi-Fi name or location (ADR 0022). A Route that reaches a
+machine presenting another key fails; it is not the Host.
+_Avoid_: path, connection, profile
 
 **Jump Host**:
 An SSH endpoint that forwards a Host connection when the Host is not directly
 reachable from the device. The Host's address and port are resolved from the
 Jump Host, normally through a loopback-only reverse tunnel. The app authenticates
-and verifies host keys independently at both hops.
+and verifies host keys independently at both hops. A Jump Host belongs to one
+Route; other Routes of the same Host may reach it without one.
 _Avoid_: bastion, proxy server
+
+**Overlay Network**:
+A Tailscale, ZeroTier, or EasyTier network the user configures in Settings,
+which Heeler joins with a node running inside the app. It is not a system VPN
+and carries nothing but Heeler's own connections. A Route that names one dials
+its first hop through it: the Host itself, or its Jump Host when one is set,
+addressed by its overlay IP or name. Only the byte stream changes; SSH
+authentication, host-key trust, and every channel are the same as a direct
+connection (ADR 0021). Its secrets stay in the Keychain, and its node runs
+only while the app does. EasyTier networks each run as an instance of their
+own, side by side; ZeroTier networks share one device identity.
+_Avoid_: VPN, tunnel, tailnet (for the general term)
+
+**Config Server**:
+An EasyTier web console that assigns EasyTier networks to a device instead
+of the user typing each network's name, secret, and peers. The device
+identifies itself with the console's user name and a Machine ID Heeler
+keeps; the server knows the network secrets and chooses the peers. One
+Config Server is one Overlay Network however many networks it assigns (up
+to eight); a Host on it reaches the assigned network its address or name is
+on.
+_Avoid_: web client, cloud config
+
+**Planet** and **Moon**:
+ZeroTier root definitions. A ZeroTier Overlay Network's Planet is the set of
+root servers it relies on — ZeroTier's own unless the user imports a custom
+planet file for that network's self-hosted roots. Each network has its own;
+networks with different planets run side by side (the node joins every
+network's roots, so lookups may reach any of them). A Moon is an extra root a
+single ZeroTier network orbits, named by its world ID and seed.
+_Avoid_: root server (for the setting), orbit (as a noun)
 
 **Device Key**:
 The device's SSH identity: an Ed25519 keypair generated on this device. The private key never leaves the Keychain; the public half is what a Host authorizes.
@@ -33,8 +75,12 @@ The full new-device ceremony: scan a Pairing Code, connect with its Bootstrap Ke
 _Avoid_: scan to connect, binding
 
 **Pairing Code**:
-The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry) produced by the pairing plugin. The QR image is just its rendering.
+The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry). The pairing plugin produces version 1, or version 2 for a herdr outside the user's config home; version 2, also produced by an app that bundles its own herdr, carries a Herdr Endpoint. The QR image is just its rendering.
 _Avoid_: QR code, invite
+
+**Herdr Endpoint**:
+A Host's own herdr instance outside the user's config home, such as one bundled in a desktop app: the absolute path of its API socket and of a launcher that behaves as `herdr` for it. Carried by a Pairing Code v2 and stored on the Host; a Host with one never uses the home-relative session socket or the `herdr` on the SSH PATH.
+_Avoid_: custom socket, herdr path
 
 **Bootstrap Key**:
 A single-use, TTL-bound Ed25519 keypair carried inside a Pairing Code. Its authorized_keys line is restricted to a forced command that can only perform Enrollment; it is destroyed on success or expiry.
@@ -70,6 +116,13 @@ _Avoid_: attach image, send image, upload image
 **Agent Status**:
 herdr's detected state of an Agent: Idle, Working, Blocked, Done, or Unknown. Blocked means the agent is waiting for human input and drives sort order and (later) notifications.
 _Avoid_: agent state, activity
+
+**Status Badge**:
+The Agent Status in its colored capsule, a field (`status_badge`) only a Row
+Slot's right side holds. The Status Ring already shows the status, so a row
+shows the capsule only where its layout adds it. The `status` field is the
+same status as plain text.
+_Avoid_: status chip, status pill
 
 **Pane**:
 herdr's unit of terminal real estate. A Pane hosts either an Agent or an
@@ -107,29 +160,51 @@ Changes never modifies the Checkout.
 _Avoid_: diff, source control, Agent's changes, project changes
 
 **Console**:
-The native dashboard surface, split into Agents, Terminals, Hosts, and Settings tabs; the two lists share one Host filter, and each hides its own search field until pulled down. Agents lists Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, opening Agent detail; grouping is independent of Agent ordering and Pin priority. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch between the two lists at its top, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
+The native dashboard surface, split into Agents, Terminals, Hosts, and Settings tabs; the two lists share one Host filter, and each hides its own search field until pulled down. Agents lists Agents across Hosts as a flat list or collapsible sections By Host or By Workspace, opening Agent detail. Workspace sections are scoped to their Host and ordered by their first Agent in the existing priority order; Agents keep their relative order within each section. A linked-worktree Workspace nests under the first main-checkout Workspace of the same repository on its Host (a collapsed parent counts its worktrees' Agents), and stays top-level when that Host has no such Workspace with Agents. Until a snapshot proves a Host's Agents, its saved Chat entries are placed by the Workspace structure its last snapshot reported, so its cards keep the shape they had. By Workspace draws each top-level Workspace as a card: a repository's card titles its main checkout by the branch its Agents' Changes reads found (until a read of the launch lands, the branch the last one found, saved with the Workspace structure) and each worktree by its Workspace, and rows leave the Workspace, Host, and checkout directory to the card. Presentation and collapse choices persist, and search opens matching sections without changing those choices. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch between the two lists at its top, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
 _Avoid_: dashboard, home
 
 **Agent Row Layout**:
 The ordered rows of fields that identify an Agent in the Console and its
 switcher. Each Host follows its herdr plugin's fields until the user saves
-that Host's own layout, which may start from a Sync from plugin copy. There
+that Host's own layout, which may start from a Sync from plugin copy or
+from another Host's layout, applied to every Host from that Host's page. There
 is no user-facing default layout. The Console shows at most three rows, as
 three fixed Row Slots, and every Agent on a Host shares them: herdr's
 per-kind `rows_by_agent` overrides are decoded but never applied. herdr's
-`state_icon` never appears as a field; the status badge at the end of Row 1
-owns it. Agent Status and Heeler Pin remain independent chrome; choosing
-status as a field repeats it in the row.
+`state_icon` never appears as a field; the Status Badge field or the Status
+Ring shows the status. Heeler Pin remains independent chrome; choosing
+status as a field shows it as text in the row.
 _Avoid_: card template, sidebar format
+
+**Agent Mark**:
+The mark of the program an Agent runs (its kind), which leads the Agent's row
+in the Console: the program's own logo where Heeler ships one, else the first
+letter of its name. A logo names the program, so beside it an Agent field that
+only spells out the kind leaves a row with other fields, and rows sharing a
+title get no program name after it; an initial does neither. A renamed Agent
+keeps its name.
+_Avoid_: harness icon, avatar, logo
+
+**Status Ring**:
+The ring around every Agent Mark in the Console, which is the Agent Status:
+Working's open arc turns, Done and Blocked close it in their colors, and Idle
+keeps a hairline. The Status Badge and the `status` field add the status in
+words only where the Agent List Fields place them.
+_Avoid_: row style, status avatar
 
 **Row Slot**:
 One of the three fixed positions in an Agent Row Layout. Row 1 and Row 2 are
 herdr rows: they start from herdr's sidebar fields and are what Sync from
-plugin refills. Row 3 is Heeler's row, which Sync fills only when herdr
-defines a third row. Every slot accepts herdr fields and the Heeler-only
-fields herdr does not define (Host name, Agent Status as text, working
-directory). Slots are never added, moved, or deleted; an empty slot renders
-nothing.
+plugin refills. Row 3 is Heeler's row, which Sync keeps. Every slot accepts
+herdr fields and the Heeler-only fields herdr does not define (Host name,
+Agent Status as text, working directory). Each slot also has a right side
+that ends its line, Heeler's own, which Sync keeps and which alone can hold
+the Status Badge and the Checkout's Changes totals; a field sits on one side
+of a slot at most. Until a Host's layout chooses its right sides, the Console
+places them: the Host name ends the first line under the title, and the
+totals the last.
+Titles, the switcher, and Live Activities read only the left sides. Slots are
+never added, moved, or deleted; an empty slot renders nothing.
 _Avoid_: extra row, custom row
 
 **Pin**:
@@ -152,9 +227,21 @@ Blocked: Send then inserts the draft into Attach without Enter, and the tools
 keyboard submits or cancels. Delivered means the Host accepted the text into
 the pane — whether the Agent queues or acts on it is the Agent's business,
 and the Composer never claims otherwise.
+While Agent Status is Working and the draft is blank, Send becomes Stop: the
+program's Stop keys (one Esc; in Chat, two for OpenCode, whose first Esc only
+arms its interrupt, or Ctrl+C in Grok Build, whose turns Esc doesn't stop),
+then a wait of up to three seconds for the status to leave Working rather
+than another press. The wait is per Agent, shared by Chat and the terminal.
+Only Chat presses Ctrl+C, after reading Grok Build's screen; the terminal's
+Composer keeps Send for Grok Build. With text, Send still delivers, so a
+prompt can queue behind the turn.
 Composer remains the default authored-input path on Agent detail. Direct Input
 is an explicit, opt-in alternative that hides the Composer card without
 clearing or submitting the draft.
+Chat shows the same Composer, draft and staging below the conversation. There
+Send follows Chat's rules instead, while Agent Status is Blocked a Blocked
+Card takes the Composer's place, and with the keyboard down the Composer folds
+to its input row.
 _Avoid_: reply bar, compose bar (the shelved predecessors), input box, message box
 
 **Attach**:
@@ -166,9 +253,12 @@ lets the system keyboard type that same Attach PTY.
 Delivery is one `agent.prompt` request, except when Agent Status is Blocked, in
 which case Composer Send inserts the draft into Attach without Enter and the
 tools keyboard submits or cancels. Only Composer's explicit tools-keyboard
-controls (and Direct Input's shortcut row / system Return) send terminal
-control sequences. The directly interactive surface on an ordinary shell is
-the Shell Terminal, never unqualified "Attach".
+controls and its Stop (and Direct Input's shortcut row / system Return) send
+terminal control sequences. The directly interactive surface on an ordinary
+shell is the Shell Terminal, never unqualified "Attach".
+Chat holds no Attach: while Chat shows in its place, the Agent's Attach is
+retained like any terminal the user has left, and nothing types into or
+resizes it.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Attach Link**:
@@ -176,6 +266,96 @@ An ordinary web URL observed in the terminal during one Agent detail session. It
 available after scrolling or reconnecting, but is forgotten when the user
 leaves the detail; a later session discovers whatever its terminal shows anew.
 _Avoid_: recent link, visible link, link history
+
+**Chat**:
+The native conversation a Claude Code, Codex, Pi, Oh My Pi, Grok Build or
+OpenCode Agent's detail can show in its terminal's place, read from the
+Agent's Transcript. Chat holds no Attach; its Composer and draft are the
+terminal's. Send is one `agent.prompt` request, made only after a screen read
+shows the program's input box empty, and refused for text the program would
+run rather than read. Its `/` menu offers the Agent's skills and `/compact`;
+for OpenCode, only `/compact`. Chat never resends: text left in the box after
+sending marks the message Not delivered. Stop presses the program's Stop keys
+through `agent.send_keys`: Esc, or for OpenCode Esc twice after checking the
+screen, or Ctrl+C in Grok Build once its screen shows the turn running. For
+Grok Build, Chat holds a message when the Agent shows another session, and
+marks one Grok Build recorded elsewhere. When OpenCode leaves the
+conversation herdr reported, as after its `/new`, Chat says so and shows no
+conversation.
+The choice between Chat and the terminal is app-wide, Terminal by default. Not
+offered on native Windows Hosts.
+_Avoid_: chat mode, conversation view, Monitor (ADR 0012's removed surface)
+
+**Transcript**:
+What an Agent's program writes on its Host as its record of the
+conversation: Claude Code's session JSONL, with its subagents' files, or a
+Codex rollout, or a Pi/Oh My Pi v2-v3 tree JSONL, or Grok Build's
+`updates.jsonl`, or, for OpenCode, the session's rows in OpenCode's own SQLite
+database, which Heeler reads with a bounded read-only query on the Host (ADR
+0025). For Pi and Oh My Pi, herdr
+normally names the exact absolute file path; a UUID can also locate a session
+under that program's default sessions directory. For Grok Build, herdr names
+the session id, whose folder Chat finds under `~/.grok/sessions`. The session
+herdr reports names it. Heeler only reads it: the app over SFTP, or for
+OpenCode by that query, keeping decoded entries, never tool output, in an
+on-device cache; and the Heeler plugin on the Host itself, to total Claude Code
+and Codex Token Usage (ADR 0028).
+_Avoid_: log, history file, session file
+
+**Account**:
+One sign-in of Claude Code or Codex on a Host, identified by the config
+directory where that program keeps its sign-in and Transcripts. Each Host has
+one **Default Account** per program: the directory the program uses in herdr's
+own environment. For Claude Code the user may add more Accounts by choosing
+their directories; Heeler may suggest directories that look like one, but
+counts none until the user adds it. A Host's Accounts are shared by every
+device. Two directories signed in to the same login are still two Accounts,
+and switching logins inside one directory stays one Account (ADR 0030).
+_Avoid_: profile, login, user, config dir (the directory identifies an Account;
+it is not its name)
+
+**Usage Limits**:
+The windows a Claude Code or Codex Account may use before the service slows
+or stops it, such as five hours or a week, each with the share used and when
+it resets, as the service reports them for each Account on a Host. They
+describe the Account, not the Host or an Agent, and are never merged across
+Accounts. Claude Code's are read only when the user turns them on for that
+Host (ADR 0028).
+_Avoid_: quota, rate limit (in copy), plan usage, billing
+
+**Token Usage**:
+The tokens a Host's Claude Code and Codex Transcripts record over at most the
+last 30 days, by program, Account, day, model and working directory, with the
+estimated cost of those tokens at API list prices. It counts only what the
+Transcripts of the Host's Accounts still hold, and is never an Account's Usage
+Limits or a bill.
+_Avoid_: spend, cost (alone), usage (unqualified), credits
+
+**Blocked Card**:
+Chat's native answer to the dialog on a Blocked Agent's screen, shown in the
+Composer's place. Its options come from the screen and the request's details
+from the Transcript; answers go through `agent.send_keys` and
+`pane.send_input`, never Attach. A card sends nothing once the dialog has
+changed and never resends. A dialog it cannot read gets a generic card with
+the Agent controls. OpenCode Blocked with no dialog on screen gets a card that
+says why instead, since its prompt would act on those keys.
+_Avoid_: approval sheet, permission prompt (the program's own dialog), alert
+
+**Background Work**:
+The Subagents and Workflows a Claude Code Agent runs in the background, which
+Chat lists over the Composer from their launch and end records in the
+Transcript and, for a Workflow, its journal beside it. Running work comes
+first; finished work stays until the user's next prompt. Chat only shows it
+and stops none of it. A Subagent is one background agent; a Workflow is a
+script that runs many and is listed as one row with its agents done.
+_Avoid_: background task, task list, jobs
+
+**Turn**:
+One prompt, command or notification and everything the Agent did in answer,
+as its program records it. Chat folds a finished turn's steps behind a
+"Worked for" row above its final answer, and shows two or more consecutive
+tool calls as one group row; a running turn shows how long it has worked.
+_Avoid_: exchange, round, step (one row within a turn)
 
 **Shell Terminal**:
 The full interactive terminal on an ordinary shell Pane, opened by Agent
@@ -185,7 +365,10 @@ a tab in the Agent's launch directory only as a fallback or explicit choice.
 Existing shells use direct terminal attach without takeover; Take Over is an
 explicit action when another client owns the terminal. libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
-Agent semantics, no notification routing. It replaces Agent detail while open.
+Agent semantics, no notification routing. Where the detail is pushed over the
+list (iPhone, or a compact iPad window), Open Terminal pushes it over Agent
+detail, so Back returns to the Agent; otherwise it replaces Agent detail while
+open.
 Like Agent detail it has no title bar: the terminal runs up to the status bar,
 and Back and Close Terminal sit behind the More button on its always-present
 input row, headed by the terminal's title.
@@ -194,6 +377,10 @@ minutes after leaving the view. The least recently viewed idle terminal is
 detached when another needs its slot; remote panes stay alive. Its Keys mode reuses the
 full Terminal keyboard from Agent tools, including characters, modifiers,
 symbols, and function keys, inside the measured iOS keyboard footprint.
+In Text mode the input row can also show Direct Input's shortcut row (keys
+only: the input row already holds Paste and More), toggled by a button
+with Direct Input's glyph. It is its own app-wide preference, default
+off, separate from Agent detail's input mode.
 _Avoid_: Attach (that's the Agent-specific display surface), shell console,
 terminal pane view
 
@@ -235,6 +422,10 @@ full Terminal keyboard in the controls tab, without the Agent page or pager.
 It reuses the same measured footprint for an optional tools dock, but its
 primary shortcuts persist in an app-content
 row above the Agent switcher strip rather than replacing the system keyboard.
+Chat's tools dock keeps the Agent page, whose keys reach the Agent's program
+through `agent.send_keys` in the order pressed, and the Skills and Snippets
+tabs, which insert into the draft. It has no Terminal keyboard and no
+Appearance tab.
 _Avoid_: desktop keyboard, reply keyboard, Keys mode (the direct-input predecessor)
 
 **Snippet**:

@@ -1,0 +1,46 @@
+Heeler modifies libzt (commit 7e5d0f99a2de81c45faa28e44289bcd19d933bf2) and its ZeroTierOne
+submodule (commit fc5c3ec22090b5b2a0f274e863651fe9ca489bf4) before building CZeroTier, with the
+patches below, applied in order. They are kept in patches/libzt of
+https://github.com/Ylarod/heeler-overlay-natives; the release tag the
+CZeroTier binary was published under holds the exact patches, the pinned
+upstream submodules, and the build scripts. Each file a patch changes carries
+a "Modified by Heeler contributors" notice. libzt is used under the Apache
+License 2.0, to which its Business Source License converted on its Change
+Date. ZeroTierOne's core (node/, osdep/) is used under the Mozilla Public
+License 2.0 (ZeroTierOne-MPL-2.0.txt); the Source Code Form of those files,
+with Heeler's modifications, is that release tag (the pinned ZeroTierOne
+commit plus these patches). prometheus-cpp-lite (MIT) is modified by patch
+0003. Heeler also adds src/heeler_zerotier.cpp and src/heeler_zerotier.h
+(native/zerotier in that repository) to libzt.
+
+0001-independent-root-sets.patch (SHA-256 b082d29c410f2e69ecdcf829ad57f6575173bb03add85b08253539790bacba43)
+  Heeler: let one node use independent root sets (the planet plus local moons).
+  Files changed:
+    ext/ZeroTierOne/node/Constants.hpp
+    ext/ZeroTierOne/node/IncomingPacket.cpp
+    ext/ZeroTierOne/node/Multicaster.cpp
+    ext/ZeroTierOne/node/Node.cpp
+    ext/ZeroTierOne/node/Node.hpp
+    ext/ZeroTierOne/node/Switch.cpp
+    ext/ZeroTierOne/node/Topology.cpp
+    ext/ZeroTierOne/node/Topology.hpp
+
+0002-managed-gateway-routes.patch (SHA-256 ec02c07070d6a252e8042a5e1dfcdcfe2bcc4409e40a1bee758081982f03efdd)
+  Heeler: route ZeroTier managed routes through a gateway on the network.
+  Files changed:
+    src/NodeService.cpp
+    src/VirtualTap.cpp
+    src/VirtualTap.hpp
+    src/lwipopts.h
+
+0003-metrics-saver-on-demand.patch (SHA-256 abb698416801341e03971a69c676ecc0e7d425b2e9c7c76a12b511729750984b)
+  Heeler: start the metrics saver thread only while metrics are written.
+  Files changed:
+    ext/ZeroTierOne/ext/prometheus-cpp-lite-1.0/core/include/prometheus/save_to_file.h
+
+0004-rebind-defunct-udp-sockets.patch (SHA-256 50e352bb77487dfd0e4d4f5f229822014f4f93e5c700132be183e7e6de742365)
+  Heeler: rebind the UDP sockets that iOS defuncts while the app is suspended.
+  Files changed:
+    ext/ZeroTierOne/osdep/Phy.hpp
+    src/NodeService.cpp
+

@@ -1,0 +1,23 @@
+heeler-easytier
+
+Copyright (C) 2026 Heeler contributors
+
+heeler-easytier is the small Rust library inside CEasyTier that runs EasyTier
+for Heeler and exposes it to the app through a C interface. It is free
+software: you can redistribute it and/or modify it under the terms of the GNU
+Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+details.
+
+The full texts of the GNU Lesser General Public License version 3 and of the
+GNU General Public License version 3 it supplements are reproduced in the
+EasyTier notice (EasyTier-LGPL-3.0.txt), together with where to obtain the
+corresponding source and how to install a modified build.
+
+Source: https://github.com/Ylarod/heeler-overlay-natives, directory
+native/easytier, at the release tag the CEasyTier build you received was
+published under.

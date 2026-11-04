@@ -28,9 +28,16 @@ final class WorktreeDetailStore {
     private(set) var confirmation: WorktreeRemovalConfirmation?
     private(set) var removalPhase: RemovalPhase = .idle
     private(set) var showsFeedback = false
-    /// The refusal is the dirty-Worktree one, so its alert can offer Changes.
+    /// The refusal leaves uncommitted work possible, so its alert can offer
+    /// Changes.
     private(set) var refusalOffersChanges = false
+    /// The command that forces the refused removal, for the alert's Copy
+    /// Command.
+    private(set) var refusalCommand: String?
 
+    /// Recovery commands target the same endpoint or session as the removal.
+    private let sessionName: String
+    private let endpoint: HerdrEndpoint?
     private let list: (String) async throws -> WorktreeListResponse
     private let remove: (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt
     private let hasWorkingAgent: () -> Bool
@@ -44,6 +51,8 @@ final class WorktreeDetailStore {
         request: WorktreeRemovalRequest,
         workspaceLabel: String,
         checkout: RepositoryCheckout,
+        sessionName: String,
+        endpoint: HerdrEndpoint? = nil,
         list: @escaping (String) async throws -> WorktreeListResponse,
         remove: @escaping (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt,
         hasWorkingAgent: @escaping () -> Bool,
@@ -52,6 +61,8 @@ final class WorktreeDetailStore {
         self.request = request
         self.workspaceLabel = workspaceLabel
         self.checkout = checkout
+        self.sessionName = sessionName
+        self.endpoint = endpoint
         self.list = list
         self.remove = remove
         self.hasWorkingAgent = hasWorkingAgent
@@ -81,6 +92,7 @@ final class WorktreeDetailStore {
         guard canShowChanges else { return }
         showsFeedback = false
         refusalOffersChanges = false
+        refusalCommand = nil
         if case .failed = removalPhase {
             removalPhase = .idle
         }
@@ -171,9 +183,11 @@ final class WorktreeDetailStore {
         } catch TransportError.cancelled {
             removalPhase = .idle
         } catch {
-            refusalOffersChanges = showChangesHandler != nil
-                && WorktreeRemovalRefusal.isDirty(error)
-            removalPhase = .failed(WorktreeRemovalRefusal.message(for: error))
+            let refusal = WorktreeRemovalRefusal(
+                error, request: request, sessionName: sessionName, endpoint: endpoint)
+            refusalOffersChanges = showChangesHandler != nil && refusal.offersChanges
+            refusalCommand = refusal.command
+            removalPhase = .failed(refusal.message)
             showsFeedback = true
         }
     }
@@ -181,6 +195,7 @@ final class WorktreeDetailStore {
     func dismissFeedback() {
         showsFeedback = false
         refusalOffersChanges = false
+        refusalCommand = nil
         if case .failed = removalPhase {
             removalPhase = .idle
         }

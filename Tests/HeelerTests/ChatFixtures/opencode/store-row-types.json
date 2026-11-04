@@ -1,0 +1,132 @@
+{
+ "session": {
+  "id": "ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9",
+  "project_id": "157e838f6e3ccb56d9b3d6416c0be3039c60111d",
+  "workspace_id": null,
+  "parent_id": null,
+  "fork_session_id": null,
+  "fork_boundary": null,
+  "slug": "quiet-meadow",
+  "directory": "/Users/developer/work/heeler-tmp-chat/opencode-a/project",
+  "path": "",
+  "title": "Row types",
+  "version": "2.0.32",
+  "share_url": null,
+  "summary_additions": null,
+  "summary_deletions": null,
+  "summary_files": null,
+  "summary_diffs": null,
+  "metadata": null,
+  "cost": 0.0,
+  "tokens_input": 0,
+  "tokens_output": 0,
+  "tokens_reasoning": 0,
+  "tokens_cache_read": 0,
+  "tokens_cache_write": 0,
+  "revert": null,
+  "permission": null,
+  "agent": "build",
+  "model": "{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"}",
+  "time_created": 1800000000000,
+  "time_updated": 1800000003000,
+  "time_compacting": null,
+  "time_archived": null,
+  "time_suspended": null,
+  "resume_attempts": 0,
+  "time_idle": 1800000003002,
+  "time_viewed": null,
+  "idle_outcome": "succeeded"
+ },
+ "event_seq": 40,
+ "rows": [
+  {
+   "id": "msg_0a1b2c3d4e10L2z3X4c5V6b7N8",
+   "type": "shell",
+   "seq": 4,
+   "time_created": 1800000000000,
+   "time_updated": 1800000000400,
+   "data": "{\"shellID\":\"sh_0a1b2c3d4e10M9q0W1e2R3t4Y5\",\"command\":\"git status\",\"status\":\"completed\",\"exit\":128,\"output\":\"fatal: not a git repository\\n\",\"metadata\":{},\"time\":{\"created\":1800000000000,\"completed\":1800000000400}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e20U6i7O8p9A0s1D2",
+   "type": "shell",
+   "seq": 6,
+   "time_created": 1800000000500,
+   "time_updated": 1800000000500,
+   "data": "{\"shellID\":\"sh_0a1b2c3d4e20F3g4H5j6K7l8Z9\",\"command\":\"sleep 60\",\"status\":\"running\",\"metadata\":{},\"time\":{\"created\":1800000000500}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e30X0c1V2b3N4m5Q6",
+   "type": "synthetic",
+   "seq": 8,
+   "time_created": 1800000000600,
+   "time_updated": 1800000000600,
+   "data": "{\"text\":\"Background shell job finished.\",\"description\":\"Shell job\",\"metadata\":{\"source\":\"shell\",\"state\":\"completed\",\"exit\":0,\"jobID\":\"job_0a1b2c3d4e30W7e8R9t0Y1u2I3\",\"shellID\":\"sh_0a1b2c3d4e20F3g4H5j6K7l8Z9\",\"truncated\":false,\"extra\":\"not shown\"},\"time\":{\"created\":1800000000600}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e40O4p5A6s7D8f9G0",
+   "type": "system",
+   "seq": 10,
+   "time_created": 1800000000700,
+   "time_updated": 1800000000700,
+   "data": "{\"text\":\"System notice for the session.\",\"description\":\"Reminder\",\"time\":{\"created\":1800000000700}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e50H1j2K3l4Z5x6C7",
+   "type": "skill",
+   "seq": 12,
+   "time_created": 1800000000800,
+   "time_updated": 1800000000800,
+   "data": "{\"skill\":\"review\",\"name\":\"Review\",\"text\":\"Review the change.\",\"metadata\":{\"source\":\"skill\"},\"time\":{\"created\":1800000000800}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e60V8b9N0m1Q2w3E4",
+   "type": "location-switched",
+   "seq": 14,
+   "time_created": 1800000000900,
+   "time_updated": 1800000000900,
+   "data": "{\"location\":{\"directory\":\"/Users/developer/work/heeler-tmp-chat/opencode-a/project/sub\"},\"previous\":{\"location\":{\"directory\":\"/Users/developer/work/heeler-tmp-chat/opencode-a/project\"}},\"time\":{\"created\":1800000000900}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e70R5t6Y7u8I9o0P1",
+   "type": "model-switched",
+   "seq": 16,
+   "time_created": 1800000001000,
+   "time_updated": 1800000001000,
+   "data": "{\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"time\":{\"created\":1800000001000}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e80A2s3D4f5G6h7J8",
+   "type": "future-kind",
+   "seq": 18,
+   "time_created": 1800000001100,
+   "time_updated": 1800000001100,
+   "data": "{\"payload\":{\"x\":1},\"time\":{\"created\":1800000001100}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e90K9l0Z1x2C3v4B5",
+   "type": "assistant",
+   "seq": 20,
+   "time_created": 1800000001200,
+   "time_updated": 1800000001200,
+   "data": "{not json"
+  },
+  {
+   "id": "msg_0a1b2c3d4ea0N6m7Q8w9E0r1T2",
+   "type": "compaction",
+   "seq": 22,
+   "time_created": 1800000001300,
+   "time_updated": 1800000001300,
+   "data": "{\"status\":\"running\",\"reason\":\"auto\",\"time\":{\"created\":1800000001300}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4eb0Y3u4I5o6P7a8S9",
+   "type": "assistant",
+   "seq": 24,
+   "time_created": 1800000001400,
+   "time_updated": 1800000001500,
+   "data": "{\"time\":{\"created\":1800000001400,\"completed\":null},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"text\",\"text\":\"Still working.\",\"state\":{\"phase\":\"commentary\"}}]}"
+  }
+ ],
+ "inbox": []
+}

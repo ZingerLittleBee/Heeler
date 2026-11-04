@@ -90,6 +90,13 @@ Attach down first, and leaving tears the shell down and lets Agent Attach
 rejoin. Both directions ride the existing per-Host terminal serialization
 instead of a second ownership mechanism.
 
+Update (2026-10-18): where the detail is pushed over its list (iPhone, or a
+compact iPad window), the terminal Open Terminal opens is pushed over Agent
+detail, so Back returns to the Agent (ADR 0017, "Existing terminals and
+explicit takeover"). Its header draws Back as a Terminals-tab push does, and
+the system's swipe pops it. The handoff stays explicit: the Agent's Attach still
+leaves before the push and rejoins after it.
+
 ## Consequences
 
 - Every Open Terminal creates a new tab; once a tab exists, attach failures

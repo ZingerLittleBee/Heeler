@@ -1,0 +1,68 @@
+{
+ "session": {
+  "id": "ses_0a1b2c3d4e5fK2mN8pQ4rT6vX9",
+  "project_id": "157e838f6e3ccb56d9b3d6416c0be3039c60111d",
+  "workspace_id": null,
+  "parent_id": null,
+  "fork_session_id": null,
+  "fork_boundary": null,
+  "slug": "clever-canyon",
+  "directory": "/Users/developer/work/heeler-tmp-chat/opencode-a/project",
+  "path": "",
+  "title": "Pong",
+  "version": "2.0.32",
+  "share_url": null,
+  "summary_additions": null,
+  "summary_deletions": null,
+  "summary_files": null,
+  "summary_diffs": null,
+  "metadata": null,
+  "cost": 0.0,
+  "tokens_input": 9988,
+  "tokens_output": 11,
+  "tokens_reasoning": 0,
+  "tokens_cache_read": 0,
+  "tokens_cache_write": 0,
+  "revert": null,
+  "permission": null,
+  "agent": "build",
+  "model": "{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"}",
+  "time_created": 1800000000000,
+  "time_updated": 1800000558361,
+  "time_compacting": null,
+  "time_archived": null,
+  "time_suspended": null,
+  "resume_attempts": 0,
+  "time_idle": 1800000558362,
+  "time_viewed": null,
+  "idle_outcome": "interrupted"
+ },
+ "event_seq": 159,
+ "rows": [
+  {
+   "id": "msg_0a1b2c3d4e103AuzWner4Xsgr9",
+   "type": "user",
+   "seq": 149,
+   "time_created": 1800000546979,
+   "time_updated": 1800000546979,
+   "data": "{\"time\":{\"created\":1800000546979},\"text\":\"Run the shell command sleep 30; echo done and report the output.\",\"files\":[],\"agents\":[]}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e20awLQfDefANJJGp",
+   "type": "assistant",
+   "seq": 150,
+   "time_created": 1800000546986,
+   "time_updated": 1800000558361,
+   "data": "{\"time\":{\"created\":1800000546986,\"streamed\":1800000550990,\"completed\":1800000558361},\"agent\":\"build\",\"model\":{\"id\":\"gpt-6-astra\",\"providerID\":\"openai\",\"variant\":\"high\"},\"content\":[{\"type\":\"text\",\"text\":\"I'll run that command, wait about 30 seconds, then report the output.\",\"state\":{\"phase\":\"commentary\"}},{\"type\":\"tool\",\"id\":\"call_zQUDtV7zl1ihqLFJa2mQFAax\",\"name\":\"shell\",\"executed\":false,\"state\":{\"status\":\"error\",\"input\":{\"command\":\"sleep 30; echo done\"},\"error\":{\"type\":\"aborted\",\"message\":\"Tool execution interrupted\"},\"metadata\":{\"shellID\":\"sh_0a1b2c3d4e10ysYn4eNvKpW3wK\"}},\"time\":{\"created\":1800000550603,\"ran\":1800000550901,\"completed\":1800000558350}}],\"finish\":\"error\",\"cost\":0,\"tokens\":{\"input\":458,\"output\":45,\"reasoning\":0,\"cache\":{\"read\":10240,\"write\":0}},\"error\":{\"type\":\"aborted\",\"message\":\"Step interrupted\"}}"
+  },
+  {
+   "id": "msg_0a1b2c3d4e30m2eiCL86VTGcGZ",
+   "type": "idle",
+   "seq": 159,
+   "time_created": 1800000558362,
+   "time_updated": 1800000558363,
+   "data": "{\"time\":{\"created\":1800000558362},\"outcome\":\"interrupted\"}"
+  }
+ ],
+ "inbox": []
+}

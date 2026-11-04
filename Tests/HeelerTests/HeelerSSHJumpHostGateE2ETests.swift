@@ -241,16 +241,17 @@ struct HeelerSSHJumpHostGateE2ETests {
 
         let cancelledJump = try await environment.connectJump()
         let forwardingOpen = Task {
-            await Task.yield()
+            // Cancel before admission, not at a scheduler-dependent point in
+            // the native open. No libssh2 state belongs to this request yet.
+            withUnsafeCurrentTask { $0?.cancel() }
             return try await cancelledJump.connectThrough(
                 to: environment.targetEndpoint,
                 timeout: .seconds(30))
         }
-        forwardingOpen.cancel()
         await #expect(throws: SSHError.cancelled) { _ = try await forwardingOpen.value }
-        await #expect(throws: SSHError.connectionInvalidated) {
-            _ = try await cancelledJump.execute("printf poisoned", timeout: .seconds(1))
-        }
+        let result = try await cancelledJump.execute("printf reusable", timeout: .seconds(1))
+        #expect(result.stdout == Data("reusable".utf8))
+        try await cancelledJump.close(timeout: .seconds(3))
     }
 
     @Test("inner handshake and authentication cancellation terminate promptly")
@@ -322,6 +323,72 @@ struct HeelerSSHJumpHostGateE2ETests {
         #expect(ContinuousClock.now - started < .seconds(15))
         try await target.close(timeout: .seconds(3))
     }
+
+    @Test("routes race to the first that reaches the Host, trusted by Host")
+    func routesRaceToTheFirstThatReachesTheHost() async throws {
+        let environment = try #require(HeelerSSHJumpHostTestEnvironment.current)
+        let knownHosts = InMemoryKnownHostsStore()
+        let confirmations = HostKeyConfirmationRecorder()
+        let policy = HostKeyPolicy(knownHosts: knownHosts) { candidate in
+            await confirmations.confirm(candidate)
+        }
+        var settings = environment.settings(policy: policy)
+        let reaching = try #require(settings.routes.first)
+        var refusing = reaching
+        refusing.jump?.port = Int(environment.forwardingDeniedPort)
+        settings.routes = [
+            // A direct route whose server never answers, as a LAN address
+            // away from home may: it holds the race only for the stagger.
+            SSHRoute(host: environment.host, port: Int(environment.outerStallPort)),
+            refusing,
+            reaching,
+        ]
+        let hostID = UUID()
+        settings.hostKeyTrust = .host(hostID)
+
+        let started = ContinuousClock.now
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        #expect(ContinuousClock.now - started < .seconds(3))
+        _ = try await transport.ping()
+        try await transport.close()
+
+        let trusted = HostKeyTrust.hostKey(hostID)
+        #expect(await knownHosts.fingerprint(host: trusted.host, port: trusted.port) != nil)
+        #expect(
+            await knownHosts.fingerprints(
+                host: environment.targetHost, port: Int(environment.targetPort)
+            ).isEmpty)
+        // The Host was confirmed once, under the endpoint the user would see.
+        #expect(
+            await confirmations.endpoints.filter {
+                $0 == "\(environment.targetHost):\(environment.targetPort)"
+            }.count == 1)
+    }
+
+    @Test("every route failing reports each route's own failure in order")
+    func everyRouteFailingIsReportedPerRoute() async throws {
+        let environment = try #require(HeelerSSHJumpHostTestEnvironment.current)
+        var settings = environment.settings()
+        var refusing = try #require(settings.routes.first)
+        refusing.jump?.port = Int(environment.forwardingDeniedPort)
+        settings.routes = [refusing, SSHRoute(host: environment.host, port: 1)]
+
+        let error = await #expect(throws: TransportError.self) {
+            _ = try await HeelerSSHTransport.connect(settings: settings)
+        }
+        guard case .noRouteReached(let failures) = error else {
+            Issue.record("expected every route's failure, got \(String(describing: error))")
+            return
+        }
+        #expect(failures.map(\.route) == [refusing.label, "\(environment.host):1"])
+        #expect(failures.first?.error == .jumpHostFailed(.tcpForwardingUnavailable))
+        guard case .sshUnreachable = failures.last?.error else {
+            Issue.record("expected the refused direct route to be unreachable")
+            return
+        }
+        #expect(error?.isRetryable == true)
+    }
+
 }
 
 private final class SSHConnectionTeardownRecorder: @unchecked Sendable {

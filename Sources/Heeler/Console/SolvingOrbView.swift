@@ -64,12 +64,52 @@ struct SolvingOrbRenderer: Sendable {
         return Move(axis: axis, lo: lo, angle: direction * .pi / 2)
     }
 
+    /// The sphere's dot lattice before and after each move of the scramble:
+    /// `states[k]` holds every point once moves `0..<k` have fully turned.
+    /// Any frame is one of these states plus at most one partial turn, so a
+    /// frame turns each dot once instead of up to `moveCount` times.
+    struct Lattice: Sendable {
+        struct Point: Sendable {
+            var x: Double
+            var y: Double
+            var z: Double
+        }
+
+        let states: [[Point]]
+
+        init(latRings: Int, lonDensity: Double) {
+            var points: [Point] = []
+            for ring in 0...latRings {
+                let lat = -Double.pi / 2 + Double(ring) / Double(latRings) * .pi
+                let cosLat = cos(lat)
+                let sinLat = sin(lat)
+                let lonCount = max(1, Int((abs(cosLat) * lonDensity).rounded()))
+                for step in 0..<lonCount {
+                    let lon = Double(step) / Double(lonCount) * 2 * .pi
+                    points.append(Point(x: cosLat * cos(lon), y: sinLat, z: cosLat * sin(lon)))
+                }
+            }
+            var states = [points]
+            for move in SolvingOrbRenderer.moves {
+                points = points.map { SolvingOrbRenderer.turn($0, by: move, amount: 1).point }
+                states.append(points)
+            }
+            self.states = states
+        }
+    }
+
+    static let smallLattice = Lattice(latRings: small.latRings, lonDensity: small.lonDensity)
+    static let largeLattice = Lattice(latRings: large.latRings, lonDensity: large.lonDensity)
+
     let size: Double
     let preset: Preset
+    let lattice: Lattice
 
     init(size: Double) {
         self.size = size
-        self.preset = size <= 40 ? Self.small : Self.large
+        let isSmall = size <= 40
+        self.preset = isSmall ? Self.small : Self.large
+        self.lattice = isSmall ? Self.smallLattice : Self.largeLattice
     }
 
     /// Deterministic hash in [0, 1).
@@ -106,31 +146,25 @@ struct SolvingOrbRenderer: Sendable {
         return (amounts, active)
     }
 
-    private static func applyMoves(
-        _ point: (x: Double, y: Double, z: Double),
-        amounts: [Double],
-        active: Int
-    ) -> (x: Double, y: Double, z: Double, inActive: Bool) {
-        var (x, y, z) = point
-        var inActive = false
-        for i in 0..<moves.count where amounts[i] > 0 {
-            let move = moves[i]
-            let coordinate = move.axis == 0 ? x : move.axis == 1 ? y : z
-            guard coordinate >= move.lo, coordinate < move.lo + 0.5 else { continue }
-            if i == active { inActive = true }
-            let a = move.angle * amounts[i]
-            let ca = cos(a)
-            let sa = sin(a)
-            switch move.axis {
-            case 0:
-                (y, z) = (y * ca - z * sa, y * sa + z * ca)
-            case 1:
-                (x, z) = (x * ca + z * sa, -x * sa + z * ca)
-            default:
-                (x, y) = (x * ca - y * sa, x * sa + y * ca)
-            }
+    /// Turns `point` by `amount` of `move` when it lies in the move's band.
+    private static func turn(
+        _ point: Lattice.Point, by move: Move, amount: Double
+    ) -> (point: Lattice.Point, inBand: Bool) {
+        var (x, y, z) = (point.x, point.y, point.z)
+        let coordinate = move.axis == 0 ? x : move.axis == 1 ? y : z
+        guard coordinate >= move.lo, coordinate < move.lo + 0.5 else { return (point, false) }
+        let a = move.angle * amount
+        let ca = cos(a)
+        let sa = sin(a)
+        switch move.axis {
+        case 0:
+            (y, z) = (y * ca - z * sa, y * sa + z * ca)
+        case 1:
+            (x, z) = (x * ca + z * sa, -x * sa + z * ca)
+        default:
+            (x, y) = (x * ca - y * sa, x * sa + y * ca)
         }
-        return (x, y, z, inActive)
+        return (Lattice.Point(x: x, y: y, z: z), true)
     }
 
     /// One frame of the orb at scaled time `t`, z-sorted far → near.
@@ -145,33 +179,34 @@ struct SolvingOrbRenderer: Sendable {
         // small orbs legible.
         let radiusScale = pow(size / 300, 0.6)
         let (amounts, active) = Self.solveCycle(at: t)
+        // Moves before the active one have fully turned; later ones have not
+        // started. At rest (`active == -1`) the sphere is solved.
+        let settled = lattice.states[max(0, active)]
+        let turning = active >= 0 && amounts[active] > 0
+            ? (move: Self.moves[active], amount: amounts[active]) : nil
 
         var dots: [Dot] = []
-        for ring in 0...preset.latRings {
-            let lat = -Double.pi / 2 + Double(ring) / Double(preset.latRings) * .pi
-            let cosLat = cos(lat)
-            let sinLat = sin(lat)
-            let lonCount = max(1, Int((abs(cosLat) * preset.lonDensity).rounded()))
-            for step in 0..<lonCount {
-                let lon = Double(step) / Double(lonCount) * 2 * .pi
-                let moved = Self.applyMoves(
-                    (cosLat * cos(lon), sinLat, cosLat * sin(lon)),
-                    amounts: amounts, active: active)
-                // Spin + tilt + orthographic projection.
-                let x1 = moved.x * cy + moved.z * sy
-                let z1 = -moved.x * sy + moved.z * cy
-                let y1 = moved.y * ct - z1 * st
-                let z2 = moved.y * st + z1 * ct
-                let depth = (z2 + 1) / 2
-                dots.append(Dot(
-                    x: center + x1 * radius,
-                    y: center - y1 * radius,
-                    z: z2,
-                    radius: (preset.dotBase + preset.dotDepth * depth
-                        + (moved.inActive ? preset.dotActive : 0)) * radiusScale,
-                    // the band being turned inks a touch darker — the "hand"
-                    white: 0.62 - 0.54 * depth - (moved.inActive ? 0.14 : 0)))
+        dots.reserveCapacity(settled.count)
+        for point in settled {
+            var moved = point
+            var inActive = false
+            if let turning {
+                (moved, inActive) = Self.turn(point, by: turning.move, amount: turning.amount)
             }
+            // Spin + tilt + orthographic projection.
+            let x1 = moved.x * cy + moved.z * sy
+            let z1 = -moved.x * sy + moved.z * cy
+            let y1 = moved.y * ct - z1 * st
+            let z2 = moved.y * st + z1 * ct
+            let depth = (z2 + 1) / 2
+            dots.append(Dot(
+                x: center + x1 * radius,
+                y: center - y1 * radius,
+                z: z2,
+                radius: (preset.dotBase + preset.dotDepth * depth
+                    + (inActive ? preset.dotActive : 0)) * radiusScale,
+                // the band being turned inks a touch darker — the "hand"
+                white: 0.62 - 0.54 * depth - (inActive ? 0.14 : 0)))
         }
         dots.sort { $0.z < $1.z }
         return dots
@@ -183,8 +218,14 @@ struct SolvingOrbRenderer: Sendable {
 struct SolvingOrbView: View {
     var size: CGFloat = 16
 
+    /// The orb is a 10–12 pt glyph: 30 Hz reads the same as ProMotion's
+    /// 120 Hz for a quarter of the main-thread drawing.
+    static let frameInterval: TimeInterval = 1.0 / 30
+
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isOnScreen = false
 
     var body: some View {
         let renderer = SolvingOrbRenderer(size: Double(size))
@@ -192,7 +233,12 @@ struct SolvingOrbView: View {
             if reduceMotion {
                 frame(renderer, at: 0.6)
             } else {
-                TimelineView(.animation) { timeline in
+                // Holds its last frame while off screen or not in the
+                // foreground, so a hidden orb costs nothing.
+                TimelineView(.animation(
+                    minimumInterval: Self.frameInterval,
+                    paused: !isOnScreen || scenePhase != .active
+                )) { timeline in
                     frame(
                         renderer,
                         at: timeline.date.timeIntervalSinceReferenceDate * renderer.preset.speed)
@@ -200,6 +246,8 @@ struct SolvingOrbView: View {
             }
         }
         .frame(width: size, height: size)
+        .onAppear { isOnScreen = true }
+        .onDisappear { isOnScreen = false }
     }
 
     private func frame(_ renderer: SolvingOrbRenderer, at t: Double) -> some View {

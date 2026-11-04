@@ -19,23 +19,52 @@ struct SSHTransportConnector: TransportConnector {
 
 extension SSHTransportSettings {
     /// Transport settings for a catalog Host, given resolved credentials and
-    /// the TOFU policy the UI wires up.
-    init(host: Host, credentials: SSHCredentials, hostKeyPolicy: HostKeyPolicy) {
+    /// the TOFU policy the UI wires up. Every route of the Host is offered
+    /// to the race, and the Host's key is trusted by Host, whichever route
+    /// reaches it (ADR 0022). `overlays` resolves each route's Overlay
+    /// Network, if it names one; the route itself fails the dial when that
+    /// network has since been removed.
+    init(
+        host: Host,
+        credentials: SSHCredentials,
+        hostKeyPolicy: HostKeyPolicy,
+        overlays: OverlayNetworkRuntime = .shared
+    ) {
         self.init(
-            host: host.address,
-            port: host.port,
+            routes: host.routes.map { route in
+                SSHRoute(
+                    host: route.address.trimmingCharacters(in: .whitespaces),
+                    port: route.port,
+                    // Both hops use the Host's resolved credential. Device Key
+                    // is the normal case; password Hosts require the same
+                    // password at both hops.
+                    jump: route.usesJumpHost
+                        ? SSHJumpSettings(
+                            host: route.jumpAddress.trimmingCharacters(in: .whitespaces),
+                            port: route.jumpPort,
+                            username: host.jumpUsername(on: route),
+                            credentials: credentials)
+                        : nil,
+                    overlay: route.overlayNetworkID.map { networkID in
+                        overlays.route(for: networkID)
+                    },
+                    id: route.id)
+            },
             username: host.username,
             credentials: credentials,
             hostKeyPolicy: hostKeyPolicy,
-            socket: host.socketLocation,
-            // Both hops use the Host's resolved credential. Device Key is the
-            // normal case; password Hosts require the same password at both hops.
-            jump: host.usesJumpHost
-                ? SSHJumpSettings(
-                    host: host.jumpAddress.trimmingCharacters(in: .whitespaces),
-                    port: host.jumpPort,
-                    username: host.resolvedJumpUsername,
-                    credentials: credentials)
-                : nil)
+            hostKeyTrust: .host(host.id),
+            socket: host.socketLocation)
+        // A Pairing Code v2 endpoint (ADR 0023) replaces the `herdr` on the
+        // SSH PATH for every herdr exec; `socket` already names its socket.
+        if let endpoint = host.herdrEndpoint,
+            let launcher = HerdrLauncher(
+                executablePath: endpoint.executablePath, socketPath: endpoint.socketPath)
+        {
+            herdrLauncher = launcher
+            sessionListCommand = launcher.sessionListCommand
+            pluginListCommand = launcher.pluginListCommand
+            notificationConfigDirCommand = launcher.notificationConfigDirCommand
+        }
     }
 }

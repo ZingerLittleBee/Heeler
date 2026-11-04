@@ -10,6 +10,8 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
+- **Open a PR**: write the body to the sections in [the PR template](../../.github/pull_request_template.md), then `gh pr create --body-file <file>`.
+- **Bodies and comments**: GitHub renders every newline in an issue body, PR body, or comment as a line break, so keep each paragraph and each list item on one line. Before publishing, `jq -n --rawfile t body.md '{text:$t, mode:"gfm", context:"ZingerLittleBee/Heeler"}' | gh api -X POST markdown --input - | grep -c '<br>'` should print 0. Commit messages, including squash messages, still wrap at 72 columns.
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 

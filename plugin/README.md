@@ -22,6 +22,9 @@ Starting with plugin 0.4.0, a startup hook also exports the Host's herdr
 sidebar layout for Heeler. Both event hooks refresh it before their notification
 gates. See [Sidebar layout snapshot (v1)](#sidebar-layout-snapshot-v1).
 
+The plugin also collects Claude Code and Codex [Usage](#usage) on the Host
+for the app's Usage Limits and Token Usage views.
+
 ## Requirements
 
 - Node.js >= 20 on `PATH`
@@ -49,8 +52,11 @@ node --version    # 20 or newer
 Install the plugin from GitHub:
 
 ```bash
-herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes
+herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ```
+
+The `plugin` branch holds only the files the plugin runs, published from
+`plugin/` on `main`, so the install skips the rest of the repository.
 
 Herdr stores the plugin in its managed checkout and runs the manifest's
 `npm ci` build command automatically. Verify that the plugin is installed and
@@ -83,7 +89,25 @@ command again. Plugin 0.6.0 scopes notifications to the herdr session they
 come from; update it on every Host along with the app (see
 [Updating to 0.6.0](#updating-to-060)). The app's Host details show the
 installed version and offer this command when it is older than the plugin
-the app was built alongside. To inspect notification or pairing failures:
+the app was built alongside, and can run it on the Host over SSH (ADR 0027).
+The app first looks for Node.js 20 or newer for the `npm ci` build where
+version managers (nvm, fnm, Volta, asdf, mise and others), Homebrew, Nix and
+system packages keep their default, then on the login shell's `PATH`, and
+reports the Host's Node.js as missing or too old instead of installing.
+
+On herdr 0.9.4, reinstalling a disabled plugin keeps it disabled, where
+herdr 0.9.3 turned it back on. Turn it on afterwards:
+
+```bash
+herdr plugin enable heeler
+```
+
+Unlike `plugin install`, `plugin enable` only works through a running herdr
+session: if the default session is not running, name one that is, for
+example `herdr --session work plugin enable heeler`. For a disabled plugin,
+the app's Host details show the enable command for the Host's session.
+
+To inspect notification or pairing failures:
 
 ```bash
 herdr plugin log list --plugin heeler --limit 20
@@ -120,13 +144,26 @@ herdr plugin action invoke heeler.pair
 | Field      | Type    | Meaning |
 | ---------- | ------- | ------- |
 | `ssh_port` | integer | SSH port advertised in the Pairing Code, `1..65535`. Default 22. An absent `pair.json` means 22; a file that cannot be read or parsed, or an `ssh_port` outside that range, also falls back to 22 and says so in the checklist. |
+| `addresses` | string[] | Addresses (IPs or host names) the phone reaches this machine on but its interfaces do not show: a container behind a published port, a NAT, a DNS name. Listed first in the checklist and pre-checked; the enumerated addresses follow unchecked. Default none. A value that is not a list of non-empty strings without whitespace is ignored and says so in the checklist. |
+| `launcher` | string | Absolute path of a launcher to put in a [Pairing Code v2](#pairing-a-herdr-outside-configherdr) instead of the generated one. Used only when this herdr runs outside `~/.config/herdr`. A path with `'`, `\` or control characters is ignored and says so in the checklist. Read once when the popup opens. |
+
+`addresses` (plugin 0.6.2 and later; older plugins ignore it) is what a
+machine behind a port mapping needs, for example
+herdr in a Docker container whose sshd is published as port 2222 on a NAS
+at `192.168.1.10`. Inside the container the plugin only sees the bridge
+address (`172.17.x.x`), which the phone cannot reach:
+
+```json
+{"ssh_port": 2222, "addresses": ["192.168.1.10", "nas.example.com"]}
+```
 
 The Pairing Code pins the host key found under `/etc/ssh` (`src/host-key.js`),
 so the alternate port must be served by **the same sshd** — another `Port`
 line in `sshd_config`, not a second instance with its own `HostKey`, whose
 fingerprint the code would not match. `pair.json` is re-read on every
 checklist repaint, so an edit made in another pane lands on the next keypress
-without reopening the popup.
+without reopening the popup. `addresses` builds the checklist, so it is read
+once when the popup opens.
 
 The checklist and QR screen both show the advertised port, and the checklist
 names an override it could not honor rather than quietly handing back 22 —
@@ -177,8 +214,9 @@ HERDR-PAIR:<version>:<base64url(JSON, no padding)>
 ```
 
 - `HERDR-PAIR` is a literal prefix; anything else is rejected (`bad_prefix`).
-- `<version>` is a decimal integer. This document specifies version `1`;
-  any other value is rejected (`unsupported_version`).
+- `<version>` is a decimal integer. This document specifies versions `1` and
+  `2` ([Pairing Code v2](#pairing-code-v2-herdr-endpoint)); any other value
+  is rejected (`unsupported_version`).
 - The body is the payload JSON, UTF-8, encoded as unpadded base64url
   (RFC 4648 `-`/`_` alphabet). Invalid base64url or JSON is rejected
   (`bad_encoding`).
@@ -211,6 +249,130 @@ depend on key order.
 - Any breaking change (removing, renaming, or re-typing a field, or changing
   the envelope framing) bumps `<version>`, and both implementations must be
   updated together.
+
+## Pairing Code v2 (Herdr endpoint)
+
+Version 2 pairs a Host whose herdr lives outside the user's own config home,
+such as a desktop app that bundles herdr and runs it with its own
+`XDG_CONFIG_HOME` (ADR 0023). It keeps the v1 envelope, error codes, and
+compatibility rules, and adds two required fields that name that herdr: its
+API socket and a launcher for it.
+
+| Wire key | Type    | Required | Meaning |
+| -------- | ------- | -------- | ------- |
+| `addrs`  | string[]| yes      | As v1. |
+| `port`   | integer | yes      | As v1. |
+| `user`   | string  | yes      | As v1. |
+| `fp`     | string  | yes      | As v1. |
+| `sock`   | string  | yes      | Absolute path of the herdr API socket. |
+| `herdr`  | string  | yes      | Absolute path of the launcher, an executable that behaves as `herdr` for this socket. |
+| `seed`   | string  | no       | As v1. |
+| `exp`    | integer | no       | As v1. |
+
+Decoders check the v1 fields first, then these rules; a violation is rejected
+(`bad_payload`):
+
+- `sock` and `herdr` are absolute paths without `'`, `\`, or ASCII control
+  characters (U+0000 to U+001F, U+007F). Spaces are allowed.
+- `sock` uses herdr's socket layout: it ends in `/herdr/herdr.sock` (the
+  default session) or `/herdr/sessions/<name>/herdr.sock` with a valid session
+  name ([herdr sessions](#herdr-sessions)), so the hooks can tell which
+  session they serve.
+- `sock` is at most 96 bytes of UTF-8. Attach and wake use herdr's client
+  socket, named by inserting `-client` before `.sock`, and that path must
+  still fit macOS `sun_path` (103 bytes plus the NUL).
+
+Encoders emit the keys in the order of the table above with no JSON
+whitespace, as in v1.
+
+### Why a new version
+
+Adding fields is allowed within v1, but v1 decoders ignore unknown fields. An
+older app would drop `sock` and `herdr` and pair against the default socket and
+the `herdr` on `PATH`, without any error. Under version 2 it refuses the code
+(`unsupported_version`) and saves nothing.
+
+Only the app decodes v2. This plugin decodes v1 and rejects v2 as
+`unsupported_version`; it emits v2 only for a herdr outside `~/.config/herdr`
+([below](#pairing-a-herdr-outside-configherdr)) and v1 otherwise. A v1 code
+that carries `sock` or `herdr` still pairs without an endpoint. Endpoints work on macOS and Linux Hosts only; a native
+Windows Host paired from a v2 code fails with an explicit error.
+
+### Launcher contract
+
+For every herdr command on the Host, the app runs the launcher, never a
+`herdr` from `PATH`, as a positional argument of a POSIX shell body that
+exports `HERDR_SOCKET_PATH` as `sock`:
+
+```bash
+LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH="$2"; exec "$1" session list --json' herdr '<herdr>' '<sock>'
+```
+
+The launcher must:
+
+- `exec` the real herdr with the arguments it was given and write nothing of
+  its own to stdout or stderr. `session list --json` and `plugin list --json`
+  output is parsed as one JSON document, and attach runs on a PTY whose output
+  goes straight to the terminal.
+- Run herdr, and the server behind `sock`, with the endpoint's own
+  `XDG_CONFIG_HOME` and `XDG_STATE_HOME`, so `plugin config-dir` and
+  `session list` resolve this instance and neither `notifications.json` nor
+  the plugin's state is shared with the user's own herdr. A shared
+  `notifications.json` would let the endpoint Host's Notification Registration
+  evict the user's existing Host for the same machine. `HERDR_PLUGIN_STATE_DIR`
+  depends only on `XDG_STATE_HOME`, and with a shared one the two default
+  sessions overwrite each other's notification markers and Live Activity
+  state.
+- Give herdr a `PATH` on which this plugin's `node` and the user's agents
+  resolve. The app sets no `PATH`, so a server that the launcher starts
+  otherwise inherits sshd's minimal `PATH`, and the hooks it runs cannot find
+  `node`.
+- Let `remote-client-bridge` start or reach the endpoint's server. The app runs
+  it to wake herdr only when the socket file exists but refuses connections,
+  and for a `sessions/<name>` socket it also exports `HERDR_SESSION`, as for a
+  regular named session.
+
+An exit status of 126 or 127 from the launcher's `session list`, `plugin list`
+or attach is reported as a missing launcher, not as herdr missing from `PATH`.
+A failed wake keeps the original socket error.
+
+### Pairing a herdr outside ~/.config/herdr
+
+A herdr run with its own `XDG_CONFIG_HOME`, such as a per-project instance or
+a profile started by a wrapper script, keeps its socket and this plugin's
+config dir apart from `~/.config/herdr/plugins/config/<id>`. The pairing popup
+detects that from `HERDR_PLUGIN_CONFIG_DIR` and emits a Pairing Code v2 whose `sock` is its
+`HERDR_SOCKET_PATH` ([ADR 0029](../docs/adr/0029-plugin-generates-the-herdr-endpoint-launcher.md)):
+
+- The herdr must also run with its own `XDG_STATE_HOME`, so its
+  `HERDR_PLUGIN_STATE_DIR` is not `~/.local/state/herdr/plugins/<id>` (see the
+  launcher contract above).
+- Unless `pair.json` names a `launcher`, the popup writes one to `launcher`
+  in the plugin config dir (mode 0700) each time it opens. It refuses a
+  config dir other users can write. It exports the
+  popup's `PATH`, its `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `XDG_DATA_HOME` and
+  `XDG_CACHE_HOME` when set, and its `HERDR_*` variables except the ones herdr
+  sets per process and an inherited client socket (`HERDR_SOCKET_PATH`,
+  `HERDR_CLIENT_SOCKET_PATH`, `HERDR_BIN_PATH`, `HERDR_ENV`,
+  `HERDR_SESSION`, `HERDR_PLUGIN_*`, `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`,
+  `HERDR_PANE*`), then `exec`s
+  `HERDR_BIN_PATH`. The popup runs inside the server, so these are the
+  server's own settings.
+- Before the launcher goes in the code, the popup runs
+  `plugin config-dir <plugin id>` through it the way the app does, from a
+  minimal environment, and requires this plugin's config dir back with nothing
+  on stderr within 5 seconds. A generated launcher is tested under a staging
+  name and replaces the previous one only when it passes.
+- The checklist shows `Endpoint <sock> via <launcher>`. When the state home is
+  shared, the socket or launcher breaks a v2 rule, no launcher can be written,
+  or the test run fails, the popup says why and offers no code: a v1 code
+  would pair the phone with the user's own herdr instead.
+
+A herdr that shares the user's config home but listens on another socket gets
+a warning instead: an endpoint there would share `notifications.json` with the
+user's own herdr. The phone keeps the launcher's path, so after moving herdr
+or changing the environment it starts with, opening the popup once rewrites
+the launcher in place.
 
 ## Bootstrap Key lifecycle
 
@@ -272,6 +434,9 @@ Valid vectors must decode to the given payload and (unless `decodeOnly`)
 re-encode to the exact code; invalid vectors must fail with the given error
 code (`bad_prefix`, `unsupported_version`, `bad_encoding`, `bad_payload` —
 these map to the "parse" step of the pairing failure taxonomy).
+`test-vectors/pairing-code-v2.json` has the same shape plus each endpoint's
+`socketPath` and `herdrPath`. The Swift tests decode it; the Node tests encode
+its canonical codes and reject its invalid ones.
 
 ## Notification envelope (v1)
 
@@ -422,10 +587,19 @@ tests in the app both read it.
 Bump `version` in `herdr-plugin.toml`, `package.json` and `package-lock.json`
 together with `test-vectors/plugin-version-v1.json` and
 `HeelerPluginCompatibility.bundled` in the app; the Node and Swift tests
-check that they agree. The app recommends updating any Host whose plugin is
+check that they agree. Move the demo plugin states in
+`DemoScreenshotMode.swift` that stand for the current version to it, and
+the one newer than the app past it. The app recommends updating any Host whose plugin is
 older, and its per-feature notes (`HeelerPluginFeature`) trust the version
 alone, so bump it with every change the app relies on rather than shipping
 behavior under an unchanged number, as 0.3.0 and 0.4.0 did.
+
+Before each plugin release, [refresh and review the bundled price table](#maintaining-the-price-table).
+
+Once the bump is on `main`, run `make plugin` from the repository root to
+publish it to the `plugin` branch, before the app release that bundles it:
+the app's update notice installs from that branch. See
+[Publishing the herdr plugin](https://github.com/ZingerLittleBee/Heeler/blob/main/docs/guides/releasing.md#publishing-the-herdr-plugin).
 
 ### Updating to 0.6.0
 
@@ -439,6 +613,151 @@ behavior under an unchanged number, as 0.3.0 and 0.4.0 did.
 - Downgrading the app on a device after upgrading mixes up notifications of
   Hosts that share a server; after upgrading again, re-check each Host's
   Notifications toggle.
+
+### Updating to 0.6.1
+
+- Plugin 0.6.0 rejected some sidebar settings that herdr 0.9 accepts
+  (`letta`, `machine`, token `rules`, a UTF-8 byte-order mark) and wrote the
+  default layout and sort with a diagnostic. After the update, the next
+  refresh, at server start or the next Agent Status transition, replaces that
+  snapshot without a config edit.
+- A Host whose rows Sync from plugin replaced while 0.6.0 rejected its
+  settings keeps the default fields it saved; sync it again.
+
+### Updating to 0.6.2
+
+- Plugin 0.6.2 reads `addresses` from `pair.json` and offers them first in
+  the pairing checklist. Older plugins ignore the field and list only the
+  machine's own interfaces, so a Host behind a port mapping needs 0.6.2 to
+  pair. Without `addresses` the checklist is unchanged.
+
+### Updating to 0.7.1
+
+- Plugin 0.7.1 emits a Pairing Code v2 from a herdr that runs outside
+  `~/.config/herdr` and reads `launcher` from `pair.json`. Older plugins emit
+  v1 there, which pairs the phone with the user's default herdr; re-pair such
+  a Host after the update. A herdr in `~/.config/herdr` pairs as before.
+
+### Updating to 0.8.0
+
+- Plugin 0.8.0 counts [Claude Code Accounts](#usage). When herdr's
+  environment sets `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward
+  that Host's Claude Code usage; Heeler suggests it as an Account to add.
+  Without `CLAUDE_CONFIG_DIR`, the totals stay as before.
+- The first refresh after the update reads the Transcripts again to
+  attribute them to Accounts and reads Claude Code limits anew. Without
+  `CLAUDE_CONFIG_DIR`, Usage shows the previous totals meanwhile; with it,
+  the totals start over and grow as the refresh reads.
+- Older plugins ignore `usage-accounts.json`: Accounts added in Heeler count
+  only once the Host runs 0.8.0.
+
+## Usage
+
+Plugin 0.7.0 adds Usage for Claude Code and Codex on Linux and macOS Hosts.
+Open the Host's Usage section in Heeler, then **View Usage Details** for
+today, 7-day and 30-day Token Usage, a daily chart, per-model totals and the
+top 10 working directories. Usage Limits show the account's windows and
+reset times; Codex shows only its default limit group.
+
+The plugin reads Transcripts locally. Transcript contents stay on the Host;
+only aggregated usage, model names and directory paths reach Heeler over
+SSH. Token Usage makes no network requests. For Usage Limits, the plugin
+asks the installed programs, which handle their own sign-in and service
+requests. Neither the plugin nor Heeler reads or receives their credentials.
+
+The plugin learns its runtime from herdr the first time any Agent changes
+status, or when herdr starts or restarts. Installing or updating the plugin
+does not run a startup hook. If Usage asks for a runtime, use any Agent on
+the Host once, then refresh Usage; restarting herdr also records it. Queries
+return cached aggregates immediately and start a background refresh when
+needed. Heeler re-queries while that refresh runs.
+
+**Claude Code limits** is off by default and saved per Host on the device.
+The toggle is available in both the Host's Usage section and the full Usage
+page. Enabling it asks the Host's Claude Code for its plan limits through
+the undocumented `get_usage` control request. This automated use of the
+subscription is not officially supported; using Claude Code's own sign-in
+does not establish that the use is permitted. Turning it off hides Claude
+Code limits and leaves Token Usage and Codex limits available. On macOS,
+Claude Code's sign-in is in the login keychain, which SSH sessions cannot
+use, so the plugin's `usage-claude-limits` action reads the limits in
+herdr's session. Start herdr from a terminal on the Mac, not over SSH.
+Current terms remain a pre-release check in the
+[design's open questions](../docs/design/agent-usage.md#open-questions).
+
+**Claude Code Accounts** (plugin 0.8.0) keep subscriptions apart when one
+Host runs several, each from its own config directory (for example an Agent
+started with `CLAUDE_CONFIG_DIR=~/.claude-2`). The Default Account is the
+directory Claude Code uses in herdr's environment, `CLAUDE_CONFIG_DIR` or
+else `~/.claude`, with the legacy `~/.config/claude` folded in. Heeler adds up
+to three more and writes the list over SFTP to `usage-accounts.json` in the
+plugin's config directory, beside `runtime.json`; the plugin only reads it,
+so every device and Host entry that reaches that directory shares it. Each
+Account reports its own Token Usage and, with Claude Code limits on, its own
+Usage Limits; the Host total adds them up. An Account whose directory is
+gone, or that resolves to a directory already counted, stays listed and
+adds nothing.
+
+Heeler suggests directories to add, and counts none until the user adds it:
+
+- the `CLAUDE_CONFIG_DIR` a running Claude Code Agent was started with. On
+  that Agent's status changes, the activity hook asks herdr for the pane's
+  processes (`herdr pane process-info`) at most once per pane every 10
+  minutes and reads only that variable from the Claude Code process's
+  environment (`ps -E` on macOS, `/proc/<pid>/environ` on Linux). It keeps
+  the directory in `usage/claude-agents.json` under the plugin's state
+  directory for 30 days after it was last seen. macOS hides the environment
+  of Apple platform binaries, and a `CLAUDE_CONFIG_DIR` set in a settings
+  file's `env` is not visible at all.
+- `.claude*` directories in `$HOME` and `claude*` directories in
+  `${XDG_CONFIG_HOME:-~/.config}` that hold Claude Code's `.claude.json` or
+  `projects/`, from one listing of each per refresh.
+
+Dismissed suggestions stay in the file's `ignored` list. See
+[Accounts](../docs/design/agent-usage.md#accounts) in the design and
+[ADR 0030](../docs/adr/0030-usage-counts-the-accounts-the-user-adds.md).
+
+Token Usage covers at most 30 days and only the Transcripts still on the
+Host. The page reports coverage, skipped compressed archives and Transcripts
+it could not read. **Estimated API cost** uses a bundled price table, not
+subscription billing; the page shows its date and any unpriced tokens. Models or service tiers without a
+known price stay unpriced. See the [design](../docs/design/agent-usage.md)
+and [ADR 0028](../docs/adr/0028-plugin-collects-agent-usage-on-the-host.md)
+for collection, cache and privacy boundaries.
+
+### Maintaining the price table
+
+Before each plugin release, run this from the repository root:
+
+```sh
+node scripts/generate-usage-pricing.mjs
+```
+
+Review the generated [pricing.json](src/usage/pricing.json) diff, including
+the price date, source URL/hash, model coverage and service-tier rates.
+The generator uses LiteLLM, falling back to models.dev if that download
+fails; `--source models-dev` selects the fallback explicitly. Review its
+coverage because absent service-tier prices remain unpriced. Keep
+[pricing.LICENSE](src/usage/pricing.LICENSE) aligned with the selected source.
+The worker only reads the bundled table; it downloads no prices at runtime.
+
+For an offline, reproducible update, use `--input FILE --date YYYY-MM-DD`
+with saved source bytes, plus `--source models-dev` if those bytes use the
+fallback format. After reviewing the table, run from the repository root:
+
+```sh
+npm ci --prefix plugin
+node --test plugin/test/usage-pricing.test.js plugin/test/usage-query.test.js
+UPDATE_USAGE_VECTOR=1 node --test --test-name-pattern='shared v1 vector' plugin/test/usage-worker.test.js
+node --test --test-name-pattern='shared v1 vector' plugin/test/usage-worker.test.js
+```
+
+Review the shared [usage-v1 vector](test-vectors/usage-v1.json) diff and the
+Swift literal price expectations in
+[AgentUsageTests](../Tests/HeelerTests/AgentUsageTests.swift).
+If fixture costs change, update and run `AgentUsageStoreTests` using
+[the app test lane](../docs/agents/testing.md#focused-app-tests); keep the
+producer, vector and Swift expectations synchronized.
 
 ## Sidebar layout snapshot (v1)
 
@@ -462,6 +781,21 @@ to `notify.json`. It never writes this snapshot to `HERDR_PLUGIN_STATE_DIR`.
 Writes use an exclusive mode **0600** temporary file followed by atomic rename;
 a newly created plugin config directory has mode **0700**.
 
+A UTF-8 byte-order mark is handled as herdr 0.9.4 handles its usual
+placements: a leading U+FEFF is stripped, and a U+FEFF at the start of a
+later line is removed only when the parser's error points at it, after which
+parsing is retried. A U+FEFF that is string data, such as one at a line start
+inside a multi-line string, parses and is kept. herdr 0.9.4 also removes a
+U+FEFF elsewhere in a line, for example after indentation or after `=`, when
+its parser's error points there; the plugin reports `parse_error` for such a
+file.
+
+`smol-toml` implements TOML 1.1, while herdr 0.9.4 reads TOML 1.0, so the
+plugin accepts some files that herdr rejects: a newline or trailing comma
+inside an inline table and the `\e` and `\xHH` string escapes pass here
+although `herdr config check` reports them. `herdr config check` remains the
+authority on whether herdr accepts a file.
+
 ```json
 {
   "v": 1,
@@ -476,7 +810,7 @@ a newly created plugin config directory has mode **0700**.
     "row_gap": 0,
     "rows": [
       [{"token":"state_icon"},{"token":"terminal_title_stripped","fg":"#6c7086","dim":false}],
-      [{"token":"$pin_icon"},{"token":"workspace","dim":true},{"token":"agent"}]
+      [{"token":"$pin_icon"},{"token":"workspace","dim":true,"rules":[{"equals":"scratch","ignore_case":true,"hide":true}]},{"token":"agent"}]
     ],
     "rows_by_agent": {"claude":[[{"token":"terminal_title_stripped"}]]}
   }},
@@ -498,51 +832,86 @@ a newly created plugin config directory has mode **0700**.
 | `diagnostics` | string[] | Empty on success or a missing source. Otherwise `parse_error`, `invalid_token`, `invalid_schema`, or `read_error`. Raw config values and parser excerpts are never included. |
 
 Every token is an object, including TOML string tokens. Builtins are
-`state_icon`, `state_text`, `workspace`, `tab`, `pane`, `agent`,
+`state_icon`, `state_text`, `machine`, `workspace`, `tab`, `pane`, `agent`,
 `terminal_title`, and `terminal_title_stripped`. Custom names must match
 `^\$[A-Za-z0-9_-]{1,32}$` and retain their `$` in the snapshot. A styled TOML
-table accepts only `token`, `fg`, `bold`, and `dim`: `fg` must be `#RGB` or
-`#RRGGBB`; `bold` and `dim` must be booleans. Optional style fields appear
-only when explicitly provided, preserving `false` and the original hex case.
-Other config fields are ignored. This is validation of the exported subset,
-not a substitute for `herdr config check` for unrelated herdr settings.
+table accepts only `token`, `fg`, `bold`, `dim`, and `rules`: `fg` must be
+`#RGB` or `#RRGGBB`; `bold` and `dim` must be booleans. Optional style fields
+appear only when explicitly provided, preserving `false` and the original hex
+case. Other config fields are ignored. This is validation of the exported
+subset, not a substitute for `herdr config check` for unrelated herdr
+settings.
 
-`rows_by_agent` accepts the canonical ids verified against herdr v0.9.0:
+`rules` is an array of at most 16 tables; herdr uses the first rule that
+matches the token's text, and a matching rule with `hide = true` hides the
+token. Every rule has exactly one condition: `equals`, `contains`, or
+`starts_with` with a string, or `gt` or `lt` with a finite integer or float.
+`ignore_case` must be a boolean and is allowed only next to a text condition,
+so even `ignore_case = false` beside `gt` or `lt` is invalid. A rule's `fg`
+follows the token `fg` grammar, and `bold`, `dim`, and `hide` must be
+booleans; any other key is invalid. Rules need a text-valued token, so
+`state_icon` accepts only `rules = []`. herdr 0.9.0 does not accept `hide`,
+which herdr 0.9.1 added.
+
+The snapshot exports each rule with only the fields it gave, in the order
+`equals`, `contains`, `starts_with`, `gt`, `lt`, `ignore_case`, `fg`, `bold`,
+`dim`, `hide`. Thresholds are JSON numbers, so `gt = 80` exports `80`. A
+token with `rules = []` exports no `rules` field. The snapshot version stays
+`1`: Swift readers ignore `rules`, so a rule never restyles or hides a token
+in Heeler.
+
+`rows_by_agent` accepts the 24 canonical ids verified against herdr v0.9.4:
 `pi`, `claude`, `codex`, `gemini`, `cursor`, `devin`, `agy`, `cline`, `omp`,
 `mastracode`, `opencode`, `copilot`, `kimi`, `kiro`, `droid`, `amp`, `grok`,
-`hermes`, `kilo`, `qodercli`, `qwen`, `maki`, and `muse`. Aliases, case
-variations, and unknown ids are invalid. A future herdr release adding
-canonical ids requires updating this validation list and the shared vectors.
+`hermes`, `kilo`, `qodercli`, `qwen`, `letta`, `maki`, and `muse`. Aliases,
+case variations, and unknown ids are invalid. A future herdr release that
+adds canonical ids, built-in agent tokens, styled-token keys, or rule fields
+requires updating the validator, this README and the shared vectors together.
+The validator follows herdr's grammar for these fields but is not a complete
+copy of it: herdr also accepts a few unusual shapes that the plugin rejects
+with `invalid_schema`, such as `ui = []`, `agents = []` under `[ui.sidebar]`,
+or a rule written as an array (`rules = [["x"]]`).
 
-Missing files or fields use herdr defaults: sort `spaces`, `row_gap: 0`,
+Missing files or fields use the snapshot defaults: sort `spaces`, `row_gap: 0`,
 `rows: [[{"token":"state_icon"},{"token":"workspace"},{"token":"tab"}],
-[{"token":"agent"}]]`, and `rows_by_agent: {}`. TOML parse errors, invalid
-tokens, or invalid schema revert the **entire layout and sort** to those
-defaults with a diagnostic. Read errors also produce defaults with a
-diagnostic and are retried at the next invocation.
+[{"token":"agent"}]]`, and `rows_by_agent: {}`. These are not herdr 0.9's
+defaults: herdr 0.9.0 and later put `machine` after `state_icon` in the
+first row, which Heeler does not render, and the snapshot defaults leave it
+out. TOML parse errors, invalid tokens, or invalid schema revert the
+**entire layout and sort** to those defaults with a diagnostic. Read errors
+also produce defaults with a diagnostic and are retried at the next
+invocation.
 
 Both `notify-hook.js` and `activity-hook.js` refresh at the beginning of
 `main()`, before debounce, dedupe, or no-device exits. An unchanged source
-path, existence, and `mtimeMs` reuses the snapshot without reparsing or
-rewriting. A missing/corrupt snapshot is rebuilt. Changes that preserve the
-source mtime are not detected. Snapshot write failures are logged but do not
-prevent the event hooks from delivering notifications.
+path, existence, and `mtimeMs` reuses a snapshot without diagnostics, without
+reparsing or rewriting. A snapshot with diagnostics is parsed again at every
+refresh, so an updated plugin replaces an older plugin's rejection without a
+config edit, and it is rewritten only when the result changes. A
+missing/corrupt snapshot is rebuilt. Other changes that preserve the source
+mtime are not detected. Snapshot write failures are logged but do not prevent
+the event hooks from delivering notifications.
 
 There is no watcher and config reload does not run startup hooks. A config
 edit with no Agent Status transition is picked up at the next transition or
 server start. The snapshot reflects the file on disk, not any live TUI
-`agent.view.set` sort override. Heeler never installs or updates this plugin;
-older installations have no `sidebar.json`, which the app treats as nil
+`agent.view.set` sort override. It is this Host's own herdr configuration: a
+herdr client elsewhere that has this Host as a saved machine renders its
+sidebar from that client's own settings, as herdr's configuration docs
+describe. Heeler updates this plugin only when the user asks on the Host's
+page; older installations have no `sidebar.json`, which the app treats as nil
 without a version gate.
 
-Swift readers ignore unknown fields and drop individual unknown token names.
-The app resolves whole layouts in this order: the Host's saved user layout,
-the Host's plugin snapshot, Heeler default. There is no global user layout,
-and the default is never offered as a choice. Rows are never merged across
-sources. Its renderer skips `state_icon` and `state_text` because the status
-column already shows Agent Status; `$name` resolves as plain text from
-`AgentInfo.tokens["name"]`. Heeler's Pin is independent. Styles are retained
-in the Swift model; rendering may ignore them (color is ignored by default).
+Swift readers ignore unknown fields and drop individual unknown token names,
+such as `machine`. The app resolves whole layouts in this order: the Host's
+saved user layout, the Host's plugin snapshot, Heeler default. There is no
+global user layout, and the default is never offered as a choice. Rows are
+never merged across sources. Its renderer skips `state_icon` and
+`state_text` because Heeler draws Agent Status itself, as the ring around
+each Agent's mark or the app's own `status_badge` field; `$name`
+resolves as plain text from `AgentInfo.tokens["name"]`. Heeler's Pin is
+independent. Styles are retained in the Swift model; rendering may ignore
+them (color is ignored by default).
 
 ### Shared test vectors
 
@@ -552,7 +921,10 @@ Its `valid` and `invalid` arrays contain `name`, `toml`, and a full expected
 `snapshot`; invalid entries also contain the expected `error` diagnostic.
 Node asserts normalized layout equality and whole-layout fallback. Swift
 consumes the structured snapshots to assert decoded layout, defaults, and
-diagnostics; it does not parse TOML. Change the contract and vectors together.
+diagnostics, expecting the app to drop token names it does not model, such as
+`machine`, and to ignore `rules`; it does not parse TOML. A U+FEFF in a
+vector is written as the JSON escape `\ufeff`, so it stays visible. Change the
+contract and vectors together.
 
 ## Notify hook
 
@@ -668,6 +1040,11 @@ written only after at least one successful delivery. In conversational mode it
 also carries `v: 2`, `epoch`, per-terminal start times and per-device sent
 hashes, and is written on every run that passes the claim (see the contract's
 "Since"). All state writes are temp-file + rename.
+
+For a Claude Code Agent's event, the hook also looks up the config directory
+that Agent runs with, as a [Usage](#usage) Account suggestion. The lookup
+runs beside the Live Activity update, gives up after 3 seconds, and never
+fails the hook.
 
 ## Tests
 

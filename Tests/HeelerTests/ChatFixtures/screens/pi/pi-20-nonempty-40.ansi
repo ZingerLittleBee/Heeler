@@ -1,0 +1,35 @@
+ [0m[38;2;138;190;183mupdate[0m                                 
+ [0m[38;2;128;128;128mChangelog: [0m[38;2;138;190;183mhttps://pi.dev/changelog[0m    
+[0m[38;2;255;255;0m────────────────────────────────────────[0m
+
+[0m[48;2;52;53;65m                                        [0m
+[0m[48;2;52;53;65m [0m[38;2;212;212;212m[48;2;52;53;65mIn one short sentence, what is 2+2?[0m[48;2;52;53;65m    [0m
+[0m[48;2;52;53;65m                                        [0m
+
+ [0m[38;2;204;102;102mError: OAuth refresh failed for xai:   [0m
+ [0m[38;2;204;102;102mxAI OAuth token refresh failed (HTTP   [0m
+ [0m[38;2;204;102;102m400): invalid_grant: Invalid or        [0m
+ [0m[38;2;204;102;102munknown refresh token[0m                  
+
+[0m[48;2;45;40;56m                                        [0m
+[0m[48;2;45;40;56m [0m[1m[38;2;149;117;205m[48;2;45;40;56m[skill][0m[38;2;149;117;205m[48;2;45;40;56m [0m[38;2;212;212;212m[48;2;45;40;56mprobe-hello[0m[38;2;102;102;102m[48;2;45;40;56m (ctrl+o to expand)[0m[48;2;45;40;56m [0m
+[0m[48;2;45;40;56m                                        [0m
+
+[0m[48;2;52;53;65m                                        [0m
+[0m[48;2;52;53;65m [0m[38;2;212;212;212m[48;2;52;53;65mworld args[0m[48;2;52;53;65m                             [0m
+[0m[48;2;52;53;65m                                        [0m
+
+ [0m[38;2;204;102;102mError: OAuth refresh failed for xai:   [0m
+ [0m[38;2;204;102;102mxAI OAuth token refresh failed (HTTP   [0m
+ [0m[38;2;204;102;102m400): invalid_grant: Invalid or        [0m
+ [0m[38;2;204;102;102munknown refresh token[0m                  
+
+ [0m[38;2;204;102;102mError: Compaction failed: Nothing to   [0m
+ [0m[38;2;204;102;102mcompact (session too small)[0m            
+
+[0m[38;2;178;148;187m────────────────────────────────────────[0m
+a fairly long draft line that will      
+wrap at forty columns[0m[7m [0m                  
+[0m[38;2;178;148;187m────────────────────────────────────────[0m
+[0m[38;2;102;102;102m/private/tmp/heeler-iso-pi2/proj (mas...[0m
+[0m[38;2;102;102;102m$0.000 (sub) 0.0%/500k (auto)  grok-4.5 [0m

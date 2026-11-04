@@ -81,6 +81,9 @@ final class ChangesStore {
     /// the Checkout it would read are reading it in its place. A waiting
     /// read runs once the row shows again or those Changes close.
     @ObservationIgnored var defersAutomaticRefresh: (@MainActor () -> Bool)?
+    /// Told of each document this store takes, from its own read or from
+    /// another store's.
+    @ObservationIgnored var onLoaded: (@MainActor (CheckoutChanges) -> Void)?
 
     var freshness: ChangesFreshness? {
         guard case .loaded = phase, let readAt,
@@ -223,6 +226,7 @@ final class ChangesStore {
             readAt = now()
             autoRefresh.readWasWhileWorking = autoRefresh.readSawWorking || autoRefresh.status == .working
             fileDiff.listDidRefresh(result.changes)
+            onLoaded?(result.changes)
             if automatic, hadRead, announcesAutomaticUpdates {
                 let previousFiles: [ChangedFile]?
                 if case .loaded(let old) = previous { previousFiles = old.files } else { previousFiles = nil }
@@ -321,6 +325,7 @@ final class ChangesStore {
         timedOutKeepingContent = false
         autoRefresh.readWasWhileWorking = other.autoRefresh.readWasWhileWorking
         fileDiff.listDidRefresh(changes)
+        onLoaded?(changes)
     }
 
     /// Opening Changes starts from the list row's latest read of the same

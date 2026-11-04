@@ -1,11 +1,70 @@
 import SwiftUI
 
-/// Browses remote folders and selects a Workspace draft. Starting the Agent
-/// remains a separate action on the owning New Agent form.
+/// Browses remote folders and selects a Workspace draft, or a Claude Code
+/// Account's directory. Starting the Agent remains a separate action on the
+/// owning New Agent form.
 struct RemoteDirectoryBrowserView: View {
+    /// What the chosen folder is for, which sets the sheet's words.
+    enum Purpose {
+        /// A new Workspace's or Terminal's directory, filled into a form.
+        case workspace
+        /// A Claude Code Account, added as soon as it is chosen.
+        case claudeAccount
+
+        var title: String {
+            switch self {
+            case .workspace: "Browse Directories"
+            case .claudeAccount: "Choose Directory"
+            }
+        }
+
+        var useTitle: String {
+            switch self {
+            case .workspace: "Select"
+            case .claudeAccount: "Add"
+            }
+        }
+
+        var useLabel: String {
+            switch self {
+            case .workspace: "Select folder"
+            case .claudeAccount: "Add folder as an Account"
+            }
+        }
+
+        var emptyDescription: String {
+            switch self {
+            case .workspace: "You can select this folder for the new Workspace."
+            case .claudeAccount: "You can add this folder as a Claude Code Account."
+            }
+        }
+
+        /// Whether the sheet offers to hide dot folders. A Claude Code
+        /// Account usually is one, so its sheet always lists them.
+        var offersHidingDotFolders: Bool { self == .workspace }
+    }
+
+    /// The defaults key for hiding dot folders while browsing for a
+    /// Workspace. Hidden unless the user shows them.
+    static let hidesDotFoldersKey = "directory-browser.hides-dot-folders"
+
+    /// One listed folder, read before the rows are built.
+    private struct Row: Hashable, Sendable {
+        let name: String
+        let isSymbolicLink: Bool
+    }
+
     @Bindable var browser: RemoteDirectoryBrowser
+    var purpose = Purpose.workspace
+    /// The owner is still acting on the folder it was given.
+    var isUsing = false
     var onUse: (String) -> Void
     @State private var isFiltering = false
+    @AppStorage(Self.hidesDotFoldersKey) private var prefersHidingDotFolders = true
+
+    private var hidesDotFolders: Bool {
+        purpose.offersHidingDotFolders && prefersHidingDotFolders
+    }
 
     var body: some View {
         NavigationStack {
@@ -13,6 +72,15 @@ struct RemoteDirectoryBrowserView: View {
                 if let currentPath = browser.currentPath {
                     Section {
                         locationRow(currentPath)
+                    } footer: {
+                        if let refusal = browser.refusal {
+                            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                                Text(refusal)
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("directory-browser-refusal")
+                        }
                     }
                 }
 
@@ -36,11 +104,16 @@ struct RemoteDirectoryBrowserView: View {
                     }
                     .accessibilityElement(children: .combine)
                 } else if browser.currentPath != nil {
+                    let visibleDirectories = browser.visibleDirectories(hidingDotFolders: hidesDotFolders)
                     Section {
-                        if browser.visibleDirectories.isEmpty {
+                        if visibleDirectories.isEmpty {
                             emptyState
                         } else {
-                            ForEach(browser.visibleDirectories, id: \.self) { name in
+                            let rows = visibleDirectories.map {
+                                Row(name: $0, isSymbolicLink: browser.isSymbolicLink($0))
+                            }
+                            ForEach(rows, id: \.self) { @Sendable row in
+                                let name = row.name
                                 Button {
                                     browser.enter(name)
                                 } label: {
@@ -51,6 +124,12 @@ struct RemoteDirectoryBrowserView: View {
                                         Text(name)
                                             .foregroundStyle(.primary)
                                             .fixedSize(horizontal: false, vertical: true)
+                                        if row.isSymbolicLink {
+                                            Image(systemName: "link")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .accessibilityLabel("Symbolic link")
+                                        }
                                         Spacer(minLength: 8)
                                         Image(systemName: "chevron.forward")
                                             .font(.caption.weight(.semibold))
@@ -60,11 +139,13 @@ struct RemoteDirectoryBrowserView: View {
                                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                     .contentShape(Rectangle())
                                 }
-                                .buttonStyle(.plain)
                                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                                 .accessibilityHint("Open folder")
                                 .accessibilityIdentifier("directory-browser-folder-\(name)")
                             }
+                            // Not on the rows: their content is Sendable, and `.plain`
+                            // is isolated to the main actor.
+                            .buttonStyle(.plain)
                         }
                     } header: {
                         Text("Folders")
@@ -89,18 +170,41 @@ struct RemoteDirectoryBrowserView: View {
             .onChange(of: browser.currentPath) { _, _ in
                 isFiltering = false
             }
-            .navigationTitle("Browse Directories")
+            .navigationTitle(purpose.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Select") {
-                        if let currentPath = browser.currentPath {
-                            onUse(currentPath)
+                if purpose.offersHidingDotFolders {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        // Not a button-style Toggle: on iOS 26.5 its selected
+                        // fill was lost whenever the bar redrew, such as after
+                        // the filter closed, leaving a white symbol on white.
+                        Button("Hide Dot Folders",
+                            systemImage: prefersHidingDotFolders ? "eye.slash" : "eye"
+                        ) {
+                            prefersHidingDotFolders.toggle()
                         }
+                        .accessibilityValue(prefersHidingDotFolders ? "On" : "Off")
+                        .accessibilityAddTraits(.isToggle)
+                        .accessibilityIdentifier("directory-browser-hide-dot-folders")
                     }
-                    .accessibilityLabel("Select folder")
-                    .accessibilityIdentifier("directory-browser-select")
-                    .disabled(browser.currentPath == nil || browser.isLoading)
+                    // A view option, so it does not share Select's glass.
+                    if #available(iOS 26.0, *) {
+                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isUsing {
+                        ProgressView()
+                    } else {
+                        Button(purpose.useTitle) {
+                            if let currentPath = browser.currentPath {
+                                onUse(currentPath)
+                            }
+                        }
+                        .accessibilityLabel(purpose.useLabel)
+                        .accessibilityIdentifier("directory-browser-select")
+                        .disabled(browser.currentPath == nil || browser.isLoading)
+                    }
                 }
             }
         }
@@ -139,11 +243,23 @@ struct RemoteDirectoryBrowserView: View {
 
     @ViewBuilder
     private var emptyState: some View {
-        if browser.filter.isEmpty {
+        if hidesDotFolders, !browser.visibleDirectories(hidingDotFolders: false).isEmpty {
+            ContentUnavailableView {
+                Label(browser.filter.isEmpty ? "Dot Folders Hidden" : "No Matching Folders",
+                    systemImage: "eye.slash")
+            } description: {
+                Text(browser.filter.isEmpty
+                    ? "Every folder here starts with a dot."
+                    : "Only dot folders match “\(browser.filter)”.")
+            } actions: {
+                Button("Show Dot Folders") { prefersHidingDotFolders = false }
+                    .accessibilityIdentifier("directory-browser-show-dot-folders")
+            }
+        } else if browser.filter.isEmpty {
             ContentUnavailableView {
                 Label(browser.truncated ? "No Loaded Folders" : "No Subfolders", systemImage: "folder")
             } description: {
-                Text("You can select this folder for the new Workspace.")
+                Text(purpose.emptyDescription)
             }
         } else {
             ContentUnavailableView {

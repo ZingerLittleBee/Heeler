@@ -7,6 +7,10 @@ import Foundation
 struct SkillFrontmatter: Equatable, Sendable {
     var name: String?
     var description: String?
+    /// False only for an explicit `user-invocable: false`: Claude Code
+    /// keeps such a skill for the model and answers "Unknown command" when
+    /// it is typed.
+    var isUserInvocable = true
 
     /// Parses the frontmatter block of `content`: the lines between the
     /// leading `---` fence and the next `---`/`...` fence. Handles the shapes
@@ -76,7 +80,8 @@ struct SkillFrontmatter: Equatable, Sendable {
 
         return SkillFrontmatter(
             name: nonEmpty(fields["name"]),
-            description: nonEmpty(fields["description"]))
+            description: nonEmpty(fields["description"]),
+            isUserInvocable: nonEmpty(fields["user-invocable"])?.lowercased() != "false")
     }
 
     private enum BlockStyle: Equatable {

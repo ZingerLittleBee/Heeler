@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 
 /// What the Notification Service Extension ends up showing: either decrypted
 /// Agent Notification content or the generic fallback banner.
@@ -25,6 +26,26 @@ enum AgentNotificationRenderer {
         else { return fallback }
         return alert(
             workspace: payload.project, agentKind: payload.agentKind, status: payload.status)
+    }
+
+    /// What the extension hands back to iOS: the push's content with the
+    /// alert rewritten and the default sound set. iOS plays nothing for an
+    /// alert without a sound (#468); with it, the user can still turn sounds
+    /// off under Settings > Notifications > Heeler.
+    static func content(
+        rewriting content: UNNotificationContent, keys: [NotificationKeyRecord]
+    ) -> UNNotificationContent {
+        let alert = alert(userInfo: content.userInfo, keys: keys)
+        guard let rewritten = content.mutableCopy() as? UNMutableNotificationContent else {
+            return content
+        }
+        rewritten.title = alert.title
+        // Cleared, not left alone: the relay's generic wrap may have set a
+        // subtitle, and the decrypted copy has no use for one.
+        rewritten.subtitle = ""
+        rewritten.body = alert.body
+        rewritten.sound = .default
+        return rewritten
     }
 
     /// The one phrasing of an Agent Notification, shared by the push path

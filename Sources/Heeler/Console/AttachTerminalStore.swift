@@ -193,6 +193,9 @@ final class AttachTerminalStore {
         case connecting
         /// The new PTY Attach has produced output and owns the current input writer.
         case live
+        /// The Host's connection dropped under the session; the store
+        /// reattaches on its own once the Host has a new Transport (#523).
+        case reconnecting
         /// The session ended remotely (clean detach or channel death); the
         /// message is user-facing and `retry()` reattaches.
         case ended(String)
@@ -226,6 +229,15 @@ final class AttachTerminalStore {
     /// runner. Unlike `transportGeneration`, this is never seeded from a
     /// projection value before the terminal-ready seam has been crossed.
     private(set) var acquiredTransportGeneration: UInt64?
+    /// What the current attach attempt acquired, nil until its runner hands
+    /// it a Transport. Only a loss after acquisition is reattached.
+    private var attemptTransportGeneration: UInt64?
+    /// A reattach still waiting for a Transport takes the Host's next one by
+    /// itself. One that already holds an older Transport never will, so its
+    /// owner must replace it when the generation moves on.
+    var isAwaitingReattachTransport: Bool {
+        status == .reconnecting && attemptTransportGeneration == nil
+    }
     private var stopRequested = false
     private var preservesPendingPasteOnStop = false
     private var session: TerminalAttachSession?
@@ -364,12 +376,46 @@ final class AttachTerminalStore {
 
     /// One session lifetime: open at the current geometry, pump output until
     /// the stream ends, surface how it ended.
+    ///
+    /// A connection lost under a session that had its Transport reattaches
+    /// instead of ending (#523): the Host redials behind a status that still
+    /// reads connected, so "Session Ended" would sit over a Host that is
+    /// already coming back. The runner waits for the next Transport, so the
+    /// wait ends in a new session or in the Host's own failure. A lost attach
+    /// also makes the Host redial, so reattaches that never get the remote to
+    /// paint are bounded: a link that keeps failing ends the session rather
+    /// than redialing the Host forever.
     private func run() async {
         defer {
             runTask = nil
             runDidFinish(surfaceID)
         }
-        guard let cols, let rows else { return }
+        var reattachesSinceLive = 0
+        while true {
+            guard let cols, let rows else { return }
+            attemptTransportGeneration = nil
+            do {
+                try await attach(cols: cols, rows: rows)
+            } catch {
+                guard !stopRequested else { return }
+                if status == .live { reattachesSinceLive = 0 }
+                if attemptTransportGeneration != nil, Self.isConnectionLoss(error),
+                    reattachesSinceLive < Self.reattachLimit
+                {
+                    reattachesSinceLive += 1
+                    status = .reconnecting
+                    continue
+                }
+                status = .ended(Self.message(for: error))
+                return
+            }
+            guard !stopRequested else { return }
+            status = .ended("The session ended.")
+            return
+        }
+    }
+
+    private func attach(cols: Int, rows: Int) async throws {
         let request = TerminalAttachRequest(
             target: target, takeover: takeover, cols: cols, rows: rows)
         let operation: TerminalSessionOperation = { [weak self] session in
@@ -383,6 +429,7 @@ final class AttachTerminalStore {
             guard let self else { return }
             self.transportGeneration = generation
             self.acquiredTransportGeneration = generation
+            self.attemptTransportGeneration = generation
             self.transportReady(self.surfaceID, generation)
             #if DEBUG
             self.restorationTrace.emit(.transportAcquired, generation: generation)
@@ -398,15 +445,22 @@ final class AttachTerminalStore {
         #else
         let handler = TerminalSessionHandler(transportReady: transportReady, operation)
         #endif
-        do {
-            try await runTerminal(request, handler)
-        } catch {
-            guard !stopRequested else { return }
-            status = .ended(Self.message(for: error))
-            return
+        try await runTerminal(request, handler)
+    }
+
+    /// Reattaches in a row that may fail before the remote paints: one for
+    /// the loss itself and one more for a redial that lands on a link still
+    /// recovering.
+    private static let reattachLimit = 2
+
+    /// The connection under the session dropped or was replaced, as opposed
+    /// to the remote attach ending or refusing: the Host's next Transport
+    /// can carry a reattach.
+    private static func isConnectionLoss(_ error: any Error) -> Bool {
+        switch error as? TransportError {
+        case .sshUnreachable, .timedOut, .cancelled: true
+        default: false
         }
-        guard !stopRequested else { return }
-        status = .ended("The session ended.")
     }
 
     private func consume(
@@ -420,12 +474,20 @@ final class AttachTerminalStore {
             return
         }
         self.session = session
-        let inputGeneration = input.beginSession(
-            writer: { data in session.send(data) },
-            scroller: { sequence, rows in
-                session.scroll(sequence, rows: rows)
-            })
-        self.inputGeneration = inputGeneration
+        func beginInput() -> TerminalInputController.SessionGeneration {
+            let generation = input.beginSession(
+                writer: { data in session.send(data) },
+                scroller: { sequence, rows in
+                    session.scroll(sequence, rows: rows)
+                },
+                discardPendingScroll: { session.discardPendingScroll() })
+            self.inputGeneration = generation
+            return generation
+        }
+        // A reattach opens its channel while the screen still shows the lost
+        // session. A key typed at that screen would answer whatever the pane has
+        // moved on to, so its input begins with the new output.
+        var inputGeneration = status == .reconnecting ? nil : beginInput()
         if let latestCols = cols, let latestRows = rows,
             latestCols != initialCols || latestRows != initialRows
         {
@@ -441,9 +503,11 @@ final class AttachTerminalStore {
                 // noise, so an open channel with no output yet is still
                 // connecting. This does not prove that a renderer presented
                 // the bytes on screen.
-                if status == .connecting {
+                if status == .connecting || status == .reconnecting {
+                    let liveGeneration = inputGeneration ?? beginInput()
+                    inputGeneration = liveGeneration
                     status = .live
-                    input.sessionDidBecomeLive(inputGeneration)
+                    input.sessionDidBecomeLive(liveGeneration)
                 }
                 #if DEBUG
                 restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)
@@ -458,8 +522,9 @@ final class AttachTerminalStore {
         finishSession(inputGeneration)
     }
 
-    private func finishSession(_ inputGeneration: TerminalInputController.SessionGeneration) {
+    private func finishSession(_ inputGeneration: TerminalInputController.SessionGeneration?) {
         self.session = nil
+        guard let inputGeneration else { return }
         input.endSession(
             inputGeneration,
             preservingPendingPaste: preservesPendingPasteOnStop)
@@ -476,10 +541,18 @@ final class AttachTerminalStore {
             "Another terminal is already open on this Host."
         case TransportError.timedOut:
             "The Host did not answer in time."
-        case TransportError.herdrBinaryNotFound:
-            TransportError.herdrBinaryNotFound.presentation.message
+        case TransportError.cancelled:
+            // Attach is cancelled under the user when the Host's connection
+            // is replaced or wound down, not when the user cancels.
+            "The Host's connection was reset."
+        case let error as TransportError:
+            // Includes `attachExited`, which quotes herdr's own last line
+            // (#431), and `herdrBinaryNotFound`.
+            error.presentation.message
         default:
-            "The session failed: \(error)"
+            // A non-Transport error has no user-facing words of its own;
+            // interpolating it would show a debug description.
+            "The session failed."
         }
     }
 }

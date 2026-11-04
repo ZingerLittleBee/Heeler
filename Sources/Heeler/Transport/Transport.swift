@@ -3,10 +3,18 @@ import Foundation
 /// The app-side abstraction that executes herdr API requests over SSH.
 /// UI code talks to Transport, never to SSH primitives (ADR 0011).
 protocol Transport: Sendable {
+    /// The catalog route this connection reached (ADR 0022); nil where the
+    /// transport does not know one.
+    var routeID: UUID? { get }
+
     /// Verifies the server speaks a protocol version we support and returns
     /// its identity. Must be the first herdr API call on every new connection
     /// path; Host-local session discovery may run before it.
     func ping() async throws -> ServerInfo
+
+    /// A liveness probe has its own budget, independent of ordinary requests.
+    /// Its soft deadline must not cancel a still-recoverable SSH channel open.
+    func ping(timeout: Duration) async throws -> ServerInfo
 
     /// Lists the local herdr sessions visible to this SSH account. This is a
     /// Host-level capability and does not depend on the currently selected
@@ -45,6 +53,11 @@ protocol Transport: Sendable {
     /// herdr's own spellings, shared with `pane.send_keys` / `pane.send_input`.
     func sendAgentKeys(_ params: AgentSendKeysParams) async throws
 
+    /// Types text into a Pane (`pane.send_input`), bracketed as a paste when
+    /// the program enabled bracketed paste. herdr passes it on unchecked, so
+    /// callers send one line of safe text and never keys this way.
+    func sendPaneInput(_ params: PaneSendInputParams) async throws
+
     /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch
     /// work from the road). Creates a fresh herdr tab in the chosen workspace,
     /// starts the requested agent in its root pane, and returns the Agent once
@@ -74,8 +87,9 @@ protocol Transport: Sendable {
     /// resolves the repository from the source workspace's cwd (a non-git cwd
     /// fails with `not_git_worktree`) and returns a new workspace whose root
     /// pane already runs a shell, so this variant skips `tab.create` and
-    /// starts the agent in that pane directly (the `agent_pane_busy`
-    /// readiness retry still applies). `request.workspaceID` is the *source*
+    /// starts the agent in that pane directly (the shell-readiness retry on
+    /// `agent_pane_busy` and on herdr 0.9.4's canonical-mode refusal still
+    /// applies). `request.workspaceID` is the *source*
     /// workspace; the started agent lives in the returned worktree workspace
     /// and surfaces through the normal snapshot/delta machinery.
     func startAgentInNewWorktree(
@@ -86,8 +100,9 @@ protocol Transport: Sendable {
     /// `workspace.create` opens the remote directory as its own Workspace
     /// (no existing Workspace required) and returns a root pane already
     /// running a shell, so this variant skips `tab.create` and starts the
-    /// agent in that pane directly (the `agent_pane_busy` readiness retry
-    /// still applies). `request.workspaceID` is unused; the started agent
+    /// agent in that pane directly (the shell-readiness retry on
+    /// `agent_pane_busy` and on herdr 0.9.4's canonical-mode refusal still
+    /// applies). `request.workspaceID` is unused; the started agent
     /// lives in the returned Workspace and surfaces through the normal
     /// snapshot/delta machinery.
     func startAgentInNewWorkspace(
@@ -127,9 +142,18 @@ protocol Transport: Sendable {
         onDispatched: @escaping @Sendable (WorktreeRemovalRequest) async -> Void
     ) async throws -> WorktreeRemovedResponse
 
-    /// Marks the viewed Agent seen through `agent.focus`. herdr 0.9.0 also
-    /// focuses its Tab and marks every Pane in that Tab seen. Callers must
-    /// refresh the entire Host rather than synthesize a selected-row status.
+    /// Marks the viewed Agent seen through `agent.focus`. herdr makes the
+    /// Agent's Tab the server's active Tab and marks every Pane in it seen.
+    /// It emits no status event for that change, although a Pane-scoped
+    /// `pane.agent_status_changed` subscription still reports the new
+    /// statuses from its own polling. Callers must refresh the entire Host
+    /// rather than synthesize a selected-row status. Later completions in
+    /// that Tab read Idle, not Done, while no herdr client is attached or the
+    /// attached one has focus. On every supported herdr except 0.9.0 the call
+    /// also moves attached herdr clients, and their next keystrokes, to that
+    /// Tab: through the shared view on 0.8.x and earlier, and through the
+    /// client focus projection since 0.9.1. A direct `agent attach` or
+    /// `terminal attach` stays on its terminal.
     func focusAgent(_ target: AgentTarget) async throws
 
     /// Renames an Agent (`agent.rename`): the Console management action
@@ -223,6 +247,36 @@ protocol Transport: Sendable {
     /// on Hosts the plugin does not support (native Windows).
     func readHeelerPlugin() async throws -> HeelerPluginInstallation?
 
+    /// Runs the Usage query of the plugin installed at `pluginRoot`, which
+    /// the caller resolved with `readHeelerPlugin()`. Reads aggregate usage,
+    /// never credentials or Transcripts.
+    func readAgentUsage(
+        timeZone: String, claudeLimits: Bool, pluginRoot: String
+    ) async throws -> AgentUsageReport
+
+    /// Reads the Claude Code Account file (`usage-accounts.json`, ADR 0030)
+    /// from this Host's Heeler plugin config dir; nil when no Account was
+    /// ever added. Same plugin gate and POSIX-only reach as the registration
+    /// read.
+    func readUsageAccountFile() async throws -> Data?
+
+    /// Atomically replaces the Account file with `contents` (temp file +
+    /// rename, file 0600 in a 0700 directory), creating it when absent. Same
+    /// plugin gate as the registration write.
+    func replaceUsageAccountFile(_ contents: Data) async throws
+
+    /// Runs one change to the Host's Heeler plugin: the herdr CLI for install
+    /// and uninstall, the session's `plugin.enable` request for enable.
+    /// Throws `HeelerPluginStepError` when herdr refuses or fails the step,
+    /// and `TransportError.hostFeatureUnavailable` on native Windows Hosts.
+    func runHeelerPluginStep(_ step: HeelerPluginStep) async throws
+
+    /// The version the plugin branch holds now, read with the Host's own
+    /// git, which herdr's install also uses. Throws `PluginBranchVersionError`
+    /// when the Host cannot fetch or parse it, and
+    /// `TransportError.hostFeatureUnavailable` on native Windows Hosts.
+    func readPluginBranchVersion() async throws -> PluginVersion
+
     /// Lists the skills / custom slash commands installed for a kind on this
     /// Host: global sources under the remote home plus project sources under
     /// the query's project root, per `SkillSourceCatalog`. Kinds without a
@@ -241,6 +295,44 @@ protocol Transport: Sendable {
     /// been read yet, so a screen can show a running figure without pulling
     /// the whole file on every look.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice
+
+    /// Reads one byte range of an Agent transcript for Chat. Unlike
+    /// `readFileSlice`, a read past its deadline throws `.hostFileTimedOut`
+    /// rather than the link-failure `.timedOut`, so a slow read on a weak link
+    /// never redials the Host; a refused read throws `.hostFileUnreadable`.
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice
+
+    /// Stats one Host path for Chat, following symlinks. Nil when the path
+    /// does not exist. Errors follow `readHostFileRange`.
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus?
+
+    /// Lists the matching entries of one Host directory for Chat. Nil when
+    /// the directory does not exist. Errors follow `readHostFileRange`.
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing?
+
+    /// The Host's home directory as its SSH account sees it, for Chat to
+    /// find transcripts under. A probe past its deadline throws
+    /// `.hostFileTimedOut`, like the file operations.
+    func hostHomeDirectory() async throws -> String
+
+    /// Reads one OpenCode session from OpenCode's own database on the Host
+    /// (ADR 0025): one read-only script over one exec, one query at a time
+    /// per connection. A query past its deadline throws `.hostFileTimedOut`
+    /// and never redials the Host; a reader failure that is no store problem
+    /// Chat can name throws `.hostStoreUnreadable`.
+    func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse
+
+    /// The Host's operating system family, known once the transport has
+    /// resolved the remote environment.
+    func hostPlatform() async throws -> HostPlatform
+
+    /// Reads one Agent's current record (`agent.get`). Chat re-reads it to
+    /// notice the Agent's session changing, which no event reports.
+    func agentInfo(_ target: AgentTarget) async throws -> Agent
+
+    /// The processes in a Pane's foreground job (`pane.process_info`). Chat
+    /// reads how the Agent's program was launched from their arguments.
+    func paneProcessInfo(paneID: String) async throws -> PaneProcessInfo
 
     /// The context window, in tokens, of the model an Agent's session names
     /// as `provider/model`, as the Agent's own CLI on the Host reports it.
@@ -281,6 +373,12 @@ protocol Transport: Sendable {
 }
 
 extension Transport {
+    var routeID: UUID? { nil }
+
+    func ping(timeout: Duration) async throws -> ServerInfo {
+        try await ping()
+    }
+
     /// Test doubles and alternative transports that do not expose Host-level
     /// session discovery can opt out without inventing sessions.
     func listSessions() async throws -> [HerdrSession] { [] }
@@ -322,6 +420,42 @@ extension Transport {
 
     /// A transport without Host commands knows no model windows.
     func modelContextWindow(selector: String) async throws -> Int? { nil }
+
+    /// Transports without Host files decline Chat outright, never with a
+    /// link-failure error that would make the Host reconnect.
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func hostHomeDirectory() async throws -> String {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func hostPlatform() async throws -> HostPlatform { .posix }
+
+    func agentInfo(_ target: AgentTarget) async throws -> Agent {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func paneProcessInfo(paneID: String) async throws -> PaneProcessInfo {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func sendPaneInput(_ params: PaneSendInputParams) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
 
     /// A transport without Host commands cannot list an untracked directory.
     func listUntrackedDirectory(
@@ -384,6 +518,30 @@ extension Transport {
     func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
         throw TransportError.channelFailed(
             detail: "This transport cannot list herdr plugins.")
+    }
+
+    func readAgentUsage(
+        timeZone: String, claudeLimits: Bool, pluginRoot: String
+    ) async throws -> AgentUsageReport {
+        throw TransportError.hostFeatureUnavailable(feature: "Usage")
+    }
+
+    func readUsageAccountFile() async throws -> Data? {
+        throw NotificationRegistrationError.pluginNotInstalled
+    }
+
+    func replaceUsageAccountFile(_ contents: Data) async throws {
+        throw NotificationRegistrationError.pluginNotInstalled
+    }
+
+    func runHeelerPluginStep(_ step: HeelerPluginStep) async throws {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot change herdr plugins.")
+    }
+
+    func readPluginBranchVersion() async throws -> PluginVersion {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot read the plugin branch.")
     }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
@@ -486,10 +644,9 @@ struct AgentLaunchRequest: Sendable, Equatable {
     /// from another agent's screen and should land in the same place. Nil
     /// lets herdr fall back to the workspace's own directory.
     let cwd: String?
-    /// Label for the tab the launch creates. Nil labels the tab with the
-    /// agent's name; see `resolvedTabLabel`. Kept separate from `name`
-    /// because herdr constrains agent names to a lowercase slug while a tab
-    /// label accepts any text.
+    /// Explicit label for the tab the launch creates. Nil leaves the tab
+    /// unnamed so herdr or a plugin can title it. Kept separate from the
+    /// slug-constrained agent name because a tab label accepts any text.
     let tabLabel: String?
 
     init(
@@ -503,10 +660,6 @@ struct AgentLaunchRequest: Sendable, Equatable {
         self.cwd = cwd
         self.tabLabel = tabLabel
     }
-
-    /// The label the launch's tab should carry: the explicit tab label when
-    /// one was given, otherwise the agent's name.
-    var resolvedTabLabel: String { tabLabel ?? name }
 }
 
 /// The one-shot API request behind Open Terminal and New Terminal. `cwd` is
@@ -801,6 +954,9 @@ enum RemoteHostPath {
 struct RemoteDirectoryListing: Sendable, Equatable {
     let directories: [String]
     let truncated: Bool
+    /// The names in `directories` that are symbolic links to a directory.
+    /// Only a listing that follows links has any.
+    var symbolicLinks: Set<String> = []
 }
 
 /// A coding agent process running inside a herdr Pane.
@@ -967,6 +1123,15 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// an unexpected host key. Carries the underlying failure so screens can
     /// reuse the existing guidance while naming the Jump Host as the culprit.
     case jumpHostFailed(TransportError)
+    /// The Host's Overlay Network could not carry the first hop: it is gone,
+    /// not signed in, failed to start, or could not reach the peer. Never
+    /// wrapped in `.jumpHostFailed` — the overlay sits in front of the Jump
+    /// Host, which was never contacted (ADR 0021).
+    case overlayFailed(network: String, reason: OverlayFailure)
+    /// Every one of the Host's routes failed (ADR 0022). Each failure is
+    /// that route's own, named by the route; a Host with a single route
+    /// reports its failure directly instead.
+    case noRouteReached([RouteFailure])
     /// The Jump Host accepted SSH authentication but its server or key policy
     /// prohibits the direct-tcpip channel required to reach the Host.
     case tcpForwardingUnavailable
@@ -997,6 +1162,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// the well-known install prefixes. The API socket can still work — that
     /// is why the Console may list Agents while Attach fails (#206).
     case herdrBinaryNotFound
+    /// The launcher of the Host's herdr endpoint (Pairing Code v2, ADR 0023)
+    /// could not run: exit 126 or 127, so it is missing, not executable, or
+    /// could not start herdr. Carries the launcher's path.
+    case herdrLauncherNotFound(path: String)
     /// libssh2 cannot distinguish a listening Unix socket rejected by SSH
     /// policy from a stale socket file. The Host needs either herdr started or
     /// stream-local forwarding enabled; presenting a narrower cause would be
@@ -1026,6 +1195,17 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// link health and must not trigger a redial or an automatic retry: the
     /// exec can remain alive until its remote watchdog ends the process group.
     case gitTimedOut
+    /// A Chat transcript operation exceeded its own deadline. Like
+    /// `.gitTimedOut` this says nothing about link health: a slow file read
+    /// over a weak link must not redial the Host and rebuild its terminals.
+    case hostFileTimedOut
+    /// The Host refused a Chat transcript operation with an SFTP status other
+    /// than "no such file", such as permission denied.
+    case hostFileUnreadable(status: UInt64)
+    /// OpenCode's database answered a Chat query with a failure that is not
+    /// a store problem Chat names on its own: it is busy, it cannot be
+    /// opened, or the reader failed. `detail` is one sentence for the user.
+    case hostStoreUnreadable(detail: String)
     /// The request's task was cancelled before completing. Resource cleanup
     /// may outlive the caller; a dispatched git exec waits for its bounded
     /// remote exit instead of abandoning the channel.
@@ -1038,6 +1218,12 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The channel failed outside the known failure shapes; carries the
     /// underlying description for diagnostics.
     case channelFailed(detail: String)
+    /// The remote attach command exited nonzero. Carries the line herdr last
+    /// printed outside its alternate screen, when there was one, because the
+    /// status alone cannot say which herdr failed or why (#431). A native
+    /// Windows terminal controller's exit carries no line: its stderr is not
+    /// kept, and its stdout is JSON records, not terminal output.
+    case attachExited(status: Int32, output: String?)
     case hostFeatureUnavailable(feature: String)
 
     /// Whether reconnecting without user intervention can plausibly recover.
@@ -1051,13 +1237,15 @@ indirect enum TransportError: Error, Sendable, Equatable {
         // A rejection is retryable because herdr's error codes are open-ended
         // and most of them describe a target that moved, not a broken setup.
         case .sshUnreachable, .timedOut, .cancelled, .channelFailed,
-            .apiRejected:
+            .attachExited, .apiRejected:
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,
             .hostKeyRejected, .hostKeyMismatch,
-            .socketNotFound, .herdrBinaryNotFound, .protocolVersionMismatch,
-            .streamLocalOpenFailed, .gitTimedOut, .hostFeatureUnavailable,
+            .socketNotFound, .herdrBinaryNotFound, .herdrLauncherNotFound,
+            .protocolVersionMismatch,
+            .streamLocalOpenFailed, .gitTimedOut, .hostFileTimedOut, .hostFileUnreadable,
+            .hostStoreUnreadable, .hostFeatureUnavailable,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:
@@ -1066,7 +1254,46 @@ indirect enum TransportError: Error, Sendable, Equatable {
         // rebooting VPS should reconnect on its own, a rejected key should not.
         case .jumpHostFailed(let underlying):
             underlying.isRetryable
+        // Any route that may come back on its own is worth another race: the
+        // LAN address refused away from home must not stop the overlay route.
+        // A changed key on a route that cannot reach another machine stops
+        // the race, as it stops a single route, until the user decides.
+        case .noRouteReached(let failures):
+            !failures.contains(where: \.isHostKeySecurityFailure)
+                && failures.contains { $0.error.isRetryable }
+        // A peer that is asleep, a slow node, or a device awaiting approval
+        // can recover on its own; a missing network, a sign-in, a malformed
+        // setting, or a start failure that outlasted its retries needs the user.
+        case .overlayFailed(_, let reason):
+            switch reason {
+            case .unreachable, .timedOut, .notReady:
+                true
+            case .notConfigured, .catalogUnreadable, .misconfigured, .loginRequired,
+                .signedOut, .startFailed:
+                false
+            }
         }
+    }
+}
+
+/// One route's failure in `TransportError.noRouteReached`.
+struct RouteFailure: Sendable, Equatable {
+    /// The route as `SSHRoute.label` names it.
+    let route: String
+    /// Whether the route's address may name another machine on the
+    /// device's current network (`SSHRoute.mayNameAnotherMachine`).
+    let mayNameAnotherMachine: Bool
+    let error: TransportError
+    /// The catalog route that failed (`SSHRoute.id`), when known.
+    var routeID: UUID? = nil
+
+    /// A changed host key on a route whose address names the same machine
+    /// wherever the device is: an Overlay Network address, one resolved by a
+    /// Jump Host, or a public address or DNS name. A LAN address can be
+    /// answered by another machine away from home, so its changed key is
+    /// excused.
+    var isHostKeySecurityFailure: Bool {
+        !mayNameAnotherMachine && error.isHostKeySecurityFailure
     }
 }
 
@@ -1076,4 +1303,13 @@ struct HerdrAPIError: Error, Sendable, Equatable {
     /// without pinning the code's JSON type.
     let code: String
     let message: String
+
+    /// herdr 0.9.4's macOS refusal of an `agent.start` whose launch line is
+    /// longer than the terminal's canonical input limit while the fresh
+    /// shell is still in canonical mode. Only "canonical mode" marks it: the
+    /// sibling "could not determine canonical input capacity" is a different
+    /// failure.
+    var isCanonicalModeRefusal: Bool {
+        code == "agent_start_input_failed" && message.contains("canonical mode")
+    }
 }

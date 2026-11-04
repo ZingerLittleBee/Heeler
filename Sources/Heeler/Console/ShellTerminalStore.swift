@@ -390,6 +390,12 @@ final class ShellTerminalStore {
             transportGeneration = generation
             return
         }
+        if terminal.isAwaitingReattachTransport {
+            // The Attach loop takes the replacement Transport itself. Keep its
+            // feed instead of racing it with a second pipeline.
+            transportGeneration = generation
+            return
+        }
         guard generation != transportGeneration else { return }
         transportGeneration = generation
         replaceTerminal()

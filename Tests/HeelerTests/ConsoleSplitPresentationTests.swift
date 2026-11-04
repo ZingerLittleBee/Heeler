@@ -13,13 +13,20 @@ struct ConsoleSplitPresentationTests {
     @Test func regularLandscapeShowsBothColumns() {
         #expect(landscape.defaultVisibility == .all)
         #expect(landscape.usesRegularColumns)
-        #expect(landscape.sidebarWidth == .init(minimum: 320, ideal: 380, maximum: 440))
+        #expect(landscape.sidebarWidth == .init(minimum: 320, ideal: 380, maximum: 600))
     }
 
     @Test func regularPortraitShowsDetail() {
         #expect(portrait.defaultVisibility == .detailOnly)
         #expect(portrait.usesRegularColumns)
-        #expect(portrait.sidebarWidth == .init(minimum: 320, ideal: 380, maximum: 400))
+        #expect(portrait.sidebarWidth == .init(minimum: 320, ideal: 380, maximum: 600))
+    }
+
+    @Test func sidebarIsUserResizableAboveItsIdeal() {
+        // The divider can be dragged wider than the ideal, but not past the cap.
+        let width = landscape.sidebarWidth
+        #expect(width.maximum.map { $0 > width.ideal } == true)
+        #expect(width.minimum < width.ideal)
     }
 
     @Test(arguments: [false, true])

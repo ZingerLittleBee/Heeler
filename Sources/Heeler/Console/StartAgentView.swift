@@ -68,7 +68,7 @@ struct StartAgentView: View {
                             if store.selectedHostID == nil {
                                 Text("Select a Host").tag(Host.ID?.none)
                             }
-                            ForEach(store.hosts) { host in
+                            ForEach(store.hosts) { @Sendable host in
                                 Text(host.displayName).tag(Host.ID?.some(host.id))
                             }
                         }
@@ -171,7 +171,7 @@ struct StartAgentView: View {
                         }
                     case .loaded:
                         Picker("Agent", selection: $store.selectedAgentKind) {
-                            ForEach(store.availableAgentKinds) { kind in
+                            ForEach(store.availableAgentKinds) { @Sendable kind in
                                 Text("\(kind.displayName) (\(kind.executable))")
                                     .tag(SupportedAgentKind?.some(kind))
                             }
@@ -215,7 +215,7 @@ struct StartAgentView: View {
                 } header: {
                     Text("Tab Name")
                 } footer: {
-                    Text("Empty labels the tab with the agent's name.")
+                    Text("Empty lets herdr or a title plugin name the tab.")
                 }
 
                 Section {
@@ -342,7 +342,7 @@ struct StartWorkspacePicker: View {
             if selectedWorkspaceID == nil && !isNewWorkspaceSelected {
                 Text("None reported").tag(Selection?.none)
             }
-            ForEach(workspaces) { workspace in
+            ForEach(workspaces) { @Sendable workspace in
                 Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
             }
             if newDirectory != nil {

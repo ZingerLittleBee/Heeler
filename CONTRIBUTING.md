@@ -20,10 +20,10 @@ Read these before changing anything non-trivial:
   is in [herdr-compatibility.md](docs/agents/herdr-compatibility.md).
 
 The repo carries four deliverables: the iOS app (`Sources/`,
-`Packages/HeelerSSH`), the herdr plugin that renders Pairing Codes and posts
-notifications (`plugin/`, dependency-free Node), the stateless Push Relay
-(`relay/`, dependency-free Node), and the marketing site (`landing/`,
-Astro).
+`Packages/HeelerSSH`, `Packages/HeelerOverlay`), the herdr plugin that renders
+Pairing Codes and posts notifications (`plugin/`, Node >= 20), the stateless
+Push Relay (`relay/`, dependency-free Node), and the web sites (`landing/` and
+`docs-site/`, Astro).
 
 ## Building and testing
 
@@ -33,9 +33,9 @@ and every `make` build target regenerates it. CI builds the *committed*
 `Heeler.xcodeproj`, so commit the regenerated project alongside any
 `project.yml` change.
 
-- `make test` — the full app suite plus the `Packages/HeelerSSH` package
-  suites (those run through `scripts/run-heelerssh-package-tests.sh`, not
-  `-only-testing`).
+- `make test` — the full app suite plus the `Packages/HeelerSSH` and
+  `Packages/HeelerOverlay` package suites (run through their package test
+  scripts, not `-only-testing`).
 - One suite:
   `make test-app TEST_SELECTOR='HeelerTests/<SuiteTypeName>'`.
   This and the CI app lane enable simulator accessibility before launching
@@ -44,9 +44,8 @@ and every `make` build target regenerates it. CI builds the *committed*
   simulator. Pin a device with
   `SIM_DESTINATION='platform=iOS Simulator,id=<UDID>'` when needed.
 - `make test-ci-app` and `make test-ci-package` run the respective committed-project
-  CI lanes; `make test-tools` runs local runner and navigation checks.
-- `npm test` inside `plugin/` or `relay/` for the Node deliverables
-  (Node >= 20, no install step).
+  CI lanes; `make test-tools` runs local runner, plugin, relay, and navigation checks.
+- `npm test` inside `plugin/`, `relay/`, or `docs-site/` (Node >= 20).
 
 A few suites exercise a real SSH server; they skip cleanly on machines
 without a local sshd and seeded key, and CI provisions disposable sshd

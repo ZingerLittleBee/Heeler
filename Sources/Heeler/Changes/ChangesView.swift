@@ -75,10 +75,10 @@ struct ChangesView: View {
                             .foregroundStyle(.secondary)
                     }
                 } else {
-                    ForEach(changes.listedSections) { section in
+                    ForEach(changes.listedSections) { @Sendable section in
                         Section {
-                            ForEach(section.files) { file in
-                                fileRow(file)
+                            ForEach(section.files) { @Sendable file in
+                                MainActorContent { fileRow(file) }
                             }
                         } header: {
                             ChangesSectionHeader(section: section)

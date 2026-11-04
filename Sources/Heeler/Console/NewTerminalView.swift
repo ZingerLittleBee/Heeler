@@ -51,7 +51,7 @@ struct NewTerminalView: View {
                         if store.selectedHostID == nil {
                             Text("Select a Host").tag(Host.ID?.none)
                         }
-                        ForEach(store.hosts) { host in
+                        ForEach(store.hosts) { @Sendable host in
                             Text(host.displayName).tag(Host.ID?.some(host.id))
                         }
                     }

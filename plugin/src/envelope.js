@@ -1,18 +1,28 @@
-// Pairing Code v1 envelope (ADR 0007).
+// Pairing Code envelope: v1 (ADR 0007) and v2 with a Herdr Endpoint (ADR 0023).
 //
 // Wire format: "HERDR-PAIR:<version>:<base64url(JSON, no padding)>".
 // The JSON payload uses short wire keys; see README.md for the schema and
-// test-vectors/pairing-code-v1.json for the cross-implementation vectors.
+// test-vectors/pairing-code-v{1,2}.json for the cross-implementation vectors.
+// This plugin encodes both versions but decodes v1 only: only the app
+// decodes v2.
 // Unknown payload fields are ignored (additive metadata); breaking changes
 // bump the version, which both implementations must honor.
 
+import { sessionFromSocketPath } from "./session.js";
+
 export const PAIRING_CODE_PREFIX = "HERDR-PAIR";
 export const PAIRING_CODE_VERSION = 1;
+export const PAIRING_CODE_ENDPOINT_VERSION = 2;
 
 const BOOTSTRAP_SEED_BYTES = 32;
 // OpenSSH fingerprint: "SHA256:" + unpadded standard base64 of a 32-byte digest.
 const FINGERPRINT_PATTERN = /^SHA256:[A-Za-z0-9+/]{43}$/;
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
+// The app's remote path rule: what it can pass to `/bin/sh -c` unquoted.
+const SHELL_UNSAFE = /['\\\u0000-\u001f\u007f]/;
+// Attach and wake use herdr's `-client` sibling socket, which must still fit
+// macOS sun_path (103 bytes plus the NUL).
+const MAX_SOCKET_BYTES = 96;
 
 export class PairingCodeError extends Error {
   /**
@@ -72,26 +82,59 @@ function validatePayload(payload) {
   }
 }
 
+/** An absolute path without `'`, `\` or ASCII control characters. */
+export function isShellSafeAbsolutePath(path) {
+  return typeof path === "string" && path.startsWith("/") && !SHELL_UNSAFE.test(path);
+}
+
 /**
- * Encode a Pairing Code payload into its canonical v1 string.
+ * Validate a Herdr Endpoint against the v2 rules (README "Pairing Code v2").
+ *
+ * @param {{socketPath: string, herdrPath: string}} endpoint
+ */
+export function validateEndpoint({ socketPath, herdrPath }) {
+  if (!isShellSafeAbsolutePath(socketPath) || !isShellSafeAbsolutePath(herdrPath)) {
+    fail(
+      "bad_payload",
+      "sock and herdr must be absolute paths without quotes, backslashes or control characters",
+    );
+  }
+  if (sessionFromSocketPath(socketPath) === null) {
+    fail("bad_payload", "sock must end in /herdr/herdr.sock or /herdr/sessions/<name>/herdr.sock");
+  }
+  if (Buffer.byteLength(socketPath, "utf8") > MAX_SOCKET_BYTES) {
+    fail("bad_payload", `sock must be at most ${MAX_SOCKET_BYTES} bytes`);
+  }
+}
+
+/**
+ * Encode a Pairing Code payload into its canonical string: v2 when it
+ * carries a Herdr Endpoint (`socketPath`, `herdrPath`), v1 otherwise.
  *
  * Key order is fixed so the same payload always yields the same code; the
  * shared vectors assert on the exact string.
  */
 export function encodePairingCode(payload) {
   validatePayload(payload);
+  const hasEndpoint = payload.socketPath !== undefined || payload.herdrPath !== undefined;
   const wire = {
     addrs: payload.addresses,
     port: payload.port,
     user: payload.username,
     fp: payload.hostKeyFingerprint,
   };
+  if (hasEndpoint) {
+    validateEndpoint(payload);
+    wire.sock = payload.socketPath;
+    wire.herdr = payload.herdrPath;
+  }
   if (payload.bootstrapSeed !== undefined) {
     wire.seed = payload.bootstrapSeed.toString("base64url");
     wire.exp = payload.expiresAt;
   }
   const body = Buffer.from(JSON.stringify(wire), "utf8").toString("base64url");
-  return `${PAIRING_CODE_PREFIX}:${PAIRING_CODE_VERSION}:${body}`;
+  const version = hasEndpoint ? PAIRING_CODE_ENDPOINT_VERSION : PAIRING_CODE_VERSION;
+  return `${PAIRING_CODE_PREFIX}:${version}:${body}`;
 }
 
 function decodeBase64UrlStrict(text, what, errorCode) {

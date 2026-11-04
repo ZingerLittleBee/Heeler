@@ -209,6 +209,23 @@ struct SkillProbeTests {
         #expect(skills.map(\.insertionText) == ["/skill:pdf-tools ", "$plan "])
     }
 
+    @Test func userInvocableRidesTheSkill() {
+        let skills = SkillProbe.skills(
+            fromProbeOutput: output(
+                """
+                \(marker(0))/repo/.claude/skills/e2e-hidden/SKILL.md
+                ---
+                user-invocable: false
+                ---
+                \(SkillProbe.endMarker)
+                \(marker(0))/repo/.claude/skills/review/SKILL.md
+                \(SkillProbe.endMarker)
+                """),
+            sources: claudeSources)
+        #expect(skills.map(\.name) == ["e2e-hidden", "review"])
+        #expect(skills.map(\.isUserInvocable) == [false, true])
+    }
+
     @Test func projectShadowsSameNamedGlobal() {
         let skills = SkillProbe.skills(
             fromProbeOutput: output(
@@ -306,6 +323,22 @@ struct SkillProbeTests {
                 sources.allSatisfy { $0.commandPrefix == "/skill:" },
                 "kind \(kind) mixes prefixes")
         }
+    }
+
+    @Test func ompCatalogListsNativeAndHomeAgentRoots() {
+        let sources = SkillSourceCatalog.sources(for: .omp)
+        #expect(sources.allSatisfy { $0.layout == .skillDirectories })
+        #expect(
+            sources.map { "\($0.scope.rawValue):\($0.relativePath)" } == [
+                "project:.omp/skills",
+                "project:.agents/skills",
+                "project:.agent/skills",
+                "project:.github/skills",
+                "global:.omp/agent/skills",
+                "global:.agents/skills",
+                "global:.agent/skills",
+                "global:.omp/agent/managed-skills",
+            ])
     }
 
     @Test func droidProbesCommandsBeforeSkillsSoTheCommandWinsAClash() {

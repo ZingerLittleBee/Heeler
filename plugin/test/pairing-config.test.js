@@ -6,6 +6,9 @@ import { join } from "node:path";
 
 import { DEFAULT_SSH_PORT, readPairingConfig } from "../src/pairing-config.js";
 
+const NO_ADDRESSES = { addresses: [], addressesWarning: null };
+const NO_LAUNCHER = { launcher: null, launcherWarning: null };
+
 let configDir;
 
 afterEach(() => {
@@ -31,6 +34,8 @@ suite("pairing config", () => {
     assert.deepEqual(readPairingConfig(makeConfigDir()), {
       sshPort: DEFAULT_SSH_PORT,
       warning: null,
+      ...NO_ADDRESSES,
+      ...NO_LAUNCHER,
     });
   });
 
@@ -38,13 +43,15 @@ suite("pairing config", () => {
     assert.deepEqual(readPairingConfig(undefined), {
       sshPort: DEFAULT_SSH_PORT,
       warning: null,
+      ...NO_ADDRESSES,
+      ...NO_LAUNCHER,
     });
   });
 
   test("preserves an explicit OpenSSH port", () => {
     writeConfig({ ssh_port: 2222 });
 
-    assert.deepEqual(readPairingConfig(configDir), { sshPort: 2222, warning: null });
+    assert.deepEqual(readPairingConfig(configDir), { sshPort: 2222, warning: null, ...NO_ADDRESSES, ...NO_LAUNCHER });
   });
 
   test("warns instead of silently falling back on an unusable port", () => {
@@ -67,7 +74,7 @@ suite("pairing config", () => {
   test("accepts the ends of the port range", () => {
     for (const ssh_port of [1, 65535]) {
       writeConfig({ ssh_port });
-      assert.deepEqual(readPairingConfig(configDir), { sshPort: ssh_port, warning: null });
+      assert.deepEqual(readPairingConfig(configDir), { sshPort: ssh_port, warning: null, ...NO_ADDRESSES, ...NO_LAUNCHER });
       rmSync(configDir, { recursive: true, force: true });
       configDir = undefined;
     }
@@ -76,7 +83,7 @@ suite("pairing config", () => {
   test("ignores unrelated fields", () => {
     writeConfig({ ssh_port: 2222, relay_url: "https://example.com" });
 
-    assert.deepEqual(readPairingConfig(configDir), { sshPort: 2222, warning: null });
+    assert.deepEqual(readPairingConfig(configDir), { sshPort: 2222, warning: null, ...NO_ADDRESSES, ...NO_LAUNCHER });
   });
 
   test("stays quiet when pair.json omits ssh_port", () => {
@@ -85,6 +92,8 @@ suite("pairing config", () => {
     assert.deepEqual(readPairingConfig(configDir), {
       sshPort: DEFAULT_SSH_PORT,
       warning: null,
+      ...NO_ADDRESSES,
+      ...NO_LAUNCHER,
     });
   });
 
@@ -117,5 +126,62 @@ suite("pairing config", () => {
     const { sshPort, warning } = readPairingConfig(configDir);
     assert.equal(sshPort, DEFAULT_SSH_PORT);
     assert.match(warning, /could not be read/);
+  });
+
+  test("reads configured addresses next to the port", () => {
+    writeConfig({ ssh_port: 2222, addresses: ["192.168.1.10", "nas.example.com"] });
+
+    assert.deepEqual(readPairingConfig(configDir), {
+      sshPort: 2222,
+      warning: null,
+      addresses: ["192.168.1.10", "nas.example.com"],
+      addressesWarning: null,
+      ...NO_LAUNCHER,
+    });
+  });
+
+  test("drops duplicate configured addresses", () => {
+    writeConfig({ addresses: ["10.0.0.5", "10.0.0.5"] });
+
+    assert.deepEqual(readPairingConfig(configDir).addresses, ["10.0.0.5"]);
+  });
+
+  test("warns about unusable addresses without touching the port", () => {
+    for (const addresses of ["10.0.0.5", [""], ["10.0.0.5 nas"], [42], null]) {
+      writeConfig({ ssh_port: 2222, addresses });
+
+      const config = readPairingConfig(configDir);
+      assert.equal(config.sshPort, 2222);
+      assert.equal(config.warning, null);
+      assert.deepEqual(config.addresses, []);
+      assert.match(config.addressesWarning, /addresses/);
+
+      rmSync(configDir, { recursive: true, force: true });
+      configDir = undefined;
+    }
+  });
+
+  test("reads a launcher override, spaces allowed", () => {
+    writeConfig({ launcher: "/opt/Example App/bin/herdr" });
+
+    const config = readPairingConfig(configDir);
+    assert.equal(config.launcher, "/opt/Example App/bin/herdr");
+    assert.equal(config.launcherWarning, null);
+  });
+
+  test("warns about a launcher that cannot go in a Pairing Code", () => {
+    for (const launcher of ["bin/herdr", "/a'b", "/a\\b", "/a\nb", 42]) {
+      writeConfig({ launcher });
+
+      const config = readPairingConfig(configDir);
+      assert.equal(config.launcher, null);
+      assert.equal(
+        config.launcherWarning,
+        `pair.json launcher ${JSON.stringify(launcher)} is not an absolute path without quotes, backslashes or control characters.`,
+      );
+
+      rmSync(configDir, { recursive: true, force: true });
+      configDir = undefined;
+    }
   });
 });

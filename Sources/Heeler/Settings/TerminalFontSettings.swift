@@ -1,39 +1,48 @@
 import CoreText
 import Foundation
 import Observation
+import UIKit
 
 enum TerminalFontOption: String, CaseIterable, Identifiable, Sendable {
-    case system
-    case jetBrainsMono = "jetbrains-mono"
+    /// libghostty's own JetBrains Mono, embedded in its binary: no
+    /// `font-family` at all. Stored as "system", the name this choice had
+    /// while it was taken for the platform's monospace face.
+    case jetBrainsMono = "system"
     case ibmPlexMono = "ibm-plex-mono"
+    case menlo
+    case courierNew = "courier-new"
 
     var id: Self { self }
 
+    /// Stored values of choices since folded into another.
+    static let retiredRawValues: [String: TerminalFontOption] = [
+        // A bundled copy of the face libghostty already embeds.
+        "jetbrains-mono": .jetBrainsMono,
+    ]
+
     var title: String {
         switch self {
-        case .system: "System"
         case .jetBrainsMono: "JetBrains Mono"
         case .ibmPlexMono: "IBM Plex Mono"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .system: "Menlo, whatever iOS resolves for a monospace face"
-        case .jetBrainsMono: "Tall, open letterforms drawn for reading code"
-        case .ibmPlexMono: "A quieter, more humanist monospace"
+        case .menlo: "Menlo"
+        case .courierNew: "Courier New"
         }
     }
 
     /// The CoreText family name ghostty resolves. `nil` sets no `font-family`
-    /// at all, leaving the platform's own choice in place.
+    /// at all, leaving libghostty's embedded default in place.
     var familyName: String? {
         switch self {
-        case .system: nil
-        case .jetBrainsMono: "JetBrains Mono"
+        case .jetBrainsMono: nil
         case .ibmPlexMono: "IBM Plex Mono"
+        case .menlo: "Menlo"
+        case .courierNew: "Courier New"
         }
     }
+
+    /// Whether the face ships inside the app, rather than with libghostty or
+    /// iOS.
+    var isBundled: Bool { self == .ibmPlexMono }
 }
 
 /// Registers the faces shipped inside the app so CoreText — and therefore
@@ -44,8 +53,6 @@ enum TerminalFontOption: String, CaseIterable, Identifiable, Sendable {
 /// cannot express an array.
 enum TerminalFontCatalog {
     private static let bundledFaces = [
-        "JetBrainsMono-Regular",
-        "JetBrainsMono-Bold",
         "IBMPlexMono-Regular",
         "IBMPlexMono-Bold",
     ]
@@ -84,22 +91,24 @@ final class TerminalFontSettings {
     private static let defaultsKey = "terminal-font-family"
 
     private(set) var selection: TerminalFontOption
-    /// `.system` plus bundled options whose face files are present in the bundle.
+    /// libghostty's default, bundled options whose face files are present in
+    /// the bundle, and iOS faces the system has.
     let availableOptions: [TerminalFontOption]
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard, bundle: Bundle = .main) {
         self.defaults = defaults
-        let families = TerminalFontCatalog.registerBundledFonts(in: bundle)
+        let bundled = TerminalFontCatalog.registerBundledFonts(in: bundle)
+        let system = Set(UIFont.familyNames)
         availableOptions = TerminalFontOption.allCases.filter { option in
             guard let family = option.familyName else { return true }
-            return families.contains(family)
+            return option.isBundled ? bundled.contains(family) : system.contains(family)
         }
 
-        let stored =
-            defaults.string(forKey: Self.defaultsKey)
-            .flatMap(TerminalFontOption.init(rawValue:)) ?? .system
-        selection = availableOptions.contains(stored) ? stored : .system
+        let stored = defaults.string(forKey: Self.defaultsKey).flatMap {
+            TerminalFontOption(rawValue: $0) ?? TerminalFontOption.retiredRawValues[$0]
+        } ?? .jetBrainsMono
+        selection = availableOptions.contains(stored) ? stored : .jetBrainsMono
     }
 
     var familyName: String? {

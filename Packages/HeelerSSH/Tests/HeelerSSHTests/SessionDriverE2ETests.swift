@@ -69,6 +69,30 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(1))
     }
 
+    @Test("an externally dialled stream carries a full session and is released on close")
+    func externalStreamCarriesSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let releases = ReleaseCounter()
+        let connection = try await SSHConnection.connect(
+            to: environment.endpoint,
+            timeout: SessionDriverTestEnvironment.setupTimeout,
+            transportLabel: "a test stream"
+        ) { remaining in
+            let descriptor = try await SocketConnector.connect(
+                to: environment.endpoint,
+                until: ContinuousClock.now.advanced(by: remaining))
+            return try SSHExternalStream(descriptor: descriptor) { releases.increment() }
+        }
+
+        try await environment.authenticate(connection)
+        let result = try await connection.execute("printf external", timeout: .seconds(5))
+        #expect(result.stdout == Data("external".utf8))
+        #expect(releases.value == 0)
+
+        try await connection.close(timeout: .seconds(2))
+        #expect(releases.value == 1)
+    }
+
     @Test("bounded response-line exec closes channels on success and failure")
     func boundedResponseLineExec() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
@@ -169,6 +193,32 @@ struct SessionDriverE2ETests {
         }
     }
 
+    @Test("one-shot exec finishes when its stderr read takes the stdout reply off the socket")
+    func oneShotExecSurvivesItsOwnStderrDrain() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        do {
+            // Nothing else uses this connection, so no other operation's
+            // receive can wake the exec once it has drained the socket itself.
+            await connection.waitForInboundBeforeNextExchangeStderrReadForTesting()
+            let start = ContinuousClock.now
+            // The early stderr is read first, so the held round is the one
+            // that finds nothing left but the stdout reply.
+            let result = try await connection.execute(
+                "printf early >&2; /bin/sleep 0.3; printf drained; exit 3",
+                timeout: .seconds(5))
+            #expect(ContinuousClock.now - start < .seconds(3))
+            #expect(result.stdout == Data("drained".utf8))
+            #expect(String(decoding: result.stderr, as: UTF8.self).hasSuffix("early"))
+            #expect(result.exitStatus == 3)
+            #expect(result.reachedEOF)
+            try await connection.close(timeout: .seconds(2))
+        } catch {
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
+    }
+
     @Test("exec streams discard stderr without blocking stdout")
     func execStreamDiscardsStderrWithoutBlocking() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
@@ -239,6 +289,29 @@ struct SessionDriverE2ETests {
         #expect(reused.stdout == Data("reusable".utf8))
         #expect(await connection.isConnected)
         try await connection.close(timeout: .seconds(2))
+    }
+
+    @Test("exec stream finishes when its stdout read takes the trailing stderr off the socket")
+    func execStreamSurvivesItsOwnStdoutDrain() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        do {
+            let channel = try await connection.openExec(
+                command: "/bin/sleep 0.3; printf trailing >&2; exit 4",
+                timeout: .seconds(5))
+            // Nothing else uses this connection, so no other operation's
+            // receive can wake the read once it has drained the socket itself.
+            await connection.waitForInboundBeforeNextExecStdoutReadForTesting()
+            let start = ContinuousClock.now
+            #expect(try await channel.read(timeout: .seconds(5)) == nil)
+            #expect(ContinuousClock.now - start < .seconds(3))
+            #expect(try await channel.exitStatus(timeout: .seconds(5)) == 4)
+            try await channel.close(timeout: .seconds(5))
+            try await connection.close(timeout: .seconds(2))
+        } catch {
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
     }
 
     @Test("exec stream read timeout and cancellation preserve channel reuse")
@@ -625,6 +698,152 @@ struct SessionDriverE2ETests {
         if let primaryError {
             throw primaryError
         }
+    }
+
+    /// A terminal write queued behind a health probe used to spend its budget
+    /// in the queue, fail the moment the link recovered, and take the attach
+    /// down with it (#523).
+    @Test("a PTY write spends no budget queueing behind another operation")
+    func ptyWriteBudgetExcludesTheOperationQueue() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        // Echo off, so every "queued" that comes back is a delivered write.
+        let channel = try await connection.openPTY(
+            command: "stty -echo; printf ready; cat",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(15))
+        func readUntil(_ marker: String) async throws -> String {
+            var received = Data()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+            while !received.contains(Data(marker.utf8)), ContinuousClock.now < deadline {
+                do {
+                    received.append(try await channel.read(timeout: .seconds(1)) ?? Data())
+                } catch SSHError.timedOut {
+                    continue
+                }
+            }
+            return String(decoding: received, as: UTF8.self)
+        }
+        #expect(try await readUntil("ready").contains("ready"))
+
+        let operation = SessionWaitHold()
+        let holder = Task { await connection.holdOperationForTesting(operation.waitUntilReleased) }
+        try await waitUntilTrue("the hold should own the operation mutex") {
+            await operation.hasEntered
+        }
+        let write = Task {
+            try await channel.write(Data("queued\n".utf8), timeout: .milliseconds(200))
+        }
+        try await Task.sleep(for: .milliseconds(600))
+        await operation.release()
+        await holder.value
+        try await write.value
+        try await channel.write(Data("done\n".utf8), timeout: .seconds(5))
+
+        let received = try await readUntil("done")
+        #expect(received.contains("done"))
+        #expect(received.components(separatedBy: "queued").count == 2)
+        #expect(await connection.isConnected)
+        try await channel.close(timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    /// A request cancelled while it waits for the operation mutex never touched
+    /// libssh2. Retiring the session for it replaced a connection that a stalled
+    /// link had not killed (#523).
+    @Test("a cancelled channel open that never reached libssh2 spares the session")
+    func cancelledChannelOpenBeforeNativeCallSparesTheSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
+        let connection = try await environment.connect()
+        let opens: [(name: String, open: @Sendable () async throws -> Void)] = [
+            ("execute", { _ = try await connection.execute("printf no", timeout: .seconds(5)) }),
+            ("openExec", { _ = try await connection.openExec(command: "cat", timeout: .seconds(5)) }),
+            ("openPTY", {
+                _ = try await connection.openPTY(
+                    command: "cat", columns: 80, rows: 24, timeout: .seconds(5))
+            }),
+            ("openStreamLocal", {
+                _ = try await connection.openStreamLocal(
+                    socketPath: socketPath, timeout: .seconds(5))
+            }),
+            ("exchangeStreamLocal", {
+                _ = try await connection.exchangeStreamLocal(
+                    socketPath: socketPath,
+                    request: Data(#"{"id":"no","method":"ping"}\#n"#.utf8),
+                    timeout: .seconds(5))
+            }),
+        ]
+
+        for site in opens {
+            let free = Task {
+                withUnsafeCurrentTask { $0?.cancel() }
+                try await site.open()
+            }
+            await #expect(throws: SSHError.cancelled, "\(site.name) with the mutex free") {
+                try await free.value
+            }
+            #expect(await connection.isConnected, "\(site.name) retired on the mutex free")
+
+            let operation = SessionWaitHold()
+            let holder = Task {
+                await connection.holdOperationForTesting(operation.waitUntilReleased)
+            }
+            try await waitUntilTrue("the hold should own the operation mutex") {
+                await operation.hasEntered
+            }
+            let queued = Task { try await site.open() }
+            try await Task.sleep(for: .milliseconds(50))
+            queued.cancel()
+            await operation.release()
+            await holder.value
+            await #expect(throws: SSHError.cancelled, "\(site.name) cancelled in the queue") {
+                try await queued.value
+            }
+            #expect(await connection.isConnected, "\(site.name) retired from the queue")
+        }
+
+        let echo = try await connection.execute("printf survived", timeout: .seconds(5))
+        #expect(echo.stdout == Data("survived".utf8))
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    /// The store only reattaches a terminal when the failure reads as connection
+    /// loss. A severed link used to surface as `.channelFailed`, which shows
+    /// Session Ended until the Events reader notices and redials (#523). Runs
+    /// through the degraded proxy, so the loss lands on a link with real latency.
+    @Test("a PTY that loses its socket invalidates the session", arguments: PTYSeverance.allCases)
+    func ptySocketLossInvalidatesTheSession(severance: PTYSeverance) async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
+        try await proxy.degrade()
+        let connection = try await SSHConnection.connect(to: endpoint, timeout: .seconds(15))
+        var thrown: (any Error)?
+        do {
+            try await environment.authenticate(connection)
+            let channel = try await connection.openPTY(
+                command: severance.command,
+                columns: 80,
+                rows: 24,
+                timeout: .seconds(15))
+            #expect(await connection.isConnected)
+            thrown = try await severance.drive(channel, proxy: proxy)
+        } catch {
+            try? await proxy.reset()
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
+        try await proxy.reset()
+
+        #expect(
+            thrown as? SSHError == .connectionInvalidated,
+            "\(severance) reported \(String(describing: thrown))")
+        // No `close(timeout:)` above this line: the property must go false
+        // because the link died, not because it was told to.
+        #expect(await connection.isConnected == false)
+        try? await connection.close(timeout: .seconds(2))
     }
 
     /// #136 at all four teardown sites, with no link involved in causing it.
@@ -1242,6 +1461,76 @@ struct SessionDriverE2ETests {
             at: path, offset: 0, maxBytes: 0, timeout: .seconds(5))
         #expect(nothing.data.isEmpty)
         #expect(nothing.length == UInt64(contents.count + 9))
+
+        try await sftp.close(timeout: .seconds(5))
+        _ = try await connection.execute("rm -rf -- '\(root)'", timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    @Test("SFTP stats and filtered listings report kinds, sizes and times")
+    func sftpStatsAndFilteredListings() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let rootResult = try await connection.execute(
+            "mktemp -d /tmp/heeler-sftp-entries.XXXXXXXX",
+            timeout: .seconds(5))
+        let root = String(decoding: rootResult.stdout, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // A name longer than the 512-byte buffers the directories-only
+        // listing uses for its long entry, plus a symlink to a rollout.
+        let longName = "rollout-" + String(repeating: "x", count: 230) + "-0199.jsonl"
+        _ = try await connection.execute(
+            "cd '\(root)' && printf 'abc' > rollout-a-0199.jsonl && touch -t 202610060930.00 rollout-a-0199.jsonl"
+                + " && : > '\(longName)' && ln -s rollout-a-0199.jsonl rollout-b-0199.jsonl"
+                + " && : > other.txt && mkdir sub",
+            timeout: .seconds(5))
+
+        let sftp = try await connection.openSFTP(timeout: .seconds(5))
+        #expect(try await sftp.fileStatus(at: "\(root)/missing.jsonl", timeout: .seconds(5)) == nil)
+        #expect(try await sftp.fileStatus(at: "\(root)/no/such/dir", timeout: .seconds(5)) == nil)
+
+        let file = try #require(
+            try await sftp.fileStatus(at: "\(root)/rollout-a-0199.jsonl", timeout: .seconds(5)))
+        #expect(file.kind == .regular)
+        #expect(file.size == 3)
+        let touched = try #require(file.modificationTime)
+        // 2026-10-06 09:30 in the Host's local zone: within a day of UTC.
+        #expect(abs(Int64(touched) - 1_791_279_000) <= 86_400)
+
+        let followed = try #require(
+            try await sftp.fileStatus(at: "\(root)/rollout-b-0199.jsonl", timeout: .seconds(5)))
+        #expect(followed.kind == .regular)
+        #expect(followed.size == 3)
+        let link = try #require(
+            try await sftp.fileStatus(
+                at: "\(root)/rollout-b-0199.jsonl", followSymlinks: false, timeout: .seconds(5)))
+        #expect(link.kind == .symlink)
+        #expect(try await sftp.fileStatus(at: "\(root)/sub", timeout: .seconds(5))?.kind == .directory)
+
+        let listing = try #require(
+            try await sftp.listEntries(
+                at: root,
+                matching: SSHSFTPEntryQuery(
+                    kinds: [.regular, .symlink], nameSuffixes: [".jsonl"], nameContains: "0199"),
+                timeout: .seconds(5)))
+        #expect(listing.entries.map(\.name) == ["rollout-a-0199.jsonl", "rollout-b-0199.jsonl", longName])
+        #expect(listing.entries.map(\.status.kind) == [.regular, .symlink, .regular])
+        #expect(listing.entries.first?.status.size == 3)
+        #expect(!listing.truncated)
+        #expect(!listing.scanIncomplete)
+
+        let capped = try #require(
+            try await sftp.listEntries(
+                at: root, matching: SSHSFTPEntryQuery(maximumEntries: 2), timeout: .seconds(5)))
+        #expect(capped.entries.count == 2)
+        #expect(capped.truncated)
+        let scanned = try #require(
+            try await sftp.listEntries(
+                at: root, matching: SSHSFTPEntryQuery(maximumScanned: 1), timeout: .seconds(5)))
+        #expect(scanned.scanIncomplete)
+        #expect(
+            try await sftp.listEntries(
+                at: "\(root)/missing", matching: SSHSFTPEntryQuery(), timeout: .seconds(5)) == nil)
 
         try await sftp.close(timeout: .seconds(5))
         _ = try await connection.execute("rm -rf -- '\(root)'", timeout: .seconds(5))
@@ -2614,6 +2903,63 @@ connection.shutdown(socket.SHUT_WR)
 connection.close()
 publish("completed", sent)
 """#
+}
+
+/// How a test takes the socket out from under a live PTY, and which side finds out.
+enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
+    /// The peer sees RST.
+    case resetSeenByRead
+    case resetSeenByWrite
+    case resetSeenByResize
+    /// The server process dies, so the proxy forwards an orderly FIN.
+    case serverKilledSeenByRead
+
+    var testDescription: String { rawValue }
+
+    var command: String {
+        switch self {
+        case .resetSeenByRead, .resetSeenByWrite, .resetSeenByResize: "cat"
+        // ForceCommand execs this shell, so its parent is the session's sshd.
+        case .serverKilledSeenByRead: "sleep 1; kill -KILL $PPID; sleep 30"
+        }
+    }
+
+    /// Returns the first failure from the side this case exercises.
+    fileprivate func drive(
+        _ channel: SSHPTYChannel,
+        proxy: WeakNetworkProxyFixture
+    ) async throws -> (any Error)? {
+        switch self {
+        case .resetSeenByRead, .resetSeenByWrite, .resetSeenByResize:
+            try await channel.write(Data("up\n".utf8), timeout: .seconds(5))
+            _ = try await channel.read(timeout: .seconds(5))
+            guard try await proxy.cut() > 0 else { return nil }
+        case .serverKilledSeenByRead:
+            break
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+        var columns = 81
+        while ContinuousClock.now < deadline {
+            do {
+                switch self {
+                case .resetSeenByWrite:
+                    try await channel.write(Data("x".utf8), timeout: .seconds(1))
+                    try await Task.sleep(for: .milliseconds(50))
+                case .resetSeenByResize:
+                    try await channel.resize(columns: columns, rows: 24, timeout: .seconds(1))
+                    columns += 1
+                    try await Task.sleep(for: .milliseconds(50))
+                case .resetSeenByRead, .serverKilledSeenByRead:
+                    guard try await channel.read(timeout: .seconds(1)) != nil else { return nil }
+                }
+            } catch SSHError.timedOut {
+                continue
+            } catch {
+                return error
+            }
+        }
+        return nil
+    }
 }
 
 /// The four `close*` paths that share one teardown verdict in `SessionDriver`.

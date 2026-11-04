@@ -2,19 +2,19 @@
 # relay, and wire-type codegen drift (refs #286).
 #
 # Split out so a plugin/relay/LICENSE change cannot start the macos-26
-# simulator jobs. iOS CI stays in ci.yml; the marketing site stays in
+# build job. The fast iOS build stays in ci.yml; the marketing site stays in
 # landing.yml.
 #
 # Wire-type codegen drift is checked against a committed schema snapshot
-# (scripts/herdr-schema.json), captured from herdr 0.9.0 (protocol 22) via
+# (scripts/herdr-schema.json), captured from herdr 0.9.4 (protocol 22) via
 # `herdr api schema --json`. CI has no herdr binary, so `--schema` feeds the
 # snapshot instead of shelling out. The snapshot also pins the exact schema
 # version the generated types were built from.
 #
 # Positive `paths`: one matching path starts every job here. Ubuntu is cheap,
 # so a plugin-only PR may also run relay + codegen. plugin/test-vectors/**
-# is under plugin/**, so those edits also start ci.yml (the Swift suites
-# consume the same vectors). A change to this file always runs.
+# is under plugin/**, so those edits also start ci.yml, which compiles their
+# Swift consumers; ci-full.yml runs them. A change to this file always runs.
 
 name: CI (Node)
 

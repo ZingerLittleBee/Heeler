@@ -7,6 +7,7 @@ import Observation
 enum ConsoleTab: String, CaseIterable, Identifiable, Sendable {
     case agents
     case terminals
+    case usage
     case hosts
     case settings
 
@@ -16,13 +17,14 @@ enum ConsoleTab: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .agents: "Agents"
         case .terminals: "Terminals"
+        case .usage: "Usage"
         case .hosts: "Hosts"
         case .settings: "Settings"
         }
     }
 
-    /// Agents and Terminals are the lists the Console reopens on; Hosts and
-    /// Settings sit on top of the remembered one.
+    /// Agents and Terminals are the lists the Console reopens on; Usage,
+    /// Hosts and Settings sit on top of the remembered one.
     var isList: Bool { self == .agents || self == .terminals }
 }
 

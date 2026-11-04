@@ -1,8 +1,7 @@
 import Foundation
 
 /// One row of the Console (#8): an Agent joined with its Host identity and
-/// workspace context. The list is flat across Hosts; the workspace is a
-/// context tag only, never a grouping level.
+/// workspace context. The Console can group these rows by Host or Workspace.
 struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// Pane addresses are unique per herdr session, not across Hosts; the
     /// row identity pairs them.
@@ -177,21 +176,24 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// carries the expanded remote path but not `$HOME`, so only the
     /// account's conventional macOS/Linux homes are shortened to `~`; every
     /// other path stays exactly as the Agent reported it.
-    var displayCwd: String {
-        guard let hostUsername, !hostUsername.isEmpty else { return agent.cwd }
+    var displayCwd: String { displayPath(agent.cwd) }
+
+    /// A path on this Agent's Host, shortened as `displayCwd` is.
+    func displayPath(_ path: String) -> String {
+        guard let hostUsername, !hostUsername.isEmpty else { return path }
         let homes =
             hostUsername == "root"
             ? ["/root"]
             : ["/Users/\(hostUsername)", "/home/\(hostUsername)"]
-        guard let home = homes.first(where: { agent.cwd == $0 || agent.cwd.hasPrefix("\($0)/") })
-        else { return agent.cwd }
-        return agent.cwd == home ? "~" : "~\(agent.cwd.dropFirst(home.count))"
+        guard let home = homes.first(where: { path == $0 || path.hasPrefix("\($0)/") })
+        else { return path }
+        return path == home ? "~" : "~\(path.dropFirst(home.count))"
     }
 }
 
 /// The snapshot's exact git checkout identity for one workspace. Workspace
 /// ids are reusable slots, so destructive actions match this tuple too.
-struct RepositoryCheckout: Sendable, Equatable, Hashable {
+struct RepositoryCheckout: Codable, Sendable, Equatable, Hashable {
     let repoKey: String
     let repoName: String
     let repoRoot: String
@@ -244,6 +246,14 @@ struct ConsoleWorkspace: Identifiable, Hashable, Sendable {
 }
 
 extension AgentStatus {
+    /// The status as the UI spells it, or nil when there is nothing to say:
+    /// herdr reports `unknown` for an Agent whose state it cannot read, and
+    /// the word on its own tells the user nothing, so it is left out rather
+    /// than shown. Statuses this build does not recognize are still shown.
+    var displayTitle: String? {
+        self == .unknown ? nil : rawValue.capitalized
+    }
+
     /// Console sort bucket: Blocked > Done > Working > Idle. The order tracks
     /// how much of the user's attention each status is asking for — Blocked
     /// has stopped and is waiting on an answer, Done has a result to read,

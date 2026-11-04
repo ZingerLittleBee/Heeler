@@ -16,9 +16,10 @@ func waitForGhosttyContentLayer(
     in view: UIView,
     timeout: Duration = .seconds(5)
 ) async throws {
-    let deadline = ContinuousClock.now + timeout
-    while ghosttyContentLayers(of: view).isEmpty, ContinuousClock.now < deadline {
+    var budget = PollBudget(timeout)
+    while ghosttyContentLayers(of: view).isEmpty, budget.hasTimeLeft {
         try await Task.sleep(for: .milliseconds(10))
+        budget.charge()
     }
     try #require(
         !ghosttyContentLayers(of: view).isEmpty,

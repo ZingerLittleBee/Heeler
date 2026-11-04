@@ -89,11 +89,35 @@ struct RemoteDirectoryBrowserTests {
         try await waitUntil("home path loaded") { browser.currentPath == "/home/you" }
 
         browser.filter = "alp"
-        #expect(browser.visibleDirectories == ["alpha"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == ["alpha"])
         #expect(fake.calls == ["/home/you"])
 
         browser.filter = ""
-        #expect(browser.visibleDirectories == ["alpha", "beta"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == ["alpha", "beta"])
+    }
+
+    @Test func hidingDotFoldersLeavesThemOutBeforeTheFilterApplies() async throws {
+        let fake = FakeLister()
+        fake.listings = [
+            "/home/you": RemoteDirectoryListing(
+                directories: [".config", ".repos-cache", "repos", "notes.d"], truncated: false),
+        ]
+        let browser = makeBrowser(fake)
+        browser.start()
+        try await waitUntil("home path loaded") { browser.currentPath == "/home/you" }
+
+        #expect(browser.visibleDirectories(hidingDotFolders: true) == ["repos", "notes.d"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false)
+            == [".config", ".repos-cache", "repos", "notes.d"])
+
+        browser.filter = "repos"
+        #expect(browser.visibleDirectories(hidingDotFolders: true) == ["repos"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == [".repos-cache", "repos"])
+
+        browser.filter = ".con"
+        #expect(browser.visibleDirectories(hidingDotFolders: true).isEmpty)
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == [".config"])
+        #expect(fake.calls == ["/home/you"])
     }
 
     @Test func windowsHomeSupportsEnteringAndReturningToTheDriveRoot() async throws {
@@ -131,12 +155,12 @@ struct RemoteDirectoryBrowserTests {
         browser.enter("src")
         try await waitUntil("child loaded") { browser.currentPath == "/home/you/src" }
         #expect(browser.filter.isEmpty)
-        #expect(browser.visibleDirectories == ["app"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == ["app"])
         browser.filter = "app"
         browser.goBack()
         try await waitUntil("parent loaded") { browser.currentPath == "/home/you" }
         #expect(browser.filter.isEmpty)
-        #expect(browser.visibleDirectories == ["src"])
+        #expect(browser.visibleDirectories(hidingDotFolders: false) == ["src"])
     }
 
     @Test func retryReopensTheFailedChildAndKeepsFilterUntilSuccess() async throws {
@@ -224,6 +248,54 @@ struct RemoteDirectoryBrowserTests {
         #expect(!browser.isLoading)
         #expect(browser.currentPath == nil)
         #expect(browser.errorMessage == nil)
+    }
+
+    @Test func aListingThatFollowsLinksKeepsLinksToDirectories() async throws {
+        let files = VirtualHostFiles(home: "/home/you")
+        await files.makeDirectory("/home/you/.claude")
+        await files.write("{}", at: "/home/you/.claude/.claude.json")
+        await files.write("notes", at: "/home/you/notes.txt")
+        await files.makeDirectory("/Volumes/T7/.claude")
+        await files.symlink("/home/you/claude-shared", to: "/Volumes/T7/.claude")
+        await files.symlink("/home/you/claude-relative", to: ".claude")
+        await files.symlink("/home/you/broken", to: "/home/you/gone")
+        await files.symlink("/home/you/notes-link", to: "notes.txt")
+        let transport = ScriptedTransport()
+        await transport.scriptChat(
+            files: files.hostFiles(), agent: Agent(.fixture(paneID: "w1:p1", status: .idle)))
+
+        let listing = try await RemoteDirectoryListing.followingLinks(at: "/home/you", over: transport)
+
+        #expect(listing.directories == [".claude", "claude-relative", "claude-shared"])
+        #expect(listing.symbolicLinks == ["claude-relative", "claude-shared"])
+        #expect(!listing.truncated)
+        await #expect(throws: TransportError.invalidDirectoryPath(path: "/home/you/absent")) {
+            _ = try await RemoteDirectoryListing.followingLinks(at: "/home/you/absent", over: transport)
+        }
+    }
+
+    @Test func linksStayMarkedAndARefusalClearsOnAnotherFolder() async throws {
+        let fake = FakeLister()
+        fake.listings = [
+            "/home/you": RemoteDirectoryListing(
+                directories: [".claude", "claude-shared"], truncated: false, symbolicLinks: ["claude-shared"]),
+            "/home/you/.claude": RemoteDirectoryListing(directories: ["projects"], truncated: false),
+        ]
+        let browser = makeBrowser(fake)
+        browser.start()
+        try await waitUntil("home loaded") { browser.currentPath == "/home/you" }
+        #expect(browser.isSymbolicLink("claude-shared"))
+        #expect(!browser.isSymbolicLink(".claude"))
+
+        browser.refusal = "This directory is already an Account."
+        browser.retry()
+        try await waitUntil("home listed again") { fake.calls.count == 2 && !browser.isLoading }
+        #expect(browser.refusal == "This directory is already an Account.")
+
+        browser.enter(".claude")
+        try await waitUntil("child loaded") { browser.currentPath == "/home/you/.claude" }
+        #expect(browser.refusal == nil)
+        #expect(browser.symbolicLinks.isEmpty)
     }
 
     @Test func pathHelpersHandleRootAndNonAbsolutePaths() {

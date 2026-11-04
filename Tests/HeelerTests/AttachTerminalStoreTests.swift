@@ -298,6 +298,162 @@ struct AttachTerminalStoreTests {
         }
     }
 
+    // MARK: Connection loss (#523)
+
+    /// The Host side of a reattach: each attach waits for the Transport the
+    /// test installs next and reports its generation as acquired, the way
+    /// `EventsSession.withTerminalTransport` hands out the replacement.
+    private actor InstalledTransports {
+        private var installed: [(ScriptedTransport, UInt64)] = []
+        private var waiter: CheckedContinuation<(ScriptedTransport, UInt64), Never>?
+        private(set) var waits = 0
+
+        func install(_ transport: ScriptedTransport, generation: UInt64) {
+            if let waiter {
+                self.waiter = nil
+                waiter.resume(returning: (transport, generation))
+            } else {
+                installed.append((transport, generation))
+            }
+        }
+
+        func next() async -> (ScriptedTransport, UInt64) {
+            waits += 1
+            if !installed.isEmpty { return installed.removeFirst() }
+            return await withCheckedContinuation { waiter = $0 }
+        }
+    }
+
+    private func makeStore(transports: InstalledTransports) -> AttachTerminalStore {
+        AttachTerminalStore(target: "w1:p1") { request, handler in
+            let (transport, generation) = await transports.next()
+            try Task.checkCancellation()
+            await handler.transportDidBecomeReady(generation)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+    }
+
+    @Test func aDroppedConnectionReattachesOnTheNextTransport() async throws {
+        // The Host redials a dead link behind a status that still reads
+        // connected, so the terminal must not end over it: it waits for the
+        // replacement Transport and reattaches there.
+        let first = ScriptedTransport()
+        let replacement = ScriptedTransport()
+        let transports = InstalledTransports()
+        await transports.install(first, generation: 0)
+        let store = makeStore(transports: transports)
+        try await goLive(store, first)
+
+        await first.failAttachStream(
+            .sshUnreachable(detail: "The SSH connection is no longer reusable."))
+        try await waitUntil("the loss should wait for the next Transport") {
+            await transports.waits == 2
+        }
+        #expect(store.status == .reconnecting)
+
+        await transports.install(replacement, generation: 1)
+        try await paint(replacement)
+        try await waitUntil("the reattach should go live") { store.status == .live }
+        #expect(store.acquiredTransportGeneration == 1)
+        #expect(await first.attachRequests.count == 1)
+        #expect(await replacement.attachRequests.count == 1)
+
+        await store.stop()
+    }
+
+    @Test func reattachesThatNeverPaintEndTheSession() async throws {
+        // Every lost attach makes the Host redial, so each attempt sees a
+        // newer generation; only the remote painting proves the link back.
+        // Without that, a link that keeps failing must end the session
+        // rather than redial the Host forever.
+        let transport = ScriptedTransport()
+        let transports = InstalledTransports()
+        await transports.install(transport, generation: 0)
+        let store = makeStore(transports: transports)
+        try await goLive(store, transport)
+
+        for generation in UInt64(1)...2 {
+            await transport.failAttachStream(.timedOut)
+            try await waitUntil("the loss should wait for the next Transport") {
+                await transports.waits == Int(generation) + 1
+            }
+            #expect(store.status == .reconnecting)
+            await transports.install(transport, generation: generation)
+            try await waitUntil("the reattach should open") {
+                let requests = await transport.attachRequests.count
+                let live = await transport.hasLiveAttachSession
+                return requests == Int(generation) + 1 && live
+            }
+        }
+        await transport.failAttachStream(.timedOut)
+        try await waitUntil("the loss after the bound should end the session") {
+            store.status == .ended("The Host did not answer in time.")
+        }
+        #expect(await transports.waits == 3)
+    }
+
+    @Test func aReattachThatPaintsRestoresTheAllowance() async throws {
+        let transport = ScriptedTransport()
+        let transports = InstalledTransports()
+        await transports.install(transport, generation: 0)
+        let store = makeStore(transports: transports)
+        try await goLive(store, transport)
+
+        for generation in UInt64(1)...3 {
+            await transport.failAttachStream(
+                .sshUnreachable(detail: "The SSH connection is no longer reusable."))
+            try await waitUntil("the loss should wait for the next Transport") {
+                await transports.waits == Int(generation) + 1
+            }
+            await transports.install(transport, generation: generation)
+            try await paint(transport)
+            try await waitUntil("each reattach should go live") { store.status == .live }
+        }
+
+        await store.stop()
+    }
+
+    @Test func aRemoteFailureAfterAcquisitionStillEnds() async throws {
+        // Only a lost connection reattaches; the remote attach failing on a
+        // healthy one is the session's own end and keeps Reattach.
+        let transport = ScriptedTransport()
+        let transports = InstalledTransports()
+        await transports.install(transport, generation: 0)
+        let store = makeStore(transports: transports)
+        try await goLive(store, transport)
+
+        await transport.failAttachStream(.channelFailed(detail: "host went away"))
+        try await waitUntil("the failure should surface") {
+            if case .ended = store.status { return true }
+            return false
+        }
+        #expect(await transports.waits == 1)
+    }
+
+    @Test func stopDuringAReconnectEndsTheWait() async throws {
+        let transport = ScriptedTransport()
+        let transports = InstalledTransports()
+        await transports.install(transport, generation: 0)
+        let store = makeStore(transports: transports)
+        try await goLive(store, transport)
+
+        await transport.failAttachStream(.cancelled)
+        try await waitUntil("the loss should wait for the next Transport") {
+            await transports.waits == 2
+        }
+        // The scripted wait ignores cancellation; once the stop has cancelled
+        // the run, release it with a Transport the store must not attach to.
+        let late = ScriptedTransport()
+        let stop = Task { await store.stop() }
+        try await Task.sleep(for: .milliseconds(20))
+        await transports.install(late, generation: 1)
+        await stop.value
+
+        #expect(store.status == .stopped)
+        #expect(await late.attachRequests.isEmpty)
+    }
+
     /// #151: when a store is the refused second consumer, the refusal must
     /// end only that store's run. The transport's gate leaves the legitimate
     /// consumer running; an unconditional `end()` in the runner's catch
@@ -454,6 +610,98 @@ struct AttachTerminalStoreTests {
 @MainActor
 @Suite("Agent Attach store")
 struct AgentAttachStoreTests {
+    @Test func automaticReattachKeepsTheTerminalSurfaceAcrossTransportReplacement() async throws {
+        let transport = ScriptedTransport()
+        let generation = TerminalGenerationSource(1)
+        let runner: TerminalSessionRunner = { request, handler in
+            let readyGeneration = await generation.acquire()
+            await handler.transportDidBecomeReady(readyGeneration)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+        let store = makeStore(transport: transport, generation: 1, runTerminal: runner)
+        try await goLive(store, transport)
+        let surface = store.terminalID
+        let feed = store.terminal.feed
+        let readyGate = ScriptedTransportCallGate()
+        await generation.set(2)
+        await generation.gateNextAcquisition(using: readyGate)
+        await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
+        await readyGate.waitForEntry()
+        #expect(store.terminalStatus == .reconnecting)
+
+        store.transportGenerationDidChange(2)
+        #expect(store.terminalID == surface)
+        #expect(store.terminal.feed === feed)
+        await readyGate.open()
+        try await paint(transport)
+        try await waitUntil("the existing terminal should recover") { store.terminalStatus == .live }
+        #expect(store.terminalID == surface)
+        #expect(store.terminal.feed === feed)
+        #expect(await transport.attachRequests.count == 2)
+        await store.leave().value
+    }
+
+    @Test func aReattachHoldingAnOlderTransportIsReplacedWhenTheHostRedials() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 1, runTerminal: readyRunner(transport))
+        try await goLive(store, transport)
+        let surface = store.terminalID
+        let opening = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: opening)
+
+        await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
+        await opening.waitForEntry()
+        #expect(store.terminalStatus == .reconnecting)
+        store.transportGenerationDidChange(2)
+        await opening.open()
+
+        try await waitUntil("the stale attempt should be replaced") { store.terminalID != surface }
+        await store.leave().value
+    }
+
+    @Test func agentInputDuringAReattachWaitsForTheNewOutput() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 1, runTerminal: readyRunner(transport))
+        try await goLive(store, transport)
+        let opening = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: opening)
+
+        await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
+        await opening.waitForEntry()
+        store.viewDidResize(cols: 101, rows: 31)
+        await opening.open()
+        // The catch-up resize follows the point a writer used to be installed.
+        try await waitUntil("the reattach should reach its session") {
+            await transport.attachInputs.contains(.resize(cols: 101, rows: 31))
+        }
+        #expect(store.terminalStatus == .reconnecting)
+        store.send(Data("y".utf8))
+        #expect(!store.sendEscapeKey())
+        store.insertSnippet("y", bracketedPaste: false)
+        store.requestPaste("y", bracketedPaste: false)
+
+        try await paint(transport)
+        try await waitUntil("the reattach should go live") { store.terminalStatus == .live }
+        store.send(Data("n".utf8))
+        func keystrokes() async -> [Data] {
+            await transport.attachInputs.compactMap {
+                if case .keystrokes(let bytes) = $0 { bytes } else { nil }
+            }
+        }
+        try await waitUntil("the live key should arrive") { await !keystrokes().isEmpty }
+        #expect(await keystrokes() == [Data("n".utf8)])
+        await store.leave().value
+    }
+
+    private func readyRunner(_ transport: ScriptedTransport) -> TerminalSessionRunner {
+        { request, handler in
+            await handler.transportDidBecomeReady(1)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+    }
+
     @Test func unchangedGenerationAllowsConsecutiveForegroundRecoveries() async throws {
         let transport = ScriptedTransport()
         let generation = TerminalGenerationSource(1)
@@ -1587,26 +1835,14 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let terminalEndGate = ScriptedTransportCallGate()
         await transport.gateNextAttachEnd(on: terminalEndGate)
-        let imageGate = ScriptedTransportCallGate()
-        let imageStager = GatedAttachImageStager(gate: imageGate)
         let stage = SelectedPane(current: "w1:p1")
         let store = makeStore(
             transport: transport, generation: 0,
-            isOnStage: { stage.contains("w1:p1") },
-            stageImage: { image, reporter in
-                try await imageStager.stage(image, reporter)
-            })
+            isOnStage: { stage.contains("w1:p1") })
 
         try await goLive(store, transport)
         let predecessorID = store.terminalID
 
-        // Keep the later real leave suspended after the stale recovery gets
-        // its publication opportunity. This exposes the exact pipeline that a
-        // render pass could resize before the latest rejoin replaces it.
-        store.staging.begin(.photo(DataImageSelection(data: try tinyJPEGData())))
-        try await waitUntil("image staging should be pending") {
-            await imageStager.preparedFileURL != nil
-        }
         store.didBecomeActive(afterPossibleSuspension: true)
         try await waitUntil("recovery should wait for predecessor teardown") {
             await terminalEndGate.entryCount == 1
@@ -1619,20 +1855,14 @@ struct AgentAttachStoreTests {
         stage.current = "w1:p1"
         store.rejoin()
         await terminalEndGate.open()
-        try await waitUntil("the real leave should cancel image staging") {
-            await imageStager.cancellationRequestCount == 1
-        }
-
-        #expect(
-            store.terminalID == predecessorID,
-            "a recovery that lost ownership must not publish an intermediate terminal")
-        store.viewDidResize(cols: 100, rows: 30)
-
-        await imageGate.open()
         await leaveTask.value
         try await waitUntil("the latest rejoin should publish its terminal") {
             store.terminalID != predecessorID
         }
+
+        #expect(
+            store.publishedReplacementCount == 1,
+            "a recovery that lost ownership must not publish an intermediate terminal")
         try await goLive(store, transport, cols: 100, rows: 30)
         #expect(
             await transport.attachRequests.count == 2,
@@ -1647,13 +1877,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let terminalEndGate = ScriptedTransportCallGate()
         await transport.gateNextAttachEnd(on: terminalEndGate)
-        let imageGate = ScriptedTransportCallGate()
-        let imageStager = GatedAttachImageStager(gate: imageGate)
-        let store = makeStore(
-            transport: transport, generation: 0,
-            stageImage: { image, reporter in
-                try await imageStager.stage(image, reporter)
-            })
+        let store = makeStore(transport: transport, generation: 0)
 
         try await goLive(store, transport)
         let predecessorID = store.terminalID
@@ -1664,66 +1888,25 @@ struct AgentAttachStoreTests {
             await terminalEndGate.entryCount == 1
         }
 
-        // The terminal input session remains live until teardown completes, so
-        // this real image operation can hold the newer leave immediately after
-        // the stale rejoin's publication point.
-        store.staging.begin(.photo(DataImageSelection(data: try tinyJPEGData())))
-        try await waitUntil("image staging should be pending") {
-            await imageStager.preparedFileURL != nil
-        }
         let latestLeaveTask = store.leave()
         store.rejoin()
 
         await terminalEndGate.open()
         await firstLeaveTask.value
-        try await waitUntil("the newer leave should cancel image staging") {
-            await imageStager.cancellationRequestCount == 1
-        }
-
-        #expect(
-            store.terminalID == predecessorID,
-            "a rejoin that lost ownership must not publish an intermediate terminal")
-        store.viewDidResize(cols: 100, rows: 30)
-
-        await imageGate.open()
         await latestLeaveTask.value
         try await waitUntil("the latest rejoin should publish its terminal") {
             store.terminalID != predecessorID
         }
+
+        #expect(
+            store.publishedReplacementCount == 1,
+            "a rejoin that lost ownership must not publish an intermediate terminal")
         try await goLive(store, transport, cols: 100, rows: 30)
         #expect(
             await transport.attachRequests.count == 2,
             "only the predecessor and latest rejoin may open Attach channels")
 
         await store.leave().value
-    }
-
-    @Test func transportReplacementPreservesComposerStagingState() async throws {
-        // A reconnect replaces the terminal pipeline but must not touch the
-        // staging interaction: its stager resolves the live Transport per
-        // call, so surfaced failures and results stay actionable.
-        let transport = ScriptedTransport()
-        let store = makeStore(transport: transport, generation: 0)
-
-        try await goLive(store, transport)
-
-        // One byte of garbage: preparation fails and the failure surfaces.
-        store.staging.begin(.photo(DataImageSelection(data: Data([0x01]))))
-        try await waitUntil("the failed staging operation should surface") {
-            if case .failed = store.staging.state { true } else { false }
-        }
-        let surfacedFailure = store.staging.state
-        let initialID = store.terminalID
-
-        store.transportGenerationDidChange(1)
-        try await waitUntil("the terminal pipeline should be replaced") {
-            store.terminalID != initialID
-        }
-
-        #expect(store.staging.state == surfacedFailure)
-
-        await store.leave().value
-        #expect(store.staging.state == .idle)
     }
 
     @Test func leaveDuringQueuedReplacementDoesNotResurrectTheTerminal() async throws {
@@ -2066,20 +2249,15 @@ struct AgentAttachStoreTests {
         // A recovery that stopped its predecessor can abort off stage before
         // SwiftUI delivers the real onDisappear. The abort must make rejoin
         // possible without pretending leave cleanup already ran: that delayed
-        // leave still owns links and staging preparation.
+        // leave still owns links and the link open in flight.
         let transport = ScriptedTransport()
         let terminalEndGate = ScriptedTransportCallGate()
         await transport.gateNextAttachEnd(on: terminalEndGate)
-        let imageGate = ScriptedTransportCallGate()
-        let imageStager = GatedAttachImageStager(gate: imageGate)
         let opener = CancellationAwareAttachLinkOpener()
         let stage = SelectedPane(current: "w1:p1")
         let store = makeStore(
             transport: transport, generation: 0,
-            isOnStage: { stage.contains("w1:p1") },
-            stageImage: { image, reporter in
-                try await imageStager.stage(image, reporter)
-            })
+            isOnStage: { stage.contains("w1:p1") })
 
         try await goLive(store, transport)
         await transport.emitAttachOutput(Data("https://example.com/leave-cleanup\n".utf8))
@@ -2091,13 +2269,6 @@ struct AgentAttachStoreTests {
         try await waitUntil("the system open should be pending") {
             opener.pendingTarget == link.target
         }
-
-        store.staging.begin(.photo(DataImageSelection(data: try tinyJPEGData())))
-        try await waitUntil("image staging should retain its prepared file") {
-            await imageStager.preparedFileURL != nil
-        }
-        let preparedFileURL = try #require(await imageStager.preparedFileURL)
-        #expect(FileManager.default.fileExists(atPath: preparedFileURL.path))
 
         let predecessorID = store.terminalID
         store.didBecomeActive(afterPossibleSuspension: true)
@@ -2118,25 +2289,14 @@ struct AgentAttachStoreTests {
         for _ in 0..<10 { await Task.yield() }
         #expect(store.attachLinks.isEmpty)
         #expect(opener.cancelledTargets == [link.target])
-
-        await imageGate.open()
         await leaveTask.value
-        try await waitUntil("staging leave cleanup should settle") {
-            store.staging.state == .idle
-        }
-
-        #expect(store.staging.state == .idle)
-        #expect(!FileManager.default.fileExists(atPath: preparedFileURL.path))
-        #expect(await imageStager.cancellationCount == 1)
 
         // Repeated leave observes the same completed cleanup rather than
         // cancelling or clearing any boundary a second time.
         await store.leave().value
         #expect(opener.cancelledTargets == [link.target])
-        #expect(await imageStager.cancellationCount == 1)
 
         opener.resolvePending(accepted: false)
-        store.staging.perform(.cancel)
     }
 
     @Test func delayedRealLeaveAfterRecoveryAbortCancelsReviewedPaste() async throws {
@@ -2627,13 +2787,9 @@ struct AgentAttachStoreTests {
         target: String = "w1:p1",
         isOnStage: @escaping () -> Bool = { true },
         runTerminal: TerminalSessionRunner? = nil,
-        stageImage: ImageStager? = nil,
         close: @escaping () async throws -> Void = {}
     ) -> AgentAttachStore {
-        let composer = AgentComposerStore(target: target) { _ in
-            Agent(.fixture(paneID: target))
-        }
-        return AgentAttachStore(
+        AgentAttachStore(
             target: target,
             paneTitle: "Agent",
             transportGeneration: generation,
@@ -2642,13 +2798,6 @@ struct AgentAttachStoreTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: stageImage ?? { _, _ in
-                throw AttachmentStagingError.transferFailed
-            },
-            stageFile: { _, _ in
-                throw AttachmentStagingError.transferFailed
-            },
-            composer: composer,
             closePane: close)
     }
 
@@ -2676,15 +2825,6 @@ struct AgentAttachStoreTests {
             continuation.finish()
         }
         return ObservationChangeProbe(changes)
-    }
-
-    private func tinyJPEGData() throws -> Data {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16))
-        let image = renderer.image { context in
-            UIColor.systemBlue.setFill()
-            context.cgContext.fill(CGRect(x: 0, y: 0, width: 16, height: 16))
-        }
-        return try #require(image.jpegData(compressionQuality: 0.8))
     }
 
     /// Brings the terminal up the way an attach does: the size report opens
@@ -2911,42 +3051,6 @@ private final class CancellationAwareAttachLinkOpener {
     }
 }
 
-private actor GatedAttachImageStager {
-    let gate: ScriptedTransportCallGate
-    private(set) var preparedFileURL: URL?
-    private(set) var cancellationRequestCount = 0
-    private(set) var cancellationCount = 0
-
-    init(gate: ScriptedTransportCallGate) {
-        self.gate = gate
-    }
-
-    func stage(
-        _ image: PreparedImage,
-        _ reporter: AttachmentStageProgressReporter
-    ) async throws -> StagedImage {
-        preparedFileURL = image.fileURL
-        await reporter.report(
-            AttachmentStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
-        await withTaskCancellationHandler {
-            await gate.waitUntilOpen()
-        } onCancel: {
-            Task { await self.recordCancellationRequest() }
-        }
-        do {
-            try Task.checkCancellation()
-        } catch {
-            cancellationCount += 1
-            throw error
-        }
-        throw AttachmentStagingError.transferFailed
-    }
-
-    private func recordCancellationRequest() {
-        cancellationRequestCount += 1
-    }
-}
-
 /// The Attach screen's owner, covering only what the foreground return has to
 /// travel through to reach the terminal pipeline (#141).
 @MainActor
@@ -2955,10 +3059,7 @@ struct AgentAttachStoreForegroundTests {
     private func makeStore(
         transport: ScriptedTransport, isOnStage: @escaping () -> Bool = { true }
     ) -> AgentAttachStore {
-        let composer = AgentComposerStore(target: "w1:p1") { _ in
-            Agent(.fixture(paneID: "w1:p1"))
-        }
-        return AgentAttachStore(
+        AgentAttachStore(
             target: "w1:p1",
             paneTitle: "pane",
             transportGeneration: 1,
@@ -2967,9 +3068,6 @@ struct AgentAttachStoreForegroundTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: { _, _ in throw TransportError.cancelled },
-            stageFile: { _, _ in throw TransportError.cancelled },
-            composer: composer,
             closePane: {})
     }
 

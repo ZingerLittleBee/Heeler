@@ -232,11 +232,13 @@ struct ConsoleListPresentationRoutingTests {
     @Test func hostIssuePlacementFollowsPresentationMode() {
         #expect(ConsoleHostIssuePlacement(mode: .flat) == .flatIssueRows)
         #expect(ConsoleHostIssuePlacement(mode: .grouped) == .sectionHeaders)
+        #expect(ConsoleHostIssuePlacement(mode: .byWorkspace) == .flatIssueRows)
     }
 
     @Test func presentationModeTitlesAreStableForTheSwitcher() {
         #expect(ConsoleListPresentationMode.flat.title == "All Agents")
         #expect(ConsoleListPresentationMode.grouped.title == "By Host")
+        #expect(ConsoleListPresentationMode.byWorkspace.title == "By Workspace")
     }
 
     @Test func readinessNamesTheInventoryItDescribes() {
@@ -299,6 +301,26 @@ struct HostConnectionDetailPresentationTests {
         #expect(retrying.tone == .pending)
         #expect(retrying.recoverySuggestion == nil)
         #expect(retrying.isDialing)
+    }
+
+    /// A stopped endpoint Host points at its configured instance, in the
+    /// sheet and in the Console's status line.
+    @Test func aStoppedEndpointHostIsToldToStartTheConfiguredInstance() throws {
+        var endpointHost = host
+        endpointHost.herdrEndpoint = try #require(
+            HerdrEndpoint(
+                socketPath: "/opt/example/herdr/herdr.sock",
+                executablePath: "/opt/example/bin/herdr"))
+        let failure = TransportError.socketNotFound(path: "/opt/example/herdr/herdr.sock")
+
+        let detail = try #require(
+            HostConnectionDetailPresentation(
+                host: endpointHost, status: .failed(failure), standingFailure: nil))
+        #expect(detail.recoverySuggestion == "Start the herdr instance configured for this Host and verify its socket path.")
+        let status = try #require(
+            ConsoleHostStatusPresentation(
+                host: endpointHost, status: .failed(failure), syncError: nil))
+        #expect(status.message.hasSuffix("Start the herdr instance configured for this Host and verify its socket path."))
     }
 
     /// A reconnecting Host's Retry Now dials with no standing failure; the

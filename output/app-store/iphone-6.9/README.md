@@ -10,9 +10,9 @@ order follows the iPhone screens on the landing page.
 | --- | --- | --- | --- |
 | 1 | `exports/01-every-agent-one-console.png` | `docs/images/console-iphone.png` | Every Agent. One Console. |
 | 2 | `exports/02-type-directly-stay-in-flow.png` | `docs/images/live-terminal-iphone.png` | Type Directly. Stay in Flow. |
-| 3 | `exports/03-control-without-leaving-the-flow.png` | `docs/images/agent-iphone.png` | Control Without Leaving the Flow |
-| 4 | `exports/04-see-what-changed.png` | `docs/images/changes-iphone.png` | See What Changed. |
-| 5 | `exports/05-every-change-line-by-line.png` | `docs/images/diff-iphone.png` | Every Change. Line by Line. |
+| 3 | `exports/03-every-reply-as-a-chat.png` | `docs/images/chat-iphone.png` | Every Reply. As a Chat. |
+| 4 | `exports/04-control-without-leaving-the-flow.png` | `docs/images/agent-iphone.png` | Control Without Leaving the Flow |
+| 5 | `exports/05-see-what-changed.png` | `docs/images/changes-iphone.png` | See What Changed. |
 | 6 | `exports/06-your-shell-within-reach.png` | `docs/images/terminal-iphone.png` | Your Shell. Within Reach. |
 | 7 | `exports/07-skills-without-breaking-flow.png` | `docs/images/skills-iphone.png` | Skills Without Breaking Flow |
 | 8 | `exports/08-every-host-in-view.png` | `docs/images/hosts-iphone.png` | Every Host. In View. |

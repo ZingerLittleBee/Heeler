@@ -1,0 +1,211 @@
+@import 'tailwindcss';
+@import '@fumadocs/base-ui/css/neutral.css';
+/* The Spacious layout's styles are not part of the preset. */
+@import '@fumadocs/base-ui/css/generated/spacious.css';
+@import '@fumadocs/base-ui/css/preset.css';
+/* Styles for the guide markup from src/lib/markdown.ts; unlayered, see its header. */
+@import './content.css';
+
+/* Geist Sans / Geist Mono, SIL Open Font License 1.1 (fonts/LICENSE.txt).
+ * Same files as landing/, copied rather than imported so the sites stay
+ * independent. */
+@font-face {
+  font-family: 'Geist';
+  src: url('./fonts/Geist-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('./fonts/GeistMono-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+/* Palette on Fumadocs' colour variables, layered like fumadocs.dev: the
+ * layout ground and sidebar use card, the page sits on an inset panel
+ * (background), and code blocks, callouts, and cards inside it use card again.
+ * Most of the dark neutrals come from the landing page's Substrate tokens
+ * (landing/src/styles/substrate/tokens/colors.css, values noted below); the
+ * light ones are plain greys in the same roles. The one brand hue is teal
+ * (primary): active sidebar and TOC items, step numbers, checklist and "Run on"
+ * icons, task-list checkboxes, the 404 page's home button, link underlines,
+ * focus rings, and selection (Fumadocs also tints key caps and search matches).
+ * Callouts keep the Substrate status hues. Every text pair clears 4.5:1 (step
+ * numbers on their tinted circles and muted text on accent included), focus
+ * rings and callout icons 3:1. */
+:root {
+  --color-fd-background: #ffffff; /* page panel */
+  --color-fd-foreground: #0a0a0a;
+  --color-fd-card: #f7f7f7; /* ground, sidebar, code blocks, callouts, cards */
+  --color-fd-card-foreground: #0a0a0a;
+  --color-fd-popover: #ffffff;
+  --color-fd-popover-foreground: #0a0a0a;
+  --color-fd-muted: #f2f2f2; /* inline code, table header */
+  --color-fd-muted-foreground: #636363; /* 4.5:1 on accent too, as in a selected search result */
+  --color-fd-secondary: #ededed; /* buttons */
+  --color-fd-secondary-foreground: #101010;
+  --color-fd-accent: #e3e3e3; /* hover; replaces secondary and card backgrounds, so darker than both */
+  --color-fd-accent-foreground: #0a0a0a;
+  --color-fd-border: rgb(0 0 0 / 0.1);
+  --color-fd-overlay: rgb(0 0 0 / 0.2);
+  --color-fd-primary: #047068; /* oklch(49% 0.085 186) */
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-ring: var(--color-fd-primary);
+
+  /* Status hues: the -500 steps read on white; warning is darkened along its
+   * hue so the callout icon reaches 3:1 on card. */
+  --color-fd-info: #0072f5;
+  --color-fd-success: #12a150;
+  --color-fd-idea: #12a150;
+  --color-fd-warning: #c17a00;
+  --color-fd-error: #e5484d;
+}
+
+.dark {
+  --color-fd-background: #0a0a0a; /* --surface-canvas, page panel */
+  --color-fd-foreground: #ededed; /* --text-primary */
+  --color-fd-card: #161616; /* --surface-card */
+  --color-fd-card-foreground: #ededed;
+  --color-fd-popover: #1c1c1c; /* --n-200 */
+  --color-fd-popover-foreground: #ededed;
+  --color-fd-muted: #212121; /* --n-250 */
+  --color-fd-muted-foreground: #999999; /* between --text-secondary and --n-800, for 4.5:1 on accent */
+  --color-fd-secondary: #212121; /* --n-250 */
+  --color-fd-secondary-foreground: #ededed;
+  --color-fd-accent: #303030; /* --n-400, hover; lighter than secondary and card */
+  --color-fd-accent-foreground: #ededed;
+  --color-fd-border: rgb(255 255 255 / 0.12); /* about --border-hairline */
+  --color-fd-overlay: rgb(0 0 0 / 0.5);
+  --color-fd-primary: #5bd5c8; /* oklch(80% 0.11 186) */
+  --color-fd-primary-foreground: #0a0a0a;
+
+  /* Status hues: the -400 steps read on the dark canvas. */
+  --color-fd-info: #3291ff;
+  --color-fd-success: #45d483;
+  --color-fd-idea: #45d483;
+  --color-fd-warning: #f5b544;
+  --color-fd-error: #ff5f56;
+}
+
+/* neutral.css lightens a few neutrals inside the dark sidebar with a rule of
+ * the same specificity, so this one has to come after the import. */
+.dark #nd-sidebar {
+  --color-fd-muted: #282828; /* --n-300 */
+  --color-fd-secondary: #303030; /* --n-400 */
+  --color-fd-muted-foreground: #b4b4b4; /* --n-800 */
+}
+
+::selection {
+  background-color: color-mix(in oklab, var(--color-fd-primary) 25%, transparent);
+}
+
+/* Keyboard focus for elements without Fumadocs' ring utilities (links in the
+ * article, for one). In the base layer, so `focus-visible:outline-none`
+ * utilities still win. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-fd-ring);
+    outline-offset: 2px;
+  }
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+/* While a view transition runs (a theme switch, a client-side navigation),
+   the pointer hits <html> instead of the link or switch under it, so the
+   cursor would turn into an arrow until the transition ends. Those
+   transitions start from a click on a link or switch, so keep its cursor. */
+:root:active-view-transition {
+  cursor: pointer;
+}
+
+/* Client-side navigation keeps the sidebar (a persisted island) and swaps the
+   article without animation (transition:animate="none" on <body>), but the
+   browser still animates the page's root for 250 ms. The view transition
+   lasts as long, and while it runs nothing is hovered (see above), so the
+   clicked sidebar item dropped its hover colour, faded to the active one, and
+   regained the hover at the end: a visible flicker. With no root animation the
+   transition ends as soon as the page is swapped. Astro marks <html> with
+   data-astro-transition during navigation only, so the theme switch keeps its
+   cross-fade. */
+html[data-astro-transition]::view-transition-group(root),
+html[data-astro-transition]::view-transition-old(root),
+html[data-astro-transition]::view-transition-new(root) {
+  animation: none;
+}
+
+/* Astro moves the persisted sidebar into the next page's <body>, and a moved
+   element starts from fresh styles: the clicked item, unhovered for that
+   moment, would show its muted colour and then fade to the active one. Swap
+   the colours at once instead; the sidebar's hover fade is back afterwards. */
+html[data-astro-transition] :is(#nd-sidebar, #nd-sidebar-mobile) a {
+  transition: none;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+/* Screenshots carry a fixed width attribute from the guides; never overflow. */
+.prose :where(img) {
+  max-width: 100%;
+  height: auto;
+}
+
+/* The article sits in the island's <astro-slot>, one level below .prose, so
+ * repeat the prose rule that drops its first and last elements' outer margins. */
+.prose > astro-slot > :first-child {
+  margin-top: 0;
+}
+
+.prose > astro-slot > :last-child {
+  margin-bottom: 0;
+}
+
+/* Scroll padding keeps elements that focus scrolls into view clear of the
+ * sticky bars above the article. Headings already leave room with their
+ * scroll-m-28 (7rem), so they give up the same amount and #fragment targets
+ * land where they did. Wide screens scroll the article inside Spacious' panel,
+ * under its header (--fd-header-height); phones scroll the window, under the
+ * header (3.5rem) and the table-of-contents bar (2.5rem). */
+@media (width >= 48rem) {
+  div:has(> #nd-page) {
+    scroll-padding-top: var(--fd-header-height);
+  }
+
+  #nd-page :is(h1, h2, h3, h4, h5, h6)[id] {
+    scroll-margin-top: calc(7rem - var(--fd-header-height));
+  }
+}
+
+@media (width < 48rem) {
+  html {
+    scroll-padding-top: 6rem;
+  }
+
+  #nd-page :is(h1, h2, h3, h4, h5, h6)[id] {
+    scroll-margin-top: 1rem;
+  }
+}
+
+/* Active table-of-contents entries differ from the rest by hue alone (teal is
+ * about as light as the muted grey), so they also get a cue that needs no
+ * colour: a bar on their left edge, in each table of contents (the column, the
+ * header dropdown, and the phone bar's list). The active sidebar item keeps
+ * just its tinted background, as on fumadocs.dev; a heavier weight there made
+ * its label widen when it became active. */
+a[href^='#'][data-active='true'] {
+  box-shadow: inset 2px 0 var(--color-fd-primary);
+}

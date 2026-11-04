@@ -65,10 +65,10 @@ final class UIKitBackgroundExecutionGranter: BackgroundExecutionGranting {
         let identifier = UIApplication.shared.beginBackgroundTask(
             withName: "dev.bybee.heeler.background-grace"
         ) {
-            // UIKit calls this on the main thread but the API is not
-            // annotated for it, so hop deliberately instead of asserting an
-            // isolation the compiler cannot check.
-            Task { @MainActor in onExpiration() }
+            // UIKit calls this synchronously on the main thread and kills the
+            // app unless the task has ended by the time it returns, so end
+            // it here rather than after a hop to the main actor (#472).
+            MainActor.assumeIsolated { onExpiration() }
         }
         guard identifier != .invalid else { return nil }
         return BackgroundExecutionToken(rawValue: identifier.rawValue)
@@ -92,9 +92,12 @@ final class UIKitBackgroundExecutionGranter: BackgroundExecutionGranting {
 @Observable
 final class AppActivityCoordinator {
     /// iOS grants a background-execution assertion on the order of 30
-    /// seconds. Stopping well short of that keeps the deliberate teardown
-    /// inside our own budget rather than racing the expiration handler.
-    static let defaultGracePeriod: Duration = .seconds(20)
+    /// seconds, and on device it has expired as early as 25.5 seconds in.
+    /// Stopping well short of that keeps the deliberate teardown inside our
+    /// own budget rather than racing the expiration handler. 20 seconds left
+    /// it 5 to 6: on a weak network the SSH and overlay teardown overran
+    /// that, and the process froze mid-close (#474).
+    static let defaultGracePeriod: Duration = .seconds(15)
 
     private(set) var phase: AppActivityPhase = .active
 

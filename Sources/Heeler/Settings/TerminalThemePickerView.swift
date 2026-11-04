@@ -35,8 +35,8 @@ struct TerminalThemePickerView: View {
             }
 
             Section {
-                ForEach(TerminalThemeOption.allCases) { option in
-                    themeRow(option)
+                ForEach(TerminalThemeOption.allCases) { @Sendable option in
+                    MainActorContent { themeRow(option) }
                 }
             }
         }

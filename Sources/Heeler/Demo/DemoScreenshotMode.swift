@@ -10,9 +10,21 @@
         /// Adds Hosts that reconnect, cannot connect, or cannot sync, so the
         /// Host problem surfaces can be seen without a failing server.
         static let hostProblemsArgument = "--demo-host-problems"
+        /// Opens Agent details on Chat instead of the terminal.
+        static let chatArgument = "--demo-chat"
+        /// Uses Pi and Oh My Pi JSONL samples through the production adapters.
+        static let piChatArgument = "--demo-pi-chat"
+
+        static var showsPiChat: Bool {
+            ProcessInfo.processInfo.arguments.contains(piChatArgument)
+        }
 
         static var showsHostProblems: Bool {
             ProcessInfo.processInfo.arguments.contains(hostProblemsArgument)
+        }
+
+        static var opensChat: Bool {
+            ProcessInfo.processInfo.arguments.contains(chatArgument) || showsPiChat
         }
 
         /// Adds one Host per Heeler plugin state, with notifications already
@@ -45,6 +57,7 @@
         @State private var snippets: SnippetStore
         @State private var appearance: AppAppearanceSettings
         @State private var inputMode: AgentInputModeSettings
+        @State private var detailSurface: AgentDetailSurfaceSettings
         @State private var pushRegistration: PushRegistrationStore
         @State private var notificationPreferences: NotificationPreferencesStore
         @State private var relaySettings: NotificationRelaySettings
@@ -52,6 +65,7 @@
         @State private var bannerStore: AgentNotificationBannerStore
         @State private var liveActivities: HostLiveActivityCoordinator
         @State private var activity: AppActivityCoordinator
+        @State private var hostRemoval: HostRemovalDependencies
         @State private var diffLayout = DiffLayoutSettings(defaults: DemoScreenshotFixture.makeDefaults(), offersSideBySide: UIDevice.current.userInterfaceIdiom == .pad)
 
         init() {
@@ -64,6 +78,7 @@
             _snippets = State(initialValue: composition.snippets)
             _appearance = State(initialValue: composition.appearance)
             _inputMode = State(initialValue: composition.inputMode)
+            _detailSurface = State(initialValue: composition.detailSurface)
             _pushRegistration = State(initialValue: composition.pushRegistration)
             _notificationPreferences = State(initialValue: composition.notificationPreferences)
             _relaySettings = State(initialValue: composition.relaySettings)
@@ -71,6 +86,7 @@
             _bannerStore = State(initialValue: composition.bannerStore)
             _liveActivities = State(initialValue: composition.liveActivities)
             _activity = State(initialValue: composition.activity)
+            _hostRemoval = State(initialValue: composition.hostRemoval)
         }
 
         private var terminal: TerminalSettings {
@@ -85,6 +101,7 @@
                 console: console,
                 terminal: terminal,
                 inputMode: inputMode,
+                detailSurface: detailSurface,
                 appearance: appearance,
                 pushRegistration: pushRegistration,
                 notificationPreferences: notificationPreferences,
@@ -97,6 +114,7 @@
             .preferredColorScheme(appearance.preferredColorScheme)
             .environment(\.diffLayoutSettings, diffLayout)
             .environment(\.hostOnboardingDependencies, DemoScreenshotFixture.onboardingDependencies)
+            .environment(\.hostRemovalDependencies, hostRemoval)
             .task {
                 console.setHosts(hosts.hosts)
                 notificationPreferences.setHosts(hosts.hosts)
@@ -121,6 +139,7 @@
         let snippets: SnippetStore
         let appearance: AppAppearanceSettings
         let inputMode: AgentInputModeSettings
+        let detailSurface: AgentDetailSurfaceSettings
         let pushRegistration: PushRegistrationStore
         let notificationPreferences: NotificationPreferencesStore
         let relaySettings: NotificationRelaySettings
@@ -128,6 +147,9 @@
         let bannerStore: AgentNotificationBannerStore
         let liveActivities: HostLiveActivityCoordinator
         let activity: AppActivityCoordinator
+        /// The app's removal over the demo stores: its Notification Keys are
+        /// volatile, so removing a demo Host never touches the Keychain.
+        let hostRemoval: HostRemovalDependencies
 
         static func make() -> DemoScreenshotComposition {
             let defaults = DemoScreenshotFixture.makeDefaults()
@@ -152,8 +174,24 @@
             for id in DemoScreenshotFixture.pluginStateLiveActivityHostIDs {
                 liveActivityPreferences.setEnabled(true, for: id)
             }
+            let hosts = HostStore(volatileHosts: DemoScreenshotFixture.hosts)
+            let liveActivities = HostLiveActivityCoordinator(
+                controller: ActivityKitLiveActivityController(),
+                preferences: liveActivityPreferences,
+                transports: console,
+                deviceToken: { nil },
+                // The live catalog, so a demo removal leaves it before
+                // forgetHost runs, as in the app.
+                knownHostIDs: { [weak hosts] in Set(hosts?.hosts.map(\.id) ?? []) },
+                hostDisplayName: { [weak hosts] id in
+                    hosts?.hosts.first(where: { $0.id == id })?.displayName ?? ""
+                },
+                isAwaitingSnapshot: { _ in false },
+                connectionStatus: { _ in .connected })
+            let detailSurface = AgentDetailSurfaceSettings(defaults: defaults)
+            if DemoScreenshotMode.opensChat { detailSurface.select(.chat) }
             return DemoScreenshotComposition(
-                hosts: HostStore(volatileHosts: DemoScreenshotFixture.hosts),
+                hosts: hosts,
                 console: console,
                 terminalThemes: TerminalThemeSettings(defaults: defaults),
                 terminalZoom: TerminalZoomSettings(defaults: defaults),
@@ -161,6 +199,7 @@
                 snippets: SnippetStore(defaults: defaults),
                 appearance: AppAppearanceSettings(defaults: defaults),
                 inputMode: AgentInputModeSettings(defaults: defaults),
+                detailSurface: detailSurface,
                 pushRegistration: pushRegistration,
                 notificationPreferences: notificationPreferences,
                 relaySettings: relaySettings,
@@ -169,19 +208,11 @@
                     presentedAgent: { notificationRouter.path.last },
                     triggers: { _ in nil },
                     playSound: {}),
-                liveActivities: HostLiveActivityCoordinator(
-                    controller: ActivityKitLiveActivityController(),
-                    preferences: liveActivityPreferences,
-                    transports: console,
-                    deviceToken: { nil },
-                    knownHostIDs: { Set(DemoScreenshotFixture.hosts.map(\.id)) },
-                    hostDisplayName: { id in
-                        DemoScreenshotFixture.hosts.first(where: { $0.id == id })?.displayName
-                            ?? ""
-                    },
-                    isAwaitingSnapshot: { _ in false },
-                    connectionStatus: { _ in .connected }),
-                activity: AppActivityCoordinator())
+                liveActivities: liveActivities,
+                activity: AppActivityCoordinator(),
+                hostRemoval: HostRemovalDependencies.app(
+                    console: console, notificationPreferences: notificationPreferences,
+                    liveActivities: liveActivities))
         }
     }
 
@@ -228,28 +259,38 @@
             ] + (DemoScreenshotMode.showsHostProblems ? problemHosts : [])
             + (DemoScreenshotMode.showsPluginStates ? pluginStateHosts : [])
 
+        /// Where demo Hosts report the plugin; nothing is ever run there.
+        static let pluginRoot = "/demo/herdr/plugins/heeler"
+
         /// One Host per plugin state, named for it. Only with
         /// `DemoScreenshotMode.pluginStatesArgument`.
         static let pluginStates: [(name: String, plugin: Result<HeelerPluginInstallation?, TransportError>)] = [
-            ("Plugin current (0.6.0)", .success(HeelerPluginInstallation(version: "0.6.0"))),
-            ("Plugin newer than app (0.7.0)", .success(HeelerPluginInstallation(version: "0.7.0"))),
+            ("Plugin current (0.8.0)", .success(HeelerPluginInstallation(version: "0.8.0"))),
+            ("Plugin newer than app (0.9.0)",
+             .success(HeelerPluginInstallation(pluginRoot: pluginRoot, version: "0.9.0"))),
             ("Plugin outdated (0.5.0)", .success(HeelerPluginInstallation(version: "0.5.0"))),
             ("Plugin outdated (0.4.0)", .success(HeelerPluginInstallation(version: "0.4.0"))),
             ("Plugin outdated (0.3.0)", .success(HeelerPluginInstallation(version: "0.3.0"))),
             ("Plugin not installed", .success(nil)),
-            ("Plugin disabled (0.6.0)", .success(HeelerPluginInstallation(version: "0.6.0", isEnabled: false))),
+            ("Plugin disabled (0.8.0)", .success(HeelerPluginInstallation(version: "0.8.0", isEnabled: false))),
             ("Plugin disabled + outdated (0.5.0)",
              .success(HeelerPluginInstallation(version: "0.5.0", isEnabled: false))),
+            ("Plugin under legacy name + current disabled (0.3.0)",
+             .success(HeelerPluginInstallation(
+                pluginID: "herdr-mobile.pairing", version: "0.3.0", disabledCurrentIDSource: .github))),
             ("Plugin under legacy name (0.3.0)",
              .success(HeelerPluginInstallation(pluginID: "herdr-mobile.pairing", version: "0.3.0"))),
-            ("Plugin with legacy leftover (0.6.0)",
-             .success(HeelerPluginInstallation(version: "0.6.0", leftoverLegacyIDs: ["herdr-mobile.pairing"]))),
+            ("Plugin with legacy leftover (0.8.0)",
+             .success(HeelerPluginInstallation(version: "0.8.0", leftoverLegacyIDs: ["herdr-mobile.pairing"]))),
             ("Plugin linked locally (0.5.0)", .success(HeelerPluginInstallation(version: "0.5.0", source: .local))),
-            ("Plugin linked locally (0.6.0)", .success(HeelerPluginInstallation(version: "0.6.0", source: .local))),
+            ("Plugin linked locally (0.8.0)", .success(HeelerPluginInstallation(version: "0.8.0", source: .local))),
             ("Plugin manifest unreadable",
-             .success(HeelerPluginInstallation(version: "0.6.0", hasManifestWarning: true))),
+             .success(HeelerPluginInstallation(version: "0.8.0", hasManifestWarning: true))),
             ("Plugin on Windows", .failure(.hostFeatureUnavailable(feature: "The Heeler plugin"))),
             ("Plugin read failed", .failure(.timedOut)),
+            // Reads Usage without Claude Code Accounts.
+            ("Plugin before Accounts (0.7.1)",
+             .success(HeelerPluginInstallation(pluginRoot: pluginRoot, version: "0.7.1"))),
         ]
 
         static let pluginStateHosts: [Host] = pluginStates.enumerated().map { index, state in
@@ -300,7 +341,8 @@
             guard let profile = profiles[host.id] else {
                 throw TransportError.sshUnreachable(detail: "No demo profile for Host.")
             }
-            return DemoScreenshotTransport(profile: profile, hostID: host.id)
+            return DemoScreenshotTransport(
+                profile: profile, hostID: host.id, routeID: host.routes.last?.id)
         }
 
         /// Only with `DemoScreenshotMode.hostProblemsArgument`.
@@ -308,8 +350,8 @@
             Host(
                 id: stagingHostID,
                 name: "Staging VPS",
-                address: "staging.demo.invalid",
-                username: "deploy"),
+                username: "deploy",
+                routes: stagingRoutes),
             Host(
                 id: piHostID,
                 name: "Raspberry Pi",
@@ -318,14 +360,32 @@
             Host(
                 id: miniHostID,
                 name: "Mac mini",
-                address: "mini.demo.invalid",
-                username: "developer"),
+                username: "developer",
+                routes: [
+                    HostRoute(address: "192.168.1.30"),
+                    HostRoute(
+                        address: "127.0.0.1", port: 2222, jumpAddress: "mini.demo.invalid"),
+                ]),
+        ]
+
+        /// Staging's routes, each failing in its own way.
+        private static let stagingRoutes = [
+            HostRoute(address: "10.0.0.8"),
+            HostRoute(address: "staging.demo.invalid", port: 2222),
         ]
 
         /// How each problem Host fails to connect: Staging keeps retrying,
         /// the Pi stops until the user acts.
         static let connectFailures: [Host.ID: TransportError] = [
-            stagingHostID: .sshUnreachable(detail: "Connection refused."),
+            stagingHostID: .noRouteReached([
+                RouteFailure(
+                    route: "10.0.0.8", mayNameAnotherMachine: true, error: .timedOut,
+                    routeID: stagingRoutes[0].id),
+                RouteFailure(
+                    route: "staging.demo.invalid:2222", mayNameAnotherMachine: false,
+                    error: .sshUnreachable(detail: "Connection refused."),
+                    routeID: stagingRoutes[1].id),
+            ]),
             piHostID: .authenticationFailed,
         ]
 
@@ -372,8 +432,8 @@
                     "mobile:p4": "VoiceOver audit complete. 0 blockers.",
                 ],
                 terminalOutputs: [
-                    "mobile:p1": terminalOutput,
-                    "docs:p2": terminalOutput,
+                    "mobile:p1": DemoPiChatSample.terminalOutput(forPane: "mobile:p1") ?? terminalOutput,
+                    "docs:p2": DemoPiChatSample.terminalOutput(forPane: "docs:p2") ?? terminalOutput,
                     "mobile:p4": terminalOutput,
                     "terminal:mobile:p5": devServerOutput,
                     "terminal:mobile:p6": shellPromptOutput,
@@ -477,7 +537,8 @@
             return ConsoleStore(
                 snapshotRetryDelay: .seconds(30),
                 pins: PinnedAgentsStore(defaults: defaults),
-                rowLayouts: AgentRowLayoutStore(defaults: defaults)
+                rowLayouts: AgentRowLayoutStore(defaults: defaults),
+                usageSettings: AgentUsageSettings(defaults: defaults)
             ) { host, subscriptions in
                 EventsSession(
                     subscriptions: subscriptions,
@@ -511,7 +572,8 @@
             title: String,
             cwd: String
         ) -> AgentInfo {
-            AgentInfo(
+            let sample = DemoScreenshotMode.showsPiChat ? DemoPiChatSample.identity(forPane: paneID) : nil
+            return AgentInfo(
                 agentStatus: status,
                 focused: false,
                 paneID: paneID,
@@ -519,10 +581,11 @@
                 tabID: "\(workspaceID):t1",
                 terminalID: "terminal:\(paneID)",
                 workspaceID: workspaceID,
-                agent: kind,
+                agent: sample?.kind ?? kind,
+                agentSession: DemoChatSample.session(forPane: paneID),
                 cwd: cwd,
-                name: name,
-                terminalTitleStripped: title)
+                name: sample?.name ?? name,
+                terminalTitleStripped: sample?.title ?? title)
         }
 
         /// A plain shell pane alone in its own tab, as `tab.create` leaves it.
@@ -591,7 +654,9 @@
         var snapshotFailure: TransportError?
         /// What `plugin.list` reports for the Heeler plugin.
         var plugin: Result<HeelerPluginInstallation?, TransportError> = .success(
-            HeelerPluginInstallation(version: HeelerPluginCompatibility.bundled.description))
+            HeelerPluginInstallation(
+                pluginRoot: DemoScreenshotFixture.pluginRoot,
+                version: HeelerPluginCompatibility.bundled.description))
     }
 
     /// Preflight for screenshot Hosts: the Host detail's own connection,
@@ -600,7 +665,7 @@
         func connect(settings: SSHTransportSettings) async throws -> any Transport {
             guard
                 let host = DemoScreenshotFixture.hosts.first(where: {
-                    $0.address == settings.host
+                    $0.answers(toAddress: settings.host)
                 })
             else {
                 throw TransportError.sshUnreachable(detail: "No demo Host at this address.")
@@ -1159,9 +1224,341 @@
         }
     }
 
+    /// Invented Usage for screenshot Hosts: both programs over 30 days that
+    /// end today in the requested time zone, with Usage Limits that reset
+    /// in the future so no demo window reads as expired. The build Host
+    /// reports its own figures, so All Hosts visibly adds two Hosts up.
+    ///
+    /// Claude Code Accounts follow the demo Host's Account file, which the
+    /// Accounts sheet edits in memory. The studio Host starts with the
+    /// Default Account, `claude-2` and a `work` Account on an unmounted
+    /// volume, and suggests two more; the build Host keeps one Account.
+    enum DemoUsageSample {
+        private struct Profile {
+            let claudeDays: [Int]
+            let codexDays: [Int]
+            let claudeModels: [String]
+            let codexModels: [String]
+            let claudeDirectories: [String]
+            let codexDirectories: [String]
+            let claudePercents: (Double, Double)
+            let codexPercents: (Double, Double)
+            let home: String
+        }
+
+        /// A Claude Code directory the demo Host holds, besides the
+        /// Default Account's: its days and its own limits.
+        private struct AccountProfile {
+            let days: [Int]
+            let percents: (Double, Double)
+        }
+
+        private static let studio = Profile(
+            claudeDays: [
+                41, 0, 0, 63, 72, 58, 80, 35, 0, 66, 91, 77, 84, 52, 12, 0, 70, 88, 95, 61,
+                74, 30, 0, 82, 99, 76, 90, 68, 85, 47,
+            ],
+            codexDays: [
+                12, 0, 0, 18, 25, 9, 31, 14, 0, 22, 27, 35, 19, 16, 4, 0, 26, 30, 21, 33,
+                24, 8, 0, 29, 38, 27, 34, 22, 31, 17,
+            ],
+            claudeModels: ["claude-opus-4-5", "claude-sonnet-4-5"],
+            codexModels: ["gpt-5.3-codex"],
+            claudeDirectories: ["/Users/demo/src/storefront", "/Users/demo/src/payments-api"],
+            codexDirectories: ["/Users/demo/src/payments-api", "/Users/demo/src/product-docs"],
+            claudePercents: (34, 61), codexPercents: (22, 47), home: DemoChatSample.home)
+
+        private static let build = Profile(
+            claudeDays: [
+                18, 22, 9, 25, 30, 14, 11, 20, 27, 52, 64, 38, 17, 9, 21, 26, 19, 23, 12, 8,
+                24, 31, 46, 58, 33, 20, 15, 28, 22, 26,
+            ],
+            codexDays: [
+                30, 41, 58, 47, 26, 19, 22, 35, 29, 24, 31, 27, 18, 33, 61, 72, 49, 30, 21, 25,
+                28, 34, 26, 19, 23, 38, 55, 63, 42, 36,
+            ],
+            claudeModels: ["claude-sonnet-4-5", "claude-haiku-4-5"],
+            codexModels: ["gpt-5.3-codex", "gpt-5.2"],
+            claudeDirectories: ["/home/builder/ci/infra", "/srv/builds/mobile"],
+            codexDirectories: ["/home/builder/ci/api-gateway", "/srv/builds/mobile"],
+            claudePercents: (48, 39), codexPercents: (26, 48), home: "/home/builder")
+
+        /// The studio Host's other Claude Code directories. `claude-2` runs
+        /// closer to its limits than the Default Account.
+        private static let studioAccounts: [String: AccountProfile] = [
+            "\(DemoChatSample.home)/.claude-2": AccountProfile(
+                days: [
+                    22, 0, 0, 31, 40, 18, 52, 26, 0, 35, 48, 41, 57, 29, 8, 0, 44, 61, 70, 38,
+                    49, 17, 0, 55, 72, 50, 63, 41, 58, 33,
+                ],
+                percents: (84, 52)),
+            "\(DemoChatSample.home)/.claude-team": AccountProfile(
+                days: [
+                    0, 0, 0, 0, 0, 0, 0, 10, 12, 9, 0, 0, 14, 18, 11, 0, 0, 16, 20, 13,
+                    0, 0, 9, 15, 17, 12, 0, 0, 19, 14,
+                ],
+                percents: (21, 38)),
+            "\(DemoChatSample.home)/.claude-work": AccountProfile(
+                days: [
+                    5, 0, 0, 6, 8, 4, 7, 3, 0, 6, 9, 5, 7, 4, 2, 0, 6, 8, 9, 5,
+                    7, 3, 0, 8, 9, 6, 8, 5, 7, 4,
+                ],
+                percents: (9, 17)),
+        ]
+
+        /// What the studio Host's plugin suggests while the directories are
+        /// neither added nor ignored.
+        private static let studioSuggestions: [(directory: String, name: String, source: String)] = [
+            ("\(DemoChatSample.home)/.claude-team", "claude-team", "agent"),
+            ("\(DemoChatSample.home)/.claude-work", "claude-work", "home"),
+        ]
+
+        /// The studio Host's Account file before the user changes it; other
+        /// demo Hosts start without one.
+        static func initialAccountFile(for hostID: Host.ID) -> Data? {
+            guard hostID == DemoScreenshotFixture.studioHostID else { return nil }
+            let file: [String: Any] = [
+                "version": 1,
+                "claude": [
+                    "defaultName": NSNull(),
+                    "accounts": [
+                        ["id": "c2d7a1f0", "directory": "\(DemoChatSample.home)/.claude-2", "name": "claude-2"],
+                        ["id": "9be41c07", "directory": "/Volumes/T7/.claude", "name": "work"],
+                    ],
+                    "ignored": [String](),
+                ],
+            ]
+            return try? JSONSerialization.data(withJSONObject: file)
+        }
+
+        /// The demo home's symbolic link, to the directory it resolves to.
+        private static let homeLinks = [
+            "\(DemoChatSample.home)/claude-shared": "\(DemoChatSample.home)/.claude-team",
+        ]
+
+        /// Plain folders the demo home holds beside Claude Code's.
+        private static let homeFolders = ["Documents", "Projects"].map { "\(DemoChatSample.home)/\($0)" }
+
+        /// `path` with a demo link in it replaced by its target, as a
+        /// following stat sees it.
+        private static func resolvingLinks(_ path: String) -> String {
+            for (link, target) in homeLinks {
+                if path == link { return target }
+                if path.hasPrefix(link + "/") { return target + path.dropFirst(link.count) }
+            }
+            return path
+        }
+
+        /// The demo Host paths that hold Claude Code's files, for the check
+        /// a chosen directory must pass, and the home folders the directory
+        /// browser lists. A stat follows the home's link.
+        static func accountFileStatus(atPath path: String) -> RemoteFileStatus? {
+            let path = resolvingLinks(path)
+            if homeFolders.contains(path) { return RemoteFileStatus(kind: .directory, size: nil) }
+            for directory in studioAccounts.keys {
+                if path == directory { return RemoteFileStatus(kind: .directory, size: nil) }
+                if path == directory + "/projects" { return RemoteFileStatus(kind: .directory, size: nil) }
+                if path == directory + "/.claude.json" { return RemoteFileStatus(kind: .regular, size: 2_048) }
+            }
+            return nil
+        }
+
+        /// The folders the Accounts directory browser finds in the demo
+        /// home and in each Claude Code directory, added to what Chat's
+        /// samples list there; nil leaves `chat` alone.
+        static func accountListing(
+            _ request: RemoteFileListingRequest, adding chat: RemoteFileListing?
+        ) -> RemoteFileListing? {
+            let directory = resolvingLinks(request.directory)
+            var added: [RemoteFileEntry] = []
+            if directory == DemoChatSample.home {
+                let folders = studioAccounts.keys.map { ($0 as NSString).lastPathComponent }
+                    + homeFolders.map { ($0 as NSString).lastPathComponent }
+                added = folders.map { RemoteFileEntry(name: $0, status: RemoteFileStatus(kind: .directory, size: nil)) }
+                    + homeLinks.keys.map {
+                        RemoteFileEntry(
+                            name: ($0 as NSString).lastPathComponent, status: RemoteFileStatus(kind: .symlink, size: nil))
+                    }
+            } else if studioAccounts[directory] != nil {
+                added = [RemoteFileEntry(name: "projects", status: RemoteFileStatus(kind: .directory, size: nil))]
+            } else if homeFolders.contains(directory) {
+                return chat ?? RemoteFileListing(entries: [])
+            }
+            added = added.filter { request.kinds.isEmpty || request.kinds.contains($0.status.kind ?? .other) }
+            guard !added.isEmpty else { return chat }
+            let entries = ((chat?.entries ?? []) + added).sorted { $0.name < $1.name }
+            return RemoteFileListing(entries: entries)
+        }
+
+        /// `accounts` nil reports as a plugin before Accounts would.
+        static func report(
+            timeZone identifier: String, claudeLimits: Bool, hostID: Host.ID? = nil,
+            accounts: UsageAccountFile? = UsageAccountFile(), now: Date = Date()
+        ) throws -> AgentUsageReport {
+            let profile = hostID == DemoScreenshotFixture.buildHostID ? build : studio
+            let isStudio = hostID == DemoScreenshotFixture.studioHostID
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: identifier) ?? .gmt
+            let timestamp = ISO8601DateFormatter()
+            func day(_ index: Int) -> String {
+                let date = calendar.date(byAdding: .day, value: index - 29, to: now) ?? now
+                let parts = calendar.dateComponents([.year, .month, .day], from: date)
+                return String(
+                    format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+            }
+            let limits: (String, [[String: Any]]) -> [String: Any] = { source, windows in
+                [
+                    "state": "ok", "source": source, "plan": "max",
+                    "observedAt": timestamp.string(from: now.addingTimeInterval(-90)),
+                    "windows": windows,
+                ]
+            }
+            let window: (String, Int, Double, TimeInterval) -> [String: Any] = {
+                id, minutes, percent, reset in
+                [
+                    "id": id, "durationMinutes": minutes, "usedPercent": percent,
+                    "resetsAt": timestamp.string(from: now.addingTimeInterval(reset)),
+                    "expired": false,
+                ]
+            }
+            let claudeLimitsOf: ((Double, Double)) -> [String: Any] = { percents in
+                claudeLimits
+                    ? limits("service", [
+                        window("fiveHour", 300, percents.0, 2 * 3_600),
+                        window("sevenDay", 10_080, percents.1, 3 * 86_400),
+                    ])
+                    : ["state": "disabled"]
+            }
+            let claudeUnit = 9_500
+            let claudeCost = 0.000_001_1
+            let claudeUsage: ([Int]) -> [String: Any] = { totals in
+                tokenUsage(
+                    totals: totals, costPerToken: claudeCost, day: day, models: profile.claudeModels,
+                    directories: profile.claudeDirectories)
+            }
+            let defaultTotals = profile.claudeDays.map { $0 * claudeUnit }
+            var counted = [defaultTotals]
+            var claude: [String: Any] = ["program": "claude", "usageLimits": claudeLimitsOf(profile.claudePercents)]
+            if let accounts {
+                let defaultDirectory = profile.home + "/.claude"
+                var entries: [[String: Any]] = [[
+                    "id": UsageAccountFile.defaultAccountID, "isDefault": true,
+                    "name": accounts.defaultName.map { $0 as Any } ?? NSNull(),
+                    "directory": defaultDirectory, "state": "ok",
+                    "tokenUsage": claudeUsage(defaultTotals),
+                    "usageLimits": claudeLimitsOf(profile.claudePercents),
+                ]]
+                var seen: Set<String> = [defaultDirectory]
+                for account in accounts.accounts {
+                    var entry: [String: Any] = [
+                        "id": account.id, "isDefault": false, "name": account.name, "directory": account.directory,
+                    ]
+                    // The plugin compares real paths: the home's link is
+                    // the directory it points to.
+                    let resolved = resolvingLinks(account.directory)
+                    let accountProfile = isStudio ? studioAccounts[resolved] : nil
+                    if let accountProfile, !seen.contains(resolved) {
+                        seen.insert(resolved)
+                        let totals = accountProfile.days.map { $0 * claudeUnit }
+                        counted.append(totals)
+                        entry["state"] = "ok"
+                        entry["tokenUsage"] = claudeUsage(totals)
+                        entry["usageLimits"] = claudeLimitsOf(accountProfile.percents)
+                    } else {
+                        entry["state"] = accountProfile == nil ? "missing" : "duplicate"
+                    }
+                    entries.append(entry)
+                }
+                claude["accounts"] = entries
+                claude["accountSuggestions"] = (isStudio ? studioSuggestions : []).filter { suggestion in
+                    !seen.contains(suggestion.directory)
+                        && !accounts.accounts.contains { $0.directory == suggestion.directory }
+                        && !accounts.ignored.contains(suggestion.directory)
+                }.map { ["directory": $0.directory, "name": $0.name, "source": $0.source] }
+            }
+            // The program's own Token Usage adds up its counted Accounts.
+            claude["tokenUsage"] = claudeUsage(defaultTotals.indices.map { index in
+                counted.reduce(0) { $0 + $1[index] }
+            })
+            let codex: [String: Any] = [
+                "program": "codex",
+                "usageLimits": limits("service", [
+                    window("primary", 300, profile.codexPercents.0, 3 * 3_600),
+                    window("secondary", 10_080, profile.codexPercents.1, 4 * 86_400),
+                ]),
+                "tokenUsage": tokenUsage(
+                    totals: profile.codexDays.map { $0 * 7_000 }, costPerToken: 0.000_000_9, day: day,
+                    models: profile.codexModels, directories: profile.codexDirectories),
+            ]
+            let object: [String: Any] = [
+                "version": 1, "runtime": "recorded",
+                "generatedAt": timestamp.string(from: now),
+                "timeZone": calendar.timeZone.identifier, "refreshing": false,
+                "pricingVersion": day(29),
+                "scan": [
+                    "state": "complete", "coveredFrom": day(0),
+                    "coveredThrough": timestamp.string(from: now.addingTimeInterval(-60)),
+                    "skippedArchives": 0, "unreadableFiles": 0,
+                ],
+                "programs": [claude, codex],
+            ]
+            return try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+        }
+
+        private static func tokenUsage(
+            totals: [Int], costPerToken: Double, day: (Int) -> String, models: [String],
+            directories: [String]
+        ) -> [String: Any] {
+            func tokens(_ total: Int) -> [String: Any] {
+                let input = total / 20
+                let output = total / 25
+                let cacheRead = total * 4 / 5
+                return [
+                    "input": input, "cacheRead": cacheRead,
+                    "cacheWrite": total - input - output - cacheRead, "output": output,
+                    "reasoning": 0, "total": total,
+                ]
+            }
+            func summary(_ total: Int) -> [String: Any] {
+                [
+                    "tokens": tokens(total), "estimatedCostUSD": Double(total) * costPerToken,
+                    "unpricedTokens": 0,
+                ]
+            }
+            let last30 = totals.reduce(0, +)
+            func split(_ shares: [String], key: String) -> [[String: Any]] {
+                shares.enumerated().map { index, value in
+                    let total = index == 0 ? last30 * 7 / 10 : last30 * 3 / 10
+                    var entry = summary(total)
+                    entry[key] = value
+                    if key == "model" { entry["priced"] = true }
+                    return entry
+                }
+            }
+            return [
+                "state": "ok",
+                "totals": [
+                    "today": summary(totals[29]),
+                    "last7Days": summary(totals.suffix(7).reduce(0, +)),
+                    "last30Days": summary(last30),
+                ],
+                "daily": totals.enumerated().map { index, total in
+                    var entry = summary(total)
+                    entry["date"] = day(index)
+                    return entry
+                },
+                "models": split(models, key: "model"),
+                "directories": split(directories, key: "path"),
+            ]
+        }
+    }
+
     private actor DemoScreenshotTransport: Transport {
         private let profile: DemoHostProfile
         private let hostID: Host.ID
+        /// The demo always reaches a Host over its last route, so a Host
+        /// with several shows a route other than the primary in use.
+        nonisolated let routeID: UUID?
         private var isClosed = false
         private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
         /// Like the SSH transport, each target admits one live channel.
@@ -1169,9 +1566,10 @@
             TerminalAttachTarget: AsyncThrowingStream<Data, any Error>.Continuation
         ] = [:]
 
-        init(profile: DemoHostProfile, hostID: Host.ID) {
+        init(profile: DemoHostProfile, hostID: Host.ID, routeID: UUID?) {
             self.profile = profile
             self.hostID = hostID
+            self.routeID = routeID
         }
 
         func ping() async throws -> ServerInfo {
@@ -1192,6 +1590,34 @@
 
         func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
             try profile.plugin.get()
+        }
+
+        func readAgentUsage(
+            timeZone: String, claudeLimits: Bool, pluginRoot: String
+        ) async throws -> AgentUsageReport {
+            let version = try profile.plugin.get()?.parsedVersion
+            var accounts: UsageAccountFile?
+            if version.map(HeelerPluginFeature.claudeAccounts.isSupported) ?? true {
+                let data = await usageAccountFileData()
+                accounts = (try? UsageAccountFile.decode(data)) ?? UsageAccountFile()
+            }
+            return try DemoUsageSample.report(
+                timeZone: timeZone, claudeLimits: claudeLimits, hostID: hostID, accounts: accounts)
+        }
+
+        private func usageAccountFileData() async -> Data? {
+            await DemoPluginFiles.shared.read(UsageAccountFile.fileName, hostID: hostID)
+                ?? DemoUsageSample.initialAccountFile(for: hostID)
+        }
+
+        func readUsageAccountFile() async throws -> Data? {
+            try requireEnabledPlugin()
+            return await usageAccountFileData()
+        }
+
+        func replaceUsageAccountFile(_ contents: Data) async throws {
+            try requireEnabledPlugin()
+            await DemoPluginFiles.shared.write(contents, to: UsageAccountFile.fileName, hostID: hostID)
         }
 
         /// Plugin config files exist only where an enabled plugin would
@@ -1248,7 +1674,8 @@
                 revision: 1,
                 source: params.source,
                 tabID: agent?.tabID ?? "demo:t1",
-                text: profile.terminalOutputs[params.target]
+                text: (params.format == .ansi ? DemoChatSample.screen(forPane: params.target) : nil)
+                    ?? profile.terminalOutputs[params.target]
                     ?? DemoScreenshotFixture.terminalOutput,
                 truncated: false,
                 workspaceID: agent?.workspaceID ?? "demo")
@@ -1302,6 +1729,48 @@
             _ request: UntrackedDirectoryRequest
         ) async throws -> UntrackedDirectoryListing {
             try DemoChangesSample.listUntrackedDirectory(request)
+        }
+
+        /// Screenshot Chat transcripts, served in-process like Changes.
+        func hostHomeDirectory() async throws -> String {
+            DemoChatSample.home
+        }
+
+        func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+            guard holdsAccountDirectories else {
+                // Chat's sample transcripts sit in a `.claude` this Host's
+                // report does not count either. Chat reads only the files
+                // under its `projects/`, so the markers can be refused.
+                let chatClaude = DemoChatSample.home + "/.claude"
+                guard path != chatClaude + "/projects", path != chatClaude + "/.claude.json" else { return nil }
+                return DemoChatSample.status(atPath: path)
+            }
+            return DemoUsageSample.accountFileStatus(atPath: path) ?? DemoChatSample.status(atPath: path)
+        }
+
+        func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+            let chat = DemoChatSample.list(request)
+            return holdsAccountDirectories ? DemoUsageSample.accountListing(request, adding: chat) : chat
+        }
+
+        /// The demo's other Claude Code directories are the studio Host's,
+        /// the only one whose report counts them.
+        private var holdsAccountDirectories: Bool { hostID == DemoScreenshotFixture.studioHostID }
+
+        func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+            DemoChatSample.read(range)
+        }
+
+        func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
+            DemoOpenCodeChatSample.response(query)
+        }
+
+        func agentInfo(_ target: AgentTarget) async throws -> Agent {
+            guard let agent = profile.snapshot.agents.first(where: { $0.paneID == target.target })
+            else {
+                throw TransportError.malformedResponse("Demo profile has no matching Agent.")
+            }
+            return Agent(agent)
         }
 
         func subscribeToEvents(

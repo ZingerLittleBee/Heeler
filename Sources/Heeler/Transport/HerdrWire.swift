@@ -48,10 +48,12 @@ enum HerdrWire {
     /// Each herdr API connection serves one request, so the response on a
     /// connection is always for that connection's sole in-flight request.
     /// Success results still require an exact id match. Errors do not: herdr
-    /// 0.8.0 answers unparseable requests with `id: ""`, and
-    /// `events.subscribe` probe failures use a derived id that does not
-    /// echo the request id. Without this fallback those requests would pend
-    /// until the deadline instead of failing with the server's error (#177).
+    /// 0.8.0 answers unparseable requests with `id: ""` (0.9.2 and later
+    /// still do for invalid JSON and non-string ids), and herdr 0.8.0 to
+    /// 0.9.1 answer `events.subscribe` probe failures with a derived id that
+    /// does not echo the request id. Without this fallback those requests
+    /// would pend until the deadline instead of failing with the server's
+    /// error (#177).
     static func decodeResult<R: Decodable>(
         _ type: R.Type, fromResponseLine data: Data, requestID: String
     ) throws -> R {

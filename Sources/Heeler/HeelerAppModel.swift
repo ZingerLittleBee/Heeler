@@ -25,6 +25,9 @@ final class HeelerAppModel {
     let sceneDirectory: AgentSceneDirectory
     let hostStore: HostStore
     let console: ConsoleStore
+    /// Overlay Networks and their shared runtime (ADR 0021). The Console's
+    /// session factory and Host onboarding reach the same runtime.
+    let overlayNetworks: OverlayNetworkStore
     let notificationPreferences: NotificationPreferencesStore
     let terminalThemes: TerminalThemeSettings
     let terminalZoom: TerminalZoomSettings
@@ -33,9 +36,12 @@ final class HeelerAppModel {
     let snippets: SnippetStore
     let appearance: AppAppearanceSettings
     let inputMode: AgentInputModeSettings
+    let detailSurface: AgentDetailSurfaceSettings
     let relaySettings: NotificationRelaySettings
     let bannerStore: AgentNotificationBannerStore
     let liveActivities: HostLiveActivityCoordinator
+    /// What a confirmed Host removal cleans up beyond the catalog (#414).
+    let hostRemoval: HostRemovalDependencies
     let activity: AppActivityCoordinator
 
     private var isStarted = false
@@ -45,19 +51,23 @@ final class HeelerAppModel {
     /// drive the activity wiring and observe that something consumed it:
     /// `AppModelActivityDriverTests` is what turns deleting the task that
     /// runs `ConsoleActivityDriver` red (#167). Defaults are the production
-    /// values: `HostStore()` reads the real persisted catalog and
-    /// `ConsoleStore()` reaches the real `sshSessionFactory()`.
+    /// values: `HostStore()` reads the real persisted catalog and the
+    /// `ConsoleStore` reaches the real `sshSessionFactory()`, keeps Chat's
+    /// cache on disk, and writes the widgets' Usage snapshot.
     init(
         pushRegistration: PushRegistrationStore,
         sceneDirectory: AgentSceneDirectory,
         hostStore: HostStore = HostStore(),
-        console: ConsoleStore = ConsoleStore(),
+        console: ConsoleStore = ConsoleStore(
+            chatCache: FileChatTranscriptCache(), usageWidgets: AgentUsageWidgetPublisher()),
+        overlayNetworks: OverlayNetworkStore = OverlayNetworkStore(),
         activity: AppActivityCoordinator = AppActivityCoordinator()
     ) {
         self.pushRegistration = pushRegistration
         self.sceneDirectory = sceneDirectory
         self.hostStore = hostStore
         self.console = console
+        self.overlayNetworks = overlayNetworks
         self.activity = activity
         terminalThemes = TerminalThemeSettings()
         terminalZoom = TerminalZoomSettings()
@@ -66,6 +76,7 @@ final class HeelerAppModel {
         snippets = SnippetStore()
         appearance = AppAppearanceSettings()
         inputMode = AgentInputModeSettings()
+        detailSurface = AgentDetailSurfaceSettings()
         let relaySettings = NotificationRelaySettings()
         self.relaySettings = relaySettings
         // Preference reads/writes borrow the Console's live per-Host SSH
@@ -120,11 +131,18 @@ final class HeelerAppModel {
             },
             rowLayout: { [weak console] id in console?.rowLayout(for: id) })
         self.liveActivities = liveActivities
+        hostRemoval = HostRemovalDependencies.app(
+            console: console, notificationPreferences: notificationPreferences,
+            liveActivities: liveActivities)
         // A Live Activity write that found no entry stays dirty; a fresh
         // registration is its cue to retry.
         notificationPreferences.onRegistered = { [weak liveActivities] _ in
             liveActivities?.connectionsDidChange()
         }
+        // A window can render before start() runs. Publish the configured
+        // Hosts and begin loading saved Chats before that first render;
+        // connections still wait for start() to resume the Console.
+        console.setHosts(hostStore.hosts)
     }
 
     var terminal: TerminalSettings {
@@ -158,8 +176,17 @@ final class HeelerAppModel {
         // background and rendering nothing, and a consumer that only compares
         // the value it last saw misses both that edge and the resume behind
         // it (#142). The stream has one consumer for the life of the process.
+        // Overlay nodes stop with the connections they carried. After the
+        // Console resumes, pending browser sign-ins also resume, even when
+        // no Host has been added to bring their nodes back up with a dial.
+        let overlayNetworks = overlayNetworks
         Task {
-            await ConsoleActivityDriver(activity: activity, console: console).run()
+            await ConsoleActivityDriver(
+                activity: activity,
+                console: console,
+                afterSuspend: { await overlayNetworks.suspend() },
+                afterResume: { await overlayNetworks.resumeBrowserSignInAfterActivation() }
+            ).run()
         }
         Task { await pushRegistration.refresh() }
         // Existing installs' Notification Keys predate the app-group
@@ -181,9 +208,32 @@ final class HeelerAppModel {
             Task { await pushRegistration.refresh() }
         case .background:
             activity.didEnterBackground()
+            Task { await scheduleUsageRefresh() }
         default:
             break
         }
+    }
+
+    /// The Usage widgets' app refresh task: reads the Hosts whose figures
+    /// went stale and asks for the next run.
+    func refreshUsageInBackground() async {
+        guard await scheduleUsageRefresh(), let publisher = console.usageWidgets else { return }
+        await AgentUsageBackgroundRefresh.live().run(
+            hosts: hostStore.hosts, publisher: publisher, isUsageEnabled: { console.isUsageEnabled })
+    }
+
+    /// Asks for a background Usage read while Usage is on and a widget is installed,
+    /// and withdraws the request once none is.
+    @discardableResult
+    private func scheduleUsageRefresh() async -> Bool {
+        guard console.isUsageEnabled, let publisher = console.usageWidgets, !hostStore.hosts.isEmpty,
+            await publisher.widgetsInstalled()
+        else {
+            AgentUsageBackgroundRefresh.cancel()
+            return false
+        }
+        AgentUsageBackgroundRefresh.schedule()
+        return true
     }
 
     /// Store-to-store wiring that used to hang off the single window's view.

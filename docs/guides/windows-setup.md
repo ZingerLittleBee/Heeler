@@ -1,12 +1,14 @@
 # Windows setup
 
 Set up a native Windows Host for Heeler, including SSH login and automatic
-startup of SSH and herdr. Use Windows 11, native herdr 0.9.3 or newer, and a
-Heeler build that includes [native Windows Host support (#399)](https://github.com/ZingerLittleBee/Heeler/issues/399).
+startup of SSH and herdr.
 
-Use the same Windows account for SSH login, herdr, coding agents, and the
-startup task. The examples use the named session `heeler-win-test`; replace
-it consistently if you choose another name.
+## Before you start
+
+- Windows 11 with administrator access.
+- Native herdr 0.9.3 or newer, and Heeler 0.1.13 or newer.
+- Use the same Windows account for SSH login, herdr, coding agents, and the startup task.
+- The examples use the named session `heeler-win-test`; replace it consistently if you choose another name.
 
 ## 1. Enable SSH
 
@@ -83,7 +85,8 @@ herdr remote-api-bridge --check
 Expect herdr 0.9.3 or newer and the bridge marker `herdr-api-bridge-v1`.
 See [herdr's native Windows guide](https://herdr.dev/docs/windows-beta/).
 
-Start the named session once in a native Windows terminal:
+Start the named session once in a normal native Windows terminal, not one
+opened as Administrator:
 
 ```powershell
 herdr --session heeler-win-test
@@ -111,16 +114,16 @@ ipconfig
 For a local account, use the username shown after the computer name in
 `whoami`. Use the IPv4 address of the active network adapter.
 
-In Heeler, add a Host manually with these values:
+In Heeler, open **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the address and port and tap **Save**, then fill in the Host fields:
 
 | Field | Value |
 | --- | --- |
-| Address | The Windows address reachable from your phone |
-| Port | `22`, unless you configured a different SSH port |
-| Username | The Windows account running herdr |
+| User | The Windows account running herdr |
+| Address (in Route) | The Windows address reachable from your phone |
+| Port (in Route) | `22`, unless you configured a different SSH port |
 | Authentication | `Password` |
 | Password | The Windows account password, rather than its Windows Hello PIN |
-| Session name | `heeler-win-test` |
+| herdr Session | `heeler-win-test` |
 
 Before trusting the first connection, compare Heeler's SSH host key
 fingerprint with the matching public host key on Windows. For Ed25519:
@@ -174,7 +177,7 @@ Open **Task Scheduler as Administrator**, select **Create Task**, and use:
 | Tab | Setting |
 | --- | --- |
 | General | Name: `Herdr Server`. Run as the Windows account used by Heeler. |
-| General | Select **Run whether user is logged on or not**. Clear **Do not store password**. Highest privileges are not required. |
+| General | Select **Run whether user is logged on or not**. Clear **Do not store password**. Leave **Run with highest privileges** cleared. |
 | Triggers | **At startup**, optionally delayed by 30 seconds. |
 | Actions | **Start a program**. Program: the full `herdr.exe` path printed above. |
 | Actions | Arguments: `--session heeler-win-test server`. Start in: the home directory printed above. |
@@ -188,6 +191,12 @@ the new password. Running under SYSTEM would use a different account and
 configuration directory. Microsoft documents the
 [task login types](https://learn.microsoft.com/en-us/windows/win32/taskschd/principal-logontype)
 and the [default 72-hour execution limit](https://learn.microsoft.com/en-us/windows/win32/taskschd/tasksettings-executiontimelimit).
+
+From herdr 0.9.4, an elevated server, one started with highest privileges or
+from a terminal opened as Administrator, accepts only administrator
+terminals. To let normal terminals in, start it with
+`--allow-unelevated-clients` or set `[server] allow_unelevated_clients = true`
+in herdr's config.
 
 ### Verify the saved task
 
@@ -224,8 +233,8 @@ after a reboot.
 ## Supported features and further checks
 
 Native Windows supports manual SSH connections, session selection, live
-Agents and Terminals, and directory browsing. Pairing, Changes, Skills,
-uploads, and notification registration are currently unavailable. Keep
+Agents and Terminals, and directory browsing. Pairing, Chat, Usage, Changes,
+Skills, uploads, and notification registration are currently unavailable. Keep
 herdr running before connecting; Heeler does not start the Windows server
 automatically.
 

@@ -81,9 +81,9 @@ def phase(name: str, shard: str, tests: list[dict], suites: set[str], lane: str 
 def records(layout: str = "sharded", package: bool = False) -> list[dict]:
     session = [method(evidence.SESSION, index) for index in range(13)]
     direct = [method(evidence.DIRECT, index) for index in range(9)]
-    weak = [method(evidence.WEAK, index) for index in range(10)]
+    weak = [method(evidence.WEAK, index) for index in range(11)]
     shared = [method(suite, 0) for suite in sorted(evidence.SHARED)]
-    shared += [method("HeelerSSHTransportBehaviorE2ETests", index) for index in range(1, 101)]
+    shared += [method("HeelerSSHTransportBehaviorE2ETests", index) for index in range(1, 113)]
     skipped = copy.deepcopy(session + direct + shared + weak)
     for test in skipped:
         test["result"] = "Skipped"
@@ -104,7 +104,11 @@ def records(layout: str = "sharded", package: bool = False) -> list[dict]:
                   phase("full-lane", "ordinary", ordinary + skipped, set())]
     if package:
         tests = [method(suite, 0, target="HeelerSSHTests") for suite in sorted(evidence.PACKAGE_SUITES)]
-        tests += [method("SessionDriverE2ETests", index, target="HeelerSSHTests") for index in range(1, 67)]
+        tests += [method("SessionDriverE2ETests", index, target="HeelerSSHTests") for index in range(1, 78)]
+        # SSHExternalStreamTests are free @Test functions, outside any suite.
+        tests += [{"identity": f"HeelerSSHTests/externalStream{index}()", "result": "Passed",
+                   "cases": [{"identity": f"HeelerSSHTests/externalStream{index}()", "result": "Passed"}]}
+                  for index in range(1, 4)]
         result.append(phase("package-e2e", "all", tests, set(), "package"))
     return result
 
@@ -139,8 +143,8 @@ class AggregateTests(unittest.TestCase):
     def test_complete_sharded_union_matches_serial_including_parameter_cases(self):
         write_records(self.baseline, records("serial"))
         result = self.check(baseline=True)
-        self.assertEqual(result["passed_methods"], 907)
-        self.assertEqual(result["passed_cases"], 908)
+        self.assertEqual(result["passed_methods"], 920)
+        self.assertEqual(result["passed_cases"], 921)
         self.assertTrue(result["baseline_compared"])
 
     def test_one_missing_parameter_case_fails_despite_identical_method_and_summary_counts(self):
@@ -156,7 +160,7 @@ class AggregateTests(unittest.TestCase):
         self.values[-1]["tests"][0] = copy.deepcopy(parameterized)
         previous[-1]["tests"][0] = copy.deepcopy(parameterized)
         write_records(self.baseline, previous)
-        self.assertEqual(self.check(baseline=True, package=True)["passed_cases"], 980)
+        self.assertEqual(self.check(baseline=True, package=True)["passed_cases"], 1007)
         self.values[-1]["tests"][0]["cases"].pop()
         with self.assertRaisesRegex(ValueError, "parameterized-case union differs"):
             self.check(baseline=True, package=True)
@@ -167,7 +171,7 @@ class AggregateTests(unittest.TestCase):
         self.values[-1]["tests"][0] = copy.deepcopy(parameterized)
         previous[-1]["tests"][0] = copy.deepcopy(parameterized)
         write_records(self.baseline, previous)
-        self.assertEqual(self.check(baseline=True)["passed_cases"], 909)
+        self.assertEqual(self.check(baseline=True)["passed_cases"], 922)
         self.values[-1]["tests"][0]["cases"].pop()
         with self.assertRaisesRegex(ValueError, "parameterized-case union differs"):
             self.check(baseline=True)
@@ -255,13 +259,13 @@ class AggregateTests(unittest.TestCase):
     def test_new_ordinary_methods_are_included_automatically_without_a_fixed_total(self):
         self.values[-1]["tests"].append(method("NewSuite", 0))
         self.values[-1]["summary"]["total"] += 1
-        self.assertEqual(self.check()["passed_methods"], 908)
+        self.assertEqual(self.check()["passed_methods"], 921)
 
     def test_package_is_required_when_requested_and_retains_its_contract(self):
         with self.assertRaisesRegex(ValueError, "Missing worker"):
             self.check(package=True)
         self.values = records(package=True)
-        self.assertEqual(self.check(package=True)["passed_methods"], 978)
+        self.assertEqual(self.check(package=True)["passed_methods"], 1005)
 
     def test_package_cannot_drop_back_to_the_old_seventy_method_count(self):
         self.values = records(package=True)

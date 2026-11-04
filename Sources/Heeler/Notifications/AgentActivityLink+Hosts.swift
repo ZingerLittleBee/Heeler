@@ -12,8 +12,8 @@ extension AgentActivityLink.Target {
 extension AgentActivityLink.HostReference {
     /// Heeler's own links carry the id. Another app's link is looked up among
     /// the Hosts on its herdr session, since pane ids repeat across sessions:
-    /// by address, and by name only when no address matches, both ignoring
-    /// case. Two Hosts answering the same way is no answer, never a guess.
+    /// by the address of any of a Host's routes, and by name only when no
+    /// address matches, both ignoring case. Two Hosts answering the same way is no answer, never a guess.
     fileprivate func resolvedID(in hosts: [Host]) -> Host.ID? {
         switch self {
         case .id(let id):
@@ -21,7 +21,7 @@ extension AgentActivityLink.HostReference {
         case .lookup(let value, let session):
             let socket = session.map(HerdrSocketLocation.namedSession) ?? .defaultSession
             let onSession = hosts.filter { $0.socketLocation == socket }
-            let byAddress = onSession.filter { Self.matches($0.address, value) }
+            let byAddress = onSession.filter { $0.answers(toAddress: value) }
             let found =
                 byAddress.isEmpty ? onSession.filter { Self.matches($0.name, value) } : byAddress
             return found.count == 1 ? found.first?.id : nil

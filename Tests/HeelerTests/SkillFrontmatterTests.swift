@@ -107,6 +107,23 @@ struct SkillFrontmatterTests {
         #expect(parsed.description == nil)
     }
 
+    @Test func readsUserInvocableFalse() {
+        let hidden = SkillFrontmatter.parse(
+            """
+            ---
+            name: e2e-hidden
+            user-invocable: false
+            ---
+            """)
+        let quoted = SkillFrontmatter.parse("---\nuser-invocable: \"False\"\n---\n")
+        let shown = SkillFrontmatter.parse("---\nuser-invocable: true\n---\n")
+
+        #expect(!hidden.isUserInvocable)
+        #expect(!quoted.isUserInvocable)
+        #expect(shown.isUserInvocable)
+        #expect(SkillFrontmatter.parse("---\nname: plain\n---\n").isUserInvocable)
+    }
+
     @Test func emptyValuesReadAsMissing() {
         let parsed = SkillFrontmatter.parse(
             """

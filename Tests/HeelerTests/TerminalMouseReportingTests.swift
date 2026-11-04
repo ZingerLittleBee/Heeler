@@ -167,6 +167,33 @@ struct TerminalMouseReportingTests {
 
     /// Without tracking a tap is only a keyboard affordance for the input row;
     /// with it, every cell is a target the TUI wants to hear about.
+    /// A trackpad or mouse-wheel scroll knows where its pointer is, so a split
+    /// TUI scrolls the pane under it rather than the one at the centre (#512).
+    @MainActor
+    @Test func aPointerScrollReportsThePointersCell() async throws {
+        var sent = Data()
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onScroll: { sequence, _ in sent.append(sequence) })
+        terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = try await makeTestWindow(
+            frame: terminal.bounds,
+            rootViewController: controller)
+        defer { window.isHidden = true }
+
+        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+        terminal.layoutIfNeeded()
+        try await settle()
+
+        let mapper = terminal.gridPointMapper
+        let point = CGPoint(
+            x: mapper.gridOrigin.x + mapper.cellSize.width * 2.5,
+            y: mapper.gridOrigin.y + mapper.cellSize.height * 1.5)
+        #expect(terminal.scrollTouch(translationY: mapper.cellSize.height, at: point) == 1)
+        #expect(sent == Data("\u{1B}[<64;3;2M".utf8), "mapper=\(mapper)")
+    }
+
     @MainActor
     @Test func mouseTrackingOpensTheWholeSurfaceToTaps() throws {
         let terminal = TerminalScreenView.makeConfiguredTerminal()

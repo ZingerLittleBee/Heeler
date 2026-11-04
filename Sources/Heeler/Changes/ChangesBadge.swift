@@ -130,8 +130,9 @@ enum ChangesBadgePalette {
 }
 
 /// An Agent's Checkout totals, "+12 −7" in green and red, or, when no line
-/// changed, Tide's file counts in gray, "+1 !2 ?3", at the trailing end of its Agents list row's
-/// last detail line and of Agent detail's status line. Not a control; the row opens the Agent, and the Agent menu
+/// changed, Tide's file counts in gray, "+1 !2 ?3", on the right of the Agents
+/// list row's line whose Row Slot holds `changes` (by default its last detail
+/// line) and at the trailing end of Agent detail's status line. Not a control; the row opens the Agent, and the Agent menu
 /// opens Changes. Exact totals come first; a line without room takes the
 /// shortened form.
 struct ChangesRowTotals: View {
@@ -165,6 +166,10 @@ struct ChangesRowTotals: View {
         self.identifier = identifier
     }
 
+    /// Whether there is anything to show, for a row that holds only the
+    /// totals.
+    var hasTotals: Bool { badge != nil }
+
     private var badge: ChangesBadge? {
         switch source {
         case .store(let store):
@@ -186,11 +191,7 @@ struct ChangesRowTotals: View {
     private func totals(_ badge: ChangesBadge, style: ChangesBadge.Style) -> some View {
         HStack(spacing: 4) {
             if badge.showsFiles {
-                // Gray, as the Tide git item draws them on the status line.
-                ForEach(badge.fileCounts, id: \.symbol) { count in
-                    Text(badge.fileCountText(count, style: style, locale: locale))
-                        .foregroundStyle(.secondary)
-                }
+                fileCounts(badge, style: style)
             } else {
                 if badge.showsAdded {
                     Text(badge.addedText(style, locale: locale))
@@ -210,5 +211,20 @@ struct ChangesRowTotals: View {
         .accessibilityLabel("Changes: " + badge.accessibilityValue)
         // VoiceOver hears exact counts either way; this says which one shows.
         .accessibilityIdentifier(identifier + (style == .exact ? ".exact" : ".compact"))
+    }
+
+    /// Tide's file counts, gray, as the Tide git item draws them on the status line.
+    ///
+    /// SwiftUI can build these cells on its async render thread
+    /// (FB20692404). A main-actor cell closure checks its isolation on entry,
+    /// and on iOS 18 that check traps there (#471), so the closure is
+    /// `@Sendable` and takes the locale by value.
+    func fileCounts(
+        _ badge: ChangesBadge, style: ChangesBadge.Style
+    ) -> ForEach<[TideGitItem.FileCount], String, some View> {
+        ForEach(badge.fileCounts, id: \.symbol) { @Sendable [locale] count in
+            Text(badge.fileCountText(count, style: style, locale: locale))
+                .foregroundStyle(.secondary)
+        }
     }
 }

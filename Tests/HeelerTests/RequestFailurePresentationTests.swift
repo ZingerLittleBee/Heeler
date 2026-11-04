@@ -1,4 +1,5 @@
 import Foundation
+import HeelerSSH
 import Testing
 
 @testable import Heeler
@@ -13,7 +14,8 @@ struct RequestFailurePresentationTests {
         #expect(
             NotificationPreferencesStore.message(
                 for: NotificationRegistrationError.pluginNotInstalled)
-                == "Install the Heeler plugin on this Host, then check again.")
+                == "The Heeler plugin is missing or turned off on this Host. "
+                + "See this Host's page in Hosts, then check again.")
         #expect(
             NotificationPreferencesStore.message(
                 for: NotificationRegistrationError.pluginProbeFailed(detail: "boom"))
@@ -56,6 +58,10 @@ struct RequestFailurePresentationTests {
         #expect(
             NotificationPreferencesStore.message(for: TransportError.herdrBinaryNotFound)
                 == TransportError.herdrBinaryNotFound.presentation.message)
+        let launcher = TransportError.herdrLauncherNotFound(path: "/opt/example/bin/herdr")
+        #expect(
+            NotificationPreferencesStore.message(for: launcher)
+                == launcher.presentation.message)
     }
 
     @Test func attachKeepsItsContextSpecificArms() {
@@ -68,15 +74,53 @@ struct RequestFailurePresentationTests {
         #expect(
             AttachTerminalStore.message(for: TransportError.timedOut)
                 == "The Host did not answer in time.")
+        // Attach is cancelled under the user when the Host's connection is
+        // replaced, so the copy names the reset rather than a user cancel.
         #expect(
             AttachTerminalStore.message(for: TransportError.cancelled)
-                == "The session failed: \(TransportError.cancelled)")
+                == "The Host's connection was reset.")
     }
 
     @Test func attachReplacedBranchRendersTheSharedMessage() {
         #expect(
             AttachTerminalStore.message(for: TransportError.herdrBinaryNotFound)
                 == TransportError.herdrBinaryNotFound.presentation.message)
+        let launcher = TransportError.herdrLauncherNotFound(path: "/opt/example/bin/herdr")
+        #expect(AttachTerminalStore.message(for: launcher) == launcher.presentation.message)
+        let dropped = TransportError.channelFailed(detail: "terminal controller: gone")
+        #expect(
+            AttachTerminalStore.message(for: dropped)
+                == "Connection dropped: terminal controller: gone.")
+        // An unclassified SSH read failure names the side, not its case.
+        let readFailure = HeelerSSHTransport.attachFailure(
+            HeelerSSHAttachPumpError.output(SSHError.channelFailed),
+            attachCommand: "herdr agent attach")
+        #expect(
+            AttachTerminalStore.message(for: readFailure)
+                == "Connection dropped: attach channel failed.")
+    }
+
+    /// An old herdr earlier on the SSH PATH exits 1 after losing the server;
+    /// the message quotes it instead of only the status (#431).
+    @Test func attachExitQuotesHerdrsOwnLine() {
+        #expect(
+            AttachTerminalStore.message(
+                for: TransportError.attachExited(
+                    status: 1,
+                    output: "herdr: lost connection to server: server closed connection"))
+                == "herdr exited with status 1: herdr: lost connection to server: "
+                + "server closed connection.")
+        #expect(
+            AttachTerminalStore.message(
+                for: TransportError.attachExited(status: 2, output: "Error: no such pane."))
+                == "herdr exited with status 2: Error: no such pane.")
+        #expect(
+            AttachTerminalStore.message(for: TransportError.attachExited(status: 1, output: nil))
+                == "herdr exited with status 1.")
+    }
+
+    @Test func attachNeverShowsADebugDescription() {
+        #expect(AttachTerminalStore.message(for: CancellationError()) == "The session failed.")
     }
 
     @Test func composerKeepsItsContextSpecificArms() {
@@ -101,5 +145,7 @@ struct RequestFailurePresentationTests {
         #expect(
             AgentComposerStore.message(for: TransportError.herdrBinaryNotFound)
                 == TransportError.herdrBinaryNotFound.presentation.message)
+        let launcher = TransportError.herdrLauncherNotFound(path: "/opt/example/bin/herdr")
+        #expect(AgentComposerStore.message(for: launcher) == launcher.presentation.message)
     }
 }

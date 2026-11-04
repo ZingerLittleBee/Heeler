@@ -4,8 +4,8 @@
 
 # Heeler
 
-<a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge.svg" alt="Available on TestFlight" height="40" /></a>
 <a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on the App Store" height="40" /></a>
+<a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge.svg" alt="Available on TestFlight" height="40" /></a>
 
 **A native iOS companion app for [herdr](https://herdr.dev) — an agent-first terminal runtime.**
 
@@ -24,21 +24,25 @@ English | [简体中文](./README-zh.md)
 
 ---
 
-Heeler is an **agent console**: a native dashboard of every coding agent running on your machines, sorted by who needs you. Open an Agent to read and steer its live terminal, draft with the full iOS keyboard in a native Composer, and Send the complete message once — all over plain SSH.
+Heeler is an independent **herdr mobile client** and agent console for Claude Code, Codex, and other coding Agents on iPhone and iPad. Agents run on your own Hosts with herdr; Heeler connects over SSH. Monitor multiple Agents across machines, sorted by who needs you, then open a live terminal or supported Chat conversation to send instructions.
 
 ## Screenshots
 
-| Agent Console | Direct Input + Terminal keyboard | Live terminal |
+| Agent Console | Live terminal | Chat |
 | --- | --- | --- |
-| <img src="docs/images/console-iphone.png" width="240" alt="Agent Console listing Agents across Hosts with their status on iPhone" /> | <img src="docs/images/agent-iphone.png" width="240" alt="Agent Direct Input with shortcuts and a full Terminal keyboard on iPhone" /> | <img src="docs/images/live-terminal-iphone.png" width="240" alt="Agent's live terminal with Direct Input on iPhone" /> |
+| <img src="docs/images/console-iphone.png" width="240" alt="Agent Console listing Agents across Hosts with their status on iPhone" /> | <img src="docs/images/live-terminal-iphone.png" width="240" alt="Agent's live terminal with Direct Input on iPhone" /> | <img src="docs/images/chat-iphone.png" width="240" alt="Chat showing an Agent's conversation as native messages on iPhone" /> |
 
-| Changes | File diff | Terminals |
+| Keyboard | Changes | Terminals |
 | --- | --- | --- |
-| <img src="docs/images/changes-iphone.png" width="240" alt="Changes listing a Checkout's staged and unstaged files on iPhone" /> | <img src="docs/images/diff-iphone.png" width="240" alt="A changed JSON file with its edited words highlighted on iPhone" /> | <img src="docs/images/terminal-iphone.png" width="240" alt="Terminals tab listing shell panes by Host and Workspace on iPhone" /> |
+| <img src="docs/images/agent-iphone.png" width="240" alt="Agent Direct Input with shortcuts and a full Terminal Keyboard on iPhone" /> | <img src="docs/images/changes-iphone.png" width="240" alt="Changes listing a Checkout's staged and unstaged files on iPhone" /> | <img src="docs/images/terminal-iphone.png" width="240" alt="Terminals tab listing shell panes by Host and Workspace on iPhone" /> |
 
 | Skills | Hosts | Live Activity |
 | --- | --- | --- |
 | <img src="docs/images/skills-iphone.png" width="240" alt="Composer Skills suggestions on iPhone" /> | <img src="docs/images/hosts-iphone.png" width="240" alt="Hosts tab grouping Hosts by connection status with their latency on iPhone" /> | <img src="docs/images/live-activity-iphone.png" width="240" alt="Lock-screen Live Activity tracking Agents on iPhone" /> |
+
+| Usage | Widgets | Lock Screen widgets |
+| --- | --- | --- |
+| <img src="docs/images/usage-iphone.png" width="240" alt="Usage tab with 30 days of estimated API cost, Usage Limits, and a daily chart on iPhone" /> | <img src="docs/images/widgets-iphone.png" width="240" alt="Home Screen with Usage and Usage Limits widgets in small and medium sizes on iPhone" /> | <img src="docs/images/widgets-lock-iphone.png" width="240" alt="Lock Screen with Usage and Usage Limits accessory widgets on iPhone" /> |
 
 <a href="docs/ipad-screenshots.md"><img src="docs/images/windowed-ipad.png" width="760" alt="Heeler in a floating iPad window" /></a>
 
@@ -52,6 +56,10 @@ Heeler is an **agent console**: a native dashboard of every coding agent running
   scrollback, momentum touch scrolling that also drives full-screen TUIs,
   long-press selection, takeover of a stale terminal owner, and quietly
   collected web links to open later.
+- **Chat** — read an Agent's conversation as native messages instead of a
+  terminal screen, reply from the Composer, and answer a Blocked Agent with
+  buttons; for Claude Code, Codex, Pi, Oh My Pi, Grok Build, and OpenCode
+  ([Read more](https://docs.heeler.bybee.dev/chat)).
 - **Composer** — draft locally with the full iOS keyboard (autocorrect, IME,
   dictation), then Send once; the tools keyboard adds Agent control keys,
   Agent Skills, reusable Snippets, and terminal appearance.
@@ -66,6 +74,10 @@ Heeler is an **agent console**: a native dashboard of every coding agent running
   Agent goes Blocked or Done, and a lock-screen / Dynamic Island banner
   tracking Agents in real time; the relay can never read the content
   ([PRIVACY.md](PRIVACY.md)).
+- **Usage** — Claude Code and Codex Usage Limits with their reset times, and
+  up to 30 days of Token Usage with its estimated API cost, across all Hosts
+  or one; Home Screen and Lock Screen widgets keep them in view
+  ([Read more](https://docs.heeler.bybee.dev/usage)).
 - **Worktrees** — start an Agent on a clean checkout of the workspace's repo.
 - **Appearance** — System, Light, or Dark; 30 terminal themes with separate
   Light and Dark slots; bundled JetBrains Mono and IBM Plex Mono; pinch to
@@ -81,14 +93,22 @@ the event stream, and interactive terminals run `herdr agent attach
 --takeover` on an SSH PTY. The only prerequisites are SSH access and a
 running herdr — no server changes, no extra packages. The SSH server must
 allow stream-local forwarding (the OpenSSH default); onboarding calls it out
-when it's disabled.
+when it's disabled. On Fedora, RHEL, and their derivatives, SELinux can deny the
+socket open even when forwarding is allowed — see [SELinux on a Fedora or RHEL
+Host](docs/guides/selinux.md).
 
 Native Windows Hosts (herdr >= 0.9.3) connect over SSH and are added manually.
+
+For Tailscale, ZeroTier, or EasyTier access, follow the [Overlay Network setup guides](docs/guides/overlay-networks.md). They cover macOS installation, Tailscale without a VPN on the Mac, Heeler configuration, and connection checks. Heeler joins these networks inside the app without an iOS VPN configuration; you need a Heeler version with **Settings > Overlay Networks**.
+
+[View the Heeler setup screenshots](docs/guides/overlay-networks.md#heeler-setup-screenshots) for Tailscale, ZeroTier, and both EasyTier modes.
 
 Unroutable machines can sit behind an SSH Jump Host:
 
 - [Set up remote access step by step](docs/guides/vps-jump-host-setup.md)
 - [Architecture, security boundaries, and the VPS runbook](docs/guides/vps-jump-host.md)
+
+A Host can have several routes, such as its LAN address at home and an overlay network or Jump Host elsewhere: [Reach a Host on several routes](docs/guides/host-routes.md).
 
 ## Installation
 
@@ -105,14 +125,15 @@ On a macOS or Linux machine running herdr (Node >= 20, herdr >= 0.7.5, OpenSSH s
 macOS: **System Settings > General > Sharing > Remote Login**):
 
 ```bash
-herdr plugin install ZingerLittleBee/Heeler/plugin --ref main --yes
+herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 herdr plugin action invoke heeler.pair
 ```
 
 Scan the Pairing Code QR it shows and the machine is added as a Host — the
 code carries the addresses, the host key fingerprint, and SSH key enrollment.
 The same [plugin](plugin/README.md) delivers the encrypted notifications once
-you enable them for the Host in the app.
+you enable them for the Host in the app. For every step, the popup's keys, and
+troubleshooting, see the [pairing guide](https://docs.heeler.bybee.dev/pairing).
 
 ## Opening an Agent from another app
 

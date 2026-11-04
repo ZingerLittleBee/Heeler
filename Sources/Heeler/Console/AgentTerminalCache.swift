@@ -51,8 +51,7 @@ final class AgentTerminalCache {
     /// Only the window holding the Host's Agent presentation may acquire.
     /// Offstage details keep private stores until they are activated.
     func acquire(
-        agent: ConsoleAgent, console: ConsoleStore, composer: AgentComposerStore,
-        ownerID: UUID,
+        agent: ConsoleAgent, console: ConsoleStore, ownerID: UUID,
         isPresented: @escaping @MainActor () -> Bool = { true }
     ) -> Entry {
         if let current = entries[agent.id], current.terminalID == agent.agent.terminalID,
@@ -80,13 +79,11 @@ final class AgentTerminalCache {
                 try Task.checkCancellation()
                 try await runner(request, handler)
             },
-            stageImage: console.imageStager(for: agent.hostID),
-            stageFile: console.fileStager(for: agent.hostID),
-            composer: composer,
             closePane: { [weak console] in
                 guard let console else { throw CancellationError() }
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             })
+        attach.input.isEnabled = console.isHostReadyForInput(agent.hostID)
         let entry = Entry(
             agentID: agent.id, terminalID: agent.agent.terminalID,
             attach: attach, lifetime: lifetime, ownerID: ownerID)

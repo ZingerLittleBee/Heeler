@@ -42,11 +42,16 @@ struct PluginNoticeIcon: View {
 }
 
 /// What to run on the Host to install, update, enable, or replace the
-/// plugin, opened from the Host page's plugin row.
+/// plugin, opened from the Host page's plugin row. When Heeler can run it
+/// itself, the notice's action does, and says why if it did not finish.
 struct PluginNoticeSheet: View {
     let notice: HeelerPluginPresentation.Notice
+    let actionState: HostOnboardingStore.PluginActionState
+    let runAction: (HeelerPluginPresentation.Notice.Action) -> Void
     let runChecks: () -> Void
     @Environment(\.dismiss) private var dismiss
+
+    private var isRunningAction: Bool { actionState == .running }
 
     var body: some View {
         NavigationStack {
@@ -60,24 +65,29 @@ struct PluginNoticeSheet: View {
                             PluginNoticeIcon(tone: notice.tone)
                         }
                         .accessibilityIdentifier("hosts.detail.plugin.notice")
-                        ForEach(notice.commands, id: \.self) { command in
-                            CommandBlock(command: command)
+                        ForEach(notice.commands, id: \.self) { @Sendable command in
+                            MainActorContent { CommandBlock(command: command) }
                         }
                     }
                     .padding(.vertical, 4)
                 } footer: {
                     if !notice.notes.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            ForEach(notice.notes, id: \.self) { note in
+                            ForEach(notice.notes, id: \.self) { @Sendable note in
                                 Text(note)
                             }
                         }
                     }
                 }
 
+                if let action = notice.action {
+                    actionSection(action)
+                }
+
                 if !notice.commands.isEmpty {
                     Section {
                         Button("Run Checks Again", systemImage: "arrow.clockwise", action: runChecks)
+                            .disabled(isRunningAction)
                     } footer: {
                         Text("After running the commands on the Host.")
                     }
@@ -93,6 +103,53 @@ struct PluginNoticeSheet: View {
         }
         .presentationDetents([.medium, .large])
     }
+
+    private func actionSection(_ action: HeelerPluginPresentation.Notice.Action) -> some View {
+        Section {
+            Button {
+                runAction(action)
+            } label: {
+                if isRunningAction {
+                    Label {
+                        Text("Running on Host…")
+                    } icon: {
+                        ProgressView()
+                    }
+                } else {
+                    Label(action.title, systemImage: action.systemImage)
+                }
+            }
+            .disabled(isRunningAction)
+            .accessibilityIdentifier("hosts.detail.plugin.action")
+        } footer: {
+            if case .failed(let failure) = actionState {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label {
+                        Text(failure.message)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        PluginWarningIcon()
+                    }
+                    if let detail = failure.detail {
+                        Text(detail)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("hosts.detail.plugin.actionFailure")
+            }
+        }
+    }
+}
+
+extension HeelerPluginPresentation.Notice.Action {
+    var systemImage: String {
+        if steps.contains(.install) { return "arrow.down.circle" }
+        if steps.allSatisfy({ if case .enable = $0 { true } else { false } }) { return "power" }
+        return "trash"
+    }
 }
 
 extension View {
@@ -101,22 +158,31 @@ extension View {
     func pluginNoticeSheet(
         _ notice: HeelerPluginPresentation.Notice?,
         isPresented: Binding<Bool>,
+        actionState: HostOnboardingStore.PluginActionState,
+        runAction: @escaping (HeelerPluginPresentation.Notice.Action) -> Void,
         runChecks: @escaping () -> Void
     ) -> some View {
-        modifier(PluginNoticeSheetModifier(notice: notice, isPresented: isPresented, runChecks: runChecks))
+        modifier(
+            PluginNoticeSheetModifier(
+                notice: notice, isPresented: isPresented, actionState: actionState,
+                runAction: runAction, runChecks: runChecks))
     }
 }
 
 private struct PluginNoticeSheetModifier: ViewModifier {
     let notice: HeelerPluginPresentation.Notice?
     @Binding var isPresented: Bool
+    let actionState: HostOnboardingStore.PluginActionState
+    let runAction: (HeelerPluginPresentation.Notice.Action) -> Void
     let runChecks: () -> Void
 
     func body(content: Content) -> some View {
         content
             .sheet(isPresented: $isPresented) {
                 if let notice {
-                    PluginNoticeSheet(notice: notice) {
+                    PluginNoticeSheet(
+                        notice: notice, actionState: actionState, runAction: runAction
+                    ) {
                         isPresented = false
                         runChecks()
                     }

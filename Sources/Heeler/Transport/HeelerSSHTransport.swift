@@ -1,17 +1,22 @@
 import Foundation
 import Synchronization
+import HeelerOverlay
 import HeelerSSH
 
 private struct HeelerSSHSessionListResponse: Decodable {
     let sessions: [HerdrSession]
 }
 
-private enum HeelerSSHAttachPumpError: Error, Sendable {
-    case input(String)
-    case output(String)
+enum HeelerSSHAttachPumpError: Error, Sendable {
+    /// The underlying failure, left unmapped so the Attach reader can apply
+    /// the Transport's own classification.
+    case input(any Error)
+    case output(any Error)
     /// Remote process exited nonzero. Distinct from a channel I/O failure so
     /// Attach can map a bare-`herdr` exit 127 onto the PATH problem (#206).
-    case remoteExit(Int32)
+    /// `output` is the line the command last printed outside the alternate
+    /// screen (#431).
+    case remoteExit(Int32, output: String?)
 }
 
 /// The live PTY operations used by the Attach pumps. `SSHPTYChannel` is the
@@ -319,9 +324,15 @@ actor HeelerSSHTransport: Transport {
     static let maxConnectionChannels = SSHChannelAdmission.Limits.production.connection
 
     private let connection: SSHConnection
+    nonisolated let routeID: UUID?
     private let socketLocation: HerdrSocketLocation
     private let requestTimeout: Duration
     private let gitExecTimeout: Duration
+    private let chatQueryTimeout: Duration
+    private let pluginInstallTimeout: Duration
+    /// One OpenCode query at a time (ADR 0025). A query past its deadline
+    /// keeps the lane until its exec drains, so polls never stack execs.
+    private let chatQueryLane = GitExecGate()
     private let wakeCommand: String
     private let sessionListCommand: String
     private let agentDiscoveryCommand: String
@@ -331,6 +342,9 @@ actor HeelerSSHTransport: Transport {
     private let stageDirectoryCommand: String
     private let pluginListCommand: String
     private let notificationConfigDirCommand: String
+    /// The Host's herdr endpoint launcher (ADR 0023); nil runs the `herdr` on
+    /// the SSH PATH.
+    private let herdrLauncher: HerdrLauncher?
     private let channelAdmission: SSHChannelAdmission
     private let environment = SharedAsyncOperation<RemoteHostEnvironment>(cachesSuccess: true)
     private let windowsBridgeCheck = SharedAsyncOperation<Void>(cachesSuccess: true)
@@ -374,34 +388,113 @@ actor HeelerSSHTransport: Transport {
     /// channel and its lease would stay spent until the Host disconnects.
     private var sessionFileClientIdleRelease: Task<Void, Never>?
     static let sessionFileClientIdleTimeout: Duration = .seconds(30)
+    /// Set once the Host refused the SFTP subsystem to a Chat operation, so
+    /// later ones fail fast instead of asking for a channel every poll.
+    private var hostFileSFTPUnavailable = false
     private var notificationTemporaryPaths: [UUID: String] = [:]
 #if DEBUG
     private var stagingPhaseHoldsForTesting:
         [AttachmentStagingPhaseForTesting: @Sendable () async -> Void] = [:]
 #endif
 
+    /// How long a race gives the direct routes before it also starts the
+    /// routes through an Overlay Network or a Jump Host (ADR 0022).
+    static let routeRaceStagger: Duration = .milliseconds(400)
+
     /// Establishes the libssh2 Transport through the same app-owned
     /// credentials and TOFU policy as the production connection path.
+    ///
+    /// With several routes, they race only as far as a verified host key:
+    /// the first route whose Host presents the trusted key wins, the others
+    /// are cancelled, and only the winner authenticates against the Host.
+    /// A Jump Host is authenticated on its own route, since nothing past it
+    /// is reachable otherwise.
     static func connect(settings: SSHTransportSettings) async throws -> HeelerSSHTransport {
-        let targetEndpoint = try endpoint(host: settings.host, port: settings.port)
-        guard let jump = settings.jump else {
+        let gate = HostKeyVerificationGate()
+        let connection: SSHConnection
+        let routeID: UUID?
+        if settings.routes.count == 1, let route = settings.routes.first {
+            connection = try await reach(route, settings: settings, gate: gate)
+            routeID = route.id
+        } else {
+            let won = try await race(settings: settings, gate: gate)
+            connection = won.connection
+            routeID = settings.routes[won.index].id
+        }
+        do {
+            try await authenticate(
+                connection,
+                username: settings.username,
+                credentials: settings.credentials,
+                timeout: settings.requestTimeout)
+        } catch {
+            try? await connection.close(timeout: .seconds(2))
+            throw mapConnect(error)
+        }
+        return HeelerSSHTransport(connection: connection, settings: settings, routeID: routeID)
+    }
+
+    /// The winning route's index in `settings.routes` and its connection.
+    private static func race(
+        settings: SSHTransportSettings, gate: HostKeyVerificationGate
+    ) async throws -> (index: Int, connection: SSHConnection) {
+        let routes = settings.routes
+        let hasDirectRoute = routes.contains(where: \.isDirect)
+        do {
+            let won = try await RouteRace.first(
+                count: routes.count,
+                isDeferred: { hasDirectRoute && !routes[$0].isDirect },
+                stagger: routeRaceStagger,
+                attempt: { index in
+                    try await reach(routes[index], settings: settings, gate: gate)
+                },
+                discard: { connection in
+                    try? await connection.close(timeout: .seconds(2))
+                })
+            return (won.index, won.value)
+        } catch let failure as RouteRace.Failure {
+            throw TransportError.noRouteReached(
+                zip(routes, failure.failures).map { route, error in
+                    RouteFailure(
+                        route: route.label, mayNameAnotherMachine: route.mayNameAnotherMachine,
+                        error: mapConnect(error), routeID: route.id)
+                })
+        } catch {
+            throw TransportError.cancelled
+        }
+    }
+
+    /// One route as far as the Host's verified key: an unauthenticated
+    /// connection to the Host, or a mapped `TransportError`.
+    private static func reach(
+        _ route: SSHRoute, settings: SSHTransportSettings, gate: HostKeyVerificationGate
+    ) async throws -> SSHConnection {
+        let targetEndpoint = try endpoint(host: route.host, port: route.port)
+        let verifier = HeelerSSHHostKeyVerifier(
+            host: route.host,
+            port: route.port,
+            trust: settings.hostKeyTrust,
+            policy: settings.hostKeyPolicy)
+        guard let jump = route.jump else {
             let connection: SSHConnection
             do {
-                connection = try await connectDirect(
-                    endpoint: targetEndpoint,
-                    username: settings.username,
-                    credentials: settings.credentials,
-                    policy: settings.hostKeyPolicy,
-                    timeout: settings.requestTimeout)
+                connection = try await openConnection(
+                    to: targetEndpoint,
+                    timeout: settings.requestTimeout,
+                    overlay: route.overlay)
             } catch {
                 // Every other hop maps before it throws; the direct hop must
                 // too, or a raw SSHError escapes the TransportError taxonomy
                 // the app and preflight classify against.
                 throw mapConnect(error)
             }
-            return HeelerSSHTransport(
-                connection: connection,
-                settings: settings)
+            do {
+                try await gate.withLock { try await verifier.verify(connection.hostKey) }
+                return connection
+            } catch {
+                try? await connection.close(timeout: .seconds(2))
+                throw mapConnect(error)
+            }
         }
 
         let jumpEndpoint = try endpoint(host: jump.host, port: jump.port)
@@ -412,9 +505,15 @@ actor HeelerSSHTransport: Transport {
                 username: jump.username,
                 credentials: jump.credentials,
                 policy: settings.hostKeyPolicy,
-                timeout: settings.requestTimeout)
+                gate: gate,
+                timeout: settings.requestTimeout,
+                overlay: route.overlay)
         } catch {
-            throw TransportError.jumpHostFailed(mapConnect(error))
+            let mapped = mapConnect(error)
+            // The overlay sits in front of the Jump Host: blaming the Jump
+            // Host for it would send the user to the wrong machine.
+            if case .overlayFailed = mapped { throw mapped }
+            throw TransportError.jumpHostFailed(mapped)
         }
 
         let targetConnection: SSHConnection
@@ -422,28 +521,22 @@ actor HeelerSSHTransport: Transport {
             targetConnection = try await jumpConnection.connectThrough(
                 to: targetEndpoint,
                 timeout: settings.requestTimeout)
-        } catch SSHError.forwardingDenied {
-            throw TransportError.jumpHostFailed(.tcpForwardingUnavailable)
-        } catch SSHError.targetUnreachable {
-            throw TransportError.sshUnreachable(detail: "The Host is unreachable from the Jump Host.")
         } catch {
-            throw mapConnect(error)
+            try? await jumpConnection.close(timeout: .seconds(2))
+            switch error {
+            case SSHError.forwardingDenied:
+                throw TransportError.jumpHostFailed(.tcpForwardingUnavailable)
+            case SSHError.targetUnreachable:
+                throw TransportError.sshUnreachable(
+                    detail: "The Host is unreachable from the Jump Host.")
+            default:
+                throw mapConnect(error)
+            }
         }
 
         do {
-            try await HeelerSSHHostKeyVerifier(
-                host: settings.host,
-                port: settings.port,
-                policy: settings.hostKeyPolicy)
-                .verify(targetConnection.hostKey)
-            try await authenticate(
-                targetConnection,
-                username: settings.username,
-                credentials: settings.credentials,
-                timeout: settings.requestTimeout)
-            return HeelerSSHTransport(
-                connection: targetConnection,
-                settings: settings)
+            try await gate.withLock { try await verifier.verify(targetConnection.hostKey) }
+            return targetConnection
         } catch {
             try? await targetConnection.close(timeout: .seconds(2))
             throw mapConnect(error)
@@ -452,17 +545,22 @@ actor HeelerSSHTransport: Transport {
 
     /// Test and fixture entry that already holds an authenticated connection.
     /// Command defaults come from `SSHTransportSettings` statics so they cannot
-    /// drift from the production `init(connection:settings:)` path (#133).
+    /// drift from the production `init(connection:settings:routeID:)` path (#133).
     init(
         connection: SSHConnection,
         socketPath: String,
         requestTimeout: Duration = SSHTransportSettings.defaultRequestTimeout,
-        gitExecTimeout: Duration = SSHTransportSettings.defaultGitExecTimeout
+        gitExecTimeout: Duration = SSHTransportSettings.defaultGitExecTimeout,
+        chatQueryTimeout: Duration = SSHTransportSettings.defaultChatQueryTimeout,
+        pluginInstallTimeout: Duration = SSHTransportSettings.defaultPluginInstallTimeout
     ) {
         self.connection = connection
+        routeID = nil
         socketLocation = .absolutePath(socketPath)
         self.requestTimeout = requestTimeout
         self.gitExecTimeout = gitExecTimeout
+        self.chatQueryTimeout = chatQueryTimeout
+        self.pluginInstallTimeout = pluginInstallTimeout
         wakeCommand = SSHTransportSettings.defaultWakeCommand
         sessionListCommand = SSHTransportSettings.defaultSessionListCommand
         agentDiscoveryCommand = SSHTransportSettings.defaultAgentDiscoveryCommand
@@ -473,14 +571,18 @@ actor HeelerSSHTransport: Transport {
         pluginListCommand = SSHTransportSettings.defaultPluginListCommand
         notificationConfigDirCommand =
             SSHTransportSettings.defaultNotificationConfigDirCommand
+        herdrLauncher = nil
         channelAdmission = SSHChannelAdmission()
     }
 
-    private init(connection: SSHConnection, settings: SSHTransportSettings) {
+    private init(connection: SSHConnection, settings: SSHTransportSettings, routeID: UUID?) {
         self.connection = connection
+        self.routeID = routeID
         socketLocation = settings.socket
         requestTimeout = settings.requestTimeout
         gitExecTimeout = settings.gitExecTimeout
+        chatQueryTimeout = settings.chatQueryTimeout
+        pluginInstallTimeout = settings.pluginInstallTimeout
         wakeCommand = settings.wakeCommand
         sessionListCommand = settings.sessionListCommand
         agentDiscoveryCommand = settings.agentDiscoveryCommand
@@ -490,6 +592,7 @@ actor HeelerSSHTransport: Transport {
         stageDirectoryCommand = settings.stageDirectoryCommand
         pluginListCommand = settings.pluginListCommand
         notificationConfigDirCommand = settings.notificationConfigDirCommand
+        herdrLauncher = settings.herdrLauncher
         channelAdmission = SSHChannelAdmission()
     }
 
@@ -498,15 +601,18 @@ actor HeelerSSHTransport: Transport {
         username: String,
         credentials: SSHCredentials,
         policy: HostKeyPolicy,
-        timeout: Duration
+        gate: HostKeyVerificationGate,
+        timeout: Duration,
+        overlay: OverlayRoute?
     ) async throws -> SSHConnection {
-        let connection = try await SSHConnection.connect(to: endpoint, timeout: timeout)
+        let connection = try await openConnection(
+            to: endpoint, timeout: timeout, overlay: overlay)
         do {
-            try await HeelerSSHHostKeyVerifier(
+            let verifier = HeelerSSHHostKeyVerifier(
                 host: endpoint.host,
                 port: Int(endpoint.port),
                 policy: policy)
-                .verify(connection.hostKey)
+            try await gate.withLock { try await verifier.verify(connection.hostKey) }
             try await authenticate(
                 connection,
                 username: username,
@@ -516,6 +622,29 @@ actor HeelerSSHTransport: Transport {
         } catch {
             try? await connection.close(timeout: .seconds(2))
             throw error
+        }
+    }
+
+    /// The SSH handshake over this device's own network, or over the
+    /// Overlay Network when one carries this hop (ADR 0021). Only the byte
+    /// stream differs: the caller verifies and authenticates either alike.
+    private static func openConnection(
+        to endpoint: SSHEndpoint,
+        timeout: Duration,
+        overlay: OverlayRoute?
+    ) async throws -> SSHConnection {
+        guard let overlay else {
+            return try await SSHConnection.connect(to: endpoint, timeout: timeout)
+        }
+        return try await SSHConnection.connect(
+            to: endpoint,
+            timeout: timeout,
+            transportLabel: "overlay \(overlay.networkName)"
+        ) { remaining in
+            // Each handshake attempt dials a fresh stream; the package hands
+            // the descriptor to libssh2 and calls `release` once it is done.
+            let dialed = try await overlay.dial(endpoint.host, endpoint.port, remaining)
+            return try SSHExternalStream(descriptor: dialed.descriptor, release: dialed.release)
         }
     }
 
@@ -585,6 +714,13 @@ actor HeelerSSHTransport: Transport {
 
     func ping() async throws -> ServerInfo {
         let pong = try await request(method: "ping", decoding: PongResponse.self)
+        return try Self.serverInfo(from: pong)
+    }
+
+    func ping(timeout: Duration) async throws -> ServerInfo {
+        let pong = try await request(
+            method: "ping", params: HerdrWire.EmptyParams(),
+            decoding: PongResponse.self, timeout: timeout)
         return try Self.serverInfo(from: pong)
     }
 
@@ -690,10 +826,13 @@ actor HeelerSSHTransport: Transport {
     /// otherwise allocate and release an SFTP subsystem channel on every tick.
     /// The lease is held for as long as the channel is (ADR 0011, #148): an
     /// app-side counter that ignored a channel still open would let the
-    /// server's `MaxSessions` be spent while admission looked free. A failed
-    /// read drops both, so the next look opens a fresh one rather than
-    /// reading through a corpse — except a cancelled one, which says nothing
-    /// about the channel and would only cost the next reader its own read.
+    /// server's `MaxSessions` be spent while admission looked free. A read
+    /// that fails because the channel is unusable drops both, so the next
+    /// look opens a fresh one rather than reading through a corpse. A
+    /// cancellation or a file-level SFTP status says nothing about the
+    /// channel, and while another read (Chat shares the channel) still holds
+    /// it, closing would time out behind that read and free the lease of a
+    /// channel still open; that reader's own failure retires it instead.
     /// The channel is returned once nobody has read through it for
     /// `sessionFileClientIdleTimeout`.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
@@ -713,8 +852,9 @@ actor HeelerSSHTransport: Transport {
                 timeout: requestTimeout)
             return RemoteFileSlice(data: slice.data, length: slice.length)
         } catch {
+            let retiresChannel = Self.hostFileFailure(for: error)?.retiresChannel ?? true
             let mapped = await mapOperationError(error)
-            if mapped != .cancelled {
+            if retiresChannel, sessionFileReadsInFlight == 1 {
                 await releaseSessionFileClient()
             }
             throw mapped
@@ -747,6 +887,9 @@ actor HeelerSSHTransport: Transport {
             }
             sessionFileClient = client
             sessionFileClientLease = lease
+            // A Chat read whose deadline passed during the open has already
+            // left; without this the channel would wait for the next read.
+            scheduleSessionFileClientIdleRelease()
             return client
         }
         sessionFileClientOpening = opening
@@ -779,6 +922,152 @@ actor HeelerSSHTransport: Transport {
         await lease?.release()
     }
 
+    // MARK: Chat Host files
+
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        let timeout = requestTimeout
+        return try await withHostFileClient(path: range.path) { client in
+            let slice = try await client.readFileRange(
+                at: range.path,
+                offset: range.offset,
+                maxBytes: range.maxBytes,
+                timeout: timeout)
+            return RemoteFileSlice(data: slice.data, length: slice.length)
+        }
+    }
+
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+        let timeout = requestTimeout
+        return try await withHostFileClient(path: path) { client in
+            try await client.fileStatus(at: path, timeout: timeout).map(RemoteFileStatus.init)
+        }
+    }
+
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+        let timeout = requestTimeout
+        let query = SSHSFTPEntryQuery(
+            kinds: Set(request.kinds.map(SSHSFTPEntryKind.init)),
+            namePrefix: request.namePrefix,
+            nameSuffixes: request.nameSuffixes,
+            nameContains: request.nameContains,
+            maximumEntries: request.maximumEntries,
+            maximumScanned: request.maximumScanned)
+        return try await withHostFileClient(path: request.directory) { client in
+            try await client.listEntries(at: request.directory, matching: query, timeout: timeout)
+                .map(RemoteFileListing.init)
+        }
+    }
+
+    func hostPlatform() async throws -> HostPlatform {
+        try await hostFileEnvironment().isWindows ? .nativeWindows : .posix
+    }
+
+    func hostHomeDirectory() async throws -> String {
+        let home = try await hostFileEnvironment().home
+        try await requirePOSIXHost(feature: "Chat")
+        return home
+    }
+
+    func agentInfo(_ target: AgentTarget) async throws -> Agent {
+        Agent(
+            try await request(method: "agent.get", params: target, decoding: AgentInfoResponse.self)
+                .agent)
+    }
+
+    func paneProcessInfo(paneID: String) async throws -> PaneProcessInfo {
+        try await request(
+            method: "pane.process_info", params: PaneProcessInfoParams(paneID: paneID),
+            decoding: PaneProcessInfoResponse.self
+        ).processInfo
+    }
+
+    /// Runs one Chat file operation on the held session-file SFTP channel.
+    ///
+    /// Chat polls a transcript every second or so, often over cellular, so its
+    /// failures must stay its own: the whole operation, channel admission and
+    /// open included, runs under one deadline that maps to
+    /// `.hostFileTimedOut` instead of the link-failure `.timedOut`, and a file
+    /// the server refuses is `.hostFileUnreadable`. Only a failure that says
+    /// the channel itself is unusable retires it, and only when no other read
+    /// is using it: a usage-strip read sharing the channel must not fail
+    /// because a Chat read did. The idle release reclaims a channel left open.
+    private func withHostFileClient<Value: Sendable>(
+        path: String,
+        _ operation: @escaping @Sendable (SSHSFTPClient) async throws -> Value
+    ) async throws -> Value {
+        guard RemoteFilePath.isAcceptable(path) else {
+            throw TransportError.invalidDirectoryPath(path: path)
+        }
+        _ = try await hostFileEnvironment()
+        try await requirePOSIXHost(feature: "Chat")
+        if hostFileSFTPUnavailable {
+            throw TransportError.hostFeatureUnavailable(feature: "Chat needs SFTP on the Host")
+        }
+        sessionFileClientIdleRelease?.cancel()
+        sessionFileClientIdleRelease = nil
+        sessionFileReadsInFlight += 1
+        defer {
+            sessionFileReadsInFlight -= 1
+            scheduleSessionFileClientIdleRelease()
+        }
+        do {
+            return try await AsyncDeadline.run(for: requestTimeout) {
+                let client = try await self.sessionFileClientForReading()
+                return try await operation(client)
+            }
+        } catch {
+            let (mapped, retiresChannel) = await mapHostFileError(error)
+            if retiresChannel, sessionFileReadsInFlight == 1 {
+                await releaseSessionFileClient()
+            }
+            throw mapped
+        }
+    }
+
+    /// The remote environment, resolved at most once per connection. A Host
+    /// whose socket path is absolute never needed it, so a Chat operation can
+    /// be the first to ask; its probe timing out is Chat's own failure too.
+    private func hostFileEnvironment() async throws -> RemoteHostEnvironment {
+        do {
+            return try await remoteEnvironment()
+        } catch TransportError.timedOut {
+            throw TransportError.hostFileTimedOut
+        }
+    }
+
+    /// The Chat error for a failed file operation, and whether the shared
+    /// channel should go.
+    private func mapHostFileError(_ error: any Error) async -> (TransportError, Bool) {
+        if error as? SSHError == .sftpUnavailable {
+            hostFileSFTPUnavailable = true
+        }
+        if let failure = Self.hostFileFailure(for: error) {
+            return (failure.error, failure.retiresChannel)
+        }
+        return (await mapOperationError(error), true)
+    }
+
+    /// Classifies the failures a Chat file operation owns. Nil means the
+    /// failure is the link's, which the ordinary operation mapper reports.
+    static func hostFileFailure(
+        for error: any Error
+    ) -> (error: TransportError, retiresChannel: Bool)? {
+        switch error {
+        case AsyncDeadlineError.timedOut, SSHError.timedOut:
+            (.hostFileTimedOut, true)
+        case SSHError.sftpFailure(let status):
+            (.hostFileUnreadable(status: status), false)
+        case SSHError.sftpUnavailable:
+            (.hostFeatureUnavailable(feature: "Chat needs SFTP on the Host"), true)
+        case is CancellationError, SSHError.cancelled, TransportError.cancelled:
+            (.cancelled, false)
+        case let error as TransportError:
+            (error, true)
+        default:
+            nil
+        }
+    }
+
     func sessionSnapshot() async throws -> SessionSnapshot {
         try await request(method: "session.snapshot", decoding: SessionSnapshotResponse.self)
             .snapshot
@@ -803,6 +1092,13 @@ actor HeelerSSHTransport: Transport {
     func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
         _ = try await request(
             method: "agent.send_keys",
+            params: params,
+            decoding: OkResponse.self)
+    }
+
+    func sendPaneInput(_ params: PaneSendInputParams) async throws {
+        _ = try await request(
+            method: "pane.send_input",
             params: params,
             decoding: OkResponse.self)
     }
@@ -862,7 +1158,7 @@ actor HeelerSSHTransport: Transport {
             params: TabCreateParams(
                 cwd: launch.cwd,
                 focus: false,
-                label: launch.resolvedTabLabel,
+                label: launch.tabLabel,
                 workspaceID: launch.workspaceID),
             decoding: TabCreatedResponse.self)
         do {
@@ -893,12 +1189,11 @@ actor HeelerSSHTransport: Transport {
             let response = try await startAgentAwaitingShell(
                 launch,
                 paneID: created.rootPane.paneID)
-            // The launch succeeded, so the name is now real: rename the
-            // worktree's fresh tab, which only carries the worktree label.
-            // Best-effort — a cosmetic rename failure must not fail a start
-            // that already succeeded.
-            try? await renameTab(
-                TabRenameParams(label: launch.resolvedTabLabel, tabID: created.tab.tabID))
+            if let tabLabel = launch.tabLabel {
+                // A cosmetic rename must not fail an Agent that already started.
+                try? await renameTab(
+                    TabRenameParams(label: tabLabel, tabID: created.tab.tabID))
+            }
             return Agent(response.agent)
         } catch let error as HerdrAPIError {
             try? await removeCreatedWorktree(workspaceID: created.workspace.workspaceID)
@@ -921,13 +1216,11 @@ actor HeelerSSHTransport: Transport {
             let response = try await startAgentAwaitingShell(
                 launch,
                 paneID: created.rootPane.paneID)
-            // The launch succeeded, so the name is now real: rename the
-            // fresh tab, which only carries the Workspace label (herdr
-            // labels the Workspace, not its first tab). Best-effort — a
-            // cosmetic rename failure must not fail a start that already
-            // succeeded.
-            try? await renameTab(
-                TabRenameParams(label: launch.resolvedTabLabel, tabID: created.tab.tabID))
+            if let tabLabel = launch.tabLabel {
+                // A cosmetic rename must not fail an Agent that already started.
+                try? await renameTab(
+                    TabRenameParams(label: tabLabel, tabID: created.tab.tabID))
+            }
             return Agent(response.agent)
         } catch let error as HerdrAPIError {
             try? await closeCreatedWorkspace(workspaceID: created.workspace.workspaceID)
@@ -971,6 +1264,12 @@ actor HeelerSSHTransport: Transport {
             decoding: OkResponse.self)
     }
 
+    /// Starts the agent in a fresh pane, resending the same request while
+    /// herdr answers that the pane's shell is not ready for it yet: busy
+    /// while a startup command runs, or, on a macOS Host, a launch line too
+    /// long for the terminal before the shell's line editor starts. Both
+    /// refusals share one budget, and the last one surfaces unchanged when
+    /// it runs out, so the caller still removes what it created.
     private func startAgentAwaitingShell(
         _ launch: AgentLaunchRequest,
         paneID: String
@@ -987,7 +1286,7 @@ actor HeelerSSHTransport: Transport {
                     method: "agent.start",
                     params: params,
                     decoding: AgentStartedResponse.self)
-            } catch let error as HerdrAPIError where error.code == "agent_pane_busy" {
+            } catch let error as HerdrAPIError where Self.isShellReadinessRefusal(error) {
                 guard ContinuousClock.now + Self.shellReadinessRetryDelay < deadline else {
                     throw error
                 }
@@ -998,6 +1297,17 @@ actor HeelerSSHTransport: Transport {
 
     private static let shellReadinessBudget: Duration = .seconds(10)
     private static let shellReadinessRetryDelay: Duration = .milliseconds(500)
+
+    /// Whether an `agent.start` refusal means the fresh pane's shell is not
+    /// ready for the launch yet, so the same request is worth resending: herdr
+    /// answers `agent_pane_busy` while a startup command holds the pane's
+    /// foreground, and herdr 0.9.4 on macOS refuses a launch line longer than
+    /// the terminal's canonical input limit until the shell's line editor
+    /// starts (`HerdrAPIError.isCanonicalModeRefusal`). Every other
+    /// `agent_start_input_failed` message is final.
+    static func isShellReadinessRefusal(_ error: HerdrAPIError) -> Bool {
+        error.code == "agent_pane_busy" || error.isCanonicalModeRefusal
+    }
 
     func closePane(_ params: PaneTarget) async throws {
         _ = try await request(
@@ -1065,6 +1375,14 @@ actor HeelerSSHTransport: Transport {
 
     func readSidebarLayout() async throws -> Data? {
         try await readPluginConfigFile(named: Self.sidebarLayoutFileName)
+    }
+
+    func readUsageAccountFile() async throws -> Data? {
+        try await readPluginConfigFile(named: UsageAccountFile.fileName)
+    }
+
+    func replaceUsageAccountFile(_ contents: Data) async throws {
+        try await replacePluginConfigFile(named: UsageAccountFile.fileName, contents: contents)
     }
 
     private func readPluginConfigFile(named name: String) async throws -> Data? {
@@ -1380,9 +1698,20 @@ actor HeelerSSHTransport: Transport {
     private func resolveNotificationConfigDirectory() async throws -> String {
         let listOutput = try await runNotificationPluginProbe(command: pluginListCommand)
         let pluginID = try installedNotificationPluginID(in: listOutput)
-        let configDirCommand = notificationConfigDirCommand.replacingOccurrences(
-            of: SSHTransportSettings.notificationPluginIDToken,
-            with: pluginID)
+        var configDirCommand = notificationConfigDirCommand
+        if herdrLauncher != nil {
+            // The launcher's paths follow the body's single token and may
+            // contain any text, so only that first occurrence is the id.
+            if let token = configDirCommand.range(
+                of: SSHTransportSettings.notificationPluginIDToken)
+            {
+                configDirCommand.replaceSubrange(token, with: pluginID)
+            }
+        } else {
+            configDirCommand = configDirCommand.replacingOccurrences(
+                of: SSHTransportSettings.notificationPluginIDToken,
+                with: pluginID)
+        }
         let output = try await runNotificationPluginProbe(command: configDirCommand)
         guard
             let directory = Self.markerValue(
@@ -1423,12 +1752,142 @@ actor HeelerSSHTransport: Transport {
         return HeelerPluginInstallation(result)
     }
 
+    /// Executes an already resolved plugin installation, so one read lists
+    /// plugins once. Real-SSH fixtures supply a scratch installation.
+    func readAgentUsage(
+        timeZone: String, claudeLimits: Bool, pluginRoot: String
+    ) async throws -> AgentUsageReport {
+        let nonce = UUID().uuidString
+        let script = try AgentUsageProbe.script(
+            pluginRoot: pluginRoot, timeZone: timeZone, claudeLimits: claudeLimits,
+            nonce: nonce, launcher: herdrLauncher)
+        let result = try await runBoundedScript(
+            script, feature: "Usage", deadline: .seconds(10), remoteSeconds: 8,
+            timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)
+        return try AgentUsageProbe.parse(stdout: result.stdout, nonce: nonce)
+    }
+
+    func runHeelerPluginStep(_ step: HeelerPluginStep) async throws {
+        try await requirePOSIXHost(feature: "Changing the Heeler plugin")
+        guard let arguments = step.herdrArguments else {
+            if case .enable(let pluginID) = step {
+                _ = try await request(
+                    method: "plugin.enable",
+                    params: PluginSetEnabledParams(pluginID: pluginID),
+                    decoding: PluginEnabledResult.self)
+            }
+            return
+        }
+        let session = if case .namedSession(let name) = socketLocation { name } else { "" }
+        let command = Self.heelerPluginCommand(
+            arguments: arguments, session: session, launcher: herdrLauncher,
+            findsNode: step == .install)
+        let result = try await runExec(
+            Self.cLocaleCommand(command), timeout: pluginInstallTimeout)
+        try Self.checkHeelerPluginStep(
+            step, result: result,
+            bareCommand: HerdrCommandLine.render(session: session, arguments: arguments),
+            launcher: herdrLauncher)
+    }
+
+    func readPluginBranchVersion() async throws -> PluginVersion {
+        try await requirePOSIXHost(feature: "The Heeler plugin")
+        let result = try await runExec(
+            Self.cLocaleCommand(Self.pluginBranchManifestCommand), timeout: pluginInstallTimeout)
+        guard result.exitStatus == 0, result.reachedEOF,
+            let version = Self.manifestVersion(String(decoding: result.stdout, as: UTF8.self))
+        else {
+            throw PluginBranchVersionError(
+                exitStatus: result.exitStatus,
+                output: String(decoding: result.stderr, as: UTF8.self)
+                    .trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return version
+    }
+
+    /// Prints the plugin branch's `herdr-plugin.toml`, fetched the way
+    /// herdr's install fetches it (a shallow git fetch from GitHub) into a
+    /// scratch repository it removes afterwards. `PATH` also covers Nix
+    /// profiles, where ``NodeToolchainProbe`` can find the git herdr then
+    /// uses. git never prompts, since without a terminal a prompt could only
+    /// hang, and gives up on a transfer stalled below 1 KB/s for 30 s rather
+    /// than spending the install's budget.
+    static var pluginBranchManifestCommand: String {
+        let url = "https://github.com/\(HostSetupGuide.pluginRepository).git"
+        return "/bin/sh -c 'export PATH=\"\(HerdrHostPath.extraPATH):$PATH:$HOME/.nix-profile/bin:"
+            + "/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin\"; "
+            + "export GIT_TERMINAL_PROMPT=0; "
+            + "__h_d=$(mktemp -d) || exit 1; cd \"$__h_d\" || { rm -rf \"$__h_d\"; exit 1; }; "
+            + "git init -q && git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 "
+            + "fetch -q --depth 1 \(url) \(HostSetupGuide.pluginBranch) "
+            + "&& git show FETCH_HEAD:herdr-plugin.toml; __h_s=$?; "
+            + "cd / && rm -rf \"$__h_d\"; exit $__h_s'"
+    }
+
+    /// The top-level `version = "X.Y.Z"` of a plugin manifest, the line
+    /// `scripts/publish-plugin.sh` reads too: tables after the first `[`
+    /// header do not count.
+    static func manifestVersion(_ manifest: String) -> PluginVersion? {
+        for line in manifest.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("[") { return nil }
+            let parts = trimmed.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2, parts[0].trimmingCharacters(in: .whitespaces) == "version"
+            else { continue }
+            let quoted = parts[1].split(separator: "\"", omittingEmptySubsequences: false)
+            guard quoted.count >= 3, quoted[0].allSatisfy(\.isWhitespace) else { return nil }
+            return PluginVersion(String(quoted[1]))
+        }
+        return nil
+    }
+
+    /// `herdr <arguments>` as a plugin step runs it: through an endpoint's
+    /// launcher, else the bare `herdr` with the app's PATH prefixes. It names
+    /// the Host's session, so herdr's protocol check before an install asks
+    /// the server Heeler uses; a session without a server falls back to the
+    /// shared registry. With `findsNode`, ``NodeToolchainProbe`` first puts
+    /// the Host's Node.js on `PATH` for the plugin's `npm ci` build, for a
+    /// launcher too, which herdr still runs by its path. `arguments` are
+    /// literal words Heeler chose.
+    static func heelerPluginCommand(
+        arguments: [String], session: String, launcher: HerdrLauncher?, findsNode: Bool
+    ) -> String {
+        if let launcher {
+            return launcher.herdrCommand(
+                arguments: arguments.joined(separator: " "),
+                prelude: findsNode ? NodeToolchainProbe.script : "")
+        }
+        let command = HerdrCommandLine.render(session: session, arguments: arguments)
+        return findsNode
+            ? NodeToolchainProbe.wrappingBareHerdr(command)
+            : HerdrHostPath.wrappingBareHerdr(command)
+    }
+
+    /// Throws unless `result` is a plugin step that herdr finished. Exit 127
+    /// means a missing `herdr` only for the bare command, so the check sees
+    /// `bareCommand`, the command before the PATH wrap.
+    static func checkHeelerPluginStep(
+        _ step: HeelerPluginStep, result: SSHExecResult, bareCommand: String,
+        launcher: HerdrLauncher?
+    ) throws {
+        if let missing = HerdrHostPath.missingBinaryError(
+            exitStatus: result.exitStatus, command: bareCommand, launcher: launcher)
+        {
+            throw missing
+        }
+        guard result.exitStatus == 0, result.reachedEOF else {
+            throw HeelerPluginStepError(
+                step: step, exitStatus: result.exitStatus, stderr: result.stderr,
+                stdout: result.stdout)
+        }
+    }
+
     private func runNotificationPluginProbe(command: String) async throws -> Data {
         do {
             let result = try await runExec(
                 Self.cLocaleCommand(HerdrHostPath.wrappingBareHerdr(command)))
             if let missing = HerdrHostPath.missingBinaryError(
-                exitStatus: result.exitStatus, command: command)
+                exitStatus: result.exitStatus, command: command, launcher: herdrLauncher)
             {
                 throw missing
             }
@@ -1443,6 +1902,8 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.timedOut
         } catch TransportError.herdrBinaryNotFound {
             throw TransportError.herdrBinaryNotFound
+        } catch TransportError.herdrLauncherNotFound(let path) {
+            throw TransportError.herdrLauncherNotFound(path: path)
         } catch let error as NotificationRegistrationError {
             throw error
         } catch {
@@ -1848,7 +2309,8 @@ actor HeelerSSHTransport: Transport {
         params: P,
         decoding type: R.Type,
         beforeDispatch: (@Sendable () async throws -> Void)? = nil,
-        onDispatched: (@Sendable () async -> Void)? = nil
+        onDispatched: (@Sendable () async -> Void)? = nil,
+        timeout: Duration? = nil
     ) async throws -> R {
         try await withColdStartWake {
             try await self.performRequest(
@@ -1856,7 +2318,8 @@ actor HeelerSSHTransport: Transport {
                 params: params,
                 decoding: type,
                 beforeDispatch: beforeDispatch,
-                onDispatched: onDispatched)
+                onDispatched: onDispatched,
+                timeout: timeout)
         }
     }
 
@@ -1865,18 +2328,20 @@ actor HeelerSSHTransport: Transport {
         params: P,
         decoding type: R.Type,
         beforeDispatch: (@Sendable () async throws -> Void)? = nil,
-        onDispatched: (@Sendable () async -> Void)? = nil
+        onDispatched: (@Sendable () async -> Void)? = nil,
+        timeout: Duration? = nil
     ) async throws -> R {
         guard connected else {
             throw TransportError.sshUnreachable(
                 detail: "The SSH connection is closed.")
         }
+        let timeout = timeout ?? requestTimeout
         let requestID = UUID().uuidString
         let line = try HerdrWire.requestLine(
             id: requestID,
             method: method,
             params: params)
-        let responseLine = try await withRequestDeadline {
+        let responseLine = try await withRequestDeadline(timeout: timeout) {
             let environment = try await self.apiEnvironment()
             let socketPath = try await self.resolvedSocketPath()
             if environment.isWindows {
@@ -1887,16 +2352,16 @@ actor HeelerSSHTransport: Transport {
                         exec = try await self.connection.openExec(
                             command: PowerShellCommand.herdr(
                                 arguments: ["remote-api-bridge"], socketPath: socketPath,
-                                location: self.socketLocation, streaming: true), timeout: self.requestTimeout)
+                                location: self.socketLocation, streaming: true), timeout: timeout)
                     } catch { throw await self.mapOperationError(error) }
                     let channel = BootstrappedExecChannel(channel: exec)
                     do {
                         try await beforeDispatch?()
-                        try await channel.write(Data(line.utf8), timeout: self.requestTimeout)
+                        try await channel.write(Data(line.utf8), timeout: timeout)
                         await onDispatched?()
                         var response = Data()
                         while let chunk = try await channel.read(
-                            maximumBytes: 16 * 1024, timeout: self.requestTimeout)
+                            maximumBytes: 16 * 1024, timeout: timeout)
                         {
                             response.append(chunk)
                             if let newline = response.firstIndex(of: 0x0A) {
@@ -1926,7 +2391,7 @@ actor HeelerSSHTransport: Transport {
                         socketPath: socketPath,
                         request: Data(line.utf8),
                         maximumResponseBytes: Self.maximumResponseBytes,
-                        timeout: self.requestTimeout,
+                        timeout: timeout,
                         beforeRequestWrite: beforeDispatch,
                         onRequestWritten: onDispatched)
                 } catch SSHError.streamLocalOpenFailed {
@@ -1975,7 +2440,8 @@ actor HeelerSSHTransport: Transport {
                 let command = try Self.wakeExecCommand(
                     wakeCommand: self.wakeCommand,
                     socketPath: socketPath,
-                    socketLocation: self.socketLocation)
+                    socketLocation: self.socketLocation,
+                    launcher: self.herdrLauncher)
                 let result = try await self.runExec(command)
                 guard result.exitStatus == 0, result.reachedEOF else {
                     throw TransportError.channelFailed(
@@ -2020,7 +2486,18 @@ actor HeelerSSHTransport: Transport {
         {
             return .posix(home: "/")
         }
-        return try await remoteEnvironment()
+        let environment = try await remoteEnvironment()
+        if environment.isWindows { try refuseHerdrEndpointOnWindows() }
+        return environment
+    }
+
+    /// A herdr endpoint is a POSIX contract (ADR 0023): its launcher runs
+    /// under `/bin/sh`. A native Windows Host refuses it outright rather than
+    /// reaching for `herdr.exe` or a Windows socket path.
+    private func refuseHerdrEndpointOnWindows() throws {
+        guard herdrLauncher != nil else { return }
+        throw TransportError.hostFeatureUnavailable(
+            feature: "A herdr endpoint from a Pairing Code is supported only on macOS and Linux Hosts")
     }
 
     func remoteHomeDirectory() async throws -> String {
@@ -2065,7 +2542,9 @@ actor HeelerSSHTransport: Transport {
 
     /// Offline Unix CLI commands do not need HOME or a live herdr endpoint.
     private func hostCommandEnvironment() async throws -> RemoteHostEnvironment {
-        isWindowsHost ? try await remoteEnvironment() : .posix(home: "/")
+        guard isWindowsHost else { return .posix(home: "/") }
+        try refuseHerdrEndpointOnWindows()
+        return try await remoteEnvironment()
     }
 
     private func checkWindowsBridge() async throws {
@@ -2109,8 +2588,11 @@ actor HeelerSSHTransport: Transport {
                 }
                 let result = try await self.runExec(
                     invocation)
+                // Only the session list runs herdr here; Agent discovery and
+                // skill probes never reach the endpoint's launcher.
                 if let missing = HerdrHostPath.missingBinaryError(
-                    exitStatus: result.exitStatus, command: command)
+                    exitStatus: result.exitStatus, command: command,
+                    launcher: command == self.sessionListCommand ? self.herdrLauncher : nil)
                 {
                     throw missing
                 }
@@ -2165,27 +2647,63 @@ actor HeelerSSHTransport: Transport {
             stdout: result.stdout, stderr: result.stderr, nonce: nonce, request: request)
     }
 
+    func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
+        try await queryOpenCode(query, reader: .automatic)
+    }
+
+    /// The remote watchdog ends the script two seconds before the local
+    /// deadline, so a slow read usually ends with its own marker and the
+    /// exec has drained by the time the caller hears of it.
+    func queryOpenCode(
+        _ query: OpenCodeQuery, reader: OpenCodeProbe.Reader
+    ) async throws -> OpenCodeQueryResponse {
+        let nonce = OpenCodeProbe.makeNonce()
+        let result = try await runBoundedScript(
+            OpenCodeProbe.script(query, nonce: nonce, reader: reader), feature: "Chat",
+            deadline: chatQueryTimeout,
+            remoteSeconds: max(1, chatQueryTimeout.components.seconds - 2),
+            timeoutMarkerPrefix: "__HEELER_OC_TIMEOUT_", timedOut: .hostFileTimedOut,
+            lane: chatQueryLane)
+        return try OpenCodeProbe.parse(
+            stdout: result.stdout, stderr: result.stderr, exitStatus: result.exitStatus,
+            nonce: nonce, query: query)
+    }
+
     /// Internal plumbing for the purpose-built Changes reads. The script
     /// owns POSIX quoting, locale, output caps and completeness markers.
-    /// The caller's deadline includes admission. Once dispatched, exec keeps
-    /// its lease until the remote watchdog ends the process group and SSH
-    /// observes its exit. Cancelling package exec while that group is alive
-    /// can exhaust channel cleanup and invalidate Events and every Attach.
     func runGitScript(_ script: Data) async throws -> GitExecResult {
-        try await requirePOSIXHost(feature: "Changes")
+        // POSIX sleep accepts whole seconds. Round down, with a one-second
+        // minimum for short injected deadlines; the local timer stays exact.
+        try await runBoundedScript(
+            script, feature: "Changes", deadline: gitExecTimeout,
+            remoteSeconds: max(1, gitExecTimeout.components.seconds),
+            timeoutMarkerPrefix: "__HEELER_GIT_TIMEOUT_", timedOut: .gitTimedOut)
+    }
+
+    /// One script in one bounded exec, for each feature that reads the Host
+    /// through a script. The caller's deadline includes admission. Once
+    /// dispatched, exec keeps its lease until the remote watchdog ends the
+    /// process group after `remoteSeconds` and SSH observes its exit.
+    /// Cancelling package exec while that group is alive can exhaust channel
+    /// cleanup and invalidate Events and every Attach. Past the deadline, or
+    /// when the watchdog reports the feature's marker, the run throws the
+    /// feature's `timedOut`. With a `lane`, a run waits for the previous one
+    /// to drain, its wait counted against its own deadline.
+    func runBoundedScript(
+        _ script: Data, feature: String, deadline: Duration, remoteSeconds: Int64,
+        timeoutMarkerPrefix: String, timedOut: TransportError, lane: GitExecGate? = nil
+    ) async throws -> GitExecResult {
+        try await requirePOSIXHost(feature: feature)
         do {
             try Task.checkCancellation()
-            // POSIX sleep accepts whole seconds. Round down, with a one-second
-            // minimum for short injected deadlines; the local timer stays exact.
-            let remoteSeconds = max(1, gitExecTimeout.components.seconds)
-            let timeoutMarker = "__HEELER_GIT_TIMEOUT_\(UUID().uuidString)__"
-            let input = Self.boundedGitScript(
+            let timeoutMarker = "\(timeoutMarkerPrefix)\(UUID().uuidString)__"
+            let input = Self.boundedScript(
                 script, remoteSeconds: remoteSeconds, timeoutMarker: timeoutMarker)
             // Allow startup, transfer and reap time outside the remote bound.
             // This is resource reclamation time, not the caller's read budget.
             let exchangeTimeout = Duration.seconds(remoteSeconds)
                 + max(requestTimeout, SSHTransportSettings.defaultRequestTimeout)
-            return try await AsyncDeadline.run(for: gitExecTimeout) {
+            return try await Self.runInLane(deadline: deadline, lane: lane) {
                 try await self.channelAdmission.withChannel(.ordinarySession) {
                     try Task.checkCancellation()
                     // Awaiting an unstructured task does not forward cancellation.
@@ -2201,27 +2719,43 @@ actor HeelerSSHTransport: Transport {
                     }
                     let result = try await execution.value
                     if result.stderr.range(of: Data(timeoutMarker.utf8)) != nil {
-                        throw TransportError.gitTimedOut
+                        throw timedOut
                     }
                     return GitExecResult(
                         stdout: result.stdout, stderr: result.stderr, exitStatus: result.exitStatus)
                 }
             }
         } catch AsyncDeadlineError.timedOut {
-            throw TransportError.gitTimedOut
+            throw timedOut
         } catch TransportError.timedOut {
             // Preserve the classification if the package exhausts its budget.
-            throw TransportError.gitTimedOut
+            throw timedOut
         } catch is CancellationError {
             throw TransportError.cancelled
+        }
+    }
+
+    /// Runs `operation` under `deadline`, inside `lane` when given. The
+    /// caller gets `AsyncDeadlineError.timedOut` at the deadline, whether
+    /// `operation` was waiting for the lane or running; the lane is held
+    /// until `operation` returns, which for a detached exec is when the
+    /// remote process has drained. A waiter that times out leaves the lane.
+    static func runInLane<Value: Sendable>(
+        deadline: Duration, lane: GitExecGate?,
+        _ operation: @escaping @Sendable () async throws -> Value
+    ) async throws -> Value {
+        try await AsyncDeadline.run(for: deadline) {
+            guard let lane else { return try await operation() }
+            return try await lane.run(operation)
         }
     }
 
     /// sshd gives each exec its own process group; non-interactive POSIX sh
     /// keeps its children in that group. The watchdog ends only this exec.
     /// Its marker descriptor is closed in sleep so a surviving timer cannot
-    /// hold an SSH output pipe open after normal script completion.
-    private static func boundedGitScript(
+    /// hold an SSH output pipe open after normal script completion. Internal
+    /// so a test can pin the bytes Changes sends.
+    static func boundedScript(
         _ script: Data, remoteSeconds: Int64, timeoutMarker: String
     ) -> Data {
         var input = Data("""
@@ -2251,12 +2785,12 @@ actor HeelerSSHTransport: Transport {
         return input
     }
 
-    private func runExec(_ command: String) async throws -> SSHExecResult {
+    private func runExec(_ command: String, timeout: Duration? = nil) async throws -> SSHExecResult {
         try await channelAdmission.withChannel(.ordinarySession) {
             do {
                 return try await self.connection.execute(
                     command,
-                    timeout: self.requestTimeout)
+                    timeout: timeout ?? self.requestTimeout)
             } catch {
                 throw await self.mapOperationError(error)
             }
@@ -2264,11 +2798,12 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func withRequestDeadline<T: Sendable>(
+        timeout: Duration? = nil,
         _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         do {
             return try await AsyncDeadline.run(
-                for: requestTimeout,
+                for: timeout ?? requestTimeout,
                 operation: operation)
         } catch AsyncDeadlineError.timedOut {
             throw TransportError.timedOut
@@ -2278,10 +2813,31 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func mapOperationError(_ error: any Error) async -> TransportError {
-        if error as? SSHError == .connectionInvalidated {
+        noteOperationFailure(error)
+        return Self.map(error)
+    }
+
+    /// A post-connect failure's effect on the connection itself, apart from
+    /// how the failure is classified.
+    private func noteOperationFailure(_ error: any Error) {
+        if Self.invalidatesConnection(error) {
             connected = false
         }
-        return Self.map(error)
+    }
+
+    /// Whether a post-connect failure means the SSH connection is gone. An
+    /// Attach pump I/O failure is judged by the error it wraps, so a dead
+    /// connection under a live terminal marks the Transport disconnected
+    /// like any other operation; a remote exit never does.
+    static func invalidatesConnection(_ error: any Error) -> Bool {
+        switch error as? HeelerSSHAttachPumpError {
+        case .input(let underlying), .output(let underlying):
+            invalidatesConnection(underlying)
+        case .remoteExit:
+            false
+        case nil:
+            error as? SSHError == .connectionInvalidated
+        }
     }
 
     private static func map(_ error: any Error) -> TransportError {
@@ -2295,7 +2851,10 @@ actor HeelerSSHTransport: Transport {
         }
         switch error {
         case .unexpectedEOF:
-            return .malformedResponse("stream-local channel closed before a response line")
+            // A delayed channel-open acknowledgement can outlast the server's
+            // request timeout. Without a complete line, this is a channel loss,
+            // not evidence of an incompatible protocol.
+            return .channelFailed(detail: "stream-local channel closed before a response line")
         case .responseTooLarge(let limit):
             return .malformedResponse("response line exceeds \(limit) bytes")
         case .connectionInvalidated:
@@ -2377,12 +2936,19 @@ actor HeelerSSHTransport: Transport {
     /// The exec command that wakes a stopped herdr server (#6). A named
     /// session scopes the wake to its own state directory, so the spawned
     /// server serves the socket the request is actually waiting on.
+    ///
+    /// An endpoint `launcher` (ADR 0023) replaces `wakeCommand`: it runs the
+    /// launcher's `remote-client-bridge` with no PATH export.
     static func wakeExecCommand(
-        wakeCommand: String, socketPath: String, socketLocation: HerdrSocketLocation
+        wakeCommand: String, socketPath: String, socketLocation: HerdrSocketLocation,
+        launcher: HerdrLauncher? = nil
     ) throws -> String {
         guard let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath) else {
             throw TransportError.channelFailed(
                 detail: "The remote socket path cannot be quoted safely.")
+        }
+        if let launcher {
+            return cLocaleCommand(launcher.wakeCommand(quotedSocketPath: quotedSocketPath))
         }
         let command: String
         switch socketLocation {
@@ -2631,6 +3197,10 @@ actor HeelerSSHTransport: Transport {
                 target: request.target)
             let environment = try await apiEnvironment()
             let channel: any HeelerSSHAttachChannel
+            // herdr's direct attach writes a startup probe (#451). The Windows
+            // terminal controller never sets the terminal up, so only the Unix
+            // PTY attach drops it.
+            let dropsStartupProbe: Bool
             do {
                 if environment.isWindows {
                     try await checkWindowsBridge()
@@ -2649,17 +3219,20 @@ actor HeelerSSHTransport: Transport {
                             streaming: true),
                         timeout: requestTimeout)
                     channel = WindowsTerminalChannel(channel: BootstrappedExecChannel(channel: exec))
+                    dropsStartupProbe = false
                 } else {
                     let command = try Self.attachExecCommand(
                         agentAttachCommand: attachCommand,
                         terminalAttachCommand: terminalAttachCommand,
                         request: request,
-                        socketPath: socketPath)
+                        socketPath: socketPath,
+                        launcher: herdrLauncher)
                     channel = try await connection.openPTY(
                         command: command,
                         columns: request.cols,
                         rows: request.rows,
                         timeout: requestTimeout)
+                    dropsStartupProbe = true
                 }
             } catch {
                 if let error = error as? TransportError { throw error }
@@ -2679,7 +3252,8 @@ actor HeelerSSHTransport: Transport {
                     admissionLease: lease,
                     input: input,
                     output: outputGate,
-                    attachCommand: selectedAttachCommand)
+                    attachCommand: selectedAttachCommand,
+                    dropsStartupProbe: dropsStartupProbe)
             }
             return TerminalAttachSession(
                 output: outputGate.makeOutput,
@@ -2704,11 +3278,16 @@ actor HeelerSSHTransport: Transport {
     /// can still reach the PTY; the handshake marker is printed immediately
     /// before `exec` of attach so the bootstrap gate can drop everything earlier.
     /// See `AttachBootstrapHandshake`.
+    ///
+    /// An endpoint `launcher` (ADR 0023) replaces both injectable commands:
+    /// it runs the launcher's `agent attach` or `terminal attach` with no
+    /// PATH export. Target and socket validation are the same.
     static func attachExecCommand(
         agentAttachCommand: String,
         terminalAttachCommand: String,
         request: TerminalAttachRequest,
-        socketPath: String
+        socketPath: String,
+        launcher: HerdrLauncher? = nil
     ) throws -> String {
         let attachCommand = attachCommand(
             agentAttachCommand: agentAttachCommand,
@@ -2733,6 +3312,16 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.channelFailed(
                 detail: "The remote socket path cannot be quoted safely.")
         }
+        if let launcher {
+            return launcher.attachCommand(
+                subcommand: Self.attachCommand(
+                    agentAttachCommand: "agent attach",
+                    terminalAttachCommand: "terminal attach",
+                    target: request.target),
+                target: target,
+                takeover: request.takeover,
+                quotedSocketPath: quotedSocketPath)
+        }
         let takeover = request.takeover ? " --takeover" : ""
         // The marker goes out last thing before the exec, so earlier startup
         // chatter can be dropped.
@@ -2747,13 +3336,15 @@ actor HeelerSSHTransport: Transport {
     static func attachExecCommand(
         attachCommand: String,
         request: TerminalAttachRequest,
-        socketPath: String
+        socketPath: String,
+        launcher: HerdrLauncher? = nil
     ) throws -> String {
         try attachExecCommand(
             agentAttachCommand: attachCommand,
             terminalAttachCommand: attachCommand,
             request: request,
-            socketPath: socketPath)
+            socketPath: socketPath,
+            launcher: launcher)
     }
 
     private static func attachCommand(
@@ -2771,12 +3362,50 @@ actor HeelerSSHTransport: Transport {
 
     /// Maps a remote attach exit onto the Transport taxonomy. Exit 127 is
     /// `herdrBinaryNotFound` only when the exec'd command is still a bare
-    /// `herdr` word; injectable scripts keep the generic channel failure.
+    /// `herdr` word; injectable scripts keep the generic exit with its output.
+    /// With an endpoint `launcher`, exit 126 or 127 is
+    /// `herdrLauncherNotFound` instead.
     static func attachChannelFailure(
-        exitStatus: Int32, attachCommand: String
+        exitStatus: Int32, output: String? = nil, attachCommand: String,
+        launcher: HerdrLauncher? = nil
     ) -> TransportError {
-        HerdrHostPath.missingBinaryError(exitStatus: exitStatus, command: attachCommand)
-            ?? .channelFailed(detail: "attach channel: remote exit status \(exitStatus)")
+        HerdrHostPath.missingBinaryError(
+            exitStatus: exitStatus, command: attachCommand, launcher: launcher)
+            ?? .attachExited(status: exitStatus, output: output)
+    }
+
+    /// Classifies a failed `runAttachPumps`. A remote exit keeps its status
+    /// and output. An I/O failure that is already a `TransportError` (the
+    /// Windows controller's own reason, say) passes through unchanged; an
+    /// `SSHError` takes the Transport's operation mapping. An SSH failure
+    /// that mapping leaves unclassified names only the side that failed: its
+    /// case name is no explanation, and the detail reaches the user.
+    static func attachFailure(
+        _ error: any Error, attachCommand: String, launcher: HerdrLauncher? = nil
+    ) -> TransportError {
+        let underlying: any Error
+        let prefix: String
+        switch error as? HeelerSSHAttachPumpError {
+        case .remoteExit(let status, let output):
+            return attachChannelFailure(
+                exitStatus: status, output: output, attachCommand: attachCommand,
+                launcher: launcher)
+        case .input(let inputError):
+            (underlying, prefix) = (inputError, "attach input")
+        case .output(let outputError):
+            (underlying, prefix) = (outputError, "attach channel")
+        case nil:
+            (underlying, prefix) = (error, "attach channel")
+        }
+        if let underlying = underlying as? TransportError { return underlying }
+        guard underlying is SSHError else {
+            return .channelFailed(detail: "\(prefix): \(String(describing: underlying))")
+        }
+        let mapped = map(underlying)
+        if case .channelFailed = mapped {
+            return .channelFailed(detail: "\(prefix) failed")
+        }
+        return mapped
     }
 
     private func runAttachChannel(
@@ -2786,23 +3415,19 @@ actor HeelerSSHTransport: Transport {
         admissionLease: SSHChannelAdmissionLease,
         input: TerminalAttachInputQueue,
         output: HeelerSSHAttachOutputGate,
-        attachCommand: String
+        attachCommand: String,
+        dropsStartupProbe: Bool
     ) async {
         var failure: TransportError?
         var sawCleanEnd = false
-        var pumpFailure: HeelerSSHAttachPumpError?
 
         do {
-            do {
-                sawCleanEnd = try await Self.runAttachPumps(
-                    channel: channel,
-                    input: input,
-                    output: output,
-                    requestTimeout: requestTimeout)
-            } catch let error as HeelerSSHAttachPumpError {
-                pumpFailure = error
-                throw error
-            }
+            sawCleanEnd = try await Self.runAttachPumps(
+                channel: channel,
+                input: input,
+                output: output,
+                requestTimeout: requestTimeout,
+                dropsStartupProbe: dropsStartupProbe)
             failure = nil
         } catch is CancellationError {
             failure = nil
@@ -2810,17 +3435,9 @@ actor HeelerSSHTransport: Transport {
             if Task.isCancelled || sawCleanEnd {
                 failure = nil
             } else {
-                switch pumpFailure {
-                case .input(let detail):
-                    failure = .channelFailed(detail: "attach input: \(detail)")
-                case .output(let detail):
-                    failure = .channelFailed(detail: "attach channel: \(detail)")
-                case .remoteExit(let status):
-                    failure = Self.attachChannelFailure(
-                        exitStatus: status, attachCommand: attachCommand)
-                case nil:
-                    failure = .channelFailed(detail: "attach channel: \(error)")
-                }
+                noteOperationFailure(error)
+                failure = Self.attachFailure(
+                    error, attachCommand: attachCommand, launcher: herdrLauncher)
             }
         }
 
@@ -2847,11 +3464,17 @@ actor HeelerSSHTransport: Transport {
 
     /// Runs the same input and output pumps used by `runAttachChannel`, while
     /// leaving connection teardown and actor state to its caller.
+    ///
+    /// `dropsStartupProbe` is chosen where the platform branch opens the
+    /// channel: on for a Unix PTY attach, whose herdr direct attach writes
+    /// the probe, and off for the native Windows terminal controller, which
+    /// never does.
     static func runAttachPumps(
         channel: any HeelerSSHAttachChannel,
         input: TerminalAttachInputQueue,
         output: HeelerSSHAttachOutputGate,
-        requestTimeout: Duration
+        requestTimeout: Duration,
+        dropsStartupProbe: Bool
     ) async throws -> Bool {
         let cancellation = HeelerSSHAttachPumpCancellation()
         return try await withThrowingTaskGroup(of: Bool.self) { group in
@@ -2873,16 +3496,28 @@ actor HeelerSSHTransport: Transport {
                 } catch {
                     guard !Task.isCancelled else { throw CancellationError() }
                     cancellation.requestDiagnosticFlush()
-                    throw HeelerSSHAttachPumpError.input(String(describing: error))
+                    throw HeelerSSHAttachPumpError.input(error)
                 }
             }
             group.addTask {
                 // Remote startup chatter stays off the terminal until the
                 // attach exec prints the bootstrap marker.
                 var gate = AttachBootstrapGate()
+                var startupProbe = HerdrStartupProbeFilter(isEnabled: dropsStartupProbe)
+                // Everything the terminal is handed, so a nonzero exit can
+                // quote the command's last words (#431).
+                var diagnostic = AttachExitDiagnostic()
                 func yieldAdmitted(_ bytes: Data) {
                     guard !bytes.isEmpty else { return }
+                    diagnostic.record(bytes)
                     output.yield(bytes)
+                }
+                // Hands over whatever is still withheld when the stream ends,
+                // whichever way it ends, before a failure quotes the
+                // diagnostic. Only explicit cancellation skips it.
+                func releaseWithheld() {
+                    yieldAdmitted(gate.flush())
+                    yieldAdmitted(startupProbe.finish())
                 }
                 do {
                     while !Task.isCancelled {
@@ -2896,28 +3531,28 @@ actor HeelerSSHTransport: Transport {
                         }
                         guard let bytes else {
                             let status = try await channel.exitStatus(timeout: requestTimeout)
+                            releaseWithheld()
                             guard status == 0 else {
-                                yieldAdmitted(gate.flush())
-                                throw HeelerSSHAttachPumpError.remoteExit(status)
+                                throw HeelerSSHAttachPumpError.remoteExit(
+                                    status, output: diagnostic.line)
                             }
-                            yieldAdmitted(gate.flush())
                             return true
                         }
-                        yieldAdmitted(gate.admit(bytes))
+                        yieldAdmitted(startupProbe.filter(gate.admit(bytes)))
                     }
                     throw CancellationError()
                 } catch is CancellationError {
                     // A sibling input failure requests one diagnostic flush;
                     // explicit cancellation leaves the request false.
                     if cancellation.shouldFlushDiagnostic {
-                        yieldAdmitted(gate.flush())
+                        releaseWithheld()
                     }
                     throw CancellationError()
                 } catch let error as HeelerSSHAttachPumpError {
                     throw error
                 } catch {
-                    yieldAdmitted(gate.flush())
-                    throw HeelerSSHAttachPumpError.output(String(describing: error))
+                    releaseWithheld()
+                    throw HeelerSSHAttachPumpError.output(error)
                 }
             }
             defer {

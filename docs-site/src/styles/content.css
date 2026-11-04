@@ -1,0 +1,326 @@
+/* Styles for the article markup that src/lib/markdown.ts generates from the
+ * guides, and for the lightbox in src/scripts/content.ts. Import this file
+ * from global.css without a layer: unlayered rules win over the typography
+ * (prose) and utility layers without !important. Colours come from the
+ * fumadocs tokens, so both themes and the brand palette follow global.css. */
+
+/* -------------------------------------------------------------------------
+ * Steps: div.fd-steps > div.fd-step, numbered by fumadocs' CSS counter. */
+
+.prose .fd-step::before {
+  background-color: color-mix(in oklab, var(--color-fd-primary) 14%, var(--color-fd-background));
+  color: var(--color-fd-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Right after a section heading, that heading's bottom margin is the gap. */
+.prose :is(h2, h3) + .fd-steps > .fd-step:first-child > :first-child {
+  margin-top: 0;
+}
+
+/* -------------------------------------------------------------------------
+ * Inline code: a long path or option breaks instead of pushing the page
+ * sideways on phones, where a step's rail, a callout, and a task list leave
+ * little room. `break-word` (unlike `anywhere`) keeps min-content sizes, so
+ * wide tables still scroll in their own wrapper. */
+
+.prose :not(pre) > code {
+  overflow-wrap: break-word;
+}
+
+/* -------------------------------------------------------------------------
+ * Code frames without a title float their copy button over the first line,
+ * as <CodeBlock> does. Touch screens cannot hover past it and the guides'
+ * commands are long, so there the code starts below the button. */
+
+@media (hover: none) {
+  .prose [data-code-frame]:not([data-titled]):has([data-copy-code]) > .fd-scroll-container {
+    padding-top: 2.5rem;
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * GFM task lists: no bullets, the checkbox hangs in the indent. */
+
+.prose ul.contains-task-list {
+  list-style: none;
+  padding-inline-start: 0;
+}
+
+.prose li.task-list-item {
+  position: relative;
+  padding-inline-start: 1.75em;
+}
+
+.prose li.task-list-item > input[type='checkbox'],
+.prose li.task-list-item > p:first-child > input[type='checkbox'] {
+  position: absolute;
+  inset-inline-start: 0.125em;
+  top: 0.3em;
+  top: calc((1lh - 1.125em) / 2);
+  width: 1.125em;
+  height: 1.125em;
+  margin: 0;
+  appearance: none;
+  border: 1.5px solid color-mix(in oklab, var(--color-fd-primary) 45%, var(--color-fd-border));
+  border-radius: 0.3em;
+  background-color: var(--color-fd-background);
+  accent-color: var(--color-fd-primary);
+}
+
+/* A ticked item: the browser draws the tick in the accent colour. */
+.prose li.task-list-item > input[type='checkbox']:checked,
+.prose li.task-list-item > p:first-child > input[type='checkbox']:checked {
+  appearance: auto;
+}
+
+/* -------------------------------------------------------------------------
+ * <details> in the guides, styled like Fumadocs UI's <Accordion>. */
+
+.prose details {
+  margin-block: 1.25em;
+  border: 1px solid var(--color-fd-border);
+  border-radius: var(--radius-xl, 0.75rem);
+  background-color: var(--color-fd-card);
+}
+
+.prose details > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: calc(var(--radius-xl, 0.75rem) - 1px);
+  color: var(--color-fd-card-foreground);
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+}
+
+.prose details > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Lucide ChevronRight, tinted through a mask. */
+.prose details > summary::before {
+  content: '';
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  background-color: var(--color-fd-muted-foreground);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  transition: rotate 200ms ease;
+}
+
+.prose details[open] > summary::before {
+  rotate: 90deg;
+}
+
+.prose details > summary:hover,
+.prose details > summary:focus-visible {
+  background-color: var(--color-fd-accent);
+}
+
+.prose details > summary:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--color-fd-ring);
+}
+
+.prose details[open] > summary {
+  border-bottom: 1px solid var(--color-fd-border);
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.prose details > :not(summary) {
+  margin-inline: 1rem;
+}
+
+.prose details > summary + * {
+  margin-top: 1rem;
+}
+
+.prose details > :last-child:not(summary) {
+  margin-bottom: 1rem;
+}
+
+/* -------------------------------------------------------------------------
+ * Screenshots: the guides link each one to its full-size PNG, which
+ * content.ts opens in a lightbox. */
+
+.prose a:has(> img[src^='/images/']) {
+  display: inline-block;
+  max-width: 100%;
+  border-radius: 1.25rem;
+  vertical-align: top;
+  cursor: zoom-in;
+}
+
+.prose a:has(> img[src^='/images/']):hover {
+  opacity: 1;
+}
+
+.prose a:has(> img[src^='/images/']):focus-visible {
+  outline: 2px solid var(--color-fd-ring);
+  outline-offset: 3px;
+}
+
+.prose a > img[src^='/images/'] {
+  display: block;
+  margin: 0;
+  border: 1px solid var(--color-fd-border);
+  border-radius: 1.25rem;
+  background-color: var(--color-fd-card);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.05),
+    0 12px 28px -16px rgb(0 0 0 / 0.3);
+  transition: box-shadow 150ms ease;
+}
+
+@media (hover: hover) {
+  .prose a:hover > img[src^='/images/'] {
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.05),
+      0 18px 36px -16px rgb(0 0 0 / 0.38);
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * Tables (data-table on the wrapper from rehypeFumadocsElements). */
+
+/* Form values such as "Field | Value": the names read as labels. */
+.prose [data-table='fields'] td:first-child {
+  color: var(--color-fd-foreground);
+  font-weight: 500;
+}
+
+@media (min-width: 40rem) {
+  .prose [data-table='fields'] td:first-child {
+    white-space: nowrap;
+  }
+}
+
+/* Screenshot galleries: equal columns, side by side down to phone widths. */
+.prose [data-table='gallery'] table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.prose [data-table='gallery'] th,
+.prose [data-table='gallery'] td:has(img) {
+  text-align: center;
+}
+
+/* Captions of different lengths start level under their screenshots. */
+.prose [data-table='gallery'] td {
+  vertical-align: top;
+}
+
+/* -------------------------------------------------------------------------
+ * Heading copy-link buttons: visible on keyboard focus and while showing the
+ * check mark. Covers the MDX <Heading> too, which only shows it on hover. */
+
+.prose :is(h2, h3, h4, h5, h6)[id] > button:focus-visible,
+.prose :is(h2, h3, h4, h5, h6)[id] > button[data-checked] {
+  opacity: 1;
+}
+
+/* -------------------------------------------------------------------------
+ * Screenshot lightbox (a modal <dialog data-lightbox> from content.ts). */
+
+html:has(dialog[data-lightbox][open]) {
+  overflow: hidden;
+}
+
+dialog[data-lightbox] {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 1rem;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+  cursor: zoom-out;
+}
+
+dialog[data-lightbox][open] {
+  display: grid;
+  place-items: center;
+}
+
+dialog[data-lightbox]::backdrop {
+  background-color: rgb(0 0 0 / 0.75);
+  backdrop-filter: blur(4px);
+}
+
+dialog[data-lightbox] > img {
+  width: auto;
+  height: auto;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  border-radius: 1.25rem;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.45);
+  object-fit: contain;
+}
+
+dialog[data-lightbox] > [data-lightbox-close] {
+  position: absolute;
+  top: max(0.75rem, env(safe-area-inset-top));
+  right: max(0.75rem, env(safe-area-inset-right));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 9999px;
+  background-color: rgb(0 0 0 / 0.55);
+  color: #fff;
+  cursor: pointer;
+}
+
+dialog[data-lightbox] > [data-lightbox-close] > svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+dialog[data-lightbox] > [data-lightbox-close]:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  dialog[data-lightbox][open] > img {
+    animation: heeler-lightbox-in 180ms ease-out;
+  }
+
+  dialog[data-lightbox][open]::backdrop {
+    animation: heeler-fade-in 180ms ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prose details > summary::before,
+  .prose a > img[src^='/images/'] {
+    transition: none;
+  }
+}
+
+@keyframes heeler-lightbox-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes heeler-fade-in {
+  from {
+    opacity: 0;
+  }
+}

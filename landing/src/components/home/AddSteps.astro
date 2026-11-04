@@ -1,0 +1,133 @@
+---
+// The closing "Add a machine" steps: get the app, show a Pairing Code on the
+// Host, scan it. The commands block reuses the page's command copy script
+// (a [data-copy] button beside [data-command] in the same parent).
+import StoreActions from './StoreActions.astro';
+import { addCommandLines, links } from './content';
+---
+
+<ol class="steps">
+  <li class="step">
+    <p class="title"><span class="n">01</span> Get the app</p>
+    <p class="home-body">On your iPhone or iPad.</p>
+    <StoreActions guide={false} />
+  </li>
+  <li class="step">
+    <p class="title"><span class="n">02</span> Show a Pairing Code</p>
+    <p class="home-body">On the Mac or Linux machine, in a herdr pane:</p>
+    <div class="commands">
+      <pre data-command set:html={addCommandLines.join('\n')}></pre>
+      <button class="copy" type="button" data-copy hidden>
+        <span data-copy-label>Copy</span>
+      </button>
+      <span class="visually-hidden" role="status" data-copy-status></span>
+    </div>
+  </li>
+  <li class="step">
+    <p class="title"><span class="n">03</span> Scan it</p>
+    <p class="home-body">
+      In Heeler, open <strong>Hosts</strong> and tap <strong>Scan to Pair</strong>. The machine is added as a Host.
+    </p>
+  </li>
+</ol>
+<a class="home-arrow-link" href={links.setup}>Read the pairing guide <span aria-hidden="true">&rarr;</span></a>
+
+<style>
+  .steps {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr);
+    gap: var(--sp-8);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .step {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    min-width: 0;
+    padding-left: var(--sp-4);
+    border-left: 1px solid var(--border-hairline);
+  }
+
+  .title {
+    display: flex;
+    gap: var(--sp-2);
+    margin: 0;
+    font: var(--fw-medium) 15px / 1.4 var(--font-sans);
+    color: var(--text-primary);
+  }
+
+  .n {
+    font: var(--fw-regular) 12px / 21px var(--font-mono);
+    color: var(--text-muted);
+  }
+
+  .step .home-body {
+    margin: 0;
+  }
+
+  strong {
+    font-weight: var(--fw-medium);
+    color: var(--text-primary);
+  }
+
+  .commands {
+    position: relative;
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+    background: var(--surface-code);
+    min-width: 0;
+  }
+
+  pre {
+    margin: 0;
+    padding: var(--sp-4) 18px;
+    font: var(--fw-regular) var(--fs-label) / 1.75 var(--font-mono);
+    font-variant-ligatures: none;
+    color: var(--syn-plain);
+    overflow-x: auto;
+  }
+
+  .copy {
+    position: absolute;
+    top: var(--sp-2);
+    right: var(--sp-2);
+    min-width: 64px;
+    height: 32px;
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--border-hairline);
+    border-radius: 999px;
+    background: var(--surface-card);
+    font: var(--fw-medium) 12px / 1 var(--font-mono);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-control);
+  }
+
+  .copy:hover {
+    color: var(--text-primary);
+  }
+
+  .copy:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 2px;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 960px) {
+    .steps {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--sp-6);
+    }
+  }
+</style>

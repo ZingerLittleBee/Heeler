@@ -1,0 +1,71 @@
+---
+import appStoreBadge from '../../assets/badges/app-store-badge.svg';
+import testFlightBadge from '../../assets/badges/testflight-badge.svg';
+import { links } from './content';
+
+interface Props {
+  /** Show the setup guide link after the badges. */
+  guide?: boolean;
+}
+
+const { guide = true } = Astro.props;
+---
+
+<div class="actions">
+  <a class="store-badge" href={links.appStore}>
+    <img src={appStoreBadge.src} width={appStoreBadge.width} height={appStoreBadge.height} alt="Download on the App Store" />
+  </a>
+  <a class="store-badge" href={links.testFlight}>
+    <img src={testFlightBadge.src} width={testFlightBadge.width} height={testFlightBadge.height} alt="Available on TestFlight" />
+  </a>
+  {
+    guide && (
+      <a class="setup-link" href={links.setup}>
+        Read the setup guide <span aria-hidden="true">&rarr;</span>
+      </a>
+    )
+  }
+</div>
+
+<style>
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-3);
+  }
+
+  .store-badge {
+    display: inline-flex;
+    height: var(--h-control-lg);
+    border-radius: 6px;
+  }
+
+  .store-badge img {
+    height: 100%;
+    width: auto;
+  }
+
+  .store-badge:hover {
+    opacity: 0.9;
+  }
+
+  .setup-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    min-height: 44px;
+    margin-left: var(--sp-3);
+    font: var(--type-label);
+    color: var(--text-primary);
+  }
+
+  .setup-link:hover span {
+    transform: translateX(2px);
+  }
+
+  .setup-link span {
+    color: var(--text-muted);
+    transition: transform var(--dur-fast) var(--ease-standard);
+  }
+</style>

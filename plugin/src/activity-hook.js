@@ -35,6 +35,8 @@ import {
 } from "./activity-state.js";
 import { parseActivityRowLayout } from "./activity-rows.js";
 import { readNotificationConfig } from "./notification-config.js";
+import { readUsageRuntime, recordUsageRuntime } from "./usage-runtime.js";
+import { noteClaudeAgent } from "./usage/claude-agents.js";
 import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
 import { optionalText } from "./display-text.js";
 import { deliversToSession, hookSession, sessionStateDir } from "./session.js";
@@ -467,15 +469,44 @@ async function deliverSteps(config, device, atStep, lastStep, request) {
   }
 }
 
+/**
+ * A Claude Code Agent's config directory is a Usage Account suggestion. It is
+ * learned only once Usage has a runtime, and never fails the hook.
+ */
+async function learnClaudeAgent(configDir, binPath, session, paneId) {
+  try {
+    const runtime = readUsageRuntime(configDir);
+    if (runtime) await noteClaudeAgent({ stateDir: runtime.stateDir, herdr: binPath, session, paneId });
+  } catch {
+    // Suggestions are best effort; the next status change tries again.
+  }
+}
+
 async function main() {
   const configDir = requireEnv("HERDR_PLUGIN_CONFIG_DIR");
   refreshSidebarSnapshotForEvent(configDir);
+  try {
+    recordUsageRuntime(configDir);
+  } catch (error) {
+    // Usage setup must not suppress a Live Activity update.
+    console.error(`usage-runtime: recording failed (${error.code ?? "invalid runtime"})`);
+  }
   const eventJson = requireEnv("HERDR_PLUGIN_EVENT_JSON");
   const session = hookSession();
   const stateDir = sessionStateDir(requireEnv("HERDR_PLUGIN_STATE_DIR"), session);
   const binPath = requireEnv("HERDR_BIN_PATH");
 
   const event = parseStatusEvent(eventJson);
+  // Runs beside the Live Activity update, which never waits for it.
+  const learning = event.agentKind === "claude" ? learnClaudeAgent(configDir, binPath, session, event.paneId) : null;
+  try {
+    await updateLiveActivity(configDir, session, stateDir, binPath, event);
+  } finally {
+    await learning;
+  }
+}
+
+async function updateLiveActivity(configDir, session, stateDir, binPath, event) {
   const config = readNotificationConfig(configDir);
 
   // Cheap exits before burning a debounce process on a no-op.

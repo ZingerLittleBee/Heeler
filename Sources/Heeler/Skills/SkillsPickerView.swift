@@ -88,8 +88,8 @@ struct SkillsPickerView: View {
     private func section(titled title: String, skills: [AgentSkill]) -> some View {
         if !skills.isEmpty {
             Section(title) {
-                ForEach(skills) { skill in
-                    row(for: skill)
+                ForEach(skills) { @Sendable skill in
+                    MainActorContent { row(for: skill) }
                 }
             }
         }

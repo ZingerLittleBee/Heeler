@@ -27,9 +27,17 @@ struct AgentDetailStatusChrome: View {
         // than the line's spacing would put it: the rule already separates
         // them, and the branch needs the width.
         HStack(alignment: .firstTextBaseline, spacing: 0) {
-            statusLabel
-                .fixedSize()
-            if showsGit { StatusLineDivider() }
+            if let title = status.displayTitle {
+                statusLabel(title)
+                    .fixedSize()
+                if showsGit { StatusLineDivider() }
+            } else {
+                // No status to show, but the line keeps its height, so the
+                // controls below do not move when one arrives.
+                Text(verbatim: "\u{200B}")
+                    .font(.caption2.weight(.medium))
+                    .accessibilityHidden(true)
+            }
             // The Checkout's stretch, from the git item to the totals and
             // the gap between them, is what opens Changes; the status and
             // the latency are not.
@@ -63,7 +71,7 @@ struct AgentDetailStatusChrome: View {
         .modifier(AgentDetailChangesVisibility(changes: changes))
     }
 
-    private var statusLabel: some View {
+    private func statusLabel(_ title: String) -> some View {
         HStack(spacing: 4) {
             if status == .working {
                 SolvingOrbView(size: 10)
@@ -74,13 +82,13 @@ struct AgentDetailStatusChrome: View {
                     .frame(width: 7, height: 7)
                     .accessibilityHidden(true)
             }
-            Text(status.rawValue.capitalized)
+            Text(title)
         }
         .font(.caption2.weight(.medium))
         .foregroundStyle(Color(status.inkUIColor))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Agent status")
-        .accessibilityValue(status.rawValue.capitalized)
+        .accessibilityValue(title)
     }
 
     /// Deliberately quieter than Agent Status: it never changes color with the

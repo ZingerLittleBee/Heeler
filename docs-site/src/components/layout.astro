@@ -1,0 +1,134 @@
+---
+import { ClientRouter } from 'astro:transitions';
+import { htmlLang, localeFromPath, localePath } from '@/lib/guides.ts';
+import '@/styles/global.css';
+
+interface Props {
+  title: string;
+  description: string;
+  isGuide?: boolean;
+  /** For the 404 page: Workers also serves it with status 200 at /404, so keep it out of search engines. */
+  noindex?: boolean;
+}
+
+// build.format 'file' makes the pathname `/tailscale.html`; Workers serves it at `/tailscale`.
+const path = Astro.url.pathname.replace(/(\/index)?\.html$/, '') || '/';
+const locale = localeFromPath(path);
+const lang = htmlLang(locale);
+const siteName = locale === 'zh' ? 'Heeler 文档' : 'Heeler Docs';
+const { title, description, isGuide = false, noindex = false } = Astro.props;
+const fullTitle = title === siteName ? siteName : `${title} | ${siteName}`;
+const ogLocale = locale === 'zh' ? 'zh_CN' : 'en_US';
+const ogAlternateLocale = locale === 'zh' ? 'en_US' : 'zh_CN';
+const canonical = new URL(path, Astro.site);
+const enUrl = new URL(localePath(path, 'en'), Astro.site);
+const zhUrl = new URL(localePath(path, 'zh'), Astro.site);
+const ogImage = new URL('/social-card.jpg', Astro.site);
+const imageAlt = locale === 'zh'
+  ? 'Heeler 的 iPhone Agent List 截图。通过 SSH 在 iPhone 和 iPad 上使用 Claude Code 和 Codex。'
+  : 'Heeler Agent List on iPhone. Your agents. On iPhone and iPad. Claude Code, Codex, SSH.';
+const homeUrl = new URL(localePath('/', locale), Astro.site).href;
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${homeUrl}#website`,
+      name: siteName,
+      url: homeUrl,
+      inLanguage: lang,
+    },
+    ...(isGuide ? [
+      {
+        '@type': 'TechArticle',
+        headline: title,
+        description,
+        url: canonical.href,
+        mainEntityOfPage: canonical.href,
+        inLanguage: lang,
+        isPartOf: { '@id': `${homeUrl}#website` },
+      },
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: siteName, item: homeUrl },
+          { '@type': 'ListItem', position: 2, name: title, item: canonical.href },
+        ],
+      },
+    ] : []),
+  ],
+};
+---
+
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    {
+      noindex ? (
+        <meta name="robots" content="noindex" />
+      ) : (
+        <>
+          <link rel="canonical" href={canonical} />
+          <link rel="alternate" hreflang="en" href={enUrl} />
+          <link rel="alternate" hreflang="zh-CN" href={zhUrl} />
+          <link rel="alternate" hreflang="x-default" href={enUrl} />
+        </>
+      )
+    }
+    <meta name="apple-itunes-app" content="app-id=6797263135" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="color-scheme" content="light dark" />
+    <meta property="og:type" content={isGuide ? 'article' : 'website'} />
+    <meta property="og:site_name" content={siteName} />
+    <meta property="og:locale" content={ogLocale} />
+    <meta property="og:locale:alternate" content={ogAlternateLocale} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    {!noindex && <meta property="og:url" content={canonical} />}
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={imageAlt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content={imageAlt} />
+    <meta name="generator" content={Astro.generator} />
+    {!noindex && <script type="application/ld+json" set:html={JSON.stringify(structuredData).replace(/</g, '\\u003c')} />}
+    <ClientRouter />
+    <script>
+      // The theme script sets `dark`/`light` and color-scheme on <html>, but a
+      // client-side navigation swaps in the next page's bare <html> attributes.
+      // Carry them over so the theme does not flash back to the default.
+      document.addEventListener('astro:before-swap', (event) => {
+        const current = document.documentElement;
+        const next = event.newDocument.documentElement;
+        next.className = current.className;
+        const style = current.getAttribute('style');
+        if (style === null) next.removeAttribute('style');
+        else next.setAttribute('style', style);
+      });
+      // Astro updates persisted island props, but not its static Astro slot.
+      // Refresh the article before the island reads its slots during the swap.
+      document.addEventListener('astro:before-swap', (event) => {
+        const selector = 'astro-island[data-astro-transition-persist="docs-shell"] astro-slot';
+        const current = document.querySelector(selector);
+        const next = event.newDocument.querySelector(selector);
+        if (current && next) current.innerHTML = next.innerHTML;
+      });
+    </script>
+  </head>
+  <body class="flex min-h-screen flex-col" transition:animate="none">
+    <slot />
+  </body>
+</html>

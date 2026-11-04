@@ -84,11 +84,13 @@ struct SkillsKeyboardPane: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
                 .padding(.bottom, 4)
-            ForEach(skills) { skill in
-                SkillRowButton(
-                    skill: skill,
-                    action: { onInsert(skill) },
-                    onViewContent: { onViewContent(skill) })
+            ForEach(skills) { @Sendable skill in
+                MainActorContent {
+                    SkillRowButton(
+                        skill: skill,
+                        action: { onInsert(skill) },
+                        onViewContent: { onViewContent(skill) })
+                }
                 Divider().padding(.leading, 16)
             }
         }

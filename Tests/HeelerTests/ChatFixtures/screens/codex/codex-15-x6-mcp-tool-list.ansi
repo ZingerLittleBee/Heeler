@@ -1,0 +1,26 @@
+ 
+[0m[1m[38;2;128;128;128m• [0m[1mCalling[0m [0m[38;2;99;168;248mprobe.probe_echo[0m
+[0m[2m    + Show details                       [0m
+ 
+ 
+  [0m[2mField 1/1[0m
+  Allow the probe MCP server to run
+  tool "probe_echo"?
+ 
+  text: hi
+ 
+  [0m[1m[7m› 1. Allow               [0m[7mRun the tool[0m
+  [0m[1m[7m                         [0m[7mand continue[0m
+    2. Allow for this      [0m[2mRun the tool[0m
+       session             [0m[2mand remember[0m
+                           [0m[2mthis choice[0m
+                           [0m[2mfor this[0m
+                           [0m[2msession[0m
+    3. Always allow        [0m[2mRun the tool[0m
+                           [0m[2mand remember[0m
+                           [0m[2mthis choice[0m
+                           [0m[2mfor future[0m
+                           [0m[2mtool calls[0m
+    4. Cancel              [0m[2mCancel this[0m
+                           [0m[2mtool call[0m
+  [0m[1menter[0m to submit[0m[2m | [0m[1mesc[0m to cancel

@@ -1,6 +1,6 @@
 id = "heeler"
 name = "heeler"
-version = "0.6.0"
+version = "0.8.0"
 min_herdr_version = "0.7.5"
 description = "Pair a Heeler device by scanning a QR Pairing Code"
 platforms = ["linux", "macos"]
@@ -17,6 +17,14 @@ title = "Pair a mobile device"
 description = "Show a Pairing Code QR for the Heeler app"
 contexts = ["global"]
 command = ["node", "src/pair-action.js"]
+
+[[actions]]
+id = "usage-claude-limits"
+title = "Read Claude Code Usage Limits"
+description = "Used by Heeler: reads Claude Code's plan limits in herdr's session"
+contexts = ["global"]
+platforms = ["macos"]
+command = ["node", "src/usage-claude-action.js"]
 
 [[panes]]
 id = "pair"
