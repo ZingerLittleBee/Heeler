@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { DISPLAY_LIMIT } from "../src/display-text.js";
 import {
   buildActivityState,
-  conversationalSteps,
   eligibleStatusMap,
   hasNewlyBlocked,
   parsePinnedPaneIds,
@@ -293,94 +292,6 @@ suite("eligible status helpers", () => {
   });
 });
 
-suite("conversational rows in buildActivityState", () => {
-  const AS_OF = Date.UTC(2026, 9, 9, 14, 31);
-  const inventory = [
-    agent("w1:p1", "working", { agent: "claude", name: "agent-a", workspace_id: "w1", terminal_title_stripped: "Refactor parser" }),
-    agent("w1:p2", "idle", { agent: "claude" }),
-  ];
-  const labels = new Map([["w1", "Heeler"]]);
-
-  test("layout mode is the default and ignores sinceByPane", () => {
-    const { plaintextObject } = buildActivityState({ agents: inventory, hostName: "example-host", sinceByPane: { "w1:p1": AS_OF } });
-    assert.equal(plaintextObject.agents[0].rows, undefined);
-  });
-
-  test("conversational mode builds rows from herdr fields, in the given zone, and reports the ladder", () => {
-    const { counts, plaintextObject, ladder } = buildActivityState({
-      agents: inventory, hostName: "example-host", workspaceLabels: labels, rowsMode: "conversational",
-      sinceByPane: { "w1:p1": AS_OF - 120_000 }, asOfMs: AS_OF, timeZone: "UTC",
-      rowLayout: { rows: [[{ token: "directory" }]] },
-    });
-    assert.deepEqual(counts, { working: 1, blocked: 0, done: 0 });
-    assert.deepEqual(plaintextObject.agents[0].rows.map((row) => row.map((span) => span.text).join("")), [
-      "agent-a · Heeler", "Refactor parser", "Working since 14:29 · updated 14:31 UTC",
-    ]);
-    assert.deepEqual(ladder, [{ status: "working", pinned: false, said: "title" }]);
-  });
-
-  test("title, name and workspace wire fields are cleaned in conversational mode only (T-H5)", () => {
-    const hostile = [agent("w1:p1", "working", {
-      agent: "claude", name: "agent\u202E-a", workspace_id: "w1", terminal_title_stripped: "\u202ERefactor\u0000 parser",
-    })];
-    const rlo = new Map([["w1", "\u202EHeeler"]]);
-    const conversational = buildActivityState({ agents: hostile, hostName: "h", workspaceLabels: rlo, rowsMode: "conversational", timeZone: "UTC" });
-    assert.doesNotMatch(JSON.stringify(conversational.plaintextObject), /\\u202e|\\u0000/i);
-    assert.deepEqual(
-      [conversational.plaintextObject.agents[0].title, conversational.plaintextObject.agents[0].name, conversational.plaintextObject.agents[0].workspace],
-      ["Refactor parser", "agent-a", "Heeler"],
-    );
-    const layout = buildActivityState({ agents: hostile, hostName: "h", workspaceLabels: rlo });
-    assert.equal(layout.plaintextObject.agents[0].name, "agent\u202E-a");
-  });
-});
-
-suite("conversationalSteps (degrade ladder)", () => {
-  const rows3 = (name) => [[{ text: name }], [{ text: `title of ${name}` }], [{ text: "state" }]];
-  const wire = (pane, status) => ({ kind: "claude", name: pane, pane, rows: rows3(pane), status, title: `title of ${pane}` });
-  const plaintext = {
-    agents: [wire("w1:p1", "blocked"), wire("w1:p2", "done"), wire("w1:p3", "working"), wire("w1:p4", "working")],
-    host: "example-host",
-    v: 1,
-  };
-  const ladder = [
-    { status: "blocked", pinned: false, said: "title" },
-    { status: "done", pinned: false, said: "title" },
-    { status: "working", pinned: true, said: "title" },
-    { status: "working", pinned: false, said: "title" },
-  ];
-  const shape = (step) => step.agents.map((entry) => `${entry.pane}:${entry.rows.length}${"title" in entry ? "t" : ""}`).join(" ");
-
-  test("removes one agent's row 2 per step, done first, then working (unpinned first), then blocked", () => {
-    const steps = conversationalSteps(plaintext, ladder);
-    assert.deepEqual(steps.slice(0, 5).map(shape), [
-      "w1:p1:3t w1:p2:3t w1:p3:3t w1:p4:3t",
-      "w1:p1:3t w1:p2:2t w1:p3:3t w1:p4:3t",
-      "w1:p1:3t w1:p2:2t w1:p3:3t w1:p4:2t",
-      "w1:p1:3t w1:p2:2t w1:p3:2t w1:p4:2t",
-      "w1:p1:2t w1:p2:2t w1:p3:2t w1:p4:2t",
-    ]);
-  });
-
-  test("then drops title and name, then whole agents lowest first keeping the blocked one, then identity only, then none", () => {
-    const steps = conversationalSteps(plaintext, ladder);
-    assert.deepEqual(steps.slice(5).map(shape), [
-      "w1:p1:2 w1:p2:2 w1:p3:2 w1:p4:2",
-      "w1:p1:2 w1:p3:2 w1:p4:2",
-      "w1:p1:2 w1:p3:2",
-      "w1:p1:2",
-      "w1:p1:1",
-      "",
-    ]);
-    assert.equal(steps.every((step) => step.host === "example-host" && step.v === 1), true);
-  });
-
-  test("an agent with no row 2 costs no step", () => {
-    const two = { ...plaintext, agents: [{ ...wire("w1:p1", "working"), rows: [[{ text: "a" }], [{ text: "s" }]] }] };
-    assert.equal(conversationalSteps(two, [{ status: "working", pinned: false, said: null }]).length, 4);
-  });
-});
-
 suite("trackSince (state v2)", () => {
   const NOW = 1_000_000;
   const EPOCH = "11:22";
@@ -401,35 +312,27 @@ suite("trackSince (state v2)", () => {
     const result = trackSince(previous, [term("w9:p9", "working", "t1", 4), term("w1:p2", "blocked", "t2", 8)], NOW, EPOCH);
     assert.deepEqual(result.sinceByPane, { "w9:p9": 5, "w1:p2": NOW });
     assert.deepEqual(result.terminals, { t1: { status: "working", seq: 4, since_ms: 5 }, t2: { status: "blocked", seq: 8, since_ms: NOW } });
-    assert.equal(result.allRecorded, false);
   });
 
-  test("blocked, working, blocked between two runs is a new pair, so since is the last block (T-H3 a)", () => {
+  test("the same status with a new seq is a new pair, so the start is the latest change", () => {
     const previous = saved({ t1: { status: "blocked", seq: 2, since_ms: 5 } });
     assert.equal(trackSince(previous, [term("w1:p1", "blocked", "t1", 4)], NOW, EPOCH).sinceByPane["w1:p1"], NOW);
   });
 
-  test("a restart (new epoch) and a seq regression clear every start to unknown (T-H3 c, d)", () => {
+  test("a restart (new epoch) and a seq regression clear every start to unknown", () => {
     const previous = saved({ t1: { status: "working", seq: 4, since_ms: 5 }, t2: { status: "working", seq: 9, since_ms: 6 } });
     const agents = [term("w1:p1", "working", "t1", 4), term("w1:p2", "working", "t2", 1)];
     assert.deepEqual(trackSince(previous, agents, NOW, EPOCH).sinceByPane, { "w1:p1": null, "w1:p2": null });
     assert.deepEqual(trackSince(previous, agents.slice(0, 1), NOW, "33:44").sinceByPane, { "w1:p1": null });
   });
 
-  test("a terminal id reused by a new server with a lower seq resets to unknown", () => {
-    const previous = saved({ t1: { status: "working", seq: 12, since_ms: 5 } });
-    assert.equal(trackSince(previous, [term("w1:p1", "working", "t1", 0)], NOW, EPOCH).sinceByPane["w1:p1"], null);
-  });
-
   test("an unknown start stays unknown while its pair is unchanged", () => {
     const previous = saved({ t1: { status: "working", seq: 4, since_ms: null } });
-    const result = trackSince(previous, [term("w1:p1", "working", "t1", 4)], NOW, EPOCH);
-    assert.equal(result.sinceByPane["w1:p1"], null);
-    assert.equal(result.allRecorded, true);
+    assert.equal(trackSince(previous, [term("w1:p1", "working", "t1", 4)], NOW, EPOCH).sinceByPane["w1:p1"], null);
   });
 
   test("an agent without terminal_id is unknown and not stored; ineligible agents are not tracked", () => {
     const result = trackSince(saved({}), [agent("w1:p1", "working"), term("w1:p2", "idle", "t2", 1)], NOW, EPOCH);
-    assert.deepEqual(result, { terminals: {}, sinceByPane: { "w1:p1": null }, allRecorded: false });
+    assert.deepEqual(result, { terminals: {}, sinceByPane: { "w1:p1": null } });
   });
 });

@@ -57,7 +57,7 @@ test("row values cap at 80 graphemes without splitting joined emoji", () => {
 
 test("missing or malformed layout preserves legacy fallback; explicit empty layout stays empty", () => {
   for (const rowLayout of [undefined, null, {}, { rows: [null] }, { rows: [Array(17).fill({ token: "agent" })] },
-    { rows: Array(4).fill([]) }, { rows: [[{ token: "unknown" }]] }, { rows: [[{ token: "agent", bold: 1 }]] },
+    { rows: Array(4).fill([]) }, { rows: [[{ token: 7 }]] }, { rows: [[{ token: "agent", bold: 1 }]] },
     { rows: [[{ token: "agent", fg: "red" }]] }]) {
     assert.equal(parseActivityRowLayout(rowLayout), null);
     assert.equal("rows" in render([], { rowLayout }), false);
@@ -65,6 +65,31 @@ test("missing or malformed layout preserves legacy fallback; explicit empty layo
   assert.deepEqual(render([]).rows, []);
 });
 
+
+test("an unknown token is skipped on its own and the rest of the layout renders", () => {
+  assert.deepEqual(parseActivityRowLayout({ rows: [[{ token: "agent" }, { token: "next_app_field", bold: true }], [{ token: "unknown" }]] }),
+    { rows: [[{ token: "agent" }], []] });
+  assert.deepEqual(render([["agent", "next_app_field", "workspace"], ["unknown"]]).rows,
+    [[{ text: "reviewer" }, { text: " · " }, { text: "Heeler" }]]);
+});
+
+test("status_since and updated_at send unix seconds and a kind beside fallback text", () => {
+  const sinceMs = Date.UTC(2026, 9, 11, 14, 3, 20);
+  const asOfMs = sinceMs + 3_600_000;
+  const [row] = render([["status", { token: "status_since", dim: true }, "updated_at"]], {
+    sinceByPane: { "opaque:pane": sinceMs }, asOfMs,
+  }).rows;
+  assert.deepEqual(row.map(({ text, ...rest }) => rest),
+    [{}, {}, { dim: true, at: Math.floor(sinceMs / 1000), kind: "status_since" }, {}, { at: Math.floor(asOfMs / 1000), kind: "updated_at" }]);
+  assert.match(row[2].text, /^since \d{2}:\d{2}$/);
+  assert.match(row[4].text, /^updated \d{2}:\d{2}$/);
+});
+
+test("an unknown status start omits status_since without a placeholder", () => {
+  for (const sinceByPane of [{}, { "opaque:pane": null }]) {
+    assert.deepEqual(render([["status", "status_since"]], { sinceByPane, asOfMs: 0 }).rows, [[{ text: "Working" }]]);
+  }
+});
 
 test("field truncation preserves the first 80 graphemes without ellipsis or trailing-space trimming", () => {
   const text = "x".repeat(79) + " y";

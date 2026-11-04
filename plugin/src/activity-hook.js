@@ -9,10 +9,6 @@
 //     ──> herdr agent list ──> suppress unchanged {pane: status}
 //     ──> seal one envelope per device ──> POST kind=liveactivity
 //
-// With `activity_rows: "conversational"` the suppression key is instead the
-// bytes each device would show, and the minimum interval, priority-10 ledger
-// and content-only cap of the contract's "Push volume" section apply.
-//
 // Devices without a plausible `live_activity` registration send nothing;
 // `notify` flags do not gate this path. APNs 410 clears only that field.
 
@@ -26,7 +22,6 @@ import { encryptActivityEnvelope } from "./activity-envelope.js";
 import {
   ELIGIBLE_STATUSES,
   buildActivityState,
-  conversationalSteps,
   eligibleStatusMap,
   hasNewlyBlocked,
   sameStatusMap,
@@ -40,7 +35,6 @@ import { noteClaudeAgent } from "./usage/claude-agents.js";
 import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
 import { optionalText } from "./display-text.js";
 import { deliversToSession, hookSession, sessionStateDir } from "./session.js";
-import { displayTimeZone } from "./status-rows.js";
 
 const SEND_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -51,7 +45,6 @@ const CT_BUDGET = 2800;
 const APNS_PAYLOAD_BUDGET = 4096;
 const RELAY_REQUEST_BUDGET = 8192;
 const STALE_AFTER_SECONDS = 900;
-const HOUR_MS = 3_600_000;
 
 /** Parse HERDR_PLUGIN_EVENT_JSON leniently: require pane id and status only. */
 function parseStatusEvent(raw) {
@@ -273,17 +266,6 @@ async function listRowContext(binPath, agents, devices) {
   return { tabs, panes };
 }
 
-// The rows mode enters the key only when conversational, so a layout-mode
-// install keeps the key it saved before this mode existed.
-function devicePreferences(devices, rowsMode) {
-  const list = devices.map((device) => ({
-    token: device.token, env: device.env, pins: device.pinnedPaneIds,
-    layout: device.rowLayout, host: device.rowHostName,
-  })).sort((left, right) => left.token.localeCompare(right.token));
-  const key = rowsMode === "conversational" ? [rowsMode, ...list] : list;
-  return createHash("sha256").update(JSON.stringify(key)).digest("hex");
-}
-
 /** herdr server identity: the socket's inode and change time, or null when unknown. */
 function socketEpoch() {
   try {
@@ -294,23 +276,11 @@ function socketEpoch() {
   }
 }
 
-function deviceKey(device) {
-  return createHash("sha256").update(device.token).digest("hex").slice(0, 16);
-}
-
-function lastHour(times, nowMs) {
-  return (Array.isArray(times) ? times : []).filter((at) => Number.isFinite(at) && nowMs - at < HOUR_MS);
-}
-
-/** What one device would show, with the `updated` clock masked so a new minute alone sends nothing. */
-function sentHash({ event, counts }, plaintextObject) {
-  const agents = plaintextObject.agents.map((agent) => (Array.isArray(agent.rows)
-    ? {
-      ...agent,
-      rows: agent.rows.map((row) => row.map((span) => (span.dim && span.text.startsWith("updated ") ? { ...span, text: "updated" } : span))),
-    }
-    : agent));
-  return createHash("sha256").update(JSON.stringify([event, counts, { ...plaintextObject, agents }])).digest("hex");
+function devicePreferences(devices) {
+  return createHash("sha256").update(JSON.stringify(devices.map((device) => ({
+    token: device.token, env: device.env, pins: device.pinnedPaneIds,
+    layout: device.rowLayout, host: device.rowHostName,
+  })).sort((left, right) => left.token.localeCompare(right.token)))).digest("hex");
 }
 
 function dropTitles(plaintextObject) {
@@ -389,14 +359,13 @@ function envelopeFits(envelope, request) {
   return true;
 }
 
-// `atStep(step)` is the payload after `step` degrade steps, up to `lastStep`.
-function sealFitting(atStep, lastStep, device, request) {
+function sealFitting(plaintextObject, device, request) {
   let step = 0;
-  let envelope = encryptActivityEnvelope(atStep(step), device.key);
+  let envelope = encryptActivityEnvelope(plaintextAtStep(plaintextObject, step), device.key);
   const sized = { ...request, device };
-  while (step < lastStep && !envelopeFits(envelope, sized)) {
+  while (step < 3 && !envelopeFits(envelope, sized)) {
     step += 1;
-    envelope = encryptActivityEnvelope(atStep(step), device.key);
+    envelope = encryptActivityEnvelope(plaintextAtStep(plaintextObject, step), device.key);
   }
   return { envelope, step };
 }
@@ -450,19 +419,18 @@ function requireEnv(name) {
   return value;
 }
 
-/** Send the first fitting step; a relay-origin 413 moves one step further. Returns the outcome and the step sent. */
-async function deliverSteps(config, device, atStep, lastStep, request) {
-  let { envelope, step } = sealFitting(atStep, lastStep, device, request);
+async function deliver(config, device, plaintextObject, request) {
+  let { envelope, step } = sealFitting(plaintextObject, device, request);
   while (true) {
     const outcome = await postPush(
       config.relayUrl,
       relayBody({ ...request, device, envelope }),
       config.retryDelayMs,
     );
-    if (outcome === "ok" || outcome === "pruned") return { outcome, step };
-    if (outcome === "too_large" && step < lastStep) {
+    if (outcome === "ok" || outcome === "pruned") return outcome;
+    if (outcome === "too_large" && step < 3) {
       step += 1;
-      envelope = encryptActivityEnvelope(atStep(step), device.key);
+      envelope = encryptActivityEnvelope(plaintextAtStep(plaintextObject, step), device.key);
       continue;
     }
     throw new Error(`push for token ${device.token.slice(0, 8)}… failed: payload too large`);
@@ -521,26 +489,44 @@ async function updateLiveActivity(configDir, session, stateDir, binPath, event) 
 
   const devices = readActivityDevices(configDir, session);
   if (devices.length === 0) return;
-  if (config.activityRows === "conversational") {
-    await sendConversational({ config, configDir, stateDir, binPath, devices, claim });
-    return;
-  }
 
   const agents = await listAgents(binPath);
   const statuses = eligibleStatusMap(agents);
   const previous = lastState?.statuses ?? null;
   const preferences = devicePreferences(devices);
+  // Status start times are saved on every run that wins the claim, sent or
+  // not, so a skipped or failed push never moves `status_since`.
+  const asOfMs = Date.now();
+  const epoch = socketEpoch();
+  const saved = readLastState(stateDir);
+  const { terminals, sinceByPane } = trackSince(saved, agents, asOfMs, epoch);
+  const saveSince = (fields = {}) => writeLastState(stateDir, {
+    sent_at_ms: saved?.sent_at_ms,
+    statuses: saved?.statuses,
+    preferences: saved?.preferences,
+    ended: saved?.ended === true,
+    ...fields,
+    v: 2,
+    epoch,
+    terminals,
+  });
   if (previous !== null && sameStatusMap(statuses, previous)
-      && lastState?.preferences === preferences) return;
+      && lastState?.preferences === preferences) {
+    saveSince();
+    return;
+  }
 
   const empty = Object.keys(statuses).length === 0;
-  if (empty && lastState?.ended === true) return;
+  if (empty && lastState?.ended === true) {
+    saveSince();
+    return;
+  }
 
   const workspaceLabels = empty ? new Map() : await listWorkspaceLabels(binPath);
   const rowContext = empty ? {} : await listRowContext(binPath, agents, devices);
   const pushEvent = empty ? "end" : "update";
   const priority = hasNewlyBlocked(statuses, previous) ? 10 : 5;
-  const timestamp = Math.floor(Date.now() / 1000);
+  const timestamp = Math.floor(asOfMs / 1000);
   const hostName = shortHostName();
 
   const pruned = new Set();
@@ -555,6 +541,8 @@ async function updateLiveActivity(configDir, session, stateDir, binPath, event) 
       rowLayout: device.rowLayout,
       rowHostName: device.rowHostName,
       ...rowContext,
+      sinceByPane,
+      asOfMs,
     });
     const content =
       pushEvent === "end"
@@ -570,9 +558,7 @@ async function updateLiveActivity(configDir, session, stateDir, binPath, event) 
       counts: content.counts,
     };
     try {
-      const { outcome } = await deliverSteps(
-        config, device, (step) => plaintextAtStep(content.plaintextObject, step), 3, request,
-      );
+      const outcome = await deliver(config, device, content.plaintextObject, request);
       if (outcome === "ok") delivered = true;
       else pruned.add(device.token);
     } catch (error) {
@@ -580,136 +566,8 @@ async function updateLiveActivity(configDir, session, stateDir, binPath, event) 
     }
   }
   if (pruned.size > 0) pruneLiveActivity(configDir, pruned);
-  if (delivered) {
-    writeLastState(stateDir, {
-      sent_at_ms: Date.now(),
-      statuses,
-      preferences,
-      ended: pushEvent === "end",
-    });
-  }
+  saveSince(delivered ? { sent_at_ms: Date.now(), statuses, preferences, ended: pushEvent === "end" } : {});
   if (failures.length > 0) throw new Error(failures.join("; "));
-}
-
-/**
- * Conversational mode (docs/agents/live-activity-contract.md, "Since" and
- * "Push volume"). State is read again now that the claim is won, and the
- * per-agent start times are saved on every run, whether or not a push goes
- * out, so a failed send never moves `since`.
- */
-async function sendConversational({ config, configDir, stateDir, binPath, devices, claim }) {
-  const timeZone = displayTimeZone(config.activityTimeZone);
-  const preferences = devicePreferences(devices, "conversational");
-  let statusChange = false;
-  for (let waited = false; ; waited = true) {
-    const lastState = readLastState(stateDir);
-    const agents = await listAgents(binPath);
-    const statuses = eligibleStatusMap(agents);
-    const previous = lastState?.statuses ?? null;
-    const empty = Object.keys(statuses).length === 0;
-    if (empty && lastState?.ended === true) return;
-
-    const timestamp = Math.floor(Date.now() / 1000);
-    const nowMs = timestamp * 1000;
-    const epoch = socketEpoch();
-    const { terminals, sinceByPane, allRecorded } = trackSince(lastState, agents, nowMs, epoch);
-    // Content-only: every agent's (status, seq) was already recorded. A wait
-    // never turns a status change into a content-only send.
-    statusChange ||= !(allRecorded && previous !== null && sameStatusMap(statuses, previous));
-    const newlyBlocked = hasNewlyBlocked(statuses, previous);
-    const pushEvent = empty ? "end" : "update";
-    const workspaceLabels = empty ? new Map() : await listWorkspaceLabels(binPath);
-    const hostName = shortHostName();
-    const sent = lastState?.v === 2 && typeof lastState.sent === "object" && lastState.sent !== null ? lastState.sent : {};
-
-    const plans = devices.map((device) => {
-      const built = buildActivityState({
-        agents, hostName, pinnedPaneIds: device.pinnedPaneIds, workspaceLabels,
-        rowsMode: "conversational", sinceByPane, asOfMs: nowMs, timeZone,
-      });
-      const counts = pushEvent === "end" ? { working: 0, blocked: 0, done: 0 } : built.counts;
-      const steps = pushEvent === "end"
-        ? [{ agents: [], host: built.plaintextObject.host, v: 1 }]
-        : conversationalSteps(built.plaintextObject, built.ladder);
-      const request = { event: pushEvent, priority: 5, timestamp, counts };
-      const { step } = sealFitting((index) => steps[index], steps.length - 1, device, request);
-      return { device, key: deviceKey(device), steps, request, hash: sentHash(request, steps[step]) };
-    });
-    const nextSent = Object.fromEntries(plans.filter((plan) => sent[plan.key]).map((plan) => [plan.key, sent[plan.key]]));
-    const save = (fields) => writeLastState(stateDir, {
-      sent_at_ms: lastState?.sent_at_ms,
-      statuses: previous,
-      preferences: lastState?.preferences,
-      ended: lastState?.ended === true,
-      ...fields,
-      v: 2,
-      epoch,
-      terminals,
-      sent: nextSent,
-    });
-
-    let sendable = plans.filter((plan) => sent[plan.key]?.hash !== plan.hash);
-    if (sendable.length === 0) {
-      save({ statuses, preferences, ended: pushEvent === "end" });
-      return;
-    }
-    if (!statusChange) {
-      sendable = sendable.filter((plan) => lastHour(sent[plan.key]?.content, nowMs).length < config.activityContentPerHour);
-      if (sendable.length === 0) {
-        console.error("activity-hook: content-only update skipped, activity_content_per_hour reached");
-        save({});
-        return;
-      }
-    }
-    // Minimum interval with a trailing edge: wait, then send whatever is
-    // newest, unless a newer run has claimed in the meantime.
-    if (!waited && pushEvent === "update" && !newlyBlocked) {
-      const waitMs = Math.max(0, ...sendable.map((plan) =>
-        (sent[plan.key]?.at_ms ?? 0) + config.activityMinIntervalMs - Date.now()));
-      if (waitMs > 0) {
-        save({});
-        await sleep(waitMs);
-        if (claimSuperseded(claim, readClaim(stateDir))) return;
-        continue;
-      }
-    }
-    if (claimSuperseded(claim, readClaim(stateDir))) return;
-
-    const pruned = new Set();
-    const failures = [];
-    let delivered = false;
-    for (const plan of sendable) {
-      const ledger = lastHour(sent[plan.key]?.p10, nowMs);
-      const content = lastHour(sent[plan.key]?.content, nowMs);
-      let priority = 5;
-      if (newlyBlocked && statusChange) {
-        if (ledger.length < config.activityP10PerHour) priority = 10;
-        else console.error("activity-hook: activity_p10_per_hour reached, sending a newly blocked agent at priority 5");
-      }
-      try {
-        const { outcome, step } = await deliverSteps(
-          config, plan.device, (index) => plan.steps[index], plan.steps.length - 1, { ...plan.request, priority },
-        );
-        if (outcome !== "ok") {
-          pruned.add(plan.device.token);
-          continue;
-        }
-        delivered = true;
-        nextSent[plan.key] = {
-          hash: sentHash(plan.request, plan.steps[step]),
-          at_ms: Date.now(),
-          p10: priority === 10 ? [...ledger, nowMs] : ledger,
-          content: statusChange ? content : [...content, nowMs],
-        };
-      } catch (error) {
-        failures.push(error.message);
-      }
-    }
-    if (pruned.size > 0) pruneLiveActivity(configDir, pruned);
-    save(delivered ? { sent_at_ms: Date.now(), statuses, preferences, ended: pushEvent === "end" } : {});
-    if (failures.length > 0) throw new Error(failures.join("; "));
-    return;
-  }
 }
 
 main().catch((error) => {

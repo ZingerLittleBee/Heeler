@@ -55,6 +55,13 @@ suite("shared live-activity vectors (seal direction)", () => {
     });
   }
 
+  // decodeOnly until the app's span type keeps `at` and `kind`; the plugin already seals them.
+  test("seals time spans with at and kind in key order", () => {
+    const vector = vectors.valid.find((entry) => entry.name.startsWith("time spans"));
+    const nonce = Buffer.from(JSON.parse(vector.envelope).n, "base64url");
+    assert.equal(encryptActivityEnvelope(vector.payload, vectorKey(vector), { nonce }), vector.envelope);
+  });
+
   for (const vector of vectors.valid) {
     test(`opens: ${vector.name}`, () => {
       const payload = decryptActivityEnvelope(vector.envelope, vectorKey(vector));
