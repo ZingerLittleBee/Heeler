@@ -10,7 +10,9 @@ Entries reference the pull request that made the change.
 ### Added
 
 - Speak to the Composer: tap the mic beside Send to record, tap again, and
-  the text lands at the caret for you to review and send. Voice Input uses
+  the text lands at the caret for you to review and send. While it listens, a
+  bar shows your voice level and the time, with Cancel to drop the recording,
+  and Send hides so a stray tap cannot send. Voice Input uses
   your own API key with OpenAI, DeepInfra, SiliconFlow, or any service that
   takes OpenAI's audio/transcriptions request, set up in Settings › Voice
   Input. Recordings go only to the service you agree to. (#620)

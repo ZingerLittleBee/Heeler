@@ -35,6 +35,9 @@ protocol VoiceRecorder: AnyObject {
     func stop() throws -> VoiceRecording
     /// Ends the recording and throws it away.
     func cancel()
+    /// How loud the microphone is right now, from 0 for silence to 1; 0
+    /// when nothing is recording.
+    func level() -> Double
     /// The system ended or paused the recording: the time limit, a call, or
     /// a lost route. `stop()` still returns what was heard before it.
     var onEnded: (@MainActor () -> Void)? { get set }
@@ -75,6 +78,9 @@ final class SystemVoiceRecorder: VoiceRecorder {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.record, mode: .default, options: [.allowBluetoothHFP])
+            // The tap that stops a recording lands while the session still
+            // records, and iOS mutes haptics then unless this is on.
+            try? session.setAllowHapticsAndSystemSoundsDuringRecording(true)
             try session.setActive(true)
         } catch {
             deactivate()
@@ -98,6 +104,7 @@ final class SystemVoiceRecorder: VoiceRecorder {
             throw VoiceRecorderError.microphoneUnavailable
         }
         recorder.delegate = delegate
+        recorder.isMeteringEnabled = true
         guard recorder.record(forDuration: maxDuration) else {
             recorder.deleteRecording()
             deactivate()
@@ -138,6 +145,20 @@ final class SystemVoiceRecorder: VoiceRecorder {
         recorder.stop()
         recorder.deleteRecording()
         deactivate()
+    }
+
+    func level() -> Double {
+        guard let recorder else { return 0 }
+        recorder.updateMeters()
+        return Self.level(decibels: recorder.averagePower(forChannel: 0))
+    }
+
+    /// Average power on a 0...1 scale: a quiet room near -50 dB reads as
+    /// silence and speech close to the phone, around -10 dB, fills it.
+    static func level(decibels: Float) -> Double {
+        let quiet: Float = -50
+        let loud: Float = -10
+        return Double(min(1, max(0, (decibels - quiet) / (loud - quiet))))
     }
 
     /// Seconds of 16 kHz mono 16-bit audio after the header's `data` chunk.

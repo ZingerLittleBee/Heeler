@@ -42,7 +42,8 @@ struct VoiceInputSessionTests {
         let session = VoiceInputSession(
             settings: settings, recorder: recorder,
             transcribe: { try await transcriber.transcribe($0) },
-            primaryLanguage: { "zh" })
+            primaryLanguage: { "zh" },
+            sleep: { _ in try await Task.sleep(for: .milliseconds(1)) })
         return Fixture(
             session: session, recorder: recorder, transcriber: transcriber, settings: settings,
             defaults: defaults, suite: suite)
@@ -201,11 +202,61 @@ struct VoiceInputSessionTests {
         await permission.waitForEntry()
         #expect(store.voice.phase == .starting)
         fixture.session.toggle(store.voice)
+        #expect(store.voice.phase == .starting, "the mic waits; only the bar's Cancel ends it")
+        store.voice.cancel()
         #expect(store.voice.phase == .idle)
         await permission.open()
         try await Task.sleep(for: .milliseconds(20))
         #expect(fixture.recorder.starts == 0)
         #expect(store.voice.phase == .idle)
+    }
+
+    @Test func aSecondTapWhileTheTextIsOnItsWayKeepsIt() async throws {
+        let fixture = try makeFixture(results: [.success("keep this")])
+        defer { fixture.tearDown() }
+        let upload = ScriptedTransportCallGate()
+        await fixture.transcriber.gate(using: upload)
+        let store = fixture.makeStore()
+
+        try await record(store, with: fixture)
+        await upload.waitForEntry()
+        fixture.session.toggle(store.voice)
+        #expect(store.voice.phase == .transcribing)
+        await upload.open()
+        try await waitUntil("inserted") { store.draft == "keep this" }
+    }
+
+    @Test func theBarFollowsTheMicrophoneOnlyWhileRecording() async throws {
+        let fixture = try makeFixture(results: [.success("done")])
+        defer { fixture.tearDown() }
+        let upload = ScriptedTransportCallGate()
+        await fixture.transcriber.gate(using: upload)
+        let store = fixture.makeStore()
+        fixture.recorder.currentLevel = 0.6
+
+        fixture.session.toggle(store.voice)
+        try await waitUntil("recording") { store.voice.isRecording }
+        try await waitUntil("sampled") { store.voice.levels.count >= 3 }
+        #expect(store.voice.levels.allSatisfy { $0 == 0.6 })
+
+        fixture.session.toggle(store.voice)
+        let heard = store.voice.levels
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(store.voice.levels == heard, "transcribing keeps what was heard and samples no more")
+        #expect(store.voice.recordedDuration == fixture.recorder.nextRecording.duration)
+        await upload.open()
+        try await waitUntil("inserted") { store.draft == "done" }
+
+        fixture.session.toggle(store.voice)
+        #expect(store.voice.levels.isEmpty, "the next recording starts with a flat bar")
+    }
+
+    @Test func theLevelScaleRunsFromAQuietRoomToNearbySpeech() {
+        #expect(SystemVoiceRecorder.level(decibels: -160) == 0)
+        #expect(SystemVoiceRecorder.level(decibels: -50) == 0)
+        #expect(SystemVoiceRecorder.level(decibels: -30) == 0.5)
+        #expect(SystemVoiceRecorder.level(decibels: -10) == 1)
+        #expect(SystemVoiceRecorder.level(decibels: 0) == 1)
     }
 
     @Test func anotherComposersMicStopsTheFirstIntoItsOwnDraft() async throws {
@@ -309,6 +360,7 @@ private final class FakeVoiceRecorder: VoiceRecorder {
     var permission = true
     var permissionGate: ScriptedTransportCallGate?
     var nextRecording = VoiceRecording(audio: Data("RIFF-voice".utf8), duration: 3)
+    var currentLevel = 0.0
     private(set) var starts = 0
     private(set) var stops = 0
     private(set) var cancels = 0
@@ -333,6 +385,10 @@ private final class FakeVoiceRecorder: VoiceRecorder {
     func cancel() {
         if isRecording { cancels += 1 }
         isRecording = false
+    }
+
+    func level() -> Double {
+        isRecording ? currentLevel : 0
     }
 }
 
@@ -359,8 +415,3 @@ private actor ScriptedTranscriber {
     }
 }
 
-extension ComposerVoiceInput {
-    fileprivate var isRecording: Bool {
-        if case .recording = phase { true } else { false }
-    }
-}

@@ -54,6 +54,11 @@ final class ComposerVoiceInput {
     }
 
     fileprivate(set) var phase: Phase = .idle
+    /// The microphone's recent loudness, oldest first, one sample per
+    /// `VoiceInputSession.levelInterval`. It stays through transcribing, so
+    /// the bar keeps showing what was heard, and clears when the next
+    /// recording starts.
+    fileprivate(set) var levels: [Double] = []
     /// Send waits a moment after text lands: the text can turn Stop into
     /// Send under a finger that meant Stop.
     private(set) var isHoldingSend = false
@@ -62,6 +67,7 @@ final class ComposerVoiceInput {
     @ObservationIgnored fileprivate weak var session: VoiceInputSession?
     @ObservationIgnored fileprivate var recording: VoiceRecording?
     @ObservationIgnored fileprivate var task: Task<Void, Never>?
+    @ObservationIgnored fileprivate var levelTask: Task<Void, Never>?
     @ObservationIgnored fileprivate var generation = 0
     @ObservationIgnored private var transcript: String?
     @ObservationIgnored private var holdGeneration = 0
@@ -86,6 +92,16 @@ final class ComposerVoiceInput {
 
     var blocksSend: Bool { isBusy || isHoldingSend }
 
+    var isRecording: Bool {
+        if case .recording = phase { true } else { false }
+    }
+
+    /// How long the recording on its way to the speech service runs.
+    var recordedDuration: TimeInterval? { recording?.duration }
+
+    /// Enough samples to fill the widest Composer.
+    static let levelCapacity = 160
+
     var failure: VoiceInputFailure? {
         if case .failed(let failure) = phase { failure } else { nil }
     }
@@ -99,8 +115,9 @@ final class ComposerVoiceInput {
         return transcript
     }
 
-    /// Drops the recording and any text still on its way: Direct Input, the
-    /// Blocked Card, or the last detail leaving.
+    /// Drops the recording and any text still on its way: the recording
+    /// bar's Cancel, Direct Input, the Blocked Card, or the last detail
+    /// leaving.
     func cancel() {
         if let session {
             session.cancel(self)
@@ -125,6 +142,7 @@ final class ComposerVoiceInput {
         generation += 1
         task?.cancel()
         task = nil
+        stopSamplingLevels()
         transcript = nil
         self.phase = phase
         return generation
@@ -132,7 +150,20 @@ final class ComposerVoiceInput {
 
     fileprivate func fail(_ failure: VoiceInputFailure) {
         task = nil
+        stopSamplingLevels()
         phase = .failed(failure)
+    }
+
+    fileprivate func record(level: Double) {
+        levels.append(level)
+        if levels.count > Self.levelCapacity {
+            levels.removeFirst(levels.count - Self.levelCapacity)
+        }
+    }
+
+    fileprivate func stopSamplingLevels() {
+        levelTask?.cancel()
+        levelTask = nil
     }
 
     fileprivate func deliver(_ text: String) {
@@ -146,6 +177,7 @@ final class ComposerVoiceInput {
         generation += 1
         task?.cancel()
         task = nil
+        stopSamplingLevels()
         transcript = nil
         recording = nil
         phase = .idle
@@ -175,12 +207,15 @@ final class VoiceInputSession {
     /// About two minutes of speech; the WAV stays under 4 MB.
     static let maximumDuration: TimeInterval = 120
     static let minimumDuration: TimeInterval = 0.5
+    /// How often the bar's waveform takes the microphone's level.
+    static let levelInterval: Duration = .milliseconds(70)
 
     let settings: VoiceInputSettings
     @ObservationIgnored private let recorder: any VoiceRecorder
     @ObservationIgnored private let transcribe: @Sendable (VoiceTranscriptionRequest) async throws -> String
     @ObservationIgnored private let primaryLanguage: @MainActor () -> String
     @ObservationIgnored private let now: @MainActor () -> Date
+    @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
     /// The input whose recording holds the microphone.
     @ObservationIgnored private weak var recordingInput: ComposerVoiceInput?
 
@@ -202,18 +237,22 @@ final class VoiceInputSession {
         recorder: any VoiceRecorder,
         transcribe: @escaping @Sendable (VoiceTranscriptionRequest) async throws -> String,
         primaryLanguage: @escaping @MainActor () -> String = { VoiceInputLanguage.primary() },
-        now: @escaping @MainActor () -> Date = { Date() }
+        now: @escaping @MainActor () -> Date = { Date() },
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
         self.settings = settings
         self.recorder = recorder
         self.transcribe = transcribe
         self.primaryLanguage = primaryLanguage
         self.now = now
+        self.sleep = sleep
         recorder.onEnded = { [weak self] in self?.stopRecording() }
     }
 
-    /// The mic button: starts from rest or after a failure, stops a
-    /// recording, and cancels a microphone request or an upload.
+    /// The mic button: starts from rest or after a failure and stops a
+    /// recording. While the microphone is asked for or the text is on its
+    /// way it does nothing, so a second tap meant for Stop cannot drop what
+    /// was just said; the recording bar's Cancel does that.
     @discardableResult
     func toggle(_ input: ComposerVoiceInput) -> MicResult {
         switch input.phase {
@@ -222,7 +261,7 @@ final class VoiceInputSession {
         case .recording:
             stop(input)
         case .starting, .transcribing:
-            cancel(input)
+            break
         }
         return .handled
     }
@@ -233,6 +272,7 @@ final class VoiceInputSession {
         if let other = recordingInput, other !== input { stop(other) }
         input.session = self
         input.recording = nil
+        input.levels = []
         let generation = input.begin(.starting)
         input.task = Task { [weak self, weak input] in
             guard let self else { return }
@@ -311,6 +351,18 @@ final class VoiceInputSession {
         }
         recordingInput = input
         input.phase = .recording(since: now())
+        sampleLevels(of: input)
+    }
+
+    private func sampleLevels(of input: ComposerVoiceInput) {
+        let sleep = sleep
+        input.levelTask = Task { [weak self, weak input] in
+            while true {
+                do { try await sleep(Self.levelInterval) } catch { return }
+                guard let self, let input, recordingInput === input, input.isRecording else { return }
+                input.record(level: recorder.level())
+            }
+        }
     }
 
     private func upload(_ recording: VoiceRecording, for input: ComposerVoiceInput) {

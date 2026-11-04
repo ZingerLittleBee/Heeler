@@ -42,11 +42,12 @@ research behind it, including the vendor evidence, is
   protection, read into memory and deleted when recording stops. A failed
   upload keeps the recording in memory for Retry.
 - **The draft takes the text once.** Nothing is written while recording.
-  Send waits from the first tap until the text lands, and for one second
-  after, since the text can turn Stop into Send under a finger. Because Send
-  cannot empty the draft meanwhile, the text goes in at the caret like a
-  Snippet, waiting while the input method holds marked text, which a store
-  write would destroy. Spaces are added only between Latin words.
+  Send, or Stop, hides from the first tap until the text lands, and Send
+  waits one second after, since the text can turn Stop into Send under a
+  finger. Because Send cannot empty the draft meanwhile, the text goes in at
+  the caret like a Snippet, waiting while the input method holds marked text,
+  which a store write would destroy. Spaces are added only between Latin
+  words.
 - **A recording belongs to its Composer.** One app-level session owns the
   microphone, since the audio session is per process; starting another
   Composer's recording stops the first, whose text still goes to its own

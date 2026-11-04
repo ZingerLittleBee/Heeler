@@ -441,9 +441,11 @@ The Composer's mic. A tap records, a second tap stops, and the recording goes
 to the speech service the user chose with their own API key: a built-in
 service or a Custom URL that speaks OpenAI's `audio/transcriptions` request.
 The text lands once, at the caret of the draft the recording started in, and
-nothing is sent; Send waits while a recording is on its way. It is not the
-system keyboard's dictation, which stays available in the standard keyboard,
-and its text is not a Transcript.
+nothing is sent. From the first tap until the text lands, a recording bar with
+Cancel, the microphone's level, and the time covers the controls before the
+mic, and Send or Stop hides, so a stray tap cannot send or interrupt the Agent.
+It is not the system keyboard's dictation, which stays available in the
+standard keyboard, and its text is not a Transcript.
 _Avoid_: dictation, transcription (for the feature), speech mode
 
 **Agent Notification**:

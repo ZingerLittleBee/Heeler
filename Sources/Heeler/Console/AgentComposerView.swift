@@ -506,6 +506,7 @@ struct AgentComposerView: View {
         HStack(spacing: 8) {
             if isCollapsed {
                 addMenu
+                    .modifier(ComposerVoiceCover(isCovered: coversEditorRow))
             }
             ZStack(alignment: .topLeading) {
                 AgentComposerTextEditor(
@@ -532,11 +533,27 @@ struct AgentComposerView: View {
             }
             .frame(minHeight: 36, alignment: .topLeading)
             .accessibilityElement(children: .contain)
+            .modifier(ComposerVoiceCover(isCovered: coversEditorRow))
             if isCollapsed {
                 voiceButton
                 primaryButton
+                    .modifier(ComposerVoiceCover(isCovered: isVoiceBarShown))
             }
         }
+        .overlay(alignment: .leading) {
+            if coversEditorRow {
+                HStack(spacing: 8) {
+                    voiceBar
+                    // The mic and Send keep their 44-point places after it.
+                    Color.clear.frame(width: 44 + 8 + 44, height: 1)
+                }
+            }
+        }
+    }
+
+    /// While folded, the recording bar takes Add's and the draft's place.
+    private var coversEditorRow: Bool {
+        isCollapsed && isVoiceBarShown
     }
 
     private func failureRow(
@@ -591,6 +608,21 @@ struct AgentComposerView: View {
 
     private var actionRow: some View {
         HStack(spacing: 8) {
+            leadingActions
+                .modifier(ComposerVoiceCover(isCovered: isVoiceBarShown))
+                .overlay {
+                    if isVoiceBarShown {
+                        voiceBar
+                    }
+                }
+            voiceButton
+            primaryButton
+                .modifier(ComposerVoiceCover(isCovered: isVoiceBarShown))
+        }
+    }
+
+    private var leadingActions: some View {
+        HStack(spacing: 8) {
             addMenu
 
             Menu {
@@ -631,26 +663,43 @@ struct AgentComposerView: View {
             }
 
             Spacer(minLength: 0)
-            if store.voice.isBusy {
-                ComposerVoiceStatus(phase: store.voice.phase)
-            } else if store.hasPendingDroppedImages {
+            if store.hasPendingDroppedImages {
                 pendingDropHint
             }
-            voiceButton
-            primaryButton
         }
     }
 
-    /// Voice Input's mic; it opens setup until a service is saved.
+    /// Voice Input's mic; it opens setup until a service is saved. Starting
+    /// taps medium and stopping taps light.
     @ViewBuilder
     private var voiceButton: some View {
         if let voiceInput, inputMode == .composer {
             ComposerVoiceButton(voice: store.voice, tint: secondaryActionTint) {
+                let wasRecording = store.voice.isRecording
+                let wasResting = !store.voice.isBusy
+                // Before the recorder ends, so the tap lands under the
+                // finger; the recording session allows haptics.
+                if wasRecording {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
                 if voiceInput.toggle(store.voice) == .needsSetup {
                     isVoiceSetupPresented = true
+                } else if wasResting, store.voice.phase == .starting {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 }
             }
         }
+    }
+
+    /// From the first tap until the text lands, the recording bar covers
+    /// the controls before the mic, and Send or Stop hides in its place so
+    /// a tap meant for the mic cannot send or interrupt.
+    private var isVoiceBarShown: Bool {
+        voiceInput != nil && inputMode == .composer && store.voice.isBusy
+    }
+
+    private var voiceBar: some View {
+        ComposerVoiceBar(voice: store.voice) { store.voice.cancel() }
     }
 
     /// Why Send waits; its VoiceOver hint already says so.
@@ -1031,6 +1080,19 @@ private struct AgentComposerSendButtonStyle: ButtonStyle {
             .frame(width: 44, height: 44)
             .opacity(configuration.isPressed && isEnabled ? 0.72 : 1)
             .contentShape(.circle)
+    }
+}
+
+/// Hides controls under the recording bar without giving up their layout,
+/// so nothing beside them moves.
+private struct ComposerVoiceCover: ViewModifier {
+    let isCovered: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isCovered ? 0 : 1)
+            .allowsHitTesting(!isCovered)
+            .accessibilityHidden(isCovered)
     }
 }
 
