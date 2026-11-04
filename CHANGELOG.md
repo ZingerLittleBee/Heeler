@@ -7,6 +7,11 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+### Added
+
+- Find SSH machines on the local network with Bonjour when adding a Route;
+  Heeler saves the machine's IP address. (#624)
+
 ### Fixed
 
 - On iPhone Duo, Heeler fills the inner display again, with the wide layout,
