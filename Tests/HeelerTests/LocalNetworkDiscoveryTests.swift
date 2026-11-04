@@ -75,6 +75,60 @@ struct LocalNetworkDiscoveryTests {
     }
 }
 
+@Suite("Resume gate")
+struct ResumeGateTests {
+    private let machine = ResolvedMachine(name: "a", address: "1.2.3.4", port: 22)
+
+    @Test func cancelBeforeInstallDoesNotHang() async {
+        let gate = ResumeGate()
+        gate.resume(.failure(CancellationError()))
+        await #expect(throws: CancellationError.self) {
+            try await withCheckedThrowingContinuation { continuation in
+                _ = gate.install(continuation)
+            }
+        }
+    }
+
+    @Test func firstResultWins() async throws {
+        let gate = ResumeGate()
+        let result = try await withCheckedThrowingContinuation { continuation in
+            _ = gate.install(continuation)
+            gate.resume(.success(machine))
+            gate.resume(.failure(CancellationError()))
+        }
+        #expect(result == machine)
+    }
+
+    @Test func connectionCancelAfterTimeoutReadsAsTimeout() {
+        let gate = ResumeGate()
+        #expect(gate.cancellationError is CancellationError)
+        #expect(gate.markTimedOut() == .timedOut)
+        #expect(gate.cancellationError as? LocalDiscoveryError == .timedOut)
+    }
+
+    @Test func timeoutAfterDenialReportsPermission() {
+        let gate = ResumeGate()
+        gate.noteDenied()
+        #expect(gate.markTimedOut() == .permissionDenied)
+        #expect(gate.cancellationError as? LocalDiscoveryError == .permissionDenied)
+    }
+
+    @Test func timeoutFallsBackToAnyFamily() async throws {
+        let seen = Versions()
+        let gate = ResumeGate()
+        let result = try await BonjourServiceBrowser.resolveIPv4First { version in
+            seen.add(version)
+            if version == .v4 {
+                _ = gate.markTimedOut()
+                throw gate.cancellationError
+            }
+            return machine
+        }
+        #expect(result == machine)
+        #expect(seen.values == [.v4, nil])
+    }
+}
+
 private final class Versions: @unchecked Sendable {
     private let lock = NSLock()
     private var stored: [NWProtocolIP.Options.Version?] = []

@@ -187,8 +187,12 @@ struct BonjourServiceBrowser: LocalServiceBrowsing {
             }
             group.addTask {
                 try await Task.sleep(for: timeout)
+                // Mark the timeout before cancelling, so the connection's
+                // own cancel reads as a timeout (which falls back), not as
+                // the caller's cancellation.
+                let error = gate.markTimedOut()
                 connection.cancel()
-                throw gate.deniedSeen ? LocalDiscoveryError.permissionDenied : .timedOut
+                throw error
             }
             defer {
                 group.cancelAll()
@@ -202,39 +206,45 @@ struct BonjourServiceBrowser: LocalServiceBrowsing {
     private static func waitUntilReady(
         _ connection: NWConnection, name: String, gate: ResumeGate
     ) async throws -> ResolvedMachine {
-        try Task.checkCancellation()
-        return try await withCheckedThrowingContinuation { continuation in
-            connection.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    guard gate.claim() else { return }
-                    guard case .hostPort(let host, let port)? = connection.currentPath?.remoteEndpoint
-                    else {
-                        continuation.resume(throwing: LocalDiscoveryError.noAddress)
-                        return
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                // Already finished (cancelled before this body): resumed
+                // by `install`, and the connection is never started.
+                guard gate.install(continuation) else { return }
+                connection.stateUpdateHandler = { state in
+                    switch state {
+                    case .ready:
+                        guard case .hostPort(let host, let port)? =
+                            connection.currentPath?.remoteEndpoint
+                        else {
+                            gate.resume(.failure(LocalDiscoveryError.noAddress))
+                            return
+                        }
+                        switch DiscoveredAddress.address(for: host) {
+                        case .success(let address):
+                            gate.resume(
+                                .success(
+                                    ResolvedMachine(
+                                        name: name, address: address, port: Int(port.rawValue))))
+                        case .failure(let error):
+                            gate.resume(.failure(error))
+                        }
+                    case .waiting(let error):
+                        // Keep waiting until ready or the timeout.
+                        if Self.isDenied(error) { gate.noteDenied() }
+                    case .failed(let error):
+                        gate.resume(.failure(Self.map(error)))
+                    case .cancelled:
+                        gate.resume(.failure(gate.cancellationError))
+                    default:
+                        break
                     }
-                    switch DiscoveredAddress.address(for: host) {
-                    case .success(let address):
-                        continuation.resume(
-                            returning: ResolvedMachine(
-                                name: name, address: address, port: Int(port.rawValue)))
-                    case .failure(let error):
-                        continuation.resume(throwing: error)
-                    }
-                case .waiting(let error):
-                    // Keep waiting until ready or the timeout.
-                    if Self.isDenied(error) { gate.noteDenied() }
-                case .failed(let error):
-                    guard gate.claim() else { return }
-                    continuation.resume(throwing: Self.map(error))
-                case .cancelled:
-                    guard gate.claim() else { return }
-                    continuation.resume(throwing: CancellationError())
-                default:
-                    break
                 }
+                connection.start(queue: .global())
             }
-            connection.start(queue: .global())
+        } onCancel: {
+            gate.resume(.failure(CancellationError()))
+            connection.cancel()
         }
     }
 
@@ -251,16 +261,15 @@ struct BonjourServiceBrowser: LocalServiceBrowsing {
     }
 }
 
-private final class ResumeGate: @unchecked Sendable {
+/// Resumes the connection's continuation once, whichever of ready, failure,
+/// timeout and cancellation comes first, even before the continuation exists.
+final class ResumeGate: @unchecked Sendable {
     private let lock = NSLock()
-    private var claimed = false
+    private var continuation: CheckedContinuation<ResolvedMachine, Error>?
+    private var pending: Result<ResolvedMachine, Error>?
+    private var finished = false
     private var denied = false
-
-    var deniedSeen: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return denied
-    }
+    private var timedOut = false
 
     func noteDenied() {
         lock.lock()
@@ -268,12 +277,50 @@ private final class ResumeGate: @unchecked Sendable {
         denied = true
     }
 
-    func claim() -> Bool {
+    /// Records the timeout and returns its error: a denied permission seen
+    /// while waiting is the better explanation.
+    func markTimedOut() -> LocalDiscoveryError {
         lock.lock()
         defer { lock.unlock() }
-        if claimed { return false }
-        claimed = true
+        timedOut = true
+        return denied ? .permissionDenied : .timedOut
+    }
+
+    /// What a connection cancel means: a timeout when one was marked,
+    /// else the caller's cancellation.
+    var cancellationError: Error {
+        lock.lock()
+        defer { lock.unlock() }
+        guard timedOut else { return CancellationError() }
+        return denied ? LocalDiscoveryError.permissionDenied : LocalDiscoveryError.timedOut
+    }
+
+    /// Stores the continuation; false (after resuming it) when the gate
+    /// already finished.
+    func install(_ continuation: CheckedContinuation<ResolvedMachine, Error>) -> Bool {
+        lock.lock()
+        if let pending {
+            lock.unlock()
+            continuation.resume(with: pending)
+            return false
+        }
+        self.continuation = continuation
+        lock.unlock()
         return true
+    }
+
+    func resume(_ result: Result<ResolvedMachine, Error>) {
+        lock.lock()
+        if finished {
+            lock.unlock()
+            return
+        }
+        finished = true
+        let continuation = continuation
+        self.continuation = nil
+        if continuation == nil { pending = result }
+        lock.unlock()
+        continuation?.resume(with: result)
     }
 }
 
