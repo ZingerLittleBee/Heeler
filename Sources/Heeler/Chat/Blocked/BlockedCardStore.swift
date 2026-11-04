@@ -61,12 +61,13 @@ struct BlockedCard: Equatable, Sendable {
 ///
 /// The screen decides everything a card offers. While Chat shows a Blocked
 /// Agent the store reads it every second, and also an idle Claude whose
-/// AskUserQuestion call is open (see `readsIdleQuestion`). An action reads it again first
-/// and sends nothing if the dialog changed, waits until the dialog has
-/// shown for a moment, sends the plan's keys while checking each of its
-/// expectations, then watches for the effect. Nothing is ever resent: a
-/// dialog that does not respond keeps its answers off until the screen
-/// shows something else or the transcript shows the answer took.
+/// AskUserQuestion call is open (see `readsIdleQuestion`) and an idle Codex
+/// that has reported no session (`readsIdleTrust`). An action reads it
+/// again first and sends nothing if the dialog changed, waits until the
+/// dialog has shown for a moment, sends the plan's keys while checking
+/// each of its expectations, then watches for the effect. Nothing is ever
+/// resent: a dialog that does not respond keeps its answers off until the
+/// screen shows something else or the transcript shows the answer took.
 @MainActor
 @Observable
 final class BlockedCardStore {
@@ -142,6 +143,7 @@ final class BlockedCardStore {
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private let clock: BlockedCardClock
     @ObservationIgnored private var activity: ChatAgentActivity = .unknown
+    @ObservationIgnored private var awaitingSession = false
     @ObservationIgnored private var pendingRequests: [ChatPendingRequest] = []
     /// Why the newest turn failed, for a program whose card explains a
     /// block without a dialog.
@@ -176,8 +178,9 @@ final class BlockedCardStore {
 
     // MARK: Inputs
 
-    /// A Chat view shows the Agent: watch it while it is Blocked, or while
-    /// an idle Claude has an open AskUserQuestion call.
+    /// A Chat view shows the Agent: watch it while it is Blocked, while an
+    /// idle Claude has an open AskUserQuestion call, or while an idle Codex
+    /// awaits its session.
     func show() {
         isVisible = true
         updateWatching()
@@ -257,6 +260,15 @@ final class BlockedCardStore {
         updateWatching()
     }
 
+    /// Whether herdr reports no session for the Agent yet. Codex reports
+    /// one only after its first prompt.
+    func update(awaitingSession: Bool) {
+        guard awaitingSession != self.awaitingSession else { return }
+        self.awaitingSession = awaitingSession
+        if !readsScreen, progress != .acting { clear() }
+        updateWatching()
+    }
+
     /// herdr 0.9.5 reports Claude Code 2.1.301 idle, not Blocked, on some
     /// AskUserQuestion screens: the review page, and a question with
     /// previews. An open AskUserQuestion call stands in for Blocked there.
@@ -264,8 +276,14 @@ final class BlockedCardStore {
         program == .claude && activity == .idle && pendingRequests.contains { $0.toolName == "AskUserQuestion" }
     }
 
+    /// herdr 0.9.5 reports Codex 0.165.0's folder-trust screen idle, not
+    /// Blocked, once its question wraps, as on a phone's grid. The screen
+    /// shows before Codex reports a session, so an idle Codex without one
+    /// is read for that screen alone (`observe`).
+    private var readsIdleTrust: Bool { program == .codex && activity == .idle && awaitingSession }
+
     /// Whether the screen may show a dialog the card answers.
-    private var readsScreen: Bool { activity == .blocked || readsIdleQuestion }
+    private var readsScreen: Bool { activity == .blocked || readsIdleQuestion || readsIdleTrust }
 
     // MARK: Actions
 
@@ -704,10 +722,15 @@ final class BlockedCardStore {
         }
     }
 
+    /// A fresh read. While an idle Codex awaits its session, anything but
+    /// the trust screen reads as no dialog: its start screen and lists are
+    /// no prompt to answer.
     private func observe() async -> DialogObservation? {
         guard let screen = try? await io.readScreen() else { return nil }
-        return DialogObservation(
+        let observation = DialogObservation(
             screen: screen, program: program, activity: activity, resolvedToolUseIDs: resolvedToolUseIDs)
+        guard readsIdleTrust, observation.result.dialog?.kind != .codexWorkspaceTrust else { return observation }
+        return observation.withoutDialog
     }
 
     // MARK: Presenting

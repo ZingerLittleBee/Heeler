@@ -38,7 +38,15 @@ struct RemoteDirectoryBrowserView: View {
             case .claudeAccount: "You can add this folder as a Claude Code Account."
             }
         }
+
+        /// Whether the sheet offers to hide dot folders. A Claude Code
+        /// Account usually is one, so its sheet always lists them.
+        var offersHidingDotFolders: Bool { self == .workspace }
     }
+
+    /// The defaults key for hiding dot folders while browsing for a
+    /// Workspace. Hidden unless the user shows them.
+    static let hidesDotFoldersKey = "directory-browser.hides-dot-folders"
 
     /// One listed folder, read before the rows are built.
     private struct Row: Hashable, Sendable {
@@ -52,6 +60,11 @@ struct RemoteDirectoryBrowserView: View {
     var isUsing = false
     var onUse: (String) -> Void
     @State private var isFiltering = false
+    @AppStorage(Self.hidesDotFoldersKey) private var prefersHidingDotFolders = true
+
+    private var hidesDotFolders: Bool {
+        purpose.offersHidingDotFolders && prefersHidingDotFolders
+    }
 
     var body: some View {
         NavigationStack {
@@ -91,11 +104,12 @@ struct RemoteDirectoryBrowserView: View {
                     }
                     .accessibilityElement(children: .combine)
                 } else if browser.currentPath != nil {
+                    let visibleDirectories = browser.visibleDirectories(hidingDotFolders: hidesDotFolders)
                     Section {
-                        if browser.visibleDirectories.isEmpty {
+                        if visibleDirectories.isEmpty {
                             emptyState
                         } else {
-                            let rows = browser.visibleDirectories.map {
+                            let rows = visibleDirectories.map {
                                 Row(name: $0, isSymbolicLink: browser.isSymbolicLink($0))
                             }
                             ForEach(rows, id: \.self) { @Sendable row in
@@ -159,6 +173,25 @@ struct RemoteDirectoryBrowserView: View {
             .navigationTitle(purpose.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if purpose.offersHidingDotFolders {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        // Not a button-style Toggle: on iOS 26.5 its selected
+                        // fill was lost whenever the bar redrew, such as after
+                        // the filter closed, leaving a white symbol on white.
+                        Button("Hide Dot Folders",
+                            systemImage: prefersHidingDotFolders ? "eye.slash" : "eye"
+                        ) {
+                            prefersHidingDotFolders.toggle()
+                        }
+                        .accessibilityValue(prefersHidingDotFolders ? "On" : "Off")
+                        .accessibilityAddTraits(.isToggle)
+                        .accessibilityIdentifier("directory-browser-hide-dot-folders")
+                    }
+                    // A view option, so it does not share Select's glass.
+                    if #available(iOS 26.0, *) {
+                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     if isUsing {
                         ProgressView()
@@ -210,7 +243,19 @@ struct RemoteDirectoryBrowserView: View {
 
     @ViewBuilder
     private var emptyState: some View {
-        if browser.filter.isEmpty {
+        if hidesDotFolders, !browser.visibleDirectories(hidingDotFolders: false).isEmpty {
+            ContentUnavailableView {
+                Label(browser.filter.isEmpty ? "Dot Folders Hidden" : "No Matching Folders",
+                    systemImage: "eye.slash")
+            } description: {
+                Text(browser.filter.isEmpty
+                    ? "Every folder here starts with a dot."
+                    : "Only dot folders match “\(browser.filter)”.")
+            } actions: {
+                Button("Show Dot Folders") { prefersHidingDotFolders = false }
+                    .accessibilityIdentifier("directory-browser-show-dot-folders")
+            }
+        } else if browser.filter.isEmpty {
             ContentUnavailableView {
                 Label(browser.truncated ? "No Loaded Folders" : "No Subfolders", systemImage: "folder")
             } description: {

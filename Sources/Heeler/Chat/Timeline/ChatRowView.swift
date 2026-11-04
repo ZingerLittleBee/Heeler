@@ -37,6 +37,14 @@ struct ChatRowView: View {
             .padding(.top, row.topSpacing)
             .chatContentColumn()
             .modifier(ChatRowAccessibility(row: row, actions: actions))
+            .environment(\.chatImageOpener, imageOpener)
+    }
+
+    /// Opens a path the message names in the preview an image row's
+    /// thumbnail opens.
+    private var imageOpener: ChatImageOpener {
+        let actions = actions
+        return ChatImageOpener { path in actions.previewImage(path, actions.thumbnails?.image(of: path)) }
     }
 
     @ViewBuilder
@@ -55,7 +63,8 @@ struct ChatRowView: View {
                 ChatToolRow(
                     tool: tool, isExpanded: isExpanded, expandedFiles: expandedFiles,
                     missingOutputText: actions.missingOutputText, toggle: { actions.toggle(row.id) },
-                    files: fileActions, textActions: row.hasInnerControls ? textActions : nil)
+                    files: fileActions, textActions: row.hasInnerControls ? textActions : nil,
+                    thumbnails: actions.thumbnails, previewImage: actions.previewImage)
             }
         case .plan(let plan, let blocks):
             ChatPlanRow(plan: plan, blocks: blocks)
@@ -98,6 +107,7 @@ struct ChatRowView: View {
 private struct ChatRowAccessibility: ViewModifier {
     let row: ChatRow
     let actions: ChatRowActions
+    @Environment(\.chatImageOpener) private var imageOpener
 
     func body(content: Content) -> some View {
         if let text = row.copyText, !row.hasInnerControls {
@@ -106,10 +116,21 @@ private struct ChatRowAccessibility: ViewModifier {
                 .accessibilityIdentifier(identifier)
                 .accessibilityAction(named: "Copy") { actions.copy(text) }
                 .accessibilityAction(named: "Select Text") { actions.selectText(text) }
+                .accessibilityActions { imageActions }
         } else {
             content
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier(identifier)
+        }
+    }
+
+    /// One action per image the message names, as its links open.
+    private var imageActions: some View {
+        let opener = imageOpener
+        return ForEach(row.messageImagePaths, id: \.self) { @Sendable path in
+            Button("Preview \(RemoteHostPath.lastComponent(of: path))") { @MainActor in
+                opener?.open(path)
+            }
         }
     }
 
@@ -146,6 +167,7 @@ private struct ChatBubble<Content: View>: View {
 
 private struct ChatUserBubble: View {
     let message: ChatUserMessage
+    @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
         ChatBubble {
@@ -155,8 +177,11 @@ private struct ChatUserBubble: View {
                         + Text(command.arguments.isEmpty ? "" : " \(command.arguments)"))
                         .font(.body)
                 } else {
-                    Text(verbatim: message.text)
+                    // Image paths open as in the Agent's messages.
+                    ChatMarkdownView.text(
+                        ChatImageLink.marking(message.text), in: .body, opensImages: imageOpener != nil)
                         .font(.body)
+                        .chatMessageLinks(opener: imageOpener)
                 }
                 if message.imageCount > 0 || !message.attachmentLabels.isEmpty || message.wasQueued {
                     ChatAttachmentChips(message: message)
@@ -596,13 +621,16 @@ private struct ChatToolRow: View {
     /// Set when the row's own controls keep VoiceOver from reading it as
     /// one element, so the header carries them.
     let textActions: TextActions?
+    let thumbnails: ChatImageThumbnails?
+    let previewImage: @MainActor (String, UIImage?) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: toggle) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        ChatToolKindIcon(kind: tool.kind)
+                        // A read that showed an image reads as one.
+                        ChatToolKindIcon(kind: tool.imagePath == nil ? tool.kind : .image)
                         Text(verbatim: tool.title)
                             .font(.subheadline)
                             .modifier(ChatFontDesign(isCode: titleIsCode))
@@ -635,6 +663,10 @@ private struct ChatToolRow: View {
                     Button("Copy", action: textActions.copy)
                     Button("Select Text", action: textActions.selectText)
                 }
+            }
+            if let path = tool.imagePath {
+                ChatImageThumbnail(path: path, thumbnails: thumbnails) { previewImage(path, $0) }
+                    .padding(.leading, 26)
             }
             if isExpanded {
                 details

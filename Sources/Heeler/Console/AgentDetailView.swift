@@ -691,6 +691,10 @@ struct AgentDetailView: View {
         // terminal's header drew no Back, where a Terminals-tab push draws
         // one, and only the edge swipe returned to the Agent.
         .environment(\.showsDetailBackButton, isPushedOverList)
+        // A pushed destination takes the stack's environment rather than the
+        // Agent detail's. Read the system bar again so this Shell uses the
+        // same side controls as one opened from the Terminals list.
+        .readsVerticalToolbar()
     }
 
     /// Open Terminal routes back to the tab this detail already created;

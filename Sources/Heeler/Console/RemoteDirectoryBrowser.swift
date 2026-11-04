@@ -39,11 +39,12 @@ final class RemoteDirectoryBrowser: Identifiable {
         self.list = list
     }
 
-    /// The current listing narrowed by the filter, in server order.
-    var visibleDirectories: [String] {
-        guard !filter.isEmpty else { return directories }
-        return directories.filter {
-            $0.localizedCaseInsensitiveContains(filter)
+    /// The current listing narrowed by the filter, in server order. Hiding
+    /// dot folders leaves out names that start with a dot, as `ls` does.
+    func visibleDirectories(hidingDotFolders: Bool) -> [String] {
+        directories.filter { name in
+            !(hidingDotFolders && name.hasPrefix("."))
+                && (filter.isEmpty || name.localizedCaseInsensitiveContains(filter))
         }
     }
 

@@ -1,5 +1,7 @@
 # Pair a Host by scanning a code
 
+Connect your iPhone or iPad to a herdr Host over SSH by scanning a Pairing Code. Then monitor Claude Code, Codex, and other coding Agents from Heeler.
+
 Show a Pairing Code on the machine that runs herdr and scan it in Heeler. The Host is added with its key and fingerprint already set up, no form to fill in.
 
 ## Before you start
@@ -77,10 +79,11 @@ The popup shows **Device paired** and the key that was just added. If you didn't
 
 ## After pairing
 
+- Open **Agents** to see coding Agents across your connected Hosts. Open one to use its terminal or [Chat](chat.md).
 - The Host is named after your username and its address. To rename it, open it from **Hosts** and tap **Edit**.
 - Heeler signs in with this device's Device Key. To pair another iPhone or iPad, repeat steps 3 and 4 on it.
 - Pairing a machine that is already in **Hosts** adds a second entry. Swipe left on the one you no longer need and tap **Remove**.
-- To get alerts when an Agent needs you or finishes, go to **Settings > Notifications**, tap **Enable Notifications**, tap **Continue**, and allow notifications when iOS asks. Then turn on **Notifications** for this Host.
+- To get notifications on your iPhone or iPad when an Agent needs you (**Blocked**) or finishes (**Done**), go to **Settings > Notifications**, tap **Enable Notifications**, tap **Continue**, and allow notifications when iOS asks. Then turn on **Notifications** for this Host.
 
 ## Use it away from home
 

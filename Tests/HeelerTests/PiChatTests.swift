@@ -116,6 +116,57 @@ struct PiChatTests {
         #expect(tool.title == "src")
     }
 
+    /// The row of a read of `path`, whose result's content and fields are
+    /// `result`.
+    private static func readRow(path: String, result: String) throws -> ChatToolActivity {
+        var reducer = PiTranscriptReducer()
+        reducer.append(
+            Self.lines([
+                Self.header,
+                #"{"type":"message","id":"u","parentId":null,"message":{"role":"user","content":"look"}}"#,
+                #"{"type":"message","id":"a","parentId":"u","message":{"role":"assistant","content":[{"type":"toolCall","id":"c","name":"read","arguments":{"path":"\#(path)"}}],"stopReason":"toolUse"}}"#,
+                #"{"type":"message","id":"r","parentId":"a","message":{"role":"toolResult","toolCallId":"c","toolName":"read",\#(result)}}"#,
+            ]))
+        let entry = try #require(reducer.transcript(.init()).entries.last)
+        let tool: ChatToolActivity? = if case .tool(let tool) = entry.content { tool } else { nil }
+        return try #require(tool)
+    }
+
+    @Test func imageReadsRecordTheFileTheyShowed() throws {
+        // Pi 0.85.1 names the file only in the call, here relative to the
+        // session's directory.
+        let pi = try Self.readRow(
+            path: "shots/a.png",
+            result:
+                #""content":[{"type":"text","text":"Read image file [image/png]"},{"type":"image","data":"iVBORw0KGgo=","mimeType":"image/png"}],"isError":false"#
+        )
+        #expect(pi.imagePath == "/project/shots/a.png")
+
+        // An image Pi could not attach still says it read one.
+        let unattached = try Self.readRow(
+            path: "/tmp/huge.png",
+            result:
+                #""content":[{"type":"text","text":"Read image file [image/png]\nImage too large"}],"isError":false"#)
+        #expect(unattached.imagePath == "/tmp/huge.png")
+
+        // Oh My Pi 18.12.1 names the resolved file in the result.
+        let omp = try Self.readRow(
+            path: "build/review.png",
+            result:
+                #""content":[{"type":"text","text":"Read image file [image/png] (displayed as image/webp)"},{"type":"image","data":"blob:sha256:95fb","mimeType":"image/webp"}],"details":{"fileSize":268274,"meta":{"source":{"type":"path","value":"/work/proj/build/review.png"}},"mediaPath":"/work/proj/build/review.png"},"isError":false"#
+        )
+        #expect(omp.imagePath == "/work/proj/build/review.png")
+
+        // A text read and a failed read show no image.
+        let text = try Self.readRow(
+            path: "/tmp/notes.png", result: #""content":[{"type":"text","text":"hello"}],"isError":false"#)
+        #expect(text.imagePath == nil)
+        let failed = try Self.readRow(
+            path: "/tmp/gone.png",
+            result: #""content":[{"type":"text","text":"Read image file [image/png]"}],"isError":true"#)
+        #expect(failed.imagePath == nil)
+    }
+
     @Test func pairsToolsByIDAndReadsFullOutputOnDemand() throws {
         let lines = Self.lines([
             Self.header,

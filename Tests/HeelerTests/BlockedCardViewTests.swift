@@ -78,6 +78,62 @@ struct BlockedCardViewTests {
         }
     }
 
+    /// A trust screen's folder and warning fill a phone's share of the
+    /// screen, and its answers stay in view below them as the card opens,
+    /// above another field's keyboard in the largest text too.
+    @Test(arguments: [
+        ("codex-21-x8-phone-trust", ["Trust and continue", "Quit"]),
+        ("claude-00-trust", ["Yes, I trust this folder", "No, exit"]),
+    ])
+    func trustAnswersShowWithoutScrolling(stem: String, answers: [String]) async throws {
+        let screen = try ScreenFixture.screen(stem)
+        let store = BlockedCardStore(
+            program: ScreenFixture.program(stem),
+            io: BlockedScreenIO(readScreen: { screen }, sendKeys: { _ in }, paste: { _ in }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+        let layouts: [(CGSize, DynamicTypeSize, CGFloat)] = [
+            (CGSize(width: Self.phoneWidth, height: 812), .large, 220),
+            // Too narrow for one row: the answers stack.
+            (CGSize(width: Self.phoneWidth, height: 812), .accessibility3, 400),
+            (CGSize(width: 944, height: 280), .accessibility3, 400),
+        ]
+        for (size, textSize, budget) in layouts {
+            let controller = UIHostingController(
+                rootView: BlockedCardView(store: store, maxHeight: budget, openTerminal: {})
+                    .environment(\.dynamicTypeSize, textSize))
+            controller.safeAreaRegions = []
+            try await withTestWindow(
+                frame: CGRect(origin: .zero, size: size), rootViewController: controller
+            ) { _ in
+                var shown: [CGRect] = []
+                var previous: [CGRect] = []
+                for _ in 0..<40 {
+                    controller.view.layoutIfNeeded()
+                    shown = Self.elements(in: controller.view).filter {
+                        $0.accessibilityTraits.contains(.button) && answers.contains($0.accessibilityLabel ?? "")
+                    }.map(\.accessibilityFrame)
+                    if shown.count == answers.count, shown == previous { break }
+                    previous = shown
+                    try await Task.sleep(for: .milliseconds(50))
+                }
+                // The card sits centered in the window; an answer outside it
+                // is one its text scrolled out of view.
+                let height = controller.sizeThatFits(in: size).height
+                let bounds = UIAccessibility.convertToScreenCoordinates(
+                    CGRect(x: 0, y: (size.height - height) / 2, width: size.width, height: height), in: controller.view)
+                let visible = UIAccessibility.convertToScreenCoordinates(controller.view.bounds, in: controller.view)
+                #expect(shown.count == answers.count, "\(stem), \(size): \(shown)")
+                for frame in shown {
+                    #expect(
+                        !frame.isEmpty && bounds.intersection(visible).insetBy(dx: -1, dy: -1).contains(frame),
+                        "\(stem), \(size), \(textSize): \(frame) should show in \(bounds)")
+                }
+            }
+        }
+    }
+
     // MARK: Helpers
 
     private static func checkAnswers(

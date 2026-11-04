@@ -175,6 +175,7 @@ lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
 fixture_dir="$(mktemp -d /tmp/heeler-ci.XXXXXX)"
 app_derived_data_path="$fixture_dir/AppDerivedData"
 package_derived_data_path="$fixture_dir/PackageDerivedData"
+owned_app_build_directory=""
 # Stable SourcePackages tree for the app lane. Hosted CI restores this via
 # actions/cache so libghostty's XCFramework is not re-fetched every run.
 # Package-lane builds have no remote SwiftPM deps and leave this unused.
@@ -211,6 +212,21 @@ background_build_label=""
 preparation_started_at=$SECONDS
 phase_log="$fixture_dir/phases.tsv"
 
+prepare_app_build_directory() {
+    [[ "$ci_lane" == app && -n "${HEELER_CI_APP_DERIVED_DATA_PATH:-}" ]] || return 0
+    local directory=$HEELER_CI_APP_DERIVED_DATA_PATH
+    # Opt-in only: local concurrent runs retain their disposable paths. The
+    # exclusive mkdir refuses both stale products and another run's directory.
+    [[ "$directory" == /* ]] || { echo 'App DerivedData path must be absolute' >&2; return 2; }
+    mkdir -p "$(dirname "$directory")" || return 1
+    if ! mkdir "$directory"; then
+        echo "App DerivedData directory must be fresh: $directory" >&2
+        return 1
+    fi
+    owned_app_build_directory="$directory"
+    app_derived_data_path="$directory"
+}
+
 record_phase() {
     local name=$1
     local started=$2
@@ -220,12 +236,29 @@ record_phase() {
     printf '%s\t%s\t%s\n' "$name" "$elapsed" "$status" >> "${phase_log:-$fixture_dir/phases.tsv}"
 }
 
+# Opt-in build settings shared by the background and foreground
+# build-for-testing calls; test actions never receive them. Prints one
+# setting per line. Packages never use the app's compiler cache.
+opt_in_build_settings() {
+    if [[ "${HEELER_CI_DISABLE_COMPILATION_CACHE:-0}" == 1 ]]; then
+        echo COMPILATION_CACHE_ENABLE_CACHING=NO
+    elif [[ "$ci_lane" == app && -n "${HEELER_CI_COMPILATION_CACHE_DIR:-}" ]]; then
+        echo COMPILATION_CACHE_ENABLE_CACHING=YES
+        echo "COMPILATION_CACHE_CAS_PATH=$HEELER_CI_COMPILATION_CACHE_DIR"
+        echo COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS=YES
+    fi
+    if [[ "${HEELER_CI_DISABLE_DEBUG_SYMBOLS:-0}" == 1 ]]; then
+        echo GCC_GENERATE_DEBUGGING_SYMBOLS=NO
+    fi
+}
+
 start_background_build() {
     local label=$1
     local working_directory="$repo_root"
     local derived="$app_derived_data_path"
     local required=1
     local -a arguments=()
+    local setting
     [[ "$overlap_build" == 1 ]] || return 0
     [[ -z "$background_build_pid" ]] || return 1
     if [[ "$ci_lane" == package ]]; then
@@ -238,12 +271,9 @@ start_background_build() {
         [[ "$ci_app_shard" != ordinary ]] || required=0
         mkdir -p "$source_packages_dir"
     fi
-    if [[ "${HEELER_CI_DISABLE_COMPILATION_CACHE:-0}" == 1 ]]; then
-        arguments+=(COMPILATION_CACHE_ENABLE_CACHING=NO)
-    fi
-    if [[ "${HEELER_CI_DISABLE_DEBUG_SYMBOLS:-0}" == 1 ]]; then
-        arguments+=(GCC_GENERATE_DEBUGGING_SYMBOLS=NO)
-    fi
+    while IFS= read -r setting; do
+        arguments+=("$setting")
+    done < <(opt_in_build_settings)
     background_build_label="$label"
     background_build_log="$fixture_dir/background-build.log"
     background_build_timing="$fixture_dir/background-build-timing.json"
@@ -331,6 +361,7 @@ run_xcodebuild() {
     local needs_recovery=0
     local failed_udid="$simulator_udid"
     local working_directory="$repo_root"
+    local setting
     local index
     local -a arguments=()
     local -a runner=(xcodebuild)
@@ -360,12 +391,9 @@ run_xcodebuild() {
     arguments=("$@")
     if [[ "${1:-}" == build-for-testing ]]; then
         arguments+=(-showBuildTimingSummary COMPILER_INDEX_STORE_ENABLE=NO)
-        if [[ "${HEELER_CI_DISABLE_COMPILATION_CACHE:-0}" == 1 ]]; then
-            arguments+=(COMPILATION_CACHE_ENABLE_CACHING=NO)
-        fi
-        if [[ "${HEELER_CI_DISABLE_DEBUG_SYMBOLS:-0}" == 1 ]]; then
-            arguments+=(GCC_GENERATE_DEBUGGING_SYMBOLS=NO)
-        fi
+        while IFS= read -r setting; do
+            arguments+=("$setting")
+        done < <(opt_in_build_settings)
     fi
     # Keep this function in the calling shell. In particular, an outer tee
     # pipeline or package-directory subshell would discard a replacement UDID
@@ -441,6 +469,11 @@ run_xcodebuild() {
     if [[ "$status" != 0 && "$needs_recovery" == 1 ]]; then
         echo "Simulator destination recovery exhausted for UDID $failed_udid ($ci_simulator_name)." >&2
         xcrun simctl list devices available >&2 || true
+    fi
+    if [[ "${1:-}" == build-for-testing && -n "${evidence_dir:-}" ]]; then
+        mkdir -p "$evidence_dir/metrics"
+        grep -E 'hits / [0-9]+ cacheable tasks' "$output_log" \
+            > "$evidence_dir/metrics/compilation-cache.log" || true
     fi
     echo "::endgroup::"
     echo "==> $label: $((SECONDS - started_at))s (status $status)"
@@ -719,6 +752,9 @@ cleanup() {
     fi
     if [[ "$preserve_password_fixture" != "1" && -d "$fixture_dir" ]]; then
         rm -rf -- "$fixture_dir" || status=1
+    fi
+    if [[ -n "${owned_app_build_directory:-}" ]]; then
+        rm -rf -- "$owned_app_build_directory" || status=1
     fi
     # Released last: while these stand, a concurrent run treats our block and
     # our device as taken. Dropping them after the fixtures are already down,
@@ -1325,6 +1361,8 @@ claim_core_port() {
     echo "Every separate core fixture port is reserved or listening" >&2
     return 1
 }
+
+prepare_app_build_directory
 
 if [[ "$ci_lane" != app || "$ci_app_shard" != ordinary ]]; then
 claim_port_block

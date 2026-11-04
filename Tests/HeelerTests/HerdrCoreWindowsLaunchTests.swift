@@ -146,7 +146,7 @@ struct HerdrCoreWindowsLaunchTests {
                 awaitAgentVisible: { await store.waitForAgent($0, timeout: .seconds(2)) },
                 isAgentListed: { id in store.agents.contains { $0.id == id } },
                 programExit: { store.programExit(of: $0) },
-                recents: RecentWorkspaceStore(
+                recents: RecentLaunchStore(
                     defaults: UserDefaults(suiteName: "windows-launch-\(UUID())") ?? .standard),
                 offersDesktopAppNames: { store.capabilities(for: $0).namesNewWorkspaces },
                 offersConnectedWorktrees: { store.capabilities(for: $0).worktrees })

@@ -1,6 +1,6 @@
 # Chat with an Agent
 
-Chat shows an Agent's conversation as messages instead of a terminal screen. Read what the Agent did, reply, and answer its questions with buttons.
+Use Claude Code and Codex in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
 You need a macOS or Linux Host running herdr, and an Agent there running Claude Code, Codex, Pi, Oh My Pi, Grok Build, or OpenCode.
 
@@ -52,6 +52,7 @@ If there is no **Show Chat**, or Chat shows **Waiting for Conversation**, see [C
 - Your messages are on the right. The Agent's answers, reasoning, and tool steps are on the left.
 - When a turn finishes, its steps fold behind a **Worked for …** line. Tap it to see them, and tap a tool card to see its output or file changes.
 - Touch and hold a message to copy it.
+- Tap an image under a tool step, or a path to an image in a message (shown after a photo symbol), to open it with zoom.
 - After scrolling up, tap the round button with a down chevron at the bottom right to jump back to the newest message.
 - Pull down past the top to load earlier messages.
 
@@ -64,7 +65,7 @@ Type in **Message Agent** and tap **Send**. Chat types the message into the Agen
 - **While the Agent works**, Claude Code, Codex, Pi, and Grok Build take your message right away. Oh My Pi and OpenCode need the turn to finish first.
 - **Stop.** While the Agent works and your message is empty, **Send** becomes **Stop**. Tap it to interrupt the turn.
 - **Commands.** Type `/` to pick `/compact` or one of the Agent's skills. Other commands, such as `/model`, go in the terminal.
-- **Images and files.** Tap **+**, then **Add Image** or **Add File**. Heeler uploads it to the Host and adds its path to your message.
+- **Images and files.** Tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.
 
 If Chat can't send something, such as a message starting with `!`, it keeps your text and says why under the message box.
 

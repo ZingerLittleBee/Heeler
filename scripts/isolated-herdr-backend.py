@@ -41,6 +41,7 @@ import re
 import shutil
 import signal
 import socket
+import socketserver
 import struct
 import subprocess
 import sys
@@ -783,6 +784,12 @@ def command_relay_serve(args: argparse.Namespace) -> int:
     log = root / "relay.jsonl"
     gone_file = root / "relay-410.txt"
 
+    class RelayServer(http.server.ThreadingHTTPServer):
+        def server_bind(self) -> None:
+            # This loopback fixture needs no hostname; reverse DNS can stall startup.
+            socketserver.TCPServer.server_bind(self)
+            self.server_name, self.server_port = self.server_address
+
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_POST(self) -> None:  # noqa: N802
             length = int(self.headers.get("Content-Length") or 0)
@@ -807,7 +814,7 @@ def command_relay_serve(args: argparse.Namespace) -> int:
         def log_message(self, format: str, *values: object) -> None:  # noqa: A002
             sys.stderr.write("relay: " + (format % values) + "\n")
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = RelayServer(("127.0.0.1", args.port), Handler)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     print(f"relay listening on 127.0.0.1:{args.port}", flush=True)
     try:

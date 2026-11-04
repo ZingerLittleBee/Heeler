@@ -510,15 +510,39 @@ class CoreFixtureCleanupTests(unittest.TestCase):
 
 class RelayTests(unittest.TestCase):
     def test_relay_records_posts_and_answers_410_for_listed_tokens(self) -> None:
+        self.check_relay()
+
+    def test_relay_serves_requests_while_reverse_dns_is_stalled(self) -> None:
+        self.check_relay(stall_reverse_dns=True)
+
+    def check_relay(self, *, stall_reverse_dns: bool = False) -> None:
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
         with tempfile.TemporaryDirectory(prefix="heeler-iso-test-") as directory:
             root = Path(directory)
             (root / "relay-410.txt").write_text("gone\n")
+            command = [sys.executable]
+            if stall_reverse_dns:
+                # Stall only the child relay's DNS, not its HTTP client or sockets.
+                command += ["-c", """
+import runpy
+import socket
+import sys
+import time
+
+def stalled_reverse_lookup(address):
+    time.sleep(60)
+    raise TimeoutError("reverse DNS stalled")
+
+socket.gethostbyaddr = stalled_reverse_lookup
+sys.argv.pop(0)
+runpy.run_path(sys.argv[0], run_name="__main__")
+"""]
+            command += [str(Path(__file__).with_name("isolated-herdr-backend.py")),
+                        "--root", str(root), "relay-serve", "--port", str(port)]
             relay = subprocess.Popen(
-                [sys.executable, str(Path(__file__).with_name("isolated-herdr-backend.py")),
-                 "--root", str(root), "relay-serve", "--port", str(port)],
+                command,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.addCleanup(relay.wait)
             self.addCleanup(relay.terminate)

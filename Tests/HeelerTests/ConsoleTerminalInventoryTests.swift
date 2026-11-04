@@ -295,6 +295,9 @@ struct ConsoleTerminalInventoryTests {
         store.setHosts([host])
         await store.resume()
         try await waitUntil { store.terminals.count == 1 }
+        // The protocol-22 snapshot is published before its expanded Events
+        // subscription is live. Wait out that stream replacement before emitting.
+        try await transport.waitForLiveSubscription(containing: [.global(.workspaceReordered)])
         let gate = ScriptedTransportCallGate()
         await transport.setSnapshot(snapshot(panes: [pane("shell")], workspaceLabel: "Renamed"))
         await transport.gateNextSnapshot(using: gate)
@@ -304,13 +307,26 @@ struct ConsoleTerminalInventoryTests {
                 == true
         )
         try await waitUntil { await gate.entryCount == 1 }
+        let changed = pane("shell", title: "New title", foregroundCwd: "/new")
+        // Only the already captured response is stale. Any follow-up snapshot
+        // must reflect the same Host state as the pane update we deliver next.
+        await transport.setSnapshot(snapshot(panes: [changed], workspaceLabel: "Renamed"))
+        let followupGate = ScriptedTransportCallGate()
+        await transport.gateNextSnapshot(using: followupGate)
         #expect(
             await transport.emit(
-                try update(pane("shell", title: "New title", foregroundCwd: "/new")))
+                HerdrEvent(kind: GlobalEventKind.workspaceMetadataUpdated.kind, data: .object([:])))
                 == true)
+        #expect(await transport.emit(try update(changed)) == true)
         try await waitUntil { store.terminals.first?.cwd == "/new" }
         await gate.open()
+        try await waitUntil { await followupGate.entryCount == 1 }
         try await waitUntil { store.terminals.first?.workspaceLabel == "Renamed" }
+        // Check the old response before the fresh one can conceal a lost delta.
+        #expect(store.terminals.first?.displayTitle == "New title")
+        #expect(store.terminals.first?.cwd == "/new")
+        await followupGate.open()
+        await store.refreshSidebarLayouts()
         #expect(store.terminals.first?.displayTitle == "New title")
         #expect(store.terminals.first?.cwd == "/new")
     }

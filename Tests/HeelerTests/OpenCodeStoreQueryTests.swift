@@ -373,6 +373,35 @@ struct OpenCodeStoreQueryTests {
         #expect(items.last?["files"] as? [String] == ["notes.md"])
     }
 
+    /// OpenCode 2.0.32's read returns an image as a `file` item named with
+    /// the path it read; the line keeps that name, not the image data, and
+    /// the session line where the session is.
+    @Test func readsKeepTheNameOfTheImageTheyReturned() throws {
+        let (harness, session) = try Self.store("pong")
+        func read(_ path: String, text: String, mime: String) -> String {
+            #"{"type":"tool","id":"call_\#(path)","name":"read","state":{"status":"completed","input":{"path":"\#(path)"},"content":[{"type":"text","text":"\#(text)"},{"type":"file","uri":"data:\#(mime);base64,AAAA","mime":"\#(mime)","name":"\#(path.lowercased())"}]}}"#
+        }
+        let items = [
+            read("shots/A.PNG", text: "Image read successfully", mime: "image/png"),
+            read("guide.pdf", text: "PDF read successfully", mime: "application/pdf"),
+            #"{"type":"tool","id":"call_t","name":"read","state":{"status":"completed","input":{"path":"a.txt"},"content":[{"type":"text","text":"Read file a.txt, lines 1-1"}]}}"#,
+        ]
+        try Self.insertRow(
+            harness, session, seq: 40, type: "assistant",
+            data: #"{"time":{"created":1800000100040,"completed":1800000100041},"content":[\#(items.joined(separator: ","))]}"#)
+        let records = try harness.records(Self.tail(session))
+
+        let sessionLine = try Self.object(#require(records.sessionLine))
+        #expect(sessionLine["directory"] as? String == "/Users/developer/work/heeler-tmp-chat/opencode-a/project")
+        let step = try Self.data(#require(records.rows.first { $0.seq == 40 }))
+        let content = try #require(step["content"] as? [[String: Any]])
+        #expect(content.map { $0["image"] as? String } == ["shots/a.png", nil, nil])
+        #expect(content.map { $0["out"] as? String } == [
+            "Image read successfully", "PDF read successfully", "Read file a.txt, lines 1-1",
+        ])
+        #expect(!String(decoding: try #require(records.rows.first { $0.seq == 40 }).line, as: UTF8.self).contains("AAAA"))
+    }
+
     @Test func slimRowsTolerateUnexpectedJSONTypes() throws {
         let (harness, session) = try Self.store("odd-types")
         let records = try harness.records(Self.tail(session))

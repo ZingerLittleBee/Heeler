@@ -82,7 +82,7 @@ extension HostRemovalDependencies {
         notificationPreferences: NotificationPreferencesStore,
         liveActivities: HostLiveActivityCoordinator,
         knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
-        recentWorkspaces: RecentWorkspaceStore = RecentWorkspaceStore(),
+        recentLaunches: RecentLaunchStore = RecentLaunchStore(),
         revokeTimeout: Duration = .seconds(6)
     ) -> HostRemovalDependencies {
         HostRemovalDependencies(
@@ -103,7 +103,7 @@ extension HostRemovalDependencies {
             },
             forgetHostRecords: { id in
                 await knownHosts.forgetHost(id)
-                recentWorkspaces.forget(id)
+                recentLaunches.forgetWorkspace(for: id)
             })
     }
 }

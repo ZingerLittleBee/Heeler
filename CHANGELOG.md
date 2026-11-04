@@ -37,6 +37,75 @@ Entries reference the pull request that made the change.
 - Connect to a herdr-core Host on native Windows, and see its Agents and Terminals in the Console with Direct Input and Shell Terminals. Heeler finds the core where its installer puts it, under your profile folder even when a PowerShell profile changes the start folder, and connects only once its named pipe exists, so a stopped core reads not running, with the command to start it in your desktop session. The one exception is a core that stops in the one round trip between that check and the connection, which the connection starts. A core that is there but does not answer is tried again rather than read as not installed, and the Host form refuses a session name the core's connection can't carry, saying why, before you save. Rename, Worktrees, Changes, Skills and Grok Build's status edit are not offered there yet, and Chat opens only for the programs that passed there. Host detail reads the core's environment for leaked variables by name. Heeler's own probe, connection and this read have run on one Windows machine so far (build 26200, herdr-core 0.1.16). (#587; PR #538)
 - Start Agents, Terminals and Workspaces on a native Windows herdr-core Host. New Agent lists what Windows PowerShell can run and starts it through PowerShell, and its Terminal ends when the agent exits. New Workspace creates a space at the directory you pick, with no name field. Add in the Composer stages an image or file of up to 8 MiB through the core and puts its path in your draft; a larger one is refused before anything is sent. The file inherits its access from your profile, which on the one Windows machine checked so far was SYSTEM, Administrators and your account, and it stays after you close the Terminal. Heeler's own launch, discovery and staging have run on one Windows machine so far. (#588; PR #538)
 - Send and Stop from the Composer on a native Windows herdr-core Host, built on the same steps as on macOS and Linux and run on one Windows machine so far, with Claude Code: Send pastes, checks that the same Agent still holds the terminal, and submits within two seconds or not at all, keeping the draft and saying whether the text may remain. A Terminal that keeps a shell open after its Agent exits, as one the Herdr desktop app started does, gets nothing from Send, and the notice says why, since Heeler sees that Agent leave only by the Terminal's title: once the title names PowerShell again, the Terminal lists under Terminals. If an Agent's bracketed paste does not reach Heeler through Windows' pseudo console, which has not been seen yet, every Send there says it is not accepting a paste and keeps the draft. Stop presses the Terminal's own stop key, and an Agent that finishes at the key leaves the list at once. (#589; PR #538)
+
+### Changed
+
+- Keep a staged file's own name on the Host, with each character other than
+  a letter, a digit, `.`, `-` or `_` replaced, instead of `file.<ext>`.
+  Images still arrive as `image.<ext>`. (#567; PR #538)
+- Read an OpenCode 1.x conversation in Chat from 1.x's own tables, where
+  Chat said it reads only OpenCode 2.x. Checked against a live OpenCode
+  1.19.5 session, whose last turn Chat still shows as working. (#584; PR #538)
+
+### Fixed
+
+- Herdr TUI terminals no longer lose bracketed paste, cursor keys, mouse
+  tracking or the alternate screen when a program queries, saves or restores
+  a mode. (#545; PR #538)
+- Put a space between a staged path and the word before it in the draft,
+  instead of running the path into that word. (#567; PR #538)
+- Say why a draft came back when its Send was refused as the Agent's status
+  changed, such as an OpenCode draft sent as its prompt appeared, instead of
+  returning it with no notice. (#580; PR #538)
+- End a refused Send's notice in Chat once Chat follows another
+  conversation. (#583; PR #538)
+- Keep Chat's placeholders, such as Conversation Not Found, clear of the
+  Composer's status row while the keyboard is up, and keep VoiceOver from
+  reading the rows they cover. (#583; PR #538)
+- Add `codex app-server daemon stop` to Chat's advice for a Codex on its
+  shared background server, for when Codex says the conversation is open in
+  another app and won't resume it. (#581; PR #538)
+- Name `C:\ProgramData\ssh\administrators_authorized_keys` for an
+  administrator account on Windows wherever Heeler says where a Device Key's
+  public key goes. (#587; PR #538)
+- Show only Connecting… on a Host's page while it reconnects, without the
+  last attempt's error. (#587; PR #538)
+- Forget a removed Host's trusted host key, which Remove Host's confirmation
+  now names, and the Workspace New Agent last chose there, and stop writing
+  an empty Live Activity list for a Host that never had one. (#541; PR #538)
+- Offer Refresh on an empty Skills list. (#558; PR #538)
+
+## [0.1.17] - 2026-11-04
+
+### Added
+
+- Paste an image from the clipboard into a message: tap **+**, then **Paste
+  Image**, or paste into the Composer from the keyboard or the edit menu.
+  Heeler uploads it to the Host and adds its path, as Add Image does.
+  (#617)
+- Paths to images in Chat messages open the image. A path to a picture on the
+  Host, written as code, as a link or in the text of your messages or the
+  Agent's, shows in the tint color after a photo symbol; tap it, or choose
+  Preview Image from the message's menu, to open it with zoom. Paths relative
+  to the Agent's folder and paths starting at `~` open too. (#618)
+- Touch and hold an Agent on a By Workspace card and tap New Agent to start
+  one in its Workspace and directory, as the Agent's own New Agent does.
+  (#616)
+- Browse Directories hides folders whose names start with a dot. Tap the eye
+  button beside Select to list them again; Heeler remembers the choice.
+  (#609)
+- The Shell Terminal can show the shortcut row from Direct Input (Esc, Tab,
+  arrows, Backspace and Enter) above its input row, so you can reach those
+  keys while typing on the iOS keyboard. Turn it on with the new button beside
+  the keyboard button. It's off by default, and the row and its button
+  hide in Keys mode. (#611)
+- New Agent opens on the Agent you started last, when the Host has it
+  installed. (#608)
+- Chat shows the images Agents read or make as thumbnails under their rows;
+  tap one to open it with zoom. Claude Code, Codex, Grok Build, Pi, Oh My Pi
+  and OpenCode are covered, and image rows no longer fold into tool groups.
+  Images over 8 MB load on a tap, and a deleted image or an offline Host says
+  so in the thumbnail's place. (#600)
 - Turn Usage off in Settings to hide its tab and each Host's Usage section and
   stop reading usage from your Hosts. Usage widgets clear their figures and say
   so until you turn it back on. (#597)
@@ -69,12 +138,17 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
-- Keep a staged file's own name on the Host, with each character other than
-  a letter, a digit, `.`, `-` or `_` replaced, instead of `file.<ext>`.
-  Images still arrive as `image.<ext>`. (#567; PR #538)
-- Read an OpenCode 1.x conversation in Chat from 1.x's own tables, where
-  Chat said it reads only OpenCode 2.x. Checked against a live OpenCode
-  1.19.5 session, whose last turn Chat still shows as working. (#584; PR #538)
+- Raise and lower the Shell Terminal's input row with the keyboard, in step
+  with it, as the Composer does, instead of jumping ahead of it. (#611)
+- Keep the answers on Claude Code's and Codex's folder trust cards in view
+  below the folder, as a row of capsules with leaving on the left and
+  trusting on the right, instead of below the card's fold on a phone.
+  (#619)
+- Show Chat's Show Agent Terminal and Check Again side by side as glass
+  capsules while it waits for a conversation. (#619)
+- Spin Check Again while Chat looks for the conversation, for at least a
+  moment, then ease into what it found instead of switching at once.
+  (#619)
 - Give an Agent's title on a By Workspace card one size and color, whether
   the Agent shares its checkout or stands alone under the checkout's title,
   and set a repository's checkout titles apart from it in a quieter color.
@@ -101,31 +175,32 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
-- Herdr TUI terminals no longer lose bracketed paste, cursor keys, mouse
-  tracking or the alternate screen when a program queries, saves or restores
-  a mode. (#545; PR #538)
-- Put a space between a staged path and the word before it in the draft,
-  instead of running the path into that word. (#567; PR #538)
-- Say why a draft came back when its Send was refused as the Agent's status
-  changed, such as an OpenCode draft sent as its prompt appeared, instead of
-  returning it with no notice. (#580; PR #538)
-- End a refused Send's notice in Chat once Chat follows another
-  conversation. (#583; PR #538)
-- Keep Chat's placeholders, such as Conversation Not Found, clear of the
-  Composer's status row while the keyboard is up, and keep VoiceOver from
-  reading the rows they cover. (#583; PR #538)
-- Add `codex app-server daemon stop` to Chat's advice for a Codex on its
-  shared background server, for when Codex says the conversation is open in
-  another app and won't resume it. (#581; PR #538)
-- Name `C:\ProgramData\ssh\administrators_authorized_keys` for an
-  administrator account on Windows wherever Heeler says where a Device Key's
-  public key goes. (#587; PR #538)
-- Show only Connecting… on a Host's page while it reconnects, without the
-  last attempt's error. (#587; PR #538)
-- Forget a removed Host's trusted host key, which Remove Host's confirmation
-  now names, and the Workspace New Agent last chose there, and stop writing
-  an empty Live Activity list for a Host that never had one. (#541; PR #538)
-- Offer Refresh on an empty Skills list. (#558; PR #538)
+- Show Codex's Folder access prompt in Chat as a card with Trust and continue
+  and Quit. On a phone, where herdr reports Codex idle on that prompt, Chat
+  used to wait for a conversation instead, and on a wider screen the generic
+  card's `1` did nothing. (#619)
+- By Workspace keeps each repository's card while Heeler connects: saved
+  Chats from a main checkout and its worktrees open under the same card the
+  running Agents had, instead of as separate cards that regroup once the Host
+  answers. Each checkout keeps the branch it was last read on as its title
+  until Heeler reads it again. (#618)
+- Round the bottom corners of a collapsed By Workspace card with nothing to
+  summarize, such as a Workspace whose Agents are all idle, instead of ending
+  it in a square-cornered strip under its header. (#616)
+- Put Show Chat or Show Agent Terminal and More with Back in iPhone Duo's
+  side controls, using the system overflow menu instead of leaving their
+  capsule over the content. Horizontal layouts keep their existing controls.
+  (#612)
+- Put Back with the system controls along an iPhone Duo's side on Agent Chat,
+  Agent Terminal and Shell Terminal details, instead of leaving it floating at
+  the opposite top corner. (#610)
+- Give the website and bilingual docs clean search URLs, sitemaps, app metadata,
+  browser icons, landscape sharing cards, and permanent canonical redirects.
+  Keep error pages, raw guides, and search data out of search results, and add
+  direct App Store links to both docs home pages. Explain remote Claude Code
+  and Codex use on iPhone and iPad, with setup, Chat, notification, and Usage
+  widget guidance on the existing pages, and identify Heeler as an independent
+  herdr mobile client. (#605)
 - Chat fills in earlier messages page by page and keeps up with the Agent while
   it does, so returning to a long conversation no longer shows a few old rows
   under a spinner and a blank screen until a whole turn has loaded. Messages

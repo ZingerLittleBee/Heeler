@@ -46,6 +46,7 @@ if(fs.existsSync(clockPath)) {
 }
 const append=fs.appendFileSync;
 const rename=fs.renameSync;
+const remove=fs.rmSync;
 const open=fs.openSync;
 const write=fs.writeSync;
 const truncate=fs.truncateSync;
@@ -62,7 +63,12 @@ function crash(point) { if(fault()===point)kill(); }
 // Numbered cache writes: {at:k} kills the worker at the k-th one.
 let events=0;
 const event=()=>{events++;return fault()?.at===events;};
-if(worker)process.on('exit',()=>fs.writeFileSync(root+'/events',String(events)));
+fs.rmSync=function(path,...args) {
+  // Publish this run's count before the query can report refreshing=false.
+  // An exit hook can run later and leave the previous run's count visible.
+  if(worker&&String(path).endsWith('/worker.lock'))fs.writeFileSync(root+'/events',String(events));
+  return remove.call(this,path,...args);
+};
 const logs=new Set();
 fs.openSync=function(path,...args) {
   const fd=open.call(this,path,...args);
@@ -480,10 +486,16 @@ async function killScenario(t,change){
   // Every line boundary commits, so the run passes through every kind of write.
   writeFileSync(join(f.root,"tick"),"");
   const restore=()=>{rmSync(f.cache(),{recursive:true});cpSync(template,f.cache(),{recursive:true});rmSync(join(f.root,"fault-reached"),{force:true});};
-  restore();assert.deepEqual((await f.finish()).programs,expected);
+  // Polling a stale snapshot across unlock can start a second, no-op worker.
+  // Wait for this calibration's count before querying its finished report.
+  const eventsPath=join(f.root,"events");
+  restore();rmSync(eventsPath,{force:true});
+  assert.equal(f.query().refreshing,true);
+  await waitFor(eventsPath);
+  assert.deepEqual((await f.finish()).programs,expected);
   const pruned=!readFileSync(join(f.cache(),"keys.log"),"utf8").includes("aging");
   assert.equal(generation(f)!==initial,change!=="incremental");assert.equal(pruned,change!=="incremental");
-  const writes=Number(readFileSync(join(f.root,"events"),"utf8"));
+  const writes=Number(readFileSync(eventsPath,"utf8"));
   // Poll the lock file rather than spawning a query every few milliseconds,
   // but query again periodically: only a query reclaims the lock of a killed
   // worker, and one that ran while the worker was still dying reported it live.

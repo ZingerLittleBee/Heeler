@@ -1,7 +1,7 @@
-<!-- Translated from docs/guides/chat.md at aea333b8 -->
+<!-- Translated from docs/guides/chat.md at 371b84c8 -->
 # 在 Chat 中使用 Agent
 
-Chat 把 Agent 的对话显示成消息，而不是终端画面。你可以查看 Agent 做了什么、回复它，并用按钮回答它的提问。
+在 iPhone 或 iPad 上通过 Heeler 的原生 Chat 使用 Claude Code 和 Codex。你可以阅读对话并通过 SSH 回复，Agent 继续在 Host 上运行。
 
 你需要一台运行 herdr 的 macOS 或 Linux Host，并在上面运行 Claude Code、Codex、Pi、Oh My Pi、Grok Build 或 OpenCode 的 Agent。
 
@@ -53,6 +53,7 @@ Heeler 会记住你的选择，之后打开的 Agent 都会先显示 Chat，直�
 - 你的消息在右侧，Agent 的回答、推理和工具步骤在左侧。
 - 一轮对话结束后，其中的步骤会折叠到一行 **Worked for …** 后面。轻点这一行可以展开，轻点工具卡片可以查看输出或文件改动。
 - 按住一条消息即可复制。
+- 轻点工具步骤下的图片，或消息里的图片路径（前面带照片图标），可以打开并缩放查看。
 - 向上滚动后，轻点右下角带向下 V 形箭头的圆形按钮，可回到最新消息。
 - 在顶部继续下拉可加载更早的消息。
 
@@ -65,7 +66,7 @@ Heeler 会记住你的选择，之后打开的 Agent 都会先显示 Chat，直�
 - **Agent 工作时**，Claude Code、Codex、Pi 和 Grok Build 会立即接收你的消息；Oh My Pi 和 OpenCode 要等这一轮结束。
 - **停止。** Agent 工作时，如果输入框是空的，**Send** 会变成 **Stop**。轻点它可以中断这一轮。
 - **命令。** 输入 `/` 可以选择 `/compact` 或 Agent 的技能。其他命令（例如 `/model`）请在终端中运行。
-- **图片和文件。** 轻点 **+**，再选择 **Add Image** 或 **Add File**。Heeler 会把它上传到 Host，并把路径加到你的消息里。
+- **图片和文件。** 轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Paste Image 使用剪贴板里的图片，直接把图片粘贴到消息里也一样。Heeler 会把它上传到 Host，并把路径加到你的消息里。
 
 如果 Chat 不能发送某条消息（例如以 `!` 开头的消息），它会保留你的文字，并在输入框下方说明原因。
 

@@ -24,7 +24,7 @@ const isGuide = entry.collection === 'guides';
 const { lead, steps } = remarkPluginFrontmatter;
 ---
 
-<Layout title={title} description={description}>
+<Layout title={title} description={description} isGuide={isGuide}>
   <Docs
     trees={serializedPageTrees}
     pathname={page.url}

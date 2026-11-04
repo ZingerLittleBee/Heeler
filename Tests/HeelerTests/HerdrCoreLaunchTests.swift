@@ -149,7 +149,7 @@ struct HerdrCoreLaunchTests {
                 awaitAgentVisible: { await store.waitForAgent($0, timeout: agentWait) },
                 isAgentListed: { id in store.agents.contains { $0.id == id } },
                 programExit: { store.programExit(of: $0) },
-                recents: RecentWorkspaceStore(defaults: UserDefaults(suiteName: "launch-\(UUID())") ?? .standard))
+                recents: RecentLaunchStore(defaults: UserDefaults(suiteName: "launch-\(UUID())") ?? .standard))
         }
 
         func finish() {
@@ -1413,7 +1413,7 @@ struct HerdrCoreTemplateWaitTests {
                 remoteHome: { try await store.remoteHomeDirectory(on: $0) },
                 start: { _, _, _ in throw TransportError.hostFeatureUnavailable(feature: "kinds") },
                 awaitAgentVisible: { await store.waitForAgent($0) },
-                recents: RecentWorkspaceStore(defaults: UserDefaults(suiteName: "wait-\(UUID())") ?? .standard))
+                recents: RecentLaunchStore(defaults: UserDefaults(suiteName: "wait-\(UUID())") ?? .standard))
             store.setHosts([host])
             await store.resume()
             let id = host.id

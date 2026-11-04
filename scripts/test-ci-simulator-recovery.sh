@@ -18,7 +18,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-simulator-recovery.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-for function in prepare_evidence_directory record_phase start_background_build cancel_background_build run_app_fixture_suites run_core_fixture_suite stop_core_fixture download_core_fixture_binary claim_core_port claim_port_block assign_port_block assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
+for function in prepare_evidence_directory prepare_app_build_directory record_phase opt_in_build_settings start_background_build cancel_background_build run_app_fixture_suites run_core_fixture_suite stop_core_fixture download_core_fixture_binary claim_core_port claim_port_block assign_port_block assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
     claim_simulator claim_resource_lock release_resource_lock write_lock_owner \
     lock_is_stale acquire_claim_guard release_claim_guard \
     clear_simulator_environment push_simulator_environment; do
@@ -57,6 +57,7 @@ from pathlib import Path
 root = Path(sys.argv[1])
 def terminate(_signum, _frame):
     (root / "cancel-order").write_text("fixture-present" if (root / "fixture").exists() else "fixture-removed")
+    (root / "build-cancel-order").write_text("products-present" if (root / "app-derived").exists() else "products-removed")
     raise SystemExit(0)
 signal.signal(signal.SIGTERM, terminate)
 (root / "build-child.pid").write_text(str(os.getpid()))
@@ -199,6 +200,13 @@ run_case() (
     fi
     if [[ "$case_name" == overlap-replacement ]]; then
         export HEELER_CI_DISABLE_DEBUG_SYMBOLS=1
+        export HEELER_CI_APP_DERIVED_DATA_PATH="$CASE_DIR/app-derived"
+        export HEELER_CI_COMPILATION_CACHE_DIR="$CASE_DIR/compiler-cache"
+        prepare_app_build_directory
+    elif [[ "$case_name" == overlap-package ]]; then
+        # Package builds must not inherit an app cache, even if supplied.
+        export HEELER_CI_COMPILATION_CACHE_DIR="$CASE_DIR/compiler-cache"
+        export HEELER_CI_DISABLE_COMPILATION_CACHE=1
     fi
     local status=0
     if [[ "$overlap_case" == 1 ]]; then
@@ -236,8 +244,15 @@ run_case() (
                     [[ " $build_arguments " == *' build-for-testing '* ]] || fail 'expected background build and foreground retry'
                     if [[ "$case_name" == overlap-replacement ]]; then
                         [[ " $build_arguments " == *' GCC_GENERATE_DEBUGGING_SYMBOLS=NO '* ]] || fail "build attempt $attempt lost opt-in debug symbol setting"
+                        [[ " $build_arguments " == *" -derivedDataPath $CASE_DIR/app-derived "* ]] || fail 'stable build path lost during recovery'
+                        [[ " $build_arguments " == *' COMPILATION_CACHE_ENABLE_CACHING=YES '* ]] || fail 'compiler cache lost during recovery'
+                        [[ " $build_arguments " == *" COMPILATION_CACHE_CAS_PATH=$CASE_DIR/compiler-cache "* ]] || fail 'compiler cache path lost during recovery'
                     else
                         [[ "$build_arguments" != *GCC_GENERATE_DEBUGGING_SYMBOLS=* ]] || fail "build attempt $attempt disabled debug symbols without opt-in"
+                        [[ "$build_arguments" != *COMPILATION_CACHE_CAS_PATH=* ]] || fail 'unrequested app cache enabled'
+                        if [[ "$case_name" == overlap-package ]]; then
+                            [[ " $build_arguments " == *' COMPILATION_CACHE_ENABLE_CACHING=NO '* ]] || fail 'package cache override lost'
+                        fi
                     fi
                 done
             fi
@@ -249,6 +264,7 @@ run_case() (
                 build_arguments=$(tail -n 1 "$CASE_DIR/arguments")
                 [[ " $build_arguments " == *' test-without-building '* ]] || fail 'subsequent action rebuilt tests'
                 [[ "$build_arguments" != *GCC_GENERATE_DEBUGGING_SYMBOLS=* ]] || fail 'test action inherited build-only debug symbol setting'
+                [[ "$build_arguments" != *COMPILATION_CACHE_*=* ]] || fail 'test action inherited compiler cache settings'
             fi
             if [[ "$SCENARIO" == replacement || "$SCENARIO" == package ]]; then
                 grep -qF "simctl spawn $REPLACEMENT launchctl setenv HEELER_SSH_E2E_REQUIRED 1" "$CASE_DIR/simctl" || fail 'fixture environment was not restored'
@@ -678,6 +694,8 @@ for reason in preparation-failure parent-cancellation core-stop-failure; do
         port_is_busy() { return 1; }
         claim_port_block
         claim_core_port
+        export HEELER_CI_APP_DERIVED_DATA_PATH="$CASE_DIR/app-derived"
+        prepare_app_build_directory
         start_background_build first
         for _ in $(seq 1 100); do
             [[ -s "$CASE_DIR/build-child.pid" ]] && break
@@ -700,7 +718,9 @@ for reason in preparation-failure parent-cancellation core-stop-failure; do
     [[ "$reason" != parent-cancellation ]] || expected=143
     [[ "$status" == "$expected" ]] || { cat "$work/$reason.log" >&2; fail "$reason changed parent exit status $status"; }
     [[ "$(cat "$work/$reason/cancel-order")" == fixture-present ]] || fail 'fixture deleted before build reaped'
+    [[ "$(cat "$work/$reason/build-cancel-order")" == products-present ]] || fail 'build directory deleted before build reaped'
     [[ ! -d "$work/$reason/fixture" ]] || { cat "$work/$reason.log" >&2; fail 'fixture not cleaned after build cancellation'; }
+    [[ ! -d "$work/$reason/app-derived" ]] || fail 'owned stable build directory leaked'
     ! kill -0 "$(cat "$work/$reason/build-child.pid")" 2>/dev/null || fail 'owned build child survived cleanup'
     if [[ "$reason" == core-stop-failure ]]; then
         [[ -f "$work/$reason/core-stop-called" ]] || fail 'outer cleanup did not attempt core shutdown'
@@ -739,3 +759,41 @@ for scenario in new settings stale-phase stale-worker stale-metrics unexpected s
     )
 done
 echo 'Passed 7 fresh evidence directory scenarios.'
+
+for scenario in new existing symlink local package; do
+    (
+        export SCENARIO="build-directory-$scenario"
+        ci_lane=app
+        fixture_dir="$work/$SCENARIO"
+        mkdir -p "$fixture_dir"
+        app_derived_data_path="$fixture_dir/AppDerivedData"
+        owned_app_build_directory=""
+        export HEELER_CI_APP_DERIVED_DATA_PATH="$fixture_dir/stable"
+        case "$scenario" in
+            existing) mkdir "$HEELER_CI_APP_DERIVED_DATA_PATH" ;;
+            symlink) ln -s "$fixture_dir" "$HEELER_CI_APP_DERIVED_DATA_PATH" ;;
+            local) unset HEELER_CI_APP_DERIVED_DATA_PATH ;;
+            package) ci_lane=package ;;
+        esac
+        status=0
+        prepare_app_build_directory > "$fixture_dir/output" 2>&1 || status=$?
+        case "$scenario" in
+            new)
+                [[ "$status" == 0 && "$owned_app_build_directory" == "$fixture_dir/stable" \
+                    && "$app_derived_data_path" == "$fixture_dir/stable" && -d "$fixture_dir/stable" ]] \
+                    || fail 'fresh stable directory was not claimed'
+                ;;
+            existing | symlink)
+                [[ "$status" != 0 && -z "$owned_app_build_directory" && -e "$fixture_dir/stable" ]] \
+                    || fail 'existing directory was claimed or deleted'
+                ;;
+            local | package)
+                [[ "$status" == 0 && -z "$owned_app_build_directory" && ! -e "$fixture_dir/stable" \
+                    && "$app_derived_data_path" == "$fixture_dir/AppDerivedData" ]] \
+                    || fail 'unrequested stable path changed the build'
+                ;;
+        esac
+        printf 'PASS %s\n' "$SCENARIO"
+    )
+done
+echo 'Passed 5 build directory ownership scenarios.'

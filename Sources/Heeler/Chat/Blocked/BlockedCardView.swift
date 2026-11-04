@@ -50,6 +50,7 @@ private struct BlockedDialogCard: View {
     @State private var text = ""
     @State private var isAddingNote = false
     @State private var selection: Set<Int>
+    @State private var pinnedChoicesHeight: CGFloat = 0
     @FocusState private var isTextFocused: Bool
 
     init(card: BlockedCard, store: BlockedCardStore, maxHeight: CGFloat) {
@@ -68,7 +69,7 @@ private struct BlockedDialogCard: View {
             BlockedCardHeader(
                 title: dialog.cardTitle, detail: dialog.positionLabel, isActing: store.progress == .acting,
                 lineLimit: dialog.asksInTitle ? nil : 2, collapse: { store.isCollapsed = true })
-            BlockedScrollingContent(maxHeight: maxHeight) {
+            BlockedScrollingContent(maxHeight: scrollingMaxHeight, fadesEdges: pinsChoices) {
                 VStack(alignment: .leading, spacing: 10) {
                     if let source {
                         Label {
@@ -84,6 +85,12 @@ private struct BlockedDialogCard: View {
                 }
                 .disabled(!isReady)
             }
+            .scrollIndicatorsFlash(onAppear: pinsChoices)
+            if pinsChoices {
+                trustChoices
+                    .disabled(!isReady)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pinnedChoicesHeight = $0 }
+            }
             // Below the scrolling part, so a field stays in view over the
             // keyboard it raises.
             textEntry
@@ -92,6 +99,17 @@ private struct BlockedDialogCard: View {
                 notice: store.notice, stopTitle: stopTitle, isReady: isReady, canStop: store.canStop,
                 stop: { perform(.dismiss) })
         }
+    }
+
+    /// A trust screen's answers stay below its scrolling text, in view on
+    /// a phone, where the folder and the program's warning fill the card's
+    /// share. The text gives up their room, so the card stays as tall.
+    private var pinsChoices: Bool {
+        dialog.kind == .claudeWorkspaceTrust || dialog.kind == .codexWorkspaceTrust
+    }
+
+    private var scrollingMaxHeight: CGFloat {
+        pinsChoices ? max(maxHeight - pinnedChoicesHeight - 10, 96) : maxHeight
     }
 
     /// Esc, named for what it does when no option sends it. While an answer
@@ -174,11 +192,17 @@ private struct BlockedDialogCard: View {
                     }
                 }
             }
-        case .claudeWorkspaceTrust:
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust:
             BlockedCodeBox(text: subject.workspacePath ?? "")
+            // Codex's note on a folder below a repository's root, then the
+            // root.
             ForEach(Array(dialog.body.filter { $0 != subject.workspacePath }.enumerated()), id: \.offset) { @Sendable item in
                 MainActorContent {
-                    BlockedCardText(item.element)
+                    if item.element == subject.workspaceRoot {
+                        BlockedCodeBox(text: item.element)
+                    } else {
+                        BlockedCardText(item.element)
+                    }
                 }
             }
         case .codexAsyncCollapsed:
@@ -283,7 +307,7 @@ private struct BlockedDialogCard: View {
                     BlockedOptionButton(option: option, emphasis: .plain) { perform(.choose(ordinal: option.ordinal)) }
                 }
             }
-        } else {
+        } else if !pinsChoices {
             let buttons = dialog.options.filter { $0.role != .otherText && $0.role != .next }
             // The first plain way to allow or go on leads. A question's
             // answers stand level, and a choice that saves a rule or
@@ -342,6 +366,37 @@ private struct BlockedDialogCard: View {
                 .foregroundStyle(.secondary)
         default:
             EmptyView()
+        }
+    }
+
+    /// A trust screen's two short answers make one decision, so they share
+    /// a row of capsules whatever order the program lists them in: leaving
+    /// on the left at its label's width, trusting on the right filling the
+    /// rest. Labels too long for one row stack, trusting first. Keys follow
+    /// ordinals, not this order. Pinned below the text by `pinsChoices`.
+    private var trustChoices: some View {
+        let trusting = dialog.options.filter { $0.role == .trust }
+        let leaving = dialog.options.filter { $0.role != .trust }
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                trustChoiceButtons(leaving + trusting, stacked: false)
+            }
+            VStack(spacing: 8) {
+                trustChoiceButtons(trusting + leaving, stacked: true)
+            }
+        }
+        .disabled(dialog.answersHeldByDraft)
+    }
+
+    private func trustChoiceButtons(_ options: [DialogOption], stacked: Bool) -> some View {
+        ForEach(options, id: \.ordinal) { @Sendable option in
+            MainActorContent {
+                BlockedTrustChoice(
+                    label: option.label, leads: option.role == .trust, fills: stacked || option.role == .trust
+                ) {
+                    perform(.choose(ordinal: option.ordinal))
+                }
+            }
         }
     }
 
@@ -585,13 +640,15 @@ private extension BlockedDialog {
     var canStop: Bool { ![.codexAsyncQuestion, .grokQuestion, .grokCancelTurn, .grokFork].contains(kind) }
 
     /// What Stop does, for the folded card and an open card whose options
-    /// don't send it: it quits Claude Code on the trust dialog, only denies
-    /// an Oh My Pi approval, presses a Grok Build permission's reject row,
-    /// rejects an OpenCode permission and dismisses an OpenCode question,
-    /// as OpenCode's `esc dismiss` says.
+    /// don't send it: it quits Claude Code or Codex on the trust dialog
+    /// (Codex without `--no-daemon` goes back to its Agent Command Center
+    /// instead), only denies an Oh My Pi approval, presses a Grok Build
+    /// permission's reject row, rejects an OpenCode permission and
+    /// dismisses an OpenCode question, as OpenCode's `esc dismiss` says.
     var stopTitle: String {
         switch kind {
         case .claudeWorkspaceTrust: "Exit Claude Code"
+        case .codexWorkspaceTrust: options.first { $0.role == .decline }?.label ?? "Quit Codex"
         case .ompApproval, .grokPermission: "Deny"
         case .openCodePermission: "Reject"
         case .openCodeQuestion: "Dismiss"
@@ -603,6 +660,48 @@ private extension BlockedDialog {
     /// already sends it.
     var stopsFromCard: Bool {
         canStop && !options.contains { [.decline, .exitProgram, .cancel].contains($0.role) }
+    }
+}
+
+/// A trust answer as a capsule, in Liquid Glass where the system has it:
+/// trusting prominent, the way out red on clear glass.
+private struct BlockedTrustChoice: View {
+    let label: String
+    let leads: Bool
+    /// Whether the capsule takes the row's spare width.
+    let fills: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(role: leads ? nil : .destructive, action: action) {
+            Text(verbatim: label)
+                .font(leads ? .body.weight(.semibold) : .body)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: fills ? .infinity : nil)
+                .padding(.horizontal, fills ? 0 : 6)
+        }
+        .modifier(BlockedTrustChoiceStyle(leads: leads))
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+    }
+}
+
+private struct BlockedTrustChoiceStyle: ViewModifier {
+    let leads: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            if leads {
+                content.buttonStyle(.glassProminent)
+            } else {
+                // Glass ignores the destructive role's color.
+                content.buttonStyle(.glass).tint(.red)
+            }
+        } else if leads {
+            content.buttonStyle(.borderedProminent)
+        } else {
+            content.buttonStyle(.bordered)
+        }
     }
 }
 
@@ -942,8 +1041,12 @@ private struct BlockedPlanBox: View {
 /// proposal, such as the room above a keyboard, also limits the viewport.
 struct BlockedScrollingContent<Content: View>: View {
     let maxHeight: CGFloat
+    /// Fades an edge's cut line while more waits past it, where answers
+    /// sit right under the content rather than the card's edge.
+    var fadesEdges = false
     @ViewBuilder let content: Content
     @State private var contentHeight: CGFloat = 0
+    @State private var hidden = BlockedEdgeFade.Hidden()
 
     var body: some View {
         let height = min(max(contentHeight, 1), maxHeight)
@@ -954,5 +1057,44 @@ struct BlockedScrollingContent<Content: View>: View {
         }
         .frame(minHeight: 0, idealHeight: height, maxHeight: height)
         .scrollBounceBehavior(.basedOnSize)
+        .modifier(BlockedEdgeFade(isActive: fadesEdges, hidden: $hidden))
+    }
+}
+
+private struct BlockedEdgeFade: ViewModifier {
+    struct Hidden: Equatable {
+        var above = false
+        var below = false
+    }
+
+    let isActive: Bool
+    @Binding var hidden: Hidden
+
+    func body(content: Content) -> some View {
+        if isActive {
+            content
+                .onScrollGeometryChange(for: Hidden.self) { geometry in
+                    let offset = geometry.contentOffset.y + geometry.contentInsets.top
+                    return Hidden(
+                        above: offset > 1,
+                        below: offset + geometry.containerSize.height < geometry.contentSize.height - 1)
+                } action: { _, next in
+                    hidden = next
+                }
+                .mask {
+                    VStack(spacing: 0) {
+                        edge(hides: hidden.above, from: .bottom, to: .top)
+                        Rectangle()
+                        edge(hides: hidden.below, from: .top, to: .bottom)
+                    }
+                }
+        } else {
+            content
+        }
+    }
+
+    private func edge(hides: Bool, from start: UnitPoint, to end: UnitPoint) -> some View {
+        LinearGradient(colors: [.black, .black.opacity(hides ? 0 : 1)], startPoint: start, endPoint: end)
+            .frame(height: 24)
     }
 }

@@ -461,6 +461,8 @@ extension ChatProgram {
 struct ChatUnavailableView: View {
     let reason: ChatUnavailableReason
     var launchNotice: ChatLaunchNotice?
+    /// Check Again is looking, so its capsule spins instead.
+    var isChecking = false
     let retry: () -> Void
     let showAgentTerminal: () -> Void
     var chooseConversation: (() -> Void)?
@@ -475,35 +477,92 @@ struct ChatUnavailableView: View {
         } description: {
             Text(reason.explanation(launchNotice: launchNotice))
         } actions: {
-            if let chooseConversation {
-                Button(ChatCandidatePickerView.title, action: chooseConversation)
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("chat.chooseConversation")
-            }
-            if let reviewEdit, reason.offersOpenCodePluginEdit {
-                let edit = Button(OpenCodePluginEdit.offerTitle, action: reviewEdit)
-                    .accessibilityIdentifier("chat.unavailable.openCodeEdit")
-                if chooseConversation == nil {
-                    edit.buttonStyle(.borderedProminent)
-                } else {
-                    edit.buttonStyle(.bordered)
+            VStack(spacing: 10) {
+                primaryActions
+                // One row of capsules, stacked when the row cannot fit.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { actions }
+                    VStack(spacing: 10) { actions }
                 }
             }
-            if let addExtension, reason.offersWindowsExtension {
-                Button("Add Heeler's Extension…", action: addExtension)
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("chat.unavailable.windowsExtension")
-            }
-            Button(AgentDetailSurface.terminal.showTitle, action: showAgentTerminal)
-                .buttonStyle(.bordered)
-            if reason.offersRetry {
-                Button("Check Again", action: retry)
-            }
-            if let guide = reason.launchNotice(launchNotice)?.guideURL {
-                Link("Read More", destination: guide)
-            }
+            .modifier(ChatUnavailableActionStyle())
+            .buttonBorderShape(.capsule)
         }
         .accessibilityIdentifier("chat.unavailable")
+    }
+
+    /// What can settle the reason, above the row: a list to choose from, the one
+    /// configuration edit, or Heeler's extension on a native Windows core Host.
+    @ViewBuilder private var primaryActions: some View {
+        if let chooseConversation {
+            Button(action: chooseConversation) { actionTitle(Text(ChatCandidatePickerView.title)) }
+                .modifier(ChatUnavailablePrimaryActionStyle())
+                .accessibilityIdentifier("chat.chooseConversation")
+        }
+        if let reviewEdit, reason.offersOpenCodePluginEdit {
+            let edit = Button(action: reviewEdit) { actionTitle(Text(OpenCodePluginEdit.offerTitle)) }
+                .accessibilityIdentifier("chat.unavailable.openCodeEdit")
+            if chooseConversation == nil {
+                edit.modifier(ChatUnavailablePrimaryActionStyle())
+            } else {
+                edit
+            }
+        }
+        if let addExtension, reason.offersWindowsExtension {
+            Button(action: addExtension) { actionTitle(Text("Add Heeler's Extension…")) }
+                .modifier(ChatUnavailablePrimaryActionStyle())
+                .accessibilityIdentifier("chat.unavailable.windowsExtension")
+        }
+    }
+
+    @ViewBuilder private var actions: some View {
+        Button(action: showAgentTerminal) { actionTitle(Text(AgentDetailSurface.terminal.showTitle)) }
+        if reason.offersRetry {
+            Button(action: retry) {
+                actionTitle(Text("Check Again"))
+                    // Hidden rather than gone, so the capsule keeps its width.
+                    .opacity(isChecking ? 0 : 1)
+                    .overlay {
+                        if isChecking { ProgressView() }
+                    }
+            }
+            .allowsHitTesting(!isChecking)
+            .accessibilityLabel(isChecking ? Text("Checking") : Text("Check Again"))
+            // A new button rather than new content: glass keeps drawing
+            // the tapped label until its press settles, over the spinner.
+            .id(isChecking)
+        }
+        if let guide = reason.launchNotice(launchNotice)?.guideURL {
+            Link(destination: guide) { actionTitle(Text("Read More")) }
+        }
+    }
+
+    /// A little larger than the system's regular capsule, which looks small
+    /// under the placeholder's text, yet narrow enough to share a row.
+    private func actionTitle(_ title: Text) -> some View {
+        title.padding(.vertical, 4).padding(.horizontal, 4)
+    }
+}
+
+/// Clear Liquid Glass like the toolbar's buttons, where the system has it.
+private struct ChatUnavailableActionStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.buttonStyle(.glass)
+        } else {
+            content.buttonStyle(.bordered)
+        }
+    }
+}
+
+/// The prominent form of the same style, for the action that settles the reason.
+private struct ChatUnavailablePrimaryActionStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.buttonStyle(.glassProminent)
+        } else {
+            content.buttonStyle(.borderedProminent)
+        }
     }
 }
 

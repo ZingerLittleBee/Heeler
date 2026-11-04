@@ -481,7 +481,7 @@ struct ConsoleStoreTests {
             return
         }
         #expect(document.entries.map(\.id.rawValue) == NumberedChatReducer.ids(0..<3))
-        let directory = await reopened.loadAgentDirectory(for: host)
+        let directory = await reopened.loadAgentDirectory(for: host).agents
         #expect(directory.map(\.paneID) == ["w1:p1"])
         #expect(directory.first?.agentSession == session)
         store.setHosts([])
@@ -634,7 +634,7 @@ struct ConsoleStoreTests {
             guard store.hostStatuses[host.id] == .connected else { return false }
             return await store.cachedChats.cachedSession(for: live, on: host) == nil
         }
-        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
     }
 
     /// #414, the app's removal wiring end to end: the revoke borrows the
@@ -677,11 +677,11 @@ struct ConsoleStoreTests {
         let trust = HostKeyTrust.hostKey(host.id)
         await knownHosts.setFingerprint(
             HostKeyFingerprint(publicKeyBlob: Data("key".utf8)), host: trust.host, port: trust.port)
-        let recents = RecentWorkspaceStore(defaults: defaults)
-        recents.remember("w1", for: host.id)
+        let recents = RecentLaunchStore(defaults: defaults)
+        recents.rememberWorkspace("w1", for: host.id)
         let dependencies = HostRemovalDependencies.app(
             console: console, notificationPreferences: preferences,
-            liveActivities: liveActivities, knownHosts: knownHosts, recentWorkspaces: recents)
+            liveActivities: liveActivities, knownHosts: knownHosts, recentLaunches: recents)
         let removal = HostRemovalStore(store: hostStore)
 
         removal.requestRemoval([host.id], dependencies: dependencies)

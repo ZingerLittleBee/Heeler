@@ -1,14 +1,15 @@
 import Foundation
 
-/// Reads Codex's approval overlays and question views from a visible-screen
-/// read.
+/// Reads Codex's approval overlays, question views and folder-trust screen
+/// from a visible-screen read.
 ///
 /// Codex styles by attribute (bold, dim, reverse, italic) rather than by
 /// color, so the parser keys on attributes and stays theme-proof. Each view
 /// is anchored by its footer: `Press enter to confirm or esc to cancel` for
-/// approvals, `Question i/n` with `enter to submit …` for questions, and
-/// `enter submit … skip` for asynchronous questions. A view that does not
-/// fit comes back as an excerpt for the generic card.
+/// approvals, `Question i/n` with `enter to submit …` for questions,
+/// `enter submit … skip` for asynchronous questions, and `enter continue`
+/// under `Folder access` for the trust screen. A view that does not fit
+/// comes back as an excerpt for the generic card.
 enum CodexDialogParser {
     static func parse(_ screen: ANSIScreen) -> DialogParseResult {
         CodexDialogReader(screen: screen).read()
@@ -83,6 +84,7 @@ private struct CodexDialogReader {
     private var columns: Int { screen.columns }
 
     private static let approvalFooter = "Press enter to confirm or esc to cancel"
+    private static let trustTitle = "Folder access"
     private static let headerLabels = [
         "Environment", "Reason", "Description", "Destination", "Permission rule", "Thread", "Input", "Server",
     ]
@@ -96,6 +98,9 @@ private struct CodexDialogReader {
         }
         if footerText.contains("enter submit"), footerText.contains("skip") {
             return readAsyncQuestion(footer: footerStart...last)
+        }
+        if footerText.contains("enter continue"), let trust = readTrust(footer: footerStart...last) {
+            return trust
         }
         let composer = CodexComposer.locate(in: screen)
         if composer == nil, let questionRow = questionHeaderRow(before: footerStart),
@@ -267,6 +272,89 @@ private struct CodexDialogReader {
         return dialog(
             kind: .codexAsyncQuestion, title: title, positionLabel: positionLabel, body: [], progress: title,
             options: options, rows: top..<(footer.upperBound + 1), subject: subject)
+    }
+
+    /// Codex 0.165.0's folder-trust screen at startup: the bold `Folder
+    /// access` title over the folder in dim rows; for a folder below a Git
+    /// repository's root, a note and that root, dim too; the sentence
+    /// asking for trust; then `1. Trust and continue` and `2. Quit` above
+    /// `enter continue · esc quit`. Started without `--no-daemon`, Codex
+    /// offers `Back to Agent Command Center` and `esc back` in place of
+    /// quitting. Nil when no such title sits above the options.
+    private func readTrust(footer: ClosedRange<Int>) -> DialogParseResult? {
+        guard let optionRange = blockAbove(footer.lowerBound),
+            let titleRow = (max(0, optionRange.lowerBound - 40)..<optionRange.lowerBound).last(where: { index in
+                rows[index].trimmedText == Self.trustTitle && rows[index].visibleRuns.allSatisfy(\.style.isBold)
+            })
+        else { return nil }
+        func fail(_ reason: String) -> DialogParseResult {
+            unrecognized(top: titleRow, end: footer.upperBound, footer: footer, reason)
+        }
+        guard let drafts = readOptions(in: optionRange, isQuestion: false), drafts.count == 2 else {
+            return fail("The trust screen's options could not be read.")
+        }
+        var options: [DialogOption] = []
+        for (index, draft) in drafts.enumerated() {
+            let role: DialogOptionRole
+            switch draft.label {
+            case "Trust and continue": role = .trust
+            case "Quit": role = .exitProgram
+            case "Back to Agent Command Center": role = .decline
+            default:
+                return fail("The trust screen offers \u{201C}\(draft.label)\u{201D}, which Heeler does not know.")
+            }
+            options.append(
+                DialogOption(
+                    ordinal: index + 1, number: draft.number, label: draft.label, role: role,
+                    isFocused: draft.isFocused))
+        }
+        guard options.contains(where: { $0.role == .trust }), options.contains(where: { $0.role != .trust }) else {
+            return fail("The trust screen's options are not a Trust and a Quit.")
+        }
+
+        // Paragraphs split where their rows turn dim or back: the folder
+        // and the repository root are dim, the note and the question plain
+        // or colored. Codex cuts a long path anywhere, two columns short
+        // of the edge, and pads only its last row, so path rows join
+        // without a space.
+        var segments: [(text: String, isDim: Bool)] = []
+        var paragraph: [ScreenRow] = []
+        var paragraphIsDim = false
+        func flush() {
+            guard !paragraph.isEmpty else { return }
+            let text = paragraphIsDim ? paragraph.map(\.trimmedText).joined() : joinRows(paragraph)
+            segments.append((text, paragraphIsDim))
+            paragraph = []
+        }
+        for index in (titleRow + 1)..<optionRange.lowerBound {
+            let row = rows[index]
+            if row.isBlank {
+                flush()
+                continue
+            }
+            let isDim = row.visibleRuns.allSatisfy(\.style.isDim)
+            if isDim != paragraphIsDim { flush() }
+            paragraphIsDim = isDim
+            paragraph.append(row)
+        }
+        flush()
+
+        guard let folder = segments.first, folder.isDim else {
+            return fail("The trust screen's folder is not on screen.")
+        }
+        guard segments.contains(where: { !$0.isDim && $0.text.hasPrefix("Trust this folder?") }) else {
+            return fail("The trust screen's question is not on screen.")
+        }
+        var subject = DialogSubject()
+        subject.workspacePath = folder.text
+        if let note = segments.firstIndex(where: { !$0.isDim && $0.text.contains("repository root") }),
+            segments.indices.contains(note + 1), segments[note + 1].isDim
+        {
+            subject.workspaceRoot = segments[note + 1].text
+        }
+        return dialog(
+            kind: .codexWorkspaceTrust, title: Self.trustTitle, positionLabel: nil, body: segments.map(\.text),
+            progress: nil, options: options, rows: titleRow..<(footer.upperBound + 1), subject: subject)
     }
 
     /// `? 2 questions` with `shift+← to answer` under Codex's queued inputs:

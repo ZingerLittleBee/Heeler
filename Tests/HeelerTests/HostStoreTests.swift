@@ -1231,12 +1231,12 @@ struct HostStoreTests {
             await knownHosts.setFingerprint(key, host: trust.host, port: trust.port)
         }
         await knownHosts.setFingerprint(key, host: "jump.example", port: 22)
-        let recents = RecentWorkspaceStore(defaults: defaults)
-        recents.remember("w1", for: removed)
-        recents.remember("w2", for: other)
+        let recents = RecentLaunchStore(defaults: defaults)
+        recents.rememberWorkspace("w1", for: removed)
+        recents.rememberWorkspace("w2", for: other)
 
         await knownHosts.forgetHost(removed)
-        recents.forget(removed)
+        recents.forgetWorkspace(for: removed)
 
         let removedTrust = HostKeyTrust.hostKey(removed)
         let otherTrust = HostKeyTrust.hostKey(other)
@@ -1248,7 +1248,7 @@ struct HostStoreTests {
 
         await knownHosts.forgetHost(other)
         await knownHosts.forgetHost(UUID())
-        recents.forget(other)
+        recents.forgetWorkspace(for: other)
         #expect(await knownHosts.fingerprints(host: "jump.example", port: 22) == [key])
         #expect(defaults.object(forKey: "recent-workspace-by-host") == nil)
     }

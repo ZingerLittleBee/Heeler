@@ -82,6 +82,7 @@ struct AgentChatSurfaceView: View {
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @State private var windowControlsHeight: CGFloat = 0
+    @State private var checkAgain: ChatCheckAgainHold?
     /// Shared with the terminal: one reading preference across surfaces.
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
     @AppStorage(ChatFoldSettings.defaultsKey) private var foldsFinishedTurns = true
@@ -96,6 +97,7 @@ struct AgentChatSurfaceView: View {
     @Environment(\.detailCrossfade) private var detailCrossfade
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackButton) private var showsBackButton
+    @Environment(\.usesVerticalToolbar) private var usesVerticalToolbar
     @Environment(\.detailTopChromeInset) private var topChromeInset
     @Environment(\.detailBarRow) private var barRow
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
@@ -207,12 +209,7 @@ struct AgentChatSurfaceView: View {
             StartAgentView(
                 hosts: hosts,
                 console: console,
-                origin: StartAgentStore.LaunchOrigin(
-                    hostID: agent.hostID,
-                    workspaceID: agent.agent.workspaceID,
-                    cwd: console.launchDirectory(
-                        ofWorkspace: agent.agent.workspaceID, asked: agent.agent.cwd,
-                        on: agent.hostID)),
+                origin: StartAgentStore.LaunchOrigin(beside: agent, in: console),
                 onStarted: { switchToAgent($0) })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass),
@@ -441,12 +438,12 @@ struct AgentChatSurfaceView: View {
             AgentDetailHeader(
                 palette: .system,
                 isExpanded: $isBackHeaderExpanded,
-                onBack: showsBackButton ? { dismiss() } : nil,
+                onBack: showsBackButton && !usesVerticalToolbar ? { dismiss() } : nil,
                 actions: backHeaderActions,
                 surfaceSwitch: terminalSurfaceSwitch,
                 title: AgentDetailHeaderTitle(agent),
                 statusTitle: console.connectionRecoveryTitle(for: agent.hostID),
-                trailingInBar: headerSharesBar)
+                controlPlacement: headerControlPlacement)
             .padding(.horizontal, 12)
             .padding(.top, backHeaderTop)
             .onChange(of: isBackHeaderExpanded) { _, expanded in
@@ -484,11 +481,13 @@ struct AgentChatSurfaceView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar(.visible, for: .navigationBar)
         .detailHeaderBarControls(
-            headerSharesBar,
+            headerControlPlacement,
             palette: .system,
             isExpanded: $isBackHeaderExpanded,
             actions: backHeaderActions,
-            surfaceSwitch: terminalSurfaceSwitch)
+            surfaceSwitch: terminalSurfaceSwitch,
+            onBack: showsBackButton && usesVerticalToolbar ? { dismiss() } : nil)
+        .prioritizesVerticalDetailToolbar()
     }
 
     /// Over the list's bottom edge, which keeps Collapse Steps' band clear
@@ -530,7 +529,9 @@ struct AgentChatSurfaceView: View {
                 actions: timelineActions)
             .padding(.top, -topInset)
             .ignoresSafeArea(.container, edges: .bottom)
-            .modifier(HiddenConversation(isHidden: hidesConversation))
+            // Check Again's answer may fill the timeline under the held
+            // placeholder; it shows when the hold eases to the answer.
+            .modifier(HiddenConversation(isHidden: hidesConversation || checkAgain != nil))
             if presentation != .timeline {
                 GeometryReader { proxy in
                     ScrollView {
@@ -555,6 +556,7 @@ struct AgentChatSurfaceView: View {
                 .padding(.top, headerObstruction)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .modifier(CheckAgainTiming(hold: $checkAgain, chat: chat))
         // Hung from the conversation's bottom edge down to the screen's, so
         // it never sizes the conversation: as a sibling it could outgrow the
         // room left above a raised keyboard, push the chrome down and the
@@ -633,8 +635,8 @@ struct AgentChatSurfaceView: View {
             ChatEmptyConversationView(description: reason.explanation)
         case .unavailable(let reason):
             ChatUnavailableView(
-                reason: reason, launchNotice: chat?.launchNotice,
-                retry: { chat?.retry() },
+                reason: reason, launchNotice: chat?.launchNotice, isChecking: checkAgain != nil,
+                retry: { startCheckAgain() },
                 showAgentTerminal: { showAgentTerminal() },
                 chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
                 reviewEdit: reviewOpenCodeEdit,
@@ -736,11 +738,65 @@ struct AgentChatSurfaceView: View {
 
     // MARK: Conversation
 
+    /// What Chat shows: Check Again holds what it showed while it looks.
     private var presentation: ChatSurfacePresentation {
+        checkAgain?.presentation ?? livePresentation
+    }
+
+    private var livePresentation: ChatSurfacePresentation {
         ChatSurfacePresentation(
             conversation: chat?.conversation, hasPendingEchoes: !pendingEchoes.isEmpty,
             isHostConnected: isHostConnected, checkingLaunch: chat?.isCheckingLaunch ?? false,
             departure: console.chatDeparture(of: agent.id))
+    }
+
+    private func startCheckAgain() {
+        guard let chat, checkAgain == nil else { return }
+        withAnimation(ChatCheckAgainHold.animation) {
+            checkAgain = ChatCheckAgainHold(presentation: presentation)
+        }
+        chat.retry()
+    }
+
+    /// Check Again's look: what Chat showed when it was tapped, held with
+    /// the button busy until the store has looked again and the look has
+    /// shown for `minimum`, so a quick answer doesn't cut it short. At
+    /// `limit` the hold ends whatever the store is doing.
+    private struct ChatCheckAgainHold {
+        static let minimum: Duration = .milliseconds(800)
+        static let limit: Duration = .seconds(8)
+        /// Both into the look and out of it to the answer.
+        static let animation = Animation.smooth(duration: 0.35)
+
+        let id = UUID()
+        let presentation: ChatSurfacePresentation
+        var hasShownMinimum = false
+    }
+
+    /// Ends Check Again's hold, easing to the answer.
+    private struct CheckAgainTiming: ViewModifier {
+        @Binding var hold: ChatCheckAgainHold?
+        let chat: AgentChatStore?
+
+        func body(content: Content) -> some View {
+            content
+                .task(id: hold?.id) {
+                    guard hold != nil else { return }
+                    try? await Task.sleep(for: ChatCheckAgainHold.minimum)
+                    guard !Task.isCancelled else { return }
+                    hold?.hasShownMinimum = true
+                    endIfAnswered()
+                    try? await Task.sleep(for: ChatCheckAgainHold.limit - ChatCheckAgainHold.minimum)
+                    guard !Task.isCancelled, hold != nil else { return }
+                    withAnimation(ChatCheckAgainHold.animation) { hold = nil }
+                }
+                .onChange(of: chat?.isRetrying ?? false) { endIfAnswered() }
+        }
+
+        private func endIfAnswered() {
+            guard let hold, hold.hasShownMinimum, !(chat?.isRetrying ?? false) else { return }
+            withAnimation(ChatCheckAgainHold.animation) { self.hold = nil }
+        }
     }
 
     /// What the timeline is rebuilt from; anything else it shows comes
@@ -794,6 +850,7 @@ struct AgentChatSurfaceView: View {
                 guard let chat else { throw ChatImagePreviewError.unavailable }
                 return try await chat.readImage(at: path)
             },
+            thumbnails: chat?.thumbnails,
             collapseAvailabilityChanged: { canCollapseTrajectory = $0 })
     }
 
@@ -1019,6 +1076,7 @@ struct AgentChatSurfaceView: View {
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
             addImage: { isSelectingPhoto = true },
+            pasteImage: { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) },
             addFile: { isSelectingFile = true },
             showAttachLinks: {},
             openTerminal: canOpenTerminal
@@ -1159,6 +1217,11 @@ struct AgentChatSurfaceView: View {
     }
 
     private var headerSharesBar: Bool { AgentDetailHeader.levelsWithBar(barRow) }
+
+    private var headerControlPlacement: AgentDetailHeaderControlPlacement {
+        AgentDetailHeaderControlPlacement(
+            headerSharesBar: headerSharesBar, usesVerticalToolbar: usesVerticalToolbar)
+    }
 
     private var terminalSurfaceSwitch: AgentDetailSurfaceSwitch {
         AgentDetailSurfaceSwitch(current: .chat) { _ in showAgentTerminal() }

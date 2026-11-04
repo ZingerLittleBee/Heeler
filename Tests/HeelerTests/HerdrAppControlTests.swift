@@ -270,7 +270,7 @@ struct HerdrCoreDesktopAppNamingTests {
                     }
                 },
                 awaitAgentVisible: { await store.waitForAgent($0) },
-                recents: RecentWorkspaceStore(defaults: UserDefaults(suiteName: "naming-\(UUID())") ?? .standard),
+                recents: RecentLaunchStore(defaults: UserDefaults(suiteName: "naming-\(UUID())") ?? .standard),
                 offersDesktopAppNames: { store.capabilities(for: $0).namesNewWorkspaces })
         }
 

@@ -410,10 +410,14 @@ struct ChatTimelineProjectionTests {
     }
 
     @Test func runsBreakAtEverythingButReasoning() {
+        var image = ChatToolActivity(kind: .fileRead, name: "Read", title: "shot.png", status: .succeeded)
+        image.imagePath = "/tmp/shot.png"
         let breakers: [ChatRow] = [
             Self.text("x"), Self.notice("x", .system), Self.row("x", .divider(ChatDivider(kind: .compaction))),
             Self.user("x", queued: true), Self.tool("x", .agent, name: "Agent"), Self.tool("x", .question, name: "AskUserQuestion"),
             Self.tool("x", status: .awaitingApproval), Self.tool("x", name: "user_shell"),
+            // Its image shows on the row, never folded into a group.
+            Self.row("x", .tool(image)),
         ]
         for breaker in breakers {
             let rows = [Self.user("u1"), Self.tool("c1"), breaker, Self.tool("c2"), Self.text("n1")]

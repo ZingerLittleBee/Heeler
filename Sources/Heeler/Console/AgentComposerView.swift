@@ -97,6 +97,8 @@ struct AgentComposerActions {
     /// Nil hides the entry, as it does for every optional action here: a Host
     /// that does not offer it.
     let addImage: (() -> Void)?
+    /// Stages the clipboard's image as Add Image would. Nil hides the entry.
+    var pasteImage: (() -> Void)? = nil
     let addFile: (() -> Void)?
     let showAttachLinks: () -> Void
     let openTerminal: (() -> Void)?
@@ -507,7 +509,8 @@ struct AgentComposerView: View {
                     isKeyboardHandoffCurrent: isKeyboardHandoffCurrent,
                     onFirstResponderRequest: onFirstResponderRequest,
                     onKeyboardHandoffSettled: onKeyboardHandoffSettled,
-                    onHardwareReturn: sendDraft)
+                    onHardwareReturn: sendDraft,
+                    onPasteImage: actions.canBegin ? actions.pasteImage : nil)
                 if store.draft.isEmpty {
                     Text("Message Agent")
                         .foregroundStyle(.tertiary)
@@ -1103,6 +1106,8 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
     let onFirstResponderRequest: (UUID, Bool) -> Void
     let onKeyboardHandoffSettled: (UUID) -> Void
     let onHardwareReturn: () -> Void
+    /// Paste Image, for a system paste of a clipboard holding an image and no text.
+    var onPasteImage: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onEdit: onEdit, isFocused: $isFocused)
@@ -1119,6 +1124,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         textView.accessibilityLabel = "Message the Agent"
         textView.onKeyboardHandoffSettled = onKeyboardHandoffSettled
         textView.onHardwareReturn = onHardwareReturn
+        textView.onPasteImage = onPasteImage
         return textView
     }
 
@@ -1134,6 +1140,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         textView.updateKeyboard(presentation: keyboardPresentation)
         textView.onKeyboardHandoffSettled = onKeyboardHandoffSettled
         textView.onHardwareReturn = onHardwareReturn
+        textView.onPasteImage = onPasteImage
         let shouldFocus = isFocused
         let coordinator = context.coordinator
         coordinator.wantsFocus = shouldFocus
@@ -1290,6 +1297,31 @@ final class AgentComposerUITextView: UITextView {
     private var laidOutHeight: CGFloat = 0
     /// Sends the draft for a hardware Return, the way the Send button does.
     var onHardwareReturn: (() -> Void)?
+    /// Stages the clipboard's image. A text view takes only text, so without it a
+    /// paste of an image, from the edit menu or the keyboard, does nothing.
+    var onPasteImage: (() -> Void)?
+
+    private var pastesImage: Bool {
+        let board = UIPasteboard.general
+        return onPasteImage != nil && board.hasImages && !board.hasStrings
+    }
+
+    /// The keyboard's clipboard suggestion, the edit menu and ⌘V all send this.
+    /// `paste(itemProviders:)` stays UITextView's: UIKit calls it only after
+    /// `canPaste(_:)`, which UITextView grants to text alone, so taking the
+    /// clipboard's image there would replace the text it was handed.
+    override func paste(_ sender: Any?) {
+        if pastesImage, let onPasteImage {
+            onPasteImage()
+        } else {
+            super.paste(sender)
+        }
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(UIResponderStandardEditActions.paste(_:)), pastesImage { return true }
+        return super.canPerformAction(action, withSender: sender)
+    }
     /// Return presses taken for sending. Their releases stay here too, and
     /// UIKit's own new line for them is refused (see `acceptsReplacement`).
     private var sendingReturnPresses: Set<ObjectIdentifier> = []

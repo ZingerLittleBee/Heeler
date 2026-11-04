@@ -161,7 +161,9 @@ final class StartAgentStore {
     /// the form: empty falls back to a kind-derived name (`claude`,
     /// `claude-2`, …), mirroring how the herdr TUI labels unnamed agents.
     var name: String = ""
-    /// The canonical kind selected from the Host availability probe.
+    /// The canonical kind selected from the Host availability probe. Each
+    /// probe defaults it to the kind last started, when this Host has it,
+    /// else the Host's first.
     var selectedAgentKind: SupportedAgentKind? {
         didSet { if selectedAgentKind != nil { selectedTemplate = nil } }
     }
@@ -279,7 +281,7 @@ final class StartAgentStore {
     private let awaitAgentVisible: (ConsoleAgent.ID) async -> Void
     private let isAgentListed: (ConsoleAgent.ID) -> Bool
     private let programExit: (ConsoleAgent.ID) -> ProgramExit?
-    @ObservationIgnored private let recents: RecentWorkspaceStore
+    @ObservationIgnored private let recents: RecentLaunchStore
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
     /// before `state == .starting` disables the button.
@@ -300,7 +302,7 @@ final class StartAgentStore {
         isAgentListed: @escaping (ConsoleAgent.ID) -> Bool = { _ in true },
         programExit: @escaping (ConsoleAgent.ID) -> ProgramExit? = { _ in nil },
         origin: LaunchOrigin? = nil,
-        recents: RecentWorkspaceStore = RecentWorkspaceStore(),
+        recents: RecentLaunchStore = RecentLaunchStore(),
         offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false },
         offersConnectedWorktrees: @escaping (Host.ID) -> Bool = { _ in false }
     ) {
@@ -494,7 +496,11 @@ final class StartAgentStore {
             let kinds = try await discoverAgentKinds(hostID)
             guard selectedHostID == hostID else { return }
             availableAgentKinds = kinds
-            selectedAgentKind = kinds.first
+            if let remembered = recents.agentKind, kinds.contains(remembered) {
+                selectedAgentKind = remembered
+            } else {
+                selectedAgentKind = kinds.first
+            }
             if kinds.isEmpty { selectedTemplate = templates.first }
             agentDiscoveryState = .loaded
         } catch is CancellationError {
@@ -586,10 +592,11 @@ final class StartAgentStore {
                     hostID)
             }
             if case .newWorkspace = destination {
-                recents.remember(agent.workspaceID, for: hostID)
+                recents.rememberWorkspace(agent.workspaceID, for: hostID)
             } else if let workspaceID {
-                recents.remember(workspaceID, for: hostID)
+                recents.rememberWorkspace(workspaceID, for: hostID)
             }
+            if case .kind(let kind, _, _) = launch { recents.rememberAgentKind(kind) }
             let startedID = ConsoleAgent.ID(hostID: hostID, paneID: agent.paneID)
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.
@@ -908,6 +915,17 @@ final class StartAgentStore {
             TransportError.herdrCoreLinkMessage(for: error)
                 ?? "Starting the agent failed: \(error)"
         }
+    }
+}
+
+extension StartAgentStore.LaunchOrigin {
+    /// Beside `agent`: its Host, Workspace, and the directory a launch there
+    /// starts in, which for a derived core Workspace is the Workspace's own.
+    @MainActor init(beside agent: ConsoleAgent, in console: ConsoleStore) {
+        self.init(
+            hostID: agent.hostID, workspaceID: agent.agent.workspaceID,
+            cwd: console.launchDirectory(
+                ofWorkspace: agent.agent.workspaceID, asked: agent.agent.cwd, on: agent.hostID))
     }
 }
 

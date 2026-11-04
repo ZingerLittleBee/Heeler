@@ -73,8 +73,10 @@ struct OpenCodeTranscriptReducer: ChatTranscriptReducer {
         // A staged `/undo` hides its rows, as OpenCode's own screen does:
         // the next prompt deletes them.
         let boundary = session?.revertMessage.flatMap { session?.revertSeq ?? rows[$0]?.row.seq }
-        for held in rows.values.sorted(by: { $0.row.seq < $1.row.seq }) where held.row.seq < boundary ?? .max {
-            projection.add(held.row, length: held.length)
+        let ordered = rows.values.sorted(by: { $0.row.seq < $1.row.seq })
+        let directories = Self.directories(of: ordered.map(\.row), now: session?.directory)
+        for (held, directory) in zip(ordered, directories) where held.row.seq < boundary ?? .max {
+            projection.add(held.row, length: held.length, directory: directory)
         }
         projection.finish()
         if let boundary, let message = session?.revertMessage {
@@ -114,6 +116,21 @@ struct OpenCodeTranscriptReducer: ChatTranscriptReducer {
             }
         }
         return diagnostics
+    }
+
+    /// The folder the session was in at each of `rows`, oldest first, which
+    /// OpenCode 2 resolves a relative tool path against. The session's row
+    /// names only where it is `now`, so each move, read from the newest
+    /// back, gives where it was before; nil past a move that names none.
+    private static func directories(of rows: [OpenCodeRow], now: String?) -> [String?] {
+        var directory = now
+        var result: [String?] = []
+        result.reserveCapacity(rows.count)
+        for row in rows.reversed() {
+            result.append(directory)
+            if case .locationSwitched(_, let previous) = row.content { directory = previous }
+        }
+        return result.reversed()
     }
 
     /// OpenCode's timestamped placeholder titles say nothing.
@@ -190,12 +207,13 @@ private struct Projection {
         run = context.windowStart > 0 ? Run(place: .above(seen: false)) : Run(place: .loose, isEnded: true)
     }
 
-    mutating func add(_ row: OpenCodeRow, length: Int) {
+    /// `directory` is the folder the session was in at `row`.
+    mutating func add(_ row: OpenCodeRow, length: Int, directory: String?) {
         switch row.content {
         case .user(let message):
             addPrompt(row, message)
         case .assistant(let step):
-            addStep(row, step, length: length)
+            addStep(row, step, length: length, directory: directory)
         case .idle(let idle):
             sawIdle = true
             // A run its declined step ended is already over: this idle,
@@ -246,7 +264,7 @@ private struct Projection {
             add(row, .notice(ChatNotice(kind: .modelChange, title: "Agent: \(agent)")))
         case .modelSwitched(let model?):
             add(row, .notice(ChatNotice(kind: .modelChange, title: "Model: \(model)")))
-        case .locationSwitched(let directory?):
+        case .locationSwitched(let directory?, _):
             add(row, .notice(ChatNotice(kind: .system, title: "Moved to \(directory)")))
         case .oversized where row.type == "user":
             open(row, id: entryID(row))
@@ -322,7 +340,7 @@ private struct Projection {
         transcript.latestPromptOffset = offset
     }
 
-    private mutating func addStep(_ row: OpenCodeRow, _ step: OpenCodeStep, length: Int) {
+    private mutating func addStep(_ row: OpenCodeRow, _ step: OpenCodeStep, length: Int, directory: String?) {
         resume()
         for item in step.items {
             let suffix = ":\(item.index)"
@@ -343,7 +361,8 @@ private struct Projection {
                     suffix)
             case .tool(let call):
                 let tool = OpenCodeToolSummary.activity(
-                    call, output: ChatOutputReference(offset: OpenCodeTranscriptReducer.offset(row.seq), length: length))
+                    call, output: ChatOutputReference(offset: OpenCodeTranscriptReducer.offset(row.seq), length: length),
+                    directory: directory)
                 if tool.status == .running { run.runningTools.append(transcript.entries.count) }
                 add(row, .tool(tool), suffix)
             case .text, .reasoning, .other:

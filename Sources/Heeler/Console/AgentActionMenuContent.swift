@@ -7,6 +7,7 @@ import UIKit
 enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
     case backToConsole
     case addImage
+    case pasteImage
     case addFile
     case showChat
     case showAgentTerminal
@@ -24,6 +25,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         switch self {
         case .backToConsole: "Back to Console"
         case .addImage: "Add Image"
+        case .pasteImage: "Paste Image"
         case .addFile: "Add File"
         case .showChat: AgentDetailSurface.chat.showTitle
         case .showAgentTerminal: AgentDetailSurface.terminal.showTitle
@@ -43,6 +45,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         switch self {
         case .backToConsole: .symbol("chevron.left")
         case .addImage: .symbol("photo")
+        case .pasteImage: .symbol("doc.on.clipboard")
         case .addFile: .symbol("doc")
         case .showChat: AgentDetailSurface.chat.showGlyph
         case .showAgentTerminal: AgentDetailSurface.terminal.showGlyph
@@ -69,7 +72,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
     /// Direct Input restores Composer before running them (ADR 0016).
     var isDraftOwned: Bool {
         switch self {
-        case .addImage, .addFile, .skills, .snippets:
+        case .addImage, .pasteImage, .addFile, .skills, .snippets:
             true
         case .backToConsole, .showChat, .showAgentTerminal, .openTerminal, .changes, .newAgent,
             .worktreeDetails, .renameAgent, .renameWorkspace, .closeAgent:
@@ -95,7 +98,7 @@ enum AgentActionMenuSection: Equatable, Hashable, Sendable, CaseIterable {
         case .navigation:
             [.backToConsole]
         case .addAttachments:
-            [.addImage, .addFile]
+            [.addImage, .pasteImage, .addFile]
         case .sessionTools:
             [.showChat, .showAgentTerminal, .openTerminal, .changes, .newAgent, .skills, .snippets]
         case .agentLifecycle:
@@ -123,6 +126,8 @@ enum AgentActionMenuPolicy {
         switch item {
         case .addImage:
             actions.addImage != nil
+        case .pasteImage:
+            actions.pasteImage != nil
         case .addFile:
             actions.addFile != nil
         case .newAgent:
@@ -160,7 +165,7 @@ enum AgentActionMenuPolicy {
         actions: AgentComposerActions
     ) -> Bool {
         switch item {
-        case .addImage, .addFile:
+        case .addImage, .pasteImage, .addFile:
             actions.canBegin
         case .openTerminal:
             actions.openTerminal != nil && !actions.isOpeningTerminal
@@ -178,6 +183,8 @@ enum AgentActionMenuPolicy {
             actions.backToConsole()
         case .addImage:
             actions.addImage?()
+        case .pasteImage:
+            actions.pasteImage?()
         case .addFile:
             actions.addFile?()
         case .showChat:
