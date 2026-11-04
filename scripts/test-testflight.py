@@ -230,6 +230,17 @@ sys.exit(9)
         self.assertIn("unresolved", result.stderr)
         self.assertEqual(self.command("git", "rev-parse", "HEAD").stdout.strip(), source)
 
+    def test_ci_accepts_the_lightweight_tag_a_tag_push_checkout_leaves(self):
+        self.cli("cut", VERSION="0.2.0")
+        tag = "builds/0.2.0/38"
+        source = self.command("git", "rev-parse", tag + "^{commit}").stdout.strip()
+        self.command("git", "tag", "--force", tag, source)
+        self.assertEqual(self.command("git", "cat-file", "-t", "refs/tags/" + tag).stdout.strip(), "commit")
+        code, output = self.ci("ci-init", Inventory(None, 37, False))
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.command("git", "cat-file", "-t", "refs/tags/" + tag).stdout.strip(), "tag")
+        self.assertEqual(self.record()[1]["state"], "reserved")
+
     def test_upload_ambiguity_blocks_reupload_and_valid_build_only_repairs_records(self):
         self.cli("cut", VERSION="0.2.0")
         absent = Inventory(None, 37, False)

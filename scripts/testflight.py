@@ -342,7 +342,10 @@ def candidate_from_tag(tag: str) -> Candidate:
     if not match:
         raise ReleaseError("TAG must be builds/X.Y.Z/N")
     ref = f"refs/tags/{tag}"
-    run("git", "fetch", "--quiet", "origin", f"{ref}:{ref}", "+refs/heads/main:refs/remotes/origin/main")
+    # Forced: on a tag push, actions/checkout leaves a lightweight tag at the
+    # commit, which a plain fetch refuses to replace, failing with no output.
+    # The checks below still require the remote's annotated tag.
+    run("git", "fetch", "--quiet", "origin", f"+{ref}:{ref}", "+refs/heads/main:refs/remotes/origin/main")
     if run("git", "cat-file", "-t", ref) != "tag":
         raise ReleaseError("Build tag must be annotated")
     source = run("git", "rev-parse", ref + "^{commit}")
