@@ -1,8 +1,8 @@
 # Task runner for Heeler. Typical flows:
 #   make install                 # build Debug and run it on the connected iPhone
 #   make install-ipad            # same, on the connected iPad
-#   make bump && make testflight # interim TestFlight build, no version cut
-#   make publish                 # cut a release: see docs/guides/releasing.md
+#   make testflight VERSION=0.2.0 # first candidate of the intended version
+#   make testflight               # another build, same marketing version
 #   make plugin                  # publish plugin/ to the plugin branch
 
 PROJECT := Heeler.xcodeproj
@@ -20,6 +20,7 @@ CI_APP_SHARD ?= all
 TEST_FLAGS ?=
 TEST_SELECTOR ?=
 export TEST_FLAGS TEST_SELECTOR
+export VERSION BUILD TAG DRY_RUN YES
 BUILD_FLAGS ?=
 IOS_WATCH_DEBOUNCE ?= 1s
 
@@ -28,7 +29,7 @@ IOS_WATCH_DEBOUNCE ?= 1s
 DEVICE ?= $(shell python3 scripts/find-ios-device.py iPhone)
 DEVICE_IPAD ?= $(shell python3 scripts/find-ios-device.py iPad)
 
-.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery verify-core-linux-host check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight bump publish plugin clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
+.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery verify-core-linux-host check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight testflight-retry release-status release-check bump publish plugin clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
 
 # Command-line DERIVED overrides remain supported for either platform.
 test-app test-directory-browser-ui sim build-sim sim-id: DERIVED = $(DERIVED_SIMULATOR)
@@ -119,6 +120,7 @@ check-test-membership: ## Check that the committed project compiles every app te
 
 test-tools: check-agent-docs check-test-membership ## Test agent tooling without Xcode or a simulator
 	python3 scripts/test-format-release-notes.py
+	python3 scripts/test-testflight.py
 	python3 scripts/test-native-test-lifecycle.py
 	python3 scripts/test-check-agent-docs.py
 	python3 scripts/test-check-test-target-membership.py
@@ -234,44 +236,31 @@ sim-id: build-sim ## Install and launch the app on SIMULATOR_UDID only
 	xcrun simctl install '$(SIMULATOR_UDID)' $(DERIVED)/Build/Products/Debug-iphonesimulator/Heeler.app
 	xcrun simctl launch --terminate-running-process '$(SIMULATOR_UDID)' $(APP_ID)
 
-archive: generate ## Archive a Release build for distribution
+archive: generate ## Archive locally for inspection (no distribution upload)
 	@# HEELER_SOURCE_REVISION names the commit in About › Acknowledgements;
 	@# empty unless HEAD is pushed and only the build number is uncommitted.
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
 		-destination 'generic/platform=iOS' -archivePath $(ARCHIVE) \
 		-allowProvisioningUpdates HEELER_SOURCE_REVISION=$$(scripts/source-revision.sh) archive
 
-upload: ## Upload the existing archive to App Store Connect (TestFlight)
-	xcodebuild -exportArchive -archivePath $(ARCHIVE) \
-		-exportOptionsPlist scripts/ExportOptions.plist \
-		-exportPath build/export -allowProvisioningUpdates
-
-testflight: archive upload ## Archive and upload in one go
-
-bump: ## Increment CURRENT_PROJECT_VERSION in project.yml (app + extension stay in lockstep)
-	@# Anchor to the setting itself: an unanchored match also hits the
-	@# `CFBundleVersion: $$(CURRENT_PROJECT_VERSION)` plist line, which carries no
-	@# quotes, so `$$2` came back empty and every target was reset to "1". Guard
-	@# the parse and the rewrite the way scripts/publish.sh does.
-	@CUR=$$(awk -F'"' '/^ *CURRENT_PROJECT_VERSION:/ { print $$2; exit }' project.yml); \
-	case "$$CUR" in \
-	  '' | *[!0-9]*) echo "CURRENT_PROJECT_VERSION '$$CUR' is not an integer" >&2; exit 1 ;; \
-	esac; \
-	LINES=$$(grep -c '^ *CURRENT_PROJECT_VERSION:' project.yml); \
-	NEW=$$((CUR + 1)); \
-	sed -i '' -E "s/^( *CURRENT_PROJECT_VERSION: )\"[0-9]+\"/\1\"$$NEW\"/" project.yml; \
-	test "$$(grep -c "^ *CURRENT_PROJECT_VERSION: \"$$NEW\"$$" project.yml)" = "$$LINES" \
-	  || { echo "CURRENT_PROJECT_VERSION was not rewritten in all $$LINES targets" >&2; exit 1; }; \
-	echo "CURRENT_PROJECT_VERSION: $$CUR -> $$NEW"
-	@# Regenerate immediately so the tracked pbxproj changes with project.yml
-	@# and one commit carries both (otherwise the next make target regenerates
-	@# it after the bump commit and leaves it dirty).
-	@$(MAKE) generate
-
 # Options are make variables, not flags: make eats `--dry-run` as its own -n and
 # rejects unknown long options, so a flag would never reach the recipe.
-publish: ## Cut a release from CHANGELOG [Unreleased] (VERSION=x.y.z DRY_RUN=1 YES=1)
-	@VERSION='$(VERSION)' DRY_RUN='$(DRY_RUN)' YES='$(YES)' scripts/publish.sh
+testflight: ## Cut and push a build tag; CI uploads (VERSION=X.Y.Z DRY_RUN=1 YES=1)
+	@python3 scripts/testflight.py cut
+
+testflight-retry: ## Resume the original candidate run safely (TAG=builds/X.Y.Z/N)
+	@python3 scripts/testflight.py retry
+
+release-status: ## Read recorded candidate state, not live store status (TAG=builds/X.Y.Z/N)
+	@python3 scripts/testflight.py status
+
+release-check: ## Dispatch signing/validation rehearsal, no upload (VERSION=X.Y.Z)
+	@python3 scripts/testflight.py check
+
+publish upload bump:
+	@echo "$@ is retired. Use make testflight VERSION=X.Y.Z (then make testflight for another build)." >&2
+	@echo "App Store publication selects an existing TestFlight build in App Store Connect. See docs/guides/releasing.md." >&2
+	@exit 1
 
 # Phony as well: plugin/ is a directory, so make would call the target up to date.
 plugin: ## Publish plugin/ from origin/main to the plugin branch (SOURCE=<rev> DRY_RUN=1 YES=1)

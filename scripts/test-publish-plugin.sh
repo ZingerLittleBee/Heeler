@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests scripts/publish-plugin.sh, and scripts/check-plugin-published.sh,
-# which make publish runs, against a throwaway repository and remote.
+# which make testflight runs, against a throwaway repository and remote.
 # A fake npm stands in for the network; node is real.
 set -euo pipefail
 
