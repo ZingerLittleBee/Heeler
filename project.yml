@@ -112,7 +112,7 @@ targets:
         # Home-screen name; the App Store listing is "Heeler for herdr".
         INFOPLIST_KEY_CFBundleDisplayName: Heeler
         MARKETING_VERSION: "0.1.17"
-        CURRENT_PROJECT_VERSION: "39"
+        CURRENT_PROJECT_VERSION: "40"
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
         # Voice Input (ADR 0036) records only after a tap on the Composer's
@@ -197,7 +197,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.NotificationService
         MARKETING_VERSION: "0.1.17"
-        CURRENT_PROJECT_VERSION: "39"
+        CURRENT_PROJECT_VERSION: "40"
         # Match the containing app's iPhone and iPad device family.
         TARGETED_DEVICE_FAMILY: "1,2"
 
@@ -247,7 +247,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.Widgets
         MARKETING_VERSION: "0.1.17"
-        CURRENT_PROJECT_VERSION: "39"
+        CURRENT_PROJECT_VERSION: "40"
         # Match the containing app's iPhone and iPad device family.
         TARGETED_DEVICE_FAMILY: "1,2"
 
