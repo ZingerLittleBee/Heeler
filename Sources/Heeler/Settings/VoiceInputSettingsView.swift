@@ -130,7 +130,9 @@ struct VoiceInputSettingsView: View {
 
     private var keywordsSection: some View {
         Section {
-            TextField("Keywords", text: $keywords, prompt: Text("Optional"), axis: .vertical)
+            TextField(
+                "Keywords", text: $keywords,
+                prompt: Text(verbatim: "herdr, Claude Code, Codex, pnpm, SwiftUI"), axis: .vertical)
                 .lineLimit(2...6)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
