@@ -80,10 +80,10 @@ targets:
         # manifest already declares multiple-scene support.
         NSUserActivityTypes:
           - dev.bybee.heeler.agent
-        # The Usage widgets' app refresh task (AgentUsageBackgroundRefresh).
         # Find on Local Network (LocalNetworkDiscovery) browses this type.
         NSBonjourServices:
           - _ssh._tcp
+        # The Usage widgets' app refresh task (AgentUsageBackgroundRefresh).
         UIBackgroundModes:
           - fetch
         BGTaskSchedulerPermittedIdentifiers:

@@ -26,6 +26,8 @@ enum LocalDiscoveryError: Error, Equatable, Sendable {
     case permissionDenied
     /// The machine answered with a name only, which Heeler does not save.
     case noAddress
+    /// The only address was link-local IPv6, which the SSH layer cannot dial.
+    case linkLocalOnly
     case timedOut
     case failed(String)
 
@@ -35,6 +37,8 @@ enum LocalDiscoveryError: Error, Equatable, Sendable {
             "Heeler may not use the local network. Turn on Local Network for Heeler in Settings."
         case .noAddress:
             "The machine did not give an IP address. Type its address instead."
+        case .linkLocalOnly:
+            "This machine only gave a link-local IPv6 address. Enter its IPv4 address by hand."
         case .timedOut:
             "The machine did not answer. Check that it is on and on this network."
         case .failed(let detail):
@@ -43,34 +47,47 @@ enum LocalDiscoveryError: Error, Equatable, Sendable {
     }
 }
 
+enum LocalBrowseUpdate: Equatable, Sendable {
+    /// The machines found so far, sent again whenever the set changes.
+    case machines([DiscoveredMachine])
+    /// The browser cannot search yet. `permissionDenied` is the Local
+    /// Network prompt or a denial; the search resumes by itself.
+    case waiting(permissionDenied: Bool)
+    case ready
+}
+
 /// The seam between the picker and the Network framework.
 protocol LocalServiceBrowsing: Sendable {
-    /// The machines found so far, sent again whenever the set changes.
-    /// Ends with an error when the search cannot run.
-    func machines() -> AsyncThrowingStream<[DiscoveredMachine], Error>
+    /// Updates of the search. It ends with an error only when the search
+    /// has failed for good; a waiting search (no network, first-run prompt)
+    /// is a `.waiting` update and goes on.
+    func updates() -> AsyncThrowingStream<LocalBrowseUpdate, Error>
     /// Finds the numeric address and port of `machine`.
     func resolve(_ machine: DiscoveredMachine) async throws -> ResolvedMachine
 }
 
 /// Turns a resolved endpoint host into the address a Route saves.
 enum DiscoveredAddress {
-    /// An IPv4 address as is. An IPv6 address without its `%scope` suffix,
-    /// except link-local (`fe80::/10`), which only works with its scope, so
-    /// it keeps the suffix. A name (such as `box.local`) gives `nil`: the
-    /// name would need mDNS on every later connection.
-    static func string(for host: NWEndpoint.Host) -> String? {
+    /// IPv4 as is; IPv6 without its `%scope`. Link-local IPv6 (`fe80::/10`)
+    /// is refused: the SSH layer's numeric address parser cannot carry a
+    /// scope, so the Route would not connect. A name (`box.local`) is
+    /// refused: it would need mDNS on every later connection.
+    static func address(for host: NWEndpoint.Host) -> Result<String, LocalDiscoveryError> {
         switch host {
         case .ipv4(let address):
-            return "\(address)".split(separator: "%").first.map(String.init)
+            return .success(bare("\(address)"))
         case .ipv6(let address):
-            let text = "\(address)"
-            let bare = text.split(separator: "%", maxSplits: 1).first.map(String.init) ?? text
-            return isLinkLocal(bare) ? text : bare
+            let text = bare("\(address)")
+            return isLinkLocal(text) ? .failure(.linkLocalOnly) : .success(text)
         case .name:
-            return nil
+            return .failure(.noAddress)
         @unknown default:
-            return nil
+            return .failure(.noAddress)
         }
+    }
+
+    private static func bare(_ text: String) -> String {
+        text.split(separator: "%", maxSplits: 1).first.map(String.init) ?? text
     }
 
     /// `fe80::/10`: first group from fe80 to febf.
@@ -87,7 +104,7 @@ struct BonjourServiceBrowser: LocalServiceBrowsing {
     /// How long a pick waits for an address.
     static let resolveTimeout: Duration = .seconds(5)
 
-    func machines() -> AsyncThrowingStream<[DiscoveredMachine], Error> {
+    func updates() -> AsyncThrowingStream<LocalBrowseUpdate, Error> {
         AsyncThrowingStream { continuation in
             let browser = NWBrowser(
                 for: .bonjour(type: Self.serviceType, domain: nil), using: .tcp)
@@ -97,11 +114,20 @@ struct BonjourServiceBrowser: LocalServiceBrowsing {
                     else { return nil }
                     return DiscoveredMachine(name: name, type: type, domain: domain)
                 }
-                continuation.yield(machines.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
+                let sorted = machines.sorted {
+                    $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+                continuation.yield(.machines(sorted))
             }
             browser.stateUpdateHandler = { state in
                 switch state {
-                case .failed(let error), .waiting(let error):
+                case .ready:
+                    continuation.yield(.ready)
+                case .waiting(let error):
+                    // Not fatal: the first-run prompt and a missing network
+                    // both wait here and recover by themselves.
+                    continuation.yield(.waiting(permissionDenied: Self.isDenied(error)))
+                case .failed(let error):
                     continuation.finish(throwing: Self.map(error))
                 default:
                     break
@@ -115,15 +141,27 @@ struct BonjourServiceBrowser: LocalServiceBrowsing {
     func resolve(_ machine: DiscoveredMachine) async throws -> ResolvedMachine {
         let endpoint = NWEndpoint.service(
             name: machine.name, type: machine.type, domain: machine.domain, interface: nil)
-        // IPv4 first, so the saved address is IPv4 when the machine has one.
+        return try await Self.resolveIPv4First { version in
+            try await Self.connect(
+                endpoint, name: machine.name, version: version,
+                timeout: version == nil ? Self.resolveTimeout : .seconds(2))
+        }
+    }
+
+    /// IPv4 first, so the saved address is IPv4 when the machine has one;
+    /// then any family. Cancellation and a denied permission end it at once.
+    static func resolveIPv4First(
+        _ attempt: (NWProtocolIP.Options.Version?) async throws -> ResolvedMachine
+    ) async throws -> ResolvedMachine {
         do {
-            return try await Self.connect(
-                endpoint, name: machine.name, version: .v4, timeout: .seconds(2))
+            return try await attempt(.v4)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch LocalDiscoveryError.permissionDenied {
             throw LocalDiscoveryError.permissionDenied
         } catch {
-            return try await Self.connect(
-                endpoint, name: machine.name, version: nil, timeout: Self.resolveTimeout)
+            try Task.checkCancellation()
+            return try await attempt(nil)
         }
     }
 
@@ -138,17 +176,19 @@ struct BonjourServiceBrowser: LocalServiceBrowsing {
             ip.version = version
         }
         let connection = NWConnection(to: endpoint, using: parameters)
+        let gate = ResumeGate()
         return try await withThrowingTaskGroup(of: ResolvedMachine.self) { group in
             group.addTask {
                 try await withTaskCancellationHandler {
-                    try await Self.waitUntilReady(connection, name: name)
+                    try await Self.waitUntilReady(connection, name: name, gate: gate)
                 } onCancel: {
                     connection.cancel()
                 }
             }
             group.addTask {
                 try await Task.sleep(for: timeout)
-                throw LocalDiscoveryError.timedOut
+                connection.cancel()
+                throw gate.deniedSeen ? LocalDiscoveryError.permissionDenied : .timedOut
             }
             defer {
                 group.cancelAll()
@@ -160,25 +200,31 @@ struct BonjourServiceBrowser: LocalServiceBrowsing {
     }
 
     private static func waitUntilReady(
-        _ connection: NWConnection, name: String
+        _ connection: NWConnection, name: String, gate: ResumeGate
     ) async throws -> ResolvedMachine {
-        try await withCheckedThrowingContinuation { continuation in
-            // `stateUpdateHandler` can fire more than once; resume only once.
-            let gate = ResumeGate()
+        try Task.checkCancellation()
+        return try await withCheckedThrowingContinuation { continuation in
             connection.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
                     guard gate.claim() else { return }
-                    guard case .hostPort(let host, let port)? = connection.currentPath?.remoteEndpoint,
-                          let address = DiscoveredAddress.string(for: host)
+                    guard case .hostPort(let host, let port)? = connection.currentPath?.remoteEndpoint
                     else {
                         continuation.resume(throwing: LocalDiscoveryError.noAddress)
                         return
                     }
-                    continuation.resume(
-                        returning: ResolvedMachine(
-                            name: name, address: address, port: Int(port.rawValue)))
-                case .failed(let error), .waiting(let error):
+                    switch DiscoveredAddress.address(for: host) {
+                    case .success(let address):
+                        continuation.resume(
+                            returning: ResolvedMachine(
+                                name: name, address: address, port: Int(port.rawValue)))
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
+                case .waiting(let error):
+                    // Keep waiting until ready or the timeout.
+                    if Self.isDenied(error) { gate.noteDenied() }
+                case .failed(let error):
                     guard gate.claim() else { return }
                     continuation.resume(throwing: Self.map(error))
                 case .cancelled:
@@ -195,17 +241,32 @@ struct BonjourServiceBrowser: LocalServiceBrowsing {
     /// `kDNSServiceErr_PolicyDenied`, which Local Network denial reports.
     private static let policyDenied: Int32 = -65_570
 
+    private static func isDenied(_ error: NWError) -> Bool {
+        if case .dns(let code) = error, code == policyDenied { return true }
+        return false
+    }
+
     private static func map(_ error: NWError) -> LocalDiscoveryError {
-        if case .dns(let code) = error, code == policyDenied {
-            return .permissionDenied
-        }
-        return .failed(error.localizedDescription)
+        isDenied(error) ? .permissionDenied : .failed(error.localizedDescription)
     }
 }
 
 private final class ResumeGate: @unchecked Sendable {
     private let lock = NSLock()
     private var claimed = false
+    private var denied = false
+
+    var deniedSeen: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return denied
+    }
+
+    func noteDenied() {
+        lock.lock()
+        defer { lock.unlock() }
+        denied = true
+    }
 
     func claim() -> Bool {
         lock.lock()
@@ -221,59 +282,113 @@ private final class ResumeGate: @unchecked Sendable {
 @Observable
 final class LocalMachinePickerModel {
     private(set) var machines: [DiscoveredMachine] = []
-    /// False once the search has failed.
+    /// False once the search has failed or stopped.
     private(set) var isSearching = false
     private(set) var searchError: LocalDiscoveryError?
+    /// Set while the browser waits (no network, Local Network prompt);
+    /// the search goes on and clears it.
+    private(set) var waitingHint: LocalDiscoveryError?
     /// The row being resolved.
     private(set) var resolvingID: String?
     private(set) var resolveError: LocalDiscoveryError?
 
     private let browser: any LocalServiceBrowsing
     private var searchTask: Task<Void, Never>?
+    private var resolveTask: Task<Void, Never>?
+    /// Bumped by `stop()`, so a task that outlives it cannot write state.
+    private var generation = 0
 
     init(browser: any LocalServiceBrowsing = BonjourServiceBrowser()) {
         self.browser = browser
     }
 
-    func start() {
-        guard searchTask == nil else { return }
+    @discardableResult
+    func start() -> Task<Void, Never> {
+        if let searchTask { return searchTask }
+        generation += 1
+        let token = generation
         isSearching = true
         searchError = nil
-        searchTask = Task { [browser] in
+        let task = Task { [browser] in
             do {
-                for try await found in browser.machines() {
-                    machines = found
+                for try await update in browser.updates() {
+                    guard token == generation else { return }
+                    apply(update)
                 }
-            } catch let error as LocalDiscoveryError {
-                searchError = error
             } catch {
-                searchError = .failed(error.localizedDescription)
+                guard token == generation, !Task.isCancelled else { return }
+                searchError = (error as? LocalDiscoveryError)
+                    ?? .failed(error.localizedDescription)
             }
+            guard token == generation else { return }
             isSearching = false
+            searchTask = nil
+        }
+        searchTask = task
+        return task
+    }
+
+    func apply(_ update: LocalBrowseUpdate) {
+        switch update {
+        case .machines(let found):
+            machines = found
+            waitingHint = nil
+        case .waiting(let permissionDenied):
+            waitingHint = permissionDenied ? .permissionDenied : .failed("waiting for the network")
+        case .ready:
+            waitingHint = nil
         }
     }
 
+    /// Stops the search and any pick in progress.
     func stop() {
+        generation += 1
         searchTask?.cancel()
         searchTask = nil
+        resolveTask?.cancel()
+        resolveTask = nil
+        resolvingID = nil
         isSearching = false
     }
 
-    /// Resolves `machine`; `nil` after setting `resolveError` on failure.
-    func resolve(_ machine: DiscoveredMachine) async -> ResolvedMachine? {
+    /// Search again after a failure.
+    func retry() {
+        stop()
+        machines = []
+        waitingHint = nil
+        start()
+    }
+
+    /// Resolves `machine`, then calls `onPicked` unless `stop()` came first.
+    @discardableResult
+    func pick(
+        _ machine: DiscoveredMachine, onPicked: @escaping @MainActor (ResolvedMachine) -> Void
+    ) -> Task<Void, Never>? {
         guard resolvingID == nil else { return nil }
+        let token = generation
         resolvingID = machine.id
         resolveError = nil
-        defer { resolvingID = nil }
-        do {
-            return try await browser.resolve(machine)
-        } catch let error as LocalDiscoveryError {
-            resolveError = error
-        } catch is CancellationError {
-        } catch {
-            resolveError = .failed(error.localizedDescription)
+        let task = Task { [browser] in
+            let outcome: Result<ResolvedMachine, Error>
+            do {
+                outcome = .success(try await browser.resolve(machine))
+            } catch {
+                outcome = .failure(error)
+            }
+            guard token == generation, !Task.isCancelled else { return }
+            resolvingID = nil
+            resolveTask = nil
+            switch outcome {
+            case .success(let resolved):
+                onPicked(resolved)
+            case .failure(let error):
+                if error is CancellationError { return }
+                resolveError = (error as? LocalDiscoveryError)
+                    ?? .failed(error.localizedDescription)
+            }
         }
-        return nil
+        resolveTask = task
+        return task
     }
 }
 

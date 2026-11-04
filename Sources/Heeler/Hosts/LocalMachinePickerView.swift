@@ -20,7 +20,14 @@ struct LocalMachinePickerView: View {
         NavigationStack {
             List {
                 if let error = model.searchError {
-                    Section { Text(error.message).foregroundStyle(.secondary) }
+                    Section {
+                        Text(error.message).foregroundStyle(.secondary)
+                        Button {
+                            model.retry()
+                        } label: {
+                            Label("Try Again", systemImage: "arrow.clockwise")
+                        }
+                    }
                 } else {
                     Section {
                         if model.machines.isEmpty {
@@ -35,11 +42,9 @@ struct LocalMachinePickerView: View {
                         }
                         ForEach(model.machines) { machine in
                             Button {
-                                Task {
-                                    if let resolved = await model.resolve(machine) {
-                                        onPick(resolved)
-                                        dismiss()
-                                    }
+                                model.pick(machine) { resolved in
+                                    onPick(resolved)
+                                    dismiss()
                                 }
                             } label: {
                                 HStack {
@@ -53,6 +58,13 @@ struct LocalMachinePickerView: View {
                             .disabled(model.resolvingID != nil)
                         }
                     } footer: {
+                        if let hint = model.waitingHint {
+                            Text(
+                                hint == .permissionDenied
+                                    ? "Waiting for Local Network access. Allow it when asked, or "
+                                        + "turn it on for Heeler in Settings."
+                                    : "Waiting for the network…")
+                        }
                         Text(
                             "Machines that offer SSH on this network. Heeler saves the IP address, "
                                 + "so the Route still works away from this network's name service.")
@@ -66,7 +78,10 @@ struct LocalMachinePickerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        model.stop()
+                        dismiss()
+                    }
                 }
             }
         }
