@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
+import OSLog
 
 /// One finished recording: 16 kHz mono 16-bit WAV, held in memory until its
 /// text lands or the user dismisses it. The file it was written to is
@@ -29,8 +30,10 @@ enum VoiceRecorderError: Error, Equatable, Sendable {
 protocol VoiceRecorder: AnyObject {
     /// Asks the first time; afterwards reports the user's choice.
     func requestPermission() async -> Bool
-    /// Ends on its own at `maxDuration`, calling `onEnded`.
-    func start(maxDuration: TimeInterval) throws
+    /// Ends on its own at `maxDuration`, calling `onEnded`. With
+    /// `builtInMicrophone`, records from the device's own microphone whatever
+    /// else is connected.
+    func start(maxDuration: TimeInterval, builtInMicrophone: Bool) throws
     /// Ends the recording and hands back what it heard.
     func stop() throws -> VoiceRecording
     /// Ends the recording and throws it away.
@@ -46,8 +49,15 @@ protocol VoiceRecorder: AnyObject {
 /// `AVAudioRecorder` writing linear PCM WAV to a protected temporary file.
 /// Speech services take WAV without a decoder, and 16 kHz mono 16-bit keeps
 /// two minutes under 4 MB.
+///
+/// A Bluetooth microphone records only where it keeps full bandwidth: AirPods
+/// with high-quality recording on iOS 26 and later. Any other one would use
+/// the call profile, narrowband and heavily filtered, which speech services
+/// misread, so the device's own microphone, or a wired one, records instead.
 @MainActor
 final class SystemVoiceRecorder: VoiceRecorder {
+    private static let log = Logger(subsystem: "dev.bybee.heeler", category: "VoiceInput")
+
     var onEnded: (@MainActor () -> Void)?
 
     private var recorder: AVAudioRecorder?
@@ -73,11 +83,19 @@ final class SystemVoiceRecorder: VoiceRecorder {
         }
     }
 
-    func start(maxDuration: TimeInterval) throws {
+    func start(maxDuration: TimeInterval, builtInMicrophone: Bool) throws {
         cancel()
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.record, mode: .default, options: [.allowBluetoothHFP])
+            // High-quality recording is documented for categories with both
+            // input and output; nothing plays through this session.
+            try session.setCategory(
+                .playAndRecord, mode: .default,
+                options: builtInMicrophone ? [] : Self.bluetoothOptions)
+            // A preference outlives the session, so it is cleared when off.
+            try? session.setPreferredInput(
+                builtInMicrophone
+                    ? session.availableInputs?.first { $0.portType == .builtInMic } : nil)
             // The tap that stops a recording lands while the session still
             // records, and iOS mutes haptics then unless this is on.
             try? session.setAllowHapticsAndSystemSoundsDuringRecording(true)
@@ -86,6 +104,7 @@ final class SystemVoiceRecorder: VoiceRecorder {
             deactivate()
             throw VoiceRecorderError.microphoneUnavailable
         }
+        Self.logInput(of: session)
         let url = FileManager.default.temporaryDirectory
             .appending(path: "voice-\(UUID().uuidString).wav")
         let settings: [String: Any] = [
@@ -159,6 +178,29 @@ final class SystemVoiceRecorder: VoiceRecorder {
         let quiet: Float = -50
         let loud: Float = -10
         return Double(min(1, max(0, (decibels - quiet) / (loud - quiet))))
+    }
+
+    /// Without the call profile's fallback, Bluetooth microphones that cannot
+    /// record in full bandwidth are not offered at all.
+    private static var bluetoothOptions: AVAudioSession.CategoryOptions {
+        if #available(iOS 26.0, *) {
+            [.bluetoothHighQualityRecording]
+        } else {
+            []
+        }
+    }
+
+    /// The input a recording uses, by kind only: a port's name can be the
+    /// owner's.
+    private static func logInput(of session: AVAudioSession) {
+        guard let input = session.currentRoute.inputs.first else { return }
+        var highQuality = false
+        if #available(iOS 26.0, *) {
+            highQuality = input.bluetoothMicrophoneExtension?.highQualityRecording.isEnabled ?? false
+        }
+        log.info(
+            "Recording from \(input.portType.rawValue, privacy: .public) at \(session.sampleRate, privacy: .public) Hz, high quality \(highQuality, privacy: .public)"
+        )
     }
 
     /// Seconds of 16 kHz mono 16-bit audio after the header's `data` chunk.

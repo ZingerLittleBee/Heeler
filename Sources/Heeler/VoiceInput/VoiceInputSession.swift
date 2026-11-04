@@ -342,7 +342,9 @@ final class VoiceInputSession {
         // Another Composer may have taken the microphone during the request.
         if let other = recordingInput, other !== input { stop(other) }
         do {
-            try recorder.start(maxDuration: Self.maximumDuration)
+            try recorder.start(
+                maxDuration: Self.maximumDuration,
+                builtInMicrophone: settings.alwaysUsesBuiltInMicrophone)
         } catch {
             input.fail(
                 VoiceInputFailure(

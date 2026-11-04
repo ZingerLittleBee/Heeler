@@ -111,4 +111,17 @@ struct VoiceInputSettingsTests {
             #expect(!settings.isReady)
         }
     }
+
+    @Test func theDeviceMicrophoneChoiceStartsOffAndOutlivesTheService() throws {
+        try withDefaults { defaults in
+            let secrets = InMemorySecretStore()
+            let settings = VoiceInputSettings(defaults: defaults, secrets: secrets)
+            #expect(!settings.alwaysUsesBuiltInMicrophone)
+
+            settings.setAlwaysUsesBuiltInMicrophone(true)
+            try settings.save(service: .preset(.openAI), custom: .init(), apiKey: "sk", consented: true)
+            settings.turnOff()
+            #expect(VoiceInputSettings(defaults: defaults, secrets: secrets).alwaysUsesBuiltInMicrophone)
+        }
+    }
 }

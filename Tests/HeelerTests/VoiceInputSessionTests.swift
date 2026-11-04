@@ -291,6 +291,19 @@ struct VoiceInputSessionTests {
         try await waitUntil("inserted again") { store.draft == "left ended" }
     }
 
+    @Test func eachRecordingTakesTheMicrophoneChoiceAtItsStart() async throws {
+        let fixture = try makeFixture(results: [.success("one"), .success("two")])
+        defer { fixture.tearDown() }
+        let store = fixture.makeStore()
+
+        try await record(store, with: fixture)
+        try await waitUntil("first text") { store.draft == "one" }
+        fixture.settings.setAlwaysUsesBuiltInMicrophone(true)
+        try await record(store, with: fixture)
+        try await waitUntil("second text") { store.draft.hasSuffix("two") }
+        #expect(fixture.recorder.builtInMicrophoneStarts == [false, true])
+    }
+
     @Test func directInputCancelsTheRecording() async throws {
         let fixture = try makeFixture()
         defer { fixture.tearDown() }
@@ -362,6 +375,7 @@ private final class FakeVoiceRecorder: VoiceRecorder {
     var nextRecording = VoiceRecording(audio: Data("RIFF-voice".utf8), duration: 3)
     var currentLevel = 0.0
     private(set) var starts = 0
+    private(set) var builtInMicrophoneStarts: [Bool] = []
     private(set) var stops = 0
     private(set) var cancels = 0
     private var isRecording = false
@@ -371,8 +385,9 @@ private final class FakeVoiceRecorder: VoiceRecorder {
         return permission
     }
 
-    func start(maxDuration _: TimeInterval) throws {
+    func start(maxDuration _: TimeInterval, builtInMicrophone: Bool) throws {
         starts += 1
+        builtInMicrophoneStarts.append(builtInMicrophone)
         isRecording = true
     }
 

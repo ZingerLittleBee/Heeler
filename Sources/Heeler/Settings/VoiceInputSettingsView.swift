@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Settings › Voice Input, and the sheet the Composer's mic opens before
-/// setup. Nothing changes until Save, which asks once per destination
-/// before recordings may go to it (ADR 0036).
+/// setup. The service and its key change only on Save, which asks once per
+/// destination before recordings may go to it (ADR 0036); the microphone
+/// choice applies at once.
 struct VoiceInputSettingsView: View {
     let settings: VoiceInputSettings
     /// The mic's sheet has Cancel; pushed from Settings, Back does it.
@@ -44,6 +45,9 @@ struct VoiceInputSettingsView: View {
                 keySection
             case nil:
                 EmptyView()
+            }
+            if service != nil, #available(iOS 26.0, *) {
+                microphoneSection
             }
         }
         .navigationTitle("Voice Input")
@@ -116,6 +120,21 @@ struct VoiceInputSettingsView: View {
             Text("API Key")
         } footer: {
             Text("Kept in this device's Keychain and sent only with recordings to \(draftHost).")
+        }
+    }
+
+    /// Only AirPods with high-quality recording, from iOS 26, are ever
+    /// chosen over this device's microphone, so earlier systems have no
+    /// choice to make.
+    private var microphoneSection: some View {
+        Section {
+            Toggle(
+                "Always Use \(UIDevice.current.model) Microphone",
+                isOn: Binding(
+                    get: { settings.alwaysUsesBuiltInMicrophone },
+                    set: { settings.setAlwaysUsesBuiltInMicrophone($0) }))
+        } footer: {
+            Text("Otherwise, connected AirPods record when they support high-quality recording.")
         }
     }
 

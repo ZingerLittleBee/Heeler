@@ -81,6 +81,7 @@ final class VoiceInputSettings {
         static let customModel = "voice-input-custom-model"
         static let customLanguage = "voice-input-custom-language"
         static let consents = "voice-input-consents"
+        static let builtInMicrophone = "voice-input-built-in-microphone"
     }
 
     /// Nil while Voice Input is off.
@@ -89,6 +90,10 @@ final class VoiceInputSettings {
     private(set) var consents: Set<String>
     /// Bumped by every key write, so views re-read `hasKey(for:)`.
     private(set) var keyRevision = 0
+    /// Records from this device's own microphone even while AirPods that
+    /// record in full bandwidth are connected. Off by default, and applied
+    /// at once rather than on Save.
+    private(set) var alwaysUsesBuiltInMicrophone: Bool
 
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
     @ObservationIgnored private let secrets: any SecretStore
@@ -105,6 +110,7 @@ final class VoiceInputSettings {
             model: defaults.string(forKey: Key.customModel) ?? "",
             sendsLanguage: defaults.bool(forKey: Key.customLanguage))
         consents = Set(defaults.stringArray(forKey: Key.consents) ?? [])
+        alwaysUsesBuiltInMicrophone = defaults.bool(forKey: Key.builtInMicrophone)
     }
 
     /// The saved destination; nil while Voice Input is off.
@@ -209,6 +215,11 @@ final class VoiceInputSettings {
         }
         keyRevision += 1
         persist()
+    }
+
+    func setAlwaysUsesBuiltInMicrophone(_ isOn: Bool) {
+        alwaysUsesBuiltInMicrophone = isOn
+        defaults.set(isOn, forKey: Key.builtInMicrophone)
     }
 
     /// Voice Input off. Keys stay until removed.

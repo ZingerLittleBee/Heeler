@@ -41,6 +41,13 @@ research behind it, including the vendor evidence, is
   most two minutes (under 4 MB), to a temporary file with Complete
   protection, read into memory and deleted when recording stops. A failed
   upload keeps the recording in memory for Retry.
+- **No call-quality microphones.** A Bluetooth microphone records only with
+  full bandwidth: AirPods with high-quality recording, from iOS 26. Any other
+  would use the hands-free call profile, narrowband and filtered, which
+  speech services misread, so the device's own or a wired microphone records
+  instead. The session is Play and Record, the category that option is
+  documented for, and Settings can keep recordings on the device's
+  microphone.
 - **The draft takes the text once.** Nothing is written while recording.
   Send, or Stop, hides from the first tap until the text lands, and Send
   waits one second after, since the text can turn Stop into Send under a
