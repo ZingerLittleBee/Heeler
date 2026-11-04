@@ -474,6 +474,7 @@
 		8F91EAC7F32AA058E7F23394 /* TerminalKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247FF74AD248F26A072EA263 /* TerminalKeyboard.swift */; };
 		8F9D8B11EB35747E767118CB /* TerminalTitleGlyphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651D511E8A282C4CB0214098 /* TerminalTitleGlyphs.swift */; };
 		8FC7B3F9BAC1C86576520AEF /* ClaudeTranscriptLocatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67915AA97A2D8B0113F65CE4 /* ClaudeTranscriptLocatorTests.swift */; };
+		9019E7748FBF71744AB4CE14 /* LocalNetworkDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E9D46A53C3C2F8710D6700F /* LocalNetworkDiscovery.swift */; };
 		91386D52E541ABB78FA4F39C /* ChatStopPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C566D947C5E39608EEC199 /* ChatStopPlan.swift */; };
 		91BF879F537B1B0DD0B5E78B /* HostConsoleProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88E1434C9C39A6419A3A0D79 /* HostConsoleProjection.swift */; };
 		921875AD80D687FB0C2AD771 /* NumberedChatReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24E3F2728F8EED318E0F73F /* NumberedChatReducer.swift */; };
@@ -579,6 +580,7 @@
 		B3A2340FE380EAA6F7451191 /* FileDiffListChangeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E7D152A663A30A0CDA92640 /* FileDiffListChangeTests.swift */; };
 		B3C490CC3562CC5B4B2EB993 /* PairingCodeVectorFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7461B7A0FD2A4CDF34352D45 /* PairingCodeVectorFile.swift */; };
 		B4720B610754009B9E30565F /* HeelerWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB43ADC71539AC324F155DD0 /* HeelerWidgetsBundle.swift */; };
+		B51B3CD7F2E75EB6DDF6D542 /* LocalNetworkDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4EEFA2D98EF9924DD8A6719 /* LocalNetworkDiscoveryTests.swift */; };
 		B577EA28AB0BD24EB1ECA036 /* HeelerNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 59A749D2AF2390BCACBADED3 /* HeelerNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B5BF158F1DCA20F1B7AA12B0 /* TerminalMessageJumpController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 698E712B4BE15626800C366F /* TerminalMessageJumpController.swift */; };
 		B5FAB69CD004D2A4EF9BF494 /* AgentRowChanges.swift in Sources */ = {isa = PBXBuildFile; fileRef = 401B06FA1073EFC5F056E941 /* AgentRowChanges.swift */; };
@@ -825,6 +827,7 @@
 		F52B846B649FDE80D98868E6 /* AgentUsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34AFD90CE2C3B3B0F49F5CFC /* AgentUsageStore.swift */; };
 		F535E4AC8B2336CAE3E053FC /* ChatToolOutputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AD370B497667F5284DC86E1 /* ChatToolOutputTests.swift */; };
 		F61261FF8A17C9C754B99ED9 /* ConsoleHostStatusPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 512561E4D83FFB6575A1A8A5 /* ConsoleHostStatusPresentationTests.swift */; };
+		F6579EF4995DE0571E316F11 /* LocalMachinePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF9F5CA9E64945ABEBD6DF26 /* LocalMachinePickerView.swift */; };
 		F68B599F159AD5082B919176 /* ChatRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FBA22E3DC0E6C9B5D713C5D /* ChatRowView.swift */; };
 		F6A1A833DFFB748716D13EA9 /* PairingScanStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D026719294E631141C3A59F9 /* PairingScanStoreTests.swift */; };
 		F7140E9E09D6FE6096FD4F2B /* NotificationSessionVectorFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 277D66B22B73144FF5ADAED0 /* NotificationSessionVectorFile.swift */; };
@@ -1384,6 +1387,7 @@
 		8D23517AF3A39615725A0ADC /* ComposerStagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerStagingStore.swift; sourceTree = "<group>"; };
 		8D2A24209EC3661CE162743E /* DetailCrossfadeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailCrossfadeTests.swift; sourceTree = "<group>"; };
 		8D6490F9D4A3ECF0F9899D1A /* TerminalMouseReportingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalMouseReportingTests.swift; sourceTree = "<group>"; };
+		8E9D46A53C3C2F8710D6700F /* LocalNetworkDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkDiscovery.swift; sourceTree = "<group>"; };
 		8ED55B6D7C29BC534BC116FE /* TerminalRetentionBudget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalRetentionBudget.swift; sourceTree = "<group>"; };
 		8F1676B4E6BAB1C28E5596A7 /* AgentNotificationRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRouterTests.swift; sourceTree = "<group>"; };
 		8F81F977225A0D0A1812F666 /* InputBoxStateDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBoxStateDetector.swift; sourceTree = "<group>"; };
@@ -1652,6 +1656,7 @@
 		E24C0B60FDE0AD3D3ABD13E4 /* AgentListFieldsAddFieldSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentListFieldsAddFieldSheet.swift; sourceTree = "<group>"; };
 		E295975DC35FDF1E786ADF86 /* AgentDetailSurfaceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailSurfaceSettings.swift; sourceTree = "<group>"; };
 		E48CA996470393ED037D0364 /* AgentRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRoute.swift; sourceTree = "<group>"; };
+		E4EEFA2D98EF9924DD8A6719 /* LocalNetworkDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkDiscoveryTests.swift; sourceTree = "<group>"; };
 		E4F4EF125BAB77F0DE121AAB /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
 		E698FFDD14AD5A9DB4059B7D /* AgentUsageProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsageProbe.swift; sourceTree = "<group>"; };
 		E70C49925D454207F859F897 /* HeelerSSHHostKeyPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHHostKeyPolicyTests.swift; sourceTree = "<group>"; };
@@ -1682,6 +1687,7 @@
 		EEB7627C47322439338006A7 /* HostTerminalOwnership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostTerminalOwnership.swift; sourceTree = "<group>"; };
 		EEB863EF2AD319A412DB564A /* notification-payload-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "notification-payload-v1.json"; sourceTree = "<group>"; };
 		EECB915608BCB22A56A63EAC /* ClaudeSyntheticTranscriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeSyntheticTranscriptTests.swift; sourceTree = "<group>"; };
+		EF9F5CA9E64945ABEBD6DF26 /* LocalMachinePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMachinePickerView.swift; sourceTree = "<group>"; };
 		EFD746A55304EF52E86BEEA0 /* CodexTranscriptLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexTranscriptLocatorTests.swift; sourceTree = "<group>"; };
 		F005A8B773E661B310F89325 /* GitProbeFailureStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitProbeFailureStateTests.swift; sourceTree = "<group>"; };
 		F07A0F64626D74A8EC9A1FE2 /* AttachTerminalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachTerminalStore.swift; sourceTree = "<group>"; };
@@ -2018,6 +2024,7 @@
 				AACC0F2C9582DE0932380D35 /* KnownHostsStoreTests.swift */,
 				0882D4EC9985979DA989F01B /* LicenseNoticeTests.swift */,
 				126DE4AA09228412D12EE4E6 /* LiveInAnotherWindowPresentationTests.swift */,
+				E4EEFA2D98EF9924DD8A6719 /* LocalNetworkDiscoveryTests.swift */,
 				57F16E07E567548DAD7F2A9A /* MessageJumpControlTests.swift */,
 				C872F1F1C02B1E6609EA94A3 /* NewTerminalStoreTests.swift */,
 				365757614D9876F58A48CEDA /* NotificationConfigFileTests.swift */,
@@ -2302,6 +2309,8 @@
 				874CB6551E1492159AB0AF9D /* HostRouteFields.swift */,
 				B31BEB8652FCDBD5E409290D /* HostSetupGuideView.swift */,
 				0AEC3D31861DABF40C05EE8D /* HostStore.swift */,
+				EF9F5CA9E64945ABEBD6DF26 /* LocalMachinePickerView.swift */,
+				8E9D46A53C3C2F8710D6700F /* LocalNetworkDiscovery.swift */,
 				502E98A1C2D32E741092EA92 /* OverlayPeerChoice.swift */,
 				ABBA9EB245DAAC0DC46698D3 /* OverlayPeerPickerView.swift */,
 				FE0B6961E10487A3AC3547E9 /* Preflight.swift */,
@@ -3509,6 +3518,8 @@
 				405A7A8AE730C7ABD606DAD7 /* LiveActivityControlling.swift in Sources */,
 				5299E363C0B099498E45E78A /* LiveActivityPreferences.swift in Sources */,
 				2CCF49CE1A3D34AEC4D53469 /* LiveInAnotherWindowPresentation.swift in Sources */,
+				F6579EF4995DE0571E316F11 /* LocalMachinePickerView.swift in Sources */,
+				9019E7748FBF71744AB4CE14 /* LocalNetworkDiscovery.swift in Sources */,
 				EC3D3382551005F654C11C40 /* MainActorContent.swift in Sources */,
 				DA5142568B326156F88E557D /* MessageJumpControl.swift in Sources */,
 				F43752764BAE282519A42DF0 /* NewTerminalStore.swift in Sources */,
@@ -3923,6 +3934,7 @@
 				95923E381E231E216700BDFE /* LinuxHostFixture.swift in Sources */,
 				FF96BFEF61D9D20912230256 /* LiveActivityVectorFile.swift in Sources */,
 				009E08E800D5353526656786 /* LiveInAnotherWindowPresentationTests.swift in Sources */,
+				B51B3CD7F2E75EB6DDF6D542 /* LocalNetworkDiscoveryTests.swift in Sources */,
 				C9F1C6CFE1F09E58CD9B3948 /* LocalSSHTestEnvironment.swift in Sources */,
 				213C03CB4F5F472E2251349D /* ManualClock.swift in Sources */,
 				237011C7C496B88BB774D525 /* MessageJumpControlTests.swift in Sources */,
@@ -4145,7 +4157,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Heeler;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything.";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby, and to find machines that offer SSH.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -4312,7 +4324,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Heeler;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything.";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby, and to find machines that offer SSH.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
