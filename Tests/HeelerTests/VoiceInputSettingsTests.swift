@@ -119,13 +119,21 @@ struct VoiceInputSettingsTests {
         #expect(VoiceInputSettings.keywords(in: " ,\n ").isEmpty)
     }
 
-    @Test func savedKeywordsAreKept() throws {
+    @Test func keywordsAndThePromptOutliveServiceChanges() throws {
         try withDefaults { defaults in
             let secrets = InMemorySecretStore()
             let settings = VoiceInputSettings(defaults: defaults, secrets: secrets)
             #expect(settings.keywords.isEmpty)
+            #expect(settings.prompt.isEmpty)
             settings.setKeywords(from: "herdr, Heeler")
-            #expect(VoiceInputSettings(defaults: defaults, secrets: secrets).keywords == ["herdr", "Heeler"])
+            settings.setPrompt("  Instructions to a coding agent\n")
+            try settings.save(service: .preset(.openAI), custom: .init(), apiKey: "sk", consented: true)
+            try settings.save(service: .preset(.siliconFlowCN), custom: .init(), apiKey: "sk", consented: true)
+            settings.turnOff()
+
+            let reopened = VoiceInputSettings(defaults: defaults, secrets: secrets)
+            #expect(reopened.keywords == ["herdr", "Heeler"])
+            #expect(reopened.prompt == "Instructions to a coding agent")
         }
     }
 

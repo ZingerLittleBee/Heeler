@@ -378,7 +378,8 @@ final class VoiceInputSession {
         let generation = input.begin(.transcribing)
         let request = VoiceTranscriptionRequest(
             endpoint: endpoint, apiKey: apiKey, audio: recording.audio,
-            primaryLanguage: primaryLanguage(), keywords: settings.keywords)
+            primaryLanguage: primaryLanguage(), keywords: settings.keywords,
+            prompt: settings.prompt)
         let transcribe = transcribe
         input.task = Task { [weak input] in
             let result: Result<String, any Error>

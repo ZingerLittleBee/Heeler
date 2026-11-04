@@ -54,15 +54,10 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// `gpt-transcribe` spells listed terms from `keywords`; its `prompt`
-    /// barely moved them in testing. DeepInfra documents only `prompt`, and
-    /// SiliconFlow neither.
-    var keywordsField: VoiceInputKeywordsField {
-        switch self {
-        case .openAI: .keywords
-        case .deepInfra: .prompt
-        case .siliconFlowCN: .none
-        }
+    /// Only `gpt-transcribe` reads `keywords`; it spelled listed terms from
+    /// them but barely from `prompt` in testing.
+    fileprivate var takesKeywords: Bool {
+        self == .openAI
     }
 }
 
@@ -73,16 +68,6 @@ enum VoiceInputLanguageField: Equatable, Sendable {
     case primary
     /// `languages[]`: the primary language, then English.
     case candidates
-}
-
-/// How a service hears the user's Keywords.
-enum VoiceInputKeywordsField: Equatable, Sendable {
-    case none
-    /// `keywords[]`: one field per term.
-    case keywords
-    /// `prompt`: the terms in one comma-separated line, as Whisper-style
-    /// servers take a glossary.
-    case prompt
 }
 
 /// Where one recording goes and how the request is shaped.
@@ -97,7 +82,8 @@ struct VoiceInputEndpoint: Equatable, Sendable {
     let baseURL: URL
     let model: String
     let languageField: VoiceInputLanguageField
-    let keywordsField: VoiceInputKeywordsField
+    /// Whether Keywords go in `keywords[]`; elsewhere they join the prompt.
+    let takesKeywords: Bool
     /// Custom servers get an explicit `response_format=json`; some require it.
     let sendsResponseFormat: Bool
 
@@ -107,14 +93,14 @@ struct VoiceInputEndpoint: Equatable, Sendable {
         }
         return VoiceInputEndpoint(
             source: .preset(preset), baseURL: url, model: preset.model,
-            languageField: preset.languageField, keywordsField: preset.keywordsField,
+            languageField: preset.languageField, takesKeywords: preset.takesKeywords,
             sendsResponseFormat: false)
     }
 
     static func custom(baseURL: URL, model: String, sendsLanguage: Bool) -> VoiceInputEndpoint {
         VoiceInputEndpoint(
             source: .custom, baseURL: baseURL, model: model,
-            languageField: sendsLanguage ? .primary : .none, keywordsField: .prompt,
+            languageField: sendsLanguage ? .primary : .none, takesKeywords: false,
             sendsResponseFormat: true)
     }
 

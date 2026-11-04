@@ -291,16 +291,18 @@ struct VoiceInputSessionTests {
         try await waitUntil("inserted again") { store.draft == "left ended" }
     }
 
-    @Test func savedKeywordsGoWithTheRecording() async throws {
+    @Test func savedKeywordsAndPromptGoWithTheRecording() async throws {
         let fixture = try makeFixture(results: [.success("done")])
         defer { fixture.tearDown() }
         fixture.settings.setKeywords(from: "herdr, Heeler")
+        fixture.settings.setPrompt("Instructions to a coding agent")
         let store = fixture.makeStore()
 
         try await record(store, with: fixture)
         try await waitUntil("inserted") { store.draft == "done" }
         let requests = await fixture.transcriber.requests
         #expect(requests.map(\.keywords) == [["herdr", "Heeler"]])
+        #expect(requests.map(\.prompt) == ["Instructions to a coding agent"])
     }
 
     @Test func eachRecordingTakesTheMicrophoneChoiceAtItsStart() async throws {

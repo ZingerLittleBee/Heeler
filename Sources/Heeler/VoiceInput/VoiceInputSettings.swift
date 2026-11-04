@@ -26,14 +26,6 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
         }
     }
 
-    /// Whether recordings to this service carry the user's Keywords.
-    var takesKeywords: Bool {
-        switch self {
-        case .preset(let preset): preset.keywordsField != .none
-        case .custom: true
-        }
-    }
-
     init?(storageValue: String) {
         if storageValue == "custom" {
             self = .custom
@@ -91,6 +83,7 @@ final class VoiceInputSettings {
         static let consents = "voice-input-consents"
         static let builtInMicrophone = "voice-input-built-in-microphone"
         static let keywords = "voice-input-keywords"
+        static let prompt = "voice-input-prompt"
     }
 
     /// Nil while Voice Input is off.
@@ -106,6 +99,9 @@ final class VoiceInputSettings {
     /// Names and terms the user says, sent with each recording so the
     /// service spells them. One list for every service.
     private(set) var keywords: [String]
+    /// What recordings are about, sent with each one. One for every
+    /// service; empty when unset.
+    private(set) var prompt: String
 
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
     @ObservationIgnored private let secrets: any SecretStore
@@ -124,6 +120,7 @@ final class VoiceInputSettings {
         consents = Set(defaults.stringArray(forKey: Key.consents) ?? [])
         alwaysUsesBuiltInMicrophone = defaults.bool(forKey: Key.builtInMicrophone)
         keywords = defaults.stringArray(forKey: Key.keywords) ?? []
+        prompt = defaults.string(forKey: Key.prompt) ?? ""
     }
 
     /// The saved destination; nil while Voice Input is off.
@@ -239,6 +236,11 @@ final class VoiceInputSettings {
     func setKeywords(from text: String) {
         keywords = Self.keywords(in: text)
         defaults.set(keywords, forKey: Key.keywords)
+    }
+
+    func setPrompt(_ text: String) {
+        prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        defaults.set(prompt, forKey: Key.prompt)
     }
 
     /// Terms split at commas, semicolons, and line breaks, in either width.
