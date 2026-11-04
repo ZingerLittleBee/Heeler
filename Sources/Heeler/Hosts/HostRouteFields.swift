@@ -10,6 +10,9 @@ struct HostRouteFields: View {
     /// Shows the peer picker, which the enclosing Form presents with
     /// `overlayPeerPicker(isPresented:route:otherHosts:onPeerChosen:)`.
     @Binding var isChoosingOverlayPeer: Bool
+    /// Shows the local network picker, which the enclosing Form presents with
+    /// `localMachinePicker(isPresented:onPick:)`.
+    @Binding var isFindingLocalMachine: Bool
 
     /// Absent in previews and hosting tests; the Network picker then offers
     /// only Direct (plus the route's current choice).
@@ -28,6 +31,11 @@ struct HostRouteFields: View {
                 .textInputAutocapitalization(.never)
             TextField("Port", text: $route.port)
                 .keyboardType(.numberPad)
+            Button {
+                isFindingLocalMachine = true
+            } label: {
+                Label("Find on Local Network", systemImage: "wifi")
+            }
         }
         jumpSection
         if !networkLeads {
@@ -241,6 +249,7 @@ struct NewHostRouteView: View {
     @State private var pending: HostDraft
     @State private var routeID: HostRouteDraft.ID
     @State private var isChoosingOverlayPeer = false
+    @State private var isFindingLocalMachine = false
     @Environment(\.dismiss) private var dismiss
 
     init(draft: Binding<HostDraft>, otherHosts: [Host]) {
@@ -258,12 +267,16 @@ struct NewHostRouteView: View {
             HostRouteFields(
                 route: route,
                 authMethod: pending.authMethod,
-                isChoosingOverlayPeer: $isChoosingOverlayPeer)
+                isChoosingOverlayPeer: $isChoosingOverlayPeer,
+                isFindingLocalMachine: $isFindingLocalMachine)
         }
         .overlayPeerPicker(
             isPresented: $isChoosingOverlayPeer, route: route.wrappedValue, otherHosts: otherHosts
         ) { candidate, style in
             pending.applyOverlayPeer(candidate, style: style, toRoute: routeID)
+        }
+        .localMachinePicker(isPresented: $isFindingLocalMachine) { machine in
+            pending.applyDiscoveredMachine(machine, toRoute: routeID)
         }
         .navigationTitle("New Route")
         .navigationBarTitleDisplayMode(.inline)
@@ -297,6 +310,7 @@ struct HostRouteFormView: View {
     let otherHosts: [Host]
 
     @State private var isChoosingOverlayPeer = false
+    @State private var isFindingLocalMachine = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -305,7 +319,8 @@ struct HostRouteFormView: View {
                 HostRouteFields(
                     route: route,
                     authMethod: draft.authMethod,
-                    isChoosingOverlayPeer: $isChoosingOverlayPeer)
+                    isChoosingOverlayPeer: $isChoosingOverlayPeer,
+                    isFindingLocalMachine: $isFindingLocalMachine)
                 if draft.routes.count > 1 {
                     Section {
                         Button("Delete Route", role: .destructive) {
@@ -320,6 +335,9 @@ struct HostRouteFormView: View {
             isPresented: $isChoosingOverlayPeer, route: route.wrappedValue, otherHosts: otherHosts
         ) { candidate, style in
             draft.applyOverlayPeer(candidate, style: style, toRoute: routeID)
+        }
+        .localMachinePicker(isPresented: $isFindingLocalMachine) { machine in
+            draft.applyDiscoveredMachine(machine, toRoute: routeID)
         }
         .navigationTitle(index.map { "Route \($0 + 1)" } ?? "Route")
         .navigationBarTitleDisplayMode(.inline)
