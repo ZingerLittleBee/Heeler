@@ -525,6 +525,39 @@ suite("activity-hook: registered Agent List Fields", () => {
       [["tab", "list", "--workspace", "w1"], ["pane", "list", "--workspace", "w1"]]);
   });
 
+  test("status_since is the hook-observed start of the current status and holds across pushes", async () => {
+    await startFakeRelay();
+    writeConfig();
+    const socket = join(stateDir, "herdr.sock");
+    writeFileSync(socket, "");
+    const env = { HERDR_SOCKET_PATH: socket };
+    const layout = (rows) => ({ token: ACTIVITY_TOKEN_A, row_layout: { rows } });
+    const timeRow = [{ token: "status" }, { token: "status_since" }, { token: "updated_at" }];
+    writeRegistration([device({ liveActivity: layout([timeRow]) })]);
+    const listed = (status, seq) => [{ ...listedAgent({ status }), terminal_id: "t1", state_change_seq: seq }];
+    const row = (index) => decryptEnvelope(relay.requests[index].body.envelope, KEY_A).payload.agents[0].rows[0];
+    const kinds = (spans) => spans.filter((span) => span.kind).map((span) => span.kind);
+
+    writeHerdrStub(listed("working", 1));
+    assert.equal((await runHook(statusEvent("working"), { env })).status, 0);
+    assert.deepEqual(kinds(row(0)), ["updated_at"]);
+
+    writeHerdrStub(listed("blocked", 2));
+    const before = Math.floor(Date.now() / 1000);
+    assert.equal((await runHook(statusEvent("blocked"), { env })).status, 0);
+    const since = row(1).find((span) => span.kind === "status_since");
+    assert.ok(since.at >= before && since.at <= Math.floor(Date.now() / 1000));
+    assert.match(since.text, /^since \d{2}:\d{2}$/);
+
+    assert.equal((await runHook(statusEvent("blocked"), { env })).status, 0);
+    assert.equal(relay.requests.length, 2);
+    writeRegistration([device({ liveActivity: layout([[{ token: "agent" }], timeRow]) })]);
+    assert.equal((await runHook(statusEvent("blocked"), { env })).status, 0);
+    assert.equal(relay.requests.length, 3);
+    const rows = decryptEnvelope(relay.requests[2].body.envelope, KEY_A).payload.agents[0].rows;
+    assert.equal(rows[1].find((span) => span.kind === "status_since").at, since.at);
+  });
+
   test("payload degradation removes titles, then rows, then agents", async () => {
     await startFakeRelay((request, index) => index < 3 ? { status: 413, body: { error: "payload_too_large" } } : { status: 200, body: {} });
     writeConfig();

@@ -327,6 +327,68 @@
         "host": "studio",
         "v": 1
       }
+    },
+    {
+      "name": "time spans carry unix seconds and a kind beside fallback text",
+      "decodeOnly": true,
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"4OHi4-Tl5ufo6err\",\"ct\":\"T-Co5JCu_ljiOSU1fHeR7aGHAcWd6Kxt-ORIUS5fSec2wNvQGMKdDkXjxJIXeHPgCjfyfT-UKqqziJuL0MXlWocQ04yRjxMUge7f-XCJMnJ9iMVOmU-ckFz0_nVwYXZrsEeeOy2sGRqZcTmuChcsmcMbt_kfYeJnYp-36vN6Aa-d7EichOuVkeYaGyo8a8ZnlCp0PR1gaKThhwS3ipZ_GlLFkOSDIMLitPRpP4H-C3ei4PYm_6RBIXaDbGYBZiqH1d7o3cFs9-KK_W_DiIcFfEYl0bt06sZ5b0zbOK93An7y9LJTwmCXPcCUSyD9e82-v89g-zFSfKvDm8Eu8wih2G2aTSRsT1Qn9p5_haF5m5fGuaw_eBsreYPDT7fzJcNZfJoy-rALPPMMin0xDoveJ3tgBJroRj9GLtq7yRJDvnWm9tRdX3XF9_8HwaMgdSI4JNDK8vQFuc4KcQayag_ZHZtjRkzOyPJqrOxcRyVIew4CsFZkc13xR6O8BSqIFTOY-mOaHX3J9lnKatBKq-D8ijXioI8PruovtELl-wccV2F2w-UXw6P9OAeuCbDK8MdgiYXRYsTdnE-UzUtZOF659Au_MXPx0_Cmn41QS-3HJWS0oypFYNTCNnw\"}",
+      "payload": {
+        "agents": [
+          {
+            "kind": "claude",
+            "name": "agent-a",
+            "pane": "w1:p1",
+            "rows": [
+              [
+                {
+                  "bold": true,
+                  "text": "agent-a"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "text": "Heeler"
+                }
+              ],
+              [
+                {
+                  "text": "Reviewing the parser"
+                }
+              ],
+              [
+                {
+                  "text": "Blocked"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "at": 1791727380,
+                  "dim": true,
+                  "kind": "status_since",
+                  "text": "since 14:03"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "at": 1791730980,
+                  "kind": "updated_at",
+                  "text": "updated 15:03"
+                }
+              ]
+            ],
+            "status": "blocked",
+            "title": "Reviewing the parser",
+            "workspace": "Heeler"
+          }
+        ],
+        "host": "example-host",
+        "v": 1
+      }
     }
   ],
   "invalid": [

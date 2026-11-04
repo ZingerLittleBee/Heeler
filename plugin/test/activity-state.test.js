@@ -8,6 +8,7 @@ import {
   hasNewlyBlocked,
   parsePinnedPaneIds,
   sameStatusMap,
+  trackSince,
 } from "../src/activity-state.js";
 
 function agent(pane, status, extra = {}) {
@@ -288,5 +289,50 @@ suite("eligible status helpers", () => {
     assert.equal(hasNewlyBlocked({ a: "blocked" }, { a: "blocked" }), false);
     assert.equal(hasNewlyBlocked({ a: "blocked", b: "working" }, { a: "working" }), true);
     assert.equal(hasNewlyBlocked({ a: "working" }, { a: "blocked" }), false);
+  });
+});
+
+suite("trackSince (state v2)", () => {
+  const NOW = 1_000_000;
+  const EPOCH = "11:22";
+  const term = (pane, status, terminal, seq) => agent(pane, status, { terminal_id: terminal, state_change_seq: seq });
+  const saved = (terminals, epoch = EPOCH) => ({ v: 2, epoch, terminals });
+
+  test("no comparable saved state leaves every start unknown, never now", () => {
+    const agents = [term("w1:p1", "working", "t1", 4)];
+    for (const previous of [null, { statuses: { "w1:p1": "working" } }, saved({}, "other")]) {
+      assert.equal(trackSince(previous, agents, NOW, EPOCH).sinceByPane["w1:p1"], null);
+    }
+    assert.equal(trackSince(saved({}), agents, NOW, null).sinceByPane["w1:p1"], null);
+    assert.equal(trackSince(saved({}), agents, NOW, EPOCH).sinceByPane["w1:p1"], NOW);
+  });
+
+  test("an unchanged (status, seq) keeps its time, a change takes now, and the terminal id is the key", () => {
+    const previous = saved({ t1: { status: "working", seq: 4, since_ms: 5 }, t2: { status: "working", seq: 7, since_ms: 6 } });
+    const result = trackSince(previous, [term("w9:p9", "working", "t1", 4), term("w1:p2", "blocked", "t2", 8)], NOW, EPOCH);
+    assert.deepEqual(result.sinceByPane, { "w9:p9": 5, "w1:p2": NOW });
+    assert.deepEqual(result.terminals, { t1: { status: "working", seq: 4, since_ms: 5 }, t2: { status: "blocked", seq: 8, since_ms: NOW } });
+  });
+
+  test("the same status with a new seq is a new pair, so the start is the latest change", () => {
+    const previous = saved({ t1: { status: "blocked", seq: 2, since_ms: 5 } });
+    assert.equal(trackSince(previous, [term("w1:p1", "blocked", "t1", 4)], NOW, EPOCH).sinceByPane["w1:p1"], NOW);
+  });
+
+  test("a restart (new epoch) and a seq regression clear every start to unknown", () => {
+    const previous = saved({ t1: { status: "working", seq: 4, since_ms: 5 }, t2: { status: "working", seq: 9, since_ms: 6 } });
+    const agents = [term("w1:p1", "working", "t1", 4), term("w1:p2", "working", "t2", 1)];
+    assert.deepEqual(trackSince(previous, agents, NOW, EPOCH).sinceByPane, { "w1:p1": null, "w1:p2": null });
+    assert.deepEqual(trackSince(previous, agents.slice(0, 1), NOW, "33:44").sinceByPane, { "w1:p1": null });
+  });
+
+  test("an unknown start stays unknown while its pair is unchanged", () => {
+    const previous = saved({ t1: { status: "working", seq: 4, since_ms: null } });
+    assert.equal(trackSince(previous, [term("w1:p1", "working", "t1", 4)], NOW, EPOCH).sinceByPane["w1:p1"], null);
+  });
+
+  test("an agent without terminal_id is unknown and not stored; ineligible agents are not tracked", () => {
+    const result = trackSince(saved({}), [agent("w1:p1", "working"), term("w1:p2", "idle", "t2", 1)], NOW, EPOCH);
+    assert.deepEqual(result, { terminals: {}, sinceByPane: { "w1:p1": null } });
   });
 });

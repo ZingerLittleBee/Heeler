@@ -9,6 +9,13 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Two new Agent List Fields for Live Activity rows in the herdr plugin:
+  `status_since`, when the Agent's current status began (left out while the
+  start is unknown), and `updated_at`, when the row was read. Each is sent as
+  a span with unix seconds and a kind beside fallback text. The plugin now
+  skips a layout field it does not know instead of dropping the whole
+  layout. (#433)
+
 - Find SSH machines on the local network with Bonjour when adding a Route;
   Heeler saves the machine's IP address. (#624)
 

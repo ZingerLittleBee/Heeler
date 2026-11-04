@@ -14,7 +14,7 @@
 
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -26,6 +26,7 @@ import {
   hasNewlyBlocked,
   sameStatusMap,
   shortHostName,
+  trackSince,
 } from "./activity-state.js";
 import { parseActivityRowLayout } from "./activity-rows.js";
 import { readNotificationConfig } from "./notification-config.js";
@@ -265,6 +266,16 @@ async function listRowContext(binPath, agents, devices) {
   return { tabs, panes };
 }
 
+/** herdr server identity: the socket's inode and change time, or null when unknown. */
+function socketEpoch() {
+  try {
+    const stat = statSync(process.env.HERDR_SOCKET_PATH);
+    return `${stat.ino}:${stat.ctimeMs}`;
+  } catch {
+    return null;
+  }
+}
+
 function devicePreferences(devices) {
   return createHash("sha256").update(JSON.stringify(devices.map((device) => ({
     token: device.token, env: device.env, pins: device.pinnedPaneIds,
@@ -483,17 +494,39 @@ async function updateLiveActivity(configDir, session, stateDir, binPath, event) 
   const statuses = eligibleStatusMap(agents);
   const previous = lastState?.statuses ?? null;
   const preferences = devicePreferences(devices);
+  // Status start times are saved on every run that wins the claim, sent or
+  // not, so a skipped or failed push never moves `status_since`.
+  const asOfMs = Date.now();
+  const epoch = socketEpoch();
+  const saved = readLastState(stateDir);
+  const { terminals, sinceByPane } = trackSince(saved, agents, asOfMs, epoch);
+  const saveSince = (fields = {}) => writeLastState(stateDir, {
+    sent_at_ms: saved?.sent_at_ms,
+    statuses: saved?.statuses,
+    preferences: saved?.preferences,
+    ended: saved?.ended === true,
+    ...fields,
+    v: 2,
+    epoch,
+    terminals,
+  });
   if (previous !== null && sameStatusMap(statuses, previous)
-      && lastState?.preferences === preferences) return;
+      && lastState?.preferences === preferences) {
+    saveSince();
+    return;
+  }
 
   const empty = Object.keys(statuses).length === 0;
-  if (empty && lastState?.ended === true) return;
+  if (empty && lastState?.ended === true) {
+    saveSince();
+    return;
+  }
 
   const workspaceLabels = empty ? new Map() : await listWorkspaceLabels(binPath);
   const rowContext = empty ? {} : await listRowContext(binPath, agents, devices);
   const pushEvent = empty ? "end" : "update";
   const priority = hasNewlyBlocked(statuses, previous) ? 10 : 5;
-  const timestamp = Math.floor(Date.now() / 1000);
+  const timestamp = Math.floor(asOfMs / 1000);
   const hostName = shortHostName();
 
   const pruned = new Set();
@@ -508,6 +541,8 @@ async function updateLiveActivity(configDir, session, stateDir, binPath, event) 
       rowLayout: device.rowLayout,
       rowHostName: device.rowHostName,
       ...rowContext,
+      sinceByPane,
+      asOfMs,
     });
     const content =
       pushEvent === "end"
@@ -531,14 +566,7 @@ async function updateLiveActivity(configDir, session, stateDir, binPath, event) 
     }
   }
   if (pruned.size > 0) pruneLiveActivity(configDir, pruned);
-  if (delivered) {
-    writeLastState(stateDir, {
-      sent_at_ms: Date.now(),
-      statuses,
-      preferences,
-      ended: pushEvent === "end",
-    });
-  }
+  saveSince(delivered ? { sent_at_ms: Date.now(), statuses, preferences, ended: pushEvent === "end" } : {});
   if (failures.length > 0) throw new Error(failures.join("; "));
 }
 

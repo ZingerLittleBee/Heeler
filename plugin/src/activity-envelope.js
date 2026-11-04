@@ -59,9 +59,11 @@ export function canonicalActivityPlaintext(plaintext) {
       if (Array.isArray(agent.rows)) {
         entry.rows = agent.rows.map((row) => row.map((span) => {
           const field = {};
+          if (Number.isInteger(span.at)) field.at = span.at;
           if (typeof span.bold === "boolean") field.bold = span.bold;
           if (typeof span.dim === "boolean") field.dim = span.dim;
           if (typeof span.fg === "string") field.fg = span.fg;
+          if (typeof span.kind === "string") field.kind = span.kind;
           field.text = span.text;
           return field;
         }));

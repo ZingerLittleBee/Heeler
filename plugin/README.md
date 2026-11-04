@@ -1011,6 +1011,11 @@ Anti-noise, in order:
 3. **Unchanged snapshot**: a `{pane_id: status}` map identical to last-state
    sends nothing.
 
+Every run that wins the claim rewrites last-state with `v: 2`, the herdr
+server `epoch`, and per-`terminal_id` status start times, even when it sends
+nothing, so the `status_since` field keeps the hook-observed start of each
+Agent's current status across skipped and failed sends.
+
 An empty eligible set sends `event: end` (skipped if already ended) with zero
 counts, `dismissal_date` equal to the timestamp, and an envelope whose
 `agents` array is empty. Otherwise it sends `event: update` with

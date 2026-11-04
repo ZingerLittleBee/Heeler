@@ -4,11 +4,16 @@ import { optionalText } from "./display-text.js";
 const BUILTINS = new Set([
   "state_icon", "state_text", "workspace", "tab", "pane", "agent",
   "terminal_title", "terminal_title_stripped", "host", "status", "directory",
+  "status_since", "updated_at",
 ]);
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
-/** Malformed layouts leave older senders' identity rendering intact. */
+/**
+ * Malformed layouts leave older senders' identity rendering intact. An unknown
+ * token is skipped on its own, so a newer app can add fields to a layout
+ * without this plugin dropping the rest of it.
+ */
 export function parseActivityRowLayout(value) {
   if (!value || !Array.isArray(value.rows) || value.rows.length > 3) return null;
   const rows = [];
@@ -17,7 +22,7 @@ export function parseActivityRowLayout(value) {
     const fields = [];
     for (const field of row) {
       if (!field || typeof field.token !== "string") return null;
-      if (!BUILTINS.has(field.token) && !/^\$[A-Za-z0-9_-]{1,32}$/.test(field.token)) return null;
+      if (!BUILTINS.has(field.token) && !/^\$[A-Za-z0-9_-]{1,32}$/.test(field.token)) continue;
       const entry = { token: field.token };
       if (field.fg != null) {
         if (typeof field.fg !== "string" || !COLOR.test(field.fg)) return null;
@@ -48,11 +53,19 @@ function strippedSidebarTitle(raw) {
   return rest.length === 0 || /^\s/u.test(rest) ? rest.trim() : trimmed;
 }
 
+const CLOCK = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+/** A time field: unix seconds in `at` for apps that format it, Host-local `text` for older ones. */
+function timeField(kind, label, ms) {
+  if (!Number.isFinite(ms)) return null;
+  return { text: `${label} ${CLOCK.format(ms)}`, at: Math.floor(ms / 1000), kind };
+}
+
 function rowText(text) {
   return Array.from(GRAPHEMES.segment(text), ({ segment }) => segment).slice(0, 80).join("");
 }
 
-export function renderActivityRows(layout, agent, { hostName, workspaceLabels, tabs, panes }) {
+export function renderActivityRows(layout, agent, { hostName, workspaceLabels, tabs, panes, sinceMs, asOfMs }) {
   if (layout === null) return null;
   const tab = tabs.get(agent.tab_id);
   const pane = panes.get(agent.pane_id);
@@ -72,6 +85,8 @@ export function renderActivityRows(layout, agent, { hostName, workspaceLabels, t
         return status.charAt(0).toUpperCase() + status.slice(1);
       }
       case "directory": return typeof agent.cwd === "string" ? agent.cwd.trim() : null;
+      case "status_since": return timeField("status_since", "since", sinceMs);
+      case "updated_at": return timeField("updated_at", "updated", asOfMs);
       default: return token.startsWith("$") ? agent.tokens?.[token.slice(1)] : null;
     }
   };
@@ -79,11 +94,17 @@ export function renderActivityRows(layout, agent, { hostName, workspaceLabels, t
     const spans = [];
     for (const field of row) {
       const raw = value(field.token);
-      if (typeof raw !== "string" || !raw.trim()) continue;
+      const time = typeof raw === "object" && raw !== null ? raw : null;
+      const text = time?.text ?? raw;
+      if (typeof text !== "string" || !text.trim()) continue;
       if (spans.length > 0) spans.push({ text: " · " });
-      const span = { text: rowText(raw) };
+      const span = { text: rowText(text) };
       for (const key of ["fg", "bold", "dim"]) {
         if (field[key] !== undefined) span[key] = field[key];
+      }
+      if (time) {
+        span.at = time.at;
+        span.kind = time.kind;
       }
       spans.push(span);
     }

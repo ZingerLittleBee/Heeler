@@ -80,7 +80,9 @@ export function parsePinnedPaneIds(value) {
 }
 
 /**
- * @param {{agents: object[], hostName: string, pinnedPaneIds?: unknown, workspaceLabels?: Map<string, string>}} input
+ * @param {{agents: object[], hostName: string, pinnedPaneIds?: unknown, workspaceLabels?: Map<string, string>,
+ *   sinceByPane?: Record<string, number|null>, asOfMs?: number}} input
+ *   `sinceByPane` (from trackSince) and `asOfMs` feed the `status_since` and `updated_at` row fields.
  * @returns {{counts: {working: number, blocked: number, done: number}, plaintextObject: object}}
  */
 export function buildActivityState({
@@ -92,6 +94,8 @@ export function buildActivityState({
   rowHostName,
   tabs = new Map(),
   panes = new Map(),
+  sinceByPane = {},
+  asOfMs,
 }) {
   const counts = { working: 0, blocked: 0, done: 0 };
   const eligible = [];
@@ -131,7 +135,9 @@ export function buildActivityState({
     wire.kind = optionalText(entry.agent.agent) ?? "unknown";
     if (name !== null) wire.name = name;
     wire.pane = entry.pane;
-    const rows = renderActivityRows(layout, entry.agent, { hostName: rowHostName ?? host, workspaceLabels, tabs, panes });
+    const rows = renderActivityRows(layout, entry.agent, {
+      hostName: rowHostName ?? host, workspaceLabels, tabs, panes, sinceMs: sinceByPane[entry.pane], asOfMs,
+    });
     if (rows !== null) wire.rows = rows;
     wire.status = entry.status;
     if (title !== null) wire.title = title;
@@ -148,6 +154,40 @@ export function buildActivityState({
       v: 1,
     },
   };
+}
+
+/**
+ * Hook-observed start of each eligible agent's current `(status,
+ * state_change_seq)`, keyed by herdr `terminal_id` (docs/agents/
+ * live-activity-contract.md, "Status since"). A start is kept while the pair
+ * is unchanged, is `nowMs` for a pair first observed now, and is null
+ * (unknown) when there is no comparable saved state: none saved, another herdr
+ * server (`epoch` differs or is unknown), or any saved seq above the current one.
+ *
+ * @param {{v?: number, epoch?: string, terminals?: object}|null} previous last-state.json
+ * @param {string|null} epoch identity of the herdr server's socket
+ * @returns {{terminals: object, sinceByPane: Record<string, number|null>}}
+ */
+export function trackSince(previous, agents, nowMs, epoch) {
+  const current = (Array.isArray(agents) ? agents : []).map(parseEligible).filter(Boolean).map((entry) => ({
+    ...entry,
+    terminal: optionalText(entry.agent.terminal_id),
+    seq: Number.isInteger(entry.agent.state_change_seq) ? entry.agent.state_change_seq : null,
+  }));
+  let saved = previous?.v === 2 && epoch !== null && previous.epoch === epoch ? previous.terminals ?? {} : null;
+  if (saved !== null && current.some(({ terminal, seq }) => Number.isInteger(saved[terminal]?.seq) && seq < saved[terminal].seq)) {
+    saved = null;
+  }
+  const terminals = {};
+  const sinceByPane = {};
+  for (const { pane, status, terminal, seq } of current) {
+    const prior = terminal === null ? undefined : saved?.[terminal];
+    const same = prior?.status === status && prior?.seq === seq;
+    const since = same ? (prior.since_ms ?? null) : saved !== null && terminal !== null ? nowMs : null;
+    sinceByPane[pane] = since;
+    if (terminal !== null) terminals[terminal] = { status, seq, since_ms: since };
+  }
+  return { terminals, sinceByPane };
 }
 
 function parseEligible(agent) {

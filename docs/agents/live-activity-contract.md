@@ -72,7 +72,7 @@ Decrypted plaintext (canonical form):
   device's resolved `live_activity.row_layout`. It contains at most three
   nonempty rows, each an array of plain-text spans:
   `[{"bold":true,"dim":false,"fg":"#AbC","text":"Heeler"},{"text":" · "},{"text":"reviewer"}]`.
-  Span keys are ordered `bold` < `dim` < `fg` < `text`; styles are optional,
+  Span keys are ordered `at` < `bold` < `dim` < `fg` < `kind` < `text`; styles are optional,
   `fg` accepts only `#RGB` or `#RRGGBB`, and text keeps the first 80 graphemes without adding an ellipsis.
   Separators are separate unstyled spans. Empty fields and rows are omitted;
   plugin text is never interpreted as Markdown. An absent or malformed layout
@@ -87,6 +87,12 @@ Decrypted plaintext (canonical form):
   trimmed `cwd` for directory; and `tokens` values for `$custom` fields.
   `state_icon` and `state_text` render no text because the status indicator
   owns that information. Missing context suppresses that field only.
+- `status_since` and `updated_at` are time fields. Each renders one span
+  carrying `at` (integer unix seconds), `kind` (the field name), and fallback
+  `text` in Host local time, `since 14:03` or `updated 16:12`, for readers that
+  do not format `at` themselves. `updated_at` is when the hook read the Agent
+  list. `status_since` is the start of the Agent's current status (see "Status
+  since"); an unknown start omits the field, like any missing context.
 - `host` is the Host machine's short hostname (first DNS label), ≤80
   graphemes.
 - Unknown fields in plaintext or envelope frame are ignored (additive v1
@@ -201,7 +207,8 @@ metadata; unknown sibling keys on `live_activity` must survive a rewrite.
 three rows, at most 16 fields per row, no per-kind overrides. It carries only
 each row's left side: the app keeps the rows' right sides and the right-only
 `status_badge` and `changes` fields out of it, because they never reach a Live
-Activity and installed plugins drop a layout with a field they do not know. Each field has
+Activity. A plugin skips a field token it does not know and renders the rest of
+the layout; a non-string token or a malformed style still drops the layout. Each field has
 `token` and optional `fg`, `bold`, and `dim`, matching the Console layout JSON.
 `row_gap` and `rows_by_agent` are accepted for structural compatibility but do
 not change activity rendering. The app writes this layout and optional
@@ -213,6 +220,20 @@ are unchanged. The hook reads tab/pane context only when configured fields
 need it, once per workspace rather than once per Agent. Foreground app updates
 use the same resolved layout; background delivery still follows status events.
 
+## Status since
+
+`status_since` is the time this hook first observed the Agent's current
+`(status, state_change_seq)` pair; it is hook-observed, not reported by herdr.
+State lives in `activity/last-state.json` with `v: 2`, keyed by herdr's
+`terminal_id` (never sent to the device), plus an `epoch` naming the herdr
+server (inode and change time of `HERDR_SOCKET_PATH`). The start is unknown
+when there is no comparable saved state: none saved, a different or unknown
+epoch, any saved `state_change_seq` above the current one, or an Agent without
+a `terminal_id`. A start stays unknown until its pair changes. The state is
+read again after the debounce claim is won and saved on every run that passes
+the claim, including runs that send nothing and failed sends, so a skipped or
+failed send never moves `status_since`.
+
 ## Shared vectors
 
 `plugin/test-vectors/live-activity-content-v1.json`, same schema style as
@@ -221,5 +242,6 @@ reproduced byte-for-byte by the seal side and opened by the open side;
 `invalid` vectors must fail with the given typed error. Includes the
 cross-AAD case proving domain separation. Pin-order cases also carry
 `inventory`, `pinned_pane_ids`, and `counts` so both suites pin the
-shared sort rule. Consumed by both the Node suite and HeelerTests;
+shared sort rule. The time-span vector is `decodeOnly` until the app's span
+type keeps `at` and `kind`. Consumed by both the Node suite and HeelerTests;
 regenerate only via an independent raw-crypto script.
