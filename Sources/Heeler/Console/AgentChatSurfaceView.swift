@@ -88,6 +88,7 @@ struct AgentChatSurfaceView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.sceneWindow) private var sceneWindow
@@ -640,9 +641,6 @@ struct AgentChatSurfaceView: View {
         let lines = ChatBannerLine.lines(
             hostStatus: console.hostStatuses[agent.hostID], conversation: chat?.conversation,
             hasPendingEchoes: !pendingEchoes.isEmpty, launchNotice: chat?.launchNotice)
-        let terminalOffered = lines.contains {
-            if case .unavailable(let reason, _) = $0 { !reason.isWaiting } else { false }
-        }
         return lines.map { line in
             var banner = Banner(
                 id: line.id, systemImage: line.systemImage, text: line.text, showsProgress: line.showsProgress)
@@ -657,10 +655,12 @@ struct AgentChatSurfaceView: View {
                     banner.actionTitle = AgentDetailSurface.terminal.showTitle
                     banner.action = { showAgentTerminal() }
                 }
-            case .launch:
-                if !terminalOffered {
-                    banner.actionTitle = AgentDetailSurface.terminal.showTitle
-                    banner.action = { showAgentTerminal() }
+            // The terminal shows nothing wrong, so the guide says what
+            // is happening and how to fix it.
+            case .launch(let notice):
+                if let guide = notice.guideURL {
+                    banner.actionTitle = "Read More"
+                    banner.action = { openURL(guide) }
                 }
             }
             return banner
