@@ -59,7 +59,9 @@ store metadata uses the selected build's snapshot, not newer notes on `main`.
 3. Require preceding reservations to be settled. A running workflow, missing
    checkpoint, uncertain upload, or unfinished record blocks another cut.
    A completed pre-upload failure or Apple rejection permits a new candidate,
-   provided it does not hide an older unresolved upload.
+   provided it does not hide an older unresolved upload. So does a tag whose
+   push run ended without its first job ever succeeding: that job saves the
+   checkpoint and every later job needs it, so the tag is void.
 4. Allocate one above the maximum committed counter and all well-formed remote
    build-tag numbers. Print the files, notes, tag, commit and atomic push plan.
 5. After confirmation, merge notes, update all target versions, regenerate the
@@ -132,7 +134,8 @@ stays frozen so reruns do not change the manifest identity.
 | Retained dSYM attachment is missing or changed after upload | Restore the original matching asset; do not rebuild or upload the binary again to replace its symbols. |
 | Apple rejects processing | Preserve the rejected checkpoint/tag; fix the cause and cut a new build. |
 | A newer tag is already reserved | An older run can observe an existing upload or repair records, but cannot start a new upload. |
-| No checkpoint, conflicting identity, or ambiguous side effect | Stop for operator reconciliation; do not recreate a checkpoint by guessing. |
+| The run ends before saving its checkpoint (its first job never succeeded) | The tag is void and the next cut skips it. A rerun cannot help, since it refuses to create a checkpoint; fix the cause and cut a new build. |
+| No checkpoint otherwise, conflicting identity, or ambiguous side effect | Stop for operator reconciliation; do not recreate a checkpoint by guessing. |
 
 Recovery deliberately uses `gh run rerun --failed`, not a new dispatch from
 `main`: the original run keeps the candidate's SHA and its completed full-test

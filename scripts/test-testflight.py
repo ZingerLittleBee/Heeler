@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -68,6 +69,7 @@ class TestFlightCommands(unittest.TestCase):
         self.executable("gh", '''#!/usr/bin/env python3
 import base64, hashlib, json, os, sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 state = json.loads(Path(os.environ['EXTERNAL_STATE']).read_text())
 args = sys.argv[1:]
 if args[:2] == ['auth', 'status']: sys.exit(0)
@@ -93,10 +95,15 @@ if '/releases/assets/' in path:
     sys.exit(0)
 if '/releases?' in path:
     print(json.dumps(list(state['releases'].values()))); sys.exit(0)
+if '/actions/runs/' in path and '/jobs?' in path:
+    jobs = state.get('jobs', {}).get(path.split('/actions/runs/', 1)[1].split('/', 1)[0], [])
+    print(json.dumps({'total_count': len(jobs), 'jobs': jobs})); sys.exit(0)
 if '/actions/runs/' in path:
     print(json.dumps(next(run for run in state['runs'] if str(run['id']) == path.rsplit('/', 1)[1]))); sys.exit(0)
 if '/actions/workflows/release.yml/runs' in path:
-    print(json.dumps({'workflow_runs': state['runs']})); sys.exit(0)
+    query = {key: values[0] for key, values in parse_qs(urlsplit(path).query).items() if key in ('event', 'head_sha')}
+    runs = [run for run in state['runs'] if all(str(run.get(key)) == value for key, value in query.items())]
+    print(json.dumps({'total_count': len(runs), 'workflow_runs': runs})); sys.exit(0)
 if '/releases' in path:
     payload = json.load(sys.stdin)
     payload['id'] = 1
@@ -462,6 +469,77 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
         code, output = self.ci("ci-plan", absent)
         self.assertNotEqual(code, 0)
         self.assertIn("newer candidate", output)
+
+    def test_a_tag_whose_run_ended_before_reserving_is_void_only_when_proven(self):
+        self.cli("cut", VERSION="0.2.0")
+        tag = "builds/0.2.0/38"
+        source = self.command("git", "rev-parse", "HEAD").stdout.strip()
+
+        def run(run_id, **fields):
+            return dict({"id": run_id, "head_sha": source, "head_branch": tag, "event": "push",
+                         "status": "completed", "conclusion": "failure"}, **fields)
+
+        def job(name, conclusion, attempt=1):
+            return {"name": name, "conclusion": conclusion, "run_attempt": attempt}
+
+        candidate = "Resolve the candidate"
+        later = [job("Test gate", "skipped"), job("Upload or observe the candidate", "skipped"),
+                 job("Record the processed TestFlight build", "skipped")]
+
+        def dry_run(runs, jobs):
+            state = json.loads(self.external.read_text())
+            state["runs"], state["jobs"] = runs, jobs
+            self.external.write_text(json.dumps(state))
+            return self.cli("cut", DRY_RUN="1", check=False)
+
+        for runs, jobs, problem in (
+            ([], {}, "no checkpoint or workflow yet"),
+            ([run(200, head_branch="main")], {}, "no checkpoint or workflow yet"),
+            ([run(200, status="in_progress", conclusion=None)], {}, "workflow still active"),
+            ([run(200), run(201)], {}, "several workflow runs"),
+            ([run(200)], {"200": [job(candidate, "failure"), job(candidate, "success", 2), *later]},
+             "candidate job succeeded"),
+            ([run(200)], {"200": [job(candidate, "failure"), job("Test gate / App tests (ordinary)", "success")]},
+             "later jobs ran"),
+        ):
+            with self.subTest(problem=problem, runs=len(runs)):
+                result = dry_run(runs, jobs)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f"{tag} is unresolved (", result.stderr)
+                self.assertIn(problem, result.stderr)
+
+        result = dry_run([run(200, conclusion="startup_failure")], {})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("TestFlight 0.2.0 (39)", result.stdout)
+
+        dry_run([run(200)], {"200": [job(candidate, "failure"), job(candidate, "failure", 2), *later]})
+        self.cli("cut")
+        tags = self.command("git", "ls-remote", "--tags", "origin").stdout
+        self.assertIn("refs/tags/builds/0.2.0/39", tags)
+        self.assertIn("refs/tags/" + tag, tags)
+        self.assertIn('CURRENT_PROJECT_VERSION: "39"', (self.repo / "project.yml").read_text())
+        env = dict(GITHUB_REF_NAME="builds/0.2.0/39", GITHUB_RUN_ID="300")
+        absent = Inventory(None, 37, False)
+        self.assertEqual(self.ci("ci-init", absent, **env)[0], 0)
+        code, output = self.ci("ci-plan", absent, **env)
+        self.assertEqual(code, 0, output)
+        self.assertIn("action=archive", output)
+
+    def test_every_later_release_job_needs_the_candidate_job(self):
+        spec = importlib.util.spec_from_file_location("testflight_jobs", SCRIPTS / "testflight.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        workflow = (SCRIPTS.parent / ".github/workflows/release.yml").read_text()
+        parts = re.split(r"(?m)^  ([a-z][a-z0-9_-]*):\n", workflow.split("\njobs:\n", 1)[1])[1:]
+        jobs = dict(zip(parts[0::2], parts[1::2]))
+        self.assertIn(f"    name: {module.CANDIDATE_JOB}\n", jobs.pop("meta"))
+        self.assertTrue(jobs)
+        for name, body in jobs.items():
+            with self.subTest(job=name):
+                needs = re.search(r"(?m)^    needs: (.+)$", body)
+                self.assertIsNotNone(needs)
+                self.assertIn("meta", needs[1])
 
     def test_counter_closed_version_and_unproven_existing_build_stop_before_upload(self):
         self.cli("cut", VERSION="0.2.0")
