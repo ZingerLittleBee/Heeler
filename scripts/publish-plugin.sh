@@ -13,10 +13,10 @@
 # the working tree: local edits cannot leak into it, and the checkout, its
 # index and its branch are left alone.
 #
-# Independent of the app release: `make publish` and release.yml never call
+# Independent of the app build: `make testflight` and release.yml never call
 # this script.
 #
-# Options arrive as environment variables, as in scripts/publish.sh.
+# Options arrive as environment variables, as in scripts/testflight.py.
 
 set -euo pipefail
 

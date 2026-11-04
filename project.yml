@@ -80,6 +80,9 @@ targets:
         # manifest already declares multiple-scene support.
         NSUserActivityTypes:
           - dev.bybee.heeler.agent
+        # Find on Local Network (LocalNetworkDiscovery) browses this type.
+        NSBonjourServices:
+          - _ssh._tcp
         # The Usage widgets' app refresh task (AgentUsageBackgroundRefresh).
         UIBackgroundModes:
           - fetch
@@ -129,7 +132,7 @@ targets:
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
         # In-app overlay nodes (ADR 0021) find peers on the same LAN for direct
         # paths; iOS asks before the first local-network packet.
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby."
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby, and to find machines that offer SSH."
         HEELER_SOURCE_REVISION: ""
         # Beside the vector icons and Agent marks, the catalogs hold the app
         # icon's pre-rendered 1024px images; space-optimized encoding stays
