@@ -27,7 +27,7 @@ Entries reference the pull request that made the change.
 - On iPhone Duo, Heeler fills the inner display again, with the wide layout,
   instead of sitting in a phone-sized window in the middle of it. (#626)
 
-## [0.1.17] - 2026-11-04
+## [0.1.17]
 
 ### Added
 
