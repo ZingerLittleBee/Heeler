@@ -136,7 +136,7 @@ struct HostOnboardingView: View {
         isShowingHostHelper = false
     }
 
-    private var page: some View {
+    private var listPage: some View {
         List {
             connectionSection
 
@@ -234,6 +234,12 @@ struct HostOnboardingView: View {
         } message: {
             Text(sessionSelectionError ?? "")
         }
+    }
+
+    /// The page and what follows its checks, in a chain of their own: joined to
+    /// `listPage`'s, the chain exceeded Xcode 26.6's type-checking limit.
+    private var page: some View {
+        listPage
         // A new store, after `adopt`, cancels the old one's checks.
         .task(id: ObjectIdentifier(store)) {
             if store.phase == .idle {
