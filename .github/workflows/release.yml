@@ -63,13 +63,20 @@ jobs:
       ${{ !cancelled() && needs.meta.result == 'success' &&
       (needs.test.result == 'success' ||
       (needs.meta.outputs.mode == 'rehearsal' && needs.test.result == 'skipped')) }}
-    runs-on: macos-26
+    # iPhone Duo fills its inner display only for apps built with the iOS
+    # 27.1 SDK or later; an iOS 26 SDK build sits centered with empty space
+    # around it (#625, developer.apple.com/iphone-duo/prepare). The Duo
+    # controls also sit behind `#if compiler(>=6.4)`. `Xcode_27.2.app` is the
+    # image's alias for its 27.2 install, release candidate or final. The
+    # test gate stays on Xcode 26.6.
+    runs-on: xcode-27
     timeout-minutes: 90
     environment: release
     permissions:
       contents: write
       actions: read
     env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       MODE: ${{ needs.meta.outputs.mode }}
       VERSION: ${{ needs.meta.outputs.version }}
       BUILD: ${{ needs.meta.outputs.build }}
