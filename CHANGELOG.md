@@ -11,7 +11,7 @@ Entries reference the pull request that made the change.
 
 - The banner warning that a Codex conversation may be another terminal's
   now offers **Read More**, which opens the guide on what is happening and
-  how to fix it, instead of Show Agent Terminal.
+  how to fix it, instead of Show Agent Terminal. (#627)
 
 ## [0.1.17]
 
