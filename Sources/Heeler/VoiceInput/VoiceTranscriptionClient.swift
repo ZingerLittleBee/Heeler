@@ -9,7 +9,7 @@ struct VoiceTranscriptionRequest: Sendable {
     let primaryLanguage: String
     /// Names and terms to spell, already split and cleaned.
     let keywords: [String]
-    /// What recordings are about, trimmed; empty when unset.
+    /// The Prompt as the user saved it, sent as written; empty when unset.
     let prompt: String
 }
 
@@ -169,26 +169,14 @@ struct VoiceTranscriptionClient: Sendable {
         }
         if request.endpoint.takesKeywords {
             fields += request.keywords.map { ("keywords[]", $0) }
-            if !request.prompt.isEmpty {
-                fields.append(("prompt", request.prompt))
-            }
-        } else if let prompt = prompt(request.prompt, folding: request.keywords) {
-            fields.append(("prompt", prompt))
+        }
+        if !request.prompt.isEmpty {
+            fields.append(("prompt", request.prompt))
         }
         if request.endpoint.sendsResponseFormat {
             fields.append(("response_format", "json"))
         }
         return fields
-    }
-
-    /// The prompt for a service without `keywords`: the user's prompt, then
-    /// the terms on a `Vocabulary:` line, the form Qwen3-ASR's model card
-    /// gives and a glossary Whisper-style servers read as prior text.
-    static func prompt(_ prompt: String, folding keywords: [String]) -> String? {
-        var lines: [String] = []
-        if !prompt.isEmpty { lines.append(prompt) }
-        if !keywords.isEmpty { lines.append("Vocabulary: " + keywords.joined(separator: ", ")) }
-        return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
     static func multipartBody(

@@ -56,7 +56,7 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
 
     /// Only `gpt-transcribe` reads `keywords`; it spelled listed terms from
     /// them but barely from `prompt` in testing.
-    fileprivate var takesKeywords: Bool {
+    var takesKeywords: Bool {
         self == .openAI
     }
 }
@@ -82,7 +82,7 @@ struct VoiceInputEndpoint: Equatable, Sendable {
     let baseURL: URL
     let model: String
     let languageField: VoiceInputLanguageField
-    /// Whether Keywords go in `keywords[]`; elsewhere they join the prompt.
+    /// Whether Keywords go in `keywords[]`; elsewhere the Prompt carries them.
     let takesKeywords: Bool
     /// Custom servers get an explicit `response_format=json`; some require it.
     let sendsResponseFormat: Bool

@@ -105,9 +105,9 @@ struct VoiceTranscriptionClientTests {
         #expect(fieldNames(try #require(VoiceInputEndpoint.preset(.siliconFlowCN))) == ["model=Qwen/Qwen3-ASR-1.7B"])
     }
 
-    @Test func keywordsStaySeparateOnlyWhereTheServiceReadsThem() throws {
+    @Test func keywordsGoOnlyWhereTheServiceReadsThemAndThePromptAsWritten() throws {
         let terms = ["herdr", "Heeler"]
-        let about = "Instructions to a coding agent"
+        let about = "Instructions to a coding agent\nVocabulary: herdr"
         let openAI = try #require(VoiceInputEndpoint.preset(.openAI))
         #expect(
             fieldNames(openAI, keywords: terms, prompt: about)
@@ -115,23 +115,18 @@ struct VoiceTranscriptionClientTests {
                     "model=gpt-transcribe", "languages[]=zh", "languages[]=en",
                     "keywords[]=herdr", "keywords[]=Heeler", "prompt=\(about)",
                 ])
-        let folded = "prompt=\(about)\nVocabulary: herdr, Heeler"
         #expect(
             fieldNames(try #require(VoiceInputEndpoint.preset(.deepInfra)), keywords: terms, prompt: about)
-                == ["model=Qwen/Qwen3-ASR-1.7B", "language=zh", folded])
+                == ["model=Qwen/Qwen3-ASR-1.7B", "language=zh", "prompt=\(about)"])
         #expect(
             fieldNames(try #require(VoiceInputEndpoint.preset(.siliconFlowCN)), keywords: terms, prompt: about)
-                == ["model=Qwen/Qwen3-ASR-1.7B", folded])
+                == ["model=Qwen/Qwen3-ASR-1.7B", "prompt=\(about)"])
         let base = try #require(try? VoiceInputCustomURL.normalize("https://asr.example.com/v1").get())
         let custom = VoiceInputEndpoint.custom(baseURL: base, model: "whisper-1", sendsLanguage: false)
         #expect(
             fieldNames(custom, keywords: terms, prompt: about)
-                == ["model=whisper-1", folded, "response_format=json"])
-        #expect(
-            fieldNames(custom, keywords: terms)
-                == ["model=whisper-1", "prompt=Vocabulary: herdr, Heeler", "response_format=json"])
-        #expect(
-            fieldNames(custom, prompt: about) == ["model=whisper-1", "prompt=\(about)", "response_format=json"])
+                == ["model=whisper-1", "prompt=\(about)", "response_format=json"])
+        #expect(fieldNames(custom, keywords: terms) == ["model=whisper-1", "response_format=json"])
     }
 
     @Test func customAsksForJSONAndSendsLanguageOnlyWhenOn() throws {

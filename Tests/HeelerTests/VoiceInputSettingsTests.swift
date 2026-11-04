@@ -119,6 +119,22 @@ struct VoiceInputSettingsTests {
         #expect(VoiceInputSettings.keywords(in: " ,\n ").isEmpty)
     }
 
+    @Test func onlyServicesThatDoNotReadKeywordsKeepThemInThePrompt() {
+        let about = "Instructions to a coding agent"
+        let terms = ["herdr", "Heeler"]
+        let stale = "\(about)\nVocabulary: herdr"
+        #expect(VoiceInputService.preset(.openAI).prompt(stale, keywords: terms) == stale)
+        for service in [VoiceInputService.preset(.deepInfra), .preset(.siliconFlowCN), .custom] {
+            #expect(service.prompt("", keywords: terms) == "Vocabulary: herdr, Heeler")
+            #expect(service.prompt("\(about)\n\n", keywords: terms) == "\(about)\nVocabulary: herdr, Heeler")
+            #expect(
+                service.prompt("Vocabulary: git\n\(about)\n  Vocabulary: pnpm", keywords: terms)
+                    == "Vocabulary: herdr, Heeler\n\(about)")
+            #expect(service.prompt(stale, keywords: []) == about)
+            #expect(service.prompt(about, keywords: []) == about)
+        }
+    }
+
     @Test func keywordsAndThePromptOutliveServiceChanges() throws {
         try withDefaults { defaults in
             let secrets = InMemorySecretStore()

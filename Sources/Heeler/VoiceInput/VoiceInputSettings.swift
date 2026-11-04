@@ -26,6 +26,40 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
         }
     }
 
+    /// Whether the service reads Keywords on their own. The others hear
+    /// them only through the Prompt.
+    var takesKeywords: Bool {
+        switch self {
+        case .preset(let preset): preset.takesKeywords
+        case .custom: false
+        }
+    }
+
+    /// `prompt` as it should read with `keywords`. Where the service reads
+    /// Keywords itself it is unchanged; elsewhere its `Vocabulary:` line,
+    /// the form Qwen3-ASR's model card gives, is rewritten in place, added
+    /// at the end, or removed when there are no terms.
+    func prompt(_ prompt: String, keywords: [String]) -> String {
+        guard !takesKeywords else { return prompt }
+        let isVocabulary = { (line: String) in
+            line.trimmingCharacters(in: .whitespaces).hasPrefix(Self.vocabularyLabel)
+        }
+        var lines = prompt.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+            .map(String.init)
+        let place = lines.firstIndex(where: isVocabulary)
+        lines.removeAll(where: isVocabulary)
+        while lines.last?.trimmingCharacters(in: .whitespaces).isEmpty == true {
+            lines.removeLast()
+        }
+        if !keywords.isEmpty {
+            let line = Self.vocabularyLabel + " " + keywords.joined(separator: ", ")
+            lines.insert(line, at: min(place ?? lines.count, lines.count))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static let vocabularyLabel = "Vocabulary:"
+
     init?(storageValue: String) {
         if storageValue == "custom" {
             self = .custom

@@ -4,7 +4,9 @@ import SwiftUI
 /// setup. The service, its key, the Keywords, and the Prompt change only on
 /// Save, which asks once per destination before recordings may go to it
 /// (ADR 0036); the microphone choice applies at once. Keywords and the Prompt
-/// stay the same whichever service is chosen.
+/// stay the same whichever service is chosen, except that a service which
+/// doesn't read Keywords keeps them on the Prompt's Vocabulary line, updated
+/// as Keywords change or the service becomes one of those.
 struct VoiceInputSettingsView: View {
     let settings: VoiceInputSettings
     /// The mic's sheet has Cancel; pushed from Settings, Back does it.
@@ -59,6 +61,8 @@ struct VoiceInputSettingsView: View {
                 }
             }
         }
+        .onChange(of: keywords) { syncVocabulary() }
+        .onChange(of: service) { syncVocabulary() }
         .navigationTitle("Voice Input")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -156,8 +160,19 @@ struct VoiceInputSettingsView: View {
         } header: {
             Text("Prompt")
         } footer: {
-            Text("What you talk about. Services that don't read Keywords get them here too.")
+            if service?.takesKeywords == false {
+                Text(
+                    "What you talk about, sent as written. This service doesn't read Keywords, "
+                        + "so they're added here.")
+            } else {
+                Text("What you talk about, sent as written.")
+            }
         }
+    }
+
+    private func syncVocabulary() {
+        guard let service else { return }
+        prompt = service.prompt(prompt, keywords: VoiceInputSettings.keywords(in: keywords))
     }
 
     /// Only AirPods with high-quality recording, from iOS 26, are ever
