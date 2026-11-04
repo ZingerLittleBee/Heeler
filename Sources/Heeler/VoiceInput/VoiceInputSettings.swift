@@ -26,6 +26,14 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
         }
     }
 
+    /// Whether recordings to this service carry the user's Keywords.
+    var takesKeywords: Bool {
+        switch self {
+        case .preset(let preset): preset.keywordsField != .none
+        case .custom: true
+        }
+    }
+
     init?(storageValue: String) {
         if storageValue == "custom" {
             self = .custom
@@ -82,6 +90,7 @@ final class VoiceInputSettings {
         static let customLanguage = "voice-input-custom-language"
         static let consents = "voice-input-consents"
         static let builtInMicrophone = "voice-input-built-in-microphone"
+        static let keywords = "voice-input-keywords"
     }
 
     /// Nil while Voice Input is off.
@@ -94,6 +103,9 @@ final class VoiceInputSettings {
     /// record in full bandwidth are connected. Off by default, and applied
     /// at once rather than on Save.
     private(set) var alwaysUsesBuiltInMicrophone: Bool
+    /// Names and terms the user says, sent with each recording so the
+    /// service spells them. One list for every service.
+    private(set) var keywords: [String]
 
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
     @ObservationIgnored private let secrets: any SecretStore
@@ -111,6 +123,7 @@ final class VoiceInputSettings {
             sendsLanguage: defaults.bool(forKey: Key.customLanguage))
         consents = Set(defaults.stringArray(forKey: Key.consents) ?? [])
         alwaysUsesBuiltInMicrophone = defaults.bool(forKey: Key.builtInMicrophone)
+        keywords = defaults.stringArray(forKey: Key.keywords) ?? []
     }
 
     /// The saved destination; nil while Voice Input is off.
@@ -220,6 +233,25 @@ final class VoiceInputSettings {
     func setAlwaysUsesBuiltInMicrophone(_ isOn: Bool) {
         alwaysUsesBuiltInMicrophone = isOn
         defaults.set(isOn, forKey: Key.builtInMicrophone)
+    }
+
+    /// Keeps the terms in `text`, as the Keywords field holds them.
+    func setKeywords(from text: String) {
+        keywords = Self.keywords(in: text)
+        defaults.set(keywords, forKey: Key.keywords)
+    }
+
+    /// Terms split at commas, semicolons, and line breaks, in either width.
+    /// `<` and `>` are dropped: OpenAI refuses a whole request over them.
+    static func keywords(in text: String) -> [String] {
+        let separators = CharacterSet(charactersIn: ",;\u{3001}\u{FF0C}\u{FF1B}").union(.newlines)
+        var seen = Set<String>()
+        return text.components(separatedBy: separators).compactMap { part in
+            let term = part.filter { $0 != "<" && $0 != ">" }
+                .trimmingCharacters(in: .whitespaces)
+            guard !term.isEmpty, seen.insert(term).inserted else { return nil }
+            return term
+        }
     }
 
     /// Voice Input off. Keys stay until removed.

@@ -53,6 +53,17 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
         case .siliconFlowCN: .none
         }
     }
+
+    /// `gpt-transcribe` spells listed terms from `keywords`; its `prompt`
+    /// barely moved them in testing. DeepInfra documents only `prompt`, and
+    /// SiliconFlow neither.
+    var keywordsField: VoiceInputKeywordsField {
+        switch self {
+        case .openAI: .keywords
+        case .deepInfra: .prompt
+        case .siliconFlowCN: .none
+        }
+    }
 }
 
 /// How a service hears which languages to expect.
@@ -62,6 +73,16 @@ enum VoiceInputLanguageField: Equatable, Sendable {
     case primary
     /// `languages[]`: the primary language, then English.
     case candidates
+}
+
+/// How a service hears the user's Keywords.
+enum VoiceInputKeywordsField: Equatable, Sendable {
+    case none
+    /// `keywords[]`: one field per term.
+    case keywords
+    /// `prompt`: the terms in one comma-separated line, as Whisper-style
+    /// servers take a glossary.
+    case prompt
 }
 
 /// Where one recording goes and how the request is shaped.
@@ -76,6 +97,7 @@ struct VoiceInputEndpoint: Equatable, Sendable {
     let baseURL: URL
     let model: String
     let languageField: VoiceInputLanguageField
+    let keywordsField: VoiceInputKeywordsField
     /// Custom servers get an explicit `response_format=json`; some require it.
     let sendsResponseFormat: Bool
 
@@ -85,13 +107,15 @@ struct VoiceInputEndpoint: Equatable, Sendable {
         }
         return VoiceInputEndpoint(
             source: .preset(preset), baseURL: url, model: preset.model,
-            languageField: preset.languageField, sendsResponseFormat: false)
+            languageField: preset.languageField, keywordsField: preset.keywordsField,
+            sendsResponseFormat: false)
     }
 
     static func custom(baseURL: URL, model: String, sendsLanguage: Bool) -> VoiceInputEndpoint {
         VoiceInputEndpoint(
             source: .custom, baseURL: baseURL, model: model,
-            languageField: sendsLanguage ? .primary : .none, sendsResponseFormat: true)
+            languageField: sendsLanguage ? .primary : .none, keywordsField: .prompt,
+            sendsResponseFormat: true)
     }
 
     var transcriptionURL: URL {

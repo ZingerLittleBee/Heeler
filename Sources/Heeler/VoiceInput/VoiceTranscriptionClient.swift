@@ -7,6 +7,8 @@ struct VoiceTranscriptionRequest: Sendable {
     /// 16 kHz mono 16-bit WAV.
     let audio: Data
     let primaryLanguage: String
+    /// Names and terms to spell, already split and cleaned.
+    let keywords: [String]
 }
 
 /// Why a transcription produced no text, in words the Composer can show.
@@ -161,6 +163,16 @@ struct VoiceTranscriptionClient: Sendable {
         case .candidates:
             for language in VoiceInputLanguage.candidates(primary: request.primaryLanguage) {
                 fields.append(("languages[]", language))
+            }
+        }
+        switch request.endpoint.keywordsField {
+        case .none:
+            break
+        case .keywords:
+            fields += request.keywords.map { ("keywords[]", $0) }
+        case .prompt:
+            if !request.keywords.isEmpty {
+                fields.append(("prompt", request.keywords.joined(separator: ", ")))
             }
         }
         if request.endpoint.sendsResponseFormat {

@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Settings › Voice Input, and the sheet the Composer's mic opens before
-/// setup. The service and its key change only on Save, which asks once per
-/// destination before recordings may go to it (ADR 0036); the microphone
-/// choice applies at once.
+/// setup. The service, its key, and the Keywords change only on Save, which
+/// asks once per destination before recordings may go to it (ADR 0036); the
+/// microphone choice applies at once.
 struct VoiceInputSettingsView: View {
     let settings: VoiceInputSettings
     /// The mic's sheet has Cancel; pushed from Settings, Back does it.
@@ -11,6 +11,7 @@ struct VoiceInputSettingsView: View {
     @State private var service: VoiceInputService?
     @State private var custom: VoiceInputCustomService
     @State private var apiKey = ""
+    @State private var keywords: String
     @State private var consentRequest: VoiceInputEndpoint?
     @State private var saveError: String?
     @Environment(\.dismiss) private var dismiss
@@ -20,6 +21,7 @@ struct VoiceInputSettingsView: View {
         self.isSheet = isSheet
         _service = State(initialValue: settings.service)
         _custom = State(initialValue: settings.custom)
+        _keywords = State(initialValue: settings.keywords.joined(separator: ", "))
     }
 
     var body: some View {
@@ -45,6 +47,9 @@ struct VoiceInputSettingsView: View {
                 keySection
             case nil:
                 EmptyView()
+            }
+            if service?.takesKeywords == true {
+                keywordsSection
             }
             if service != nil, #available(iOS 26.0, *) {
                 microphoneSection
@@ -123,6 +128,19 @@ struct VoiceInputSettingsView: View {
         }
     }
 
+    private var keywordsSection: some View {
+        Section {
+            TextField("Keywords", text: $keywords, prompt: Text("Optional"), axis: .vertical)
+                .lineLimit(2...6)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+        } header: {
+            Text("Keywords")
+        } footer: {
+            Text("Names and terms you say, separated by commas, so the service spells them right.")
+        }
+    }
+
     /// Only AirPods with high-quality recording, from iOS 26, are ever
     /// chosen over this device's microphone, so earlier systems have no
     /// choice to make.
@@ -193,6 +211,7 @@ struct VoiceInputSettingsView: View {
         guard let service else { return }
         do {
             try settings.save(service: service, custom: custom, apiKey: apiKey, consented: consented)
+            settings.setKeywords(from: keywords)
             apiKey = ""
             dismiss()
         } catch {

@@ -9,15 +9,16 @@ Entries reference the pull request that made the change.
 
 ### Added
 
-- Speak to the Composer: tap the mic beside Send to record, tap again, and
-  the text lands at the caret for you to review and send. While it listens, a
-  bar shows your voice level and the time, with Cancel to drop the recording,
-  and Send hides so a stray tap cannot send. AirPods record only when they
-  support high-quality recording, otherwise the iPhone does, and Settings can
-  keep it on the iPhone. Voice Input uses
-  your own API key with OpenAI, DeepInfra, SiliconFlow, or any service that
-  takes OpenAI's audio/transcriptions request, set up in Settings › Voice
-  Input. Recordings go only to the service you agree to. (#620)
+- Speak to the Composer: tap the mic beside Send to record, tap again, and the
+  text lands at the caret for you to review and send. While it listens, a bar
+  shows your voice level and the time, with Cancel to drop the recording, and
+  Send hides so a stray tap cannot send. AirPods record only when they support
+  high-quality recording, otherwise the iPhone does, and Settings can keep it
+  on the iPhone. Keywords in Settings help the service spell the names and
+  terms you say. Voice Input uses your own API key with OpenAI, DeepInfra,
+  SiliconFlow, or any service that takes OpenAI's audio/transcriptions
+  request, set up in Settings › Voice Input. Recordings go only to the service
+  you agree to. (#620)
 
 ## [0.1.17] - 2026-11-04
 

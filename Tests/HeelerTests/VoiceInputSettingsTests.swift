@@ -112,6 +112,23 @@ struct VoiceInputSettingsTests {
         }
     }
 
+    @Test func keywordsSplitAtSeparatorsAndLoseWhatOpenAIRefuses() {
+        #expect(
+            VoiceInputSettings.keywords(in: " herdr, Heeler，SwiftUI\n<PR>;git\r\n\nherdr、worktree ")
+                == ["herdr", "Heeler", "SwiftUI", "PR", "git", "worktree"])
+        #expect(VoiceInputSettings.keywords(in: " ,\n ").isEmpty)
+    }
+
+    @Test func savedKeywordsAreKept() throws {
+        try withDefaults { defaults in
+            let secrets = InMemorySecretStore()
+            let settings = VoiceInputSettings(defaults: defaults, secrets: secrets)
+            #expect(settings.keywords.isEmpty)
+            settings.setKeywords(from: "herdr, Heeler")
+            #expect(VoiceInputSettings(defaults: defaults, secrets: secrets).keywords == ["herdr", "Heeler"])
+        }
+    }
+
     @Test func theDeviceMicrophoneChoiceStartsOffAndOutlivesTheService() throws {
         try withDefaults { defaults in
             let secrets = InMemorySecretStore()

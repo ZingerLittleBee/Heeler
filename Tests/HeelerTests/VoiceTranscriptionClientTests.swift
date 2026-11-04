@@ -79,12 +79,17 @@ struct VoiceInputEndpointTests {
 struct VoiceTranscriptionClientTests {
     private let audio = Data("RIFF-audio".utf8)
 
-    private func request(_ endpoint: VoiceInputEndpoint, language: String = "zh") -> VoiceTranscriptionRequest {
-        VoiceTranscriptionRequest(endpoint: endpoint, apiKey: "sk-test", audio: audio, primaryLanguage: language)
+    private func request(
+        _ endpoint: VoiceInputEndpoint, language: String = "zh", keywords: [String] = []
+    ) -> VoiceTranscriptionRequest {
+        VoiceTranscriptionRequest(
+            endpoint: endpoint, apiKey: "sk-test", audio: audio, primaryLanguage: language,
+            keywords: keywords)
     }
 
-    private func fieldNames(_ endpoint: VoiceInputEndpoint) -> [String] {
-        VoiceTranscriptionClient.fields(for: request(endpoint)).map { "\($0.name)=\($0.value)" }
+    private func fieldNames(_ endpoint: VoiceInputEndpoint, keywords: [String] = []) -> [String] {
+        VoiceTranscriptionClient.fields(for: request(endpoint, keywords: keywords))
+            .map { "\($0.name)=\($0.value)" }
     }
 
     @Test func eachPresetNamesItsLanguagesTheWayItsServiceAccepts() throws {
@@ -95,6 +100,26 @@ struct VoiceTranscriptionClientTests {
         #expect(
             fieldNames(try #require(VoiceInputEndpoint.preset(.deepInfra))) == ["model=Qwen/Qwen3-ASR-1.7B", "language=zh"])
         #expect(fieldNames(try #require(VoiceInputEndpoint.preset(.siliconFlowCN))) == ["model=Qwen/Qwen3-ASR-1.7B"])
+    }
+
+    @Test func keywordsGoInTheFieldEachServiceReads() throws {
+        let terms = ["herdr", "Heeler"]
+        #expect(
+            fieldNames(try #require(VoiceInputEndpoint.preset(.openAI)), keywords: terms)
+                == [
+                    "model=gpt-transcribe", "languages[]=zh", "languages[]=en",
+                    "keywords[]=herdr", "keywords[]=Heeler",
+                ])
+        #expect(
+            fieldNames(try #require(VoiceInputEndpoint.preset(.deepInfra)), keywords: terms)
+                == ["model=Qwen/Qwen3-ASR-1.7B", "language=zh", "prompt=herdr, Heeler"])
+        #expect(
+            fieldNames(try #require(VoiceInputEndpoint.preset(.siliconFlowCN)), keywords: terms)
+                == ["model=Qwen/Qwen3-ASR-1.7B"])
+        let base = try #require(try? VoiceInputCustomURL.normalize("https://asr.example.com/v1").get())
+        #expect(
+            fieldNames(.custom(baseURL: base, model: "whisper-1", sendsLanguage: false), keywords: terms)
+                == ["model=whisper-1", "prompt=herdr, Heeler", "response_format=json"])
     }
 
     @Test func customAsksForJSONAndSendsLanguageOnlyWhenOn() throws {
