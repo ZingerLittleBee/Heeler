@@ -4,7 +4,7 @@
 #
 # Prints nothing, with a note on stderr, when that commit would not be the
 # build's source or could not be found:
-# - the tree has uncommitted changes other than `make bump`'s build number;
+# - the tree has uncommitted changes other than a local build-number override;
 # - no remote-tracking branch contains HEAD (push it first; the app links to
 #   the commit on GitHub).
 set -eu

@@ -19,6 +19,13 @@ Entries reference the pull request that made the change.
   DeepInfra, SiliconFlow, or any service that takes OpenAI's
   audio/transcriptions request, set up in Settings › Voice Input. Recordings
   go only to the service you agree to. (#620)
+- Find SSH machines on the local network with Bonjour when adding a Route;
+  Heeler saves the machine's IP address. (#624)
+
+### Fixed
+
+- On iPhone Duo, Heeler fills the inner display again, with the wide layout,
+  instead of sitting in a phone-sized window in the middle of it. (#626)
 
 ## [0.1.17] - 2026-11-04
 
