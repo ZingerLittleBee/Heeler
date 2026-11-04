@@ -226,10 +226,10 @@ class SocketTests(LocatorTestCase):
     def test_the_session_names_its_paths(self) -> None:
         for shell in shells():
             with self.subTest(shell=shell):
-                self.assertTrue(
-                    self.locate(shell, session="a'b c")["socket"].endswith("/herdr-core/a'b c/a'b c.sock"))
-                self.assertTrue(
-                    self.locate(shell, session="  ")["socket"].endswith("/herdr-core/default/default.sock"))
+                self.assertEqual(
+                    self.locate(shell, session="a'b c")["socket"], str(self.default_socket("a'b c")))
+                self.assertEqual(
+                    self.locate(shell, session="  ")["socket"], str(self.default_socket("default")))
 
     def test_a_runtime_directory_decides_the_default_path(self) -> None:
         runtime = self.root / "r"
