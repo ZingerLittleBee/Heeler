@@ -67,6 +67,11 @@
         @State private var activity: AppActivityCoordinator
         @State private var hostRemoval: HostRemovalDependencies
         @State private var diffLayout = DiffLayoutSettings(defaults: DemoScreenshotFixture.makeDefaults(), offersSideBySide: UIDevice.current.userInterfaceIdiom == .pad)
+        /// Off, with process-local settings: the mic shows as in the app, and
+        /// nothing reaches the Keychain or a speech service.
+        @State private var voiceInput = VoiceInputSession(
+            settings: VoiceInputSettings(
+                defaults: DemoScreenshotFixture.makeDefaults(), secrets: VolatileSecretStore()))
 
         init() {
             let composition = DemoScreenshotComposition.make()
@@ -115,6 +120,7 @@
             .environment(\.diffLayoutSettings, diffLayout)
             .environment(\.hostOnboardingDependencies, DemoScreenshotFixture.onboardingDependencies)
             .environment(\.hostRemovalDependencies, hostRemoval)
+            .environment(voiceInput)
             .task {
                 console.setHosts(hosts.hosts)
                 notificationPreferences.setHosts(hosts.hosts)

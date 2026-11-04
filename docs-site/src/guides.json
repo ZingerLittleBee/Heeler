@@ -45,6 +45,13 @@
     },
     {
       "title": {
+        "en": "Voice Input",
+        "zh": "Voice Input"
+      },
+      "guides": ["voice-input"]
+    },
+    {
+      "title": {
         "en": "Usage",
         "zh": "Usage"
       },
@@ -67,6 +74,7 @@
       "selinux": "Fedora/RHEL SELinux",
       "chat": "Chat with an Agent",
       "chat-troubleshooting": "Troubleshooting",
+      "voice-input": "Use Voice Input",
       "usage": "Usage and widgets"
     },
     "zh": {
@@ -84,6 +92,7 @@
       "selinux": "SELinux（Fedora/RHEL）",
       "chat": "在 Chat 中使用 Agent",
       "chat-troubleshooting": "疑难排解",
+      "voice-input": "使用 Voice Input",
       "usage": "Usage 与小组件"
     }
   },
@@ -102,6 +111,7 @@
     "selinux": "ShieldAlert",
     "chat": "MessagesSquare",
     "chat-troubleshooting": "MessageSquareWarning",
+    "voice-input": "Mic",
     "usage": "Gauge"
   }
 }

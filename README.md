@@ -62,7 +62,9 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
   ([Read more](https://docs.heeler.bybee.dev/chat)).
 - **Composer** — draft locally with the full iOS keyboard (autocorrect, IME,
   dictation), then Send once; the tools keyboard adds Agent control keys,
-  Agent Skills, reusable Snippets, and terminal appearance.
+  Agent Skills, reusable Snippets, and terminal appearance. Voice Input lets
+  you speak to the Composer with your own speech service API key
+  ([Read more](https://docs.heeler.bybee.dev/voice-input)).
 - **Terminal** — open a plain shell in the Agent's directory, with Text and
   Keys modes and one reused tab per Workspace.
 - **Attachments** — stage a photo or a file up to 64 MiB onto the Host over

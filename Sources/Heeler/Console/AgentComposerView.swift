@@ -292,6 +292,10 @@ struct AgentComposerView: View {
     /// What Stop presses in the Agent's program, its wait and its hint; nil
     /// keeps Send.
     var interrupt: AgentComposerInterrupt? = nil
+    /// The app's microphone owner; absent in previews and tests, which
+    /// leaves the mic out.
+    @Environment(VoiceInputSession.self) private var voiceInput: VoiceInputSession?
+    @State private var isVoiceSetupPresented = false
     @State private var isInputFocused = false
     /// An explicit dismissal hides suggestions for the current trigger token;
     /// removing the token arms them again.
@@ -360,6 +364,13 @@ struct AgentComposerView: View {
             isFocused: isInputFocused,
             hasDraft: { store.canSend },
             send: { await deliverDraft { await store.send(policy: sendPolicy) } }))
+        .sheet(isPresented: $isVoiceSetupPresented) {
+            if let voiceInput {
+                NavigationStack {
+                    VoiceInputSettingsView(settings: voiceInput.settings, isSheet: true)
+                }
+            }
+        }
         .onAppear {
             guard inheritsKeyboardHandoff,
                   let selectedID = switcher.selectedID,
@@ -445,6 +456,13 @@ struct AgentComposerView: View {
             if let failure = latestFailure {
                 failureRow(failure)
             }
+            if let voiceInput, let failure = store.voice.failure {
+                ComposerVoiceFailureRow(
+                    failure: failure,
+                    retry: { voiceInput.retry(store.voice) },
+                    openVoiceInputSettings: { isVoiceSetupPresented = true },
+                    dismiss: { store.voice.dismissFailure() })
+            }
             if let notice = store.notice, notice.route == sendPolicy.route, failureIsHidden {
                 noticeRow(notice)
             }
@@ -488,6 +506,7 @@ struct AgentComposerView: View {
         HStack(spacing: 8) {
             if isCollapsed {
                 addMenu
+                    .modifier(ComposerVoiceCover(isCovered: coversEditorRow))
             }
             ZStack(alignment: .topLeading) {
                 AgentComposerTextEditor(
@@ -502,6 +521,7 @@ struct AgentComposerView: View {
                     onFirstResponderRequest: onFirstResponderRequest,
                     onKeyboardHandoffSettled: onKeyboardHandoffSettled,
                     onHardwareReturn: sendDraft,
+                    onComposingChange: { store.setEditorComposing($0) },
                     onPasteImage: actions.canBegin ? actions.pasteImage : nil)
                 if store.draft.isEmpty {
                     Text("Message Agent")
@@ -513,10 +533,27 @@ struct AgentComposerView: View {
             }
             .frame(minHeight: 36, alignment: .topLeading)
             .accessibilityElement(children: .contain)
+            .modifier(ComposerVoiceCover(isCovered: coversEditorRow))
             if isCollapsed {
+                voiceButton
                 primaryButton
+                    .modifier(ComposerVoiceCover(isCovered: isVoiceBarShown))
             }
         }
+        .overlay(alignment: .leading) {
+            if coversEditorRow {
+                HStack(spacing: 8) {
+                    voiceBar
+                    // The mic and Send keep their 44-point places after it.
+                    Color.clear.frame(width: 44 + 8 + 44, height: 1)
+                }
+            }
+        }
+    }
+
+    /// While folded, the recording bar takes Add's and the draft's place.
+    private var coversEditorRow: Bool {
+        isCollapsed && isVoiceBarShown
     }
 
     private func failureRow(
@@ -571,6 +608,21 @@ struct AgentComposerView: View {
 
     private var actionRow: some View {
         HStack(spacing: 8) {
+            leadingActions
+                .modifier(ComposerVoiceCover(isCovered: isVoiceBarShown))
+                .overlay {
+                    if isVoiceBarShown {
+                        voiceBar
+                    }
+                }
+            voiceButton
+            primaryButton
+                .modifier(ComposerVoiceCover(isCovered: isVoiceBarShown))
+        }
+    }
+
+    private var leadingActions: some View {
+        HStack(spacing: 8) {
             addMenu
 
             Menu {
@@ -614,8 +666,40 @@ struct AgentComposerView: View {
             if store.hasPendingDroppedImages {
                 pendingDropHint
             }
-            primaryButton
         }
+    }
+
+    /// Voice Input's mic; it opens setup until a service is saved. Starting
+    /// taps medium and stopping taps light.
+    @ViewBuilder
+    private var voiceButton: some View {
+        if let voiceInput, inputMode == .composer {
+            ComposerVoiceButton(voice: store.voice, tint: secondaryActionTint) {
+                let wasRecording = store.voice.isRecording
+                let wasResting = !store.voice.isBusy
+                // Before the recorder ends, so the tap lands under the
+                // finger; the recording session allows haptics.
+                if wasRecording {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+                if voiceInput.toggle(store.voice) == .needsSetup {
+                    isVoiceSetupPresented = true
+                } else if wasResting, store.voice.phase == .starting {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }
+            }
+        }
+    }
+
+    /// From the first tap until the text lands, the recording bar covers
+    /// the controls before the mic, and Send or Stop hides in its place so
+    /// a tap meant for the mic cannot send or interrupt.
+    private var isVoiceBarShown: Bool {
+        voiceInput != nil && inputMode == .composer && store.voice.isBusy
+    }
+
+    private var voiceBar: some View {
+        ComposerVoiceBar(voice: store.voice) { store.voice.cancel() }
     }
 
     /// Why Send waits; its VoiceOver hint already says so.
@@ -999,6 +1083,19 @@ private struct AgentComposerSendButtonStyle: ButtonStyle {
     }
 }
 
+/// Hides controls under the recording bar without giving up their layout,
+/// so nothing beside them moves.
+private struct ComposerVoiceCover: ViewModifier {
+    let isCovered: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isCovered ? 0 : 1)
+            .allowsHitTesting(!isCovered)
+            .accessibilityHidden(isCovered)
+    }
+}
+
 /// Send's place while the Agent works on a blank draft: one press of the
 /// surface's Stop keys per tap, then a spinner until Agent Status leaves
 /// Working or the store's window passes.
@@ -1067,11 +1164,18 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
     let onFirstResponderRequest: (UUID, Bool) -> Void
     let onKeyboardHandoffSettled: (UUID) -> Void
     let onHardwareReturn: () -> Void
+    /// Whether the input method holds marked text, which a draft write
+    /// from the store would destroy.
+    let onComposingChange: (Bool) -> Void
     /// Paste Image, for a system paste of a clipboard holding an image and no text.
     var onPasteImage: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onEdit: onEdit, isFocused: $isFocused)
+        Coordinator(onEdit: onEdit, onComposingChange: onComposingChange, isFocused: $isFocused)
+    }
+
+    static func dismantleUIView(_: AgentComposerUITextView, coordinator: Coordinator) {
+        coordinator.onComposingChange(false)
     }
 
     func makeUIView(context: Context) -> AgentComposerUITextView {
@@ -1091,6 +1195,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
 
     func updateUIView(_ textView: AgentComposerUITextView, context: Context) {
         context.coordinator.onEdit = onEdit
+        context.coordinator.onComposingChange = onComposingChange
         if textView.text != text {
             textView.text = text
         }
@@ -1158,24 +1263,32 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, UITextViewDelegate {
         var onEdit: (String, NSRange) -> Void
+        var onComposingChange: (Bool) -> Void
         /// The latest focus intent, from either SwiftUI or UIKit, so a
         /// deferred focus change can recheck it before acting.
         var wantsFocus = false
         private var isFocused: Binding<Bool>
         private var foldedSelection: NSRange?
 
-        init(onEdit: @escaping (String, NSRange) -> Void, isFocused: Binding<Bool>) {
+        init(
+            onEdit: @escaping (String, NSRange) -> Void,
+            onComposingChange: @escaping (Bool) -> Void,
+            isFocused: Binding<Bool>
+        ) {
             self.onEdit = onEdit
+            self.onComposingChange = onComposingChange
             self.isFocused = isFocused
         }
 
         func textViewDidChange(_ textView: UITextView) {
             onEdit(textView.text, textView.selectedRange)
+            onComposingChange(textView.markedTextRange != nil)
             textView.invalidateIntrinsicContentSize()
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
             onEdit(textView.text, textView.selectedRange)
+            onComposingChange(textView.markedTextRange != nil)
         }
 
         func textView(
@@ -1210,9 +1323,10 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
             }
         }
 
-        func textViewDidEndEditing(_: UITextView) {
+        func textViewDidEndEditing(_ textView: UITextView) {
             wantsFocus = false
             isFocused.wrappedValue = false
+            onComposingChange(textView.markedTextRange != nil)
         }
     }
 }

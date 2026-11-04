@@ -80,6 +80,8 @@ struct SettingsView: View {
     /// Injected app-wide by `ContentView`; absent in previews, where the
     /// Overlay Networks row is left out.
     @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
+    /// Injected app-wide by `ContentView`; absent in previews.
+    @Environment(VoiceInputSession.self) private var voiceInput: VoiceInputSession?
 
     static let agentListDestination = SettingsAgentListDestination.fields
     static let overlayNetworksDestination = SettingsOverlayNetworksDestination.networks
@@ -178,6 +180,18 @@ struct SettingsView: View {
                         AppearanceSettingsView(terminal: terminal, appearance: appearance)
                     } label: {
                         Label("Appearance", systemImage: "paintpalette")
+                    }
+                    if let voiceInput {
+                        NavigationLink {
+                            VoiceInputSettingsView(settings: voiceInput.settings)
+                        } label: {
+                            LabeledContent {
+                                Text(voiceInput.settings.service?.displayName ?? "Off")
+                            } label: {
+                                Label("Voice Input", systemImage: "mic")
+                            }
+                        }
+                        .accessibilityIdentifier("settings.voiceInput")
                     }
                 }
 
