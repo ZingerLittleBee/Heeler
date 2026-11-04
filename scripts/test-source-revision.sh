@@ -46,7 +46,7 @@ rm notes.txt
 
 sed -i.bak 's/"25"/"26"/' project.yml && rm project.yml.bak
 sed -i.bak 's/= 25;/= 26;/' Heeler.xcodeproj/project.pbxproj && rm Heeler.xcodeproj/project.pbxproj.bak
-expect "make bump's build number change is allowed" "$head"
+expect "a local build number override is allowed" "$head"
 
 echo 'PRODUCT_NAME = Other;' >> Heeler.xcodeproj/project.pbxproj
 expect "another project change records nothing" ""

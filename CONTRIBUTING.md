@@ -80,9 +80,10 @@ Two artifact families are generated or shared — never hand-edit them:
   lowercase subject.
 - User-visible changes get a `CHANGELOG.md` entry under `[Unreleased]`,
   referencing the PR. Internal refactors and test work stay out of it.
-- Never hand-edit `MARKETING_VERSION` or create version tags — releases are
-  cut by the maintainer with `make publish`, and `CHANGELOG.md` is the
-  source of both the version and the notes.
+- The maintainer chooses `MARKETING_VERSION` with `make testflight VERSION=X.Y.Z`;
+  subsequent `make testflight` cuts advance only the build number. The command
+  owns version edits and immutable build tags; `CHANGELOG.md` owns the notes.
+  Follow [the release contract](docs/guides/releasing.md) for migration and recovery.
 - Private SSH keys stay in the Keychain and secrets stay out of code, logs,
   and fixtures. Per-Host Notification Keys are copied over SSH so the Host
   plugin can encrypt notifications.

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Print the plugin version HEAD carries if the plugin branch on origin has
-# published it, and fail otherwise. scripts/publish.sh runs this before it
-# cuts an app release: the app bundles that version and tells every Host with
+# published it, and fail otherwise. scripts/testflight.py runs this before it
+# cuts a candidate: the app bundles that version and tells every Host with
 # an older plugin to update from the plugin branch, so releasing the app first
 # would have them reinstall the old version. `make plugin` publishes it.
 #
