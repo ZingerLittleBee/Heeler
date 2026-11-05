@@ -52,6 +52,23 @@ export function codexRolloutLimits(line) {
   return { state: "ok", source: "lastSession", observedAt, ...(typeof plan === "string" ? { plan } : {}), windows };
 }
 
+/** The recorded environment with an added Account's Codex home; the Default Account's is left unchanged. */
+export function codexAccountRuntime(runtime, account) {
+  return account.isDefault ? runtime : { ...runtime, env: { ...runtime.env, CODEX_HOME: account.directory } };
+}
+
+/** `limits.json`'s added Codex Account entries, for the Accounts still counted. */
+export function codexLimitsEntries(value, accounts) {
+  if (!object(value)) return {};
+  return Object.fromEntries(accounts.filter(({ id }) => object(value[id])).map(({ id }) => [id, value[id]]));
+}
+
+/** The earliest next Codex read over the Default Account and the added ones, or undefined while one is due now. */
+export function nextCodexRead(limits, accounts) {
+  const next = [limits.codex?.nextAllowedAt, ...accounts.map(({ id }) => limits.codexAccounts?.[id]?.nextAllowedAt)];
+  return next.every(Number.isFinite) ? Math.min(...next) : undefined;
+}
+
 export function codexLimitsWithFallback(service, fallback) {
   return service.state === "ok" || service.reason === "noPlanLimits" ? service : fallback || service;
 }

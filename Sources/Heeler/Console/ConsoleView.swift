@@ -488,8 +488,13 @@ struct ConsoleView: View {
 
     /// Usage, as a tab; beside an iPad's sidebar, its own split view whose
     /// sidebar lists the Hosts and whose title switches back to the lists.
-    @ViewBuilder
     private func usageTab() -> some View {
+        usageTabContent()
+            .environment(\.hostAccounts, HostAccountsProvider { [console] in console.hostAccountsStore(for: $0) })
+    }
+
+    @ViewBuilder
+    private func usageTabContent() -> some View {
         if usesSidebarNavigation {
             NavigationSplitView {
                 AgentUsageSidebar(entries: usageEntries, scopeHostID: $usageScopeHostID, metric: usageMetric)

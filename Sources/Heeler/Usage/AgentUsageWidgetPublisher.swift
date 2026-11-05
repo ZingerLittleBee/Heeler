@@ -169,7 +169,7 @@ extension UsageWidgetSnapshot.Limits {
         switch card {
         case .limits(let accountID, let program, let account, let limits):
             self.init(program: program, name: name, account: account, accountID: accountID, limits: limits)
-        case .unread(let accountID, let account, let reason):
+        case .unread(let accountID, _, let account, let reason):
             self.init(
                 program: card.program, name: name, account: account, accountID: accountID, message: reason,
                 isLastReading: false, source: nil, observedAt: nil, windows: [])
