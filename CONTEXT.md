@@ -304,16 +304,29 @@ and Codex Token Usage (ADR 0028).
 _Avoid_: log, history file, session file
 
 **Account**:
-One sign-in of Claude Code or Codex on a Host, identified by the config
-directory where that program keeps its sign-in and Transcripts. Each Host has
-one **Default Account** per program: the directory the program uses in herdr's
-own environment. For Claude Code the user may add more Accounts by choosing
-their directories; Heeler may suggest directories that look like one, but
-counts none until the user adds it. A Host's Accounts are shared by every
-device. Two directories signed in to the same login are still two Accounts,
-and switching logins inside one directory stays one Account (ADR 0030).
+One sign-in of a harness on a Host, identified by the config directory where
+that harness keeps its sign-in and Transcripts. Each Host has one **Default
+Account** per harness: the directory the harness uses in herdr's own
+environment. The user may add more Accounts for any harness by choosing their
+directories in Settings › Agents & Accounts, the one place Accounts are kept;
+Heeler may suggest directories that look like one, but counts none until the
+user adds it. Usage reads the Accounts of Claude Code and Codex, Chat searches
+every harness's Accounts for a Transcript, and Launch Presets start an Agent
+in one. A harness's **Folder Variable** (such as `CLAUDE_CONFIG_DIR` or
+`CODEX_HOME`) is what points it at an Account; Heeler knows some and the user
+names the rest. A Host's Accounts are shared by every device. Two directories
+signed in to the same login are still two Accounts, and switching logins
+inside one directory stays one Account (ADR 0030, ADR 0037).
 _Avoid_: profile, login, user, config dir (the directory identifies an Account;
 it is not its name)
+
+**Launch Preset**:
+A named way to start an Agent, kept on the device: a harness, optionally an
+Account's folder, arguments placed before the ones typed in New Agent, and
+environment variables. The Account is kept as a folder, so a preset works on
+every Host that has that folder and is untouched when an Account is removed
+(ADR 0037).
+_Avoid_: alias, profile, template
 
 **Usage Limits**:
 The windows a Claude Code or Codex Account may use before the service slows

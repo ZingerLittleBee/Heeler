@@ -7,11 +7,39 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+### Added
+
+- **Settings › Agents & Accounts** is the one place to keep Accounts and
+  Launch Presets. Each Host lists its Accounts by harness; add one from the
+  folders Heeler finds, or choose any folder, for Claude Code, Codex, Grok,
+  Pi, Gemini CLI or any other harness Heeler supports. Usage and Chat both
+  read them. (#632)
+- Chat finds an Agent's conversation in any of its harness's Accounts, not
+  only the Default one, so an Agent started with its own config folder opens
+  in Chat. (#632)
+- Usage counts Codex Accounts too, each with its own Token Usage and Usage
+  Limits card. Needs plugin 0.9.0. (#632)
+- Launch Presets save a harness with its Account, arguments and environment
+  variables under a name, ready to pick in New Agent. `~` and `$HOME` in a
+  preset are each Host's home folder. (#632)
+
 ### Changed
+
+- Accounts moved out of Usage into Settings › Agents & Accounts. Usage's
+  notice about Account folders it found opens the same screen. (#632)
 
 - The banner warning that a Codex conversation may be another terminal's
   now offers **Read More**, which opens the guide on what is happening and
   how to fix it, instead of Show Agent Terminal. (#627)
+
+### Fixed
+
+- Launch Presets read the Host's current Account variables before starting;
+  an unreadable Account file blocks the launch and shows the error. Accounts
+  keeps the last loaded list visible when a refresh fails. (#632)
+- Codex Chat continues to later Accounts when a matching rollout refuses
+  reads. Token Usage matches copied forks to parents within the same Account
+  and rebuilds older scan caches to correct cross-account totals. (#632)
 
 ## [0.1.17]
 

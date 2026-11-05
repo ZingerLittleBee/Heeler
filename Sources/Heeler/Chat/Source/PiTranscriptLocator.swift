@@ -28,7 +28,32 @@ struct PiTranscriptLocator: Sendable {
         }
         guard let id = ConversationReference.canonicalUUID(reference.sessionID) else { return .failure(.mismatched) }
         let home = try await files.home()
-        let root = RemoteFilePath.join(home, reference.program == .pi ? ".pi" : ".omp", "agent", "sessions")
+        let kind: SupportedAgentKind = reference.program == .pi ? .pi : .omp
+        // The agent directory (`PI_CODING_AGENT_DIR`): the default's, then
+        // each added Account's.
+        let agentDirectories = try await files.configRoots(
+            for: kind, defaultRoot: RemoteFilePath.join(home, reference.program == .pi ? ".pi" : ".omp", "agent"))
+        var searchedAll = true
+        var mismatch = false
+        let answer = try await ChatHostFiles.firstAnswer(across: agentDirectories) {
+            agentDirectory -> Result<String, PiTranscriptUnavailable>? in
+            switch try await search(
+                root: RemoteFilePath.join(agentDirectory, "sessions"), id: id, home: home,
+                reference: reference, directories: directories)
+            {
+            case .failure(.mismatched): mismatch = true
+            case .failure(.notFound(let all)): searchedAll = searchedAll && all
+            case let result: return result
+            }
+            return nil
+        }
+        if let answer { return answer }
+        return .failure(mismatch ? .mismatched : .notFound(searchedAll: searchedAll))
+    }
+
+    private func search(
+        root: String, id: String, home: String, reference: ConversationReference, directories: [String]
+    ) async throws -> Result<String, PiTranscriptUnavailable> {
         var queue = directories.filter(RemoteFilePath.isAcceptable).map { directory in
             RemoteFilePath.join(root, Self.projectKey(directory))
         }

@@ -26,7 +26,8 @@ enum CodexTranscriptUnavailable: Error, Hashable, Sendable {
     case mismatched
 }
 
-/// Finds a Codex thread's rollout under `~/.codex`.
+/// Finds a Codex thread's rollout under `~/.codex`, then under each added
+/// Account's Codex home.
 ///
 /// Rollouts live in `sessions/YYYY/MM/DD/` by the Host's local date when the
 /// thread started, which the version 7 UUID's timestamp gives to within a
@@ -45,27 +46,34 @@ struct CodexTranscriptLocator: Sendable {
 
     func locate(threadID: String) async throws -> Result<CodexTranscriptLocation, CodexTranscriptUnavailable> {
         let home = try await files.home()
-        let root = RemoteFilePath.join(home, ".codex")
-        var segments: [CodexRolloutSegment] = []
-        for date in Self.dateDirectories(threadID: threadID, now: now()) {
-            segments += try await matches(
-                in: RemoteFilePath.join(root, "sessions", date), threadID: threadID)
-        }
-        if segments.isEmpty {
-            segments = try await matches(
-                in: RemoteFilePath.join(root, "archived_sessions"), threadID: threadID)
-        }
-        let ordered = Set(segments).sorted { CodexRolloutFileName.isOrderedBefore($0.name, $1.name) }
-        guard let newest = ordered.last else { return .failure(.notFound) }
-        guard !newest.name.isCompressed else { return .failure(.compressed) }
-        guard try await sessionMetaNames(threadID, in: newest.path) else {
-            return .failure(.mismatched)
-        }
-        // A plain copy shadows a compressed one of the same segment.
-        let readable = ordered.filter { segment in
-            !segment.name.isCompressed
-        }
-        return .success(CodexTranscriptLocation(segments: readable))
+        // A thread lives under one Codex home: the default's, else an
+        // added Account's (`CODEX_HOME`).
+        let roots = try await files.configRoots(for: .codex, defaultRoot: RemoteFilePath.join(home, ".codex"))
+        let now = now()
+        return try await ChatHostFiles.firstAnswer(across: roots) {
+            root -> Result<CodexTranscriptLocation, CodexTranscriptUnavailable>? in
+            var segments: [CodexRolloutSegment] = []
+            for date in Self.dateDirectories(threadID: threadID, now: now) {
+                segments += try await matches(
+                    in: RemoteFilePath.join(root, "sessions", date), threadID: threadID)
+            }
+            if segments.isEmpty {
+                segments = try await matches(
+                    in: RemoteFilePath.join(root, "archived_sessions"), threadID: threadID)
+            }
+            let ordered = Set(segments).sorted { CodexRolloutFileName.isOrderedBefore($0.name, $1.name) }
+            guard let newest = ordered.last else { return nil }
+            guard !newest.name.isCompressed else { return .failure(.compressed) }
+            // A listed file may still refuse reads; keep that refusal inside the Account search.
+            guard try await sessionMetaNames(threadID, in: newest.path) else {
+                return .failure(.mismatched)
+            }
+            // A plain copy shadows a compressed one of the same segment.
+            let readable = ordered.filter { segment in
+                !segment.name.isCompressed
+            }
+            return .success(CodexTranscriptLocation(segments: readable))
+        } ?? .failure(.notFound)
     }
 
     private func matches(in directory: String, threadID: String) async throws -> [CodexRolloutSegment] {

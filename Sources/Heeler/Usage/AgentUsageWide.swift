@@ -203,7 +203,7 @@ struct AgentUsageLimitsStrip: View {
         switch reading {
         case .limits(_, let program, _, let limits):
             AgentUsageLimitsView(program: program, limits: limits, showsTitle: false, style: .columns)
-        case .unread(_, _, let reason):
+        case .unread(_, _, _, let reason):
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text(reason).foregroundStyle(.secondary)
@@ -220,12 +220,9 @@ struct AgentUsageLimitsStrip: View {
 }
 
 /// An iPad's Usage Limits view: each program's windows in full, per Host
-/// and Claude Code Account, with each Host's Claude Code limits consent and
-/// its Accounts.
+/// and Claude Code Account, with each Host's Claude Code limits consent.
 struct AgentUsageLimitsPage: View {
     let entries: [AgentUsageHostEntry]
-    /// Opens a Host's Claude Code Accounts as a form sheet.
-    let showAccounts: (Host.ID) -> Void
     /// Back to Token Usage.
     let showTokenUsage: () -> Void
     @Environment(\.locale) private var locale
@@ -294,17 +291,17 @@ struct AgentUsageLimitsPage: View {
                 case .limits(_, let program, let account, let limits):
                     AgentUsageProgramTitle(program: program, account: account, plan: limits.plan)
                     AgentUsageLimitsView(program: program, limits: limits, showsTitle: false)
-                case .unread(_, let account, let reason):
-                    AgentUsageUncountedAccount(account: account, reason: reason)
+                case .unread(_, let program, let account, let reason):
+                    AgentUsageUncountedAccount(program: program, account: account, reason: reason)
                 case .claudeToggle:
                     if titlesToggle { AgentUsageProgramTitle(program: "claude", plan: nil) }
                 }
                 if card.carriesToggle {
                     if card != .claudeToggle { Divider() }
                     ClaudeUsageLimitsToggle(store: entry.store)
-                    if ClaudeAccountsEntry.isShown(for: entry.store) {
+                    if entry.store.claudeAccountsRequirement != nil {
                         Divider()
-                        ClaudeAccountsEntry(hostName: entry.name, store: entry.store) { showAccounts(entry.id) }
+                        ClaudeAccountsRequirementNote(store: entry.store)
                     }
                 }
             }

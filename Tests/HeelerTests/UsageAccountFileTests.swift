@@ -41,7 +41,7 @@ struct UsageAccountFileTests {
 
     /// A newer app's file must not be rewritten by this one.
     @Test func anotherVersionIsNotRewritten() {
-        #expect(throws: ClaudeAccountError.unsupportedFileVersion(2)) {
+        #expect(throws: AgentAccountError.unsupportedFileVersion(2)) {
             try UsageAccountFile.decode(Data(#"{"version": 2, "claude": {"accounts": []}}"#.utf8))
         }
     }
@@ -122,21 +122,21 @@ struct UsageAccountFileTests {
     @Test func addingRefusesWhatCannotCount() throws {
         var file = UsageAccountFile()
         try file.add(directory: "/Users/u/.claude-2", defaultDirectory: nil)
-        #expect(throws: ClaudeAccountError.notAbsolute) {
+        #expect(throws: AgentAccountError.notAbsolute) {
             try file.add(directory: "Users/u/.claude-3", defaultDirectory: nil)
         }
-        #expect(throws: ClaudeAccountError.alreadyListed) {
+        #expect(throws: AgentAccountError.alreadyListed) {
             try file.add(directory: "/Users/u/.claude-2", defaultDirectory: nil)
         }
-        #expect(throws: ClaudeAccountError.alreadyListed) {
+        #expect(throws: AgentAccountError.alreadyListed) {
             try file.add(directory: "/Users/u/.claude-2/", defaultDirectory: nil)
         }
-        #expect(throws: ClaudeAccountError.alreadyListed) {
+        #expect(throws: AgentAccountError.alreadyListed) {
             try file.add(directory: "/Users/u/.claude", defaultDirectory: "/Users/u/.claude")
         }
         try file.add(directory: "/Users/u/.claude-3", defaultDirectory: nil)
         try file.add(directory: "/Users/u/.claude-4", defaultDirectory: nil)
-        #expect(throws: ClaudeAccountError.limitReached) {
+        #expect(throws: AgentAccountError.limitReached) {
             try file.add(directory: "/Users/u/.claude-5", defaultDirectory: nil)
         }
         // Dismissing a suggestion stays possible at the limit.
@@ -150,19 +150,19 @@ struct UsageAccountFileTests {
         let other = try file.add(directory: "/Users/u/.claude-3", defaultDirectory: nil)
         try file.rename(accountID: UsageAccountFile.defaultAccountID, to: "  Personal ")
         #expect(file.defaultName == "Personal")
-        #expect(throws: ClaudeAccountError.nameTaken("claude-2")) {
+        #expect(throws: AgentAccountError.nameTaken("claude-2")) {
             try file.rename(accountID: UsageAccountFile.defaultAccountID, to: "claude-2")
         }
-        #expect(throws: ClaudeAccountError.nameTaken("Personal")) {
+        #expect(throws: AgentAccountError.nameTaken("Personal")) {
             try file.rename(accountID: added.id, to: "Personal")
         }
-        #expect(throws: ClaudeAccountError.nameTaken("claude-3")) {
+        #expect(throws: AgentAccountError.nameTaken("claude-3")) {
             try file.rename(accountID: added.id, to: "claude-3")
         }
-        #expect(throws: ClaudeAccountError.emptyName) {
+        #expect(throws: AgentAccountError.emptyName) {
             try file.rename(accountID: added.id, to: " ")
         }
-        #expect(throws: ClaudeAccountError.accountNotFound) {
+        #expect(throws: AgentAccountError.accountNotFound) {
             try file.rename(accountID: "zzzzzzzz", to: "Max")
         }
         try file.rename(accountID: added.id, to: "claude-2")
@@ -171,7 +171,7 @@ struct UsageAccountFileTests {
         try file.rename(accountID: UsageAccountFile.defaultAccountID, to: "")
         #expect(file.defaultName == nil)
         // …which no added Account can then take.
-        #expect(throws: ClaudeAccountError.nameTaken("Default")) {
+        #expect(throws: AgentAccountError.nameTaken("Default")) {
             try file.rename(accountID: other.id, to: "Default")
         }
         #expect(file.accounts.map(\.name) == ["Max", "claude-3"])
@@ -194,7 +194,7 @@ struct UsageAccountFileTests {
         try file.ignore(directory: "/Users/u/.claude-backup", defaultDirectory: nil)
         try file.ignore(directory: "/Users/u/.claude-backup/", defaultDirectory: nil)
         #expect(file.ignored == ["/Users/u/.claude-backup"])
-        #expect(throws: ClaudeAccountError.notAbsolute) {
+        #expect(throws: AgentAccountError.notAbsolute) {
             try file.ignore(directory: "~/.claude-x", defaultDirectory: nil)
         }
     }
@@ -208,6 +208,68 @@ struct UsageAccountFileTests {
         try file.ignore(directory: "/Users/u/.claude-2/", defaultDirectory: "/Users/u/.claude")
         try file.ignore(directory: "/Users/u/.claude", defaultDirectory: "/Users/u/.claude/")
         #expect(file == before)
+    }
+
+    // MARK: Other harnesses
+
+    /// Every harness but Claude Code keeps its Accounts under `programs`,
+    /// keyed by its herdr kind, so a plugin that reads only `claude` is
+    /// unaffected (#621).
+    @Test func otherHarnessesKeepTheirAccountsUnderPrograms() throws {
+        var file = try file(#"""
+            {"version": 1, "claude": {"defaultName": null,
+              "accounts": [{"id": "7f3c9a2e", "directory": "/home/u/.claude-2", "name": "claude-2"}], "ignored": []},
+             "programs": {"codex": {"defaultName": null,
+              "accounts": [{"id": "a1b2c3d4", "directory": "/home/u/.codex-work", "name": "codex-work"}], "ignored": []},
+              "claude": {"accounts": [{"id": "bbbbbbbb", "directory": "/elsewhere", "name": "x"}]}}}
+            """#)
+        #expect(file.directories(for: .claude) == ["/home/u/.claude-2"])
+        #expect(file.directories(for: .codex) == ["/home/u/.codex-work"])
+        #expect(file.directories(for: .gemini).isEmpty)
+
+        try file.add(directory: "/home/u/.gemini-work", defaultDirectory: nil, for: .gemini)
+        try file.rename(accountID: "a1b2c3d4", to: "Work", for: .codex)
+        let object = try json(file)
+        let programs = try #require(object["programs"] as? [String: [String: Any]])
+        let gemini = try #require(programs["gemini"]?["accounts"] as? [[String: Any]])
+        #expect(gemini.first?["directory"] as? String == "/home/u/.gemini-work")
+        #expect(gemini.first?["name"] as? String == "gemini-work")
+        #expect((programs["codex"]?["accounts"] as? [[String: Any]])?.first?["name"] as? String == "Work")
+        // Claude Code stays in its own section, untouched by the others.
+        #expect(((object["claude"] as? [String: Any])?["accounts"] as? [[String: Any]])?.count == 1)
+        #expect(try UsageAccountFile.decode(file.encoded()) == file)
+    }
+
+    /// Names only need to be unique within one harness: a Claude Code and a
+    /// Codex Account can both be "Work".
+    @Test func namesAndLimitsAreEachHarnesssOwn() throws {
+        var file = UsageAccountFile()
+        try file.add(directory: "/u/.claude-work", name: "Work", defaultDirectory: nil)
+        let codex = try file.add(directory: "/u/.codex-work", name: "Work", defaultDirectory: nil, for: .codex)
+        #expect(codex.name == "Work")
+        for index in 1...2 { try file.add(directory: "/u/.codex-\(index)", defaultDirectory: nil, for: .codex) }
+        #expect(throws: AgentAccountError.limitReached) {
+            try file.add(directory: "/u/.codex-3", defaultDirectory: nil, for: .codex)
+        }
+        try file.add(directory: "/u/.claude-3", defaultDirectory: nil)
+        file.remove(accountID: codex.id, for: .codex)
+        #expect(file.accounts(for: .codex).map(\.directory) == ["/u/.codex-1", "/u/.codex-2"])
+        #expect(file.ignored(for: .codex) == ["/u/.codex-work"])
+        #expect(file.accounts.map(\.directory) == ["/u/.claude-work", "/u/.claude-3"])
+    }
+
+    /// The variable a harness reads its config directory from: a known
+    /// one, or the one the user named for a harness Heeler does not know.
+    @Test func eachHarnessNamesTheVariableItsAccountsSet() throws {
+        var file = UsageAccountFile()
+        #expect(file.variable(for: .claude) == "CLAUDE_CONFIG_DIR")
+        #expect(file.variable(for: .codex) == "CODEX_HOME")
+        #expect(file.variable(for: .amp) == nil)
+        try file.setVariable("AMP_HOME", for: .amp)
+        #expect(file.variable(for: .amp) == "AMP_HOME")
+        #expect(throws: AgentAccountError.invalidVariable) { try file.setVariable("1BAD-NAME", for: .amp) }
+        let decoded = try UsageAccountFile.decode(file.encoded())
+        #expect(decoded.variable(for: .amp) == "AMP_HOME")
     }
 
     @Test(arguments: [

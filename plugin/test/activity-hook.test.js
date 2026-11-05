@@ -740,14 +740,19 @@ suite("activity-hook: Claude Code Account suggestions", () => {
     assert.equal(Object.keys(agentsFile().panes).length, 1);
   });
 
-  test("only Claude Code Agents are looked up", async () => {
+  test("only Agents of a program with Usage Accounts are looked up, each into its own file", async () => {
     writeHerdrStub([listedAgent()], undefined, [], [], processInfo([]));
-    for (const agent of ["codex", null]) {
+    for (const agent of ["gemini", null]) {
       const result = await runHook(statusEvent("working", { agent }), { env: usageEnv });
       assert.equal(result.status, 0, result.stderr);
     }
     assert.equal(lookups().length, 0);
     assert.equal(existsSync(agentsPath()), false);
+    const result = await runHook(statusEvent("working", { agent: "codex" }), { env: usageEnv });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(lookups().length, 1);
+    assert.equal(existsSync(agentsPath()), false);
+    assert.ok(existsSync(join(stateDir, "usage", "codex-agents.json")));
   });
 
   test("a process-info that fails, answers garbage or hangs never fails the hook or its Live Activity", async () => {

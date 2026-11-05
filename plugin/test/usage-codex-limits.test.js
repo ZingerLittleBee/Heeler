@@ -108,6 +108,39 @@ test("Codex limits use the recorded npm-style executable environment and default
   assert.deepEqual(readFileSync(f.requests, "utf8").trim().split("\n").map(line => JSON.parse(line).method), ["initialize", "initialized", "account/read", "account/rateLimits/read"]);
 });
 
+test("each added Codex Account's limits come from Codex run with that Account's CODEX_HOME", async t => {
+  const f = fixture(t);
+  const work = join(f.root, "codex-work");
+  mkdirSync(work);
+  // Answers by the home it was given: 18% for the Default Account, 70% for the added one.
+  writeFileSync(f.executable, `#!/usr/bin/env node
+const fs = require('node:fs');
+const readline = require('node:readline');
+const send = value => process.stdout.write(JSON.stringify(value) + '\\n');
+fs.appendFileSync(${JSON.stringify(join(f.root, "homes.txt"))}, process.env.CODEX_HOME + '\\n');
+readline.createInterface({input: process.stdin}).on('line', line => {
+  const request = JSON.parse(line);
+  if (request.method === 'initialize') send({id: request.id, result: {}});
+  else if (request.method === 'account/read') send({id: request.id, result: {account: {type: 'chatgpt', planType: 'plus'}}});
+  else if (request.method === 'account/rateLimits/read') send({id: request.id, result: {rateLimits: {primary: {usedPercent: process.env.CODEX_HOME === ${JSON.stringify(work)} ? 70 : 18, windowDurationMins: 300, resetsAt: ${f.expires}}, secondary: null}}});
+});
+`, { mode: 0o755 });
+  writeFileSync(join(f.env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"), JSON.stringify({ version: 1,
+    programs: { codex: { defaultName: null, accounts: [{ id: "work0001", directory: work, name: "work" }] } } }));
+
+  const report = await f.finish();
+  const program = report.programs.find(program => program.program === "codex");
+  assert.equal(program.usageLimits.windows[0].usedPercent, 18);
+  assert.deepEqual(program.accounts.map(account => [account.id, account.usageLimits.state, account.usageLimits.windows?.[0].usedPercent]),
+    [["default", "ok", 18], ["work0001", "ok", 70]]);
+  assert.deepEqual(readFileSync(join(f.root, "homes.txt"), "utf8").trim().split("\n").sort(), [f.env.CODEX_HOME, work].sort());
+  // Each Account keeps its own throttle in limits.json.
+  const limits = JSON.parse(readFileSync(join(f.cache(), "limits.json")));
+  assert.equal(Number.isFinite(limits.codexAccounts.work0001.nextAllowedAt), true);
+  assert.equal(JSON.parse(readFileSync(join(f.cache(), "buckets.json"))).nextLimitsAt,
+    Math.min(limits.codex.nextAllowedAt, limits.codexAccounts.work0001.nextAllowedAt));
+});
+
 const rolloutLimits = (timestamp, primary, extra = {}) => ({ type: "event_msg", timestamp,
   payload: { type: "token_count", info: null, rate_limits: { primary, secondary: null, ...extra } } });
 
