@@ -149,9 +149,29 @@ struct HostAccountsViewTests {
         }
         #expect(name == "claude-2")
         #expect(limits.plan == "max")
-        #expect(cards[2] == .unread(accountID: "c41d07b9", account: "work", reason: "Directory not found"))
+        #expect(cards[2] == .unread(accountID: "c41d07b9", program: "claude", account: "work", reason: "Directory not found"))
+
         #expect(AgentUsageProgramTitle.title(program: "claude", account: "claude-2") == "Claude Code · claude-2")
         #expect(AgentUsageProgramTitle.title(program: "codex", account: nil) == "Codex")
+    }
+
+    /// Codex Accounts (plugin 0.9.0) get a card each, like Claude Code's,
+    /// and the Accounts screen lists them with Codex's suggestions.
+    @Test func eachCodexAccountGetsACard() async throws {
+        let report = try AgentUsageFixture.codexAccountsReport()
+        let cards = AgentUsageLimitsCard.cards(for: report)
+        #expect(cards.filter { $0.program == "codex" }.map(\.id) == ["codex.default", "codex.a1b2c3d4"])
+        guard case .limits("a1b2c3d4", "codex", "codex-work", let codexWork)? = cards.last else {
+            Issue.record("Expected codex-work's card, not \(String(describing: cards.last))")
+            return
+        }
+        #expect(codexWork.state == "unavailable")
+        #expect(AgentUsageProgramTitle.title(program: "codex", account: "codex-work") == "Codex · codex-work")
+        #expect(AgentUsageLimitsCard.readings(for: report).filter { $0.program == "codex" }.count == 2)
+        let (store, _) = await accounts(report)
+        #expect(store.rows(for: .codex).map(\.displayName) == ["Default", "codex-work"])
+        #expect(store.suggestions(for: .codex).map(\.name) == ["codex-personal"])
+        #expect(AccountsListing.noticeTitle(state: .available(report), supportsAccounts: true) == "Found 3 Account folders")
     }
 
     @Test func limitsOffLeaveOnlyTheToggleCard() throws {

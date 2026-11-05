@@ -203,7 +203,7 @@ struct AgentUsageLimitsStrip: View {
         switch reading {
         case .limits(_, let program, _, let limits):
             AgentUsageLimitsView(program: program, limits: limits, showsTitle: false, style: .columns)
-        case .unread(_, _, let reason):
+        case .unread(_, _, _, let reason):
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text(reason).foregroundStyle(.secondary)
@@ -291,8 +291,8 @@ struct AgentUsageLimitsPage: View {
                 case .limits(_, let program, let account, let limits):
                     AgentUsageProgramTitle(program: program, account: account, plan: limits.plan)
                     AgentUsageLimitsView(program: program, limits: limits, showsTitle: false)
-                case .unread(_, let account, let reason):
-                    AgentUsageUncountedAccount(account: account, reason: reason)
+                case .unread(_, let program, let account, let reason):
+                    AgentUsageUncountedAccount(program: program, account: account, reason: reason)
                 case .claudeToggle:
                     if titlesToggle { AgentUsageProgramTitle(program: "claude", plan: nil) }
                 }

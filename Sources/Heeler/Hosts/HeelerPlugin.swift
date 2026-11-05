@@ -64,6 +64,8 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
     /// Usage per Claude Code Account, and the Account file the app edits
     /// (ADR 0030).
     case claudeAccounts
+    /// Usage per Codex Account, from the Account file's `programs` (#621).
+    case codexAccounts
 
     var minimumVersion: PluginVersion {
         switch self {
@@ -72,6 +74,7 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
         case .sessionScopedNotifications: PluginVersion(0, 6, 0)
         case .usage: PluginVersion(0, 7, 0)
         case .claudeAccounts: PluginVersion(0, 8, 0)
+        case .codexAccounts: PluginVersion(0, 9, 0)
         }
     }
 
@@ -86,6 +89,8 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
             "Usage needs plugin \(minimumVersion) or newer; this Host has \(installed)."
         case .claudeAccounts:
             "Claude Code Accounts need plugin \(minimumVersion) or newer; this Host has \(installed)."
+        case .codexAccounts:
+            "Usage counts Codex Accounts from plugin \(minimumVersion); this Host has \(installed)."
         case .sidebarFields:
             "Sync from plugin and herdr's sidebar fields need plugin \(minimumVersion) "
                 + "or newer; this Host has \(installed)."

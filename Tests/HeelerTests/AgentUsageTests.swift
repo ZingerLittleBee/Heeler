@@ -562,10 +562,29 @@ struct ClaudeAccountsReportTests {
 enum AgentUsageFixture {
     private final class BundleLocator {}
 
+    /// The shared vector as a plugin before Codex Accounts (0.8.x) reports
+    /// it: Codex's `accounts` and `accountSuggestions` left out, so the
+    /// Claude Code Account cases keep one Codex entry.
     static func data() throws -> Data {
+        var object = try #require(JSONSerialization.jsonObject(with: vectorData()) as? [String: Any])
+        var programs = try #require(object["programs"] as? [[String: Any]])
+        for index in programs.indices where programs[index]["program"] as? String == "codex" {
+            programs[index].removeValue(forKey: "accounts")
+            programs[index].removeValue(forKey: "accountSuggestions")
+        }
+        object["programs"] = programs
+        return try JSONSerialization.data(withJSONObject: object)
+    }
+
+    /// The shared vector as plugin 0.9.0 writes it, Codex Accounts included.
+    static func vectorData() throws -> Data {
         let url = try #require(Bundle(for: BundleLocator.self)
             .url(forResource: "usage-v1", withExtension: "json"))
         return try Data(contentsOf: url)
+    }
+
+    static func codexAccountsReport() throws -> AgentUsageReport {
+        try AgentUsageReport.decode(vectorData())
     }
 
     static func noDataReport() throws -> AgentUsageReport {
@@ -809,16 +828,19 @@ struct ClaudeUsagePreferenceTests {
             #expect(added.claudeProgram?.accounts?.map(\.displayName) == ["Default", "claude-2", "work", "claude-team"])
             #expect(added.claudeProgram?.accounts?.last?.state == .ok)
             #expect(added.claudeProgram?.accountSuggestions?.map(\.name) == ["claude-work"])
-            // A directory the demo Host does not hold is refused.
+            // Full, the Host refuses another before looking at it.
             #expect(
-                await accounts.add(directory: "/Users/developer/Downloads", for: .claude)
-                    == .refused(.notHarnessDirectory(.claude)))
+                await accounts.add(directory: "/Users/developer/Downloads", for: .claude) == .refused(.limitReached))
             let teamAccount = try #require(accounts.rows(for: .claude).last)
             #expect(await accounts.remove(teamAccount, for: .claude))
             guard case .available(let restored) = store.state else { Issue.record("No report"); return }
             #expect(restored.claudeProgram?.accounts?.map(\.displayName) == ["Default", "claude-2", "work"])
             // Removed, it is not offered again at once.
             #expect(restored.claudeProgram?.accountSuggestions?.map(\.name) == ["claude-work"])
+            // A directory the demo Host does not hold is refused.
+            #expect(
+                await accounts.add(directory: "/Users/developer/Downloads", for: .claude)
+                    == .refused(.notHarnessDirectory(.claude)))
             #expect(accounts.changeFailure == nil)
         }
 

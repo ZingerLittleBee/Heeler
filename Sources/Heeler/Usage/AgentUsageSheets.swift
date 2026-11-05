@@ -67,8 +67,8 @@ struct AgentUsageLimitChip: Identifiable, Equatable {
     /// A card's chip; the toggle card reads nothing.
     private static func chip(_ card: AgentUsageLimitsCard, hostID: Host.ID, hostName: String, now: Date) -> Self? {
         switch card {
-        case .unread(_, let account, let reason):
-            return Self(hostID: hostID, hostName: hostName, program: "claude", account: account, percent: nil,
+        case .unread(_, let program, let account, let reason):
+            return Self(hostID: hostID, hostName: hostName, program: program, account: account, percent: nil,
                 title: reason, cardID: card.id)
         case .claudeToggle:
             return nil
@@ -512,12 +512,12 @@ struct AgentUsageLimitsSheet: View {
 /// it reads as covering all of them. While Claude Code limits are off, the
 /// toggle card stands for all of Claude Code.
 enum AgentUsageLimitsCard: Identifiable, Equatable {
-    /// A program's windows, or one Claude Code Account's, named and with
-    /// its report id when the Host has several.
+    /// A program's windows, or one of its Accounts', named and with its
+    /// report id when the Host has several.
     case limits(accountID: String?, program: String, account: String?, limits: AgentUsageReport.Program.UsageLimits)
-    /// A Claude Code Account that adds nothing, and why.
-    case unread(accountID: String, account: String, reason: String)
-    /// The Claude Code limits toggle and the way to the Host's Accounts.
+    /// An Account that adds nothing, and why.
+    case unread(accountID: String, program: String, account: String, reason: String)
+    /// The Claude Code limits toggle.
     case claudeToggle
 
     /// The program, or the program and the Account's report id, which
@@ -525,21 +525,23 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
     var id: String {
         switch self {
         case .limits(let accountID, let program, _, _): accountID.map { "\(program).\($0)" } ?? program
-        case .unread(let accountID, _, _): "claude.\(accountID)"
+        case .unread(let accountID, let program, _, _): "\(program).\(accountID)"
         case .claudeToggle: "claude.toggle"
         }
     }
 
     var program: String {
-        if case .limits(_, let program, _, _) = self { return program }
-        return "claude"
+        switch self {
+        case .limits(_, let program, _, _), .unread(_, let program, _, _): program
+        case .claudeToggle: "claude"
+        }
     }
 
     /// The Claude Code Account a card is for, when its Host has several.
     var account: String? {
         switch self {
         case .limits(_, _, let account, _): account
-        case .unread(_, let account, _): account
+        case .unread(_, _, let account, _): account
         case .claudeToggle: nil
         }
     }
@@ -562,10 +564,8 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
 
     static func cards(for report: AgentUsageReport) -> [Self] {
         (report.programs ?? []).flatMap { program -> [Self] in
-            guard program.program == "claude" else {
-                return [.limits(accountID: nil, program: program.program, account: nil, limits: program.usageLimits)]
-            }
-            let cards = claudeCards(program)
+            guard program.program == "claude" else { return accountCards(program) }
+            let cards = program.usageLimits.state == "disabled" ? [] : accountCards(program)
             return cards.contains(where: \.carriesToggle) ? cards : cards + [.claudeToggle]
         }
     }
@@ -577,17 +577,17 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
         (report.programs ?? []).flatMap { program -> [Self] in
             let whole = Self.limits(
                 accountID: nil, program: program.program, account: nil, limits: program.usageLimits)
-            guard program.program == "claude" else { return [whole] }
-            let cards = claudeCards(program)
-            return cards.isEmpty ? [whole] : cards
+            guard program.program != "claude" || program.usageLimits.state != "disabled" else { return [whole] }
+            return accountCards(program)
         }
     }
 
-    private static func claudeCards(_ program: AgentUsageReport.Program) -> [Self] {
-        guard program.usageLimits.state != "disabled" else { return [] }
+    /// One card per Account while a program has several (Claude Code from
+    /// plugin 0.8.0, Codex from 0.9.0); otherwise the program's own.
+    private static func accountCards(_ program: AgentUsageReport.Program) -> [Self] {
         let accounts = program.accounts ?? []
         guard accounts.count > 1 else {
-            return [.limits(accountID: nil, program: "claude", account: nil, limits: program.usageLimits)]
+            return [.limits(accountID: nil, program: program.program, account: nil, limits: program.usageLimits)]
         }
         // An Account the plugin counts always reports limits; without them
         // it reads as a failed reading rather than borrowing another's.
@@ -595,12 +595,12 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
             state: "error", reason: nil, source: nil, observedAt: nil, retryAt: nil, plan: nil, windows: nil)
         let counted = accounts.filter(\.isReadable).map { account in
             Self.limits(
-                accountID: account.id, program: "claude", account: account.displayName,
+                accountID: account.id, program: program.program, account: account.displayName,
                 limits: account.usageLimits ?? (account.isDefault ? program.usageLimits : unknown))
         }
         let uncounted = accounts.filter { !$0.isReadable }.map { account in
             Self.unread(
-                accountID: account.id, account: account.displayName,
+                accountID: account.id, program: program.program, account: account.displayName,
                 reason: AccountsListing.stateLine(account.state) ?? "")
         }
         return counted + uncounted
@@ -645,8 +645,8 @@ struct AgentUsageHostLimits: View {
                     AgentUsageLimitsView(program: program, limits: limits, showsTitle: false, style: style)
                 }
                 .padding(.vertical, 4)
-            case .unread(_, let account, let reason):
-                AgentUsageUncountedAccount(account: account, reason: reason)
+            case .unread(_, let program, let account, let reason):
+                AgentUsageUncountedAccount(program: program, account: account, reason: reason)
                     .padding(.vertical, 4)
             case .claudeToggle:
                 EmptyView()
@@ -663,14 +663,15 @@ struct AgentUsageHostLimits: View {
     }
 }
 
-/// A Claude Code Account that adds nothing to Usage Limits, and why.
+/// An Account that adds nothing to Usage Limits, and why.
 struct AgentUsageUncountedAccount: View {
+    var program = "claude"
     let account: String
     let reason: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            AgentUsageProgramTitle(program: "claude", account: account)
+            AgentUsageProgramTitle(program: program, account: account)
             // Flush with the card's edge, like a readable card's source line.
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
