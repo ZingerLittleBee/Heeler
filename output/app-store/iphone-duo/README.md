@@ -11,7 +11,11 @@ rebuild it.
   the previous first screenshot, downloaded from App Store Connect, because the
   frame has no other source. The screen area is fully replaced.
 
-The other nine images in this slot exist only in App Store Connect.
+`exports/01b-just-say-it.png` is the second image. `../voice/compose_voice.py`
+renders it from the captures in `../voice/sources/`.
+
+The other eight images in this slot exist only in App Store Connect. Version
+0.1.17 dropped `08b-host-connected.png` to make room for Voice Input.
 
 Capture notes: `simctl io screenshot --display=primary-1` reads the inner display.
 It returns a black image until a Device Hub window is attached to the simulator
