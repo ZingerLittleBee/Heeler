@@ -2724,6 +2724,39 @@ struct TerminalAttachTests {
         #expect(inset.height == 402)
     }
 
+    /// A slow main thread can expire either fallback while the keyboard is
+    /// still up, after it changed height inside the freeze (the Composer's
+    /// candidate bar going or coming, #629). The frame that changed it was
+    /// discarded while holding, so the fallback adopts the keyboard the
+    /// window measures, as the destination's settle would have.
+    @MainActor
+    @Test(arguments: ["destination watchdog", "owner fallback"])
+    func aFallbackAdoptsTheKeyboardTheWindowMeasures(fallback: String) async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 294 }
+        inset.responderHandoffFallbackDelay = .milliseconds(50)
+        inset.destinationResponderHandoffFallbackDelay = .milliseconds(50)
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 546, width: 402, height: 328)])
+        try #require(await Self.eventually { inset.height == 294 })
+
+        var expiredID: UUID?
+        let handoffID =
+            fallback == "owner fallback"
+            ? inset.beginResponderHandoff(currentHeight: { 267 }) { expiredID = $0 }
+            : inset.beginDestinationOwnedResponderHandoff(currentHeight: { 267 }) {
+                expiredID = $0
+            }
+        try #require(await Self.eventually { expiredID == handoffID })
+
+        #expect(!inset.isHoldingHandoffHeight)
+        try #require(await Self.eventually { inset.height == 267 })
+        #expect(inset.lastPresentedHeight == 267)
+        #expect(!inset.isSoftwareKeyboardDismissed)
+    }
+
     @MainActor
     @Test func responderHandoffCancellationUsesTheOwningWindowHeight() async throws {
         let center = NotificationCenter()

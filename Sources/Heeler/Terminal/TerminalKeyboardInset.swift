@@ -102,8 +102,11 @@ final class TerminalKeyboardInset {
     @ObservationIgnored private var owesDismissalAfterResponderHandoff = false
     @ObservationIgnored var responderHandoffFallbackDelay = Duration.milliseconds(500)
     /// The destination terminal owns the primary 500ms timeout. This later
-    /// owner-side watchdog exists only for a destination that is deallocated
-    /// before its weakly captured timeout can report an outcome.
+    /// owner-side watchdog exists for a destination that is deallocated
+    /// before its weakly captured timeout can report an outcome. It starts
+    /// before the destination's own timeout, so a slow main thread can also
+    /// expire it under a live destination; like the destination's settle, it
+    /// then adopts the keyboard the window measures (#629).
     @ObservationIgnored var destinationResponderHandoffFallbackDelay = Duration.seconds(1)
 
     var isHoldingHandoffHeight: Bool { activeResponderHandoffID != nil }
@@ -339,7 +342,8 @@ final class TerminalKeyboardInset {
             let measuredHeight = currentHeight()
             self.reconcileResponderHandoffExit(
                 owesDismissal: owesDismissal,
-                measuredHeight: owesDismissal ? measuredHeight ?? 0 : measuredHeight)
+                measuredHeight: owesDismissal ? measuredHeight ?? 0 : measuredHeight,
+                keepsVisibleHeight: true)
             onFallback(id)
         }
         return id
@@ -363,7 +367,8 @@ final class TerminalKeyboardInset {
             let owesDismissal = self.owesDismissalAfterResponderHandoff
             self.owesDismissalAfterResponderHandoff = false
             self.reconcileResponderHandoffExit(
-                owesDismissal: owesDismissal, measuredHeight: currentHeight())
+                owesDismissal: owesDismissal, measuredHeight: currentHeight(),
+                keepsVisibleHeight: true)
             onFallback(id)
         }
         return id
@@ -428,7 +433,8 @@ final class TerminalKeyboardInset {
     /// Every handoff exit reconciles against the owning window. An owed
     /// dismissal is settled against the measurement; `keepsVisibleHeight`
     /// keeps a positive inset while the keyboard still measures up (the
-    /// destination's settle contract), easing it to that measurement. With
+    /// destination's settle contract, which the fallbacks share), easing it
+    /// to that measurement. With
     /// nothing owed, a frozen zero inset still adopts a keyboard measured up
     /// at exit: its presentation was discarded inside the freeze (a hardware
     /// keyboard detached during the transfer), and no later frame would
