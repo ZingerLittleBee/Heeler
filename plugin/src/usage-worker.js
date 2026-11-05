@@ -4,16 +4,16 @@ import { lstatSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 import { setPriority } from "node:os";
 import { readUsageRuntime } from "./usage-runtime.js";
-import { cacheDirectory, usageRoots, readJSON, writeJSON, releaseWorker, activeLock, recordFailure, clearFailures, RETENTION } from "./usage/cache.js";
+import { cacheDirectory, readJSON, writeJSON, releaseWorker, activeLock, recordFailure, clearFailures, RETENTION } from "./usage/cache.js";
 import { claudeFiles, transcriptEntries, claudeContribution } from "./usage/claude-scanner.js";
 import { loadCheckpoint, startLog, openLog, saveCheckpoint, matchFiles, removeAbandonedTemporaries } from "./usage/checkpoint.js";
 import { changeBucket } from "./usage/buckets.js";
 import { priceContribution, pricingVersion } from "./usage/pricing.js";
 import { codexFiles, codexLines, ArchiveUnavailableError } from "./usage/codex-files.js";
 import { createCodexState, consumeCodexLine, finishCodexRead, codexTotalSignature } from "./usage/codex-scanner.js";
-import { readCodexLimits, codexRolloutLimits, codexLimitsWithFallback } from "./usage/codex-limits.js";
+import { readCodexLimits, codexRolloutLimits, codexLimitsWithFallback, codexAccountRuntime, codexLimitsEntries, nextCodexRead } from "./usage/codex-limits.js";
 import { readClaudeLimits, readClaudeLimitsInServer, cacheClaudeLimits, claudeVersion, accountRuntime, claudeLimitsEntries, nextClaudeRead } from "./usage/claude-limits.js";
-import { readClaudeAccounts } from "./usage/accounts.js";
+import { readClaudeAccounts, readProgramAccounts } from "./usage/accounts.js";
 import { homeCandidates } from "./usage/account-suggestions.js";
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -61,7 +61,6 @@ async function run() {
   try {
     const now = Date.now();
     const cutoff = now - RETENTION;
-    const roots = usageRoots(runtime);
     // Only directories are caches; claude-agents.json sits beside them.
     for (const entry of readdirSync(join(runtime.stateDir, "usage"), { withFileTypes: true })) {
       const sibling = join(runtime.stateDir, "usage", entry.name);
@@ -77,12 +76,19 @@ async function run() {
     const previous = await loadCheckpoint(directory, previousSnapshot, maintainHeartbeat);
     const accounts = readClaudeAccounts(values.config, runtime).filter(account => account.state === "ok");
     const counted = new Set(accounts.map(account => account.id));
+    const codexAccounts = readProgramAccounts(values.config, runtime, "codex").filter(account => account.state === "ok");
+    const codexCounted = new Set(codexAccounts.map(account => account.id));
+    const addedCodexAccounts = codexAccounts.filter(account => !account.isDefault);
     // The query suggests these as Accounts against the Account file it reads.
     const claudeCandidates = homeCandidates(runtime);
+    const codexCandidates = homeCandidates(runtime, "codex");
     limits.claude = claudeLimitsEntries(limits.claude, accounts);
+    limits.codexAccounts = codexLimitsEntries(limits.codexAccounts, addedCodexAccounts);
     // An Account no longer counted (removed, missing, a duplicate) leaves with
     // its files and records, without a rebuild; one that returns is read anew.
-    const leaving = record => record.program === "claude" && !counted.has(record.account);
+    // Codex records without an Account are the Default Account's, from before Accounts.
+    const leaving = record => record.program === "claude" ? !counted.has(record.account)
+      : record.program === "codex" && record.account !== undefined && !codexCounted.has(record.account);
     const previousFiles = Object.fromEntries(Object.entries(previous?.files || {}).filter(([, state]) => !leaving(state)));
     let left = false;
     for (const [key, record] of previous?.keys || []) {
@@ -98,13 +104,16 @@ async function run() {
     const unlistedPaths = [];
     const failedSources = new Set();
     const claudeReason = "Could not read the Claude Code Transcripts.";
+    const codexReason = "Could not read the Codex Transcripts.";
     let olderTranscripts = false;
     // One unreadable entry is skipped and counted; only a root that cannot be
     // listed hides its Account or program. Neither makes its known files look deleted.
+    // Codex's Default Account keeps its files unmarked, as before Accounts.
     for (const { source, program, account, list, reason } of [
       ...accounts.map(({ id, roots: accountRoots }) => ({ source: `claude:${id}`, program: "claude", account: id,
         list: () => claudeFiles(accountRoots, cutoff), reason: claudeReason })),
-      { source: "codex", program: "codex", list: () => codexFiles(roots.codex, cutoff), reason: "Could not read the Codex Transcripts." },
+      ...codexAccounts.map(({ id, isDefault, roots: accountRoots }) => ({ source: `codex:${id}`, program: "codex",
+        account: isDefault ? undefined : id, list: () => codexFiles(accountRoots, cutoff), reason: codexReason })),
     ]) {
       let listing;
       try { listing = await list(); } catch { listing = { files: [], unreadable: [], rootFailed: true, older: false }; }
@@ -119,8 +128,10 @@ async function run() {
       for (const path of listing.unreadable) if (!unlistedPaths.includes(path)) unlistedPaths.push(path);
       if (listing.rootFailed) { failedSources.add(source); errors[source] = reason; }
     }
+    // A program's own error is for when none of its Accounts could be listed.
     if (accounts.every(({ id }) => failedSources.has(`claude:${id}`))) errors.claude = claudeReason;
-    const unlisted = (path, state) => failedSources.has(state.program === "claude" ? `claude:${state.account}` : state.program)
+    if (codexAccounts.every(({ id }) => failedSources.has(`codex:${id}`))) errors.codex = codexReason;
+    const unlisted = (path, state) => failedSources.has(`${state.program}:${state.account ?? "default"}`)
       || unlistedPaths.some(unlisted => path === unlisted || path.startsWith(unlisted + sep));
     // A Transcript stays with the Account whose kept state holds it while that
     // Account cannot list it: another one reaching it would read on from its offset.
@@ -145,16 +156,19 @@ async function run() {
       // A routine incremental run only adds to the totals: until it finishes,
       // it keeps the previous run's scan state, coverage, age and Accounts,
       // so the next query restarts a worker that died mid-run.
-      const scan = final ? { complete, coveredThrough: new Date(now).toISOString(), generatedAt: new Date().toISOString(), countedAccounts: [...counted] }
+      const scan = final ? { complete, coveredThrough: new Date(now).toISOString(), generatedAt: new Date().toISOString(),
+        countedAccounts: [...counted], countedCodexAccounts: [...codexCounted] }
         : { complete: !rebuilding && previousSnapshot?.complete === true, coveredThrough: previousSnapshot?.coveredThrough ?? null,
-          generatedAt: previousSnapshot?.generatedAt ?? new Date().toISOString(), countedAccounts: previousSnapshot?.countedAccounts };
+          generatedAt: previousSnapshot?.generatedAt ?? new Date().toISOString(), countedAccounts: previousSnapshot?.countedAccounts,
+          countedCodexAccounts: previousSnapshot?.countedCodexAccounts };
       // Commit parser progress even when a rebuild is still resolving a burst.
       // The query keeps the old aggregates; the next worker resumes the new log.
-      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors, claudeCandidates,
-        // The program's Claude reading stays the Default Account's, for apps that ignore Accounts.
+      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors, claudeCandidates, codexCandidates,
+        // Each program's reading stays its Default Account's, for apps that ignore Accounts.
         limitsVersion: 1, usageLimits: { codex: limits.codex?.report, claude: limits.claude.default?.report,
-          claudeAccounts: Object.fromEntries(accounts.map(({ id }) => [id, limits.claude[id]?.report])) },
-        nextLimitsAt: limits.codex?.nextAllowedAt, nextClaudeLimitsAt: nextClaudeRead(limits.claude, accounts),
+          claudeAccounts: Object.fromEntries(accounts.map(({ id }) => [id, limits.claude[id]?.report])),
+          codexAccounts: Object.fromEntries(addedCodexAccounts.map(({ id }) => [id, limits.codexAccounts[id]?.report])) },
+        nextLimitsAt: nextCodexRead(limits, addedCodexAccounts), nextClaudeLimitsAt: nextClaudeRead(limits.claude, accounts),
         skippedArchives: Object.values(fileStates).filter(file => file.skipped).length,
         unreadableFiles: unlistedPaths.length + files.filter(file => fileStates[file.logicalPath || file.path]?.unreadable).length,
         // Coverage starts at the earliest record any remaining Transcript holds;
@@ -162,7 +176,7 @@ async function run() {
         coveredSince: Object.values(fileStates).reduce((earliest, file) => Number.isFinite(file.firstAt) && (earliest === null || file.firstAt < earliest)
           ? file.firstAt : earliest, olderTranscripts ? cutoff : null) };
       cacheWrite(() => saveCheckpoint(directory, fileStates, log, preserveSnapshot && !scan.complete
-        ? { ...previousSnapshot, complete: false, rebuilding: true, limitsVersion: 1, claudeCandidates,
+        ? { ...previousSnapshot, complete: false, rebuilding: true, limitsVersion: 1, claudeCandidates, codexCandidates,
           usageLimits: progress.usageLimits, nextLimitsAt: progress.nextLimitsAt, nextClaudeLimitsAt: progress.nextClaudeLimitsAt }
         : { ...progress, rebuilding: false }));
       lastSnapshot = performance.now();
@@ -217,9 +231,13 @@ async function run() {
         // against its parent; a forked subagent ends on its own markers.
         const needsParent = () => carry.inheritance === "fork" && !carry.inheritedEnded;
         let parent = needsParent() ? await totalsForParent(carry.parentId) : null;
+        // An added Account's responses count once within it, beside the same
+        // responses copied into another Account.
+        const account = state.account;
         const countContributions = contributions => {
           for (const contribution of contributions) {
-            const candidate = priceContribution(contribution);
+            const candidate = priceContribution(account === undefined ? contribution
+              : { ...contribution, account, key: JSON.stringify([account, contribution.key]) });
             if (keys.has(candidate.key)) continue;
             keys.set(candidate.key, candidate);
             changeBucket(buckets, candidate, 1);
@@ -307,6 +325,16 @@ async function run() {
       limits.codex = { service: await readCodexLimits(runtime, directory), nextAllowedAt: Date.now() + 60_000 };
       heartbeat();
     }
+    // An added Codex Account runs Codex with its own CODEX_HOME, on its own cadence.
+    for (const account of addedCodexAccounts) {
+      const entry = limits.codexAccounts[account.id];
+      if (Number.isFinite(entry?.nextAllowedAt) && Date.now() < entry.nextAllowedAt) continue;
+      limits.codexAccounts[account.id] = { ...entry, nextAllowedAt: Date.now() + 60_000 };
+      writeJSON(join(directory, "limits.json"), limits);
+      limits.codexAccounts[account.id] = { service: await readCodexLimits(codexAccountRuntime(runtime, account), directory),
+        nextAllowedAt: Date.now() + 60_000 };
+      heartbeat();
+    }
     // Each Account keeps its own cadence, back-off and last good reading;
     // one check of the recorded claude's version serves them all.
     let version;
@@ -325,11 +353,15 @@ async function run() {
       limits.claude[account.id] = cacheClaudeLimits(limits.claude[account.id], reading);
       heartbeat();
     }
-    const fallback = Object.values(fileStates).map(file => file.carry.latestLimits).filter(reading => reading?.windows?.length)
+    // Each Account falls back to the latest limits its own sessions recorded.
+    const fallback = accountID => Object.values(fileStates).filter(file => file.program === "codex" && file.account === accountID)
+      .map(file => file.carry.latestLimits).filter(reading => reading?.windows?.length)
       .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
     // A reservation whose read never finished has no reading of its own.
-    limits.codex.report = codexLimitsWithFallback(limits.codex.service || limits.codex.report
-      || { state: "error", reason: "requestFailed" }, fallback);
+    const report = (entry, accountID) => codexLimitsWithFallback(entry.service || entry.report
+      || { state: "error", reason: "requestFailed" }, fallback(accountID));
+    limits.codex.report = report(limits.codex, undefined);
+    for (const { id } of addedCodexAccounts) limits.codexAccounts[id].report = report(limits.codexAccounts[id], id);
     writeJSON(join(directory, "limits.json"), limits);
     snapshot(!pendingPrefix, true);
     log.close();

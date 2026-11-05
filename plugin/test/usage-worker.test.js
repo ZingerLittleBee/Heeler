@@ -221,7 +221,12 @@ test("the shared v1 vector comes from the worker's Claude and Codex aggregation"
   // An added Account without Transcripts and one whose directory is gone.
   mkdirSync(join(f.root, "claude-2"));
   writeFileSync(join(f.env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"), JSON.stringify({ version: 1, claude: { defaultName: null, accounts: [
-    { id: "7f3c9a2e", directory: join(f.root, "claude-2"), name: "claude-2" }, { id: "c41d07b9", directory: join(f.root, "gone"), name: "work" }] } }));
+    { id: "7f3c9a2e", directory: join(f.root, "claude-2"), name: "claude-2" }, { id: "c41d07b9", directory: join(f.root, "gone"), name: "work" }] },
+    // An added Codex Account without sessions, and a Codex home only the listing finds.
+    programs: { codex: { defaultName: null, accounts: [{ id: "a1b2c3d4", directory: join(f.root, "codex-work"), name: "codex-work" }] } } }));
+  mkdirSync(join(f.root, "codex-work", "sessions"), { recursive: true });
+  mkdirSync(join(f.env.HOME, ".codex-personal"), { recursive: true });
+  writeFileSync(join(f.env.HOME, ".codex-personal", "auth.json"), "{}");
   // A running Agent's directory, also in the home listing, and one only the listing finds.
   mkdirSync(join(f.env.HOME, ".claude-work", "projects"), { recursive: true });
   mkdirSync(join(f.env.HOME, ".claude-personal"));
@@ -249,11 +254,17 @@ test("the shared v1 vector comes from the worker's Claude and Codex aggregation"
   assert.equal(claude(report).daily.length, 30);
   assert.deepEqual(claude(report).models.map(model => [model.model, model.priced, model.tokens.total]), [["claude-opus-4-5", true, 882000]]);
   assert.deepEqual(claude(report).directories.map(directory => [directory.path, directory.tokens.total]), [["/work/project", 882000]]);
-  assert.deepEqual(report.programs[1].tokenUsage.models.map(model => [model.model, model.priced, model.tokens.total]), [["gpt-5.3-codex", true, 250]]);
-  assert.deepEqual(report.programs[1].tokenUsage.directories.map(directory => [directory.path, directory.tokens.total]), [["/work/codex", 250]]);
+  // Codex's Default Account holds the vector session, and its total is the program's.
+  const codexAccounts = report.programs[1].accounts;
+  const codexDefault = codexAccounts[0].tokenUsage;
+  assert.deepEqual(codexAccounts.map(account => [account.id, account.state, account.tokenUsage.state]),
+    [["default", "ok", "ok"], ["a1b2c3d4", "ok", "noData"]]);
+  assert.deepEqual(codexDefault, report.programs[1].tokenUsage);
+  assert.deepEqual(codexDefault.models.map(model => [model.model, model.priced, model.tokens.total]), [["gpt-5.3-codex", true, 250]]);
+  assert.deepEqual(codexDefault.directories.map(directory => [directory.path, directory.tokens.total]), [["/work/codex", 250]]);
   assert.ok(Math.abs(claude(report).totals.today.estimatedCostUSD - 0.92225) < 1e-10);
-  assert.ok(Math.abs(report.programs[1].tokenUsage.totals.today.estimatedCostUSD - 0.000742) < 1e-12);
-  assert.deepEqual(report.programs[1].tokenUsage.totals.today.tokens, { input: 120, cacheRead: 40, cacheWrite: 60, output: 30, reasoning: 10, total: 250 });
+  assert.ok(Math.abs(codexDefault.totals.today.estimatedCostUSD - 0.000742) < 1e-12);
+  assert.deepEqual(codexDefault.totals.today.tokens, { input: 120, cacheRead: 40, cacheWrite: 60, output: 30, reasoning: 10, total: 250 });
   const claudeLimits = report.programs[0].usageLimits;
   assert.equal(claudeLimits.state, "ok");
   assert.equal(claudeLimits.plan, "max");
@@ -278,12 +289,20 @@ test("the shared v1 vector comes from the worker's Claude and Codex aggregation"
   assert.equal(limits.source, "lastSession");
   assert.deepEqual(limits.windows.map(window => [window.id, window.durationMinutes, window.usedPercent, window.expired]),
     [["primary", 10080, 18, false], ["secondary", 300, null, true]]);
+  // The Default Account's limits are the program's; the added one recorded none of its own.
+  assert.deepEqual(codexAccounts[0].usageLimits, limits);
+  assert.deepEqual(codexAccounts[1].usageLimits, { state: "unavailable", reason: "programMissing" });
   limits.observedAt = "2026-10-23T12:34:50.000Z";
   limits.windows[0].resetsAt = "2026-10-28T00:00:00.000Z";
   limits.windows[1].resetsAt = "2026-10-22T00:00:00.000Z";
+  codexAccounts[0].usageLimits = structuredClone(limits);
+  for (const [index, directory] of ["/Users/u/.codex", "/Users/u/.codex-work"].entries()) codexAccounts[index].directory = directory;
+  const codexSuggestions = report.programs[1].accountSuggestions;
+  assert.deepEqual(codexSuggestions, [{ directory: join(f.env.HOME, ".codex-personal"), name: "codex-personal", source: "home" }]);
+  codexSuggestions[0].directory = "/Users/u/.codex-personal";
   report.generatedAt = report.scan.coveredThrough = "2026-10-23T12:34:56.000Z";
   report.scan.coveredFrom = "2026-10-23";
-  for (const { tokenUsage } of [...report.programs, ...accounts]) {
+  for (const { tokenUsage } of [...report.programs, ...accounts, ...codexAccounts]) {
     for (const [index, day] of (tokenUsage?.daily || []).entries()) day.date = new Date(Date.parse("2026-10-23T12:00:00Z") - (29 - index) * 86_400_000).toISOString().slice(0, 10);
   }
   const path = join(plugin, "test-vectors", "usage-v1.json");

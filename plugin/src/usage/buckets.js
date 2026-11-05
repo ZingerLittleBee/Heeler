@@ -87,7 +87,7 @@ function tokenUsage(buckets, dates, dayInZone) {
  * to the Default Account.
  */
 export function reportFromSnapshot(snapshot, timeZone, refreshing, now = Date.now(), claudeLimits = false,
-  { accounts, suggestions = [] }) {
+  { accounts, suggestions = [], programs: others = {} }) {
   const dayInZone = calendarDays(timeZone);
   const today = dayInZone(now);
   const dates = Array.from({ length: 30 }, (_, index) => new Date(Date.parse(today + "T12:00:00Z") - (29 - index) * 86_400_000).toISOString().slice(0, 10));
@@ -99,10 +99,11 @@ export function reportFromSnapshot(snapshot, timeZone, refreshing, now = Date.no
     || (refreshing ? { state: "unavailable", reason: "notReadYet" } : { state: "error", reason: "requestFailed" }), now);
   const claudeLimitsOf = reading => claudeLimits ? limits(reading) : { state: "disabled" };
   const counted = new Map(accounts.filter(account => account.state === "ok").map(account => [account.id, []]));
-  const codex = [];
+  const codexAccounts = others.codex?.accounts ?? [{ id: "default", isDefault: true, state: "ok" }];
+  const codexCounted = new Map(codexAccounts.filter(account => account.state === "ok").map(account => [account.id, []]));
   for (const bucket of snapshot?.buckets || []) {
     if (bucket.program === "claude") counted.get(bucket.account ?? "default")?.push(bucket);
-    else if (bucket.program === "codex") codex.push(bucket);
+    else if (bucket.program === "codex") codexCounted.get(bucket.account ?? "default")?.push(bucket);
   }
   // The program's error covers the Accounts its snapshot counted (before
   // Accounts, the Default one); an Account added since is not counted yet.
@@ -115,7 +116,21 @@ export function reportFromSnapshot(snapshot, timeZone, refreshing, now = Date.no
       usageLimits: claudeLimitsOf(snapshot?.usageLimits?.claudeAccounts?.[id] ?? (isDefault ? snapshot?.usageLimits?.claude : undefined)),
     }),
     accountSuggestions: suggestions };
-  const programs = [claude, { program: "codex", tokenUsage: usage(codex, errors.codex), usageLimits: limits(snapshot?.usageLimits?.codex) }];
+  // Codex's Accounts arrived later: buckets and limits from before them are
+  // the Default Account's, and the program's error covers the Accounts its
+  // snapshot counted.
+  const codexBefore = Array.isArray(snapshot?.countedCodexAccounts) ? snapshot.countedCodexAccounts : ["default"];
+  const codexLimits = snapshot?.usageLimits?.codex;
+  const codex = { program: "codex", tokenUsage: usage([...codexCounted.values()].flat(), errors.codex), usageLimits: limits(codexLimits),
+    ...(others.codex ? {
+      accounts: codexAccounts.map(({ id, isDefault, name, directory, state }) => state !== "ok" ? { id, isDefault, name, directory, state } : {
+        id, isDefault, name, directory, state,
+        tokenUsage: usage(codexCounted.get(id), errors[`codex:${id}`] ?? (codexBefore.includes(id) ? errors.codex : undefined)),
+        usageLimits: limits(isDefault ? codexLimits : snapshot?.usageLimits?.codexAccounts?.[id]),
+      }),
+      accountSuggestions: others.codex.suggestions ?? [],
+    } : {}) };
+  const programs = [claude, codex];
   // Clamp the first recorded day into the requested 30-day calendar.
   const since = Number.isFinite(snapshot?.coveredSince) ? dayInZone(snapshot.coveredSince) : null;
   const covered = since === null ? null : since < dates[0] ? dates[0] : since > today ? today : since;

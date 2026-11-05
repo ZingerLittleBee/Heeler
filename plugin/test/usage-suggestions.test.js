@@ -62,6 +62,27 @@ test("the home listing keeps .claude* directories in HOME and claude* in the con
   assert.deepEqual(homeCandidates({ env: { HOME: join(root, "absent"), XDG_CONFIG_HOME: null } }), []);
 });
 
+test("Codex's home listing keeps .codex* directories in HOME that hold a sign-in or sessions", t => {
+  const { root } = temporary(t);
+  const home = join(root, "home");
+  const codex = (path, markers) => {
+    mkdirSync(path, { recursive: true });
+    if (markers.includes("sessions")) mkdirSync(join(path, "sessions"));
+    if (markers.includes("auth.json")) writeFileSync(join(path, "auth.json"), "{}");
+    return path;
+  };
+  const expected = [codex(join(home, ".codex"), ["sessions"]), codex(join(home, ".codex-work"), ["auth.json"])];
+  codex(join(home, ".codex-cache"), []);
+  // Claude Code's markers are not Codex's, and Codex has no XDG directory.
+  codex(join(home, ".codex-claude"), []);
+  writeFileSync(join(home, ".codex-claude", ".claude.json"), "{}");
+  codex(join(home, ".config", "codex"), ["sessions"]);
+  codex(join(home, ".claude"), ["sessions"]);
+
+  assert.deepEqual(homeCandidates({ env: { HOME: home, XDG_CONFIG_HOME: null } }, "codex"), expected);
+  assert.deepEqual(homeCandidates({ env: { HOME: home, XDG_CONFIG_HOME: null } }), []);
+});
+
 test("suggestions leave out counted and dismissed directories, prefer the Agent's string, and stop at 8", t => {
   const { root, directory } = temporary(t);
   const home = join(root, "home");
@@ -153,4 +174,55 @@ process.stdout.write(JSON.stringify({ result: { type: "pane_process_info", proce
   writeFileSync(join(env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"), JSON.stringify({ version: 1, claude: { defaultName: null,
     accounts: [{ id: "agentteam", directory: agentDirectory, name: "team" }], ignored: [home] } }));
   assert.deepEqual(await suggestions(), [{ directory: work, name: "claude-work", source: "home" }]);
+});
+
+test("the query suggests a running Codex Agent's CODEX_HOME and the home listing's Codex homes under Codex, not Claude Code", { skip: environmentReadable }, async t => {
+  const { root } = temporary(t, root => {
+    const usage = join(root, "state", "usage");
+    for (const name of existsSync(usage) ? readdirSync(usage) : []) {
+      try { process.kill(JSON.parse(readFileSync(join(usage, name, "worker.lock"))).pid, "SIGKILL"); } catch { /* Worker ended, or not a cache. */ }
+    }
+  });
+  const env = { PATH: "/usr/bin:/bin", HOME: join(root, "home"), CLAUDE_CONFIG_DIR: join(root, "claude"), CODEX_HOME: join(root, "codex"),
+    HERDR_PLUGIN_CONFIG_DIR: join(root, "config"), HERDR_PLUGIN_STATE_DIR: join(root, "state"), HERDR_BIN_PATH: join(root, "herdr") };
+  const run = (name, args = [], extra = {}) => spawnSync(process.execPath, [join(plugin, "src", name), ...args], { env: { ...env, ...extra }, encoding: "utf8", timeout: 10_000 });
+  assert.equal(run("sidebar-hook.js").status, 0);
+  const programs = async () => {
+    for (let i = 0; i < 400; i++) {
+      const result = run("usage-query.js", ["--tz", "UTC"]);
+      assert.equal(result.status, 0, result.stderr);
+      const report = JSON.parse(result.stdout);
+      if (!report.refreshing) return Object.fromEntries(report.programs.map(program => [program.program, program.accountSuggestions]));
+      await sleep(15);
+    }
+    assert.fail("worker did not finish");
+  };
+  const codexHome = (path, marker) => {
+    mkdirSync(path, { recursive: true });
+    if (marker === "sessions") mkdirSync(join(path, "sessions"));
+    else writeFileSync(join(path, "auth.json"), "{}");
+    return path;
+  };
+  const agentHome = codexHome(join(root, "homes", "team"), "auth.json");
+  const work = codexHome(join(env.HOME, ".codex-work"), "sessions");
+  const agent = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], { env: { CODEX_HOME: agentHome, CLAUDE_CONFIG_DIR: work }, stdio: "ignore" });
+  t.after(() => agent.kill("SIGKILL"));
+  writeFileSync(env.HERDR_BIN_PATH, `#!${process.execPath}
+if (process.argv.slice(2).join(" ") !== "pane process-info --pane w1:p2") process.exit(64);
+process.stdout.write(JSON.stringify({ result: { type: "pane_process_info", process_info: { pane_id: "w1:p2",
+  foreground_process_group_id: ${agent.pid}, foreground_processes: [{ pid: ${agent.pid}, name: "codex", argv0: "codex" }] } } }));
+`, { mode: 0o755 });
+
+  const event = JSON.stringify({ event: "pane_agent_status_changed", data: { pane_id: "w1:p2", agent_status: "working", agent: "codex" } });
+  const hook = run("activity-hook.js", [], { HERDR_PLUGIN_EVENT_JSON: event });
+  assert.equal(hook.status, 0, hook.stderr);
+  // Only the program's own variable is kept from a Codex Agent's environment.
+  assert.deepEqual(await programs(), {
+    claude: [],
+    codex: [{ directory: agentHome, name: "team", source: "agent" }, { directory: work, name: "codex-work", source: "home" }],
+  });
+
+  writeFileSync(join(env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"), JSON.stringify({ version: 1,
+    programs: { codex: { defaultName: null, accounts: [{ id: "agentteam", directory: agentHome, name: "team" }], ignored: [work] } } }));
+  assert.deepEqual((await programs()).codex, []);
 });

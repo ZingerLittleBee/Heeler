@@ -233,3 +233,34 @@ test("the worker uses recorded-PATH zstd or reports skipped archives when native
     if (external) assert.equal(codex(report).totals.today.tokens.total, 9);
   }
 });
+
+test("each Codex Account counts its own Transcripts, a response copied into two counts in each, and a removed one leaves", async t => {
+  const f = fixture(t);
+  const work = join(f.root, "codex-work");
+  const rollout = (home, id, records) => {
+    const path = join(home, "sessions/2026/10/23", `rollout-${id}.jsonl`);
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(path, records.map(r => JSON.stringify(r)).join("\n") + "\n");
+  };
+  const accounts = entries => writeFileSync(join(f.env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"),
+    JSON.stringify({ version: 1, programs: { codex: { defaultName: null, accounts: entries } } }));
+  const program = report => report.programs.find(p => p.program === "codex");
+  const totals = report => [program(report).tokenUsage, ...program(report).accounts.map(account => account.tokenUsage)]
+    .map(usage => usage.state === "ok" ? usage.totals.today.tokens.total : usage.state);
+  f.transcript("own", [meta("own"), record("own", "response-1", usage(100))]);
+  rollout(work, "copied", [meta("copied"), record("copied", "response-1", usage(100)), record("copied", "response-2", usage(7))]);
+  accounts([{ id: "work0001", directory: work, name: "work" }]);
+
+  let report = await f.finish();
+  assert.deepEqual(program(report).accounts.map(account => [account.id, account.name, account.directory]),
+    [["default", null, f.env.CODEX_HOME], ["work0001", "work", work]]);
+  assert.deepEqual(totals(report), [207, 100, 107]);
+  const snapshot = JSON.parse(readFileSync(join(f.cache(), "buckets.json")));
+  assert.deepEqual(snapshot.countedCodexAccounts, ["default", "work0001"]);
+
+  // Removing it takes its records out at the next run, without a rebuild of the Default Account.
+  accounts([]);
+  report = await f.finish();
+  assert.deepEqual(totals(report), [100, 100]);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.cache(), "buckets.json"))).countedCodexAccounts, ["default"]);
+});
