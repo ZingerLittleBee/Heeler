@@ -9,16 +9,19 @@ order follows the iPhone screens on the landing page.
 | Order | Export | Source | Copy |
 | --- | --- | --- | --- |
 | 1 | `exports/01-every-agent-one-console.png` | `docs/images/console-iphone.png` | Every Agent. One Console. |
-| 2 | `exports/02-type-directly-stay-in-flow.png` | `docs/images/live-terminal-iphone.png` | Type Directly. Stay in Flow. |
-| 3 | `exports/03-every-reply-as-a-chat.png` | `docs/images/chat-iphone.png` | Every Reply. As a Chat. |
-| 4 | `exports/04-control-without-leaving-the-flow.png` | `docs/images/agent-iphone.png` | Control Without Leaving the Flow |
-| 5 | `exports/05-see-what-changed.png` | `docs/images/changes-iphone.png` | See What Changed. |
-| 6 | `exports/06-your-shell-within-reach.png` | `docs/images/terminal-iphone.png` | Your Shell. Within Reach. |
-| 7 | `exports/07-skills-without-breaking-flow.png` | `docs/images/skills-iphone.png` | Skills Without Breaking Flow |
-| 8 | `exports/08-every-host-in-view.png` | `docs/images/hosts-iphone.png` | Every Host. In View. |
-| 9 | `exports/09-your-agents-at-a-glance.png` | `docs/images/live-activity-iphone.png` | Your Agents. At a Glance. |
+| 2 | `exports/01b-just-say-it.png` | `../voice/sources/iphone-*.png` | Just Say It. |
+| 3 | `exports/02-type-directly-stay-in-flow.png` | `docs/images/live-terminal-iphone.png` | Type Directly. Stay in Flow. |
+| 4 | `exports/03-every-reply-as-a-chat.png` | `docs/images/chat-iphone.png` | Every Reply. As a Chat. |
+| 5 | `exports/04-control-without-leaving-the-flow.png` | `docs/images/agent-iphone.png` | Control Without Leaving the Flow |
+| 6 | `exports/05-see-what-changed.png` | `docs/images/changes-iphone.png` | See What Changed. |
+| 7 | `exports/06-your-shell-within-reach.png` | `docs/images/terminal-iphone.png` | Your Shell. Within Reach. |
+| 8 | `exports/07-skills-without-breaking-flow.png` | `docs/images/skills-iphone.png` | Skills Without Breaking Flow |
+| 9 | `exports/08-every-host-in-view.png` | `docs/images/hosts-iphone.png` | Every Host. In View. |
+| 10 | `exports/09-your-agents-at-a-glance.png` | `docs/images/live-activity-iphone.png` | Your Agents. At a Glance. |
 
 All files are opaque 1320×2868 PNGs for the iPhone 6.9-inch App Store slot.
+`../voice/compose_voice.py` renders the Voice Input image (order 2); this
+directory's `compose_mockups.py` renders the rest.
 The iPad set is `../ipad-13/`.
 
 ## Provenance
