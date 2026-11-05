@@ -59,6 +59,7 @@ struct ConsoleCommandAvailability {
     let agentCount: Int
     let inputMode: AgentInputMode
     let hasDraft: Bool
+    var offersNewItem = true
 
     func allows(_ action: ConsoleCommandAction) -> Bool {
         switch action {
@@ -70,7 +71,9 @@ struct ConsoleCommandAvailability {
             hasSelection
         case .sendDraft:
             hasSelection && focus == .composer && inputMode == .composer && hasDraft
-        case .focusSearch, .newAgent, .settings, .hosts:
+        case .newAgent:
+            offersNewItem
+        case .focusSearch, .settings, .hosts:
             true
         }
     }

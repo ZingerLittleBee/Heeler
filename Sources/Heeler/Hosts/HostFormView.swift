@@ -27,6 +27,7 @@ struct HostFormView: View {
     @State private var isEditingRoutes = false
     @FocusState private var isUsernameFocused: Bool
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.hostOnboardingDependencies) private var onboardingDependencies
 
     private let credentials = HostCredentialsProvider()
 
@@ -75,7 +76,7 @@ struct HostFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
-                        .disabled(!draft.canSave(editing: editing))
+                        .disabled(!draft.canSave(editing: editing, onNativeWindows: isNativeWindowsCore))
                 }
             }
             .alert("Could not save the Host", isPresented: $saveFailed) {
@@ -111,7 +112,9 @@ struct HostFormView: View {
             } message: {
                 Text(
                     "Every Host using Device Key authentication will reject the replacement "
-                        + "until you add its new public key to ~/.ssh/authorized_keys.")
+                        + "until you add its new public key to ~/.ssh/authorized_keys, or for an "
+                        + "administrator account on Windows to "
+                        + #"C:\ProgramData\ssh\administrators_authorized_keys."#)
             }
             .confirmationDialog(
                 "Replace the RSA Key?",
@@ -161,6 +164,7 @@ struct HostFormView: View {
     private var herdrSection: some View {
         if let herdrEndpoint = draft.herdrEndpoint {
             Section {
+                serverKindRow
                 LabeledContent("Socket", value: herdrEndpoint.socketPath)
                 LabeledContent("Launcher", value: herdrEndpoint.executablePath)
             } header: {
@@ -170,14 +174,39 @@ struct HostFormView: View {
             }
         } else {
             Section {
+                serverKindRow
                 TextField("Session name", text: $draft.sessionName)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
             } header: {
-                Text("herdr Session")
+                Text(draft.serverKind == .herdrTUI ? "herdr Session" : draft.serverKind == .herdrCore ? "herdr-core Session" : "Session")
             } footer: {
-                Text("Leave blank for the default herdr session.")
+                if let refusal = draft.sessionNameRefusal(onNativeWindows: isNativeWindowsCore) {
+                    Text(refusal)
+                        .foregroundStyle(.red)
+                } else {
+                    Text(draft.serverKind == .herdrTUI
+                        ? "Leave blank for the default herdr session."
+                        : "Leave blank for the default session.")
+                }
             }
+        }
+    }
+
+    /// A herdr-core Host already found on native Windows, whose `connect` line
+    /// takes fewer session names than the core.
+    private var isNativeWindowsCore: Bool {
+        guard let editing, draft.serverKind == .herdrCore else { return false }
+        return onboardingDependencies.coreKernel(editing.id) == HerdrCoreLocator.windowsKernel
+    }
+
+    /// A Host keeps its Server Kind (ADR 0031), so Edit only names it. A new
+    /// Host confirms its kind in Host detail, and a copy of a Herdr TUI Host is
+    /// one too, with nothing to say yet.
+    @ViewBuilder
+    private var serverKindRow: some View {
+        if editing != nil || draft.serverKind == .herdrCore {
+            LabeledContent("Server Kind", value: draft.serverKind.displayName)
         }
     }
 
@@ -271,7 +300,10 @@ struct HostFormView: View {
             switch draft.authMethod {
             case .deviceKey:
                 Text(
-                    "Add this line to ~/.ssh/authorized_keys on the Host. "
+                    "Add this line to ~/.ssh/authorized_keys on the Host. For an administrator "
+                        + "account on Windows, add it to "
+                        + #"C:\ProgramData\ssh\administrators_authorized_keys instead, "#
+                        + "which only Administrators and SYSTEM may access. "
                         + "The private key never leaves this device.")
             case .rsaKey:
                 Text(
@@ -404,7 +436,7 @@ struct HostFormView: View {
     }
 
     private func save() {
-        guard draft.canSave(editing: editing) else { return }
+        guard draft.canSave(editing: editing, onNativeWindows: isNativeWindowsCore) else { return }
         guard let host = draft.makeHost(id: editing?.id ?? UUID()) else { return }
         do {
             if editing == nil {

@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import Heeler
@@ -295,6 +296,38 @@ struct TerminalInputControllerTests {
         #expect(
             controller.userMessageIndex.entries.map(\.rawText)
                 == ["rewrite the matching tests"])
+    }
+
+    @Test func anAcknowledgedWriteGoesOnlyToTheSessionItNamed() async throws {
+        let written = Mutex<[Data]>([])
+        let controller = TerminalInputController()
+        let first = controller.beginSession(
+            writer: { _ in }, acknowledgedWriter: { data in written.withLock { $0.append(data) } })
+        try await controller.writeAcknowledged(Data("a".utf8), generation: first)
+        #expect(written.withLock { $0 } == [Data("a".utf8)])
+
+        controller.endSession(first)
+        await #expect(throws: TerminalAttachInputError.sessionEnded) {
+            try await controller.writeAcknowledged(Data("b".utf8), generation: first)
+        }
+        let second = controller.beginSession(writer: { _ in })
+        await #expect(throws: TerminalAttachInputError.sessionEnded) {
+            try await controller.writeAcknowledged(Data("c".utf8), generation: second)
+        }
+        #expect(written.withLock { $0 } == [Data("a".utf8)])
+    }
+
+    @Test func aWaitForAReadySessionEndsWhenItBecomesLive() async {
+        let controller = TerminalInputController()
+        let generation = controller.beginSession(writer: { _ in })
+        #expect(controller.readySession == nil)
+        let waiting = Task { await controller.untilSessionIsReady() }
+        await Task.yield()
+        controller.sessionDidBecomeLive(generation)
+        await waiting.value
+        #expect(controller.readySession == generation)
+        controller.endSession(generation)
+        #expect(controller.readySession == nil)
     }
 
     @Test func recordSubmittedDropsWhenTheGenerationIsNoLongerLive() {

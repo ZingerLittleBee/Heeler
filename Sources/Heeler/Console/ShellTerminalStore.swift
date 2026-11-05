@@ -9,14 +9,14 @@ extension ConsoleAgent {
     /// directory disables Open Terminal instead of letting herdr inherit some
     /// other focused Pane's cwd.
     var shellTerminalCreationRequest: ShellTerminalCreationRequest? {
-        if Self.isAbsoluteNonEmptyPath(agent.cwd) {
+        if isAbsoluteNonEmptyPath(agent.cwd) {
             return ShellTerminalCreationRequest(
                 workspaceID: agent.workspaceID,
                 cwd: agent.cwd)
         }
         if isLinkedWorktree,
             let checkoutPath,
-            Self.isAbsoluteNonEmptyPath(checkoutPath)
+            isAbsoluteNonEmptyPath(checkoutPath)
         {
             return ShellTerminalCreationRequest(
                 workspaceID: agent.workspaceID,
@@ -25,9 +25,9 @@ extension ConsoleAgent {
         return nil
     }
 
-    private static func isAbsoluteNonEmptyPath(_ value: String) -> Bool {
-        value.hasPrefix("/")
-            && !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private func isAbsoluteNonEmptyPath(_ value: String) -> Bool {
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return RemoteHostPath.isStartDirectory(value, allowingWindows: startsTerminalsInWindowsDirectories)
     }
 }
 
@@ -188,12 +188,21 @@ final class AgentOpenTerminalStore {
             }
             do {
                 try await self.closeRemoteTerminal(shell.identity)
+            } catch let refusal as HerdrCoreCloseRefusal {
+                self.closeFailureMessage = ConsoleStore.tabCloseFailureMessage(for: refusal)
+                return
             } catch is HerdrAPIError {
                 // The server no longer knows the pane: closed on the desktop,
                 // or lost to a restart. Either way it is gone, which is the
                 // outcome the user asked for.
             } catch TransportError.apiRejected {
                 // Same definitive answer, surfaced through the other layer.
+            } catch TransportError.coreMutationOutcomeUnknown {
+                self.closeFailureMessage = ConsoleStore.closeUnconfirmedMessage
+                return
+            } catch TransportError.herdrCoreTerminalGone {
+                self.closeFailureMessage = TransportError.herdrCoreTerminalGone.presentation.message
+                return
             } catch {
                 self.closeFailureMessage =
                     "The Host couldn't be reached. The tab is still open there."
@@ -249,6 +258,8 @@ final class AgentOpenTerminalStore {
             OpenTerminalFailure(
                 kind: .rejected,
                 message: "herdr couldn't create the terminal: \(message)")
+        case TransportError.hostFeatureUnavailable(let feature):
+            OpenTerminalFailure(kind: .rejected, message: feature)
         default:
             OpenTerminalFailure(
                 kind: .ambiguous,
@@ -343,6 +354,11 @@ final class ShellTerminalStore {
     }
 
     func retryTerminal() { terminal.retry() }
+
+    /// The retained terminal came on or off screen.
+    func setTerminalViewed(_ viewed: Bool) {
+        terminal.setViewed(viewed)
+    }
 
     /// Explicitly displaces another writable attach owner after a normal
     /// attachment was refused. Merely viewing an existing shell never does.
@@ -451,6 +467,8 @@ final class ShellTerminalStore {
             let replacement = Self.makeTerminal(
                 terminalID: self.identity.terminalID,
                 takeover: self.takeover,
+                viewer: .resumed,
+                isViewed: previous.isViewed,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -496,6 +514,7 @@ final class ShellTerminalStore {
             let replacement = Self.makeTerminal(
                 terminalID: self.identity.terminalID,
                 takeover: self.takeover,
+                isViewed: self.terminal.isViewed,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -565,6 +584,8 @@ final class ShellTerminalStore {
     private static func makeTerminal(
         terminalID: String,
         takeover: Bool,
+        viewer: TerminalViewerRole = .interactive,
+        isViewed: Bool = true,
         input: TerminalInputController,
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
@@ -576,6 +597,8 @@ final class ShellTerminalStore {
         AttachTerminalStore(
             target: .terminal(terminalID),
             takeover: takeover,
+            viewer: viewer,
+            isViewed: isViewed,
             input: input,
             transportGeneration: transportGeneration,
             transportReady: transportReady,

@@ -1,0 +1,4715 @@
+{
+  "description": "Which Agent a herdr-core Terminal record holds (ADR 0032), for the app's HerdrCoreAgentRule and the Helper. A case's record is the core's own shape; foregroundEvents, when a case has them, are the data of the `foreground` events that follow that record, in order, null for a cleared one; expected is null when the Terminal hosts no Agent. known is false for a program Heeler does not know: a sanitized kind, the generic glyph and no Chat. A report of done reads idle here: Done is per device, and herdr-core-turn-end-v1.json holds its cases.",
+  "provisional": true,
+  "provisionalReason": "Built from versioned compatibility observations, the desktop app's wrapper source and PR #538's recognizer tests; recordings of real harnesses on hc-lab may add cases.",
+  "coreVersion": "0.1.13",
+  "coreCommit": "88fe4e752debdc6ff6689eaa153d7f95819835a4",
+  "desktopVersion": "0.1.9",
+  "desktopCommit": "3e32d75",
+  "apps": {
+    "claude-code": "claude",
+    "codex": "codex",
+    "opencode": "opencode",
+    "pi": "pi",
+    "omp": "omp",
+    "grok-build": "grok"
+  },
+  "cases": [
+    {
+      "name": "claude-code maps to claude while it names the foreground",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "claude-code with an ordinary program in the foreground is no Agent",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim",
+            "notes.md"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "claude-code with only a launch command that names it is an Agent until a foreground arrives",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "codex maps to codex while it names the foreground",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "codex",
+          "argv": [
+            "/opt/bin/codex"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "codex with an ordinary program in the foreground is no Agent",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim",
+            "notes.md"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "codex with only a launch command that names it is an Agent until a foreground arrives",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/opt/bin/codex"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "opencode maps to opencode while it names the foreground",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "opencode",
+          "argv": [
+            "opencode"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "opencode"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "opencode",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "opencode with an ordinary program in the foreground is no Agent",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim",
+            "notes.md"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "opencode"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "opencode with only a launch command that names it is an Agent until a foreground arrives",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "opencode"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "working",
+          "app": "opencode"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "opencode",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "pi maps to pi while it names the foreground",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pi",
+          "argv": [
+            "pi"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "pi with an ordinary program in the foreground is no Agent",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim",
+            "notes.md"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "pi with only a launch command that names it is an Agent until a foreground arrives",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "pi"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "working",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "omp maps to omp while it names the foreground",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "omp",
+          "argv": [
+            "omp"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "omp"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "omp",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "omp with an ordinary program in the foreground is no Agent",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim",
+            "notes.md"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "omp"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "omp with only a launch command that names it is an Agent until a foreground arrives",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "omp"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "working",
+          "app": "omp"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "omp",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "grok-build maps to grok while it names the foreground",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "grok",
+          "argv": [
+            "grok"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "grok-build"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "grok",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "grok-build's status with a message is grok and its state",
+      "source": "hc-lab, herdr-core 0.1.13, 2026-11-02 (unsigned run against a fake model): Grok Build 1.0.70 started from its bin link reported `{\"app\":\"grok-build\",\"msg\":\"Responding\",\"state\":\"working\"}` while it answered; live; the run folder is written /data/home/user",
+      "record": {
+        "address": "t7",
+        "state": "live",
+        "pid": 116369,
+        "reason": null,
+        "argv": [
+          "/data/home/user/bin/grok"
+        ],
+        "cwd": "/data/home/user/iso/projects/grok",
+        "foreground": {
+          "pid": 116369,
+          "name": "grok",
+          "argv": [
+            "/data/home/user/bin/grok"
+          ],
+          "cwd": "/data/home/user/iso/projects/grok"
+        },
+        "status": {
+          "state": "working",
+          "app": "grok-build",
+          "msg": "Responding"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "grok",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "grok-build with an ordinary program in the foreground is no Agent",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim",
+            "notes.md"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "grok-build"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "grok-build with only a launch command that names it is an Agent until a foreground arrives",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "grok"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "working",
+          "app": "grok-build"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "grok",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "a report from another known program does not move the Agent's status",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "codex",
+          "argv": [
+            "codex"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a known app reads in any letter case",
+      "source": "herdr-app v0.1.9 src/programs.rs agent_name",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "Claude-Code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "a known program in the foreground is an Agent with no report",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "/opt/bin/claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "OpenCode started through env with no report is an Agent by its foreground",
+      "source": "hc-lab (Debian 13), OpenCode 1.19.5 started by `hc run … env PATH=<its folder>:… opencode`, herdr-core 0.1.13, 2026-11-03, three Terminals, live: the foreground was `opencode` with argv `opencode` on the Terminal's own pid, and the status stayed null. The PATH value here stands in for the run's, which was not recorded",
+      "record": {
+        "address": "t14",
+        "state": "live",
+        "pid": 313679,
+        "reason": null,
+        "argv": [
+          "env",
+          "PATH=/data/home/user/bin-oc119:/usr/local/bin:/usr/bin:/bin",
+          "opencode"
+        ],
+        "cwd": "/data/home/user/projects/opencode119",
+        "foreground": {
+          "pid": 313679,
+          "name": "opencode",
+          "argv": [
+            "opencode"
+          ],
+          "cwd": "/data/home/user/projects/opencode119"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "opencode",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a foreground known only by its OS name is an Agent",
+      "source": "herdr-core v0.1.13 crates/herdr-core/src/foreground.rs",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "/home/u/.local/share/claude/versions/2.1.314"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "a foreground with no arguments reads by its OS name",
+      "source": "herdr-core v0.1.13 crates/herdr-core/src/foreground.rs",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pi",
+          "argv": [],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a plain shell /bin/sh -i ends the Agent",
+      "source": "PR #538 HerdrCoreWireTests staleReportsCannotKeepAnAgentInAPositivelyIdentifiedPlainShell",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh",
+          "-ic",
+          "\"$@\"; exec \"$0\" -i",
+          "/bin/zsh",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "/bin/sh",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a plain shell -zsh ends the Agent",
+      "source": "PR #538 HerdrCoreWireTests staleReportsCannotKeepAnAgentInAPositivelyIdentifiedPlainShell",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh",
+          "-ic",
+          "\"$@\"; exec \"$0\" -i",
+          "/bin/zsh",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "-zsh"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a plain shell bash --noprofile --norc -il ends the Agent",
+      "source": "PR #538 HerdrCoreWireTests staleReportsCannotKeepAnAgentInAPositivelyIdentifiedPlainShell",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh",
+          "-ic",
+          "\"$@\"; exec \"$0\" -i",
+          "/bin/zsh",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "bash",
+          "argv": [
+            "bash",
+            "--noprofile",
+            "--norc",
+            "-il"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a plain shell fish ends the Agent",
+      "source": "PR #538 HerdrCoreWireTests staleReportsCannotKeepAnAgentInAPositivelyIdentifiedPlainShell",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh",
+          "-ic",
+          "\"$@\"; exec \"$0\" -i",
+          "/bin/zsh",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "fish",
+          "argv": [
+            "fish"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a shell fish ends the Agent",
+      "source": "herdr-app v0.1.9 src/programs.rs resolve and its tests",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "fish",
+          "argv": [
+            "/usr/bin/fish",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a shell dash ends the Agent",
+      "source": "herdr-app v0.1.9 src/programs.rs resolve and its tests",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "dash",
+          "argv": [
+            "/bin/dash"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a shell zsh ends the Agent",
+      "source": "herdr-app v0.1.9 src/programs.rs resolve and its tests",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "--login"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a shell pwsh.exe ends the Agent",
+      "source": "herdr-app v0.1.9 src/programs.rs resolve and its tests",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pwsh.exe",
+          "argv": [
+            "pwsh.exe"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a shell powershell.exe ends the Agent",
+      "source": "herdr-app v0.1.9 src/programs.rs resolve and its tests",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoLogo"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a shell with no arguments reads by its OS name and ends the Agent",
+      "source": "PR #538 HerdrCoreWireTests staleReportsCannotKeepAnAgentInAPositivelyIdentifiedPlainShell; expectation changed by ADR 0032: a known app counts only while it names the foreground",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a shell ends an Agent whose app Heeler does not know",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "bash",
+          "argv": [
+            "/bin/bash"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "my-tool"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a shell ends an Agent that reported no app",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "bash",
+          "argv": [
+            "/bin/bash"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a wrapper that returned to its shell no longer hosts the Agent",
+      "source": "PR #538 HerdrCoreWireTests exactDesktopShellWrappersRevealTheCommandPosition",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh",
+          "-ic",
+          "\"$@\"; exec \"$0\" -i",
+          "/bin/zsh",
+          "node",
+          "/opt/bin/gemini.js",
+          "task"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "the desktop POSIX wrapper under zsh names its command",
+      "source": "herdr-app v0.1.9 src/window.rs:110-119 unix_agent_argv",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-ic",
+            "\"$@\"; exec \"$0\" -i",
+            "/bin/zsh",
+            "claude",
+            "--resume"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "the desktop POSIX wrapper under bash names its command",
+      "source": "herdr-app v0.1.9 src/window.rs:110-119 unix_agent_argv",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "bash",
+          "argv": [
+            "/bin/bash",
+            "-ic",
+            "\"$@\"; exec \"$0\" -i",
+            "/bin/bash",
+            "codex"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "the desktop's remote wrapper names its command",
+      "source": "PR #538 HerdrCoreWireTests exactDesktopShellWrappersRevealTheCommandPosition; herdr-app v0.1.9 src/window.rs:2225 remote agent argv; launch-only record moved to the foreground by ADR 0032: a launch that continues as a shell names nothing",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "-c",
+            "\"$@\"; exec \"${SHELL:-sh}\" -i",
+            "sh",
+            "pi",
+            "task"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "the desktop POSIX wrapper names an interpreter's script",
+      "source": "PR #538 HerdrCoreWireTests exactDesktopShellWrappersRevealTheCommandPosition; launch-only record moved to the foreground by ADR 0032: a launch that continues as a shell names nothing",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-ic",
+            "\"$@\"; exec \"$0\" -i",
+            "/bin/zsh",
+            "node",
+            "/opt/bin/gemini.js",
+            "task"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "gemini",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a launch through the desktop POSIX wrapper names nothing without a sample",
+      "source": "ADR 0032, the Agent rule; herdr-core v0.1.13 crates/herdr-core/src/terminals.rs:130 omits a cleared foreground from a record, so a snapshot cannot tell it from one not sampled yet",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh",
+          "-ic",
+          "\"$@\"; exec \"$0\" -i",
+          "/bin/zsh",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a launch through the desktop's remote wrapper names nothing without a sample",
+      "source": "ADR 0032, the Agent rule; herdr-core v0.1.13 crates/herdr-core/src/terminals.rs:130 omits a cleared foreground from a record, so a snapshot cannot tell it from one not sampled yet",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "sh",
+          "-c",
+          "\"$@\"; exec \"${SHELL:-sh}\" -i",
+          "sh",
+          "pi",
+          "task"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "idle",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a launch through the desktop fish wrapper names nothing without a sample",
+      "source": "ADR 0032, the Agent rule; herdr-core v0.1.13 crates/herdr-core/src/terminals.rs:130 omits a cleared foreground from a record, so a snapshot cannot tell it from one not sampled yet",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/usr/bin/fish",
+          "-ic",
+          "command $argv[2..]; exec $argv[1] -i",
+          "/usr/bin/fish",
+          "codex"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "idle",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a launch through the desktop PowerShell wrapper names nothing without a sample",
+      "source": "ADR 0032, the Agent rule; herdr-core v0.1.13 crates/herdr-core/src/terminals.rs:130 omits a cleared foreground from a record, so a snapshot cannot tell it from one not sampled yet",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "pwsh.exe",
+          "-NoExit",
+          "-Command",
+          "& 'claude'"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a cleared foreground revives no Agent from the desktop POSIX wrapper's launch",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh",
+          "-ic",
+          "\"$@\"; exec \"$0\" -i",
+          "/bin/zsh",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null
+      ],
+      "expected": null
+    },
+    {
+      "name": "a cleared foreground revives no Agent from the desktop fish wrapper's launch",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/usr/bin/fish",
+          "-ic",
+          "command $argv[2..]; exec $argv[1] -i",
+          "/usr/bin/fish",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "fish",
+          "argv": [
+            "/usr/bin/fish",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null
+      ],
+      "expected": null
+    },
+    {
+      "name": "a cleared foreground keeps the Agent it was sampled holding",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null
+      ],
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "a cleared foreground keeps a generic Agent and its report",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "mytool",
+          "argv": [
+            "mytool"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "blocked",
+          "app": "mytool"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null
+      ],
+      "expected": {
+        "kind": "mytool",
+        "known": false,
+        "status": "blocked"
+      }
+    },
+    {
+      "name": "a cleared foreground reads a shell it was sampled at as that shell",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null
+      ],
+      "expected": null
+    },
+    {
+      "name": "the sample after a cleared foreground decides again",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null,
+        {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "a sample naming an Agent after a cleared foreground starts it",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "foregroundEvents": [
+        null,
+        {
+          "pid": 4242,
+          "name": "codex",
+          "argv": [
+            "codex"
+          ],
+          "cwd": "/work/app"
+        }
+      ],
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "the desktop fish wrapper holds the foreground while its agent runs",
+      "source": "herdr-app v0.1.9 src/window.rs:110-119 unix_agent_argv; docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "fish",
+          "argv": [
+            "/usr/bin/fish",
+            "-ic",
+            "command $argv[2..]; exec $argv[1] -i",
+            "/usr/bin/fish",
+            "codex"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "under the desktop fish wrapper new arguments on the same pid end the Agent",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "fish",
+          "argv": [
+            "/usr/bin/fish",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "the desktop fish wrapper around an unknown program with a report is a generic Agent",
+      "source": "herdr-app v0.1.9 src/window.rs:110-119 unix_agent_argv; #555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "fish",
+          "argv": [
+            "/usr/bin/fish",
+            "-ic",
+            "command $argv[2..]; exec $argv[1] -i",
+            "/usr/bin/fish",
+            "mytool"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "mytool"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "mytool",
+        "known": false,
+        "status": "working"
+      }
+    },
+    {
+      "name": "the desktop fish wrapper around an unknown program without a report is no Agent",
+      "source": "herdr-app v0.1.9 src/window.rs:110-119 unix_agent_argv",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "fish",
+          "argv": [
+            "/usr/bin/fish",
+            "-ic",
+            "command $argv[2..]; exec $argv[1] -i",
+            "/usr/bin/fish",
+            "vi",
+            "x"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "the desktop PowerShell wrapper names its command",
+      "source": "herdr-app v0.1.9 src/window.rs:2215,2232 and src/programs.rs powershell_line",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pwsh.exe",
+          "argv": [
+            "pwsh.exe",
+            "-NoExit",
+            "-Command",
+            "& 'codex' 'fix it'"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "the desktop PowerShell local wrapper names its command",
+      "source": "herdr-app v0.1.9 src/window.rs:2215,2232 and src/programs.rs powershell_line",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "powershell.exe",
+          "argv": [
+            "powershell.exe",
+            "-NoLogo",
+            "-NoExit",
+            "-Command",
+            "& 'claude'"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a PowerShell wrapper unquotes doubled quotes and reads a Windows path",
+      "source": "herdr-app v0.1.9 src/window.rs:2215,2232 and src/programs.rs powershell_line",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pwsh.exe",
+          "argv": [
+            "pwsh.exe",
+            "-NoExit",
+            "-Command",
+            "& 'C:\\tools\\pi.cmd' 'it''s'"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "Heeler's POSIX launch names its agent",
+      "source": "ADR 0032, Heeler's launch forms",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "claude",
+          "--session-id",
+          "x"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "Heeler's POSIX launch held in the foreground names its agent",
+      "source": "ADR 0032, Heeler's launch forms",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-ic",
+            "exec \"$@\"",
+            "/bin/zsh",
+            "opencode"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "opencode",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "Heeler's fish launch names its agent",
+      "source": "ADR 0032, Heeler's launch forms",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "fish",
+          "-ic",
+          "exec $argv[2..]",
+          "fish",
+          "codex"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "Heeler's PowerShell launch names its agent",
+      "source": "ADR 0032, Heeler's launch forms",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pwsh.exe",
+          "argv": [
+            "pwsh.exe",
+            "-Command",
+            "& 'opencode' '-s' 'x'; exit $LASTEXITCODE"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "opencode",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "Heeler's PowerShell launch in the foreground form recorded on Windows",
+      "source": "docs/agents/herdr-compatibility.md, herdr-core 0.1.16 on native Windows: the Terminal's pid, powershell.exe, its absolute path and the launch's arguments",
+      "record": {
+        "address": "t1k",
+        "state": "live",
+        "pid": 29940,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-Command",
+          "& 'claude' '--session-id' 'x' 'it''s 修复'; exit $LASTEXITCODE"
+        ],
+        "cwd": "C:\\Users\\user\\work",
+        "foreground": {
+          "pid": 29940,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-Command",
+            "& 'claude' '--session-id' 'x' 'it''s 修复'; exit $LASTEXITCODE"
+          ],
+          "cwd": "C:\\Users\\user\\work"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "the desktop PowerShell wrapper titled with its own path is at its prompt",
+      "source": "docs/agents/herdr-compatibility.md, the native Windows Composer observation (herdr-core 0.1.16, Herdr desktop app 0.1.12, Claude Code 2.1.286, 2026-11-03; native-windows-testing.md step 19): after `/exit` `terminal.get` showed the Terminal live with the same foreground, no status and the title `C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`, PowerShell's prompt on screen",
+      "record": {
+        "address": "t15",
+        "state": "live",
+        "pid": 61316,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-NoExit",
+          "-Command",
+          "& 'claude'"
+        ],
+        "cwd": "C:\\Users\\user\\work\\cc",
+        "foreground": {
+          "pid": 61316,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoExit",
+            "-Command",
+            "& 'claude'"
+          ],
+          "cwd": "C:\\Users\\user\\work\\cc"
+        },
+        "status": null,
+        "reported": false,
+        "title": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      },
+      "expected": null
+    },
+    {
+      "name": "the desktop PowerShell wrapper titled by its program names that program",
+      "source": "docs/agents/herdr-compatibility.md, the native Windows Composer observation (herdr-core 0.1.16, Herdr desktop app 0.1.12, Claude Code 2.1.286, 2026-11-03; native-windows-testing.md step 19): while Claude Code ran, the Terminal's title was its own, `✳ Claude Code`",
+      "record": {
+        "address": "t15",
+        "state": "live",
+        "pid": 61316,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-NoExit",
+          "-Command",
+          "& 'claude'"
+        ],
+        "cwd": "C:\\Users\\user\\work\\cc",
+        "foreground": {
+          "pid": 61316,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoExit",
+            "-Command",
+            "& 'claude'"
+          ],
+          "cwd": "C:\\Users\\user\\work\\cc"
+        },
+        "status": null,
+        "reported": false,
+        "title": "✳ Claude Code"
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a report kept after the desktop wrapper's program exited revives no Agent at PowerShell's prompt",
+      "source": "docs/agents/herdr-compatibility.md, the native Windows Composer observation (herdr-core 0.1.16, Herdr desktop app 0.1.12, Claude Code 2.1.286, 2026-11-03; native-windows-testing.md step 19): the title after the exit; ADR 0032: the core keeps a report after its program left",
+      "record": {
+        "address": "t15",
+        "state": "live",
+        "pid": 61316,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-NoExit",
+          "-Command",
+          "& 'claude'"
+        ],
+        "cwd": "C:\\Users\\user\\work\\cc",
+        "foreground": {
+          "pid": 61316,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoExit",
+            "-Command",
+            "& 'claude'"
+          ],
+          "cwd": "C:\\Users\\user\\work\\cc"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true,
+        "title": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      },
+      "expected": null
+    },
+    {
+      "name": "a desktop pwsh wrapper with -NoExit cut short reads its own path as its prompt",
+      "source": "ADR 0032, the Agent rule: PowerShell takes -NoExit in any case, after -, -- or /, and cut short as far as -NoE",
+      "record": {
+        "address": "t16",
+        "state": "live",
+        "pid": 4242,
+        "reason": null,
+        "argv": [
+          "pwsh.exe",
+          "-NoE",
+          "-Command",
+          "& 'codex'"
+        ],
+        "cwd": "C:\\Users\\user\\work\\cc",
+        "foreground": {
+          "pid": 4242,
+          "name": "pwsh.exe",
+          "argv": [
+            "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+            "-NoE",
+            "-Command",
+            "& 'codex'"
+          ],
+          "cwd": "C:\\Users\\user\\work\\cc"
+        },
+        "status": null,
+        "reported": false,
+        "title": "Administrator: C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+      },
+      "expected": null
+    },
+    {
+      "name": "Heeler's PowerShell launch titled with PowerShell's path still names its program",
+      "source": "docs/agents/herdr-compatibility.md, the native Windows Composer observation (2026-11-03): under Heeler's form each Claude Code Terminal that finished kept the PowerShell path as its title. That form has no -NoExit and ends with its program, so the finish ends the Agent (ADR 0032)",
+      "record": {
+        "address": "t17",
+        "state": "live",
+        "pid": 29940,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-Command",
+          "& 'claude'; exit $LASTEXITCODE"
+        ],
+        "cwd": "C:\\Users\\user\\work\\cc",
+        "foreground": {
+          "pid": 29940,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-Command",
+            "& 'claude'; exit $LASTEXITCODE"
+          ],
+          "cwd": "C:\\Users\\user\\work\\cc"
+        },
+        "status": null,
+        "reported": false,
+        "title": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a launch command stands in only until a foreground arrives",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "sh -c runs a Template's line",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "/bin/sh",
+            "-c",
+            "pi --session-id abc"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "sh -c exec",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "-c",
+            "exec claude --resume"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "sh -c skips assignments, quoted or not",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "dash",
+          "argv": [
+            "dash",
+            "-c",
+            "FOO=1 BAR='a b' codex"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "sh -c skips setup before the program",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "-c",
+            "cd /work/app && opencode"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "opencode",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "sh -c reads through env",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "-c",
+            "env FOO=1 /opt/bin/claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "sh -c stops at a pipe",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "-c",
+            "claude | tee log"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "bash -lc reads its line",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "bash",
+          "argv": [
+            "bash",
+            "-lc",
+            "grok"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "grok",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "sh -c reads a quoted program",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "-c",
+            "'/opt/my tools/pi' --flag"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "sh -c reads an interpreter's script",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "-c",
+            "node /opt/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a custom script under sh -c with a known app is no Agent",
+      "source": "PR #538 HerdrCoreWireTests staleReportsCannotKeepAnAgentInAPositivelyIdentifiedPlainShell; expectation changed by ADR 0032: a known app counts only while it names the foreground",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "-c",
+            "custom-agent-wrapper"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a script under sh with a known app is no Agent",
+      "source": "PR #538 HerdrCoreWireTests staleReportsCannotKeepAnAgentInAPositivelyIdentifiedPlainShell; expectation changed by ADR 0032: a known app counts only while it names the foreground",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "/opt/agent.sh"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a known wrapper with a known app stays that Agent",
+      "source": "PR #538 HerdrCoreWireTests staleReportsCannotKeepAnAgentInAPositivelyIdentifiedPlainShell",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-ic",
+            "\"$@\"; exec \"$0\" -i",
+            "/bin/zsh",
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "a custom script under sh -c with no app is a generic Agent",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "-c",
+            "custom-agent-wrapper"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "custom-agent-wrapper",
+        "known": false,
+        "status": "working"
+      }
+    },
+    {
+      "name": "a program's name as an argument under sh -c is no Agent",
+      "source": "PR #538 HerdrCoreWireTests unrelatedArgumentsAndEvaluatedCodeDoNotCreateAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "sh",
+          "-c",
+          "echo \"$@\"",
+          "sh",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "a program's name as a word in a line is no Agent",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "-c",
+            "echo claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "node /opt/bin/gemini.js resolves to gemini",
+      "source": "PR #538 HerdrCoreWireTests interpreterEntrypointsIdentifyUnreportedDesktopAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "/opt/bin/gemini.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "gemini",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "node /opt/lib/node_modules/@anthropic-ai/claude-code/cli.js resolves to claude",
+      "source": "PR #538 HerdrCoreWireTests interpreterEntrypointsIdentifyUnreportedDesktopAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "/opt/lib/node_modules/@anthropic-ai/claude-code/cli.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "node /opt/lib/node_modules/@google/gemini-cli/dist/index.js resolves to gemini",
+      "source": "PR #538 HerdrCoreWireTests interpreterEntrypointsIdentifyUnreportedDesktopAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "/opt/lib/node_modules/@google/gemini-cli/dist/index.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "gemini",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "node /opt/lib/node_modules/@mariozechner/pi-coding-agent/dist/cli.js resolves to pi",
+      "source": "PR #538 HerdrCoreWireTests interpreterEntrypointsIdentifyUnreportedDesktopAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "/opt/lib/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "node /opt/bin/pi-cli.js resolves to pi",
+      "source": "PR #538 HerdrCoreWireTests interpreterEntrypointsIdentifyUnreportedDesktopAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "/opt/bin/pi-cli.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "/opt/bin/pi-cli resolves to pi",
+      "source": "PR #538 HerdrCoreWireTests interpreterEntrypointsIdentifyUnreportedDesktopAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pi-cli",
+          "argv": [
+            "/opt/bin/pi-cli"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "node --enable-source-maps /opt/bin/gemini.js resolves to gemini",
+      "source": "PR #538 HerdrCoreWireTests interpreterEntrypointsIdentifyUnreportedDesktopAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "--enable-source-maps",
+            "/opt/bin/gemini.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "gemini",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "node --require loader.js /opt/bin/gemini.js resolves to gemini",
+      "source": "PR #538 HerdrCoreWireTests interpreterEntrypointsIdentifyUnreportedDesktopAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "--require",
+            "loader.js",
+            "/opt/bin/gemini.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "gemini",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "bun -- /opt/bin/pi-cli resolves to pi",
+      "source": "PR #538 HerdrCoreWireTests interpreterEntrypointsIdentifyUnreportedDesktopAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "bun",
+          "argv": [
+            "bun",
+            "--",
+            "/opt/bin/pi-cli"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "Pi's current package name resolves to pi",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "/usr/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "Pi's former package name resolves to pi",
+      "source": "PR #538 HerdrCoreWireTests interpreterEntrypointsIdentifyUnreportedDesktopAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "/usr/lib/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "Codex's npm launcher resolves to codex",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "/usr/lib/node_modules/@openai/codex/bin/codex.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "Bun running Oh My Pi's bin resolves to omp",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "bun",
+          "argv": [
+            "bun",
+            "/home/u/.bun/bin/omp"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "omp"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "omp",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "Codex's npm launcher from a bin link holds the foreground",
+      "source": "hc-lab (Debian 13), Codex CLI 0.165.0 from npm started `codex --no-daemon` through Heeler's POSIX launch, herdr-core 0.1.13, 2026-11-03, one Terminal, live: the core's foreground events named `node` while Codex reported idle, working and done. The argv is the process's /proc cmdline, its run folder written /data/home/user as the capture script scrubs it",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 191146,
+        "reason": null,
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "codex",
+          "--no-daemon"
+        ],
+        "cwd": "/data/home/user/projects/codex",
+        "foreground": {
+          "pid": 191146,
+          "name": "node",
+          "argv": [
+            "node",
+            "/data/home/user/bin/codex",
+            "--no-daemon"
+          ],
+          "cwd": "/data/home/user/projects/codex"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "Pi's npm launcher before Pi retitles itself names pi",
+      "source": "hc-lab (Debian 13), Pi 1.4.0 from npm started `pi --session-id <id>` through Heeler's POSIX launch, herdr-core 0.1.13, 2026-11-03, one Terminal, live: the core's first foreground event named `node`, Pi reported idle, and only then did a foreground event name `pi`. The argv is the process's /proc cmdline, its run folder written /data/home/user as the capture script scrubs it",
+      "record": {
+        "address": "t5",
+        "state": "live",
+        "pid": 195120,
+        "reason": null,
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "pi",
+          "--session-id",
+          "00000000-0000-4000-8000-000000000005"
+        ],
+        "cwd": "/data/home/user/projects/pi",
+        "foreground": {
+          "pid": 195120,
+          "name": "node",
+          "argv": [
+            "node",
+            "/data/home/user/bin/pi",
+            "--session-id",
+            "00000000-0000-4000-8000-000000000005"
+          ],
+          "cwd": "/data/home/user/projects/pi"
+        },
+        "status": {
+          "state": "idle",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "Oh My Pi retitled under bun keeps bun's argv",
+      "source": "hc-lab (Debian 13), Oh My Pi 18.13.3 on bun 1.4.4 started `omp` through Heeler's POSIX launch, herdr-core 0.1.13, 2026-11-03, two Terminals, live: the core's foreground events named `bun`, then `omp` with the argv still `bun <bin>/omp`, before Oh My Pi reported idle. The argv is the process's /proc cmdline, its run folder written /data/home/user as the capture script scrubs it",
+      "record": {
+        "address": "t6",
+        "state": "live",
+        "pid": 195417,
+        "reason": null,
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "exec \"$@\"",
+          "/bin/bash",
+          "omp"
+        ],
+        "cwd": "/data/home/user/projects/omp",
+        "foreground": {
+          "pid": 195417,
+          "name": "bun",
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp"
+          ],
+          "cwd": "/data/home/user/projects/omp"
+        },
+        "status": {
+          "state": "idle",
+          "app": "omp"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        {
+          "pid": 195417,
+          "name": "omp",
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp"
+          ],
+          "cwd": "/data/home/user/projects/omp"
+        }
+      ],
+      "expected": {
+        "kind": "omp",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "Oh My Pi with arguments after its script is omp, and its done reads idle",
+      "source": "hc-lab, herdr-core 0.1.13, 2026-11-02 (unsigned run against a fake model): Oh My Pi 18.13.3 on bun started as `omp --model fake/fake-model` from its bin link; the core's first foreground named `bun`, the next `omp` with argv `bun <bin>/omp --model fake/fake-model`, and a terminal.list after its reply showed status done; live. The record's argv after `omp` is taken from the foreground's, because the capture scrubbed it; the run folder is written /data/home/user",
+      "record": {
+        "address": "t6",
+        "state": "live",
+        "pid": 116356,
+        "reason": null,
+        "argv": [
+          "/data/home/user/bin/omp",
+          "--model",
+          "fake/fake-model"
+        ],
+        "cwd": "/data/home/user/iso/projects/omp",
+        "foreground": {
+          "pid": 116356,
+          "name": "bun",
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp",
+            "--model",
+            "fake/fake-model"
+          ],
+          "cwd": "/data/home/user/iso/projects/omp"
+        },
+        "status": {
+          "state": "done",
+          "app": "omp"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        {
+          "pid": 116356,
+          "name": "omp",
+          "argv": [
+            "bun",
+            "/data/home/user/bin/omp",
+            "--model",
+            "fake/fake-model"
+          ],
+          "cwd": "/data/home/user/iso/projects/omp"
+        }
+      ],
+      "expected": {
+        "kind": "omp",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "bun run reads the script after run",
+      "source": "herdr-app v0.1.9 src/programs.rs resolve and its tests",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "bun",
+          "argv": [
+            "bun",
+            "run",
+            "/home/u/.bun/bin/omp"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "omp",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "python3 runs a script by name",
+      "source": "herdr-app v0.1.9 src/programs.rs resolve and its tests",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "python3",
+          "argv": [
+            "python3",
+            "/opt/bin/gemini.py"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "gemini",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "sh runs a script named for a program",
+      "source": "herdr-app v0.1.9 src/programs.rs resolve and its tests",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "/opt/bin/claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "echo claude is no Agent",
+      "source": "PR #538 HerdrCoreWireTests unrelatedArgumentsAndEvaluatedCodeDoNotCreateAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "echo",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "node server.js claude is no Agent",
+      "source": "PR #538 HerdrCoreWireTests unrelatedArgumentsAndEvaluatedCodeDoNotCreateAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "node",
+          "server.js",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "node -e claude /opt/bin/gemini.js is no Agent",
+      "source": "PR #538 HerdrCoreWireTests unrelatedArgumentsAndEvaluatedCodeDoNotCreateAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "node",
+          "-e",
+          "claude",
+          "/opt/bin/gemini.js"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "node --eval=claude /opt/bin/gemini.js is no Agent",
+      "source": "PR #538 HerdrCoreWireTests unrelatedArgumentsAndEvaluatedCodeDoNotCreateAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "node",
+          "--eval=claude",
+          "/opt/bin/gemini.js"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "node --require /opt/bin/gemini.js server.js is no Agent",
+      "source": "PR #538 HerdrCoreWireTests unrelatedArgumentsAndEvaluatedCodeDoNotCreateAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "node",
+          "--require",
+          "/opt/bin/gemini.js",
+          "server.js"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "python3 -c gemini claude is no Agent",
+      "source": "PR #538 HerdrCoreWireTests unrelatedArgumentsAndEvaluatedCodeDoNotCreateAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "python3",
+          "-c",
+          "gemini",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "node /tmp/unrelated/cli.js @anthropic-ai/claude-code is no Agent",
+      "source": "PR #538 HerdrCoreWireTests unrelatedArgumentsAndEvaluatedCodeDoNotCreateAgents",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "node",
+          "/tmp/unrelated/cli.js",
+          "@anthropic-ai/claude-code"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "a launch of a known program is an Agent before any report",
+      "source": "PR #538 HerdrCoreWireTests unreportedAgentsAreRecognizedButOrdinaryProgramsAreNot",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/opt/bin/pi"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a foreground known program outranks a shell launch",
+      "source": "PR #538 HerdrCoreWireTests unreportedAgentsAreRecognizedButOrdinaryProgramsAreNot",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "codex",
+          "argv": [
+            "/opt/bin/codex"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a shell launch with a report and no foreground is no Agent",
+      "source": "PR #538 HerdrCoreWireTests unreportedAgentsAreRecognizedButOrdinaryProgramsAreNot",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/sh"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "working",
+          "app": "build"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a status state this build does not know reads Unknown",
+      "source": "PR #538 HerdrCoreWireTests recognizedWrappersDoNotDependOnAKnownStatus",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "node",
+          "/opt/bin/gemini.js"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "future-state"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "gemini",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a non-shell foreground with a report and no app is a generic Agent",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "mytool",
+          "argv": [
+            "/opt/bin/mytool",
+            "--watch"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "mytool",
+        "known": false,
+        "status": "working"
+      }
+    },
+    {
+      "name": "an unknown app is a generic Agent under its sanitized name",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "mytool",
+          "argv": [
+            "mytool"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "blocked",
+          "app": "My Tool!"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "my-tool",
+        "known": false,
+        "status": "blocked"
+      }
+    },
+    {
+      "name": "an interpreter's script names a program with no app",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "/srv/tool.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "tool",
+        "known": false,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "an unknown app spelling a known kind never reads as that kind",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "node",
+            "server.js"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "other-claude",
+        "known": false,
+        "status": "working"
+      }
+    },
+    {
+      "name": "an unknown app spelling a known kind in capitals never reads as that kind",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "GEMINI"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "other-gemini",
+        "known": false,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "an unknown app spelling an alias never reads as that kind",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "cursor-agent"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "other-cursor-agent",
+        "known": false,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "an unknown app named unknown stays apart from the unknown kind",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "unknown"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "other-unknown",
+        "known": false,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "a path in an unknown app loses its separators",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "../../etc/passwd"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "etc-passwd",
+        "known": false,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "control characters in an unknown app go",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "\u001b]0;evil\u0007"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "0-evil",
+        "known": false,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "an app with nothing to keep falls back to the program",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "mytool",
+          "argv": [
+            "mytool"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "\u6771\u4eac"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "mytool",
+        "known": false,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "a long unknown app is cut",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "known": false,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "a blank app counts as missing",
+      "source": "#555: a missing or unknown app gets a sanitized kind that no lookup takes for a known program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "mytool",
+          "argv": [
+            "mytool"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "   "
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "mytool",
+        "known": false,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "an unknown program with no status is no Agent",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "an unknown program that queried but holds no status is no Agent",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "an unknown app's Agent keeps its status under the next program",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "htop",
+          "argv": [
+            "htop"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "my-tool"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "my-tool",
+        "known": false,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "a Terminal between lost and restarted hosts no Agent",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": null,
+        "reason": "signaled",
+        "argv": [
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a holder-lost Terminal hosts no Agent, whatever it last showed",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core restarts and passive reads on macOS\" (core 0.1.13, 2026-10-31)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": null,
+        "reason": "holder_lost",
+        "argv": [
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a restarted Terminal is a shell that has reported nothing",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/bash"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "bash",
+          "argv": [
+            "/bin/bash"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": null
+    },
+    {
+      "name": "a finished Terminal hosts no Agent",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "finished",
+        "pid": null,
+        "reason": "exited",
+        "argv": [
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a first spawn still pending is not a restart",
+      "source": "Sources/Heeler/Transport/HerdrCore/HerdrCoreEvent.swift isRestarting, from herdr-core v0.1.13 terminals.rs",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": null,
+        "reason": "spawn_pending",
+        "argv": [
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "idle shows as idle",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pi",
+          "argv": [
+            "pi"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "working shows as working",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pi",
+          "argv": [
+            "pi"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "blocked shows as blocked",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pi",
+          "argv": [
+            "pi"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "blocked",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "blocked"
+      }
+    },
+    {
+      "name": "error shows as error",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pi",
+          "argv": [
+            "pi"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "error",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "error"
+      }
+    },
+    {
+      "name": "done shows as idle",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "pi",
+          "argv": [
+            "pi"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "done",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "a report with no state stays Unknown",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a program that queried but holds no status stays Unknown",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (core 0.1.13, 2026-10-30)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "npx naming a scoped package with its version in Heeler's PowerShell form is its program",
+      "source": "Native Windows (build 26200), herdr-core 0.1.16, Claude Code 2.1.316 from npm started through `npx` in Heeler's PowerShell form over the core's pipe, 2026-11-03, one Terminal, live: the process tree was powershell.exe -> cmd.exe -> node.exe (npx-cli.js) -> cmd.exe -> claude.exe, the Terminal reported status `claude-code idle`, and the foreground is the Terminal's first process (the run folder written C:\\Users\\user)",
+      "record": {
+        "address": "t1g",
+        "state": "live",
+        "pid": 63840,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-Command",
+          "& 'C:\\Users\\user\\tools\\node\\npx.cmd' '--yes' '--prefer-offline' '@anthropic-ai/claude-code@2.1.316' '--session-id' '00000000-0000-4000-8000-00000000000a'; exit $LASTEXITCODE"
+        ],
+        "cwd": "C:\\Users\\user\\projects\\npx",
+        "foreground": {
+          "pid": 63840,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-Command",
+            "& 'C:\\Users\\user\\tools\\node\\npx.cmd' '--yes' '--prefer-offline' '@anthropic-ai/claude-code@2.1.316' '--session-id' '00000000-0000-4000-8000-00000000000a'; exit $LASTEXITCODE"
+          ],
+          "cwd": "C:\\Users\\user\\projects\\npx"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "npm's retitled npm exec naming a command is that command",
+      "source": "hc-lab (Debian 13), herdr-core 0.1.13, `npx claude` typed in a bash Terminal, 2026-11-02, one Terminal, live: the core's foreground was the npm process, whose name and /proc cmdline npm rewrites to its title `npm exec claude`, with `sh -c claude` and Claude Code 2.1.316 below it, and the Terminal reported status `claude-code`",
+      "record": {
+        "address": "t4",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/bash"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 174037,
+          "name": "npm exec claude",
+          "argv": [
+            "npm exec claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "done",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "npm's retitled npm exec naming a scoped package with its version is its program",
+      "source": "npm 11 `lib/npm.js`: the title is `npm` and the positional arguments, so `npx --yes @anthropic-ai/claude-code@2.1.316 --session-id <id>` reads `npm exec @anthropic-ai/claude-code@2.1.316 --session-id <id>`, the package's `/` included; the kernel keeps 15 bytes of it as the process's name",
+      "record": {
+        "address": "t4",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/bash"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 174037,
+          "name": "npm exec @anthr",
+          "argv": [
+            "npm exec @anthropic-ai/claude-code@2.1.316 --session-id 00000000-0000-4000-8000-00000000000a"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "npm's retitled npm exec naming Codex's package with its options is Codex",
+      "source": "npm 11 `lib/npm.js`, as the case above: `npx @openai/codex --no-daemon` reads `npm exec @openai/codex --no-daemon`",
+      "record": {
+        "address": "t4",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/bash"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 174037,
+          "name": "npm exec @opena",
+          "argv": [
+            "npm exec @openai/codex --no-daemon"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "npm exec with its arguments apart names its command",
+      "source": "ADR 0032, the Agent rule: `npm exec` runs the package or command it names; the same launch as the retitled case with each word its own argument",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "npm",
+            "exec",
+            "--",
+            "@openai/codex",
+            "--no-daemon"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "npx --package names the package's command",
+      "source": "ADR 0032, the Agent rule: with `--package` the word after the options is the package's command",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "npx",
+            "-y",
+            "--package=opencode-ai",
+            "opencode"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "opencode",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "npx with an option it does not know stays npx",
+      "source": "ADR 0032, the Agent rule: an option the rule does not know may take a value, so the runner stays the program",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "npx",
+            "--cache",
+            "/tmp/npm",
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "npx running a package Heeler does not know is a generic Agent named for its report",
+      "source": "ADR 0032, the Agent rule: any program but a shell, with a Program Status whose app is unknown here",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node",
+          "argv": [
+            "npx",
+            "@acme/helper@1.0.0"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "acme"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "acme",
+        "known": false,
+        "status": "working"
+      }
+    },
+    {
+      "name": "node running Pi's bundled entry resolves to pi",
+      "source": "Pi 1.4.0 (`@earendil-works/pi-coding-agent@1.4.0`) as npm installs it: its `pi` shim runs `node …/pi-coding-agent/dist/bundle/cli.js` (native Windows build 26200 and hc-lab, 2026-11-02 and 2026-11-03)",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "node.exe",
+          "argv": [
+            "C:\\Users\\user\\tools\\node\\node.exe",
+            "C:\\Users\\user\\tools\\node_modules\\@earendil-works\\pi-coding-agent\\dist\\bundle\\cli.js",
+            "--session-id",
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "pi"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "a shell script with a known app is no Agent even with the agent below it",
+      "source": "hc-lab (Debian 13), herdr-core 0.1.13, a `run-claude.sh` (dash) whose child was Claude Code 2.1.316, 2026-11-02, one Terminal, live: the core's foreground was the script and status `claude-code`. ADR 0032 reads no script's children: a known app counts only while it names the foreground",
+      "record": {
+        "address": "t5",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/bash"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 174052,
+          "name": "run-claude.sh",
+          "argv": [
+            "/bin/sh",
+            "/work/app/run-claude.sh"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "done",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    }
+  ]
+}

@@ -13,6 +13,10 @@ extension ChatUnavailableReason {
         case .compressed: "Conversation Compressed"
         case .unsupportedSession, .unsupportedFormat, .sessionStore: "Conversation Not Readable"
         case .startScreen: "Not in This Conversation"
+        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded:
+            "Can't Tell the Conversation"
+        case .transcriptOff: "Transcript Saving Is Off"
+        case .codexSharedDaemon: "Codex Started Without \(ChatLaunchNotice.unbrokenNoDaemon)"
         }
     }
 
@@ -61,6 +65,28 @@ extension ChatUnavailableReason {
             problem.explanation
         case .startScreen(let program):
             "\(program.chatName) is on its home screen, so the conversation herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once herdr reports it."
+        case .cannotTellSession(.pi):
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. Pi names it through Heeler's extension, which comes with the Host Helper. Install the Helper from this Host's details, then start the Agent again."
+        case .cannotTellSession(.omp):
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. Oh My Pi names it through Heeler's extension, which comes with the Host Helper. Install the Helper from this Host's details, then start the Agent again. Without it, Chat follows the conversation after its first message."
+        case .cannotTellSession(let program):
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes."
+        case .extensionNotLoaded(let program, let turnedOff):
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. "
+                + (turnedOff
+                    ? "\(program.chatName) started with its extensions turned off (--no-extensions), so Heeler's extension, which names the conversation, isn't running in this session. Start the Agent again without --no-extensions."
+                    : "Heeler's extension, which names the conversation, is installed, but this \(program.chatName) hasn't loaded it: it started before the Helper was installed, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on.")
+                + (program == .omp ? " Without it, Chat follows the conversation after its first message." : "")
+        case .cannotTellSessionOnWindows(let program) where program == .pi || program == .omp:
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it through Heeler's extension, which goes in its extension folder on this Host. If it isn't there yet, add it here, then start the Agent again."
+        case .cannotTellSessionOnWindows(let program):
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes."
+        case .cannotReadProcessesOnWindows:
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler couldn't read this Agent's process on the Host, which happens when herdr-core and the SSH session run at different elevation, or when PowerShell runs in constrained language mode."
+        case .transcriptOff(let variable, let coreCarriesIt):
+            variable.explanation(coreCarriesIt: coreCarriesIt)
+        case .codexSharedDaemon:
+            "Codex runs on its shared background server here, where one terminal's conversation looks like another's. Exit Codex, run codex resume \(ChatLaunchNotice.unbrokenNoDaemon), and pick the conversation in Codex's list. \(ChatLaunchNotice.stopSharedServer)"
         }
     }
 
@@ -85,7 +111,7 @@ extension ChatUnavailableReason {
     func explanation(launchNotice: ChatLaunchNotice?) -> String {
         switch self.launchNotice(launchNotice) {
         case .codexSharedServer?:
-            "Exit Codex, then run codex \(ChatLaunchNotice.unbrokenNoDaemon) resume."
+            "Exit Codex, then run codex \(ChatLaunchNotice.unbrokenNoDaemon) resume. \(ChatLaunchNotice.stopSharedServer)"
         case nil: explanation
         }
     }
@@ -115,13 +141,33 @@ extension ChatUnavailableReason {
         // Never over the timeline, which this reason hides.
         case .startScreen(let program):
             "\(program.chatName) is on its home screen."
+        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded:
+            "Chat can't tell which conversation this Agent is in now.\(saved)"
+        case .transcriptOff:
+            "This Agent isn't saving a transcript.\(saved)"
+        case .codexSharedDaemon:
+            "Codex runs on its shared background server, so Chat can't tell this conversation.\(saved)"
         }
+    }
+
+    /// A core's OpenCode with no id of Heeler's: the plugin is what names its session
+    /// (ADR 0033). Nothing on Herdr TUI reads this reason, where herdr reports it.
+    var offersOpenCodePluginEdit: Bool {
+        self == .cannotTellSession(.opencode)
+    }
+
+    /// A Pi or Oh My Pi on a native Windows core Host, which has no Helper to bring the
+    /// extension that names its session (ADR 0033).
+    var offersWindowsExtension: Bool {
+        self == .cannotTellSessionOnWindows(.pi) || self == .cannotTellSessionOnWindows(.omp)
     }
 
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
-        case .noSession, .notFound, .mismatched, .startScreen: true
+        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .cannotTellSessionOnWindows,
+            .cannotReadProcessesOnWindows, .extensionNotLoaded, .transcriptOff, .codexSharedDaemon:
+            true
         case .sessionStore(_, let problem): problem.isRetryable
         default: false
         }
@@ -138,6 +184,23 @@ extension ChatUnavailableReason {
         case .noSession, .awaitingFirstMessage: true
         default: false
         }
+    }
+}
+
+extension ChatTranscriptOffVariable {
+    /// Says so instead of waiting for a file. When the core carries the variable
+    /// every Agent it starts inherits it, which the Host's notice explains.
+    func explanation(coreCarriesIt: Bool) -> String {
+        let effect =
+            switch self {
+            case .childSession: "has kept no session record and saves no transcript"
+            case .skipPromptHistory: "keeps no transcript"
+            }
+        let fix =
+            coreCarriesIt
+            ? "The herdr-core on this Host carries it too. See the notice in the Host's details for how to fix that."
+            : "Start the Agent again without that variable to use Chat."
+        return "This Claude Code was started with \(rawValue), so it \(effect) for Chat to read. \(fix)"
     }
 }
 
@@ -158,7 +221,7 @@ extension ChatSessionStoreProblem {
         case .storeClosed:
             "OpenCode's database is closed, which usually means OpenCode isn't running. Chat shows saved messages and checks again."
         case .olderOpenCode:
-            "This OpenCode keeps conversations in its 1.x format, which Chat doesn't read. Chat reads OpenCode 2.x."
+            "This OpenCode keeps conversations in its 1.x format, which Chat can't list. Heeler's plugin tells Chat which one OpenCode shows."
         case .unsupportedLayout(let detail):
             "OpenCode's database has a layout Chat doesn't read (\(detail)). A newer OpenCode may have changed it."
         case .subagentSession:
@@ -167,9 +230,47 @@ extension ChatSessionStoreProblem {
     }
 }
 
+/// What became of a herdr-core Agent that has left a Terminal while its detail
+/// stays open (ADR 0032).
+enum ChatAgentDeparture: Equatable, Sendable {
+    /// The core is bringing the kept Terminal back as a new shell.
+    case restarting
+    /// Its program exited, so nothing comes back.
+    case ended
+    /// A shell runs in its place until an Agent starts there.
+    case shell
+
+    var title: String {
+        switch self {
+        case .restarting: "Restarting…"
+        case .ended: "Agent Ended"
+        case .shell: "Agent Gone"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .restarting: "arrow.clockwise"
+        case .ended: "stop.circle"
+        case .shell: "terminal"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .restarting: "The program was lost. A new shell takes its place in a moment."
+        case .ended: "Its program exited, so it will not come back."
+        case .shell: "A shell runs in its Terminal now. Chat comes back with the next Agent it can read there."
+        }
+    }
+}
+
 /// What takes the conversation's place, if anything, under the banners.
 enum ChatSurfacePresentation: Equatable {
     case timeline
+    /// The Agent left, with nothing saved to show. Evidence and searches are
+    /// about a program that no longer runs.
+    case departed(ChatAgentDeparture)
     /// Searching the Host for the transcript, with nothing saved to show.
     case locating
     /// Nothing saved to show, and the Host to search isn't connected:
@@ -185,7 +286,7 @@ enum ChatSurfacePresentation: Equatable {
     /// the launch is read (`AgentChatStore.isCheckingLaunch`).
     init(
         conversation: ChatConversationSnapshot?, hasPendingEchoes: Bool, isHostConnected: Bool,
-        checkingLaunch: Bool = false
+        checkingLaunch: Bool = false, departure: ChatAgentDeparture? = nil
     ) {
         guard let conversation else {
             self = .disconnected
@@ -193,6 +294,10 @@ enum ChatSurfacePresentation: Equatable {
         }
         if conversation.showsTimeline(hasPendingEchoes: hasPendingEchoes) {
             self = .timeline
+            return
+        }
+        if let departure {
+            self = .departed(departure)
             return
         }
         switch conversation.phase {
@@ -212,9 +317,11 @@ enum ChatBannerLine: Equatable, Identifiable {
     case readFailure(TransportError)
     case unavailable(ChatUnavailableReason, showingSavedMessages: Bool)
     case launch(ChatLaunchNotice)
+    case departure(ChatAgentDeparture)
 
     var id: String {
         switch self {
+        case .departure: "departure"
         case .connecting, .notConnected: "host"
         case .readFailure: "read"
         case .unavailable: "unavailable"
@@ -227,7 +334,7 @@ enum ChatBannerLine: Equatable, Identifiable {
     /// this device kept; messages sent from it and not yet recorded are not.
     static func lines(
         hostStatus: EventsSessionStatus?, conversation: ChatConversationSnapshot?, hasPendingEchoes: Bool,
-        launchNotice: ChatLaunchNotice? = nil
+        launchNotice: ChatLaunchNotice? = nil, departure: ChatAgentDeparture? = nil
     ) -> [ChatBannerLine] {
         let showingSaved = conversation?.transcript.entries.isEmpty == false
         switch hostStatus {
@@ -238,6 +345,12 @@ enum ChatBannerLine: Equatable, Identifiable {
         guard let conversation else { return [] }
         var lines: [ChatBannerLine] = []
         if let failure = conversation.readFailure { lines.append(.readFailure(failure)) }
+        // What it says outranks a reason about a program no longer there. With no
+        // conversation showing, it says so in the conversation's place.
+        if let departure {
+            if conversation.showsTimeline(hasPendingEchoes: hasPendingEchoes) { lines.append(.departure(departure)) }
+            return lines
+        }
         if case .unavailable(let reason) = conversation.phase,
             conversation.showsTimeline(hasPendingEchoes: hasPendingEchoes)
         {
@@ -272,6 +385,9 @@ enum ChatBannerLine: Equatable, Identifiable {
             reason.bannerText(showingSavedMessages: showingSavedMessages)
         case .launch(.codexSharedServer):
             "This may be another terminal's conversation."
+        case .departure(.restarting): "Restarting… \(ChatAgentDeparture.restarting.explanation)"
+        case .departure(.ended): "The Agent ended. \(ChatAgentDeparture.ended.explanation)"
+        case .departure(.shell): "The Agent is gone. \(ChatAgentDeparture.shell.explanation)"
         }
     }
 
@@ -282,6 +398,7 @@ enum ChatBannerLine: Equatable, Identifiable {
         case .readFailure: "exclamationmark.triangle"
         case .unavailable(let reason, _): reason.systemImage
         case .launch: "exclamationmark.bubble"
+        case .departure(let departure): departure.systemImage
         }
     }
 
@@ -289,6 +406,7 @@ enum ChatBannerLine: Equatable, Identifiable {
         switch self {
         case .connecting: true
         case .unavailable(let reason, _): reason.isWaiting
+        case .departure(let departure): departure == .restarting
         case .notConnected, .readFailure, .launch: false
         }
     }
@@ -317,6 +435,21 @@ extension ChatProgram {
         }
     }
 
+    /// What Chat's "can't tell" says about this program on herdr-core, where the
+    /// evidence is what the Host shows of its process (ADR 0034).
+    fileprivate var sessionEvidenceHelp: String {
+        switch self {
+        case .codex:
+            "Codex shows its conversation with the first message, so send one in the terminal. Once a message follows /new, nothing says which conversation it shows, so exit Codex, run codex resume \(ChatLaunchNotice.unbrokenNoDaemon), and pick one."
+        case .grok:
+            "Grok Build lists its conversation while it runs. After /new it lists both, so Chat can't tell until you start Grok Build again."
+        case .opencode:
+            "OpenCode says which conversation it shows when Heeler starts OpenCode 2.1 or later from New Agent, or through Heeler's plugin, which takes one change to its configuration."
+        case .claude, .pi, .omp:
+            "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal."
+        }
+    }
+
     /// When the program first saves a new conversation, after "saves this
     /// conversation".
     fileprivate var firstSave: String {
@@ -332,6 +465,11 @@ struct ChatUnavailableView: View {
     var isChecking = false
     let retry: () -> Void
     let showAgentTerminal: () -> Void
+    var chooseConversation: (() -> Void)?
+    /// Opens the one configuration edit that can settle this reason.
+    var reviewEdit: (() -> Void)?
+    /// Opens what writes Heeler's extension, on a native Windows core Host.
+    var addExtension: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
@@ -339,15 +477,42 @@ struct ChatUnavailableView: View {
         } description: {
             Text(reason.explanation(launchNotice: launchNotice))
         } actions: {
-            // One row of capsules, stacked when the row cannot fit.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) { actions }
-                VStack(spacing: 10) { actions }
+            VStack(spacing: 10) {
+                primaryActions
+                // One row of capsules, stacked when the row cannot fit.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { actions }
+                    VStack(spacing: 10) { actions }
+                }
             }
             .modifier(ChatUnavailableActionStyle())
             .buttonBorderShape(.capsule)
         }
         .accessibilityIdentifier("chat.unavailable")
+    }
+
+    /// What can settle the reason, above the row: a list to choose from, the one
+    /// configuration edit, or Heeler's extension on a native Windows core Host.
+    @ViewBuilder private var primaryActions: some View {
+        if let chooseConversation {
+            Button(action: chooseConversation) { actionTitle(Text(ChatCandidatePickerView.title)) }
+                .modifier(ChatUnavailablePrimaryActionStyle())
+                .accessibilityIdentifier("chat.chooseConversation")
+        }
+        if let reviewEdit, reason.offersOpenCodePluginEdit {
+            let edit = Button(action: reviewEdit) { actionTitle(Text(OpenCodePluginEdit.offerTitle)) }
+                .accessibilityIdentifier("chat.unavailable.openCodeEdit")
+            if chooseConversation == nil {
+                edit.modifier(ChatUnavailablePrimaryActionStyle())
+            } else {
+                edit
+            }
+        }
+        if let addExtension, reason.offersWindowsExtension {
+            Button(action: addExtension) { actionTitle(Text("Add Heeler's Extension…")) }
+                .modifier(ChatUnavailablePrimaryActionStyle())
+                .accessibilityIdentifier("chat.unavailable.windowsExtension")
+        }
     }
 
     @ViewBuilder private var actions: some View {
@@ -390,6 +555,17 @@ private struct ChatUnavailableActionStyle: ViewModifier {
     }
 }
 
+/// The prominent form of the same style, for the action that settles the reason.
+private struct ChatUnavailablePrimaryActionStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.buttonStyle(.glassProminent)
+        } else {
+            content.buttonStyle(.borderedProminent)
+        }
+    }
+}
+
 /// While Chat looks for the transcript and has nothing saved to show.
 struct ChatLocatingView: View {
     var body: some View {
@@ -422,29 +598,58 @@ struct ChatBanner: View {
     var showsProgress = false
     var actionTitle: String?
     var action: (() -> Void)?
+    /// A second way out. The two go on a row of their own, each its own element.
+    var secondaryActionTitle: String?
+    var secondaryAction: (() -> Void)?
+
+    private var hasSecondaryAction: Bool { secondaryActionTitle != nil && secondaryAction != nil }
 
     var body: some View {
-        HStack(spacing: 8) {
-            if showsProgress {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                Image(systemName: systemImage)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                if showsProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: systemImage)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+                Text(text)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !hasSecondaryAction {
+                    primaryAction
+                }
             }
-            Text(text)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .font(.footnote.weight(.semibold))
+            if hasSecondaryAction {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 16) { actions }
+                    VStack(alignment: .leading, spacing: 6) { actions }
+                }
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.regularMaterial, in: .rect(cornerRadius: 12, style: .continuous))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: hasSecondaryAction ? .contain : .combine)
+    }
+
+    @ViewBuilder
+    private var primaryAction: some View {
+        if let actionTitle, let action {
+            Button(actionTitle, action: action)
+                .font(.footnote.weight(.semibold))
+        }
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        primaryAction
+        if let secondaryActionTitle, let secondaryAction {
+            Button(secondaryActionTitle, action: secondaryAction)
+                .font(.footnote.weight(.semibold))
+        }
     }
 }

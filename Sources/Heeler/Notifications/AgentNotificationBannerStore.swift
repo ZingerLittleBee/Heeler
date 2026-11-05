@@ -10,9 +10,11 @@ struct AgentNotificationBanner: Equatable, Sendable {
     let alert: AgentNotificationAlert
 }
 
-/// Announces foreground Blocked/Done Agent transitions from the Console's
+/// Announces foreground Blocked/Error/Done Agent transitions from the Console's
 /// live Agent list (#77), replacing system push banners while the app is
-/// foregrounded (`willPresent` is always `[]`).
+/// foregrounded (`willPresent` is always `[]`). Error, which only a herdr-core
+/// Host reports, goes under the Blocked trigger in its own word, and a core
+/// Host's Done is already this device's Done in the list.
 ///
 /// The gates mirror the plugin's pipeline, app-side: a transition must hold
 /// `holdDuration` before announcing (herdr's status detection flaps), an
@@ -76,7 +78,9 @@ final class AgentNotificationBannerStore {
             guard status != previous else { continue }
             statuses[id] = status
             cancelHold(for: id)
-            guard previous != nil, status == .blocked || status == .done else { continue }
+            guard previous != nil, status == .blocked || status == .error || status == .done else {
+                continue
+            }
             scheduleHold(for: agent, status: status)
         }
     }

@@ -60,6 +60,18 @@ struct GrokSessionCheckTests {
             Self.verdict(try ScreenFixture.screen(stem), input) == .otherSession(GrokSessionCheck.sessionLineReason))
     }
 
+    /// On herdr-core a pick, or the two rows `/new` leaves, keeps Chat where
+    /// it is (hc-lab, Grok Build 1.0.70, refused 7 minutes apart), so the
+    /// hold doesn't promise that Chat follows.
+    @Test func onACoreTheHoldDoesNotPromiseToFollow() throws {
+        var input = Self.input(
+            Self.transcript(["Reply with exactly: two."]), session: "01900000-0000-7000-8000-000000000009")
+        input.followsSessionMoves = false
+        let verdict = Self.verdict(try ScreenFixture.screen("grok-17-session-new"), input)
+        #expect(verdict == .otherSession(GrokSessionCheck.coreSessionLineReason))
+        #expect(!GrokSessionCheck.coreSessionLineReason.contains("in a moment"))
+    }
+
     @Test(arguments: ["grok-17-session-new", "grok-18-session-fork"])
     func theSessionHerdrFollowsPasses(stem: String) throws {
         let screen = try ScreenFixture.screen(stem)

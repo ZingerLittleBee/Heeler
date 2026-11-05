@@ -32,6 +32,24 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// still reports is no longer open: OpenCode keeps reporting one after
     /// `/new` or `/clear` (ADR 0025).
     case startScreen(ChatProgram)
+    /// Nothing on the Host shows which conversation a herdr-core Agent is in,
+    /// and Chat never guesses (ADR 0034).
+    case cannotTellSession(ChatProgram)
+    /// The same on a native Windows Host, which has no Host Helper to offer.
+    case cannotTellSessionOnWindows(ChatProgram)
+    /// The same for a Pi or Oh My Pi that hasn't loaded Heeler's extension, which is
+    /// in its extension folder: it runs with its extensions turned off, as
+    /// `turnedOff` says its arguments show, or started before the extension was there.
+    case extensionNotLoaded(ChatProgram, turnedOff: Bool)
+    /// The same because the read of the Agent's process failed on that Host, which
+    /// its extension would not change (ADR 0034).
+    case cannotReadProcessesOnWindows(ChatProgram)
+    /// The Agent's process carries a variable that stops the program keeping
+    /// a Transcript, so there is no file to wait for (ADR 0034).
+    case transcriptOff(ChatTranscriptOffVariable, coreCarriesIt: Bool)
+    /// A herdr-core Codex on the shared daemon, whose windows' sessions look alike
+    /// from outside. Only reopening it with `--no-daemon` offers Chat (ADR 0034).
+    case codexSharedDaemon
 
     /// Whether Chat shows the explanation in the conversation's place even
     /// over saved messages, which stay in memory until the program shows
@@ -39,6 +57,25 @@ enum ChatUnavailableReason: Equatable, Sendable {
     var hidesConversation: Bool {
         if case .startScreen = self { true } else { false }
     }
+
+    /// Nothing exact names the conversation on a POSIX core Host, which is where a
+    /// pick can stand in for it (ADR 0034).
+    var leavesItToAPick: Bool {
+        switch self {
+        case .cannotTellSession, .extensionNotLoaded: true
+        default: false
+        }
+    }
+}
+
+/// Variables that stop Claude Code keeping a Transcript when it inherits them,
+/// as from a core started inside a Claude Code session (ADR 0034).
+enum ChatTranscriptOffVariable: String, CaseIterable, Equatable, Sendable {
+    /// No registry entry and no Transcript, for the values Claude Code honors.
+    /// Read only once no registry entry turned up.
+    case childSession = "CLAUDE_CODE_CHILD_SESSION"
+    /// No Transcript.
+    case skipPromptHistory = "CLAUDE_CODE_SKIP_PROMPT_HISTORY"
 }
 
 extension ChatProgram {
@@ -162,6 +199,11 @@ struct ChatConversationSnapshot: Equatable, Sendable {
     /// How far the transcript has been read. A prompt the program records
     /// after a send lands at or after the offset read when it was sent.
     var readOffset: UInt64 = 0
+    /// The last read stopped at its budget, short of what the source holds.
+    var hasUnreadRecords = false
+    /// The live window starts at the source's first record, so nothing it holds is
+    /// before what was read.
+    var readsFromStart = false
     /// Bumped when offsets read before may now locate other records: the
     /// file was rewritten, replaced or moved, or is shorter than the saved
     /// document read it to.
@@ -313,6 +355,12 @@ actor ChatConversationEngine {
     /// lists.
     private var journals: [String: FollowedJournal] = [:]
     private var journalCalls = 0
+    /// Where the Agent's own program keeps Transcripts, from a check of its process
+    /// (ADR 0034): Claude Code's config dir, or Pi's or Oh My Pi's sessions folder.
+    /// Nil looks in the Host's default place.
+    private let transcriptRoot: String?
+    /// Heeler can name an id before the program has written it (ADR 0034).
+    private let sessionMayPrecedeItsStore: Bool
 
     init(
         reference: ConversationReference,
@@ -322,8 +370,12 @@ actor ChatConversationEngine {
         adapter: ChatTranscriptAdapter,
         saveInterval: TimeInterval = 10,
         workflowLimits: WorkflowLimits = WorkflowLimits(),
+        transcriptRoot: String? = nil,
+        sessionMayPrecedeItsStore: Bool = false,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
+        self.transcriptRoot = transcriptRoot
+        self.sessionMayPrecedeItsStore = sessionMayPrecedeItsStore
         self.reference = reference
         self.cacheKey = cacheKey
         self.files = files
@@ -385,10 +437,13 @@ actor ChatConversationEngine {
                 }
             }
         } catch let unavailable as ChatSourceUnavailable {
-            stop(unavailable.reason)
+            stop(
+                isConversationStillToStart(unavailable.reason)
+                    ? .awaitingFirstMessage(reference.program) : unavailable.reason)
         } catch {
             recordFailure(error)
         }
+        noteReadProgress()
         projectIfNeeded()
         return snapshot
     }
@@ -421,8 +476,16 @@ actor ChatConversationEngine {
                 recordFailure(error)
             }
         }
+        noteReadProgress()
         projectIfNeeded()
         return snapshot
+    }
+
+    private func noteReadProgress() {
+        update {
+            $0.hasUnreadRecords = source?.hasUnreadRecords ?? false
+            $0.readsFromStart = source?.windowStart == 0
+        }
     }
 
     /// Looks for the transcript again, then reads it: a Codex undo
@@ -729,6 +792,20 @@ actor ChatConversationEngine {
         }
     }
 
+    /// On herdr-core Heeler can know an OpenCode session's id before its first
+    /// prompt makes the row, so a store without it has a conversation to start, not
+    /// one that went missing (ADR 0034). Herdr TUI reports only ids that exist.
+    private func isConversationStillToStart(_ reason: ChatUnavailableReason) -> Bool {
+        mayStillBeToStart && reason == .sessionStore(.opencode, .sessionMissing(otherStores: []))
+    }
+
+    /// Whether nothing found under an id Host evidence named can mean its first message
+    /// is still to come. Once Chat has shown it, or the device kept it, it went missing.
+    /// A message that went in and never showed says Chat looks in the wrong place.
+    private var mayStillBeToStart: Bool {
+        sessionMayPrecedeItsStore && !hasFollowed && cached == nil && !lostAMessage
+    }
+
     // MARK: Locating
 
     private enum Location {
@@ -750,7 +827,8 @@ actor ChatConversationEngine {
             // every pass.
             if isNew, searchesEveryProject { newConversationActivity = context.activity }
             switch try await ClaudeTranscriptLocator(files: files).locate(
-                sessionID: reference.sessionID, directories: candidates, searchesEveryProject: searchesEveryProject)
+                sessionID: reference.sessionID, directories: candidates, searchesEveryProject: searchesEveryProject,
+                configRoot: transcriptRoot)
             {
             case .success(let location): return .found(location.transcriptPath)
             case .failure(.notFound) where !searchesEveryProject:
@@ -769,7 +847,7 @@ actor ChatConversationEngine {
             }
         case .codex:
             switch try await CodexTranscriptLocator(files: files, now: now).locate(
-                threadID: reference.sessionID)
+                threadID: reference.sessionID, configRoot: transcriptRoot)
             {
             case .success(let location):
                 guard let live = location.live else { return .unavailable(.notFound(searchedAll: true)) }
@@ -779,10 +857,18 @@ actor ChatConversationEngine {
             case .failure(.mismatched): return .unavailable(.mismatched)
             }
         case .pi, .omp:
+            let isNew = !lostAMessage && snapshot.phase == .unavailable(.awaitingFirstMessage(reference.program))
+            // Once per activity, as for Claude Code: a wait looks on every pass.
             switch try await PiTranscriptLocator(files: files).locate(
-                reference: reference, directories: directories)
+                reference: reference, directories: directories, sessionsRoot: transcriptRoot,
+                searchesEveryProject: !isNew || context.activity != newConversationActivity)
             {
             case .success(let path): return .found(path)
+            case .failure(.notFound) where mayStillBeToStart:
+                // The Agent's own evidence names this id, and nothing is saved
+                // under it yet: a conversation still to start, as with a path.
+                newConversationActivity = context.activity
+                return .unavailable(.awaitingFirstMessage(reference.program))
             case .failure(.notFound(let searchedAll)): return .unavailable(.notFound(searchedAll: searchedAll))
             case .failure(.notWritten):
                 // A file shown before, or saved on the device, that is gone
@@ -797,9 +883,13 @@ actor ChatConversationEngine {
             }
         case .grok:
             switch try await GrokTranscriptLocator(files: files).locate(
-                sessionID: reference.sessionID, directories: directories)
+                sessionID: reference.sessionID, directories: directories, configRoot: transcriptRoot)
             {
             case .success(let path): return .found(path)
+            case .failure(.notFound(searchedAll: false)) where mayStillBeToStart:
+                // Its row and folder come as it starts, and `updates.jsonl` with
+                // the first message.
+                return .unavailable(.awaitingFirstMessage(reference.program))
             case .failure(.notFound(let searchedAll)):
                 return .unavailable(.notFound(searchedAll: searchedAll))
             case .failure(.mismatched): return .unavailable(.mismatched)

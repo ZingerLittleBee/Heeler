@@ -39,6 +39,9 @@ struct ChatPendingEcho: Identifiable, Equatable, Sendable {
         case sent
         /// Sent a while ago, and the transcript still does not show it.
         case unconfirmed
+        /// A herdr-core step got no answer, so it may or may not have reached
+        /// the Agent, and the transcript does not show it.
+        case outcomeUnknown
         case failed(String)
         /// The text stayed in the Agent's input box. Never resent.
         case notDelivered

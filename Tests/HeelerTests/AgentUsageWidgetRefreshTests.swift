@@ -163,6 +163,65 @@ struct AgentUsageWidgetRefreshTests {
         #expect(connector.connects.withLock { $0 } == 1)
     }
 
+    private static func backgroundRead(
+        _ connector: any TransportConnector, sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }
+    ) -> AgentUsageBackgroundRefresh {
+        AgentUsageBackgroundRefresh.live(
+            connector: connector, knownHosts: InMemoryKnownHostsStore(),
+            credentials: HostCredentialsProvider(
+                deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
+                rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
+                secrets: InMemorySecretStore()),
+            sleep: sleep)
+    }
+
+    private static func coreConnector(_ core: ScriptedCoreHost) -> FakeTransportConnector {
+        FakeTransportConnector(
+            outcome: .connects(pingResult: .success(ServerInfo(version: "0.1.13", protocolVersion: 1))), core: core)
+    }
+
+    /// The background read follows the Server Kind: a core Host's Usage is its
+    /// Helper's, over the connection it dials for the read.
+    @Test func aCoreHostsBackgroundReadAsksItsHelper() async throws {
+        let helper = ScriptedHelperHost()
+        await helper.installApp()
+        await helper.seedUsage(try AgentUsageFixture.reportData(refreshing: false), session: "default")
+        let scripted = ScriptedCoreHost(helper: helper, channel: .refused)
+        let connector = Self.coreConnector(scripted)
+        var core = Self.host("Core Mac")
+        core.serverKind = .herdrCore
+
+        let state = await Self.backgroundRead(connector).read(core, true)
+
+        #expect(state == .available(try AgentUsageFixture.report()))
+        let limits = await helper.steps.compactMap { step -> Bool? in
+            guard case .usageQuery(_, let limits, _) = step else { return nil }
+            return limits
+        }
+        #expect(limits == [true])
+        #expect(await scripted.log == ["close"])
+    }
+
+    @Test func aCoreHostWithoutTheHelperSaysSoInTheBackgroundToo() async {
+        let connector = Self.coreConnector(ScriptedCoreHost(channel: .refused))
+        var core = Self.host("Core Mac")
+        core.serverKind = .herdrCore
+
+        #expect(await Self.backgroundRead(connector).read(core, false) == .hostHelper(.notInstalled))
+    }
+
+    @Test func aCoreHostTheBackgroundReadCannotReachSaysNotConnected() async throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var core = Self.host("Core Mac")
+        core.serverKind = .herdrCore
+        let connector = FakeTransportConnector(outcome: .connectFails(.sshUnreachable(detail: "no route")))
+
+        await Self.backgroundRead(connector).run(hosts: [core], publisher: publisher, isUsageEnabled: { true })
+
+        #expect(Self.snapshot(directory)?.host(core.id)?.excludedReason == "Not connected")
+    }
+
     @Test func connectingReadsAStaleHostForTheWidgetsOnce() async throws {
         let (publisher, directory) = try Self.publisher()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -191,6 +250,19 @@ struct AgentUsageWidgetRefreshTests {
         try await Self.waitUntil("the Host connects") { console.hostStatuses[host.id] == .connected }
         try await Task.sleep(for: .milliseconds(200))
         #expect(await transport.agentUsageReads == 0)
+    }
+
+    @Test func anUnconfirmedHostNeverReachesTheWidgets() async throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (console, _, host) = try await Self.console(publisher: publisher)
+        defer { console.setHosts([]) }
+
+        console.setHosts([
+            host, Host(address: "new.example", username: "dev", serverKind: .unconfirmed),
+        ])
+
+        #expect(Self.snapshot(directory)?.hosts.map(\.id) == [host.id])
     }
 
     @Test func turningUsageOffClearsTheWidgetsAndStopsReadsUntilItsBackOn() async throws {

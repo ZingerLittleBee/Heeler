@@ -129,6 +129,52 @@ actor SSHChannelAdmission {
 
     func snapshot() -> Snapshot { counts }
 
+    /// Requests waiting for a slot.
+    func waitingRequests() -> Int { waiters.count }
+
+    /// Opens a herdr-core link's channel under the long-lived events slot, one
+    /// per connection. The slot stays taken until the channel closes.
+    func admitCoreLink(
+        open: @escaping @Sendable () async throws -> any HeelerSSHAPIChannel
+    ) async throws -> any HeelerSSHAPIChannel {
+        let lease = try await acquire(.events)
+        do {
+            return AdmittedCoreLinkChannel(channel: try await open(), lease: lease)
+        } catch {
+            await lease.release()
+            throw error
+        }
+    }
+
+    /// `admitCoreLink` for a native Windows Host, whose link is one exec session.
+    func admitCoreExec(
+        open: @escaping @Sendable () async throws -> any WindowsTerminalExecChannel
+    ) async throws -> any WindowsTerminalExecChannel {
+        try await admitCoreExec(.events, open: open)
+    }
+
+    /// One long call's own exec beside that link. A core Host's Terminals ride the
+    /// link, so the attach slots are free there: waiting for the events slot would
+    /// never end while the link lives, and the session slots are for Chat and reads.
+    func admitCoreCallExec(
+        open: @escaping @Sendable () async throws -> any WindowsTerminalExecChannel
+    ) async throws -> any WindowsTerminalExecChannel {
+        try await admitCoreExec(.attach, open: open)
+    }
+
+    private func admitCoreExec(
+        _ channelClass: ChannelClass,
+        open: @escaping @Sendable () async throws -> any WindowsTerminalExecChannel
+    ) async throws -> any WindowsTerminalExecChannel {
+        let lease = try await acquire(channelClass)
+        do {
+            return AdmittedCoreLinkExec(channel: try await open(), lease: lease)
+        } catch {
+            await lease.release()
+            throw error
+        }
+    }
+
     /// Windows RPC and Events are exec sessions as well. Leave one slot of
     /// headroom below OpenSSH's default MaxSessions=10 across all categories.
     func useWindowsSessionBudget() {
@@ -193,6 +239,58 @@ actor SSHChannelAdmission {
                 - (channelClass == .ordinarySession ? 1 : 0),
             attach: counts.attach - (channelClass == .attach ? 1 : 0),
             connection: counts.connection - 1)
+    }
+}
+
+/// A core link's channel with the slot it was admitted under.
+private struct AdmittedCoreLinkChannel: HeelerSSHAPIChannel {
+    let channel: any HeelerSSHAPIChannel
+    let lease: SSHChannelAdmissionLease
+
+    func write(_ data: Data, timeout: Duration) async throws {
+        try await channel.write(data, timeout: timeout)
+    }
+
+    func read(maximumBytes: Int, timeout: Duration) async throws -> Data? {
+        try await channel.read(maximumBytes: maximumBytes, timeout: timeout)
+    }
+
+    func close(timeout: Duration) async throws {
+        do {
+            try await channel.close(timeout: timeout)
+        } catch {
+            await lease.release()
+            throw error
+        }
+        await lease.release()
+    }
+}
+
+/// A native Windows core link's exec with the slot it was admitted under.
+private struct AdmittedCoreLinkExec: WindowsTerminalExecChannel {
+    let channel: any WindowsTerminalExecChannel
+    let lease: SSHChannelAdmissionLease
+
+    func write(_ data: Data, timeout: Duration) async throws {
+        try await channel.write(data, timeout: timeout)
+    }
+
+    func read(maximumBytes: Int, timeout: Duration) async throws -> Data? {
+        try await channel.read(maximumBytes: maximumBytes, timeout: timeout)
+    }
+
+    func exitStatus(timeout: Duration) async throws -> Int32 {
+        try await channel.exitStatus(timeout: timeout)
+    }
+
+    func close(timeout: Duration) async throws {
+        do {
+            try await channel.close(timeout: timeout)
+        } catch {
+            await lease.release()
+            throw error
+        }
+        await lease.release()
     }
 }
 

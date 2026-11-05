@@ -17,6 +17,8 @@ struct AgentUsageContent: View {
             }
         case .requirement(let message):
             Text(message).foregroundStyle(.secondary)
+        case .hostHelper(let need):
+            Text(need.message).foregroundStyle(.secondary)
         case .unsupportedPlatform:
             Text("Not supported on Windows").foregroundStyle(.secondary)
         case .runtimeMissing:
@@ -300,8 +302,13 @@ struct ClaudeUsageLimitsToggle: View {
 
 /// What turning Claude Code limits on does, shown beside the toggle.
 struct ClaudeUsageLimitsNote: View {
+    /// A herdr-core Host has no plugin: its Host Helper asks.
+    var readsOverHostHelper = false
+
     var body: some View {
-        Text("The plugin asks Claude Code on this computer for your plan limits. Neither the plugin nor Heeler handles your sign-in. This automated use is not officially supported.")
+        Text(readsOverHostHelper
+            ? "The Host Helper asks Claude Code on this computer for your plan limits. Neither the Helper nor Heeler handles your sign-in. This automated use is not officially supported."
+            : "The plugin asks Claude Code on this computer for your plan limits. Neither the plugin nor Heeler handles your sign-in. This automated use is not officially supported.")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

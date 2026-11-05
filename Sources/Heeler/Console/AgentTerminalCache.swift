@@ -10,20 +10,30 @@ final class AgentTerminalCache {
         let terminalID: String
         let attach: AgentAttachStore
         let surfaceRetention = TerminalSurfaceRetention()
+        fileprivate let corePin: TerminalCorePin
         fileprivate let lifetime: Lifetime
         fileprivate var expiry: Task<Void, Never>?
         fileprivate var presentationOwnerID: UUID
+        /// The window the owner shows in; see `isSameWindow`.
+        fileprivate var presentationSceneID: UUID?
+        /// The detail that retains this entry. It comes back to the entry for
+        /// as long as it lives, hidden or not.
+        fileprivate weak var holder: AnyObject?
         var isRetained: Bool { lifetime.retained }
 
         fileprivate init(
             agentID: ConsoleAgent.ID, terminalID: String,
-            attach: AgentAttachStore, lifetime: Lifetime, ownerID: UUID
+            attach: AgentAttachStore, corePin: TerminalCorePin, lifetime: Lifetime, ownerID: UUID,
+            sceneID: UUID?, holder: AnyObject?
         ) {
             self.agentID = agentID
             self.terminalID = terminalID
             self.attach = attach
+            self.corePin = corePin
             self.lifetime = lifetime
             self.presentationOwnerID = ownerID
+            self.presentationSceneID = sceneID
+            self.holder = holder
         }
     }
 
@@ -37,6 +47,8 @@ final class AgentTerminalCache {
 
     private(set) var entries: [ConsoleAgent.ID: Entry] = [:]
     private var teardowns: [ConsoleAgent.ID: Task<Void, Never>] = [:]
+    /// Second windows' viewers by window; see `addViewer`.
+    private var viewers: [UUID: [AgentAttachStore]] = [:]
     private let budget: TerminalRetentionBudget
     let idleTimeout: Duration
 
@@ -50,20 +62,34 @@ final class AgentTerminalCache {
 
     /// Only the window holding the Host's Agent presentation may acquire.
     /// Offstage details keep private stores until they are activated.
+    ///
+    /// `sceneID` is passed for a core Terminal only, whose entry the detail's
+    /// replacement takes over; see `isSameWindow`. A Herdr TUI Terminal has one
+    /// owner at a time, so its replacement closes the entry and attaches anew.
+    ///
+    /// `corePin` is the detail's, for a core Terminal: an entry that keeps to another
+    /// core holds another Terminal at this address, however its id reads.
     func acquire(
-        agent: ConsoleAgent, console: ConsoleStore, ownerID: UUID,
+        agent: ConsoleAgent, console: ConsoleStore, ownerID: UUID, sceneID: UUID? = nil,
+        holder: AnyObject? = nil, corePin: TerminalCorePin? = nil,
         isPresented: @escaping @MainActor () -> Bool = { true }
     ) -> Entry {
         if let current = entries[agent.id], current.terminalID == agent.agent.terminalID,
+            corePin.map(current.corePin.keepsToSameCore) ?? true,
+            !isOverAndLeft(current),
             !current.lifetime.visible || current.presentationOwnerID == ownerID
+                || isSameWindow(current, sceneID: sceneID)
         {
             current.presentationOwnerID = ownerID
+            current.presentationSceneID = sceneID
+            current.holder = holder
             activate(current, ownerID: ownerID, isPresented: isPresented)
             return current
         }
         if let old = entries[agent.id] { evict(old) }
         let predecessor = teardowns[agent.id]
-        let runner = console.terminalRunner(for: agent.hostID)
+        let pin = corePin ?? TerminalCorePin()
+        let runner = console.terminalRunner(for: agent.hostID, keepingTo: pin)
         let lifetime = Lifetime()
         lifetime.isPresented = isPresented
         let attach = AgentAttachStore(
@@ -81,14 +107,63 @@ final class AgentTerminalCache {
             },
             closePane: { [weak console] in
                 guard let console else { throw CancellationError() }
-                try await console.closePane(agent.agent.paneID, on: agent.hostID)
+                try await console.closePane(agent.agent.paneID, on: agent.hostID, keepingTo: pin)
             })
         attach.input.isEnabled = console.isHostReadyForInput(agent.hostID)
         let entry = Entry(
             agentID: agent.id, terminalID: agent.agent.terminalID,
-            attach: attach, lifetime: lifetime, ownerID: ownerID)
+            attach: attach, corePin: pin, lifetime: lifetime, ownerID: ownerID, sceneID: sceneID, holder: holder)
         entries[agent.id] = entry
         return entry
+    }
+
+    /// Only a core Terminal ends this way. Nobody is looking at it, so opening its
+    /// address again means whatever runs there now, on another core if need be.
+    private func isOverAndLeft(_ entry: Entry) -> Bool {
+        !entry.lifetime.visible && entry.attach.terminalStatus == .finished
+    }
+
+    /// Another detail shows this Agent's retained terminal, or has it hidden
+    /// and will come back to it: its surface can only be in one window.
+    func isHeldByAnotherDetail(_ agent: ConsoleAgent, ownerID: UUID, sceneID: UUID? = nil) -> Bool {
+        guard let current = entries[agent.id], current.terminalID == agent.agent.terminalID,
+            current.presentationOwnerID != ownerID, !isSameWindow(current, sceneID: sceneID)
+        else { return false }
+        return current.lifetime.visible || current.holder != nil
+    }
+
+    /// A window mounts one detail, so another detail in the owner's window is
+    /// the one SwiftUI replaced it with, as a size-class change does. The
+    /// replaced detail still reads as selected when it disappears, so it never
+    /// releases; its late release, keyed to its own `ownerID`, finds nothing
+    /// to undo.
+    private func isSameWindow(_ entry: Entry, sceneID: UUID?) -> Bool {
+        sceneID != nil && entry.presentationSceneID == sceneID
+    }
+
+    /// A closed window's detail still reads as selected when it disappears,
+    /// so it never releases, and with core Terminals no other window's
+    /// acquire closes the entry instead. Nothing there comes back to what it
+    /// retains, so another window may take it; an entry it had already left
+    /// keeps the timer it started.
+    func sceneDidEnd(_ sceneID: UUID) {
+        for viewer in viewers.removeValue(forKey: sceneID) ?? [] {
+            viewer.leaveForTerminalHandoff()
+        }
+        for entry in entries.values where entry.presentationSceneID == sceneID {
+            entry.holder = nil
+            if entry.lifetime.visible {
+                release(entry, ownerID: entry.presentationOwnerID)
+            }
+        }
+    }
+
+    /// A second window's viewer holds no entry and closes with its detail's
+    /// `onDisappear`, which SwiftUI does not promise for a closed window. Held
+    /// strongly: a store that goes away unstopped leaves its channel open.
+    func addViewer(_ attach: AgentAttachStore, sceneID: UUID) {
+        viewers[sceneID, default: []].removeAll(where: \.hasLeft)
+        viewers[sceneID, default: []].append(attach)
     }
 
     private func admit(agentID: ConsoleAgent.ID, lifetime: Lifetime) async throws {
@@ -116,6 +191,7 @@ final class AgentTerminalCache {
         entry.lifetime.isPresented = isPresented
         budget.touch(key: key(for: entry), ownerID: entry.lifetime.ownerID)
         entry.attach.rejoin()
+        entry.attach.setTerminalViewed(true)
     }
 
     /// `keepingKeyboard` is a departure whose keyboard the next screen takes
@@ -125,6 +201,7 @@ final class AgentTerminalCache {
         entry.lifetime.visible = false
         entry.lifetime.isPresented = nil
         entry.attach.leaveInteractionsForRetention()
+        entry.attach.setTerminalViewed(false)
         entry.surfaceRetention.detachCallbacks(keepingKeyboard: keepingKeyboard)
         budget.markIdle(key: key(for: entry), ownerID: entry.lifetime.ownerID)
         entry.expiry?.cancel()

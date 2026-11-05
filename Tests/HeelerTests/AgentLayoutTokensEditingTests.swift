@@ -239,8 +239,10 @@ struct AgentLayoutTokensEditingTests {
         #expect(AgentRowSlot.forRow(0) == .herdr && AgentRowSlot.forRow(1) == .herdr)
         #expect(AgentRowSlot.forRow(2) == .heeler && AgentRowSlot.forRow(3) == nil)
         #expect(AgentRowSlot.slotRows([]) == [[], [], []])
-        #expect(AgentLayoutTokensEditing.availableHeelerFields(in: []) == [.host, .status, .directory])
-        #expect(AgentLayoutTokensEditing.availableHeelerFields(in: [.init(.host)]) == [.status, .directory])
+        #expect(AgentLayoutTokensEditing.availableBuiltins(in: [], from: AgentRowToken.heelerBuiltins) == [.host, .status, .directory])
+        #expect(
+            AgentLayoutTokensEditing.availableBuiltins(in: [.init(.host)], from: AgentRowToken.heelerBuiltins)
+                == [.status, .directory])
         #expect(!AgentRowToken.herdrBuiltins.contains(.stateIcon))
         #expect(
             AgentLayoutTokensEditing.navigationSubtitle(hostName: "Studio Mac", rowIndex: 0)

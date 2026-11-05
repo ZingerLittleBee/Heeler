@@ -14,11 +14,14 @@ cat >"$work/bin/npm" <<'EOF'
 case "$1" in
     ci)
         [ ! -e test ] || { echo "npm ci ran with test/ present" >&2; exit 1; }
+        [ ! -e helper ] || { echo "npm ci ran with helper/ present" >&2; exit 1; }
         mkdir -p node_modules ;;
     test)
         [ -e test ] || { echo "npm test ran without test/" >&2; exit 1; }
         [ -e ../scripts/generate-usage-pricing.mjs ] \
             || { echo "npm test ran without the price generator" >&2; exit 1; }
+        [ -z "${FAKE_NPM_TEST_NEEDS:-}" ] || [ -e "$FAKE_NPM_TEST_NEEDS" ] \
+            || { echo "npm test ran without $FAKE_NPM_TEST_NEEDS" >&2; exit 1; }
         exit "${FAKE_NPM_TEST_STATUS:-0}" ;;
 esac
 EOF
@@ -184,12 +187,62 @@ else
 fi
 expect_check "the app release check passes after publishing the bump" "pass:0.2.0"
 
+# The Host Helper's folder is never shipped and is no plugin change: adding it
+# or editing it under the published version publishes nothing.
+expect_helper_only_change_publishes_nothing() {
+    description=$1
+    before=$(published rev-parse plugin)
+    publish YES=1
+    if [ "$status" -eq 0 ] && grep -qF "nothing to publish" "$work/out" \
+        && [ "$(published rev-parse plugin)" = "$before" ]; then
+        pass "$description"
+    else
+        fail "$description"
+    fi
+}
+mkdir -p plugin/helper/extensions
+echo 'export const helper = 1;' > plugin/helper/index.js
+echo '// extension' > plugin/helper/extensions/pi.js
+mkdir -p plugin/helper/extensions/opencode
+echo '// OpenCode plugin' > plugin/helper/extensions/opencode/tui.js
+git add plugin/helper
+git commit --quiet --message "add the Host Helper"
+git push --quiet origin main
+expect_helper_only_change_publishes_nothing "adding the Helper's folder publishes nothing"
+
+echo 'export const helper = 2;' > plugin/helper/index.js
+git commit --quiet --all --message "change the Host Helper"
+git push --quiet origin main
+expect_helper_only_change_publishes_nothing "a change confined to the Helper's folder publishes nothing"
+expect_check "the app release check ignores a change confined to the Helper's folder" "pass:0.2.0"
+
+echo 'export const answer = 5;' > plugin/src/index.js
+sed -i.bak 's/0\.2\.0/0.3.0/' plugin/herdr-plugin.toml plugin/package.json
+rm plugin/herdr-plugin.toml.bak plugin/package.json.bak
+git commit --quiet --all --message "change the plugin beside the Helper"
+git push --quiet origin main
+# The plugin tests on main may import the Helper, so its folder joins the test
+# run; `npm ci` in the fake npm proves it was not there for the install.
+publish YES=1 FAKE_NPM_TEST_NEEDS=helper/index.js
+files=$(published ls-tree -r --name-only plugin | tr '\n' ' ')
+if [ "$status" -eq 0 ] && [ "$files" = "$expected_files" ] \
+    && [ "$(published show plugin:herdr-plugin.toml | grep '^version')" = 'version = "0.3.0"' ]; then
+    pass "a plugin tree with the Helper's folder publishes without it"
+else
+    fail "a plugin tree with the Helper's folder publishes without it: got '$files'"
+fi
+
+echo 'export const helper = 3;' > plugin/helper/index.js
+git commit --quiet --all --message "change the Host Helper after a publish"
+git push --quiet origin main
+expect_helper_only_change_publishes_nothing "a Helper change after a publish publishes nothing"
+
 echo 'registry=https://example.invalid' > plugin/.npmrc
 git add plugin/.npmrc
 git commit --quiet --message "add an unlisted file"
 git push --quiet origin main
-expect_refused "an entry that is neither shipped nor dev-only is refused" \
-    "plugin/.npmrc is neither shipped nor dev-only" YES=1
+expect_refused "a stray top-level entry belongs to no list and is refused" \
+    "plugin/.npmrc is neither shipped nor dev-only nor helper-only" YES=1
 
 if [ "$failures" -ne 0 ]; then
     echo "$failures plugin publishing test(s) failed" >&2

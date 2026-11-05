@@ -19,22 +19,74 @@ enum TerminalAttachTarget: Sendable, Hashable {
     }
 }
 
-/// One interactive terminal request: its typed remote target, herdr's
-/// takeover flag, and the initial PTY geometry.
+/// How a viewer joins a herdr-core Terminal, which has no Take Over: any viewer
+/// that is not only observing may type, and the last one to type, resize or
+/// take focus sets the Terminal's size.
+enum TerminalViewerRole: Sendable, Equatable {
+    /// Sets the Terminal's size on arrival.
+    case interactive
+    /// Back after a dropped line: sets the size only once it is active again.
+    case resumed
+    /// Watches only: its input and size count for nothing.
+    case observe
+}
+
+/// What a viewer's own terminal looks like, which a core uses to answer the
+/// program's display queries.
+struct TerminalDisplayFacts: Sendable, Equatable {
+    struct CellPixels: Sendable, Equatable {
+        let width: Int
+        let height: Int
+    }
+
+    /// Default foreground as `#rrggbb`.
+    var foreground: String?
+    /// Default background as `#rrggbb`.
+    var background: String?
+    /// Cursor color as `#rrggbb`.
+    var cursor: String?
+    var cell: CellPixels?
+}
+
+/// Whether anyone is looking at a retained terminal. Only a herdr-core attach
+/// passes this on: a hidden one reports neither focus nor display facts.
+enum TerminalViewerPresence: Sendable, Equatable {
+    case viewed(TerminalDisplayFacts?)
+    case hidden
+    case factsChanged(TerminalDisplayFacts)
+}
+
+/// One interactive terminal request: its typed remote target, how it joins
+/// (herdr's takeover flag, a core's viewer role and display facts), and the
+/// initial geometry.
 struct TerminalAttachRequest: Sendable, Equatable {
     let target: TerminalAttachTarget
     let takeover: Bool
+    let viewer: TerminalViewerRole
+    let displayFacts: TerminalDisplayFacts?
+    /// The surface this attach paints already holds its scrollback, so a server
+    /// that can send it should not send it again.
+    let surfaceHasHistory: Bool
     let cols: Int
     let rows: Int
+    /// The core this attach means, on a herdr-core Host. It goes to no other,
+    /// since an address means another Terminal there.
+    var coreID: String?
 
     init(
         target: TerminalAttachTarget,
         takeover: Bool = false,
+        viewer: TerminalViewerRole = .interactive,
+        displayFacts: TerminalDisplayFacts? = nil,
+        surfaceHasHistory: Bool = false,
         cols: Int,
         rows: Int
     ) {
         self.target = target
         self.takeover = takeover
+        self.viewer = viewer
+        self.displayFacts = displayFacts
+        self.surfaceHasHistory = surfaceHasHistory
         self.cols = cols
         self.rows = rows
     }
@@ -454,6 +506,11 @@ enum TerminalAttachInput: Sendable, Equatable {
     case resize(cols: Int, rows: Int)
 }
 
+enum TerminalAttachInputError: Error, Equatable {
+    /// The session ended with these bytes still on this side.
+    case sessionEnded
+}
+
 /// The live PTY's mixed-reliability input queue.
 ///
 /// Keystrokes and resizes are reliable and ordered. Touch scrolling is an
@@ -474,11 +531,22 @@ final class TerminalAttachInputQueue: Sendable {
         let expiresAt: ContinuousClock.Instant
     }
 
+    private typealias Acknowledgement = CheckedContinuation<Void, any Error>
+
+    private struct ReliableItem: Sendable {
+        let input: TerminalAttachInput
+        var acknowledgement: Acknowledgement?
+    }
+
     private struct State: ~Copyable {
-        var reliable: [TerminalAttachInput] = []
+        var reliable: [ReliableItem] = []
         var pendingScroll: PendingScroll?
         var waiter: CheckedContinuation<Void, Never>?
         var isFinished = false
+        /// The item the writer is working on, when someone waits to hear of it.
+        var inFlightAcknowledgement: Acknowledgement?
+        /// Nothing will write what is queued from now on.
+        var hasStoppedPumping = false
     }
 
     private enum NextDecision {
@@ -495,7 +563,24 @@ final class TerminalAttachInputQueue: Sendable {
 
     func send(_ keystrokes: Data) {
         guard !keystrokes.isEmpty else { return }
-        enqueueReliable(.keystrokes(keystrokes), discardingPendingScroll: true)
+        enqueueReliable(ReliableItem(input: .keystrokes(keystrokes)), discardingPendingScroll: true)
+    }
+
+    /// `send` that returns once the writer has written the bytes, in the same
+    /// order as everything else. It throws what the write threw, or
+    /// `TerminalAttachInputError.sessionEnded` when the bytes were never written.
+    /// Cancelling the caller changes nothing: the bytes stay queued.
+    func sendAcknowledged(_ keystrokes: Data) async throws {
+        try await withCheckedThrowingContinuation { (continuation: Acknowledgement) in
+            let isOpen = state.withLock { !$0.isFinished && !$0.hasStoppedPumping }
+            guard isOpen else {
+                continuation.resume(throwing: TerminalAttachInputError.sessionEnded)
+                return
+            }
+            enqueueReliable(
+                ReliableItem(input: .keystrokes(keystrokes), acknowledgement: continuation),
+                discardingPendingScroll: true)
+        }
     }
 
     func scroll(_ sequence: Data, rows: Int) {
@@ -531,14 +616,16 @@ final class TerminalAttachInputQueue: Sendable {
     }
 
     func resize(cols: Int, rows: Int) {
-        enqueueReliable(.resize(cols: cols, rows: rows), discardingPendingScroll: false)
+        enqueueReliable(ReliableItem(input: .resize(cols: cols, rows: rows)), discardingPendingScroll: false)
     }
 
     func next() async -> TerminalAttachInput? {
         while true {
             let decision = state.withLock { state -> NextDecision in
                 if !state.reliable.isEmpty {
-                    return .resume(state.reliable.removeFirst())
+                    let item = state.reliable.removeFirst()
+                    state.inFlightAcknowledgement = item.acknowledgement
+                    return .resume(item.input)
                 }
                 if let scroll = state.pendingScroll, scroll.expiresAt <= now() {
                     state.pendingScroll = nil
@@ -591,20 +678,48 @@ final class TerminalAttachInputQueue: Sendable {
     }
 
     private func enqueueReliable(
-        _ input: TerminalAttachInput,
+        _ item: ReliableItem,
         discardingPendingScroll: Bool
     ) {
         var waiter: CheckedContinuation<Void, Never>?
+        var refused: Acknowledgement?
         state.withLock { state in
-            guard !state.isFinished else { return }
+            guard !state.isFinished, !state.hasStoppedPumping else {
+                refused = item.acknowledgement
+                return
+            }
             if discardingPendingScroll {
                 state.pendingScroll = nil
             }
-            state.reliable.append(input)
+            state.reliable.append(item)
             waiter = state.waiter
             state.waiter = nil
         }
+        refused?.resume(throwing: TerminalAttachInputError.sessionEnded)
         waiter?.resume()
+    }
+
+    private func finishInFlight(_ result: Result<Void, any Error>) {
+        let acknowledgement = state.withLock { state in
+            defer { state.inFlightAcknowledgement = nil }
+            return state.inFlightAcknowledgement
+        }
+        acknowledgement?.resume(with: result)
+    }
+
+    /// Whoever waits on bytes no writer will take hears so now.
+    private func stopPumping() {
+        let abandoned = state.withLock { state -> [Acknowledgement] in
+            state.hasStoppedPumping = true
+            defer {
+                state.inFlightAcknowledgement = nil
+                state.reliable.removeAll()
+            }
+            return ([state.inFlightAcknowledgement] + state.reliable.map(\.acknowledgement)).compactMap { $0 }
+        }
+        for acknowledgement in abandoned {
+            acknowledgement.resume(throwing: TerminalAttachInputError.sessionEnded)
+        }
     }
 
     /// Drains the queue onto a live PTY channel until the queue finishes or
@@ -614,11 +729,18 @@ final class TerminalAttachInputQueue: Sendable {
         write: (Data) async throws -> Void,
         resize: (Int, Int) async throws -> Void
     ) async throws {
+        defer { stopPumping() }
         while let item = await next() {
             guard !Task.isCancelled else { return }
             switch item {
             case .keystrokes(let data):
-                try await write(data)
+                do {
+                    try await write(data)
+                    finishInFlight(.success(()))
+                } catch {
+                    finishInFlight(.failure(error))
+                    throw error
+                }
             case .scroll(let data):
                 try await write(data)
                 try await Task.sleep(for: Self.scrollPacingInterval)
@@ -663,24 +785,50 @@ final class TerminalAttachSession: Sendable {
     private let makeOutput: @Sendable () -> AsyncThrowingStream<Data, any Error>
     private let input: TerminalAttachInputQueue
     private let onEndStarted: @Sendable () -> Void
+    private let onConsumed: (@Sendable (Int) -> Void)?
+    private let onPresence: (@Sendable (TerminalViewerPresence) -> Void)?
     private let ender: @Sendable () async -> Void
 
     init(
         output makeOutput: @escaping @Sendable () -> AsyncThrowingStream<Data, any Error>,
         input: TerminalAttachInputQueue,
         onEndStarted: @escaping @Sendable () -> Void = {},
+        onConsumed: (@Sendable (Int) -> Void)? = nil,
+        onPresence: (@Sendable (TerminalViewerPresence) -> Void)? = nil,
         ender: @escaping @Sendable () async -> Void
     ) {
         self.makeOutput = makeOutput
         self.input = input
         self.onEndStarted = onEndStarted
+        self.onConsumed = onConsumed
+        self.onPresence = onPresence
         self.ender = ender
+    }
+
+    /// The view took `count` bytes of `output`. A herdr-core attach returns
+    /// their credit now, never on receipt.
+    func outputConsumed(_ count: Int) {
+        onConsumed?(count)
+    }
+
+    /// A herdr-core viewer, which says what it took and whether it is seen.
+    var isCoreViewer: Bool { onPresence != nil }
+
+    /// Whether anyone is looking at this terminal. A herdr-core attach alone
+    /// passes this on.
+    func setPresence(_ presence: TerminalViewerPresence) {
+        onPresence?(presence)
     }
 
     /// Forwards raw keystroke bytes to the remote PTY. Fire-and-forget: a
     /// dead channel drops them, and the death surfaces on `output`.
     func send(_ keystrokes: Data) {
         input.send(keystrokes)
+    }
+
+    /// `send` for a caller that has to know the bytes left.
+    func sendAcknowledged(_ keystrokes: Data) async throws {
+        try await input.sendAcknowledged(keystrokes)
     }
 
     /// Coalesces touch-scroll rows behind at most one small in-flight batch.

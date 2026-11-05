@@ -10,7 +10,8 @@ struct AgentListFieldsSettingsView: View {
         self.hosts = hosts
         _editor = State(initialValue: AgentListFieldsEditor(
             layouts: console.rowLayouts, snapshots: console.sidebarSnapshots,
-            fetch: { [console] hostID in await console.refreshSidebarLayout(for: hostID) }))
+            fetch: { [console] hostID in await console.refreshSidebarLayout(for: hostID) },
+            followsPlugin: { [console] hostID in console.capabilities(for: hostID).syncLayoutFromPlugin }))
     }
 
     var body: some View {
@@ -81,10 +82,11 @@ struct AgentListFieldsSettingsView: View {
 }
 
 /// One Host's rows as three fixed slots, edited in place. Row 1 and Row 2
-/// start from herdr's sidebar fields; Row 3 is Heeler's own row. Each slot
-/// has a left side and a right side, which ends its line in the Console.
-/// Slots are never added, moved, or deleted, so a row's index is its
-/// identity everywhere on this screen. Every change saves immediately through the editor. Every
+/// start from herdr's sidebar fields; Row 3 is Heeler's own row. A Host with no
+/// plugin starts from Heeler's own fields instead. Each slot has a left side
+/// and a right side, which ends its line in the Console. Slots are never
+/// added, moved, or deleted, so a row's index is its identity everywhere on
+/// this screen. Every change saves immediately through the editor. Every
 /// Agent on the Host shares these rows; there are no per-kind overrides.
 struct AgentListFieldsHostDetailView: View {
     let host: Host
@@ -111,14 +113,22 @@ struct AgentListFieldsHostDetailView: View {
             }
             .sheet(item: $addingField) { destination in
                 AgentListFieldsAddFieldSheet(
-                    editor: editor, destination: destination, hostName: host.displayName)
+                    editor: editor, destination: destination, hostName: host.displayName,
+                    followsPlugin: followsPlugin,
+                    labelKeys: console.terminalLabelKeys(on: host.id))
             }
-            .task { await console.refreshPluginStatuses(for: [host.id]) }
+            .task {
+                if followsPlugin { await console.refreshPluginStatuses(for: [host.id]) }
+            }
             .onChange(of: layout) { appliedMessage = nil }
     }
 
     private var layout: AgentRowLayout { editor.layout(for: host.id) }
     private var isSyncing: Bool { editor.syncStates[host.id] == .syncing }
+    private var followsPlugin: Bool { host.capabilities.syncLayoutFromPlugin }
+    /// Sync from plugin where a plugin runs, Apply to All Hosts where another
+    /// Host can take these fields.
+    private var hasActions: Bool { followsPlugin || hosts.count > 1 }
 
     private var hostList: some View {
         List {
@@ -127,7 +137,7 @@ struct AgentListFieldsHostDetailView: View {
                 previewRow
                 hostRows
                 slotsNote
-                syncRow
+                if hasActions { actionsRow }
             }
             .listSectionSeparator(.hidden)
             AgentLayoutErrorView(editor: editor)
@@ -153,8 +163,9 @@ struct AgentListFieldsHostDetailView: View {
                 Text(AgentListFieldsCopy.detailIntro)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                if let requirement = console.pluginStatuses.status(for: host.id)?
-                    .requirements(for: [.sidebarFields]).first
+                if followsPlugin,
+                    let requirement = console.pluginStatuses.status(for: host.id)?
+                        .requirements(for: [.sidebarFields]).first
                 {
                     // Without a snapshot, Sync from plugin silently fills
                     // fallback fields; say why before the user tries it.
@@ -181,7 +192,7 @@ struct AgentListFieldsHostDetailView: View {
                 .foregroundStyle(.tertiary)
                 .textCase(.uppercase)
             AgentListFieldsPreview(
-                layout: layout, hostName: host.displayName,
+                layout: layout, hostName: host.displayName, followsPlugin: followsPlugin,
                 kind: AgentListFieldsPreview.kind(onHost: host.id, among: console.agents))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -198,7 +209,7 @@ struct AgentListFieldsHostDetailView: View {
             let trailing = AgentLayoutTokensEditing.row(index, in: trailingRows)
             MainActorContent {
                 AgentListFieldsRowEditor(
-                    index: index, row: row, trailing: trailing,
+                    index: index, row: row, trailing: trailing, followsPlugin: followsPlugin,
                     isEnabled: !isSyncing && !editor.isCatalogUnreadable,
                     onAdd: { side in
                         addingField = AgentListFieldsEditorDestination(
@@ -225,58 +236,19 @@ struct AgentListFieldsHostDetailView: View {
     }
 
     private var slotsNote: some View {
-        Text(AgentListFieldsCopy.rowSlots)
+        Text(AgentListFieldsCopy.rowSlots(followsPlugin: followsPlugin))
             .font(.footnote)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .listRowInsets(AgentListFieldsChrome.slotsNoteInsets)
             .listRowSeparator(.hidden)
-            .agentListHostSurface(isFirst: false, isLast: false)
+            .agentListHostSurface(isFirst: false, isLast: !hasActions)
     }
 
-    @ViewBuilder
-    private var syncRow: some View {
-        let identifier = "settings.agentList.sync.\(host.id.uuidString)"
-        let tipIdentifier = "settings.agentList.syncTip.\(host.id.uuidString)"
+    private var actionsRow: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Rectangle()
-                .fill(Color(uiColor: .separator))
-                .frame(height: 0.5)
-            Group {
-                switch editor.syncStates[host.id] {
-                case .syncing:
-                    HStack(spacing: 9) {
-                        ProgressView()
-                        Text("Syncing…")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                    }
-                    .accessibilityIdentifier(identifier)
-                case .filled(let message):
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(verbatim: message)
-                            .font(.footnote)
-                            .foregroundStyle(AgentListFieldsChrome.success)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier(tipIdentifier)
-                        syncButton(identifier: identifier)
-                    }
-                case .failed(let message):
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(verbatim: message)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier(tipIdentifier)
-                        Button("Retry") { Task { await sync() } }
-                            .buttonStyle(.borderless)
-                    }
-                case nil:
-                    syncButton(identifier: identifier)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if followsPlugin { syncAction }
             if hosts.count > 1 {
                 Rectangle()
                     .fill(Color(uiColor: .separator))
@@ -288,6 +260,49 @@ struct AgentListFieldsHostDetailView: View {
         .listRowInsets(AgentListFieldsChrome.syncInsets)
         .listRowSeparator(.hidden)
         .agentListHostSurface(isFirst: false, isLast: true)
+    }
+
+    @ViewBuilder
+    private var syncAction: some View {
+        let identifier = "settings.agentList.sync.\(host.id.uuidString)"
+        let tipIdentifier = "settings.agentList.syncTip.\(host.id.uuidString)"
+        Rectangle()
+            .fill(Color(uiColor: .separator))
+            .frame(height: 0.5)
+        Group {
+            switch editor.syncStates[host.id] {
+            case .syncing:
+                HStack(spacing: 9) {
+                    ProgressView()
+                    Text("Syncing…")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityIdentifier(identifier)
+            case .filled(let message):
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(verbatim: message)
+                        .font(.footnote)
+                        .foregroundStyle(AgentListFieldsChrome.success)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier(tipIdentifier)
+                    syncButton(identifier: identifier)
+                }
+            case .failed(let message):
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(verbatim: message)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier(tipIdentifier)
+                    Button("Retry") { Task { await sync() } }
+                        .buttonStyle(.borderless)
+                }
+            case nil:
+                syncButton(identifier: identifier)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func syncButton(identifier: String) -> some View {
@@ -379,6 +394,7 @@ private struct AgentListFieldsRowEditor: View {
     let index: Int
     let row: AgentRow
     let trailing: AgentRow
+    let followsPlugin: Bool
     let isEnabled: Bool
     let onAdd: (AgentRowSide) -> Void
     let onToggleStyle: (Int, AgentRowSide) -> Void
@@ -413,7 +429,8 @@ private struct AgentListFieldsRowEditor: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
-            AgentListFieldsRowLabel.accessibilityLabel(index: index, row: row, trailing: trailing))
+            AgentListFieldsRowLabel.accessibilityLabel(
+                index: index, row: row, trailing: trailing, followsPlugin: followsPlugin))
     }
 
     private func fields(_ side: AgentRowSide) -> AgentRow { side == .leading ? row : trailing }
@@ -583,6 +600,7 @@ enum AgentListFieldsSourceCaption {
         case .loading: "Reading herdr fields…"
         case .missing: "No herdr fields snapshot"
         case .unavailable: "herdr fields unavailable"
+        case .heeler: "Heeler's fields"
         }
     }
 }
@@ -629,6 +647,15 @@ enum AgentListFieldsCopy {
         + "Fields on a row's right side end its line, and Sync from plugin keeps them. "
         + "The ring around each Agent's mark shows its status; status_badge adds it in a capsule. "
         + "Where the mark names the program, the Agent field leaves rows with other fields."
+
+    static func rowSlots(followsPlugin: Bool) -> String {
+        guard !followsPlugin else { return rowSlots }
+        return "Row 1 starts from the terminal's title and Row 2 from its directory. "
+            + "Any row can use these fields and your Terminals' labels. "
+            + "Fields on a row's right side end its line. "
+            + "The ring around each Agent's mark shows its status; status_badge adds it in a capsule. "
+            + "Where the mark names the program, the Agent field leaves rows with other fields."
+    }
 }
 
 enum AgentListFieldsChipLabel {
@@ -647,8 +674,10 @@ enum AgentListFieldsRowLabel {
         slot == .heeler ? "Not configured" : "No fields"
     }
 
-    static func accessibilityLabel(index: Int, row: AgentRow, trailing: AgentRow = []) -> String {
-        let slot = AgentRowSlot.forRow(index)
+    static func accessibilityLabel(
+        index: Int, row: AgentRow, trailing: AgentRow = [], followsPlugin: Bool = true
+    ) -> String {
+        let slot = followsPlugin ? AgentRowSlot.forRow(index) : nil
         var parts = ["Row \(index + 1)"]
         if let slot { parts.append("\(slot.label) row") }
         if row.isEmpty {

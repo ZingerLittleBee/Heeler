@@ -45,6 +45,7 @@ final class HeelerAppModel {
     let liveActivities: HostLiveActivityCoordinator
     /// What a confirmed Host removal cleans up beyond the catalog (#414).
     let hostRemoval: HostRemovalDependencies
+    let hostOnboarding: HostOnboardingDependencies
     let activity: AppActivityCoordinator
 
     private var isStarted = false
@@ -62,7 +63,9 @@ final class HeelerAppModel {
         sceneDirectory: AgentSceneDirectory,
         hostStore: HostStore = HostStore(),
         console: ConsoleStore = ConsoleStore(
-            chatCache: FileChatTranscriptCache(), usageWidgets: AgentUsageWidgetPublisher()),
+            chatCache: FileChatTranscriptCache(), usageWidgets: AgentUsageWidgetPublisher(),
+            coreHostMemory: HerdrCoreHostMemory(defaults: .standard),
+            harnessEdits: HarnessConfigEditStore(defaults: .standard)),
         overlayNetworks: OverlayNetworkStore = OverlayNetworkStore(),
         activity: AppActivityCoordinator = AppActivityCoordinator()
     ) {
@@ -95,6 +98,16 @@ final class HeelerAppModel {
             relayBaseURL: { [weak relaySettings] in relaySettings?.relayURL },
             ceremony: NotificationRegistrationCeremony(gate: registrationGate))
         self.notificationPreferences = notificationPreferences
+        notificationPreferences.followSeenMarks(of: console)
+        // Installing or removing a Helper changes what the banner and Live
+        // Activity gates may say, with the Console's connection unchanged.
+        hostOnboarding = HostOnboardingDependencies(
+            hostHelperDidChange: { [weak notificationPreferences] in
+                Task { await notificationPreferences?.refresh() }
+            },
+            harnessEdits: console.harnessEdits,
+            noteWindowsCore: { [weak console] in console?.noteWindowsCore(on: $0) },
+            coreKernel: { [weak console] in console?.hostCoreKernels[$0] })
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on
@@ -130,10 +143,19 @@ final class HeelerAppModel {
             connectionStatus: { [weak console] id in
                 console?.hostStatuses[id]
             },
+            supportsHost: { [weak hostStore] id in
+                hostStore?.supportsLiveActivities(for: id) ?? false
+            },
+            registrationGate: { [weak hostStore, weak notificationPreferences] id in
+                guard hostStore?.hosts.first(where: { $0.id == id })?.serverKind == .herdrCore else {
+                    return .open
+                }
+                return notificationPreferences?.liveActivityGate(forCoreHost: id) ?? .unknown
+            },
             pinnedPaneIDs: { [weak console] id in
                 console?.pins.pinnedPaneIDs(for: id) ?? []
             },
-            rowLayout: { [weak console] id in console?.rowLayout(for: id) })
+            rowLayout: { [weak console] id in console?.liveActivityRowLayout(for: id) })
         self.liveActivities = liveActivities
         hostRemoval = HostRemovalDependencies.app(
             console: console, notificationPreferences: notificationPreferences,
@@ -146,7 +168,7 @@ final class HeelerAppModel {
         // A window can render before start() runs. Publish the configured
         // Hosts and begin loading saved Chats before that first render;
         // connections still wait for start() to resume the Console.
-        console.setHosts(hostStore.hosts)
+        console.setHosts(hostStore.hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
     }
 
     var terminal: TerminalSettings {
@@ -168,7 +190,7 @@ final class HeelerAppModel {
         liveActivities.agentsDidChange(console.agents)
 
         Task {
-            console.setHosts(hostStore.hosts)
+            console.setHosts(hostStore.hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
             notificationPreferences.setHosts(hostStore.hosts)
             await console.resume()
         }
@@ -199,6 +221,9 @@ final class HeelerAppModel {
         liveActivities.start()
 
         observeStores()
+        sceneDirectory.observeDisconnects { [console] sceneID in
+            console.sceneDidEnd(sceneID)
+        }
     }
 
     /// The app's aggregate scene phase: active while any window is.
@@ -225,14 +250,14 @@ final class HeelerAppModel {
     func refreshUsageInBackground() async {
         guard await scheduleUsageRefresh(), let publisher = console.usageWidgets else { return }
         await AgentUsageBackgroundRefresh.live().run(
-            hosts: hostStore.hosts, publisher: publisher, isUsageEnabled: { console.isUsageEnabled })
+            hosts: hostStore.consoleHosts, publisher: publisher, isUsageEnabled: { console.isUsageEnabled })
     }
 
     /// Asks for a background Usage read while Usage is on and a widget is installed,
     /// and withdraws the request once none is.
     @discardableResult
     private func scheduleUsageRefresh() async -> Bool {
-        guard console.isUsageEnabled, let publisher = console.usageWidgets, !hostStore.hosts.isEmpty,
+        guard console.isUsageEnabled, let publisher = console.usageWidgets, !hostStore.consoleHosts.isEmpty,
             await publisher.widgetsInstalled()
         else {
             AgentUsageBackgroundRefresh.cancel()
@@ -250,10 +275,11 @@ final class HeelerAppModel {
         let console = self.console
         let activity = self.activity
         let pushRegistration = self.pushRegistration
+        let notificationPreferences = self.notificationPreferences
 
         observe({ hostStore.hosts }) { [weak self] hosts in
             guard let self else { return }
-            console.setHosts(hosts)
+            console.setHosts(hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
             notificationPreferences.setHosts(hosts)
             liveActivities.layoutsDidChange()
         }
@@ -274,13 +300,18 @@ final class HeelerAppModel {
         // so re-read each Host's registration file as its connection comes up
         // (and once the push token lands) instead of waiting for a Settings
         // visit that may never happen.
-        observe({ console.hostStatuses }) { [weak self] _ in
+        observe({ console.hostStatuses.mapValues(\.forRegistrationRead) }) { [weak self] _ in
             guard let self else { return }
             Task { await self.notificationPreferences.refresh() }
-            liveActivities.connectionsDidChange()
+        }
+        observe({ console.hostStatuses }) { [weak self] _ in
+            self?.liveActivities.connectionsDidChange()
         }
         observe({ console.hostsAwaitingSnapshot }) { [weak self] _ in
             self?.liveActivities.connectionsDidChange()
+        }
+        observe({ notificationPreferences.coreLiveActivityGates }) { [weak self] _ in
+            self?.liveActivities.registrationsDidChange()
         }
         observe({ activity.activationCount }) { [weak self] _ in
             self?.liveActivities.reconcile()

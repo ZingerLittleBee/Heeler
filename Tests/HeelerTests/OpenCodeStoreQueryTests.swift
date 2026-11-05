@@ -8,6 +8,70 @@ import Testing
 /// `sqlite3` reads them (`OpenCodeSQLiteHarness`).
 @Suite("OpenCode store queries")
 struct OpenCodeStoreQueryTests {
+    // MARK: The schemas OpenCode itself made
+
+    /// `host-evidence/opencode/schema-*.sql` came from real stores of these versions
+    /// (ADR 0034), with no real provider's rows. The queries run against them, on
+    /// captured rows of OpenCode 2.0.32's shape.
+    @Test(arguments: ["2.2.5", "2.0.32"])
+    func theQueriesRunAgainstARecordedSchema(_ version: String) throws {
+        let schema = try ChatFixture.text("host-evidence/opencode/schema-\(version).sql")
+        let fixture = try OpenCodeStoreFixture.named("pong")
+        let session = try #require(fixture.sessionID)
+        let harness = try OpenCodeSQLiteHarness(fixture, schema: schema)
+
+        let tail = try harness.records(Self.tail(session))
+        #expect(tail.rows.map(\.seq) == fixture.rows.map(\.seq))
+        let cursor = try Self.cursor(after: tail)
+        #expect(try harness.response(OpenCodeQuery(session: session, kind: .poll(cursor))) == .unchanged(eventSeq: 12))
+        let other = try #require(OpenCodeSessionID("ses_e6a000000001Abcdefghijklmn"))
+        #expect(
+            try harness.response(OpenCodeQuery(session: other, kind: .tail(budget: 1024)))
+                == .sessionMissing(otherStores: []))
+    }
+
+    // MARK: Recent sessions in a directory
+
+    /// Chat's candidate list (ADR 0034), against what OpenCode's own stores hold.
+    @Test(arguments: ["2.2.5", "2.0.32"])
+    func recentSessionsAreTheDirectorysRootsNewestFirst(_ version: String) throws {
+        let schema = try ChatFixture.text("host-evidence/opencode/schema-\(version).sql")
+        let fixture = try OpenCodeStoreFixture.named("pong")
+        let harness = try OpenCodeSQLiteHarness(fixture, schema: schema)
+        let directory = "/work/it's \"odd\"; app"
+        func add(_ id: String, directory: String, updated: Int64, parent: String? = nil) throws {
+            var row = fixture.session
+            row["id"] = .text(id)
+            row["slug"] = .text(id)
+            row["directory"] = .text(directory)
+            row["time_updated"] = .integer(updated)
+            row["parent_id"] = parent.map(OpenCodeColumnValue.text) ?? .null
+            try harness.insert(into: "session_v2", row)
+        }
+        try add("ses_e6a000000001Abcdefghijklmn", directory: directory, updated: 100)
+        try add("ses_e6a000000002Abcdefghijklmn", directory: directory, updated: 300)
+        try add("ses_e6a000000003Abcdefghijklmn", directory: directory, updated: 200)
+        try add("ses_e6a000000004Abcdefghijklmn", directory: directory, updated: 400, parent: "ses_e6a000000001Abcdefghijklmn")
+        try add("ses_e6a000000005Abcdefghijklmn", directory: "/work/other", updated: 500)
+
+        let query = OpenCodeQuery(session: nil, kind: .recentSessions(directory: directory, limit: 2))
+        let rows = try harness.records(query).recentSessions
+
+        #expect(rows.map(\.id) == ["ses_e6a000000002Abcdefghijklmn", "ses_e6a000000003Abcdefghijklmn"])
+        #expect(rows.map(\.updated) == [300, 200])
+        #expect(rows.first?.title == "Pong")
+    }
+
+    @Test func recentSessionsParseOnTheParserStackOfOlderSQLite() throws {
+        let harness = try OpenCodeSQLiteHarness(scenario: "pong")
+        let query = OpenCodeQuery(session: nil, kind: .recentSessions(directory: "/work/app", limit: 12))
+        for statement in OpenCodeProbe.statements(query) {
+            #expect(
+                harness.prepareFailure(statement, parserStack: OpenCodeSQLiteHarness.fixedParserStack) == nil,
+                "\(statement.prefix(60))")
+        }
+    }
+
     // MARK: Tail, poll and older pages
 
     @Test func aTailReadsTheNewestRowsWithinItsBudget() throws {
@@ -494,6 +558,229 @@ struct OpenCodeStoreQueryTests {
             CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, data TEXT);
             """)
         #expect(try harness.response(Self.tail(#require(fixture.sessionID))) == .unavailable(.olderOpenCode))
+    }
+
+    // MARK: OpenCode 1.x
+
+    /// A session OpenCode 1.19.5 wrote in a store it made alone (#584):
+    /// `host-evidence/opencode/store-1.19.5.json` holds its `session`, `message`
+    /// and `part` rows, paths moved to `/work/app` and the provider's reasoning
+    /// signatures replaced. Six prompts, the fourth with a file attached, two
+    /// read calls and a bash call, and reasoning the provider sent encrypted.
+    private struct V1Recording: Decodable {
+        var session: [String: OpenCodeColumnValue]
+        var messages: [[String: OpenCodeColumnValue]]
+        var parts: [[String: OpenCodeColumnValue]]
+    }
+
+    private static let v1Session = OpenCodeSessionID("ses_e5e7628e2ffe3OTTUgA7nkekCV")
+    /// The recorded session's last change.
+    private static let v1Updated: Int64 = 1_793_711_625_274
+
+    /// The recorded session in a store of `schema`.
+    private static func v1Store(schema: String) throws -> (OpenCodeSQLiteHarness, OpenCodeSessionID) {
+        let empty = try JSONDecoder().decode(
+            OpenCodeStoreFixture.self, from: Data(#"{"session":{},"rows":[],"inbox":[]}"#.utf8))
+        let harness = try OpenCodeSQLiteHarness(empty, schema: schema)
+        let recording = try JSONDecoder().decode(
+            V1Recording.self, from: ChatFixture.data("host-evidence/opencode/store-1.19.5.json"))
+        try harness.insert(into: "session", recording.session)
+        for message in recording.messages {
+            try harness.insert(into: "message", message)
+        }
+        for part in recording.parts {
+            try harness.insert(into: "part", part)
+        }
+        return (harness, try #require(v1Session))
+    }
+
+    /// The store OpenCode 1.19.5 makes alone: its whole schema, which has a
+    /// `session_message` and an `event_sequence` of its own but no `session_v2`.
+    private static func v1OnlyStore() throws -> (OpenCodeSQLiteHarness, OpenCodeSessionID) {
+        try v1Store(schema: ChatFixture.text("host-evidence/opencode/schema-1.19.5.sql"))
+    }
+
+    /// A store OpenCode 2 and 1.x share (#541 Linux P3): 2's tables, and 1.19.5's
+    /// `session`, `message` and `part` with their indexes.
+    private static func sharedStore() throws -> (OpenCodeSQLiteHarness, OpenCodeSessionID) {
+        let v1Tables = try ChatFixture.text("host-evidence/opencode/schema-1.19.5.sql")
+            .components(separatedBy: ";\n\n")
+            .filter { statement in
+                ["`session`", "`message`", "`part`"].contains {
+                    statement.hasPrefix("CREATE TABLE \($0) ") || statement.contains(" ON \($0) ")
+                }
+            }
+        try #require(v1Tables.count == 9)
+        return try v1Store(schema: ChatFixture.text("opencode/schema.sql") + "\n" + v1Tables.joined(separator: ";\n") + ";")
+    }
+
+    private static func insertV1(
+        _ harness: OpenCodeSQLiteHarness, message: String, at time: Int64, _ data: String, parts: [String]
+    ) throws {
+        let session = try #require(v1Session).rawValue
+        try harness.insert(into: "message", [
+            "id": .text(message), "session_id": .text(session), "time_created": .integer(time),
+            "time_updated": .integer(time), "data": .text(data),
+        ])
+        for (index, part) in parts.enumerated() {
+            try harness.insert(into: "part", [
+                "id": .text("prt_\(message)_\(index)"), "message_id": .text(message), "session_id": .text(session),
+                "time_created": .integer(time + Int64(index)), "time_updated": .integer(time + Int64(index)),
+                "data": .text(part),
+            ])
+        }
+    }
+
+    @Test func aSessionOnlyOpenCode1HoldsIsReadFromItsTables() throws {
+        let (harness, session) = try Self.sharedStore()
+        // OpenCode 2's tables do not hold it, so a tail goes on to 1.x's.
+        #expect(try harness.response(Self.tail(session)) == .unavailable(.olderOpenCode))
+        let records = try harness.records(OpenCodeQuery(session: session, kind: .tail(budget: 524_288), tables: .v1))
+
+        #expect(records.rows.map(\.seq) == Array(1...14))
+        #expect(records.rows.allSatisfy { $0.isFinal })
+        #expect(records.firstSeq == 1)
+        #expect(records.inboxLine == nil)
+        guard case .session(let stored)? = records.sessionLine.map(OpenCodeLine.init) else {
+            Issue.record("no session line")
+            return
+        }
+        #expect(stored.version == "1.19.5")
+        #expect(stored.title == "Verify OC1")
+        // A step's own time, and the newest of its message's and its parts'.
+        guard case .row(let step) = OpenCodeLine(records.rows[1].line), case .assistant(let reply) = step.content else {
+            Issue.record("row 2 read as \(String(decoding: records.rows[1].line, as: UTF8.self))")
+            return
+        }
+        #expect(reply.finish == "stop")
+        #expect(reply.error == nil)
+        #expect(reply.completed == 1_793_711_532_402)
+        #expect(records.rows[1].timeUpdated == 1_793_711_532_404)
+
+        // Nothing changed: the counter holds. A new message moves it.
+        let cursor = try Self.cursor(after: records)
+        let poll = OpenCodeQuery(session: session, kind: .poll(cursor), tables: .v1)
+        #expect(try harness.response(poll) == .unchanged(eventSeq: try #require(records.eventSeq)))
+        try Self.insertV1(harness, message: "msg_c", at: Self.v1Updated + 10_000,
+            #"{"role":"user","time":{"created":10000}}"#, parts: [#"{"type":"text","text":"Again."}"#])
+        let changed = try harness.records(poll)
+        // The newest row read is read again, as on 2's tables.
+        #expect(changed.rows.map(\.seq) == [14, 15])
+        #expect(changed.windowCount == 14)
+
+        // Neither tables hold an absent session.
+        let absent = try #require(OpenCodeSessionID("ses_0a1b2c3d4effAbsentSession1"))
+        #expect(
+            try harness.response(OpenCodeQuery(session: absent, kind: .tail(budget: 1024), tables: .v1))
+                == .sessionMissing(otherStores: []))
+    }
+
+    /// What Chat shows of the recorded session through the record source: each
+    /// prompt, reply and call once, in the order OpenCode stored them, and no
+    /// step failed. The provider sent its reasoning encrypted, which shows as
+    /// nothing, as in OpenCode; one is given text here to show reasoning
+    /// reaches Chat. `opencode run` stored its prompts in quotes, and the read
+    /// of one line of three as shortened.
+    @Test func aSessionOpenCode1WroteReadsAsItsTurns() async throws {
+        let (harness, session) = try Self.v1OnlyStore()
+        try harness.execute("""
+            UPDATE part SET data = json_set(data, '$.text', 'Seventeen twenties and seventeen threes.')
+             WHERE id = 'prt_1a18a1f46001LRVdCH3O4oZweo'
+            """)
+        let store = V1HostStore(harness)
+        var source = OpenCodeRecordSource(session: session)
+        let opened = try await source.open(store.files)
+        let lines = try #require(opened)
+        #expect(await store.tables == [.v2, .v1])
+
+        var reducer = OpenCodeTranscriptReducer()
+        reducer.append(lines)
+        let transcript = reducer.transcript(ChatProjectionContext(activity: .idle))
+        #expect(transcript.diagnostics.invalidLines == 0)
+        let shown = transcript.entries.map { entry -> String in
+            switch entry.content {
+            case .user(let user): "user \(user.text) \(user.attachmentLabels)"
+            case .assistant(let reply): "reply \(reply.text)"
+            case .reasoning(let reasoning): "reasoning \(reasoning.text)"
+            case .tool(let tool): "\(tool.kind) \(tool.name) \(tool.status) \(tool.title) \(tool.preview?.text ?? "")"
+            default: "\(entry.content)"
+            }
+        }
+        #expect(
+            shown == [
+                #"user "Reply with the single word OK." []"#,
+                "reply OK",
+                #"user "Use your tools: list the files in this folder, then read notes.txt. Then tell me its first line." []"#,
+                "fileRead read succeeded /work/app <path>/work/app</path>\n<type>directory</type>\n<entries>\n.git/\n"
+                    + "hello.py\nnotes.txt\n\n(3 entries)\n</entries>",
+                "fileRead read succeeded /work/app/notes.txt <path>/work/app/notes.txt</path>\n<type>file</type>\n"
+                    + "<content>\n1: first line: alpha-7341\n\n(Showing lines 1-1 of 3. Use offset=2 to continue.)\n</content>\n"
+                    + "[OpenCode shortened this output. The full output stays on the Host.]",
+                "reply first line: alpha-7341",
+                #"user "Think it through step by step, then reply with only the number: what is 17 * 23?" []"#,
+                "reasoning Seventeen twenties and seventeen threes.",
+                "reply 391",
+                #"user "What is the second line of the attached file? Reply in one short sentence." ["notes.txt"]"#,
+                "reply The second line is: second line: beta-0958.",
+                #"user "Think it through step by step, then reply with only the number: what is 19 * 21?" []"#,
+                "reply 399",
+                #"user "Run the shell command ls -1 in this folder with your bash tool, then tell me how many entries it printed." []"#,
+                "command bash succeeded ls -1 hello.py\nnotes.txt\n",
+                "reply 2",
+            ])
+        // 1.x writes no idle row: a prompt ends the turn before it.
+        try #require(transcript.turns.count == 6)
+        #expect(transcript.turns.prefix(5).map(\.ending) == Array(repeating: .completed, count: 5))
+    }
+
+    /// The store as a Host's query reads it, and which tables each query named.
+    private actor V1HostStore {
+        private let harness: OpenCodeSQLiteHarness
+        private(set) var tables: [OpenCodeQuery.Tables] = []
+
+        init(_ harness: OpenCodeSQLiteHarness) {
+            self.harness = harness
+        }
+
+        func response(_ query: OpenCodeQuery) throws -> OpenCodeQueryResponse {
+            tables.append(query.tables)
+            return try harness.response(query)
+        }
+
+        nonisolated var files: ChatHostFiles {
+            let none = TransportError.hostFeatureUnavailable(feature: "Files")
+            return ChatHostFiles(
+                status: { _ in throw none }, list: { _ in throw none }, read: { _ in throw none },
+                home: { throw none }, queryOpenCode: { try await self.response($0) })
+        }
+    }
+
+    /// 1.x's statements nest no deeper than 2's. Its `session_message` stands
+    /// at the foot of the CTEs that slim rows, and SQLite adds a CTE's height to
+    /// each expression that reads it, so the CTE is held to the expression limit
+    /// on its own; the parser stack of older SQLite sees only what is written.
+    @Test func everyOpenCode1StatementParsesOnTheParserStackOfOlderSQLite() throws {
+        let (harness, session) = try Self.sharedStore()
+        let cursor = OpenCodePollCursor(
+            eventSeq: 9, lowSeq: 1, highSeq: 2, knownInWindow: 2, openRows: [2], updatedSince: 0, budget: 1024)
+        let kinds: [OpenCodeQuery.Kind] = [
+            .tail(budget: 1024), .poll(cursor), .older(before: 2, budget: 1024), .row(seq: 2, outputLimit: 1024),
+        ]
+        for kind in kinds {
+            for (index, sql) in OpenCodeProbe.statements(OpenCodeQuery(session: session, kind: kind, tables: .v1))
+                .enumerated()
+            {
+                #expect(Self.parenthesisDepth(sql) <= Self.deepestParentheses, "\(kind) statement \(index)")
+                #expect(harness.prepareFailure(sql) == nil, "\(kind) statement \(index)")
+                if OpenCodeSQLiteHarness.limitsParserDepth {
+                    #expect(
+                        harness.prepareFailure(sql, parserStack: OpenCodeSQLiteHarness.fixedParserStack - 20) == nil,
+                        "\(kind) statement \(index)")
+                }
+            }
+        }
+        let messages = "WITH \(OpenCodeProbe.v1Messages("'\(session.rawValue)'")) SELECT count(*) FROM session_message"
+        #expect(harness.prepareFailure(messages, expressionDepth: Self.deepestExpression) == nil)
     }
 
     @Test func aMissingSessionIsReported() throws {

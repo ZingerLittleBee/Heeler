@@ -7,6 +7,8 @@ import Observation
 protocol ComposerDraftOperations: AnyObject {
     func replaceDraft(with text: String)
     func insertIntoDraft(_ text: String)
+    /// Inserts a staged Host path as a word of its own (ADR 0006).
+    func insertPathIntoDraft(_ path: String)
 }
 
 /// Owns Agent detail's local draft and delivery state. Draft edits do not
@@ -39,6 +41,10 @@ final class AgentComposerStore: ComposerDraftOperations {
         /// `agent.prompt` succeeded but the text stayed in the Agent's input
         /// box. Never resent: the user decides in the terminal.
         case undelivered
+        /// A herdr-core step got no answer, so the paste or its submit may
+        /// still reach the program. Retry refuses it: the user decides what the
+        /// terminal shows.
+        case outcomeUnknown
     }
 
     enum AgentProgress: Equatable {
@@ -54,9 +60,14 @@ final class AgentComposerStore: ComposerDraftOperations {
         case ignored
         case deliveredViaPrompt
         case deliveredViaAttach
+        /// A herdr-core Send pasted through the Attach and pressed the submit
+        /// key after its checks.
+        case submittedViaAttach
         case failed
         /// The policy declined the draft, which is back in the Composer.
         case refused(ComposerRefusal)
+        /// A herdr-core step got no answer. The message stays as it is.
+        case outcomeUnknown
     }
 
     private(set) var messages: [Message] = []
@@ -91,6 +102,8 @@ final class AgentComposerStore: ComposerDraftOperations {
     private let agentNotReadyRetryDelay: Duration
     private let agentNotReadyRetryBudget: Duration
     private let prompt: @Sendable (AgentPromptParams) async throws -> Agent
+    /// How a herdr-core Host delivers instead of `prompt` (ADR 0035).
+    @ObservationIgnored private let coreSend: HerdrCoreComposerSend?
     @ObservationIgnored private var hasOpened = false
     @ObservationIgnored private var statusTask: Task<Void, Never>?
     /// The detail screen's live Attach writer. Weak: Composer outlives any
@@ -138,6 +151,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         agentNotReadyRetryDelay: Duration = AgentComposerStore.defaultAgentNotReadyRetryDelay,
         agentNotReadyRetryBudget: Duration = AgentComposerStore.defaultAgentNotReadyRetryBudget,
         stop: AgentComposerStopStore = AgentComposerStopStore(),
+        coreSend: HerdrCoreComposerSend? = nil,
         voice: ComposerVoiceInput = ComposerVoiceInput(),
         prompt: @escaping @Sendable (AgentPromptParams) async throws -> Agent
     ) {
@@ -145,6 +159,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         agentStatus = initialStatus
         self.statusUpdates = statusUpdates
         self.stop = stop
+        self.coreSend = coreSend
         self.voice = voice
         self.agentNotReadyRetryDelay = agentNotReadyRetryDelay
         self.agentNotReadyRetryBudget = agentNotReadyRetryBudget
@@ -203,6 +218,18 @@ final class AgentComposerStore: ComposerDraftOperations {
         draftSelection = NSRange(
             location: range.location + (text as NSString).length,
             length: 0)
+    }
+
+    /// At the caret, with a space before it unless the text there already ends
+    /// in whitespace, and one after it, so the path never runs into a word.
+    func insertPathIntoDraft(_ path: String) {
+        let range = Self.clamped(draftSelection, to: draft)
+        insertIntoDraft(Self.pathInsertion(path, after: (draft as NSString).substring(to: range.location)))
+    }
+
+    private static func pathInsertion(_ path: String, after text: String) -> String {
+        guard let last = text.last, !last.isWhitespace else { return "\(path) " }
+        return " \(path) "
     }
 
     func setDraftSelection(_ range: NSRange) {
@@ -355,8 +382,7 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     @discardableResult
     func send(policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
-        let revision = statusRevision
-        return noting(await sendDraft(policy: policy), route: policy.route, since: revision)
+        noting(await sendDraft(policy: policy), policy: policy)
     }
 
     private func sendDraft(policy: ComposerDeliveryPolicy) async -> SendResult {
@@ -384,8 +410,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// message's own route.
     @discardableResult
     func retry(_ id: Message.ID, policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
-        let revision = statusRevision
-        return noting(await retryMessage(id, policy: policy), route: policy.route, since: revision)
+        noting(await retryMessage(id, policy: policy), policy: policy)
     }
 
     private func retryMessage(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
@@ -408,25 +433,37 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     /// Keeps a refusal as the notice; any other outcome ends the last one.
-    /// A refusal may rest on a screen read before Agent Status changed under
-    /// the Send; when that change ends it, it shows no notice.
-    private func noting(_ result: SendResult, route: ComposerRoute, since revision: UInt64) -> SendResult {
-        if case .refused(let refusal) = result,
-            revision == statusRevision || !refusal.endsWhenStatusBecomes(agentStatus)
-        {
-            notice = ComposerNotice(refusal: refusal, route: route)
+    /// A refusal shows even when Agent Status changed under the Send: the
+    /// draft came back, and the notice is the only word of why. The next
+    /// change that ends it still does.
+    private func noting(_ result: SendResult, policy: ComposerDeliveryPolicy) -> SendResult {
+        if case .refused(let refusal) = result {
+            notice = ComposerNotice(refusal: refusal, route: policy.route, conversation: policy.conversation?())
         } else {
             notice = nil
         }
         return result
     }
 
-    /// Removes a failed echo and restores all of its text to the draft. If
-    /// the user has already started another draft, both are kept in order.
+    /// Chat follows another conversation, or none: a refusal about the
+    /// input box described the one it followed, so it ends. Noted after the
+    /// change, as when the Send's own check moved Chat, it stays.
+    func conversationDidChange(to conversation: Int) {
+        guard let notice, let noted = notice.conversation, noted != conversation,
+            case .inputNotReady = notice.refusal
+        else { return }
+        self.notice = nil
+    }
+
+    /// Removes a failed or unanswered echo and restores all of its text to the
+    /// draft. If the user has already started another draft, both are kept in
+    /// order. An unanswered one is the user's call, having seen the terminal.
     func withdrawToDraft(_ id: Message.ID) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
-        guard case .failed = messages[index].state else { return }
-        returnToDraft(id)
+        switch messages[index].state {
+        case .failed, .outcomeUnknown: returnToDraft(id)
+        case .sending, .delivered, .undelivered: break
+        }
     }
 
     /// Removes an echo and puts its text back in front of whatever has been
@@ -436,6 +473,15 @@ final class AgentComposerStore: ComposerDraftOperations {
         let text = messages.remove(at: index).text
         draft = draft.isEmpty ? text : "\(text)\n\(draft)"
         draftSelection = NSRange(location: (draft as NSString).length, length: 0)
+    }
+
+    /// The Transcript recorded these, so a step with no answer reached the
+    /// program after all, and nothing is left to decide about them.
+    func settleUnknownOutcomes(recorded: Set<Message.ID>) {
+        for index in messages.indices
+        where messages[index].state == .outcomeUnknown && recorded.contains(messages[index].id) {
+            messages[index].state = .delivered(.acknowledged)
+        }
     }
 
     func agentStatusDidChange(_ status: AgentStatus) {
@@ -474,6 +520,9 @@ final class AgentComposerStore: ComposerDraftOperations {
         if Self.containsDropPlaceholder(text) {
             return .ignored
         }
+        if let coreSend {
+            return await deliverThroughCore(id, text: text, policy: policy, using: coreSend)
+        }
         if agentStatus == .blocked {
             return deliverWhileBlocked(id, text: text, policy: policy)
         }
@@ -503,6 +552,37 @@ final class AgentComposerStore: ComposerDraftOperations {
                 return deliverWhileBlocked(id, text: text, policy: policy)
             }
             return fail(id, message: Self.message(for: error))
+        }
+    }
+
+    private func deliverThroughCore(
+        _ id: Message.ID, text: String, policy: ComposerDeliveryPolicy, using coreSend: HerdrCoreComposerSend
+    ) async -> SendResult {
+        let outgoing = policy.outgoingText(text)
+        guard TerminalTextSafety.containsOnlySafeScalars(outgoing) else {
+            return fail(id, message: Self.unsafeTextMessage)
+        }
+        let outcome = await coreSend.send(outgoing, route: policy.route, attach: policy.coreAttach)
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
+        switch outcome {
+        case .submitted:
+            messages[index].state = .delivered(progressAfterAcknowledgment(for: messages[index]))
+            if let verify = policy.verify {
+                Task { [weak self] in
+                    guard !(await verify(outgoing)) else { return }
+                    self?.markUndelivered(id)
+                }
+            }
+            return .submittedViaAttach
+        case .refused(let refusal):
+            returnToDraft(id)
+            return .refused(refusal)
+        case .failed(let message):
+            return fail(id, message: message)
+        case .outcomeUnknown:
+            messages[index].tracksAgentProgress = false
+            messages[index].state = .outcomeUnknown
+            return .outcomeUnknown
         }
     }
 
@@ -662,10 +742,13 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard let index = indexOfDroppedImage(id: id) else { return }
         let placeholder = pendingDroppedImages[index].placeholder
         pendingDroppedImages.remove(at: index)
-        let insertion = "\(path) "
-        if !applyTokenReplacement(placeholder, firstReplacement: insertion) {
-            insertIntoDraft(insertion)
+        let slot = (draft as NSString).range(of: placeholder)
+        guard slot.location != NSNotFound else {
+            insertPathIntoDraft(path)
+            return
         }
+        let insertion = Self.pathInsertion(path, after: (draft as NSString).substring(to: slot.location))
+        applyTokenReplacement(placeholder, firstReplacement: insertion)
     }
 
     private func abandonDroppedImage(id: UInt64) {

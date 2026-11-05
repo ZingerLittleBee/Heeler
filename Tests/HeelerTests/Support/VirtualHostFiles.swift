@@ -126,6 +126,11 @@ actor VirtualHostFiles {
         faults[operation, default: []] += Array(repeating: error, count: count)
     }
 
+    /// The faults still waiting for `operation` on `path`.
+    func faultsLeft(_ operation: Operation, path: String) -> Int {
+        pathFaults[operation]?.count { $0.path == path } ?? 0
+    }
+
     /// Fails the next `count` stats or reads of `path` alone.
     func failNext(_ operation: Operation, path: String, with error: any Error, count: Int = 1) {
         pathFaults[operation, default: []] += Array(repeating: (path, error), count: count)

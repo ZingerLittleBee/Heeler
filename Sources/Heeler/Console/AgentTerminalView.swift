@@ -224,9 +224,8 @@ struct AgentTerminalView: View {
     @State private var sessionUsage = AgentSessionUsageStore()
     @State private var attach: AgentAttachStore
 
-    /// Nil for agent kinds without a skills source catalog; the Keys
-    /// keyboard hides the Skills tab in that case.
-    @State private var skills: SkillsPaneStore?
+    /// Nil for agent kinds without a skills source catalog.
+    @State private var skillsStore: SkillsPaneStore?
     @State private var keyboardControl = TerminalKeyboardControl()
     @State private var messageJump: AgentMessageJumpWiring
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
@@ -372,14 +371,21 @@ struct AgentTerminalView: View {
                 paneTitle: Self.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
                 isOnStage: isOnStage,
-                runTerminal: console.terminalRunner(for: agent.hostID)
+                runTerminal: console.terminalRunner(for: agent.hostID, keepingTo: session.corePin)
             ) {
-                try await console.closePane(agent.agent.paneID, on: agent.hostID)
+                try await console.closePane(agent.agent.paneID, on: agent.hostID, keepingTo: session.corePin)
             })
-        _skills = State(initialValue: Self.makeSkillsStore(for: agent, console: console))
+        _skillsStore = State(initialValue: Self.makeSkillsStore(for: agent, console: console))
         _messageJump = State(
             initialValue: AgentMessageJumpWiring(
                 profile: .forAgentKind(agent.agent.kind)))
+    }
+
+    /// What every Skills entry here reads: nil hides them, the Keys keyboard's
+    /// tab included. Read here because this Host's platform may be unknown when
+    /// the store is made.
+    private var skills: SkillsPaneStore? {
+        console.capabilities(for: agent.hostID).hostScripts ? skillsStore : nil
     }
 
     /// The Skills pane's store, or nil when this agent's kind has no skills
@@ -532,6 +538,7 @@ struct AgentTerminalView: View {
             }
         }
         screen.theme = terminal.themes.theme
+        screen.displayColors = terminal.themes.colors(for: colorScheme)
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
         screen.onFontSizeChanged = { fontSize in terminal.zoom.setFontSize(fontSize) }
@@ -587,7 +594,7 @@ struct AgentTerminalView: View {
             StartAgentView(
                 hosts: hosts,
                 console: console,
-                origin: StartAgentStore.LaunchOrigin(beside: agent),
+                origin: StartAgentStore.LaunchOrigin(beside: agent, in: console),
                 onStarted: { switchToAgent($0) })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
@@ -660,7 +667,11 @@ struct AgentTerminalView: View {
             }
         }) {
             if let worktreeStore {
-                WorktreeDetailView(store: worktreeStore) { _ in
+                WorktreeDetailView(
+                    store: worktreeStore,
+                    reportAfterLeaving: console.outcomeReporter(
+                        on: agent.hostID, title: "Couldn't Remove Worktree")
+                ) { _ in
                     isShowingWorktree = false
                 }
                 .modifier(ConsoleSheetPresentationModifier(
@@ -683,7 +694,11 @@ struct AgentTerminalView: View {
             "Couldn't Close Agent",
             isPresented: Binding(
                 get: { closeErrorMessage != nil },
-                set: { if !$0 { closeErrorMessage = nil } })
+                set: { presented in
+                    guard !presented else { return }
+                    closeErrorMessage = nil
+                    attach.close.dismissFailure()
+                })
         ) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -770,8 +785,12 @@ struct AgentTerminalView: View {
                 armDirectKeyboardClaimIfNeeded()
             }
             attach.rejoin()
+            attach.close.didReturnToScreen()
         }
         .onDisappear {
+            attach.close.didLeaveScreen(
+                reportingTo: console.outcomeReporter(
+                    on: agent.hostID, title: "Couldn't Close Agent"))
             interactionProbe?.value?.disconnect()
             messageJump.resetSession()
             if let onRetainDeparture {
@@ -940,12 +959,14 @@ struct AgentTerminalView: View {
     /// `anchorsClose` is true for the one input chrome on screen; during the
     /// Direct-to-Composer handoff both are mounted and Direct Input shows.
     private func composerActions(anchorsClose: Bool) -> AgentComposerActions {
-        AgentComposerActions(
+        let capabilities = console.capabilities(for: agent.hostID)
+        return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
-            addImage: { isSelectingPhoto = true },
-            pasteImage: { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) },
-            addFile: { isSelectingFile = true },
+            addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
+            pasteImage: capabilities.uploads
+                ? { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) } : nil,
+            addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
             showAttachLinks: { attachLinksOrigin = .composerChip },
             openTerminal: canOpenTerminal
                 ? {
@@ -954,22 +975,25 @@ struct AgentTerminalView: View {
                 } : nil,
             isOpeningTerminal: isOpeningTerminal,
             showChanges: showChanges,
-            startAgent: { isStartingAgent = true },
+            startAgent: capabilities.startsAgents ? { isStartingAgent = true } : nil,
             manageSnippets: { isManagingSnippets = true },
             showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,
-            showWorktreeDetails: agent.isLinkedWorktree
+            showWorktreeDetails: agent.isLinkedWorktree && capabilities.worktrees
                 ? {
                     if let checkout = agent.repositoryCheckout {
                         worktreeStore = makeWorktreeStore(checkout: checkout)
                         isShowingWorktree = true
                     }
                 } : nil,
-            renameAgent: { isRenamingAgent = true },
-            renameWorkspace: { isRenamingWorkspace = true },
-            closeAgent: {
-                closeRequest = console.closeRequest(for: agent.id)
-                isConfirmingClose = true
-            },
+            renameAgent: capabilities.renameAgent
+                ? { isRenamingAgent = true } : nil,
+            renameWorkspace: capabilities.renameWorkspace(id: agent.agent.workspaceID)
+                ? { isRenamingWorkspace = true } : nil,
+            closeAgent: capabilities.closeTab
+                ? {
+                    closeRequest = console.closeRequest(for: agent.id)
+                    isConfirmingClose = true
+                } : nil,
             backToConsole: { backToConsole() },
             showChat: showChat.map { showChat in
                 {
@@ -979,7 +1003,7 @@ struct AgentTerminalView: View {
                     showChat()
                 }
             },
-            closeConfirmation: anchorsClose
+            closeConfirmation: anchorsClose && capabilities.closeTab
                 ? AgentCloseConfirmation(
                     title: title,
                     isPresented: $isConfirmingClose,
@@ -1019,8 +1043,8 @@ struct AgentTerminalView: View {
                 try await console.listWorktrees(
                     forWorkspaceID: workspaceID, on: hostID)
             },
-            remove: { [console] request in
-                try await console.removeWorktree(request, on: hostID)
+            remove: { [console, corePin = session.corePin] request in
+                try await console.removeWorktree(request, on: hostID, keepingTo: corePin)
             },
             hasWorkingAgent: { [console] in
                 console.agents.contains {
@@ -1029,7 +1053,15 @@ struct AgentTerminalView: View {
                         && $0.agent.status == .working
                 }
             },
-            showChanges: openWorktreeChanges)
+            showChanges: openWorktreeChanges,
+            readRemovalRisk: host?.serverKind == .herdrCore
+                ? { [console] request in
+                    try await console.worktreeRemovalRisk(request, on: hostID)
+                }
+                : nil,
+            otherWorkspaces: host?.serverKind == .herdrCore
+                ? { [console] in console.workspaceLabels(sharingCheckoutOf: request.identity) }
+                : nil)
     }
 
     private var terminalSurface: some View {
@@ -1305,6 +1337,13 @@ struct AgentTerminalView: View {
             }
     }
 
+    /// This window's Attach, since another window can show the same Agent's Composer.
+    private var sendPolicy: ComposerDeliveryPolicy {
+        var policy = ComposerDeliveryPolicy.terminal
+        policy.coreAttach = attach
+        return policy
+    }
+
     private var composerChrome: some View {
         AgentComposerView(
             store: composer,
@@ -1331,14 +1370,16 @@ struct AgentTerminalView: View {
             },
             onFirstResponderRequest: composerFirstResponderRequest,
             onKeyboardHandoffSettled: composerKeyboardHandoffSettled,
+            sendPolicy: sendPolicy,
             collapsesWithoutKeyboard: false,
-            interrupt: stopInterrupt)
+            interrupt: stopInterrupt,
+            offersSend: console.capabilities(for: agent.hostID).composerSend)
     }
 
-    /// The Composer's Stop: one Esc over the Attach PTY, or nil to keep Send
-    /// for a kind Esc doesn't stop (`AgentComposerInterrupt.terminal`).
+    /// The Composer's Stop: one Esc over the Attach PTY, or on a core Host the
+    /// core's own interrupt, or nil to keep Send (`ConsoleStore.terminalInterrupt`).
     private var stopInterrupt: AgentComposerInterrupt? {
-        .terminal(forAgentKind: agent.agent.kind) { interruptAgent() }
+        console.terminalInterrupt(for: agent, keepingTo: session.corePin) { interruptAgent() }
     }
 
     /// The interaction probe's Stop, as the Composer's button runs it: the
@@ -1873,7 +1914,8 @@ struct AgentTerminalView: View {
     @ViewBuilder
     private var statusOverlay: some View {
         if let away = LiveInAnotherWindowPresentation(
-            access: sceneRouting?.terminalAccess(for: agent.hostID) ?? .holds)
+            access: console.capabilities(for: agent.hostID)
+                .terminalAccess(sceneRouting?.terminalAccess(for: agent.hostID)))
         {
             // Ahead of the terminal status: this window released its Attach
             // on purpose, so its stopped terminal says nothing useful.
@@ -1913,6 +1955,14 @@ struct AgentTerminalView: View {
                     Button("Reattach") { attach.retryTerminal() }
                         .buttonStyle(.terminalStatusPrimary)
                 }
+            case .finished:
+                TerminalStatusDialog(
+                    glyph: .symbol("stop.circle"),
+                    title: "Agent Ended",
+                    message: console.agentEndedMessage(of: agent.id, keepingTo: session.corePin)
+                        ?? presentation.message,
+                    palette: themePalette,
+                    dimsBackground: presentation.dimsBackground)
             }
         } else {
             // .live needs nothing, and .stopped only reaches the view while the

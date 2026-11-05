@@ -14,11 +14,14 @@ struct HostOnboardingView: View {
     /// outside the Console.
     let openUsage: (() -> Void)?
     let connectionStatus: EventsSessionStatus?
-    let standingFailure: TransportError?
     /// The route the Console's connection reached (ADR 0022).
     let connectedRouteID: HostRoute.ID?
     /// Why this connected Host's Agents could not be synced.
     let syncIssue: String?
+    /// The variables the connected core inherited, on a herdr-core Host.
+    let coreEnvironmentNotice: HerdrCoreEnvironmentNotice?
+    /// The Console, for the harness edits this device applied on this Host.
+    let harnessEdits: ConsoleStore?
     /// True while Console is serving a Host-detail Reconnect press (the
     /// retry call plus the 1.2 s visual-feedback hold). Distinct from
     /// `EventsSessionStatus.reconnecting`.
@@ -44,6 +47,7 @@ struct HostOnboardingView: View {
     /// connection once (see `HostOnboardingConsoleRecovery`).
     @State private var isConsoleRecoveryArmed = false
     @State private var isShowingPluginNotice = false
+    @State private var isShowingHostHelper = false
     @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
 
     init(
@@ -52,9 +56,10 @@ struct HostOnboardingView: View {
         usage: AgentUsageStore? = nil,
         openUsage: (() -> Void)? = nil,
         connectionStatus: EventsSessionStatus? = nil,
-        standingFailure: TransportError? = nil,
         connectedRouteID: HostRoute.ID? = nil,
         syncIssue: String? = nil,
+        coreEnvironmentNotice: HerdrCoreEnvironmentNotice? = nil,
+        harnessEdits: ConsoleStore? = nil,
         isManualReconnectInFlight: Bool = false,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil,
         stopConnecting: (@MainActor @Sendable () async -> Void)? = nil,
@@ -65,9 +70,10 @@ struct HostOnboardingView: View {
         self.usage = usage
         self.openUsage = openUsage
         self.connectionStatus = connectionStatus
-        self.standingFailure = standingFailure
         self.connectedRouteID = connectedRouteID
         self.syncIssue = syncIssue
+        self.coreEnvironmentNotice = coreEnvironmentNotice
+        self.harnessEdits = harnessEdits
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
         self.stopConnecting = stopConnecting
@@ -75,14 +81,17 @@ struct HostOnboardingView: View {
         _store = State(initialValue: Self.makeStore(host, dependencies))
     }
 
-    private static func makeStore(
+    static func makeStore(
         _ host: Host, _ dependencies: HostOnboardingDependencies
     ) -> HostOnboardingStore {
         HostOnboardingStore(
             host: host,
             connector: dependencies.connector,
             knownHosts: dependencies.knownHosts,
-            credentials: dependencies.credentials)
+            credentials: dependencies.credentials,
+            hostHelperDidChange: dependencies.hostHelperDidChange,
+            harnessEdits: dependencies.harnessEdits,
+            noteWindowsCore: dependencies.noteWindowsCore)
     }
 
     /// The page with its Edit sheet, outside `page`'s modifier chain, which
@@ -103,6 +112,14 @@ struct HostOnboardingView: View {
                 offersHostKeyReplacement = false
                 isConfirmingHostKeyReplacement = store.pendingHostKeyReplacement != nil
             }
+            .sheet(isPresented: $isShowingHostHelper) {
+                if let helper = store.hostHelper { HostHelperSheet(store: helper) }
+            }
+            .alert("Could Not Confirm", isPresented: confirmationRefusalPresented) {
+                Button("OK", role: .cancel) { store.dismissConfirmationRefusal() }
+            } message: {
+                Text(store.confirmationRefusal ?? "")
+            }
     }
 
     /// Restarts onboarding for a changed Host: a selected session at once,
@@ -116,9 +133,10 @@ struct HostOnboardingView: View {
         sessionSelectionError = nil
         isConsoleRecoveryArmed = false
         isShowingPluginNotice = false
+        isShowingHostHelper = false
     }
 
-    private var page: some View {
+    private var listPage: some View {
         List {
             connectionSection
 
@@ -128,35 +146,31 @@ struct HostOnboardingView: View {
 
             Section("Host") {
                 LabeledContent("Account", value: store.host.username)
+                LabeledContent("Server Kind", value: store.serverKindSummary)
+                    .accessibilityIdentifier("hosts.detail.serverKind")
                 LabeledContent("Session", value: sessionLine)
                 herdrEndpointRows
                 LabeledContent(
                     "Auth",
                     value: authenticationLabel)
-                pluginRow
+                if store.host.serverKind.isConfirmed { pluginRow }
+                if let helper = store.hostHelper { hostHelperRow(helper) }
             }
 
-            Section {
-                ForEach(PreflightCheck.allCases, id: \.self) { @Sendable check in
-                    MainActorContent { PreflightCheckRow(check: check, status: status(for: check)) }
+            if store.host.serverKind.isConfirmed {
+                preflightSection
+                HerdrCoreStartSection(store: store)
+                if let coreEnvironmentNotice {
+                    HerdrCoreEnvironmentSection(notice: coreEnvironmentNotice)
                 }
-            } header: {
-                preflightHeader
-            } footer: {
-                if let info = store.serverInfo {
-                    // The notice is advisory and the checks still pass: a Host
-                    // newer than this build is usable, just not fully known.
-                    Text(
-                        info.exceedsGeneratedProtocol
-                            ? "herdr \(info.version) · protocol \(info.protocolVersion) — "
-                                + "newer than this app was built against, so features added "
-                                + "after protocol \(HeelerSSHTransport.generatedProtocolVersion) "
-                                + "may be unavailable."
-                            : "herdr \(info.version) · protocol \(info.protocolVersion)")
+                if let harnessEdits {
+                    HarnessConfigEditsSection(console: harnessEdits, hostID: store.host.id)
                 }
+            } else {
+                serverKindSection
             }
 
-            if let usage {
+            if let usage, store.host.serverKind.isConfirmed {
                 AgentUsageSection(
                     hostID: store.host.id, hostName: store.host.displayName, store: usage,
                     openUsage: openUsage)
@@ -220,6 +234,12 @@ struct HostOnboardingView: View {
         } message: {
             Text(sessionSelectionError ?? "")
         }
+    }
+
+    /// The page and what follows its checks, in a chain of their own: joined to
+    /// `listPage`'s, the chain exceeded Xcode 26.6's type-checking limit.
+    private var page: some View {
+        listPage
         // A new store, after `adopt`, cancels the old one's checks.
         .task(id: ObjectIdentifier(store)) {
             if store.phase == .idle {
@@ -240,6 +260,91 @@ struct HostOnboardingView: View {
                 retry()
             }
         }
+        .onChange(of: store.coreStart) { _, coreStart in
+            let action = HostOnboardingCoreFollow.action(
+                afterCoreStart: coreStart, reportPassed: store.report == .allPassed, status: connectionStatus)
+            if action == .wakeConsole { retry() }
+        }
+        // The reading, not the status: every backoff would otherwise count.
+        .onChange(of: HostOnboardingCoreFollow.reading(connectionStatus)) { _, reading in
+            let action = HostOnboardingCoreFollow.action(
+                afterConsoleReads: reading, serverKind: store.host.serverKind, phase: store.phase,
+                coreStart: store.coreStart, reportPassed: store.report == .allPassed,
+                offersStart: store.coreStartOffer != nil)
+            if action == .runChecks { Task { await store.runChecks() } }
+        }
+    }
+
+    /// The checklist of a Host whose kind is confirmed. A core's version is on
+    /// the Server Kind row.
+    private var preflightSection: some View {
+        Section {
+            ForEach(PreflightCheck.allCases, id: \.self) { @Sendable check in
+                MainActorContent {
+                    PreflightCheckRow(
+                        title: check.title(for: store.host.serverKind), status: status(for: check))
+                }
+            }
+        } header: {
+            preflightHeader
+        } footer: {
+            if let info = store.serverInfo, store.host.serverKind == .herdrTUI {
+                // The notice is advisory and the checks still pass: a Host
+                // newer than this build is usable, just not fully known.
+                Text(
+                    info.exceedsGeneratedProtocol
+                        ? "herdr \(info.version) · protocol \(info.protocolVersion) — "
+                            + "newer than this app was built against, so features added "
+                            + "after protocol \(HeelerSSHTransport.generatedProtocolVersion) "
+                            + "may be unavailable."
+                        : "herdr \(info.version) · protocol \(info.protocolVersion)")
+            }
+        }
+    }
+
+    /// What detection found on a Host added unconfirmed, and the kinds it may
+    /// be confirmed as (ADR 0031).
+    private var serverKindSection: some View {
+        Section {
+            PreflightCheckRow(title: PreflightCheck.connection.title(for: .unconfirmed), status: reachStatus)
+            if let detection = store.detection {
+                LabeledContent(ServerKind.herdrTUI.displayName, value: detection.herdrTUI.summary)
+                    .accessibilityIdentifier("hosts.detail.detection.herdrTUI")
+                LabeledContent(ServerKind.herdrCore.displayName, value: detection.herdrCore.summary)
+                    .accessibilityIdentifier("hosts.detail.detection.herdrCore")
+            }
+            ForEach(store.offeredKinds, id: \.self) { @Sendable kind in
+                MainActorContent {
+                    Button("Use \(kind.displayName)") {
+                        Task { await store.confirmServerKind(kind, in: catalog) }
+                    }
+                    .accessibilityIdentifier("hosts.detail.confirm.\(kind.rawValue)")
+                }
+            }
+        } header: {
+            preflightHeader
+        } footer: {
+            if let note = store.confirmationNote {
+                Text(note)
+            }
+        }
+    }
+
+    /// Whether detection reached the Host: nil while it is still trying.
+    private var reachStatus: PreflightCheckStatus? {
+        if store.detection != nil || store.detectionFailure != nil { return .passed }
+        guard let report = store.report else { return nil }
+        return PreflightCheck.allCases.lazy.map { report[$0] }.first {
+            if case .failed = $0 { true } else { false }
+        }
+    }
+
+    private var confirmationRefusalPresented: Binding<Bool> {
+        Binding(
+            get: { store.confirmationRefusal != nil },
+            set: { isPresented in
+                if !isPresented { store.dismissConfirmationRefusal() }
+            })
     }
 
     private var consoleRecoveryInput: HostOnboardingConsoleRecovery.Input {
@@ -317,7 +422,6 @@ struct HostOnboardingView: View {
     private var routeStatus: HostRouteStatusPresentation {
         HostRouteStatusPresentation(
             status: connectionStatus,
-            standingFailure: standingFailure,
             connectedRouteID: connectedRouteID,
             isManualReconnectInFlight: isManualReconnectInFlight,
             routes: store.host.routes,
@@ -342,7 +446,7 @@ struct HostOnboardingView: View {
     /// as footer.
     @ViewBuilder
     private var connectionSection: some View {
-        if connectionStatus != nil || retryConnection != nil {
+        if store.host.serverKind.isConfirmed, connectionStatus != nil || retryConnection != nil {
             let status = routeStatus
             Section {
                 HostConnectionStatusCard(presentation: status) {
@@ -462,7 +566,6 @@ struct HostOnboardingView: View {
     private var connectionPresentation: HostOnboardingConnectionPresentation {
         HostOnboardingConnectionPresentation(
             status: connectionStatus,
-            standingFailure: standingFailure,
             syncIssue: syncIssue,
             isManualReconnectInFlight: isManualReconnectInFlight,
             usesHerdrEndpoint: store.host.herdrEndpoint != nil,
@@ -479,7 +582,7 @@ struct HostOnboardingView: View {
     /// limit.
     private var preflightHeader: some View {
         HStack {
-            Text("Preflight")
+            Text(store.host.serverKind.isConfirmed ? "Preflight" : "Server Kind")
             if store.phase == .running {
                 ProgressView()
                     .controlSize(.mini)
@@ -496,7 +599,7 @@ struct HostOnboardingView: View {
                     Button("Run Checks Again") {
                         Task { await store.runChecks() }
                     }
-                    .disabled(store.pluginAction == .running)
+                    .disabled(store.pluginAction == .running || store.coreStart == .running)
                 }
             }
             .font(.subheadline)
@@ -609,6 +712,30 @@ struct HostOnboardingView: View {
             LabeledContent("Heeler Plugin", value: presentation.value)
                 .accessibilityIdentifier("hosts.detail.plugin.version")
         }
+    }
+
+    private func hostHelperRow(_ helper: HostHelperStore) -> some View {
+        Button {
+            isShowingHostHelper = true
+        } label: {
+            LabeledContent {
+                HStack(spacing: 6) {
+                    Text(helper.rowValue)
+                    if helper.running != nil {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else if helper.needsAttention {
+                        PluginNoticeIcon(tone: .warning)
+                    }
+                }
+            } label: {
+                // Not the button tint: the row reads like its neighbors.
+                Text("Host Helper")
+                    .foregroundStyle(Color.primary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("hosts.detail.hostHelper")
     }
 
     @ViewBuilder
@@ -729,10 +856,11 @@ struct HostRouteStatusPresentation: Equatable {
     let routeFailures: [HostRoute.ID: String]
 
     /// A manual Reconnect in flight reads as Connecting… at once, whatever
-    /// the status still says, and drops the outcome it is replacing.
+    /// the status still says, and drops the outcome it is replacing. So does
+    /// Connecting itself: the Standing Failure stays on the Console and Hosts
+    /// list, but here it read as the new attempt's own (#587).
     init(
         status: EventsSessionStatus?,
-        standingFailure: TransportError? = nil,
         connectedRouteID: HostRoute.ID?,
         isManualReconnectInFlight: Bool = false,
         routes: [HostRoute],
@@ -756,9 +884,9 @@ struct HostRouteStatusPresentation: Equatable {
         case .connecting:
             tone = .connecting
             title = "Connecting…"
-            subtitle = standingFailure?.presentation.summary
+            subtitle = nil
             inUseRouteID = nil
-            failure = standingFailure
+            failure = nil
         case .reconnecting(_, _, let reconnectFailure):
             tone = .retrying
             title = "Reconnecting…"
@@ -939,7 +1067,6 @@ struct HostOnboardingConnectionPresentation: Equatable {
     /// what neither says, the Recovery Suggestion.
     init(
         status: EventsSessionStatus?,
-        standingFailure: TransportError? = nil,
         syncIssue: String? = nil,
         isManualReconnectInFlight: Bool,
         usesHerdrEndpoint: Bool = false,
@@ -957,19 +1084,70 @@ struct HostOnboardingConnectionPresentation: Equatable {
             return failure.presentation.explanation
         }
         switch status {
-        case .connecting:
-            connectionErrorMessage = standingFailure.flatMap(whole)
         case .reconnecting(_, _, let failure):
             connectionErrorMessage = explanation(failure)
         case .failed(let failure):
             connectionErrorMessage = whole(failure)
         case .connected:
             connectionErrorMessage = syncIssue
-        case .suspended, .ended, nil:
+        case .connecting, .suspended, .ended, nil:
             connectionErrorMessage = nil
         }
         isSyncIssue = if case .connected = status { syncIssue != nil } else { false }
         footerMessage = isManualReconnectInFlight ? nil : connectionErrorMessage
+    }
+}
+
+/// What a core Host's detail does when the Console finds out something its
+/// checks have not. Only ever the locator and `hello`, so nothing here starts a
+/// core (ADR 0031).
+enum HostOnboardingCoreFollow {
+    /// What the Console says of the core, which is what the checks may contradict.
+    enum Reading: Equatable {
+        case notRunning
+        case connected
+        case other
+    }
+
+    enum Action: Equatable {
+        case none
+        case runChecks
+        case wakeConsole
+    }
+
+    static func reading(_ status: EventsSessionStatus?) -> Reading {
+        switch status {
+        case .reconnecting(_, _, .herdrCoreNotRunning): .notRunning
+        case .connected: .connected
+        default: .other
+        }
+    }
+
+    /// Checks that passed read a core that has since stopped, or checks that offer
+    /// Start read one that has since come back. After a Start the checks may fail
+    /// on something more exact than not running, so only a pass is run again.
+    static func action(
+        afterConsoleReads reading: Reading, serverKind: ServerKind, phase: HostOnboardingStore.Phase,
+        coreStart: CoreStartState, reportPassed: Bool, offersStart: Bool
+    ) -> Action {
+        guard serverKind == .herdrCore, phase == .finished, coreStart != .running else { return .none }
+        switch reading {
+        case .notRunning: return reportPassed ? .runChecks : .none
+        case .connected: return offersStart ? .runChecks : .none
+        case .other: return .none
+        }
+    }
+
+    /// A core that just started should not wait out a Console's backoff, up to 30
+    /// seconds, with the checks above it all green. A link that is up is left alone.
+    static func action(
+        afterCoreStart coreStart: CoreStartState, reportPassed: Bool, status: EventsSessionStatus?
+    ) -> Action {
+        guard reportPassed, case .reconnecting = status else { return .none }
+        switch coreStart {
+        case .started, .alreadyRunning: return .wakeConsole
+        case .idle, .running, .failed: return .none
+        }
     }
 }
 
@@ -1025,7 +1203,7 @@ enum HostOnboardingConsoleRecovery {
 }
 
 private struct PreflightCheckRow: View {
-    let check: PreflightCheck
+    let title: String
     /// nil while no report exists yet (first run still in flight).
     let status: PreflightCheckStatus?
 
@@ -1033,7 +1211,7 @@ private struct PreflightCheckRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 statusIcon
-                Text(check.title)
+                Text(title)
             }
             if case .failed(let hint) = status {
                 Text(hint)

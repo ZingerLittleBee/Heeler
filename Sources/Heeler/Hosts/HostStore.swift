@@ -4,6 +4,13 @@ import Observation
 enum HostStoreError: Error, Equatable {
     /// `update`/`remove` addressed a Host id the catalog does not contain.
     case unknownHost
+    /// `update` was handed a Host of another Server Kind, or a confirmation
+    /// named no kind (ADR 0031).
+    case serverKindChanged
+    /// The Host's Server Kind is already confirmed, and stays as it is.
+    case serverKindAlreadyConfirmed
+    /// The kind's server would refuse the Host's session name, for this reason.
+    case sessionNameRefused(reason: String)
     /// Persisted bytes could not be decoded. They are deliberately left
     /// untouched so a later write cannot turn a recoverable catalog into loss.
     case catalogUnreadable
@@ -12,14 +19,21 @@ enum HostStoreError: Error, Equatable {
 /// Owns the Host catalog: add/edit/remove plus persistence. Host records go
 /// to UserDefaults (no secrets in them); passwords go straight to the
 /// injected `SecretStore` (the Keychain in the app), keyed by Host id.
+///
+/// The catalog is stored in two parts of one shape. Herdr TUI Hosts and Hosts
+/// not yet confirmed stay in the shared one every build reads. herdr-core Hosts
+/// live in a second one, with the merged Host order, that builds before Server
+/// Kinds never read, so such a build can neither show one nor re-save it as
+/// Herdr TUI (ADR 0031).
 @MainActor
 @Observable
 final class HostStore {
     private static let defaultsKey = "hosts"
+    private static let coreDefaultsKey = "herdrCoreHosts"
     private static let catalogVersion = 1
 
     /// Decodes each Host through its own decoder so a future authentication
-    /// method, or a herdr endpoint this build cannot read, hides only that
+    /// method, Server Kind, or herdr endpoint this build cannot read hides only that
     /// Host from an older build. Other malformed Host data still fails the
     /// catalog instead of being discarded silently. The unrecognized future
     /// entries survive later writes from this build.
@@ -34,6 +48,13 @@ final class HostStore {
             }
 
             var knownHostID: Host.ID? { knownHost?.id }
+
+            var unknownHostID: Host.ID? {
+                guard case .unknown(let rawHost) = self, let id = rawHost["id"]?.stringValue else {
+                    return nil
+                }
+                return Host.ID(uuidString: id)
+            }
         }
 
         let entries: [Entry]
@@ -52,6 +73,12 @@ final class HostStore {
                     throw HostStoreError.catalogUnreadable
                 }
                 guard Host.AuthMethod(rawValue: authMethodValue) != nil else {
+                    entries.append(.unknown(rawHost))
+                    continue
+                }
+                if let serverKind = rawHost["serverKind"]?.stringValue,
+                    ServerKind(rawValue: serverKind) == nil
+                {
                     entries.append(.unknown(rawHost))
                     continue
                 }
@@ -90,14 +117,23 @@ final class HostStore {
     private struct PersistedCatalog: Codable {
         let version: Int
         let hosts: PersistedHosts
+        /// The merged Host order, kept only with the herdr-core catalog. Ids it
+        /// lacks follow it in the shared catalog's order, which is how a Host
+        /// added since, here or by an older build, stays last.
+        var order: [Host.ID]?
     }
 
     private(set) var hosts: [Host]
+    /// The shared catalog could not be read, so no Host is shown or written.
     private(set) var catalogLoadError: HostStoreError?
+    /// The herdr-core catalog could not be read. Herdr TUI Hosts carry on from
+    /// their own key; nothing goes to this one, whose bytes stay as they are.
+    private(set) var coreCatalogLoadError: HostStoreError?
     // UserDefaults is documented thread-safe; Sendable modulo that promise.
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults?
     @ObservationIgnored private let secrets: any SecretStore
     @ObservationIgnored private var catalogEntries: [PersistedHosts.Entry]
+    @ObservationIgnored private var coreCatalogEntries: [PersistedHosts.Entry]
 
     init(
         defaults: UserDefaults = .standard,
@@ -105,36 +141,75 @@ final class HostStore {
     ) {
         self.defaults = defaults
         self.secrets = secrets
-        catalogEntries = []
-        guard let data = defaults.data(forKey: Self.defaultsKey) else {
-            hosts = []
-            catalogLoadError = nil
-            return
-        }
         do {
-            let decoder = JSONDecoder()
-            if let catalog = try? decoder.decode(PersistedCatalog.self, from: data) {
-                guard catalog.version == Self.catalogVersion else {
-                    throw HostStoreError.catalogUnreadable
-                }
-                hosts = catalog.hosts.values
-                catalogEntries = catalog.hosts.entries
-            } else {
-                // Version 0 was the bare Host array. Decode it once, then
-                // immediately persist the versioned envelope.
-                let legacyHosts = try decoder.decode(PersistedHosts.self, from: data)
-                hosts = legacyHosts.values
-                catalogEntries = legacyHosts.entries
-                defaults.set(
-                    try Self.encodedCatalog(entries: catalogEntries),
-                    forKey: Self.defaultsKey)
+            var shared = try Self.loadSharedEntries(from: defaults)
+            let core: PersistedCatalog?
+            do {
+                core = try Self.loadCoreCatalog(from: defaults)
+                coreCatalogLoadError = nil
+            } catch {
+                core = nil
+                coreCatalogLoadError = .catalogUnreadable
             }
+            let coreEntries = core?.hosts.entries ?? []
+            // A Host found in both is herdr-core. Its shared copy goes now, so
+            // an older build cannot show it and removing the Host cannot bring
+            // it back as Herdr TUI.
+            let coreIDs = Set(coreEntries.compactMap(\.knownHostID))
+            let sharedCount = shared.count
+            shared.removeAll { $0.knownHostID.map(coreIDs.contains) == true }
+            if shared.count != sharedCount {
+                defaults.set(try Self.encodedCatalog(entries: shared), forKey: Self.defaultsKey)
+            }
+            hosts = Self.mergedHosts(shared: shared, core: coreEntries, order: core?.order ?? [])
+            catalogEntries = shared
+            coreCatalogEntries = coreEntries
             catalogLoadError = nil
         } catch {
             hosts = []
             catalogEntries = []
+            coreCatalogEntries = []
             catalogLoadError = .catalogUnreadable
+            coreCatalogLoadError = nil
         }
+    }
+
+    private static func loadSharedEntries(
+        from defaults: UserDefaults
+    ) throws -> [PersistedHosts.Entry] {
+        guard let data = defaults.data(forKey: defaultsKey) else { return [] }
+        let decoder = JSONDecoder()
+        if let catalog = try? decoder.decode(PersistedCatalog.self, from: data) {
+            guard catalog.version == catalogVersion else {
+                throw HostStoreError.catalogUnreadable
+            }
+            return catalog.hosts.entries
+        }
+        // Version 0 was the bare Host array. Decode it once, then
+        // immediately persist the versioned envelope.
+        let legacyHosts = try decoder.decode(PersistedHosts.self, from: data)
+        defaults.set(try encodedCatalog(entries: legacyHosts.entries), forKey: defaultsKey)
+        return legacyHosts.entries
+    }
+
+    private static func loadCoreCatalog(from defaults: UserDefaults) throws -> PersistedCatalog? {
+        guard let data = defaults.data(forKey: coreDefaultsKey) else { return nil }
+        let catalog = try JSONDecoder().decode(PersistedCatalog.self, from: data)
+        guard catalog.version == catalogVersion else {
+            throw HostStoreError.catalogUnreadable
+        }
+        return catalog
+    }
+
+    private static func mergedHosts(
+        shared: [PersistedHosts.Entry], core: [PersistedHosts.Entry], order: [Host.ID]
+    ) -> [Host] {
+        let unordered = (shared + core).compactMap(\.knownHost)
+        let positions = Dictionary(
+            order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        let ordered = unordered.filter { positions[$0.id] != nil }
+            .sorted { (positions[$0.id] ?? 0) < (positions[$1.id] ?? 0) }
+        return ordered + unordered.filter { positions[$0.id] == nil }
     }
 
     /// A process-local catalog for previews and development compositions.
@@ -143,36 +218,109 @@ final class HostStore {
         defaults = nil
         secrets = VolatileSecretStore()
         hosts = volatileHosts
-        catalogEntries = volatileHosts.map(PersistedHosts.Entry.known)
+        catalogEntries = volatileHosts.filter { $0.serverKind != .herdrCore }
+            .map(PersistedHosts.Entry.known)
+        coreCatalogEntries = volatileHosts.filter { $0.serverKind == .herdrCore }
+            .map(PersistedHosts.Entry.known)
         catalogLoadError = nil
+        coreCatalogLoadError = nil
     }
 
     /// Adds a Host, storing `password` in the secret store when given.
     func add(_ host: Host, password: String? = nil) throws {
         try ensureCatalogIsWritable()
+        if host.serverKind == .herdrCore { try ensureCoreCatalogIsWritable() }
         try applyPassword(password, to: host)
         hosts.append(host)
-        catalogEntries.append(.known(host))
-        try persist()
+        if host.serverKind == .herdrCore {
+            coreCatalogEntries.append(.known(host))
+            try persistCoreCatalog()
+        } else {
+            catalogEntries.append(.known(host))
+            try persistSharedCatalog()
+        }
     }
 
-    /// Replaces the stored Host with the same id. `password` nil leaves any
-    /// stored password untouched, so editing unrelated fields never requires
-    /// re-entering it.
+    /// Replaces the stored Host with the same id, which must keep its Server
+    /// Kind (ADR 0031). `password` nil leaves any stored password untouched, so
+    /// editing unrelated fields never requires re-entering it.
     func update(_ host: Host, password: String? = nil) throws {
         try ensureCatalogIsWritable()
         guard let index = hosts.firstIndex(where: { $0.id == host.id }) else {
             throw HostStoreError.unknownHost
         }
+        guard hosts[index].serverKind == host.serverKind else {
+            throw HostStoreError.serverKindChanged
+        }
         try applyPassword(password, to: host)
         hosts[index] = host
-        guard let entryIndex = catalogEntries.firstIndex(where: {
-            $0.knownHostID == host.id
-        }) else {
+        if let entryIndex = coreCatalogEntries.firstIndex(where: { $0.knownHostID == host.id }) {
+            coreCatalogEntries[entryIndex] = .known(host)
+            try persistCoreCatalog()
+        } else if let entryIndex = catalogEntries.firstIndex(where: { $0.knownHostID == host.id }) {
+            catalogEntries[entryIndex] = .known(host)
+            try persistSharedCatalog()
+        } else {
             throw HostStoreError.catalogUnreadable
         }
-        catalogEntries[entryIndex] = .known(host)
-        try persist()
+    }
+
+    /// Confirms a Host added unconfirmed, once. A herdr-core Host's catalog
+    /// entry is written before the shared one goes: a Host found in both loads
+    /// as herdr-core, so an interrupted confirmation is still a confirmation.
+    @discardableResult
+    func confirmServerKind(_ kind: ServerKind, for id: Host.ID) throws -> Host {
+        try ensureCatalogIsWritable()
+        guard let index = hosts.firstIndex(where: { $0.id == id }) else {
+            throw HostStoreError.unknownHost
+        }
+        guard hosts[index].serverKind == .unconfirmed else {
+            throw HostStoreError.serverKindAlreadyConfirmed
+        }
+        guard kind.isConfirmed else {
+            throw HostStoreError.serverKindChanged
+        }
+        if kind == .herdrCore { try ensureCoreCatalogIsWritable() }
+        if let reason = kind.sessionNameRefusal(hosts[index].sessionName) {
+            throw HostStoreError.sessionNameRefused(reason: reason)
+        }
+        guard let entryIndex = catalogEntries.firstIndex(where: { $0.knownHostID == id }) else {
+            throw HostStoreError.catalogUnreadable
+        }
+        var confirmed = hosts[index]
+        confirmed.serverKind = kind
+        confirmed.sessionName = kind.storedSessionName(confirmed.sessionName)
+        hosts[index] = confirmed
+        if kind == .herdrCore {
+            coreCatalogEntries.append(.known(confirmed))
+            try persistCoreCatalog()
+            catalogEntries.remove(at: entryIndex)
+        } else {
+            catalogEntries[entryIndex] = .known(confirmed)
+        }
+        try persistSharedCatalog()
+        return confirmed
+    }
+
+    /// Hosts the catalog keeps that this build cannot read, as an older build
+    /// finds a newer one's. Nil when a catalog itself could not be read, which
+    /// says nothing of which Hosts exist: device memory of a Host goes only when
+    /// the Host is known to be gone.
+    var hostsOutOfSight: Set<Host.ID>? {
+        guard catalogLoadError == nil, coreCatalogLoadError == nil else { return nil }
+        return Set((catalogEntries + coreCatalogEntries).compactMap(\.unknownHostID))
+    }
+
+    /// The Hosts the Console, Usage and its pickers show. A Host waiting for its
+    /// Server Kind is only in the Hosts list.
+    var consoleHosts: [Host] {
+        hosts.filter(\.serverKind.isConfirmed)
+    }
+
+    /// A Host waiting for its Server Kind stays out of Live Activities. Whether a
+    /// core Host may show one is its registration's call, see `LiveActivityGate`.
+    func supportsLiveActivities(for id: Host.ID) -> Bool {
+        hosts.first(where: { $0.id == id })?.serverKind.isConfirmed == true
     }
 
     /// Removes the Host, its stored password, and the device's consent to
@@ -185,8 +333,13 @@ final class HostStore {
         try secrets.removeSecret(account: Self.passwordAccount(for: id))
         defaults?.removeObject(forKey: AgentUsageStore.claudeLimitsPreferenceKey(for: id))
         hosts.remove(at: index)
-        catalogEntries.removeAll { $0.knownHostID == id }
-        try persist()
+        if coreCatalogEntries.contains(where: { $0.knownHostID == id }) {
+            coreCatalogEntries.removeAll { $0.knownHostID == id }
+            try persistCoreCatalog()
+        } else {
+            catalogEntries.removeAll { $0.knownHostID == id }
+            try persistSharedCatalog()
+        }
     }
 
     /// The stored password for a Host, or nil when none was saved.
@@ -221,16 +374,31 @@ final class HostStore {
         }
     }
 
-    private func persist() throws {
+    private func ensureCoreCatalogIsWritable() throws {
+        if coreCatalogLoadError != nil {
+            throw HostStoreError.catalogUnreadable
+        }
+    }
+
+    private func persistSharedCatalog() throws {
         defaults?.set(
             try Self.encodedCatalog(entries: catalogEntries),
             forKey: Self.defaultsKey)
     }
 
-    private static func encodedCatalog(entries: [PersistedHosts.Entry]) throws -> Data {
+    private func persistCoreCatalog() throws {
+        defaults?.set(
+            try Self.encodedCatalog(entries: coreCatalogEntries, order: hosts.map(\.id)),
+            forKey: Self.coreDefaultsKey)
+    }
+
+    private static func encodedCatalog(
+        entries: [PersistedHosts.Entry], order: [Host.ID]? = nil
+    ) throws -> Data {
         try JSONEncoder().encode(
             PersistedCatalog(
                 version: catalogVersion,
-                hosts: PersistedHosts(entries: entries)))
+                hosts: PersistedHosts(entries: entries),
+                order: order))
     }
 }

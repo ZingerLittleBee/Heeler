@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/windows-setup.md at ed1e9e66 -->
+<!-- Translated from docs/guides/windows-setup.md at b42822c8 -->
 # Windows 配置
 
 为 Heeler 配置原生 Windows Host，包括 SSH 登录以及 SSH 与 herdr 的开机自启。
@@ -187,6 +187,8 @@ herdr --session heeler-win-test status server --json
 
 ## 支持的功能与进一步检查
 
-原生 Windows 支持手动 SSH 连接、会话选择、实时 Agent（Agents）与终端（Terminals）以及目录浏览。配对（Pairing）、Chat、Usage、变更（Changes）、技能（Skills）、文件上传和通知注册目前暂不可用。请在连接前保持 herdr 处于运行状态；Heeler 不会自动启动 Windows 服务端。
+原生 Windows Herdr TUI Host 支持手动 SSH 连接、会话选择、实时 Agent（Agents）与终端（Terminals）以及目录浏览。配对（Pairing）、Chat、Usage、变更（Changes）、技能（Skills）、文件上传和通知注册目前暂不可用。请在连接前保持 herdr 处于运行状态；Heeler 不会自动启动 Windows 服务端。
+
+Windows 上的 herdr-core Host 请参阅[连接 herdr-core 的 Native Windows 一节](herdr-core.md#native-windows)。
 
 如需进行终端尺寸调整、滚动、重连、会话隔离和认证方面的验收检查，请使用 [Windows 测试清单](../native-windows-testing.md)。

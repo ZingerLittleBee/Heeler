@@ -122,6 +122,27 @@ jobs:
           restore-keys: |
             spm-${{ runner.os }}-
 
+      # Keyed by the archive's SHA-256, so a new pin never restores an old one.
+      # The test script still verifies what it restores before extracting it.
+      - name: Read the pinned herdr-core archive checksum
+        id: core-archive
+        if: ${{ (matrix.shard == 'transport' || matrix.shard == 'all') && (github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm') }}
+        run: |
+          case "$(uname -m)" in
+            x86_64) target=macos-x86_64 ;;
+            *) target=macos-aarch64 ;;
+          esac
+          sha256=$(awk -v target="$target" '$2 == target { print $1 }' scripts/fixtures/herdr-core-archive.sha256)
+          [[ -n "$sha256" ]]
+          printf 'sha256=%s\n' "$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the pinned herdr-core archive
+        if: ${{ steps.core-archive.outcome == 'success' }}
+        uses: actions/cache@v4
+        with:
+          path: .ci/herdr-core-archive
+          key: herdr-core-archive-${{ steps.core-archive.outputs.sha256 }}
+
       - name: Test VPS SSH access scripts
         run: scripts/test-vps-ssh-access-scripts.sh
 

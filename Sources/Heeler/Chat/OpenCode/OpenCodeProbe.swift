@@ -16,8 +16,8 @@ import Foundation
 /// holding a per-request nonce.
 ///
 /// The only values that reach the script are the nonce, the validated
-/// session id inside SQL string literals, and integers. Nothing is
-/// interpolated into a shell word. The statements travel once, in one
+/// session id inside SQL string literals, a directory as a SQL hex literal, and
+/// integers. Nothing is interpolated into a shell word. The statements travel once, in one
 /// here-document that whichever reader runs reads, because every poll
 /// uploads the whole script.
 enum OpenCodeProbe {
@@ -206,6 +206,11 @@ enum OpenCodeProbe {
             return .unavailable(.layout(missing: missing))
         }
         if output.sessionMissing {
+            // Only a tail goes on to 1.x's tables; a session that goes missing
+            // later is missing.
+            if output.olderTablesBeside, case .tail = query.kind, query.tables == .v2 {
+                return .unavailable(.olderOpenCode)
+            }
             return .sessionMissing(otherStores: output.otherStores.filter(isStoreName))
         }
         guard let exitLine = output.exitLine else {
@@ -238,6 +243,9 @@ enum OpenCodeProbe {
         var missingColumns: [String]?
         var eventSeq: Int64?
         var sessionMissing = false
+        /// `M 1`: OpenCode 1.x's tables are there too.
+        var olderTablesBeside = false
+        var recentSessions: [OpenCodeRecentSession] = []
         var sessionLine: Data?
         var rows: [OpenCodeRowLine] = []
         var overBudget = false
@@ -296,9 +304,15 @@ enum OpenCodeProbe {
                 guard text.isEmpty || Int64(text) != nil else { return false }
                 eventSeq = Int64(text)
             case "M":
-                guard value.isEmpty else { return false }
+                guard value.isEmpty || text == "1" else { return false }
                 sessionMissing = true
+                olderTablesBeside = text == "1"
             case "S": sessionLine = Data(text.utf8)
+            case "Q":
+                guard let row = try? JSONDecoder().decode(OpenCodeRecentSession.self, from: Data(text.utf8)) else {
+                    return false
+                }
+                recentSessions.append(row)
             case "R":
                 let line = Data(text.utf8)
                 guard let head = try? JSONDecoder().decode(RowHead.self, from: line) else {
@@ -334,7 +348,8 @@ enum OpenCodeProbe {
             OpenCodeRecords(
                 sqliteVersion: version, eventSeq: eventSeq, sessionLine: sessionLine,
                 inboxLine: inboxLine, rows: rows.sorted { $0.seq < $1.seq }, firstSeq: firstSeq,
-                windowCount: windowCount, overflow: overflow, ignoredLines: ignoredLines)
+                windowCount: windowCount, overflow: overflow, ignoredLines: ignoredLines,
+                recentSessions: recentSessions)
         }
     }
 

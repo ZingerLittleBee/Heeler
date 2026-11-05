@@ -30,6 +30,9 @@ PLUGIN_DIR="plugin"
 # decision rather than a silent omission or an accidental upload.
 SHIPPED="herdr-plugin.toml package.json package-lock.json README.md src"
 DEV_ONLY="test test-vectors"
+# The Host Helper ships inside the app, never on the plugin branch (ADR 0033),
+# so its files never count as plugin changes. Optional: earlier sources lack it.
+HELPER_ONLY="helper"
 # Repository tools the plugin tests run, placed where they sit on main.
 TEST_TOOLS="scripts/generate-usage-pricing.mjs"
 
@@ -104,12 +107,17 @@ git merge-base --is-ancestor "$source" "$main_ref" \
 listing="$(git ls-tree "$source:$PLUGIN_DIR" 2>/dev/null)" \
     || die "$source has no $PLUGIN_DIR/ directory"
 entries=""
+# What the suite needs beside the shipped tree: plugin tests on main may import
+# the Helper, whose folder a source may not have yet.
+test_inputs="$DEV_ONLY"
 while IFS= read -r line; do
     name="${line#*$'\t'}"
     if listed "$name" "$SHIPPED"; then
         entries="$entries$line"$'\n'
+    elif listed "$name" "$HELPER_ONLY"; then
+        test_inputs="$test_inputs $name"
     elif ! listed "$name" "$DEV_ONLY"; then
-        die "$PLUGIN_DIR/$name is neither shipped nor dev-only; add it to SHIPPED or DEV_ONLY in scripts/publish-plugin.sh"
+        die "$PLUGIN_DIR/$name is neither shipped nor dev-only nor helper-only; add it to SHIPPED, DEV_ONLY or HELPER_ONLY in scripts/publish-plugin.sh"
     fi
 done <<<"$listing"
 for name in $SHIPPED; do
@@ -162,8 +170,8 @@ quietly npm ci --no-audit --no-fund || die "npm ci failed in the published tree"
 for file in "$check"/src/*.js; do
     node --check "$file" || die "${file#"$check"/} does not parse"
 done
-# shellcheck disable=SC2086 # DEV_ONLY is a word list
-git archive "$source:$PLUGIN_DIR" $DEV_ONLY | tar -x -C "$check"
+# shellcheck disable=SC2086 # test_inputs is a word list
+git archive "$source:$PLUGIN_DIR" $test_inputs | tar -x -C "$check"
 # shellcheck disable=SC2086 # TEST_TOOLS is a word list
 git archive "$source" $TEST_TOOLS | tar -x -C "$work"
 quietly npm test || die "plugin tests failed against the published tree"

@@ -35,7 +35,7 @@ extension HeelerSSHAttachChannel {
 
 extension SSHPTYChannel: HeelerSSHAttachChannel {}
 
-private protocol HeelerSSHAPIChannel: Sendable {
+protocol HeelerSSHAPIChannel: Sendable {
     func write(_ data: Data, timeout: Duration) async throws
     func read(maximumBytes: Int, timeout: Duration) async throws -> Data?
     func close(timeout: Duration) async throws
@@ -345,7 +345,9 @@ actor HeelerSSHTransport: Transport {
     /// The Host's herdr endpoint launcher (ADR 0023); nil runs the `herdr` on
     /// the SSH PATH.
     private let herdrLauncher: HerdrLauncher?
-    private let channelAdmission: SSHChannelAdmission
+    /// A herdr-core Host's connection, whose Chat also reads on native Windows.
+    private let readsChatFilesOnWindows: Bool
+    nonisolated let channelAdmission: SSHChannelAdmission
     private let environment = SharedAsyncOperation<RemoteHostEnvironment>(cachesSuccess: true)
     private let windowsBridgeCheck = SharedAsyncOperation<Void>(cachesSuccess: true)
     private var detectedWindows = false
@@ -572,10 +574,11 @@ actor HeelerSSHTransport: Transport {
         notificationConfigDirCommand =
             SSHTransportSettings.defaultNotificationConfigDirCommand
         herdrLauncher = nil
+        readsChatFilesOnWindows = false
         channelAdmission = SSHChannelAdmission()
     }
 
-    private init(connection: SSHConnection, settings: SSHTransportSettings, routeID: UUID?) {
+    init(connection: SSHConnection, settings: SSHTransportSettings, routeID: UUID?) {
         self.connection = connection
         self.routeID = routeID
         socketLocation = settings.socket
@@ -593,6 +596,7 @@ actor HeelerSSHTransport: Transport {
         pluginListCommand = settings.pluginListCommand
         notificationConfigDirCommand = settings.notificationConfigDirCommand
         herdrLauncher = settings.herdrLauncher
+        readsChatFilesOnWindows = settings.serverKind == .herdrCore
         channelAdmission = SSHChannelAdmission()
     }
 
@@ -999,7 +1003,7 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.invalidDirectoryPath(path: path)
         }
         _ = try await hostFileEnvironment()
-        try await requirePOSIXHost(feature: "Chat")
+        try await requireChatFileHost()
         if hostFileSFTPUnavailable {
             throw TransportError.hostFeatureUnavailable(feature: "Chat needs SFTP on the Host")
         }
@@ -1022,6 +1026,11 @@ actor HeelerSSHTransport: Transport {
             }
             throw mapped
         }
+    }
+
+    /// A core's Chat reads Transcripts over SFTP on native Windows too (ADR 0034).
+    func requireChatFileHost() async throws {
+        if !readsChatFilesOnWindows { try await requirePOSIXHost(feature: "Chat") }
     }
 
     /// The remote environment, resolved at most once per connection. A Host
@@ -1490,10 +1499,11 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    /// `configDirectory` is made private first, when there is one to make so.
     private func performNotificationFileReplace(
         _ contents: Data,
         at path: String,
-        configDirectory: String,
+        configDirectory: String?,
         operationID: UUID
     ) async throws {
         let sftp: SSHSFTPClient
@@ -1503,15 +1513,17 @@ actor HeelerSSHTransport: Transport {
             try Self.notificationWriteError(error)
         }
         notificationFileClients[operationID] = sftp
-        var temporaryPath: String? = "\(path).tmp-\(UUID().uuidString.lowercased())"
+        var temporaryPath: String? = "\(path)\(HostHelperScript.temporarySuffix)\(UUID().uuidString.lowercased())"
         notificationTemporaryPaths[operationID] = temporaryPath
 
         do {
             try Task.checkCancellation()
-            try await enforceNotificationPermissions(
-                0o700,
-                at: configDirectory,
-                over: sftp)
+            if let configDirectory {
+                try await enforceNotificationPermissions(
+                    0o700,
+                    at: configDirectory,
+                    over: sftp)
+            }
             guard let currentTemporaryPath = temporaryPath else {
                 throw NotificationRegistrationError.writeFailed(
                     detail: "The private temporary file is unavailable.")
@@ -1575,6 +1587,131 @@ actor HeelerSSHTransport: Transport {
             }
             try Self.notificationWriteError(operationError)
         }
+    }
+
+    // MARK: Harness configuration files
+
+    /// SFTP has no compare-and-swap, so this reads the file twice, once before it
+    /// writes anything and again just before the rename, in the file's own
+    /// directory. A change in the one round trip after that second read can still
+    /// be lost; a file changed any earlier than that is refused.
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+        guard RemoteFilePath.isAcceptable(path) else {
+            throw TransportError.invalidDirectoryPath(path: path)
+        }
+        _ = try await hostFileEnvironment()
+        try await requirePOSIXHost(feature: "Editing Host files")
+        do {
+            try await withNotificationFileRequestDeadline {
+                guard await self.notificationConnectionIsAvailable() else {
+                    throw TransportError.sshUnreachable(detail: "The SSH connection is unavailable.")
+                }
+                let operationID = UUID()
+                try await self.channelAdmission.withChannel(.ordinarySession) {
+                    try await self.performHostTextFileReplace(
+                        path: path, expected: expected, contents: contents, operationID: operationID)
+                }
+            }
+        } catch let refusal as HostTextFileError {
+            throw refusal
+        } catch {
+            throw await mapHostFileError(error).0
+        }
+    }
+
+    /// Over one bounded exec, the Helper's own tested steps. SFTP's mkdir and rmdir
+    /// can't tell a folder that is there, or holds something, from any other refusal.
+    func createHostFolder(path: String) async throws {
+        try await runHostFolderStep(.makeFolders([path], privateFolder: path), path: path)
+    }
+
+    func removeEmptyHostFolder(path: String) async throws {
+        try await runHostFolderStep(.removeEmptyFolders([path]), path: path)
+    }
+
+    private func runHostFolderStep(_ step: HostHelperScript.Step, path: String) async throws {
+        guard RemoteFilePath.isAcceptable(path) else {
+            throw TransportError.invalidDirectoryPath(path: path)
+        }
+        try await requirePOSIXHost(feature: "Editing Host files")
+        let result = try await runHostHelperScript(HostHelperScript(step, nonce: HostProcessReader.makeNonce()))
+        guard result.exitStatus == 0 else {
+            throw TransportError.malformedResponse("The Host refused to change the folder \(path).")
+        }
+    }
+
+    private func performHostTextFileReplace(
+        path: String, expected: Data?, contents: Data?, operationID: UUID
+    ) async throws {
+        let sftp = try await connection.openSFTP(timeout: requestTimeout)
+        notificationFileClients[operationID] = sftp
+        var temporaryPath: String?
+        do {
+            // A link stays a link: its target is what changes.
+            let target = try await sftp.canonicalPath(path, timeout: requestTimeout)
+            try await requireFile(at: target, holds: expected, over: sftp)
+            if let contents {
+                let permissions: UInt32 =
+                    if expected == nil {
+                        0o600
+                    } else {
+                        (try await sftp.attributes(at: target, timeout: requestTimeout).permissions ?? 0o600)
+                            & 0o7777
+                    }
+                let temporary = "\(target).heeler-\(UUID().uuidString.lowercased())"
+                temporaryPath = temporary
+                notificationTemporaryPaths[operationID] = temporary
+                let file = try await sftp.openFileForWriting(
+                    at: temporary, permissions: 0o600, timeout: requestTimeout)
+                do {
+                    if !contents.isEmpty {
+                        try await file.write(contents, timeout: requestTimeout)
+                    }
+                    try await file.close(timeout: requestTimeout)
+                } catch {
+                    try? await file.close(timeout: .seconds(2))
+                    throw error
+                }
+                try await sftp.setPermissions(permissions, at: temporary, timeout: requestTimeout)
+                let written = try await sftp.attributes(at: temporary, timeout: requestTimeout)
+                guard written.size == UInt64(contents.count) else {
+                    throw TransportError.malformedResponse("The written file failed verification.")
+                }
+                try await requireFile(at: target, holds: expected, over: sftp)
+                try Task.checkCancellation()
+                try await sftp.renameFileAtomically(
+                    from: temporary, to: target, timeout: requestTimeout)
+                temporaryPath = nil
+            } else {
+                try Task.checkCancellation()
+                try await sftp.removeFile(at: target, timeout: requestTimeout)
+            }
+            notificationTemporaryPaths[operationID] = nil
+            notificationFileClients[operationID] = nil
+            try? await sftp.close(timeout: .seconds(2))
+        } catch {
+            if let temporaryPath {
+                try? await removeNotificationTemporaryFile(at: temporaryPath, over: sftp)
+            }
+            notificationTemporaryPaths[operationID] = nil
+            notificationFileClients[operationID] = nil
+            try? await sftp.close(timeout: .seconds(2))
+            throw error
+        }
+    }
+
+    /// Compares sizes first, so a file that grew past what was read is not fetched.
+    private func requireFile(
+        at path: String, holds expected: Data?, over sftp: SSHSFTPClient
+    ) async throws {
+        let status = try await sftp.fileStatus(at: path, timeout: requestTimeout)
+        guard let status else {
+            guard expected == nil else { throw HostTextFileError.changedSinceRead }
+            return
+        }
+        guard let expected, status.size == UInt64(expected.count),
+            try await sftp.readFileIfPresent(at: path, timeout: requestTimeout) == expected
+        else { throw HostTextFileError.changedSinceRead }
     }
 
     private func enforceNotificationPermissions(
@@ -2563,7 +2700,7 @@ actor HeelerSSHTransport: Transport {
         detectedWindows || connection.serverIdentification?.contains("Windows") == true
     }
 
-    private func configureWindowsHost() async {
+    func configureWindowsHost() async {
         detectedWindows = true
         await channelAdmission.useWindowsSessionBudget()
     }
@@ -2673,6 +2810,34 @@ actor HeelerSSHTransport: Transport {
         let result = try await runGitScript(GitProbe.patchScript(request, nonce: nonce))
         return try GitProbe.parsePatch(
             stdout: result.stdout, stderr: result.stderr, nonce: nonce, request: request)
+    }
+
+    /// One script, one bounded exec, however many directories it was given.
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
+        guard !GitProbe.checkoutRootDirectories(directories).isEmpty else { return [:] }
+        let nonce = GitProbe.makeNonce()
+        let result = try await runGitScript(
+            GitProbe.checkoutRootsScript(directories: directories, nonce: nonce))
+        return try GitProbe.parseCheckoutRoots(
+            stdout: result.stdout, stderr: result.stderr, nonce: nonce, directories: directories)
+    }
+
+    /// A checkout takes far longer to write than a read has to answer, and the
+    /// watchdog ending git partway through leaves a partial checkout behind.
+    func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult {
+        let nonce = GitProbe.makeNonce()
+        let script = GitProbe.commandScript(command, nonce: nonce)
+        let result: GitExecResult
+        if command.isMutation {
+            let deadline = SSHTransportSettings.defaultGitMutationTimeout
+            result = try await runBoundedScript(
+                script, feature: "Worktrees", deadline: deadline,
+                remoteSeconds: max(1, deadline.components.seconds),
+                timeoutMarkerPrefix: "__HEELER_GIT_TIMEOUT_", timedOut: .gitTimedOut)
+        } else {
+            result = try await runGitScript(script)
+        }
+        return try GitProbe.parseCommand(stdout: result.stdout, stderr: result.stderr, nonce: nonce)
     }
 
     func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
@@ -3588,6 +3753,172 @@ actor HeelerSSHTransport: Transport {
                 group.cancelAll()
             }
             return try await group.next() ?? true
+        }
+    }
+}
+
+// MARK: - What Server Kind detection uses of this connection
+extension HeelerSSHTransport: ServerKindDetectionConnection {
+    /// One bounded exec, cut off on the Host if a read hangs. The POSIX script does
+    /// not go to native Windows, which runs `runWindowsCommand` instead.
+    func runServerKindDetection(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: "Server Kind detection", deadline: .seconds(16), remoteSeconds: 12,
+            timeoutMarkerPrefix: "__HEELER_KIND_DETECTION_TIMEOUT_", timedOut: .timedOut)
+    }
+}
+
+// MARK: - What the Host Helper uses of this connection
+extension HeelerSSHTransport: HostHelperHost {
+    /// One bounded exec, long enough for the Node.js search's login shell.
+    func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
+        // A Usage read searches for nothing, and a screen is waiting on it.
+        if case .usageQuery = script.step {
+            return try await runBoundedScript(
+                Data(script.text.utf8), feature: "Usage", deadline: .seconds(10), remoteSeconds: 8,
+                timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)
+        }
+        return try await runBoundedScript(
+            Data(script.text.utf8), feature: "The Host Helper", deadline: .seconds(40), remoteSeconds: 30,
+            timeoutMarkerPrefix: "__HEELER_HOST_HELPER_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    func readHostHelperFile(at path: String, privateDirectory: String) async throws -> Data? {
+        try await withNotificationFileRequestDeadline {
+            guard await self.notificationConnectionIsAvailable() else {
+                throw NotificationRegistrationError.readFailed(
+                    detail: "The SSH connection is unavailable.")
+            }
+            let operationID = UUID()
+            return try await self.channelAdmission.withChannel(.ordinarySession) {
+                try await self.performNotificationFileRead(
+                    at: path, configDirectory: privateDirectory, operationID: operationID)
+            }
+        }
+    }
+
+    func replaceHostHelperFile(_ contents: Data, at path: String, privateDirectory: String?) async throws {
+        try await withNotificationFileRequestDeadline {
+            guard await self.notificationConnectionIsAvailable() else {
+                throw NotificationRegistrationError.writeFailed(
+                    detail: "The SSH connection is unavailable.")
+            }
+            let operationID = UUID()
+            try await self.channelAdmission.withChannel(.ordinarySession) {
+                try await self.performNotificationFileReplace(
+                    contents, at: path, configDirectory: privateDirectory, operationID: operationID)
+            }
+        }
+    }
+}
+
+// MARK: - What the framed herdr-core transport uses of this connection
+extension HeelerSSHTransport: HerdrCoreHostConnection {
+    /// A Unix Host whose home cannot be read still has its locator to run, which needs
+    /// none. A Windows Host's does: answering POSIX would run a script that Host refuses,
+    /// which stops it for good, so its probe gets another try.
+    static func platformWithUnreadableHome(isWindowsHost: Bool) throws -> HostPlatform {
+        guard isWindowsHost else { return .posix }
+        throw TransportError.channelFailed(detail: "herdr-core: This Windows Host's home folder could not be read.")
+    }
+
+    /// The same answer the Herdr TUI path acts on (ADR 0018), and reading it turns on
+    /// the Windows session budget.
+    func corePlatform() async throws -> HostPlatform {
+        do {
+            return try await hostPlatform()
+        } catch TransportError.homeDirectoryUnresolvable {
+            return try Self.platformWithUnreadableHome(isWindowsHost: isWindowsHost)
+        } catch TransportError.hostFileTimedOut {
+            throw TransportError.timedOut
+        }
+    }
+
+    func runWindowsCommand(_ command: String, for purpose: WindowsHostExec) async throws -> GitExecResult {
+        let bound = purpose.bound
+        let result = try await withRequestDeadline(timeout: bound) {
+            try await self.runExec(command, timeout: bound)
+        }
+        return GitExecResult(stdout: result.stdout, stderr: result.stderr, exitStatus: result.exitStatus)
+    }
+
+    func openCoreLinkExec(command: String) async throws -> any WindowsTerminalExecChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+        }
+        return try await channelAdmission.admitCoreExec {
+            try await self.openCoreExec(command: command)
+        }
+    }
+
+    func openCoreCallExec(command: String) async throws -> any WindowsTerminalExecChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+        }
+        return try await channelAdmission.admitCoreCallExec {
+            try await self.openCoreExec(command: command)
+        }
+    }
+
+    private func openCoreExec(command: String) async throws -> any WindowsTerminalExecChannel {
+        do {
+            return try await connection.openExec(command: command, timeout: requestTimeout)
+        } catch {
+            throw await mapOperationError(error)
+        }
+    }
+
+    /// One bounded exec, cut off on the Host if a `--version` hangs.
+    func runCoreLocator(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: "herdr-core Hosts", deadline: .seconds(12), remoteSeconds: 8,
+            timeoutMarkerPrefix: "__HEELER_CORE_LOCATOR_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    /// One bounded exec, with room for slow startup files, cut off on the Host
+    /// if one of them waits for input the exec never gives it.
+    func runCoreStart(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: "herdr-core Hosts", deadline: .seconds(40), remoteSeconds: 30,
+            timeoutMarkerPrefix: "__HEELER_CORE_START_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    /// One bounded exec. A process read takes a shell, `od` and `awk`, or `perl`.
+    func runHostProcessRead(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: "herdr-core Hosts", deadline: .seconds(12), remoteSeconds: 8,
+            timeoutMarkerPrefix: "__HEELER_PROCESS_READ_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    /// One bounded exec, cut off on the Host if a startup file waits for input
+    /// or a program's `--version` hangs.
+    func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: "herdr-core Hosts", deadline: .seconds(25), remoteSeconds: 20,
+            timeoutMarkerPrefix: "__HEELER_AGENT_DISCOVERY_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    func runHerdrAppControl(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: "herdr-core Hosts", deadline: .seconds(12), remoteSeconds: 8,
+            timeoutMarkerPrefix: "__HEELER_HERDR_APP_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    /// A channel the link holds for as long as it lives. SSH reports a missing
+    /// socket, a refused one and a forbidden path with the same error.
+    func openCoreLinkChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+        }
+        return try await channelAdmission.admitCoreLink {
+            do {
+                return try await self.connection.openStreamLocal(
+                    socketPath: socketPath, timeout: self.requestTimeout)
+            } catch SSHError.streamLocalOpenFailed {
+                throw TransportError.streamLocalOpenFailed(path: socketPath)
+            } catch {
+                throw await self.mapOperationError(error)
+            }
         }
     }
 }

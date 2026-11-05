@@ -29,7 +29,7 @@ IOS_WATCH_DEBOUNCE ?= 1s
 DEVICE ?= $(shell python3 scripts/find-ios-device.py iPhone)
 DEVICE_IPAD ?= $(shell python3 scripts/find-ios-device.py iPad)
 
-.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight testflight-retry release-status release-check testflight-notes testflight-beta bump publish plugin clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
+.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery verify-core-linux-host check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight testflight-retry release-status release-check bump publish plugin clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts testflight-notes testflight-beta
 
 # Command-line DERIVED overrides remain supported for either platform.
 test-app test-directory-browser-ui sim build-sim sim-id: DERIVED = $(DERIVED_SIMULATOR)
@@ -127,8 +127,19 @@ test-tools: check-agent-docs check-test-membership ## Test agent tooling without
 	python3 scripts/test-run-app-simulator-tests.py
 	python3 scripts/test-simulator-ui.py
 	python3 scripts/test-isolated-herdr-backend.py
+	python3 scripts/test-herdr-core-capture.py
+	python3 scripts/test-herdr-core-locator.py
+	python3 scripts/test-herdr-core-shell-launch.py
+	python3 scripts/test-herdr-app-control.py
+	python3 scripts/test-herdr-core-start.py
+	python3 scripts/test-server-kind-detection.py
+	python3 scripts/test-herdr-core-lab-check.py
 	python3 scripts/test-store-shots.py
 	python3 scripts/test-node-toolchain-probe.py
+	python3 scripts/test-host-process-reader.py
+	python3 scripts/test-herdr-core-environment-check.py
+	python3 scripts/test-host-helper-manifest.py
+	python3 scripts/test-host-helper-scripts.py
 	sh scripts/test-source-revision.sh
 	bash scripts/test-publish-plugin.sh
 	$(MAKE) test-ci-evidence
@@ -149,6 +160,11 @@ test-ci-watchdog: test-ci-background-build ## Test the CI watchdog and simulator
 
 test-ci-recovery: ## Test simulator recovery with fake Xcode processes (macOS)
 	scripts/test-ci-simulator-recovery.sh
+
+# An owner's check on a real box: see docs/guides/herdr-core-testing.md.
+verify-core-linux-host: ## Run the herdr-core end-to-end methods on hc-lab (SIMULATOR_UDID=<udid> [LAB=hc-lab] [LAB_PORT=47430])
+	@test -n "$(SIMULATOR_UDID)" || { echo "SIMULATOR_UDID is required"; exit 1; }
+	python3 scripts/lab/herdr-core-lab-check.py --box '$(or $(LAB),hc-lab)' --port '$(or $(LAB_PORT),47430)' --udid '$(SIMULATOR_UDID)'
 
 simulator-ui: ## Inspect simulator GUI capabilities (optional SIMULATOR_UDID)
 	python3 scripts/simulator-ui.py $(if $(SIMULATOR_UDID),--udid '$(SIMULATOR_UDID)')

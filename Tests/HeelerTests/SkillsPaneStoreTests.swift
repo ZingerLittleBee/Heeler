@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Heeler
@@ -8,6 +9,38 @@ import Testing
 struct SkillsPaneStoreTests {
     private static func skill(_ name: String) -> AgentSkill {
         AgentSkill(scope: .global, name: name, description: nil)
+    }
+
+    /// The Linux run added a project Skill after "No Skills" and had no way to
+    /// read the list again from the picker.
+    @Test func thePickersEmptyListRefreshes() async throws {
+        var calls: [Bool] = []
+        let store = SkillsPaneStore { forceRefresh in
+            calls.append(forceRefresh)
+            return forceRefresh ? [Self.skill("added")] : []
+        }
+        await store.loadIfNeeded()
+        let controller = UIHostingController(
+            rootView: SkillsPickerView(store: store, onInsert: { _ in }, readSkill: { _ in "" }))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 844), rootViewController: controller
+        ) { _ in
+            var budget = PollBudget(.seconds(2))
+            var refresh: NSObject?
+            while refresh == nil, budget.hasTimeLeft {
+                try await Task.sleep(for: .milliseconds(20))
+                budget.charge()
+                refresh = AccessibilityProbe.elements(labeled: "Refresh", in: controller.view).first
+            }
+            let button = try #require(refresh)
+            #expect(button.accessibilityActivate())
+            while store.skills.isEmpty, budget.hasTimeLeft {
+                try await Task.sleep(for: .milliseconds(20))
+                budget.charge()
+            }
+        }
+        #expect(calls == [false, true])
+        #expect(store.skills.map(\.name) == ["added"])
     }
 
     @Test func loadIfNeededFetchesOnce() async {

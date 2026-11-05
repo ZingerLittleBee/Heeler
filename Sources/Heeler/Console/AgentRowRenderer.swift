@@ -134,7 +134,7 @@ enum AgentRowRenderer {
         case .status: row.agent.status.displayTitle.flatMap(nonempty)
         case .directory: nonempty(row.displayCwd)
         case .statusBadge, .changes: nil // The card draws these, never as text.
-        case .custom(let name): row.agent.tokens[name]
+        case .custom(let name), .label(let name): row.agent.tokens[name]
         }
     }
 

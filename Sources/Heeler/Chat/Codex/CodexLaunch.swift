@@ -14,6 +14,13 @@ enum ChatLaunchNotice: Equatable, Sendable {
     /// the flag on one line.
     static let unbrokenNoDaemon = "\u{2011}\u{2011}no\u{2011}daemon"
 
+    /// The shared server can outlive the Codex that started it and keep the
+    /// conversation loaded, and Codex then won't resume it without the
+    /// server ("This conversation is open in another app", codex-cli
+    /// 0.165.0 on a 0.166.0 daemon, until `codex app-server daemon stop`).
+    static let stopSharedServer =
+        "If Codex says the conversation is open in another app, run codex app\u{2011}server daemon stop, which also ends any other Codex on that server, then resume again."
+
     /// The user guide's section for the notice.
     var guideURL: URL? {
         switch self {
@@ -52,6 +59,29 @@ enum CodexLaunch {
     /// which Chat reads Codex from. It exists only while a server runs.
     static func controlSocketPath(home: String) -> String {
         RemoteFilePath.join(home, ".codex", "app-server-control", "app-server-control.sock")
+    }
+
+    /// The control socket under the `CODEX_HOME` of a Codex whose environment
+    /// Heeler has read (ADR 0034).
+    static func controlSocketPath(codexHome: String) -> String {
+        RemoteFilePath.join(codexHome, "app-server-control", "app-server-control.sock")
+    }
+
+    /// `launchesOnSharedServer(_:)` for a herdr-core Terminal's foreground, which may
+    /// be what started Codex rather than Codex: a Template's `sh -c` line, the desktop
+    /// app's wrapper, or the Node that runs npm's launcher (ADR 0032). The Agent rule
+    /// reads those, so what the Console calls Codex is judged by Codex's own arguments.
+    static func launchesOnSharedServer(foreground: HerdrCoreForeground?) -> Bool? {
+        guard let foreground else { return nil }
+        let argv =
+            HerdrCoreAgentRule.arguments(of: foreground, runningKind: ChatProgram.codex.rawValue)
+            .map { [ChatProgram.codex.rawValue] + $0 } ?? foreground.argv
+        return launchesOnSharedServer(
+            PaneProcessInfo(
+                paneID: "",
+                foregroundProcesses: [
+                    PaneProcessInfoProcess(name: foreground.name, pid: foreground.pid ?? 0, argv: argv)
+                ]))
     }
 
     /// True when the pane's foreground job runs Codex's terminal UI and no

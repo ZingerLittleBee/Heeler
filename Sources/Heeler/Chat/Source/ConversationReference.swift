@@ -17,6 +17,22 @@ struct ConversationReference: Hashable, Sendable {
     /// directly, never interpolated into an exec command.
     let sessionID: String
 
+    /// Whether the two name one conversation: the same reference, or Pi's or Oh My
+    /// Pi's id and the file named for it, which its extension's label gives once a
+    /// launch has given the id (ADR 0034).
+    func namesSameSession(as other: ConversationReference) -> Bool {
+        guard program == other.program else { return false }
+        if sessionID == other.sessionID { return true }
+        guard program.sessionNaming.acceptsTranscriptPath else { return false }
+        return Self.file(sessionID, isNamedFor: other.sessionID) || Self.file(other.sessionID, isNamedFor: sessionID)
+    }
+
+    /// Whether a Pi or Oh My Pi session file carries this session's name.
+    static func file(_ file: String, isNamedFor session: String) -> Bool {
+        guard let name = file.split(separator: "/").last else { return false }
+        return name == "\(session).jsonl" || name.hasSuffix("_\(session).jsonl")
+    }
+
     enum Resolution: Hashable, Sendable {
         case bound(ConversationReference)
         /// herdr has no session for the Agent yet. Codex reports one only
@@ -53,6 +69,17 @@ struct ConversationReference: Hashable, Sendable {
     static func canonicalUUID(_ text: String) -> String? {
         guard text.utf8.count == 36, let uuid = UUID(uuidString: text) else { return nil }
         return uuid.uuidString.lowercased()
+    }
+
+    /// The text unchanged when it is a lowercase UUID of any version. Grok Build
+    /// keeps a session it was given with `-s` under that id as given, as Heeler
+    /// starts it on herdr-core (ADR 0034).
+    static func lowercaseUUID(_ text: String) -> String? {
+        guard
+            text.utf8.count == 36,
+            text.wholeMatch(of: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/) != nil
+        else { return nil }
+        return text
     }
 
     /// The text unchanged when it is a lowercase UUIDv7, the only id Grok

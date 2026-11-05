@@ -59,6 +59,18 @@ struct ChatStopPlan: Sendable {
         }
     }
 
+    /// The plan on a herdr-core Template's Terminal: the Template's stop key, with
+    /// the program's guard, window and gap as they are (ADR 0035). What Stop says
+    /// is the core's, since the key may not be Esc. The core's own window is not:
+    /// it is shortened for a watch this path does not run.
+    func pressing(templateStopKey key: String) -> ChatStopPlan {
+        var plan = self
+        plan.keys = [key]
+        plan.wait.unconfirmedNotice = AgentStopWait.coreInterrupt.unconfirmedNotice
+        plan.accessibilityHint = AgentComposerInterrupt.coreHint
+        return plan
+    }
+
     /// OpenCode's interrupt resumes: a message waiting during the turn
     /// runs after it.
     private static let openCodeUnconfirmedNotice =

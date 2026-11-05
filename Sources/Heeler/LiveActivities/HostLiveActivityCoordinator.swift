@@ -1,11 +1,20 @@
 import Foundation
 import Observation
 
+/// Whether this device's registration lets a Host show a Live Activity. Herdr
+/// TUI's is always open: its activity needs the toggle, key and device token alone.
+enum LiveActivityGate: Sendable, Equatable {
+    case open
+    case closed
+    /// Still being read: no activity starts, and one already showing stays.
+    case unknown
+}
+
 /// Per-Host Live Activity state machine. The Console's Agent list is the
 /// source of truth while the app is foregrounded; after a 3-second settle
 /// the coordinator starts, updates, or ends one activity per Host. Push
-/// tokens are written to the Host registration file so the plugin can keep
-/// the activity alive after the app suspends.
+/// tokens are written to the Host registration file so the plugin, or a core
+/// Host's Host Helper, can keep the activity alive after the app suspends.
 @MainActor
 @Observable
 final class HostLiveActivityCoordinator {
@@ -17,6 +26,8 @@ final class HostLiveActivityCoordinator {
     @ObservationIgnored private let ceremony: NotificationRegistrationCeremony
     @ObservationIgnored private let deviceToken: @MainActor () -> APNSDeviceToken?
     @ObservationIgnored private let knownHostIDs: @MainActor () -> Set<Host.ID>
+    @ObservationIgnored private let supportsHost: @MainActor (Host.ID) -> Bool
+    @ObservationIgnored private let registrationGate: @MainActor (Host.ID) -> LiveActivityGate
     @ObservationIgnored private let hostDisplayName: @MainActor (Host.ID) -> String
     @ObservationIgnored private let isAwaitingSnapshot: @MainActor (Host.ID) -> Bool
     @ObservationIgnored private let connectionStatus: @MainActor (Host.ID) -> EventsSessionStatus?
@@ -80,6 +91,8 @@ final class HostLiveActivityCoordinator {
         hostDisplayName: @escaping @MainActor (Host.ID) -> String,
         isAwaitingSnapshot: @escaping @MainActor (Host.ID) -> Bool,
         connectionStatus: @escaping @MainActor (Host.ID) -> EventsSessionStatus?,
+        supportsHost: @escaping @MainActor (Host.ID) -> Bool = { _ in true },
+        registrationGate: @escaping @MainActor (Host.ID) -> LiveActivityGate = { _ in .open },
         pinnedPaneIDs: @escaping @MainActor (Host.ID) -> [String] = { _ in [] },
         rowLayout: @escaping @MainActor (Host.ID) -> AgentRowLayout? = { _ in nil },
         settleDuration: Duration = .seconds(3),
@@ -92,6 +105,8 @@ final class HostLiveActivityCoordinator {
         self.ceremony = ceremony ?? NotificationRegistrationCeremony(keys: keys)
         self.deviceToken = deviceToken
         self.knownHostIDs = knownHostIDs
+        self.supportsHost = supportsHost
+        self.registrationGate = registrationGate
         self.hostDisplayName = hostDisplayName
         self.isAwaitingSnapshot = isAwaitingSnapshot
         self.connectionStatus = connectionStatus
@@ -99,6 +114,11 @@ final class HostLiveActivityCoordinator {
         self.rowLayout = rowLayout
         self.settleDuration = settleDuration
         self.now = now
+    }
+
+    /// A Host waiting for its Server Kind stays outside this coordinator's inventory.
+    private func supportedHostIDs() -> Set<Host.ID> {
+        knownHostIDs().filter { supportsHost($0) }
     }
 
     func isEnabled(for hostID: Host.ID) -> Bool {
@@ -126,7 +146,7 @@ final class HostLiveActivityCoordinator {
     func start() {
         guard !didStart else { return }
         didStart = true
-        let known = knownHostIDs()
+        let known = supportedHostIDs()
         for (id, hostID) in controller.currentActivities() {
             if !known.contains(hostID) {
                 controller.end(id: id, finalContent: nil, immediate: true)
@@ -150,7 +170,7 @@ final class HostLiveActivityCoordinator {
     func agentsDidChange(_ agents: [ConsoleAgent]) {
         // A removed Host's Agents linger until the Console drops its
         // projection; they must not bring its activity back.
-        let known = knownHostIDs()
+        let known = supportedHostIDs()
         let grouped = Dictionary(
             grouping: agents.filter { known.contains($0.hostID) }, by: \.hostID)
         var hosts = Set(latestAgents.keys)
@@ -187,7 +207,7 @@ final class HostLiveActivityCoordinator {
     /// token writes.
     func reconcile() {
         guard didStart else { return }
-        let known = knownHostIDs()
+        let known = supportedHostIDs()
         let current = controller.currentActivities()
         let currentByID = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0.hostID) })
 
@@ -262,10 +282,20 @@ final class HostLiveActivityCoordinator {
         }
     }
 
+    /// A core Host's registration settled or moved: apply what it now allows, and
+    /// retry a token write that found no entry to hang on.
+    func registrationsDidChange() {
+        guard didStart else { return }
+        retryDirtyPipes(onlyIfConnected: true)
+        for hostID in Set(latestAgents.keys).union(sessions.keys) {
+            scheduleSettle(for: hostID)
+        }
+    }
+
     // MARK: Desire / settle
 
     private func scheduleSettle(for hostID: Host.ID) {
-        guard knownHostIDs().contains(hostID) else {
+        guard supportedHostIDs().contains(hostID) else {
             settleTasks.removeValue(forKey: hostID)?.cancel()
             return
         }
@@ -292,7 +322,7 @@ final class HostLiveActivityCoordinator {
     }
 
     private func apply(_ hostID: Host.ID) {
-        guard didStart, knownHostIDs().contains(hostID) else { return }
+        guard didStart, supportedHostIDs().contains(hostID) else { return }
         holdIfUnknown(hostID)
         if shouldDeferApply(for: hostID) { return }
         let desired = computeDesired(for: hostID)
@@ -339,6 +369,7 @@ final class HostLiveActivityCoordinator {
     private func desireBlocker(for hostID: Host.ID) -> String {
         if !controller.areEnabled { return "iOS has Live Activities disabled for Heeler" }
         if !preferences.isEnabled(for: hostID) { return "the per-Host toggle is off" }
+        if registrationGate(hostID) != .open { return "this device is not registered with the Host Helper" }
         if deviceToken() == nil { return "no push device token yet" }
         if notificationKey(for: hostID) == nil { return "no Notification Key for this Host" }
         return "no working, blocked, or done agents"
@@ -354,6 +385,7 @@ final class HostLiveActivityCoordinator {
     private func computeDesired(for hostID: Host.ID) -> AgentActivityDesire? {
         guard controller.areEnabled else { return nil }
         guard preferences.isEnabled(for: hostID) else { return nil }
+        guard registrationGate(hostID) == .open else { return nil }
         guard deviceToken() != nil else { return nil }
         guard notificationKey(for: hostID) != nil else { return nil }
         let agents = latestAgents[hostID] ?? []
@@ -376,7 +408,11 @@ final class HostLiveActivityCoordinator {
     /// loading, not all-idle. Covers cold-launch adoption and a reconnect
     /// that cleared `agentsByPane` before the next snapshot.
     private func shouldDeferApply(for hostID: Host.ID) -> Bool {
+        // A registration known to be closed ends the activity whatever the Agent
+        // list turns out to hold, and the Host may no longer have its token later.
+        if registrationGate(hostID) == .closed { return false }
         if isUnknownAgentInventory(hostID) { return true }
+        if registrationGate(hostID) == .unknown { return true }
         if sessions[hostID]?.awaitingFirstSnapshot == true { return true }
         return false
     }
@@ -518,7 +554,7 @@ final class HostLiveActivityCoordinator {
     private func enqueue(_ job: TokenJob, for hostID: Host.ID) {
         // A Host outside the catalog has nothing to write through, so a job
         // for it would only stay dirty and retry forever (#414).
-        guard didStart, knownHostIDs().contains(hostID) else { return }
+        guard didStart, supportedHostIDs().contains(hostID) else { return }
         var pipe = pipes[hostID] ?? TokenPipe()
         switch (pipe.pending, job) {
         case (.some(.set), .setPreferences), (.some(.clear), .setPreferences):
@@ -547,7 +583,7 @@ final class HostLiveActivityCoordinator {
             self.writerTasks[hostID] = nil
             // The Host left the catalog while this write was in flight: its
             // pipe stays gone instead of coming back dirty.
-            guard self.knownHostIDs().contains(hostID) else {
+            guard self.supportedHostIDs().contains(hostID) else {
                 self.dropTransientState(for: hostID)
                 return
             }
@@ -579,7 +615,7 @@ final class HostLiveActivityCoordinator {
         let writtenToken = writtenLiveActivityTokens[hostID]
         let diagnose = onDiagnostic
         do {
-            try await transports.withNotificationTransport(for: hostID) { [ceremony] transport in
+            try await transports.withNotificationFiles(for: hostID) { [ceremony] files in
                 try Task.checkCancellation()
                 await diagnose?(hostID, "transport acquired")
                 switch job {
@@ -587,21 +623,21 @@ final class HostLiveActivityCoordinator {
                     try await ceremony.setLiveActivityToken(
                         tokenHex: hex, startedAt: startedAt, hostID: hostID, deviceToken: token,
                         pinnedPaneIDs: pins, rowLayout: layout, hostName: hostName,
-                        over: transport,
+                        over: files,
                         diagnose: { event in await diagnose?(hostID, event) })
                 case .setPreferences:
                     try await ceremony.setLiveActivityPinnedPaneIDs(
                         pins, rowLayout: layout, hostName: hostName, hostID: hostID,
-                        deviceToken: token, over: transport)
+                        deviceToken: token, over: files)
                 case .clear:
                     try await ceremony.clearLiveActivityToken(
-                        writtenToken, hostID: hostID, deviceToken: token, over: transport)
+                        writtenToken, hostID: hostID, deviceToken: token, over: files)
                 }
             }
             // A write that lands after its Host left the catalog records
             // nothing, even when its writer was cancelled and so never
             // reaches the writer's own catalog check.
-            guard knownHostIDs().contains(hostID) else { return true }
+            guard supportedHostIDs().contains(hostID) else { return true }
             switch job {
             case .set(let hex, _): writtenLiveActivityTokens[hostID] = hex
             case .clear: writtenLiveActivityTokens[hostID] = nil
@@ -631,7 +667,7 @@ final class HostLiveActivityCoordinator {
     }
 
     private func retryDirtyPipes(onlyIfConnected: Bool) {
-        let known = knownHostIDs()
+        let known = supportedHostIDs()
         for (hostID, pipe) in pipes where pipe.isDirty {
             guard known.contains(hostID) else {
                 pipes[hostID] = nil

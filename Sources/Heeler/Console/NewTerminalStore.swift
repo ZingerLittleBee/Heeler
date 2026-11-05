@@ -62,6 +62,8 @@ final class NewTerminalStore {
     private let remoteHome: (Host.ID) async throws -> String
     private let create: (Destination, Host.ID) async throws -> ShellTerminalIdentity
     private let awaitTerminal: (ShellTerminalIdentity, Host.ID) async -> ConsoleTerminal?
+    /// Whether a Host's desktop app could apply a typed Workspace name now.
+    private let offersDesktopAppNames: (Host.ID) -> Bool
 
     init(
         hosts: [Host],
@@ -71,8 +73,10 @@ final class NewTerminalStore {
         directory: @escaping (Host.ID, String) -> String?,
         remoteHome: @escaping (Host.ID) async throws -> String,
         create: @escaping (Destination, Host.ID) async throws -> ShellTerminalIdentity,
-        awaitTerminal: @escaping (ShellTerminalIdentity, Host.ID) async -> ConsoleTerminal?
+        awaitTerminal: @escaping (ShellTerminalIdentity, Host.ID) async -> ConsoleTerminal?,
+        offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false }
     ) {
+        self.offersDesktopAppNames = offersDesktopAppNames
         self.hosts = hosts
         self.workspacesProvider = workspaces
         self.directory = directory
@@ -89,6 +93,17 @@ final class NewTerminalStore {
     var workspaces: [ConsoleWorkspace] {
         guard let selectedHostID else { return [] }
         return workspacesProvider(selectedHostID).sorted { $0.order < $1.order }
+    }
+
+    /// Whether the form asks for Workspace and tab names.
+    var offersWorkspaceAndTabNames: Bool {
+        hosts.first(where: { $0.id == selectedHostID })?.capabilities.tabNames != false
+    }
+
+    /// Whether New Workspace asks for a name. A herdr-core Host has none of its
+    /// own, so only while its desktop app can apply one.
+    var offersWorkspaceName: Bool {
+        offersWorkspaceAndTabNames || selectedHostID.map(offersDesktopAppNames) == true
     }
 
     var canSubmit: Bool {
@@ -143,7 +158,8 @@ final class NewTerminalStore {
     /// the one it vouches for; only when it reports none, or for a
     /// name-only New Workspace, does the Host's home directory stand in.
     private func destination(on hostID: Host.ID) async throws -> Destination {
-        let label = Self.nonEmptyTrimmed(tabLabel)
+        let offersNames = hosts.first(where: { $0.id == hostID })?.capabilities.tabNames != false
+        let label = offersNames ? Self.nonEmptyTrimmed(tabLabel) : nil
         switch target {
         case .existingWorkspace:
             guard let workspaceID = selectedWorkspaceID else {
@@ -157,7 +173,9 @@ final class NewTerminalStore {
             let browsed = Self.nonEmptyTrimmed(newWorkspaceDirectory)
             let cwd = if let browsed { browsed } else { try await home(on: hostID) }
             return .newWorkspace(
-                NewWorkspaceSpec(directory: cwd, label: Self.nonEmptyTrimmed(newWorkspaceLabel)),
+                NewWorkspaceSpec(
+                    directory: cwd,
+                    label: offersWorkspaceName ? Self.nonEmptyTrimmed(newWorkspaceLabel) : nil),
                 tabLabel: label)
         }
     }

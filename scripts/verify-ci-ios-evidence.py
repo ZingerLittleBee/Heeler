@@ -27,16 +27,17 @@ SHARED = {
 SESSION = "HeelerSSHSessionE2ETests"
 DIRECT = "HeelerSSHDirectStreamLocalE2ETests"
 WEAK = "WeakNetworkE2ETests"
-FIXTURE_SUITES = SHARED | {SESSION, DIRECT, WEAK}
+CORE = "HerdrCoreTransportE2ETests"
+FIXTURE_SUITES = SHARED | {SESSION, DIRECT, WEAK, CORE}
 PACKAGE_SUITES = {
     "SessionDriverE2ETests", "KeyExchangeRetryTests", "DNSServiceAddressResolverTests",
     "SocketConnectorTests", "SSHDiagnosticsTests",
 }
 LAYOUTS = {
     "sharded": {("app", "session-weak"): {SESSION, WEAK},
-                ("app", "transport"): {DIRECT, "SharedFixtureE2ETests"},
+                ("app", "transport"): {DIRECT, CORE, "SharedFixtureE2ETests"},
                 ("app", "ordinary"): {"full-lane"}},
-    "serial": {("app", "all"): {SESSION, DIRECT, "SharedFixtureE2ETests", "full-lane"}},
+    "serial": {("app", "all"): {SESSION, DIRECT, CORE, "SharedFixtureE2ETests", "full-lane"}},
 }
 RUN_NODES = {"Arguments", "Repetition", "Test Case Run", "Device", "Test Plan Configuration"}
 NODE_TYPES = RUN_NODES | {
@@ -393,8 +394,8 @@ def verify_records(records: list[dict], layout: str) -> tuple[set[str], set[str]
                         "Full ordinary lane executed fewer than 769 tests")
             else:
                 count, suites = {
-                    SESSION: (13, {SESSION}), DIRECT: (9, {DIRECT}), WEAK: (11, {WEAK}),
-                    "SharedFixtureE2ETests": (132, SHARED | {WEAK}) if layout == "serial" else (121, SHARED),
+                    SESSION: (13, {SESSION}), DIRECT: (9, {DIRECT}), WEAK: (11, {WEAK}), CORE: (9, {CORE}),
+                    "SharedFixtureE2ETests": (137, SHARED | {WEAK}) if layout == "serial" else (126, SHARED),
                 }[phase]
                 require(len(tests) == count and memberships == suites, f"Fixture suite/count contract changed: {phase}")
                 require(value["summary"]["skipped"] == 0, f"Mandatory fixture tests skipped: {phase}")

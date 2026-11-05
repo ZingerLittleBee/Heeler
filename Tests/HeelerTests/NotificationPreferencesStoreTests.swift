@@ -102,6 +102,60 @@ struct NotificationPreferencesStoreTests {
 
     // MARK: Reflecting the Host's truth
 
+    @Test func anUnconfirmedHostIsSkippedUntilConfirmedAsHerdrTUI() async throws {
+        let catalog = HostStore(volatileHosts: [
+            Host(address: "box.example", username: "dev", serverKind: .unconfirmed)
+        ])
+        let unconfirmed = try #require(catalog.hosts.first)
+        let transport = ScriptedTransport()
+        let store = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(transports: [unconfirmed.id: transport]),
+            deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+
+        store.setHosts(catalog.hosts)
+        await store.refresh()
+        await store.setNotificationsEnabled(true, for: unconfirmed)
+
+        #expect(store.hosts.isEmpty)
+        #expect(store.states[unconfirmed.id] == nil)
+        #expect(await transport.notificationRegistrationReads == 0)
+        #expect(await transport.notificationRegistration == nil)
+
+        let confirmed = try catalog.confirmServerKind(.herdrTUI, for: unconfirmed.id)
+        store.setHosts(catalog.hosts)
+        await store.refresh()
+
+        #expect(store.hosts == [confirmed])
+        #expect(await transport.notificationRegistrationReads == 1)
+    }
+
+    @Test(arguments: ["removed", "edited", "returned"])
+    func catalogChangesInvalidateAnOldReadEvenIfTheSameHostReturns(_ change: String) async throws {
+        let transport = ScriptedTransport()
+        let provider = CompletionHoldingNotificationProvider(transport: transport)
+        let store = NotificationPreferencesStore(
+            transports: provider, deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host])
+        let hold = CancellablePhaseGate()
+        await provider.holdNextCompletion(on: hold)
+        let refresh = Task { await store.refresh() }
+        try await hold.waitUntilEntered()
+        if change == "edited" {
+            var edited = host
+            edited.sessionName = "other"
+            store.setHosts([edited])
+        } else {
+            store.setHosts([])
+            if change == "returned" { store.setHosts([host]) }
+        }
+        await hold.release()
+        await refresh.value
+        #expect(store.states[host.id] == nil)
+        #expect(store.confirmedTriggers(for: host.id) == nil)
+    }
+
     @Test func refreshReflectsAnUnregisteredHost() async throws {
         let store = makeStore(transport: ScriptedTransport())
 
@@ -752,5 +806,32 @@ private final class StallingTransportProvider: NotificationTransportProvider {
         borrowCount.withLock { $0 += 1 }
         try await Task.sleep(for: .seconds(3600))
         throw CancellationError()
+    }
+}
+
+/// Pauses after an operation has produced its old result, so tests can edit
+/// the catalog before that result is delivered to the preferences store.
+private actor CompletionHoldingNotificationProvider: NotificationTransportProvider {
+    let transport: any Transport
+    private var completionHold: CancellablePhaseGate?
+
+    init(transport: any Transport) { self.transport = transport }
+
+    func holdNextCompletion(on gate: CancellablePhaseGate) { completionHold = gate }
+
+    func withNotificationTransport<Value: Sendable>(
+        for hostID: Host.ID,
+        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        let after = completionHold
+        completionHold = nil
+        let result: Result<Value, any Error>
+        do {
+            result = .success(try await operation(transport))
+        } catch {
+            result = .failure(error)
+        }
+        if let after { await after.enterAndHold() }
+        return try result.get()
     }
 }

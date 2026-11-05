@@ -14,6 +14,8 @@ protocol ChatTranscriptSource: Sendable {
     var head: Data? { get }
     /// How far the conversation has been read.
     var readOffset: UInt64 { get }
+    /// Whether the last look saw records it did not read yet.
+    var hasUnreadRecords: Bool { get }
     /// Where the earliest loaded record starts; 0 once the first record is
     /// loaded, nil while that is not known yet.
     var windowStart: UInt64? { get }

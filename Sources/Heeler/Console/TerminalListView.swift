@@ -35,6 +35,10 @@ struct TerminalListView: View {
     /// 44-point target stays.
     private static let workspaceHeaderPadding: CGFloat = 3
 
+    private func capabilities(of terminal: ConsoleTerminal) -> HostCapabilities {
+        console.capabilities(for: terminal.hostID)
+    }
+
     private var projection: TerminalListProjection {
         presentation.projection(hosts: hosts, console: console)
     }
@@ -170,8 +174,10 @@ struct TerminalListView: View {
                                 isSelected: isShownSelected(terminal)))
                 }
             }
-            newTerminalRow(workspace)
-                .modifier(TerminalCardRow(isFirst: terminals.isEmpty, isLast: true))
+            if console.capabilities(for: workspace.id.hostID).startsTerminals {
+                newTerminalRow(workspace)
+                    .modifier(TerminalCardRow(isFirst: terminals.isEmpty, isLast: true))
+            }
         }
     }
 
@@ -191,9 +197,13 @@ struct TerminalListView: View {
         } description: {
             Text("Shell panes on your Hosts appear here, grouped by Workspace.")
         } actions: {
-            Button("New Terminal", action: onNewTerminal)
-                .buttonStyle(.borderedProminent)
-                .hoverEffect(.highlight)
+            if !hosts.offeringNewItem(
+                listsTerminals: true, capabilities: { console.capabilities(for: $0.id) }
+            ).isEmpty {
+                Button("New Terminal", action: onNewTerminal)
+                    .buttonStyle(.borderedProminent)
+                    .hoverEffect(.highlight)
+            }
         }
     }
 
@@ -210,8 +220,10 @@ struct TerminalListView: View {
                 }
                 // Every card ends in New Terminal, clear of the header's
                 // collapse control: a mistap there would open a real tab.
-                newTerminalRow(workspace)
-                    .listRowBackground(cardSlice(isSelected: false))
+                if console.capabilities(for: workspace.id.hostID).startsTerminals {
+                    newTerminalRow(workspace)
+                        .listRowBackground(cardSlice(isSelected: false))
+                }
             }
         } header: {
             TerminalWorkspaceHeader(
@@ -250,30 +262,28 @@ struct TerminalListView: View {
     private func terminalRow(
         _ terminal: ConsoleTerminal, showsTab: Bool, liftsCard: Bool = false
     ) -> some View {
-        NavigationLink(value: ConsoleSelection.terminal(terminal.id)) {
-            TerminalRowView(terminal: terminal, showsTab: showsTab)
-                // Across the row, as an Agent's card is: the context menu
-                // lifts a card as wide as the row it measures.
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .modifier(ConsoleRowSelectionContent())
-        }
+        terminalRowContent(terminal, showsTab: showsTab)
         .hoverEffect(.highlight)
         .modifier(
             ConsoleRowContextMenu(liftsCard: liftsCard) {
                 Section(
                     "\(terminal.displayTabTitle) · \(terminal.workspaceLabel ?? "Workspace") · \(terminal.hostName)"
                 ) {
-                    if terminal.cwd.hasPrefix("/") {
-                        Button("New Terminal Here", systemImage: "plus.rectangle") {
-                            create(beside: terminal)
+                    if capabilities(of: terminal).startsIn(terminal.cwd) {
+                        if capabilities(of: terminal).startsTerminals {
+                            Button("New Terminal Here", systemImage: "plus.rectangle") {
+                                create(beside: terminal)
+                            }
                         }
                         Button("Copy Path", systemImage: "doc.on.doc") {
                             UIPasteboard.general.string = terminal.cwd
                         }
                     }
                 }
-                Button(closeLabel(for: terminal), systemImage: "trash", role: .destructive) {
-                    pendingClose = terminal
+                if capabilities(of: terminal).closeTab {
+                    Button(closeLabel(for: terminal), systemImage: "trash", role: .destructive) {
+                        pendingClose = terminal
+                    }
                 }
             } preview: {
                 TerminalRowView(terminal: terminal, showsTab: showsTab)
@@ -281,12 +291,25 @@ struct TerminalListView: View {
         // Every close asks first. No `.destructive` role: List would animate
         // the row out while the confirmation is still up.
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button {
-                pendingClose = terminal
-            } label: {
-                Label("Close", systemImage: "trash")
+            if capabilities(of: terminal).closeTab {
+                Button {
+                    pendingClose = terminal
+                } label: {
+                    Label("Close", systemImage: "trash")
+                }
+                .tint(.red)
             }
-            .tint(.red)
+        }
+    }
+
+    /// A link to the Terminal's detail.
+    private func terminalRowContent(_ terminal: ConsoleTerminal, showsTab: Bool) -> some View {
+        NavigationLink(value: ConsoleSelection.terminal(terminal.id)) {
+            TerminalRowView(terminal: terminal, showsTab: showsTab)
+                // Across the row, as an Agent's card is: the context menu
+                // lifts a card as wide as the row it measures.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .modifier(ConsoleRowSelectionContent())
         }
     }
 
@@ -427,7 +450,8 @@ struct TerminalRowView: View {
     var body: some View {
         let presentation = presentation
         HStack(spacing: 12) {
-            TerminalTile(systemImage: "terminal", tint: .secondary)
+            TerminalTile(
+                systemImage: terminal.isRestarting ? "arrow.clockwise" : "terminal", tint: .secondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(presentation.title)
                     .font(.subheadline.monospaced().weight(.medium))
@@ -443,7 +467,7 @@ struct TerminalRowView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(presentation.title)
         .accessibilityValue(
-            "\(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd), \(terminal.displayTabTitle)"
+            "\(terminal.isRestarting ? "Restarting, " : "")\(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd), \(terminal.displayTabTitle)"
         )
     }
 }

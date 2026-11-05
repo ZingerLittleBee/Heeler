@@ -124,8 +124,16 @@ enum AgentActionMenuPolicy {
         actions: AgentComposerActions
     ) -> Bool {
         switch item {
+        case .addImage:
+            actions.addImage != nil
         case .pasteImage:
             actions.pasteImage != nil
+        case .addFile:
+            actions.addFile != nil
+        case .newAgent:
+            actions.startAgent != nil
+        case .closeAgent:
+            actions.closeAgent != nil
         case .showChat:
             actions.showChat != nil
         case .showAgentTerminal:
@@ -136,6 +144,10 @@ enum AgentActionMenuPolicy {
             actions.showSkills != nil
         case .worktreeDetails:
             actions.showWorktreeDetails != nil
+        case .renameAgent:
+            actions.renameAgent != nil
+        case .renameWorkspace:
+            actions.renameWorkspace != nil
         default:
             true
         }
@@ -170,11 +182,11 @@ enum AgentActionMenuPolicy {
         case .backToConsole:
             actions.backToConsole()
         case .addImage:
-            actions.addImage()
+            actions.addImage?()
         case .pasteImage:
             actions.pasteImage?()
         case .addFile:
-            actions.addFile()
+            actions.addFile?()
         case .showChat:
             actions.showChat?()
         case .showAgentTerminal:
@@ -184,7 +196,7 @@ enum AgentActionMenuPolicy {
         case .changes:
             actions.showChanges?()
         case .newAgent:
-            actions.startAgent()
+            actions.startAgent?()
         case .skills:
             actions.showSkills?()
         case .snippets:
@@ -192,11 +204,11 @@ enum AgentActionMenuPolicy {
         case .worktreeDetails:
             actions.showWorktreeDetails?()
         case .renameAgent:
-            actions.renameAgent()
+            actions.renameAgent?()
         case .renameWorkspace:
-            actions.renameWorkspace()
+            actions.renameWorkspace?()
         case .closeAgent:
-            actions.closeAgent()
+            actions.closeAgent?()
         }
     }
 

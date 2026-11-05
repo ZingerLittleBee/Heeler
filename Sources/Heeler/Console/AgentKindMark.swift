@@ -112,9 +112,10 @@ private struct AgentKindMarkImage: View {
 }
 
 /// An Agents list row's lead: the mark on a disc, inside a ring that is the
-/// Agent's status. Working's ring is an open arc that turns; Done and
-/// Blocked close it in their colors, and Blocked's breaks into dashes where
-/// color must not carry it alone; Idle and any other status keep a hairline.
+/// Agent's status. Working's ring is an open arc that turns; Done, Blocked and
+/// Error close it in their colors, and Blocked's and Error's break into dashes
+/// where color must not carry them alone; Idle and any other status keep a
+/// hairline.
 struct AgentStatusAvatar: View {
     let mark: AgentKindMark
     let status: AgentStatus
@@ -131,7 +132,7 @@ struct AgentStatusAvatar: View {
         switch status {
         case .working: .turning
         case .done: .closed
-        case .blocked: differentiatingWithoutColor ? .dashed : .closed
+        case .blocked, .error: differentiatingWithoutColor ? .dashed : .closed
         default: .hairline
         }
     }

@@ -1,13 +1,17 @@
 import UIKit
 
 extension AgentStatus {
+    /// A reported core failure asks for attention without claiming that an
+    /// approval dialog is blocking input. Keep it distinct from `.blocked`.
+    static let error = AgentStatus(rawValue: "error")
+
     /// The one status palette in the app, in two roles: `tintUIColor` is the
     /// wash (low-opacity capsule fills), `inkUIColor` the foreground (badge
     /// text, the switcher's dot). Both read from the same palette, so a
     /// colour never means two things.
     var tintUIColor: UIColor {
         switch self {
-        case .blocked: AgentStatusPalette.red
+        case .blocked, .error: AgentStatusPalette.red
         case .done: AgentStatusPalette.green
         case .working: AgentStatusPalette.yellow
         // Idle, Unknown, and anything this build cannot read: not asking for
@@ -21,7 +25,7 @@ extension AgentStatus {
     /// Latte cannot use the wash directly.
     var inkUIColor: UIColor {
         switch self {
-        case .blocked: AgentStatusPalette.redInk
+        case .blocked, .error: AgentStatusPalette.redInk
         case .done: AgentStatusPalette.greenInk
         case .working: AgentStatusPalette.yellowInk
         default: AgentStatusPalette.mutedInk

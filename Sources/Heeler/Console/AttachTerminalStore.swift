@@ -6,18 +6,56 @@ typealias TerminalSessionOperation =
 typealias TerminalSessionRunner =
     @Sendable (TerminalAttachRequest, TerminalSessionHandler) async throws -> Void
 
+/// What a runner found became of the program under an attach. Only a Server Kind
+/// that reports programs apart from their attaches throws these (ADR 0032).
+enum TerminalProgramEnd: Error, Equatable {
+    /// A new program runs at the same address, so the attach can come back.
+    case restarted
+    /// The program exited and its Terminal ended for good.
+    case finished
+}
+
+/// The core a terminal pipeline first joined, across every attach and store it
+/// takes. Its screen and any input on it belong to that core's Terminal. A detail
+/// holds one from the moment it opens, naming the core whose row it opened on, and
+/// every address-keyed action it takes keeps to it (ADR 0031).
+@MainActor
+final class TerminalCorePin {
+    private var joined: String?
+
+    init(joined: String? = nil) {
+        self.joined = joined
+    }
+
+    func admits(_ coreID: String) -> Bool {
+        guard let joined else {
+            joined = coreID
+            return true
+        }
+        return joined == coreID
+    }
+
+    func keepsToSameCore(as other: TerminalCorePin) -> Bool {
+        joined == other.joined
+    }
+}
+
 struct TerminalSessionHandler: Sendable {
     private let operation: TerminalSessionOperation
     private let transportReady: @MainActor @Sendable (UInt64) -> Void
+    private let programLost: @MainActor @Sendable () -> Void
+    private var coreAdmission: @MainActor @Sendable (String) -> Bool = { _ in true }
     #if DEBUG
     private let traceEvents: AttachRestorationTraceEvents?
     #endif
 
     init(
         transportReady: @escaping @MainActor @Sendable (UInt64) -> Void = { _ in },
+        programLost: @escaping @MainActor @Sendable () -> Void = {},
         _ operation: @escaping TerminalSessionOperation
     ) {
         self.transportReady = transportReady
+        self.programLost = programLost
         self.operation = operation
         #if DEBUG
         traceEvents = nil
@@ -27,10 +65,12 @@ struct TerminalSessionHandler: Sendable {
     #if DEBUG
     init(
         transportReady: @escaping @MainActor @Sendable (UInt64) -> Void = { _ in },
+        programLost: @escaping @MainActor @Sendable () -> Void = {},
         traceEvents: AttachRestorationTraceEvents,
         _ operation: @escaping TerminalSessionOperation
     ) {
         self.transportReady = transportReady
+        self.programLost = programLost
         self.traceEvents = traceEvents
         self.operation = operation
     }
@@ -39,6 +79,26 @@ struct TerminalSessionHandler: Sendable {
     @MainActor
     func transportDidBecomeReady(_ generation: UInt64) {
         transportReady(generation)
+    }
+
+    /// Whether this pipeline may join a Terminal of this core. An address means
+    /// another Terminal on another core, whatever a surface already shows.
+    @MainActor
+    func admitsCore(_ coreID: String) -> Bool {
+        coreAdmission(coreID)
+    }
+
+    /// This handler, for a pipeline `pin` keeps to the one core it first joined.
+    func keeping(to pin: TerminalCorePin) -> TerminalSessionHandler {
+        var handler = self
+        handler.coreAdmission = { pin.admits($0) }
+        return handler
+    }
+
+    /// The Terminal has no program for now, and will get a new one.
+    @MainActor
+    func programWasLost() {
+        programLost()
     }
 
     #if DEBUG
@@ -199,6 +259,11 @@ final class AttachTerminalStore {
         /// The session ended remotely (clean detach or channel death); the
         /// message is user-facing and `retry()` reattaches.
         case ended(String)
+        /// A kept Terminal lost its program. The attach comes back on its own
+        /// once the new shell is up.
+        case restarting
+        /// The Terminal's program exited, so there is nothing to attach to.
+        case finished
         /// `stop()` was called; terminal.
         case stopped
     }
@@ -206,6 +271,8 @@ final class AttachTerminalStore {
     private(set) var status: Status = .waitingForSize
     /// The byte pipe the terminal view consumes.
     let feed = TerminalByteFeed()
+    /// What the remote program has asked of its terminal in this session.
+    var modes: TerminalModeTracker { feed.modes.tracker }
     /// What the screen identifies this pipeline's surface by. Owned by the
     /// store and unique for its lifetime, so a replacement is always a
     /// different surface to SwiftUI.
@@ -213,6 +280,14 @@ final class AttachTerminalStore {
 
     private let target: TerminalAttachTarget
     private let takeover: Bool
+    /// How the next attach joins a herdr-core Terminal.
+    private var nextViewer: TerminalViewerRole
+    /// Once output has reached this pipeline its surface holds the scrollback,
+    /// and a reattach asking for it again would repeat every line.
+    private var hasTakenOutput = false
+    /// Whether anyone is looking at this pipeline's surface. A hidden core
+    /// attach reports neither focus nor display facts.
+    private(set) var isViewed: Bool
     private let input: TerminalInputController
     private let observeOutput: @MainActor @Sendable (Data) -> Void
     private let finishOutput: @MainActor @Sendable () -> Void
@@ -232,11 +307,12 @@ final class AttachTerminalStore {
     /// What the current attach attempt acquired, nil until its runner hands
     /// it a Transport. Only a loss after acquisition is reattached.
     private var attemptTransportGeneration: UInt64?
-    /// A reattach still waiting for a Transport takes the Host's next one by
-    /// itself. One that already holds an older Transport never will, so its
-    /// owner must replace it when the generation moves on.
+    /// A reattach still waiting for a Transport, after a lost connection or a
+    /// kept restart, takes the Host's next one by itself. One that already holds
+    /// an older Transport never will, so its owner must replace it when the
+    /// generation moves on.
     var isAwaitingReattachTransport: Bool {
-        status == .reconnecting && attemptTransportGeneration == nil
+        (status == .reconnecting || status == .restarting) && attemptTransportGeneration == nil
     }
     private var stopRequested = false
     private var preservesPendingPasteOnStop = false
@@ -253,6 +329,7 @@ final class AttachTerminalStore {
 
     init(
         target: TerminalAttachTarget, takeover: Bool = false,
+        viewer: TerminalViewerRole = .interactive, isViewed: Bool = true,
         input: TerminalInputController = TerminalInputController(),
         transportGeneration: UInt64? = nil,
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
@@ -265,6 +342,8 @@ final class AttachTerminalStore {
     ) {
         self.target = target
         self.takeover = takeover
+        nextViewer = viewer
+        self.isViewed = isViewed
         self.input = input
         self.transportGeneration = transportGeneration
         self.observeOutput = observeOutput
@@ -272,6 +351,10 @@ final class AttachTerminalStore {
         self.transportReady = transportReady
         self.runDidFinish = runDidFinish
         self.runTerminal = runTerminal
+        feed.onDisplayFactsChange = { [weak self] facts in
+            guard let self, self.isViewed else { return }
+            self.session?.setPresence(.factsChanged(facts))
+        }
     }
 
     convenience init(
@@ -332,6 +415,12 @@ final class AttachTerminalStore {
     /// treat a byte handed to a sink object as proof that a frame was drawn.
     func didBecomeActive() {
         guard status == .live, let session, let cols, let rows, cols > 1 else { return }
+        if session.isCoreViewer {
+            // A core keeps painting to a viewer that went away for a moment;
+            // what it needs to hear is that this one is back.
+            if isViewed { session.setPresence(.viewed(feed.displayFacts)) }
+            return
+        }
         // A window-change only reaches the remote when the size actually
         // changes, so the nudge is a shrink followed by a restore. Both ride
         // the reliable input queue, in order, on the live channel; the
@@ -344,7 +433,15 @@ final class AttachTerminalStore {
     /// Reattaches after the session ended remotely.
     func retry() {
         guard case .ended = status, runTask == nil else { return }
+        nextViewer = .interactive
         start()
+    }
+
+    /// The surface came on or off screen while its session stays attached.
+    func setViewed(_ viewed: Bool) {
+        guard viewed != isViewed else { return }
+        isViewed = viewed
+        session?.setPresence(viewed ? .viewed(feed.displayFacts) : .hidden)
     }
 
     /// Ends the session by explicit close (only `end()` runs the channel's
@@ -396,6 +493,17 @@ final class AttachTerminalStore {
             attemptTransportGeneration = nil
             do {
                 try await attach(cols: cols, rows: rows)
+            } catch TerminalProgramEnd.restarted {
+                guard !stopRequested else { return }
+                // A new program, so nothing here counts against the link.
+                reattachesSinceLive = 0
+                status = .restarting
+                nextViewer = .resumed
+                continue
+            } catch TerminalProgramEnd.finished {
+                guard !stopRequested else { return }
+                status = .finished
+                return
             } catch {
                 guard !stopRequested else { return }
                 if status == .live { reattachesSinceLive = 0 }
@@ -404,6 +512,7 @@ final class AttachTerminalStore {
                 {
                     reattachesSinceLive += 1
                     status = .reconnecting
+                    nextViewer = .resumed
                     continue
                 }
                 status = .ended(Self.message(for: error))
@@ -416,14 +525,22 @@ final class AttachTerminalStore {
     }
 
     private func attach(cols: Int, rows: Int) async throws {
+        let viewer = isViewed ? nextViewer : .resumed
+        // A viewer back from a dropped line takes the size only once someone
+        // acts on it. One attached hidden that came into view while it was
+        // opening is someone acting on it.
+        let reportsOnceOpen = !isViewed || viewer == .interactive
         let request = TerminalAttachRequest(
-            target: target, takeover: takeover, cols: cols, rows: rows)
+            target: target, takeover: takeover, viewer: viewer,
+            displayFacts: isViewed ? feed.displayFacts : nil,
+            surfaceHasHistory: hasTakenOutput, cols: cols, rows: rows)
         let operation: TerminalSessionOperation = { [weak self] session in
             guard let self else {
                 await session.end()
                 return
             }
-            try await self.consume(session, initialCols: cols, initialRows: rows)
+            try await self.consume(
+                session, reportsOnceOpen: reportsOnceOpen, initialCols: cols, initialRows: rows)
         }
         let transportReady: @MainActor @Sendable (UInt64) -> Void = { [weak self] generation in
             guard let self else { return }
@@ -435,15 +552,21 @@ final class AttachTerminalStore {
             self.restorationTrace.emit(.transportAcquired, generation: generation)
             #endif
         }
+        let programLost: @MainActor @Sendable () -> Void = { [weak self] in
+            guard let self, !self.stopRequested else { return }
+            self.status = .restarting
+        }
         #if DEBUG
         let handler = TerminalSessionHandler(
             transportReady: transportReady,
+            programLost: programLost,
             traceEvents: AttachRestorationTraceEvents(
                 trace: restorationTrace,
                 generation: { [weak self] in self?.acquiredTransportGeneration }),
             operation)
         #else
-        let handler = TerminalSessionHandler(transportReady: transportReady, operation)
+        let handler = TerminalSessionHandler(
+            transportReady: transportReady, programLost: programLost, operation)
         #endif
         try await runTerminal(request, handler)
     }
@@ -458,13 +581,14 @@ final class AttachTerminalStore {
     /// can carry a reattach.
     private static func isConnectionLoss(_ error: any Error) -> Bool {
         switch error as? TransportError {
-        case .sshUnreachable, .timedOut, .cancelled: true
+        case .sshUnreachable, .timedOut, .cancelled, .herdrCoreInventoryStale: true
         default: false
         }
     }
 
     private func consume(
         _ session: TerminalAttachSession,
+        reportsOnceOpen: Bool,
         initialCols: Int,
         initialRows: Int
     ) async throws {
@@ -474,26 +598,34 @@ final class AttachTerminalStore {
             return
         }
         self.session = session
+        // A new attach sets its own modes; the old attach's are not its.
+        feed.modes.reset()
         func beginInput() -> TerminalInputController.SessionGeneration {
             let generation = input.beginSession(
                 writer: { data in session.send(data) },
                 scroller: { sequence, rows in
                     session.scroll(sequence, rows: rows)
                 },
-                discardPendingScroll: { session.discardPendingScroll() })
+                discardPendingScroll: { session.discardPendingScroll() },
+                acknowledgedWriter: { data in try await session.sendAcknowledged(data) })
             self.inputGeneration = generation
             return generation
         }
         // A reattach opens its channel while the screen still shows the lost
-        // session. A key typed at that screen would answer whatever the pane has
-        // moved on to, so its input begins with the new output.
-        var inputGeneration = status == .reconnecting ? nil : beginInput()
+        // session, and a kept restart shows the program that ended. A key typed
+        // at that screen would answer whatever the pane has moved on to, so its
+        // input begins with the new output.
+        var inputGeneration =
+            status == .reconnecting || status == .restarting ? nil : beginInput()
         if let latestCols = cols, let latestRows = rows,
             latestCols != initialCols || latestRows != initialRows
         {
             // The view resized while the channel was coming up; catch the
             // remote PTY up to the latest geometry.
             session.resize(cols: latestCols, rows: latestRows)
+        }
+        if isViewed, reportsOnceOpen {
+            session.setPresence(.viewed(feed.displayFacts))
         }
 
         do {
@@ -503,7 +635,7 @@ final class AttachTerminalStore {
                 // noise, so an open channel with no output yet is still
                 // connecting. This does not prove that a renderer presented
                 // the bytes on screen.
-                if status == .connecting || status == .reconnecting {
+                if status == .connecting || status == .reconnecting || status == .restarting {
                     let liveGeneration = inputGeneration ?? beginInput()
                     inputGeneration = liveGeneration
                     status = .live
@@ -513,7 +645,11 @@ final class AttachTerminalStore {
                 restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)
                 #endif
                 observeOutput(bytes)
-                feed.write(bytes)
+                hasTakenOutput = true
+                feed.write(bytes, consumed: { session.outputConsumed($0) })
+                if let inputGeneration, modes.hasNamedWin32InputMode {
+                    input.sessionDidPaint(inputGeneration)
+                }
             }
         } catch {
             finishSession(inputGeneration)

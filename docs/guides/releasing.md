@@ -29,7 +29,7 @@ for local inspection, and `make plugin` remains independent.
 
 The implementation is [testflight.py](../../scripts/testflight.py) and
 [release.yml](../../.github/workflows/release.yml). The rationale is
-[ADR 0031](../adr/0031-testflight-build-tags.md); the earlier
+[ADR 0038](../adr/0038-testflight-build-tags.md); the earlier
 [research](../research/app-store-build-tags.md) preserves the alternatives.
 
 ## Candidate identity and notes
@@ -283,7 +283,9 @@ The branch contains runtime files plus the repository license, not the whole
 app. [publish-plugin.sh](../../scripts/publish-plugin.sh) assembles a commit on
 `origin/main`, checks its version and runtime tree, runs `npm ci` and tests,
 then asks before appending a commit and pushing without force. Earlier commits
-remain installable. Development and tests stay under `plugin/` on `main`.
+remain installable. Development and tests stay under `plugin/` on `main`;
+`plugin/helper/` never reaches the branch, since the Host Helper ships inside
+the app.
 
 When the app needs a new plugin, bump every version listed in the plugin
 README's "Releasing a plugin version", land it, and run `make plugin` first.

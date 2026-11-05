@@ -82,6 +82,16 @@ enum EventsSessionStatus: Sendable, Equatable {
     case ended
 }
 
+extension EventsSessionStatus {
+    /// This status as a registration read cares about it. A stopped core's next
+    /// retry changes nothing a read could find, and it retries for as long as the
+    /// core stays stopped, so its count and delay do not count as a change.
+    var forRegistrationRead: EventsSessionStatus {
+        guard case .reconnecting(_, _, let failure) = self, case .herdrCoreNotRunning = failure else { return self }
+        return .reconnecting(attempt: 0, delay: .zero, failure: failure)
+    }
+}
+
 /// One element of the session's update stream: status transitions and events
 /// interleaved in the order they happened.
 enum EventsSessionUpdate: Sendable, Equatable {

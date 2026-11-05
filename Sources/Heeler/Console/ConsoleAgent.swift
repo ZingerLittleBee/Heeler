@@ -37,6 +37,9 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// Trailing terminal output (`pane.read`, ANSI stripped), fetched after
     /// snapshots and status changes; nil until the first read lands.
     var lastOutputSnippet: String?
+    /// Set for a core Host's rows: its Terminals can start in a Windows directory.
+    /// A Herdr TUI Host's on Windows have no such offer.
+    var startsTerminalsInWindowsDirectories = false
     /// Only the resolved directory from the latest PaneInfo, so frequent
     /// terminal-title updates do not change the Agent's value.
     private var paneDirectory: String?
@@ -254,16 +257,16 @@ extension AgentStatus {
         self == .unknown ? nil : rawValue.capitalized
     }
 
-    /// Console sort bucket: Blocked > Done > Working > Idle. The order tracks
-    /// how much of the user's attention each status is asking for — Blocked
-    /// has stopped and is waiting on an answer, Done has a result to read,
+    /// Console sort bucket: Blocked/Error > Done > Working > Idle. The order
+    /// tracks how much attention each status asks for: Blocked needs an
+    /// answer, Error reports a failure, Done has a result to read,
     /// Working needs nothing, Idle least of all. Unknown and any status this
     /// build does not recognize (herdr's API has no stability guarantee)
     /// share the bottom bucket — a status we cannot interpret is not
     /// actionable, so it must not outrank one we can.
     var consoleSortBucket: Int {
         switch self {
-        case .blocked: 0
+        case .blocked, .error: 0
         case .done: 1
         case .working: 2
         case .idle: 3
@@ -273,8 +276,8 @@ extension AgentStatus {
 }
 
 extension [ConsoleAgent] {
-    /// Pins always lead by recency. Snapshot policy controls each Host's
-    /// remaining Agents; absent snapshots retain the legacy priority order.
+    /// Pins always lead by recency. `sortByHost` controls each Host's remaining
+    /// Agents; a Host absent from it retains the legacy priority order.
     /// Space order uses stable Host blocks even in the flat presentation.
     func consoleSorted(
         sortByHost: [Host.ID: AgentPanelSort] = [:],

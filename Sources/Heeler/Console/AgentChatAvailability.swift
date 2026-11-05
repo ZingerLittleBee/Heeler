@@ -4,8 +4,9 @@ import Foundation
 /// Agent program records of its conversation, so it needs a program with a
 /// transcript adapter (`ChatTranscriptAdapter.standard(for:)`) and a Host
 /// known to be POSIX: transcript files are found through POSIX home paths, a
-/// store is read by a POSIX shell script (ADR 0025), and native Windows Hosts
-/// are out of scope. A platform not learned yet hides the entry rather than
+/// store is read by a POSIX shell script (ADR 0025). Of native Windows Hosts only
+/// a herdr-core one opens Chat, for the programs `HostCapabilities` lists
+/// (ADR 0034). A platform not learned yet hides the entry rather than
 /// offering a Chat whose first read would fail. A program with no adapter yet
 /// is neither offered nor prefetched, so its `ChatProgram` case can land
 /// before its adapter.
@@ -18,10 +19,10 @@ enum AgentChatAvailability {
     }
 
     static func program(
-        for agent: Agent, platform: HostPlatform?,
+        for agent: Agent, platform: HostPlatform?, isNativeWindowsCore: Bool = false,
         hasAdapter: (ChatProgram) -> Bool = AgentChatAvailability.hasStandardAdapter
     ) -> ChatProgram? {
-        guard platform == .posix, let program = ChatProgram(rawValue: agent.kind), hasAdapter(program) else {
+        guard platform == .posix || (platform == .nativeWindows && isNativeWindowsCore), let program = ChatProgram(rawValue: agent.kind), hasAdapter(program) else {
             return nil
         }
         return program

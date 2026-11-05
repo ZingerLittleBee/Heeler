@@ -1,0 +1,277 @@
+{
+  "program": "omp",
+  "version": "omp/18.13.3",
+  "core": "0.1.13",
+  "source": "Oh My Pi with no extension: its breadcrumb, session files, open file and session lock, past the setup wizard's skip",
+  "method": "Live in a throwaway Lima VM (Ubuntu 24.04.4, Linux 6.8 aarch64), herdr-core 0.1.13 started by absolute path under a unique HC_SESSION. The model was a local fake on 127.0.0.1 with a dummy key, and nothing was signed in; this is not hc-lab and not a signed-in account.",
+  "timeline": [
+    {
+      "phase": "start_a",
+      "seconds": 0.0
+    },
+    {
+      "phase": "after_startup",
+      "seconds": 6.08
+    },
+    {
+      "phase": "send_first",
+      "seconds": 6.12
+    },
+    {
+      "phase": "reply_seen",
+      "seconds": 6.72
+    },
+    {
+      "phase": "new_a",
+      "seconds": 7.75
+    },
+    {
+      "phase": "kill_a",
+      "seconds": 17.63
+    },
+    {
+      "phase": "start_b_reuse",
+      "seconds": 18.71
+    },
+    {
+      "phase": "end",
+      "seconds": 24.83
+    }
+  ],
+  "appearances": [
+    {
+      "seconds": 0.77,
+      "path": "/home/user/lab/iso/omp/home/.omp/agent/terminal-sessions/pts-0"
+    },
+    {
+      "seconds": 6.44,
+      "path": "/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-22-09-480Z_01900000-0000-7000-8000-000000000001.jsonl"
+    },
+    {
+      "seconds": 8.04,
+      "path": "/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-22-16-746Z_01900000-0000-7000-8000-000000000002.jsonl"
+    }
+  ],
+  "breadcrumbs": {
+    "terminal": "pts-0",
+    "states": [
+      {
+        "name": "at-prompt",
+        "text": "/home/user/lab/iso/projects/omp\n/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-22-09-480Z_01900000-0000-7000-8000-000000000001.jsonl\nfresh\ncwdstat 64769 1048610\n"
+      },
+      {
+        "name": "after-first-reply",
+        "text": "/home/user/lab/iso/projects/omp\n/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-22-09-480Z_01900000-0000-7000-8000-000000000001.jsonl\ncwdstat 64769 1048610\n"
+      },
+      {
+        "name": "after-new",
+        "text": "/home/user/lab/iso/projects/omp\n/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-22-16-746Z_01900000-0000-7000-8000-000000000002.jsonl\ncwdstat 64769 1048610\n"
+      },
+      {
+        "name": "after-second-reply",
+        "text": "/home/user/lab/iso/projects/omp\n/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-22-16-746Z_01900000-0000-7000-8000-000000000002.jsonl\ncwdstat 64769 1048610\n"
+      },
+      {
+        "name": "reused-terminal-next-process",
+        "text": "/home/user/lab/iso/projects/omp\n/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-22-28-239Z_01900000-0000-7000-8000-000000000003.jsonl\nfresh\ncwdstat 64769 1048610\n"
+      }
+    ]
+  },
+  "sessionFiles": {
+    "/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-22-09-480Z_01900000-0000-7000-8000-000000000001.jsonl": {
+      "titleSlot": {
+        "type": "title",
+        "v": 1,
+        "title": "<scrubbed>",
+        "source": "auto",
+        "updatedAt": "2026-11-01T07:22:15.213Z",
+        "pad": "                                                                                                                                                  "
+      },
+      "header": {
+        "type": "session",
+        "version": 3,
+        "id": "01900000-0000-7000-8000-000000000001",
+        "timestamp": "2026-11-01T07:22:09.480Z",
+        "cwd": "/home/user/lab/iso/projects/omp"
+      },
+      "lineTypes": [
+        "title",
+        "session",
+        "model_change",
+        "thinking_level_change",
+        "message",
+        "custom",
+        "message",
+        "title_change"
+      ]
+    },
+    "/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-22-16-746Z_01900000-0000-7000-8000-000000000002.jsonl": {
+      "titleSlot": {
+        "type": "title",
+        "v": 1,
+        "title": "<scrubbed>",
+        "source": "auto",
+        "updatedAt": "2026-11-01T07:22:25.023Z",
+        "pad": "                                                                                                                                                  "
+      },
+      "header": {
+        "type": "session",
+        "version": 3,
+        "id": "01900000-0000-7000-8000-000000000002",
+        "timestamp": "2026-11-01T07:22:16.746Z",
+        "cwd": "/home/user/lab/iso/projects/omp"
+      },
+      "lineTypes": [
+        "title",
+        "session",
+        "thinking_level_change",
+        "service_tier_change",
+        "message",
+        "custom",
+        "message",
+        "title_change"
+      ]
+    }
+  },
+  "scenes": [
+    {
+      "name": "at-prompt",
+      "processes": [
+        {
+          "pid": 9247,
+          "parent": 2630,
+          "name": "omp",
+          "start": "181933",
+          "argv": [
+            "bun",
+            "/home/user/lab/npm/bin/omp",
+            "--model",
+            "fake/fake-model"
+          ],
+          "environment": {
+            "HC_SCOPE": "181933-00000000000000000000000000000001"
+          },
+          "files": []
+        }
+      ]
+    },
+    {
+      "name": "after-first-reply",
+      "processes": [
+        {
+          "pid": 9247,
+          "parent": 2630,
+          "name": "omp",
+          "start": "181933",
+          "argv": [
+            "bun",
+            "/home/user/lab/npm/bin/omp",
+            "--model",
+            "fake/fake-model"
+          ],
+          "environment": {
+            "HC_SCOPE": "181933-00000000000000000000000000000001"
+          },
+          "files": [
+            "/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-22-09-480Z_01900000-0000-7000-8000-000000000001.jsonl"
+          ]
+        },
+        {
+          "pid": 9313,
+          "parent": 9247,
+          "name": "omp daemon brok",
+          "start": "182545",
+          "argv": [
+            "/home/user/lab/npm/lib/node_modules/bun/bin/bun.exe",
+            "/home/user/lab/npm/lib/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js",
+            "__omp_worker_daemon_broker"
+          ],
+          "environment": {
+            "HC_SCOPE": "181933-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 9350,
+          "parent": 9313,
+          "name": "bun.exe",
+          "start": "182586",
+          "argv": [
+            "/home/user/lab/npm/lib/node_modules/bun/bin/bun.exe",
+            "/home/user/lab/npm/lib/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js",
+            "__omp_worker_text_predict"
+          ],
+          "environment": {
+            "HC_SCOPE": "181933-00000000000000000000000000000001"
+          },
+          "files": []
+        }
+      ]
+    },
+    {
+      "name": "after-new",
+      "processes": [
+        {
+          "pid": 9247,
+          "parent": 2630,
+          "name": "omp",
+          "start": "181933",
+          "argv": [
+            "bun",
+            "/home/user/lab/npm/bin/omp",
+            "--model",
+            "fake/fake-model"
+          ],
+          "environment": {
+            "HC_SCOPE": "181933-00000000000000000000000000000001"
+          },
+          "files": [
+            "/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-22-16-746Z_01900000-0000-7000-8000-000000000002.jsonl"
+          ]
+        },
+        {
+          "pid": 9313,
+          "parent": 9247,
+          "name": "omp daemon brok",
+          "start": "182545",
+          "argv": [
+            "/home/user/lab/npm/lib/node_modules/bun/bin/bun.exe",
+            "/home/user/lab/npm/lib/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js",
+            "__omp_worker_daemon_broker"
+          ],
+          "environment": {
+            "HC_SCOPE": "181933-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 9350,
+          "parent": 9313,
+          "name": "omp",
+          "start": "182586",
+          "argv": [
+            "/home/user/lab/npm/lib/node_modules/bun/bin/bun.exe",
+            "/home/user/lab/npm/lib/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js",
+            "__omp_worker_text_predict"
+          ],
+          "environment": {
+            "HC_SCOPE": "181933-00000000000000000000000000000001"
+          },
+          "files": []
+        }
+      ]
+    }
+  ],
+  "sessionLock": {
+    "form": "an abstract Unix socket on Linux, no file: @omp-file-lock-<hash>. One lock per session, keyed by the session id; see session-lock-by-id.json",
+    "heldAtPrompt": false,
+    "afterFirstReply": "fd 43 state 01 name @omp-file-lock-037d18d6822ccb83fedf06eb91e6253f",
+    "afterNew": "fd 43 state 01 name @omp-file-lock-e7e10615988f5ae5607b862811cc9bc4"
+  },
+  "securityScan": {
+    "preflightWithFakeModel": "security_scan isError True [{\"type\": \"text\", \"text\": \"Security scans require a stored OAuth account for fake\"}]",
+    "createSessionProbe": "tty pts-0\nbefore:\n/home/user/lab/iso/projects/omp\n/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-27-17-521Z_01900000-0000-7000-8000-000000000004.jsonl\ncwdstat 64769 1048610\n\ncreated /home/user/lab/iso/omp/home/.omp/agent/scan-probe-sessions/2026-11-01T07-29-01-423Z_01900000-0000-7000-8000-000000000005.jsonl\nafter create:\n/home/user/lab/iso/projects/omp\n/home/user/lab/iso/omp/home/.omp/agent/scan-probe-sessions/2026-11-01T07-29-01-423Z_01900000-0000-7000-8000-000000000005.jsonl\nfresh\ncwdstat 64769 1048610\n\n",
+    "scanItself": "not run: needs a stored OAuth account"
+  },
+  "observed": "The breadcrumb appears at startup marked fresh, naming a file that does not exist yet. The first reply, not the prompt, writes the file, drops fresh and takes the session's lock. The process opens the file later: with no hold it was open by the first sample, and with every request held it opened 30 seconds after the file, in the same sample as the title slot filling (reply-held.json). `/new` writes the new file at once and moves the crumb, the open file and the lock to it. The crumb outlives the process, and the next process on the same terminal name overwrites it at its own startup. A child `omp daemon broker` and its `omp` worker share the Terminal's HC_SCOPE."
+}

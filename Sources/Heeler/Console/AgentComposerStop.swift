@@ -26,11 +26,17 @@ struct AgentStopWait: Equatable, Sendable {
     /// Pi and Oh My Pi.
     static let escape = AgentStopWait(
         window: .seconds(3), unconfirmedNotice: "Esc went, but the Agent still shows Working.")
+
+    /// A core Stop's wait: what Esc's window leaves after the core's own watch
+    /// (`HerdrCoreComposerStop.interruptTimeout`). The key may not be Esc.
+    static let coreInterrupt = AgentStopWait(
+        window: .seconds(1), unconfirmedNotice: "Stop went, but the Agent still shows Working.")
 }
 
 /// One surface's Stop: what a tap does, the wait after it, and its hint.
 struct AgentComposerInterrupt {
     static let escapeHint = "Presses Esc to interrupt the Agent"
+    static let coreHint = "Presses the Terminal's stop key to interrupt the Agent"
     var wait: AgentStopWait
     var accessibilityHint: String
     var perform: @MainActor () async -> AgentInterruptOutcome
@@ -48,6 +54,16 @@ struct AgentComposerInterrupt {
         forAgentKind kind: String, _ perform: @escaping @MainActor () async -> AgentInterruptOutcome
     ) -> AgentComposerInterrupt? {
         SupportedAgentKind(rawValue: kind) == .grok ? nil : .escape(perform)
+    }
+
+    /// The terminal Composer's Stop on a core Host, where the core picks the
+    /// key. Grok Build keeps Send here too, since the key would be Esc.
+    static func coreTerminal(
+        forAgentKind kind: String, _ perform: @escaping @MainActor () async -> AgentInterruptOutcome
+    ) -> AgentComposerInterrupt? {
+        SupportedAgentKind(rawValue: kind) == .grok
+            ? nil
+            : AgentComposerInterrupt(wait: .coreInterrupt, accessibilityHint: coreHint, perform: perform)
     }
 }
 

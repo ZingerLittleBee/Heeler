@@ -74,6 +74,53 @@ struct HostRoute: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+/// Which server a Host's Agents live in (ADR 0031). A Host keeps its kind once
+/// confirmed: neither a connection nor an edit switches it.
+enum ServerKind: String, Codable, Hashable, Sendable {
+    case herdrTUI
+    case herdrCore
+    /// Added by hand and waiting for the user to confirm one of the others. It
+    /// stays in the shared catalog, and only its Host detail ever dials it.
+    case unconfirmed
+
+    var isConfirmed: Bool { self != .unconfirmed }
+
+    func isValidSessionName(_ value: String) -> Bool {
+        sessionNameRefusal(value) == nil
+    }
+
+    /// Why this kind's server would refuse `value`, in words for the user. An
+    /// unconfirmed Host answers to no rule yet: confirming asks this again.
+    func sessionNameRefusal(_ value: String) -> String? {
+        switch self {
+        case .herdrTUI:
+            let name = value.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, !HerdrSessionName.isValid(name) else { return nil }
+            return "herdr refuses the session name \"\(name)\". Its names use letters, digits, "
+                + "\".\", \"_\" and \"-\", up to \(HerdrSessionName.maximumUTF8Length) bytes."
+        case .herdrCore:
+            return HerdrCoreSessionName.refusal(value)
+        case .unconfirmed:
+            return nil
+        }
+    }
+
+    /// `value` as this kind stores it.
+    func storedSessionName(_ value: String) -> String {
+        self == .herdrCore
+            ? HerdrCoreSessionName.normalized(value)
+            : value.trimmingCharacters(in: .whitespaces)
+    }
+
+    var displayName: String {
+        switch self {
+        case .herdrTUI: "Herdr TUI"
+        case .herdrCore: "herdr-core"
+        case .unconfirmed: "Not confirmed"
+        }
+    }
+}
+
 /// A user-added Host (CONTEXT.md): who the machine is, how to authenticate,
 /// which herdr session to reach, and the Routes it can be reached on. Never
 /// carries a secret — the password lives in the Keychain keyed by `id`, and
@@ -92,6 +139,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     var name: String
     var username: String
     var authMethod: AuthMethod
+    var serverKind: ServerKind
     /// Persisted session selection; onboarding discovers available sessions,
     /// while this field remains editable for older herdr versions. Blank
     /// means the default herdr session.
@@ -111,7 +159,11 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// on decode and drops it on the Host's next save.
     private enum CodingKeys: String, CodingKey {
         case herdrEndpoint
-        case id, name, username, authMethod, sessionName
+        case id, name, username, authMethod, serverKind, sessionName
+        // An unconfirmed Host's name when herdr would refuse it. Builds before
+        // Server Kinds ignore the kind and fail their whole catalog on such a
+        // name in `sessionName`.
+        case unconfirmedSessionName
         case routes
         // The primary route, flattened as Hosts were saved before Routes
         // (ADR 0022), so a build without them still decodes and connects it.
@@ -124,6 +176,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         name: String = "",
         username: String,
         authMethod: AuthMethod = .deviceKey,
+        serverKind: ServerKind = .herdrTUI,
         sessionName: String = "",
         herdrEndpoint: HerdrEndpoint? = nil,
         routes: [HostRoute]
@@ -133,6 +186,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         self.name = name
         self.username = username
         self.authMethod = authMethod
+        self.serverKind = herdrEndpoint == nil ? serverKind : .herdrTUI
         self.sessionName = sessionName
         self.herdrEndpoint = herdrEndpoint
         self.routes = routes
@@ -146,6 +200,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         port: Int = 22,
         username: String,
         authMethod: AuthMethod = .deviceKey,
+        serverKind: ServerKind = .herdrTUI,
         sessionName: String = "",
         jumpAddress: String = "",
         jumpPort: Int = 22,
@@ -158,6 +213,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
             name: name,
             username: username,
             authMethod: authMethod,
+            serverKind: serverKind,
             sessionName: sessionName,
             herdrEndpoint: herdrEndpoint,
             routes: [
@@ -185,10 +241,19 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
                 debugDescription: "Unknown authentication method: \(authMethodValue)")
         }
         authMethod = decodedAuthMethod
+        let decodedKind = try container.decodeIfPresent(ServerKind.self, forKey: .serverKind)
         sessionName = try container.decodeIfPresent(String.self, forKey: .sessionName) ?? ""
         // Absent in Hosts saved before Pairing Code v2, and in every Host not
         // paired from one. The encoder omits nil for those Hosts.
         herdrEndpoint = try container.decodeIfPresent(HerdrEndpoint.self, forKey: .herdrEndpoint)
+        // A Host saved without a kind is a Herdr TUI Host, and so is any Host
+        // with a Herdr Endpoint, which only a Pairing Code gives it.
+        serverKind = herdrEndpoint == nil ? decodedKind ?? .herdrTUI : .herdrTUI
+        if serverKind == .unconfirmed,
+            let name = try container.decodeIfPresent(String.self, forKey: .unconfirmedSessionName)
+        {
+            sessionName = name
+        }
         if let routes = try container.decodeIfPresent([HostRoute].self, forKey: .routes),
            !routes.isEmpty
         {
@@ -215,10 +280,10 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
             ]
         }
 
-        let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespaces)
-        guard trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName) else {
+        guard serverKind.isValidSessionName(sessionName) else {
             throw DecodingError.dataCorruptedError(
-                forKey: .sessionName, in: container, debugDescription: "Invalid herdr session name")
+                forKey: .sessionName, in: container,
+                debugDescription: "Invalid session name for this Server Kind")
         }
     }
 
@@ -228,7 +293,13 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         try container.encode(name, forKey: .name)
         try container.encode(username, forKey: .username)
         try container.encode(authMethod, forKey: .authMethod)
-        try container.encode(sessionName, forKey: .sessionName)
+        try container.encode(serverKind, forKey: .serverKind)
+        if serverKind == .unconfirmed, !ServerKind.herdrTUI.isValidSessionName(sessionName) {
+            try container.encode("", forKey: .sessionName)
+            try container.encode(sessionName, forKey: .unconfirmedSessionName)
+        } else {
+            try container.encode(sessionName, forKey: .sessionName)
+        }
         try container.encodeIfPresent(herdrEndpoint, forKey: .herdrEndpoint)
         try container.encode(routes, forKey: .routes)
         let primary = primaryRoute

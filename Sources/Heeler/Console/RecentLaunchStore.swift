@@ -37,8 +37,18 @@ struct RecentLaunchStore {
         defaults.set(kind.rawValue, forKey: Self.agentKindKey)
     }
 
-    /// Entries for Hosts that no longer exist are harmless (a few bytes each,
-    /// never read), so nothing prunes them.
+    /// Remove Host forgets its workspace. Entries left by Hosts removed before it
+    /// did stay, since nothing here knows which Hosts exist.
+    func forgetWorkspace(for hostID: Host.ID) {
+        var updated = workspacesByHost
+        guard updated.removeValue(forKey: hostID.uuidString) != nil else { return }
+        if updated.isEmpty {
+            defaults.removeObject(forKey: Self.workspaceKey)
+        } else {
+            defaults.set(updated, forKey: Self.workspaceKey)
+        }
+    }
+
     private var workspacesByHost: [String: String] {
         defaults.dictionary(forKey: Self.workspaceKey) as? [String: String] ?? [:]
     }

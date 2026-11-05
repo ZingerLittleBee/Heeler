@@ -2704,6 +2704,46 @@ actor SessionDriver {
         }
     }
 
+    func canonicalSFTPPath(
+        id: UInt64,
+        path: String,
+        timeout: Duration
+    ) async throws -> String {
+        try await withDiagnosticPhase("SFTP canonical path") {
+            guard Self.isValidSFTPPath(path), path.utf8.count <= Int(UInt32.max) else {
+                throw SSHError.channelFailed
+            }
+            await acquireOperation()
+            defer { releaseOperation() }
+            var target = [CChar](repeating: 0, count: 4_097)
+            let targetCount = UInt32(target.count)
+            let result = try await repeatUntilCompleteHoldingSFTP(
+                id: id,
+                deadline: ContinuousClock.now.advanced(by: timeout)
+            ) { sftp in
+                path.withCString { pathPointer in
+                    target.withUnsafeMutableBufferPointer { targetPointer in
+                        libssh2_sftp_symlink_ex(
+                            sftp,
+                            pathPointer,
+                            UInt32(path.utf8.count),
+                            targetPointer.baseAddress,
+                            targetCount,
+                            LIBSSH2_SFTP_REALPATH)
+                    }
+                }
+            }
+            // A success is the answer's length, which no result check expects.
+            try checkSFTPResult(
+                PacketOperationResult(code: min(result.code, 0), disposition: result.disposition),
+                sftpID: id)
+            guard result.code > 0 else { throw SSHError.channelFailed }
+            return String(
+                decoding: target[..<Int(result.code)].map { UInt8(bitPattern: $0) },
+                as: UTF8.self)
+        }
+    }
+
     func closeSFTP(id: UInt64, timeout: Duration) async throws {
         try await withDiagnosticPhase("SFTP close channel \(id)") {
             await acquireOperation()

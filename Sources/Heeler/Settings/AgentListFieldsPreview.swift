@@ -8,13 +8,15 @@ import SwiftUI
 struct AgentListFieldsPreview: View {
     let layout: AgentRowLayout
     let hostName: String
+    var followsPlugin = true
     /// The program the sample runs, whose mark decides whether the Agent
     /// field shows; see `kind(onHost:among:)`.
     var kind = Self.sampleKind
 
     var body: some View {
         AgentCardView(
-            agent: Self.sampleAgent(hostName: hostName, kind: kind), layout: layout,
+            agent: Self.sampleAgent(hostName: hostName, layout: layout, followsPlugin: followsPlugin, kind: kind),
+            layout: layout,
             sampleChanges: Self.sampleChanges)
             .allowsHitTesting(false)
             .accessibilityElement(children: .combine)
@@ -27,7 +29,8 @@ struct AgentListFieldsPreview: View {
         layout: AgentRowLayout, hostName: String, kind: String = sampleKind
     ) -> AgentCardPresentation {
         AgentCardPresentation(
-            agent: sampleAgent(hostName: hostName, kind: kind), layout: layout, leadsWithMark: true)
+            agent: sampleAgent(hostName: hostName, layout: layout, kind: kind), layout: layout,
+            leadsWithMark: true)
     }
 
     nonisolated static let sampleKind = "claude"
@@ -42,16 +45,24 @@ struct AgentListFieldsPreview: View {
         return counts.max { ($0.value, $1.key) < ($1.value, $0.key) }?.key ?? sampleKind
     }
 
-    /// Deterministic sample values for built-in and custom tokens; not a live
+    /// Deterministic sample values for built-in and custom tokens, and each
+    /// label `layout` names on either side, shown by its key; not a live
     /// Agent. Done, so the ring and any status field show a settled status.
-    static func sampleAgent(hostName: String, kind: String = sampleKind) -> ConsoleAgent {
-        ConsoleAgent(
+    static func sampleAgent(
+        hostName: String, layout: AgentRowLayout? = nil, followsPlugin: Bool = true, kind: String = sampleKind
+    ) -> ConsoleAgent {
+        let title = followsPlugin ? "fix sidebar sync" : "fix login redirect"
+        var tokens = ["branch": "feat/sidebar"]
+        for case .label(let key) in ((layout?.rows ?? []) + (layout?.trailing ?? [])).joined().map(\.token) {
+            tokens[key] = key
+        }
+        return ConsoleAgent(
             hostID: sampleHostID,
             hostName: hostName,
             agent: Agent(
                 terminalID: "preview-terminal",
                 kind: kind,
-                title: "fix sidebar sync",
+                title: title,
                 status: .done,
                 workspaceID: "preview-workspace",
                 tabID: "preview-tab",
@@ -59,10 +70,10 @@ struct AgentListFieldsPreview: View {
                 cwd: "/work/heeler",
                 revision: 1,
                 name: kind,
-                terminalTitle: "fix sidebar sync",
-                terminalTitleStripped: "fix sidebar sync",
+                terminalTitle: title,
+                terminalTitleStripped: title,
                 paneTitle: kind,
-                tokens: ["branch": "feat/sidebar"]),
+                tokens: tokens),
             workspaceLabel: "heeler",
             repositoryCheckout: nil,
             tabLabel: "1",

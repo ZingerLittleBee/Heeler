@@ -5,6 +5,94 @@ import Testing
 
 @Suite("Transport error presentation")
 struct TransportErrorPresentationTests {
+    @Test func uncertainCoreMutationRequiresInspectionInsteadOfAutomaticRetry() {
+        let failure = TransportError.coreMutationOutcomeUnknown
+        #expect(!failure.isRetryable)
+        #expect(!TransportError.jumpHostFailed(failure).isRetryable)
+        #expect(failure.presentation.summary == "The Host did not confirm the action")
+        #expect(failure.presentation.detail == "It may still complete. Check the Terminal before trying again.")
+        #expect(failure.presentation.recoverySuggestion == nil)
+    }
+
+    @Test func herdrCoreOutcomesHaveASummaryDetailAndRecovery() {
+        let notInstalled = TransportError.herdrCoreNotInstalled.presentation
+        #expect(notInstalled.summary == "herdr-core is not installed")
+        #expect(notInstalled.detail?.contains("~/.local/bin/herdr-core") == true)
+        #expect(notInstalled.detail?.contains("native Windows") == true)
+        #expect(notInstalled.recoverySuggestion?.contains("Install") == true)
+
+        let stopped = TransportError.herdrCoreNotRunning(
+            socketPath: "/run/s.sock", socketFilePresent: false).presentation
+        #expect(stopped.summary == "herdr-core is not running")
+        #expect(stopped.detail?.contains("/run/s.sock") == true)
+        #expect(stopped.recoverySuggestion?.contains("Start the core") == true)
+        #expect(stopped.message.contains("forwarding") == false)
+
+        let update = TransportError.herdrCoreUpdateRequired(
+            command: "/home/me/.local/bin/herdr-core update").presentation
+        #expect(update.summary == "herdr-core needs an update")
+        #expect(update.detail != nil)
+        #expect(update.recoverySuggestion?.contains("/home/me/.local/bin/herdr-core update") == true)
+
+        let path = "/run/" + String(repeating: "a", count: 120)
+        let tooLong = TransportError.herdrCoreSocketPathTooLong(path: path, limit: 107).presentation
+        #expect(tooLong.summary == "The herdr-core socket path is too long")
+        #expect(tooLong.detail?.contains(path) == true)
+        #expect(tooLong.detail?.contains("107") == true)
+        #expect(tooLong.recoverySuggestion?.contains("shorter") == true)
+        #expect(tooLong.message.contains("not running") == false)
+    }
+
+    /// The refusal is already whole sentences, so the presentation adds no second
+    /// period, and it names the session name rather than a missing feature (#587).
+    @Test(arguments: ["my work", "a/b"])
+    func aRefusedSessionNameSaysSoInOneSentence(name: String) throws {
+        let reason = try #require(
+            HerdrCoreSessionName.windowsRefusal(name) ?? HerdrCoreSessionName.refusal(name))
+        let error = TransportError.herdrCoreSessionNameRefused(reason: reason)
+        #expect(!error.isRetryable)
+        #expect(error.presentation.summary == "This session name can't be used")
+        #expect(error.presentation.recoverySuggestion == "Edit the Host's session name.")
+        #expect(error.presentation.message.contains(reason))
+        #expect(!error.presentation.message.contains(".."))
+        #expect(!error.presentation.message.contains("unavailable"))
+    }
+
+    /// SSH reports a missing socket, a refused one and a forbidden path alike,
+    /// so a socket file left behind cannot say which cause it is.
+    @Test func notRunningWithASocketFileNamesBothCauses() {
+        let presentation = TransportError.herdrCoreNotRunning(
+            socketPath: "/run/s.sock", socketFilePresent: true).presentation
+        #expect(presentation.summary == "herdr-core is not running")
+        let detail = presentation.detail ?? ""
+        #expect(detail.contains("/run/s.sock"))
+        #expect(detail.contains("stopped or crashed"))
+        #expect(detail.contains("refuses socket forwarding"))
+        #expect(presentation.recoverySuggestion?.contains("stream-local forwarding") == true)
+    }
+
+    /// A core that just reported itself running leaves one cause, so the copy
+    /// names no stopped core.
+    @Test func forwardingRefusedNamesOnlyThatCause() {
+        let error = TransportError.herdrCoreForwardingRefused(socketPath: "/run/s.sock")
+        #expect(error.presentation.summary == "The SSH server refuses socket forwarding")
+        #expect(error.presentation.detail?.contains("/run/s.sock") == true)
+        #expect(error.presentation.recoverySuggestion?.contains("stream-local forwarding") == true)
+        #expect(!error.presentation.message.contains("not running"))
+        #expect(!error.presentation.message.contains("stopped"))
+        #expect(!error.isRetryable)
+    }
+
+    /// Not running can end on its own. The others stay as they are until
+    /// someone acts on the Host, so no retry is made for them.
+    @Test func notRunningIsRetryableAndTheOthersNeedTheUser() {
+        #expect(TransportError.herdrCoreNotRunning(socketPath: "/s", socketFilePresent: false).isRetryable)
+        #expect(TransportError.herdrCoreNotRunning(socketPath: "/s", socketFilePresent: true).isRetryable)
+        #expect(!TransportError.herdrCoreNotInstalled.isRetryable)
+        #expect(!TransportError.herdrCoreUpdateRequired(command: "/x update").isRetryable)
+        #expect(!TransportError.herdrCoreSocketPathTooLong(path: "/s", limit: 103).isRetryable)
+    }
+
     @Test func gitDeadlineIsNotRetryableOrPresentedAsAConnectionFailure() {
         let failure = TransportError.gitTimedOut
         #expect(!failure.isRetryable)
@@ -453,5 +541,12 @@ struct TransportErrorPresentationTests {
         #expect(
             TransportError.apiRejected(code: "pane_not_found", message: "gone").presentation.message
                 == "herdr rejected the request: gone (pane_not_found).")
+    }
+
+    /// A detail that is its own sentence keeps its one period.
+    @Test func aDetailEndingInAPeriodGetsNoSecond() {
+        #expect(
+            TransportError.sshUnreachable(detail: "The SSH connection is no longer reusable.").presentation.explanation
+                == "SSH unavailable: The SSH connection is no longer reusable.")
     }
 }

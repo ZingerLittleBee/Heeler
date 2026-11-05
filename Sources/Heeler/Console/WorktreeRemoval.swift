@@ -27,10 +27,14 @@ struct WorktreeIdentity: Equatable, Hashable, Sendable {
 struct WorktreeRemovalRequest: Equatable, Hashable, Sendable {
     let id: UUID
     let identity: WorktreeIdentity
+    /// What the confirmation warned would be lost, which is all a forced removal
+    /// may cover. Reading a risk does not set this; showing it does.
+    let toldRisk: WorktreeRemovalRisk?
 
-    init(id: UUID = UUID(), identity: WorktreeIdentity) {
+    init(id: UUID = UUID(), identity: WorktreeIdentity, toldRisk: WorktreeRemovalRisk? = nil) {
         self.id = id
         self.identity = identity
+        self.toldRisk = toldRisk
     }
 }
 
@@ -64,6 +68,24 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
     case staleIdentity
     case alreadyInProgress
     case outcomeUnconfirmed
+    /// A Terminal of the Workspace may still run, so the checkout stayed.
+    case terminalsNotEnded
+    /// The checkout now holds what the confirmation did not warn about.
+    case changedSinceConfirmation
+    /// The Terminals ended, and the checkout then held what the confirmation did
+    /// not warn about, so it stayed.
+    case changedWhileTerminalsEnded
+    /// git could not say what the checkout holds, before anything ended.
+    case riskUnread(String)
+    /// The connection failed while the checkout was read, before anything ended.
+    case connectionFailedBeforeEnding
+    case removeRefused(String)
+    case removeUnconfirmed(path: String)
+
+    /// The next confirmation has to warn of what stopped this removal.
+    var isNewerThanConfirmation: Bool {
+        self == .changedSinceConfirmation || self == .changedWhileTerminalsEnded
+    }
 
     var message: String {
         switch self {
@@ -73,7 +95,35 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
             "This worktree already has a removal in progress."
         case .outcomeUnconfirmed:
             "The Host did not confirm whether removal completed. Close this sheet, wait for the Console to refresh, then reopen Worktree Details."
+        case .terminalsNotEnded:
+            "A Terminal in this worktree could not be confirmed ended, so the checkout was not removed. Others may have ended. Check the Host, then try again."
+        case .changedSinceConfirmation:
+            "This worktree changed since you confirmed, and nothing was removed. Removing it again deletes what it holds now."
+        case .changedWhileTerminalsEnded:
+            "The worktree's Terminals have ended, but it changed since you confirmed, so the checkout was not removed. Removing it again deletes what it holds now."
+        case .riskUnread(let reason):
+            "git could not read this worktree, so this attempt ended no Terminal and did not remove the checkout: \(reason)"
+        case .connectionFailedBeforeEnding:
+            "The connection to the Host failed before any Terminal ended, so nothing was removed. Try again once the Host is connected."
+        case .removeRefused(let reason):
+            "The worktree's Terminals have ended, but git did not remove the checkout: \(reason)"
+        case .removeUnconfirmed(let path):
+            "The worktree's Terminals have ended, but the Host did not confirm the removal. Check whether \(path) is still on the Host before trying again."
         }
+    }
+}
+
+/// What removing a core Host's Worktree would lose, which is what forces it.
+/// Herdr TUI Hosts refuse these removals instead, and have none.
+struct WorktreeRemovalRisk: Equatable, Hashable, Sendable {
+    let hasChanges: Bool
+    let hasSubmodules: Bool
+
+    var requiresForce: Bool { hasChanges || hasSubmodules }
+
+    /// Whether the user heard about all of this.
+    func isCovered(by told: WorktreeRemovalRisk?) -> Bool {
+        (!hasChanges || told?.hasChanges == true) && (!hasSubmodules || told?.hasSubmodules == true)
     }
 }
 
@@ -92,7 +142,9 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         request: WorktreeRemovalRequest,
         workspaceLabel: String,
         branch: Branch,
-        hasWorkingAgent: Bool
+        hasWorkingAgent: Bool,
+        risk: WorktreeRemovalRisk? = nil,
+        otherWorkspaces: [String] = []
     ) -> WorktreeRemovalConfirmation {
         var sentences = [
             "This deletes \(request.identity.checkoutPath) and closes the whole workspace, ending every Agent and closing every Pane in it."
@@ -108,9 +160,23 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         if hasWorkingAgent {
             sentences.append("An Agent is still working in this worktree.")
         }
+        if risk?.hasChanges == true {
+            sentences.append("Its uncommitted changes will be lost.")
+        }
+        if risk?.hasSubmodules == true {
+            sentences.append("Its submodules go with it, with any commits in them that were not pushed.")
+        }
+        if let names = otherWorkspaces.first.map({ _ in otherWorkspaces.joined(separator: ", ") }) {
+            sentences.append(
+                otherWorkspaces.count == 1
+                    ? "The workspace \(names) also uses this checkout. Its Terminals keep running in the deleted folder, so close them first."
+                    : "The workspaces \(names) also use this checkout. Their Terminals keep running in the deleted folder, so close them first."
+            )
+        }
         sentences.append("This can't be undone.")
         return WorktreeRemovalConfirmation(
-            request: request,
+            request: WorktreeRemovalRequest(
+                id: request.id, identity: request.identity, toldRisk: risk),
             title: "Remove \(workspaceLabel) worktree?",
             message: sentences.joined(separator: " "))
     }
@@ -141,7 +207,8 @@ struct WorktreeRemovalRefusal {
     ) {
         switch error {
         case let removal as WorktreeRemovalError:
-            self.init(message: removal.message)
+            self.init(
+                message: removal.message, offersChanges: removal.isNewerThanConfirmation)
         case let api as HerdrAPIError:
             self.init(
                 code: api.code, serverMessage: api.message,
@@ -156,8 +223,12 @@ struct WorktreeRemovalRefusal {
             self.init(message: "The Host did not answer in time.")
         case TransportError.cancelled:
             self.init(message: "Worktree removal was cancelled.")
+        case TransportError.herdrCoreTerminalGone:
+            self.init(message: TransportError.herdrCoreTerminalGone.presentation.message)
+        case let transport as TransportError:
+            self.init(message: "Removing the worktree failed. \(transport.presentation.message)")
         default:
-            self.init(message: "Removing the worktree failed: \(error)")
+            self.init(message: "Removing the worktree failed. \(error.localizedDescription)")
         }
     }
 

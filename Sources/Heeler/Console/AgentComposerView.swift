@@ -94,10 +94,12 @@ struct AgentComposerKeyboardLayout: Equatable {
 struct AgentComposerActions {
     let canBegin: Bool
     let attachLinkCount: Int
-    let addImage: () -> Void
+    /// Nil hides the entry, as it does for every optional action here: a Host
+    /// that does not offer it.
+    let addImage: (() -> Void)?
     /// Stages the clipboard's image as Add Image would. Nil hides the entry.
     var pasteImage: (() -> Void)? = nil
-    let addFile: () -> Void
+    let addFile: (() -> Void)?
     let showAttachLinks: () -> Void
     let openTerminal: (() -> Void)?
     let isOpeningTerminal: Bool
@@ -105,16 +107,16 @@ struct AgentComposerActions {
     /// Nil when the Agent has no directory, which hides the entry; it is
     /// never gated on the Agent's worktree metadata.
     let showChanges: (() -> Void)?
-    let startAgent: () -> Void
+    let startAgent: (() -> Void)?
     let manageSnippets: () -> Void
     /// Opens the explicit Skill picker. Nil for agent kinds without a skills
     /// source catalog, which hides the More-menu entry entirely rather than
     /// offering a dead button.
     let showSkills: (() -> Void)?
     let showWorktreeDetails: (() -> Void)?
-    let renameAgent: () -> Void
-    let renameWorkspace: () -> Void
-    let closeAgent: () -> Void
+    let renameAgent: (() -> Void)?
+    let renameWorkspace: (() -> Void)?
+    let closeAgent: (() -> Void)?
     /// Leaves the Agent: back to the Console list, or out to the sidebar
     /// beside a regular-width detail column.
     let backToConsole: () -> Void
@@ -292,6 +294,9 @@ struct AgentComposerView: View {
     /// What Stop presses in the Agent's program, its wait and its hint; nil
     /// keeps Send.
     var interrupt: AgentComposerInterrupt? = nil
+    /// False on a Host that cannot deliver a draft yet: no Send, no Stop, and
+    /// Return and ⌘↩ send nothing.
+    var offersSend = true
     /// The app's microphone owner; absent in previews and tests, which
     /// leaves the mic out.
     @Environment(VoiceInputSession.self) private var voiceInput: VoiceInputSession?
@@ -350,7 +355,7 @@ struct AgentComposerView: View {
                 }
                 .overlay(alignment: .top) { keyboardGrabber }
                 .composerDropDestination(
-                    isEnabled: ComposerDropPolicy.acceptsDrops(in: inputMode),
+                    isEnabled: ComposerDropPolicy.acceptsDrops(in: inputMode) && offersAdd,
                     isTargeted: $isDropTargeted,
                     accept: { store.acceptDrop($0) }
                 )
@@ -362,7 +367,7 @@ struct AgentComposerView: View {
         .modifier(ConsoleComposerCommandRegistration(
             agentID: switcher.selectedID,
             isFocused: isInputFocused,
-            hasDraft: { store.canSend },
+            hasDraft: { offersSend && store.canSend },
             send: { await deliverDraft { await store.send(policy: sendPolicy) } }))
         .sheet(isPresented: $isVoiceSetupPresented) {
             if let voiceInput {
@@ -456,6 +461,9 @@ struct AgentComposerView: View {
             if let failure = latestFailure {
                 failureRow(failure)
             }
+            if let unanswered = latestOutcomeUnknown {
+                outcomeUnknownRow(unanswered)
+            }
             if let voiceInput, let failure = store.voice.failure {
                 ComposerVoiceFailureRow(
                     failure: failure,
@@ -504,7 +512,7 @@ struct AgentComposerView: View {
     /// would drop the focus and any keyboard handoff in flight.
     private var editorRow: some View {
         HStack(spacing: 8) {
-            if isCollapsed {
+            if isCollapsed, offersAdd {
                 addMenu
                     .modifier(ComposerVoiceCover(isCovered: coversEditorRow))
             }
@@ -583,6 +591,23 @@ struct AgentComposerView: View {
         }
     }
 
+    /// A step got no answer: Send cannot say what reached the program, and
+    /// nothing here sends it again.
+    private func outcomeUnknownRow(_ id: AgentComposerStore.Message.ID) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            noticeLabel(
+                "The Host did not answer, so the message may or may not have reached the Agent. Check the terminal. It will not be sent again.")
+            Button("Edit Draft") {
+                store.withdrawToDraft(id)
+                isInputFocused = true
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("composer.outcomeUnknown")
+    }
+
     private func noticeRow(_ notice: ComposerNotice) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             noticeLabel(notice.refusal.message)
@@ -623,7 +648,7 @@ struct AgentComposerView: View {
 
     private var leadingActions: some View {
         HStack(spacing: 8) {
-            addMenu
+            if offersAdd { addMenu }
 
             Menu {
                 AgentActionMenuContent(
@@ -711,6 +736,10 @@ struct AgentComposerView: View {
             .accessibilityHidden(true)
     }
 
+    private var offersAdd: Bool {
+        actions.addImage != nil || actions.addFile != nil
+    }
+
     private var addMenu: some View {
         Menu {
             AgentActionMenuContent(
@@ -730,27 +759,30 @@ struct AgentComposerView: View {
     }
 
     private func sendDraft() {
+        guard offersSend else { return }
         Task { await deliverDraft { await store.send(policy: sendPolicy) } }
     }
 
     /// Send, or Stop while the Agent works and the draft is blank.
     @ViewBuilder
     private var primaryButton: some View {
-        switch primaryControl {
-        case .send:
-            AgentComposerSendButton(
-                isEnabled: store.canSend,
-                accessibilityHint: store.sendAccessibilityHint
-            ) {
-                sendDraft()
-            }
-        case .stop:
-            AgentComposerStopButton(
-                isStopping: store.stop.isStopping,
-                accessibilityHint: stopHint
-            ) {
-                guard let interrupt else { return }
-                store.stop.stop(waiting: interrupt.wait, using: interrupt.perform)
+        if offersSend {
+            switch primaryControl {
+            case .send:
+                AgentComposerSendButton(
+                    isEnabled: store.canSend,
+                    accessibilityHint: store.sendAccessibilityHint
+                ) {
+                    sendDraft()
+                }
+            case .stop:
+                AgentComposerStopButton(
+                    isStopping: store.stop.isStopping,
+                    accessibilityHint: stopHint
+                ) {
+                    guard let interrupt else { return }
+                    store.stop.stop(waiting: interrupt.wait, using: interrupt.perform)
+                }
             }
         }
     }
@@ -913,6 +945,13 @@ struct AgentComposerView: View {
               case .failed(let detail) = message.state
         else { return nil }
         return (message.id, detail)
+    }
+
+    private var latestOutcomeUnknown: AgentComposerStore.Message.ID? {
+        guard let message = store.messages.last(where: { $0.route == sendPolicy.route }),
+              message.state == .outcomeUnknown
+        else { return nil }
+        return message.id
     }
 
     private var linkPresentation: AgentComposerLinkPresentation? {

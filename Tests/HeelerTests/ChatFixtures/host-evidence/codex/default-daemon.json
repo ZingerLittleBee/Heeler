@@ -1,0 +1,222 @@
+{
+  "program": "codex",
+  "version": "codex-cli 0.165.0",
+  "core": "0.1.13",
+  "source": "Two Terminals running plain `codex` on one CODEX_HOME: the shared daemon and the HC_SCOPE it carries",
+  "method": "Live in a throwaway Lima VM (Ubuntu 24.04.4, Linux 6.8 aarch64), herdr-core 0.1.13 started by absolute path under a unique HC_SESSION. The model was a local fake on 127.0.0.1 with a dummy key, and nothing was signed in; this is not hc-lab and not a signed-in account.",
+  "timeline": [
+    {
+      "phase": "start_a",
+      "seconds": 0.0
+    },
+    {
+      "phase": "a_prompt",
+      "seconds": 0.05
+    },
+    {
+      "phase": "send_a",
+      "seconds": 1.07
+    },
+    {
+      "phase": "a_reply",
+      "seconds": 1.74
+    },
+    {
+      "phase": "start_b",
+      "seconds": 2.77
+    },
+    {
+      "phase": "b_prompt",
+      "seconds": 2.82
+    },
+    {
+      "phase": "b_reply",
+      "seconds": 4.32
+    },
+    {
+      "phase": "kill_a",
+      "seconds": 6.07
+    },
+    {
+      "phase": "end",
+      "seconds": 9.47
+    }
+  ],
+  "scenes": [
+    {
+      "name": "first-terminal",
+      "processes": [
+        {
+          "pid": 4357,
+          "parent": 2630,
+          "name": "node",
+          "start": "112679",
+          "argv": [
+            "node",
+            "/home/user/lab/npm/bin/codex"
+          ],
+          "environment": {
+            "HC_SCOPE": "112679-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 4367,
+          "parent": 4357,
+          "name": "codex",
+          "start": "112681",
+          "argv": [
+            "/home/user/lab/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex"
+          ],
+          "environment": {
+            "HC_SCOPE": "112679-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 4397,
+          "parent": 4367,
+          "name": "codex",
+          "start": "112699",
+          "argv": [
+            "/home/user/lab/iso/codexd/codex-home/packages/app-server-daemon/releases/0.165.0-aarch64-unknown-linux-musl/bin/codex",
+            "app-server",
+            "--listen",
+            "unix://",
+            "--analytics-default-enabled",
+            "--managed-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "112679-00000000000000000000000000000001"
+          },
+          "files": [
+            "/home/user/lab/iso/codexd/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-10-36-01900000-0000-7000-8000-000000000001.jsonl",
+            "/home/user/lab/iso/codexd/codex-home/thread-writer-locks/01900000-0000-7000-8000-000000000001.lock"
+          ]
+        },
+        {
+          "pid": 4465,
+          "parent": 4367,
+          "name": "codex",
+          "start": "112705",
+          "argv": [
+            "/home/user/lab/iso/codexd/codex-home/packages/app-server-daemon/releases/0.165.0-aarch64-unknown-linux-musl/bin/codex",
+            "app-server",
+            "daemon",
+            "pid-update-loop"
+          ],
+          "environment": {
+            "HC_SCOPE": "112679-00000000000000000000000000000001"
+          },
+          "files": []
+        }
+      ],
+      "files": {}
+    },
+    {
+      "name": "second-terminal-joined",
+      "processes": [
+        {
+          "pid": 4357,
+          "parent": 2630,
+          "name": "node",
+          "start": "112679",
+          "argv": [
+            "node",
+            "/home/user/lab/npm/bin/codex"
+          ],
+          "environment": {
+            "HC_SCOPE": "112679-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 4367,
+          "parent": 4357,
+          "name": "codex",
+          "start": "112681",
+          "argv": [
+            "/home/user/lab/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex"
+          ],
+          "environment": {
+            "HC_SCOPE": "112679-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 4397,
+          "parent": 4367,
+          "name": "codex",
+          "start": "112699",
+          "argv": [
+            "/home/user/lab/iso/codexd/codex-home/packages/app-server-daemon/releases/0.165.0-aarch64-unknown-linux-musl/bin/codex",
+            "app-server",
+            "--listen",
+            "unix://",
+            "--analytics-default-enabled",
+            "--managed-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "112679-00000000000000000000000000000001"
+          },
+          "files": [
+            "/home/user/lab/iso/codexd/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-10-36-01900000-0000-7000-8000-000000000001.jsonl",
+            "/home/user/lab/iso/codexd/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-10-39-01900000-0000-7000-8000-000000000003.jsonl",
+            "/home/user/lab/iso/codexd/codex-home/thread-writer-locks/01900000-0000-7000-8000-000000000001.lock",
+            "/home/user/lab/iso/codexd/codex-home/thread-writer-locks/01900000-0000-7000-8000-000000000003.lock"
+          ]
+        },
+        {
+          "pid": 4465,
+          "parent": 4367,
+          "name": "codex",
+          "start": "112705",
+          "argv": [
+            "/home/user/lab/iso/codexd/codex-home/packages/app-server-daemon/releases/0.165.0-aarch64-unknown-linux-musl/bin/codex",
+            "app-server",
+            "daemon",
+            "pid-update-loop"
+          ],
+          "environment": {
+            "HC_SCOPE": "112679-00000000000000000000000000000001"
+          },
+          "files": []
+        }
+      ],
+      "secondTerminal": [
+        {
+          "pid": 4599,
+          "parent": 2630,
+          "name": "node",
+          "start": "112956",
+          "argv": [
+            "node",
+            "/home/user/lab/npm/bin/codex"
+          ],
+          "environment": {
+            "HC_SCOPE": "112956-00000000000000000000000000000002"
+          },
+          "files": []
+        },
+        {
+          "pid": 4609,
+          "parent": 4599,
+          "name": "codex",
+          "start": "112958",
+          "argv": [
+            "/home/user/lab/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex"
+          ],
+          "environment": {
+            "HC_SCOPE": "112956-00000000000000000000000000000002"
+          },
+          "files": []
+        }
+      ],
+      "files": {
+        "/home/user/lab/iso/codexd/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-10-36-01900000-0000-7000-8000-000000000001.jsonl": "{\"timestamp\":\"2026-11-01T07:10:37.624Z\",\"ordinal\":0,\"type\":\"session_meta\",\"payload\":{\"session_id\":\"01900000-0000-7000-8000-000000000001\",\"id\":\"01900000-0000-7000-8000-000000000001\",\"timestamp\":\"2026-11-01T07:10:36.568Z\",\"cwd\":\"/home/user/lab/iso/projects/codexd\",\"runtime_workspace_roots\":[\"/home/user/lab/iso/projects/codexd\"],\"originator\":\"codex-tui\",\"cli_version\":\"0.165.0\",\"source\":\"vscode\",\"thread_source\":\"user\",\"model_provider\":\"fake\",\"base_instructions\":{\"text\":\"<scrubbed>\"},\"history_mode\":\"paginated\",\"context_window\":{\"window_id\":\"01900000-0000-7000-8000-000000000002\"},\"git\":{}}}\n",
+        "/home/user/lab/iso/codexd/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-10-39-01900000-0000-7000-8000-000000000003.jsonl": "{\"timestamp\":\"2026-11-01T07:10:40.207Z\",\"ordinal\":0,\"type\":\"session_meta\",\"payload\":{\"session_id\":\"01900000-0000-7000-8000-000000000003\",\"id\":\"01900000-0000-7000-8000-000000000003\",\"timestamp\":\"2026-11-01T07:10:39.128Z\",\"cwd\":\"/home/user/lab/iso/projects/codexd\",\"runtime_workspace_roots\":[\"/home/user/lab/iso/projects/codexd\"],\"originator\":\"codex-tui\",\"cli_version\":\"0.165.0\",\"source\":\"vscode\",\"thread_source\":\"user\",\"model_provider\":\"fake\",\"base_instructions\":{\"text\":\"<scrubbed>\"},\"history_mode\":\"paginated\",\"context_window\":{\"window_id\":\"01900000-0000-7000-8000-000000000004\"},\"git\":{}}}\n"
+      }
+    }
+  ],
+  "observed": "The first Codex's native process starts `app-server --listen unix:// --analytics-default-enabled --managed-daemon` as a child in its own session with no controlling terminal, carrying that Terminal's HC_SCOPE. It holds every rollout and thread-writer lock of both Terminals; neither Terminal's own processes hold any. Rollouts have source vscode. Its sibling `app-server daemon pid-update-loop` shares the scope and holds no rollout. Ending the first Terminal ended the daemon, and the second Terminal's Codex showed `Reconnecting to server` while its status stayed live."
+}

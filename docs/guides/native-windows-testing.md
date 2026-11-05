@@ -2,8 +2,9 @@
 
 Use this checklist to validate the manual SSH connection work for
 [#399](https://github.com/ZingerLittleBee/Heeler/issues/399) on Windows 11.
-Run it against the Heeler build containing that change. These are acceptance
-steps, not a record of a completed Windows test.
+Run it against the Heeler build containing that change. Sections 1 to 8 are
+acceptance steps, not a record of a completed Windows test. Section 9's runs are
+summarized under [herdr-core Host results](#herdr-core-host-results).
 
 The connection under test uses native Windows OpenSSH and native herdr.
 Windows environment discovery must resolve the account's home and herdr's
@@ -390,26 +391,359 @@ Expected: the Unix Host continues to use its existing direct-streamlocal API
 and PTY terminal path. Selecting the Windows Host must not change the Unix
 Host's connection behavior or mix the two Hosts' snapshots.
 
+## 9. Connect a herdr-core Host
+
+These steps are for the herdr-core Host of
+[#587](https://github.com/ZingerLittleBee/Heeler/issues/587), not the herdr
+sessions above, and need herdr-core 0.1.16 or newer from its installer. No lane
+runs them: the app's tests script the probe and the exec. Their first runs, on one
+machine, and the recheck of the fixes made after them, on the same machine, are under
+[herdr-core Host results](#herdr-core-host-results).
+
+If the Herdr desktop app runs on the machine, quit it before steps 6, 7, 34 and 35
+and before step 36. By its 0.1.12 source, not run, it connects to the core that
+`HC_SESSION` in its own environment names, retries every second, and its `connect`
+starts a core when none runs, so a core you stop comes back within about a second.
+By the same source it updates itself and then the core, which can move herdr-core off
+the version under test.
+
+1. Stop the core. On the phone, add the machine with Session left blank or a
+   plain name. The form says to add the Device Key line to `~/.ssh/authorized_keys`,
+   or for an administrator account on Windows to
+   `C:\ProgramData\ssh\administrators_authorized_keys`, which Windows OpenSSH reads
+   instead for an account in the Administrators group, with the access list in
+   [section 4](#4-test-device-key-authentication). Server Kind detection also runs
+   `herdr session list --json` there (by Heeler's source), so on a machine with a
+   Herdr TUI server it reaches that server's sessions and reads Herdr TUI **Found**
+   beside herdr-core. Confirm **herdr-core** with **Use herdr-core**. The Host reads
+   **Reconnecting…** and **herdr-core is not running**, with a note naming the missing
+   pipe. The start command is not in that status: it is in its own card below
+   Preflight, and no Start button is offered. On the machine no `herdr-core` process
+   appears.
+2. In your desktop session, in PowerShell, not as administrator, run the command
+   the Host shows. Within its retry, the Host connects by itself, and the core takes
+   the Session's name: its state is `%LOCALAPPDATA%\herdr-core\<session>` and its pipe
+   `\\.\pipe\herdr-core-<user>-<session>.sock`.
+3. The Console lists the core's Terminals and Agents, each in a card named for
+   its directory. Rename and Worktrees are not offered, and neither is Chat until
+   a build lists a program (step 24). An Agent with a directory offers neither
+   Changes nor Skills, under More, in the header or on its status line.
+4. Open an Agent. Direct Input types into it and its output follows.
+5. Open a Shell Terminal. Rotate or resize it, run a full-screen program, and
+   scroll back.
+6. Stop the core with `server stop` while the Host is connected. The Host reads
+   **herdr-core is not running**, and leaving it through several reconnects
+   starts no `herdr-core` process on the machine.
+7. Start the core again in the desktop session. The Host reconnects by itself. To
+   check Pins, pin an Agent, then end the core's own process by its pid: the one
+   `server.status` names, a `herdr-core.exe` whose command line ends in `serve`, not
+   its holder (a second `herdr-core.exe`) or a `connect`. For example, list them with
+   `Get-CimInstance Win32_Process -Filter "Name='herdr-core.exe'" | Select-Object ProcessId, CommandLine`
+   and run `Stop-Process -Id <pid> -Force`. With kept Terminals, as in the second
+   run, the holder keeps them and their programs running and starts the core again by
+   itself, so the Host reads **herdr-core is not running** for a few seconds,
+   reconnects with nothing tapped, and the pinned row stays pinned. Starting the core
+   in your desktop session after that finds it running and starts nothing. Step 6's `server stop` cannot show this
+   on Windows: the Agents' programs end with the core, and once it starts again the
+   kept Terminals come back as the core's own PowerShell, not as Agents. Heeler then
+   keeps their Pins in its store while the Terminals' addresses exist, but there is
+   no Agent row to show them, and no run has seen a pinned row on that path.
+8. Start a Terminal with a `herdr.space` label the desktop app has not named, in a
+   subfolder of a repository. Its card takes the repository's folder name, and
+   Worktrees stay off. Outside a repository it takes its directory's. This exercises
+   Heeler's PowerShell checkout read through sshd.
+9. Edit the Host's Session to a name with a space. Below the field the form says
+   Heeler cannot use that session name on native Windows, and Save stays off. A
+   Host the app has not yet found on Windows takes the name; after Save it reads
+   **Can't Connect** and **This session name can't be used**, with the same note
+   and one closing period, and Rename and Worktrees are still not offered. The
+   recheck saw Edit Host's refusal, ending in one period, with Save off; Add Host took
+   the name, which was put back before Save, so the state after Save was not seen.
+10. Install an agent the launch can find, with OpenCode too if you have it. New
+    Agent lists what a Windows PowerShell session over SSH finds, and OpenCode's
+    version reaches its launch (`-s ses_...` in the Terminal's argv on 2.1 or newer).
+    An agent installed under a junction may be missing; note which.
+11. Start one with an argument holding a space, a single quote and a non-ASCII
+    character. It shows as an Agent of its kind, and the program receives the
+    argument whole. Exit the agent: its Terminal ends and the Agent leaves the list.
+    Note the exit code the core reports. Seen twice on one machine with herdr-core
+    0.1.16, and on `/exit` again in the recheck: Grok Build 1.0.70 does not end on
+    `/exit` under the core. It prints its resume line and `grok.exe` keeps running,
+    Ctrl+C and Enter do not end it either, and its Terminal stays live until you
+    close it. Check the exit with another
+    agent, such as Claude Code. A `.ps1` shim blocked by the machine's execution
+    policy shows as listed and ends at once; note that too. Start another with an argument holding a
+    double quote and with an empty one (`''`), and note what the program receives:
+    Windows PowerShell may not pass either whole.
+12. New Terminal opens a Terminal in the directory you picked, in a shell, and it
+    is not listed as an Agent. Exit it: the Terminal ends.
+13. New Workspace at a picked directory, with the desktop app running on the
+    machine. The space appears in the desktop app, and the form has no name field.
+14. Add a small image in an Agent's Composer. The path inserted into the draft
+    names a file in `%LOCALAPPDATA%\herdr-core\<session>\files\<address>\`, and
+    a program in that Terminal reads it by that path with the same hash. Close the
+    Terminal: the file stays (recorded for `terminal.kill`). Note what removes it
+    on your machine: it goes with `terminal.rm` and, by the core's source and not
+    yet run, about a day after the Terminal ended.
+15. Add a 9 MiB file. Heeler says it is over the 8 MiB limit, the draft stays, and
+    no file appears in that folder. Add one of exactly 8 MiB: it lands with the same
+    hash, and the Host stays connected while it crosses on a slow link. While it
+    crosses, type in Direct Input and tap Stop on a working Agent: both should go out at
+    once, which nobody has seen yet on Windows, since the put's own SSH exec has to
+    interleave with the link's. Note what you see.
+16. In an Agent New Agent started, type a message and tap Send. It submits within
+    about a second, and the draft empties. Claude Code 2.1.286's and 2.1.316's
+    bracketed paste reached Heeler through the pseudo console on herdr-core 0.1.16, on
+    the one machine run.
+    If Send says **not accepting a paste** at the Agent's own input, note the program
+    and its version: Send cannot work for it on this machine.
+17. Add an image and Send the draft holding its path. The Agent reads the file by
+    that path.
+18. Leave a draft in an Agent's Composer, exit the Agent with Direct Input, and tap
+    Send. Its Terminal has ended, so nothing runs anywhere, and the draft stays at
+    once with a notice that the Agent **has ended**, and no Retry. The second run, on
+    herdr-core 0.1.16 with Claude Code 2.1.286 after `/exit` (exit code 0), saw
+    instead the draft emptied and **The terminal did not connect in time**, with
+    Retry; Send now reads the finished Terminal first. The recheck, with Claude Code
+    2.1.316 after `/exit` (exit code 0), saw the draft stay with **The Agent has
+    ended, so nothing was sent.** from about a second after the tap to at least 13
+    seconds after it, with no Retry, and nothing ran. 2.1.286 was not repeated.
+19. From the Herdr desktop app, start an agent in a space. Herdr desktop app 0.1.12
+    ran it as `powershell.exe -NoExit -Command "& '<agent>'"`, a shell that stays after
+    the agent exits, where New Agent's form ends with it. Then in Heeler tap Send with a
+    draft that leaves a mark if PowerShell runs it, such as
+    `New-Item -ItemType File heeler-step19.txt`: the notice says the terminal
+    **keeps a shell open**, nothing is written, and the draft stays. Exit that agent:
+    its title goes back to the `C:\WINDOWS\System32\…\powershell.exe` path, and Heeler
+    moves the Terminal from Agents to the Terminals tab, with no Composer. PowerShell
+    runs nothing, so no file appears. The second run, with Claude Code 2.1.286, saw
+    Heeler keep it listed as the Agent under that title, its Send giving the same
+    notice. The recheck, with Claude Code 2.1.286 and Pi 1.4.0, saw each exit move the
+    Terminal to the Terminals tab, the open detail reading **Agent Gone**, and Claude
+    Code's Terminal opened there with no Composer. No Send was tapped there, so the
+    **keeps a shell open** notice was not seen again.
+20. Start an agent by typing it in a PowerShell Terminal. It is not listed as an Agent,
+    since the foreground stays PowerShell, so it has no Composer.
+21. Tap Stop during a working turn. The turn stops, and the Agent stays listed. Stop
+    an Agent that exits at the key: it leaves the list. Claude Code 2.1.286 reports no
+    status, so it reads **Unknown** and offers no Stop.
+22. Bring an Agent to a question and Send: nothing is written, the draft stays, and
+    the notice says the Agent is **waiting on its question on screen**. Answer it with
+    the tools keyboard, whose Enter picks the highlighted option, then Send again. The
+    second run, with Claude Code 2.1.316 at its permission dialog, saw the draft
+    emptied with no notice and no text in its input, and the tools keyboard's Enter
+    then approved the dialog's **1. Yes**. Ask for something harmless, such as a file
+    in a scratch folder, so that approving it does no harm. In the recheck, 2.1.316
+    started in auto mode under the run's own `CLAUDE_CONFIG_DIR`, so it was started
+    with `--permission-mode manual` for a Write to ask. Send kept the draft with that
+    notice, typed nothing, and left the dialog on **1. Yes**; the tools keyboard's Down
+    Arrow twice and Enter picked **3. No**, and the next Send submitted.
+23. When an Agent leaves its Terminal to PowerShell before a Send's submit, Heeler
+    sends one Ctrl+C and says the text **may still be in the terminal** (by its
+    source): it does not count PowerShell among the shells that drop a pending paste
+    on one Ctrl+C. To check yours, in a PowerShell Terminal send a bracketed paste of a
+    harmless command, then one 0x03, then Enter, and record whether the command ran,
+    with your PowerShell's and PSReadLine's versions. On the one machine run, on
+    herdr-core 0.1.16, Windows PowerShell 5.1.26100.9711 with PSReadLine 2.0.0
+    dropped the paste: that sequence ran nothing, with the profile, with
+    `-NoProfile`, and with the 0x03 32 ms after the paste, while the same paste and
+    Enter ran it. Earlier rounds on
+    the same machine are in `docs/agents/herdr-compatibility.md`. PowerShell 7 has not
+    been run. If yours drops it too, Send can say it is gone once you decide that in
+    ADR 0035. If it keeps it, ADR 0035 needs your decision before Send ships on
+    Windows.
+
+These steps are for Chat ([#590](https://github.com/ZingerLittleBee/Heeler/issues/590)).
+No lane runs them either. The Windows process read first ran on a Windows machine
+in the run under [herdr-core Host results](#herdr-core-host-results), as Windows
+PowerShell 5.1 through sshd. Sign in to each program yourself. Never open Claude
+Code's `.key` files.
+
+24. In a local build, put one program in
+    `HostCapabilities.confirmedWindowsCoreChatPrograms`. Codex and OpenCode are not
+    candidates, and stay off even if listed. The other programs still offer the
+    terminal alone. On a native Windows Herdr TUI Host, no Agent offers Chat.
+25. Start Claude Code from New Agent, reach its prompt, send one message and open
+    Chat. It shows that conversation. On the machine, in PowerShell, compare
+    `(Get-Process -Id <pid>).StartTime.ToFileTimeUtc()` of `claude.exe` with
+    `procStart` in `%USERPROFILE%\.claude\sessions\<pid>.json`. Claude Code 2.1.286
+    and 2.1.316 wrote it as a string of the creation FILETIME's decimal digits, and
+    wrote no `procStartFt`. Record the field's name and form. If they differ, Chat
+    says **Can't Tell the Conversation**, with no offer of the Helper.
+26. Note how long Chat takes to bind. Each check is one PowerShell exec with an
+    `Add-Type` compile, bounded at 20 seconds. Run it from an SSH session that is not
+    elevated against a core that is, and the other way round: a process Heeler cannot
+    read reads as **Can't Tell**, says the read failed, and offers no extension.
+27. Repeat step 25 with an npm-installed Claude Code and through `npx`, and record
+    each tree from `Get-CimInstance Win32_Process`. From npm, 2.1.316's `claude.cmd`
+    runs the package's own `bin\claude.exe` under `cmd.exe`, so the Agent's image is
+    `claude.exe`, not `node.exe`. Through `npx` the tree ran `powershell.exe`,
+    `cmd.exe`, `node.exe` (`npx-cli.js`), `cmd.exe`, `claude.exe`. That 2.1.316
+    reported its status and wrote a matching `sessions\<pid>.json`, but Heeler listed
+    no Agent for it, so it had no Chat, Composer or Stop: the Agent rule did not look
+    through `npx`. It now reads `npx` and `npm exec` as the package they run. In the
+    recheck an `npx` 2.1.316 listed as Claude Code already at its trust dialog, and
+    Chat bound it in its first frame and sent from it; `npm exec` was not run. New
+    Agent starts whichever `claude` a Terminal's PowerShell finds first. On the one
+    machine that was the account's winget copy, even with the npm copy first on the
+    core's own PATH, so the npm and `npx` copies were started over the core's pipe
+    with `terminal.run` in New Agent's form.
+28. Run `/clear` in the terminal. Chat follows at its next check, with no
+    **Working for** row while Claude Code sits idle. Claude Code 2.1.286 reports no
+    status, and on herdr-core 0.1.16 an earlier build counted one up from the
+    `/clear` row until the next turn. In the recheck, with 2.1.286 and Chat left
+    open, no check came in the 55 seconds watched, so Chat kept the old conversation.
+    Shown again after **Show Agent Terminal**, it followed, with only the `/clear`
+    row, **Unknown** and no **Working for** row, after each of two `/clear`s. A draft
+    from before `/clear` was held with **moved to another conversation**, and in the
+    second cycle the Send after the hold went in. A held notice stayed while Chat
+    stayed put, and went once Chat followed another conversation.
+29. Start Grok Build and send a message. Chat shows it, from the one row of
+    `active_sessions.json` with that `pid` and either a `pid_start` equal to the
+    creation time or, with none, an `opened_at` no earlier than it. Record the row's
+    fields beside the creation time. On the one machine run (herdr-core 0.1.16), Grok
+    Build 1.0.70 wrote rows with only `session_id`, `pid`, `cwd` and `opened_at`, 2 s
+    after the creation time, and Chat said it can't tell, also after **Check Again**,
+    since Heeler then required `pid_start`. It now binds from `opened_at`. In the
+    recheck the row again held only those four fields, `opened_at` 2.20 s after the
+    creation time, and Chat read **No Messages Yet** within about 3 seconds of opening,
+    then showed the reply to a Send from Chat. Run `/new`: two rows match, and Chat
+    says it can't tell until Grok Build starts again. In the recheck Grok Build
+    reported no status on this core, so a Chat left open kept the first conversation;
+    opened again, it showed the can't-tell banner over the saved messages. No Send was
+    tried after `/new`.
+30. Open Chat on a Pi Agent with no extension. It says it can't tell, and offers
+    **Add Heeler's Extension…**. The sheet names the folders and has written nothing.
+    Tap Add. `heeler-session.js` is in Pi's folder, `.omp\agent\extensions` and each
+    profile's folder, and nowhere else.
+31. Start Pi again and send a message. The Terminal's `heeler.session` label appears,
+    with a `start` equal to its process's creation time, and Chat shows the
+    conversation. Record Pi's image name, whether Pi loaded the file, and how long the
+    label took, since it runs one hidden PowerShell. Repeat on Oh My Pi, with a profile.
+    In the recheck, Oh My Pi 18.13.3's label came 2.8 seconds after `terminal.run`
+    with `OMP_PROFILE=hwa` and 1.3 seconds without, and Pi 1.4.0's was there at the
+    first poll, 18 seconds after the start, not timed closer.
+32. Send from Chat in a Terminal New Agent started: the message submits. Stop a working
+    turn. Answer a Blocked card. For a program whose bracketed paste does not cross the
+    pseudo console (step 16), record that Chat's Send says the same. On herdr-core
+    0.1.16 with Oh My Pi 18.13.3 (`omp.exe`, with a profile), Send from Chat said
+    **Heeler can't find the Agent's input box on screen.** before and after a turn,
+    while Direct Input submitted: the profile's band reads `π-hwa > `, which Heeler's
+    send check did not know. It now does. In the recheck, Oh My Pi 18.13.3 with the
+    profile submitted two Sends from Chat, before and after a turn, and without a
+    profile one, with no such notice. Stop and a Blocked card were not run on Oh My Pi
+    or Grok Build.
+33. Record each program that passed as a versioned observation in
+    `docs/agents/herdr-compatibility.md`, here, and by adding it to
+    `HostCapabilities.confirmedWindowsCoreChatPrograms`. One that fails stays off, with
+    its observation saying why.
+34. Stop the core. In your desktop session run `$env:CLAUDECODE='1'; $env:HERDR_CHECK='1'`,
+    then start the core there. Host detail shows **Core Environment** naming both, with
+    no value. Start the core from a clean window and it goes. If nothing appears,
+    record that here and in `docs/agents/herdr-compatibility.md`, since a read that
+    failed also shows nothing. Pointing the Host's Session at a throwaway session for
+    this clears that Host's Pins: a new core drops them, and they did not come back
+    when the Session was set back. Note your Pins first.
+35. Record this machine's `DefaultShell`
+    (`Get-ItemProperty 'HKLM:\SOFTWARE\OpenSSH'`; no value means `cmd.exe`). Steps 1
+    to 7 prove the link only under that shell: repeat connect, attach and reconnect
+    under the other one, restoring the value after, with one run under PowerShell 7
+    whose profile prints output and one whose profile also calls `Set-Location`.
+    The value is machine-wide, and a shell that fails can shut SSH out, so from an
+    elevated PowerShell before any change:
+    - Export the key with `reg export HKLM\SOFTWARE\OpenSSH <backup>.reg` and keep
+      the file's hash.
+    - Register a one-off scheduled task that runs as SYSTEM with highest privileges
+      some minutes ahead and puts `DefaultShell` and `DefaultShellCommandOption` back
+      to what the export holds, removing them when it holds neither.
+    - When you finish, put the values back yourself, export the key again and compare
+      that file's hash with the backup's, check that a new SSH exec runs the original
+      shell (under cmd, `echo %COMSPEC%` prints `C:\WINDOWS\system32\cmd.exe`), and
+      delete the task.
+
+    sshd runs the configured shell as `<shell> -c "<command>"` with no `-NoProfile`,
+    so every exec, Heeler's probe and link included, runs the account's PowerShell
+    profiles first, and Heeler's **Reconnect** runs its next execs under the new
+    shell. sshd's `sftp` subsystem starts through that shell too: a profile that
+    prints breaks SFTP and scp ("Received message too long", with a length read from
+    the printed text), so write and remove a test profile through an exec such as
+    `powershell -EncodedCommand`, not scp. Expected: the link's frames arrive whole,
+    a killed link comes back, and the Host does not read
+    **herdr-core is not installed**. The probe finds the core under
+    `$env:USERPROFILE`, and the link runs `cd /d %USERPROFILE%` before `connect`, so
+    a profile that calls `Set-Location` no longer moves either off the core. On the
+    one machine run (herdr-core 0.1.16, OpenSSH_for_Windows_9.5p2), Windows
+    PowerShell 5.1.26100.9711 and PowerShell 7.6.7 with a printing profile passed,
+    and PowerShell 7.6.7 with `Set-Location` added read **herdr-core is not
+    installed** with an older build, whose probe used a path relative to the folder
+    an exec starts in. In the recheck, PowerShell 7.6.7 connected both with a profile
+    that printed a line and called `Set-Location`, where all five Preflight checks
+    were green, and with one that only called `Set-Location`, where Preflight was not
+    run. Under that silent profile scp worked by an absolute path, but a relative one
+    resolved from the profile's folder. Record the result in
+    `docs/agents/herdr-compatibility.md`.
+36. Tear down. Some effects of these steps land in the account's own files and
+    outlast the run:
+    - Claude Code started under your account runs its 30-day cleanup and rotates
+      `~\.claude.json` backups in `~\.claude\backups` (seen on herdr-core 0.1.16 in a
+      stage that ran Claude Code 2.1.286 and 2.1.316; which of them ran it was not
+      traced). In one run it deleted a
+      folder under `~\.claude\projects` holding a month-old transcript, restored
+      afterwards from a Volume Shadow Copy, and removed the account's two oldest
+      backups. Before any step starts Claude Code, copy `~\.claude\projects`,
+      `~\.claude\backups` and `~\.claude.json`. Writing the current UTC time into
+      `~\.claude\.last-cleanup`, in the form it already holds, kept the cleanup from
+      deleting it again later in that run, though the backup rotation ran anyway; put
+      the file back after. Answering a trust dialog writes `~\.claude.json` too.
+    - Claude Code applies the `env` of `~\.claude\settings.json` over the core's
+      environment, so while that file sets an endpoint, model or token, one set for
+      the core does not reach Claude Code: its turns use the account's own.
+    - A device sign-in over SSH (`grok login --device-auth` here) opened the account's
+      Chrome in session 0, on its default profile. It held that profile's lock for
+      hours, until `Stop-Process -Force` ended it; a non-forced `taskkill` was
+      refused. Sign in from the desktop session, or end that browser once the sign-in
+      is done. Signing out locally does not show whether the provider revoked the
+      device's authorization.
+    - Some installers, Oh My Pi's and the desktop app's here, append to the user
+      PATH. A PATH write made with a settings broadcast in the desktop session gives
+      Explorer, and the programs it starts, whatever the value holds at that moment:
+      put the final value back before any broadcast, and check Explorer's PATH at the
+      end.
+    - New Agent's discovery exec, every PowerShell Terminal and each kept Terminal the
+      core restores run the account's PowerShell profile, which here left one
+      `%LOCALAPPDATA%\fnm_multishells` link per start. Lines typed into a PowerShell
+      Terminal join the PSReadLine history. Remove both.
+    - `%LOCALAPPDATA%\herdr-core\<session>` and its `core.lock` stay after
+      `server stop`. Delete them only for a session you started for the test.
+    - Remove Host also forgets the Host's trusted host key and its recent-workspace
+      entry in the app's preferences. Remove your test key's line from the
+      authorized-keys file, restore the file's access list, and check that the key
+      is refused.
+    - In helper scripts, never name a function after a built-in alias, which wins
+      over it: `H` is `Get-History`, and a function named `H` made one cleanup skip
+      its guard. Variable names ignore case, so `$r` is `$R`.
+
 ## Scope and results
 
 The acceptance scope is manual SSH access to existing native Windows herdr
 sessions, API/event synchronization, live terminal control, and foreground
-Live Activity synchronization.
+Live Activity synchronization. Section 9 has its own scope: herdr-core Hosts.
 
 The Windows pairing plugin, its Bootstrap Key forced command, and automatic
 Device Key enrollment are excluded. The plugin manifest still excludes
 Windows, so `heeler.pair` returning `platform_unsupported` is not a failure of
 the manual connection path.
 
-Changes, Skills, uploads/file staging, and notification registration are
-explicitly unavailable on Windows in this implementation. Their app guards
-must return an unavailable result instead of running POSIX remote scripts or
+On a native Windows Herdr TUI Host, Changes, Skills, uploads/file staging, and
+notification registration are explicitly unavailable in this implementation.
+Their app guards must return an unavailable result instead of running POSIX remote scripts or
 writing unsupported remote files. Agent Notifications and background Live
 Activity push updates are unsupported because the Windows plugin is excluded.
-Foreground Live Activity updates remain in scope through API events.
+Foreground Live Activity updates remain in scope through API events. A herdr-core
+Host stages files through `terminal.put` (ADR 0032, section 9 steps 14 and 15).
 
-As a final boundary check, try each unavailable feature and record its app
-message. It must fail promptly without disconnecting the Host or preventing
+As a final boundary check, try each unavailable feature on a Herdr TUI Host and
+record its app message. It must fail promptly without disconnecting the Host or preventing
 later Console refreshes and terminal input.
 
 Record each result separately:
@@ -435,3 +769,188 @@ For a failure, include the exact Heeler message, affected session name,
 authentication method, and the command output from step 1. Note whether
 ordinary noninteractive SSH commands still work. Omit passwords, private
 keys, notification keys, and pairing-code seeds from the report.
+
+### herdr-core Host results
+
+Section 9 ran twice on one machine, the owner's, on 2026-11-03: Windows 11 25H2 build
+26200.9711, Windows PowerShell 5.1.26100.9711 with PSReadLine 2.0.0,
+OpenSSH_for_Windows_9.5p2 with no `DefaultShell` (so `cmd.exe`) outside step 35,
+herdr-core 0.1.16 from its installer, and a herdr 0.9.3 Herdr TUI server beside it.
+The second run added the Herdr desktop app 0.1.12 and a portable PowerShell 7.6.7. The
+phone was a Heeler Debug 0.1.16 (37) Simulator build of `4521499c` on iOS 26.5, with a
+Device Key for an administrator account, so the SSH token was elevated. Steps 24 to 33
+ran on a local build of the same commit whose one changed line listed Claude Code, Grok
+Build, Pi and Oh My Pi in `confirmedWindowsCoreChatPrograms`. The core ran
+in the desktop session at medium integrity, started there by a one-off scheduled task
+with the Host's command, not typed. Programs: Claude Code 2.1.286 (the account's
+winget install) and 2.1.316 (npm), Grok Build 1.0.70 signed in by device code, Pi
+1.4.0 and Oh My Pi 18.13.3 on an Anthropic-compatible endpoint the run set. Claude
+Code answered through the endpoint and token in the account's own `settings.json`
+(step 36), not the run's. Everything here was seen live, once, on this machine,
+unless it says otherwise.
+
+- [#587](https://github.com/ZingerLittleBee/Heeler/issues/587), steps 1 to 9, 34
+  and 35:
+  - Passed: step 1 in both runs, with no core started through 8 attempts; step 2,
+    where the core took the name and the Host connected by itself 23 seconds after the
+    start; step 3; step 4, Direct Input on Oh My Pi; step 5, rotation between 62x51
+    and 117x23, Microsoft Edit full screen, and 300 lines of scrollback; step 6, with
+    **herdr-core is not running** at 11 reads over more than 2 minutes and no core
+    started; step 8, where the card took the repository's folder name (the exec
+    itself was not captured); step 9; step 34, where Core Environment named
+    `CLAUDECODE` and `HERDR_CHECK` with no value and went after a clean start.
+  - Pins, step 7: passed only with the core ended by its pid. The holder started a
+    new core in about 3 seconds, the Host read not running for about 4 seconds, and
+    the pinned row stayed. The desktop start after it started nothing. After
+    `server stop` and a start, the Pins stayed in the app's store with no row to show
+    them. Neither run saw a pinned row after `server stop`.
+  - Step 35: Windows PowerShell 5.1 and PowerShell 7.6.7 with a printing profile
+    passed, with frames whole and a killed link back in 1.4 seconds. Preflight ran,
+    all green, only under Windows PowerShell 5.1.
+    PowerShell 7.6.7 with `Set-Location` added failed as the step's known defect
+    says, and the printing profile broke scp. `DefaultShell` was put back and proved
+    by the export's hash, and the safety task never ran.
+  - Seen beside the steps: after Microsoft Edit quit across a rotation, PowerShell's
+    screen held overlapping rows in Heeler and in the core's own `terminal.read`, so
+    not from Heeler's renderer. Step 9's refusal read "This feature is unavailable on
+    the Host", ended in a doubled period and came only after Save, and Core
+    Environment explained `HERDR_CHECK` with `HERDR_PANE_ID`'s meaning (all changed
+    since; the 2026-11-04 recheck below saw Edit Host's new refusal before Save,
+    ending in one period, but not the state after Save or the `HERDR_CHECK` text).
+    Grok Build 1.0.70's first start stops at a
+    "Help improve Grok" opt-in prompt, and Oh My Pi 18.13.3's at a setup wizard.
+  - Not run: a blank Session (`default`).
+- [#588](https://github.com/ZingerLittleBee/Heeler/issues/588), steps 10 to 15, second
+  run:
+  - Passed: New Agent listed Claude Code, Codex and Grok Build, what a plain SSH
+    `Get-Command` found. An argument with a space, a single quote and Chinese reached
+    Grok Build whole. Claude Code's exit ended its Terminal, with exit code 1 from its
+    trust dialog's **No, exit**, and it left the list. New Terminal opened and ended
+    with exit code 0. New Workspace showed in the desktop app 0.1.12, and the form had
+    no name field. A Staged Image's file was read by its path with the same hash from
+    the desktop session, and by Claude Code in step 17; it stayed after **Close Tab**
+    and went with `terminal.rm`. 9 MiB was refused with the draft kept, and exactly
+    8 MiB landed with the same hash.
+  - Failed: Grok Build 1.0.70's exit, twice (step 11). Its Terminals ended only when
+    closed from Heeler, with exit code 1 and reason `killed`.
+  - Observed: a double quote and an empty argument did not pass through Windows
+    PowerShell 5.1 whole. The core got both as typed, but `grok.exe`'s command line
+    ended in `"say "hi"" ` with a trailing space, which standard parsing reads as
+    `say hi` and no empty argument. What Grok Build itself read was not checked.
+  - Not run: OpenCode, an agent under a junction, a `.ps1` shim blocked by policy
+    (the machine's policy was Bypass), a slow link, Direct Input and Stop while a file
+    crossed, and the removal about a day after a Terminal ends.
+- [#589](https://github.com/ZingerLittleBee/Heeler/issues/589), steps 16 to 23, second
+  run:
+  - Passed: Send into a live Agent, Claude Code 2.1.286 from New Agent and 2.1.316
+    started over the core's pipe in New Agent's form. A
+    draft with a Staged Image's path reached Claude Code, which described the image.
+    Step 19, before and after the desktop app's agent exited. Stop on Claude Code
+    2.1.316, and on a stand-in that exits at Esc, since no installed agent does. Step
+    20. No **not accepting a paste** notice appeared.
+  - Failed: steps 18 and 22, as those steps record of the second run. "Blocked pastes
+    only" held only in that nothing was submitted.
+  - Recorded: step 23 under Windows PowerShell 5.1. Not run: PowerShell 7 there.
+- [#590](https://github.com/ZingerLittleBee/Heeler/issues/590), steps 24 to 33, second
+  run, failed as a whole. New Agent listed only the account's Claude Code, Codex and
+  Grok Build there, so npm Claude Code, Pi and Oh My Pi were started over the core's
+  pipe in New Agent's form:
+  - Passed: Claude Code 2.1.286 and 2.1.316 showed the conversation and sent from
+    Chat, and Chat followed `/clear` on 2.1.286. 2.1.316 also stopped a turn and
+    answered a Blocked card. Pi 1.4.0, whose image is `node.exe`, showed and sent and
+    stopped a turn after **Add Heeler's Extension…** wrote exactly three copies, with
+    its label's `start` equal to its process's creation time. Chat bound in about 3 to
+    5 seconds, through an elevated SSH session against the core at medium integrity.
+  - Failed: Oh My Pi 18.13.3, image `omp.exe`, label within 1.5 seconds with a profile
+    and without. With the profile Chat showed the conversation (the Agent without one
+    was not opened in Chat), but Send from Chat said
+    **Heeler can't find the Agent's input box on screen.** before and after a turn,
+    while Direct Input submitted, since the send check did not know the profile's
+    `π-hwa > ` band, which it now reads. Grok Build 1.0.70 could not be told (step
+    29), and Claude Code through `npx` gave no Agent (step 27), which the Agent rule
+    now reads.
+  - Seen: after `/clear`, Chat showed a **Working for 0:18** row counting up while
+    Claude Code 2.1.286 sat idle, until the next turn. npm Claude Code's first check
+    after its trust dialog said **Can't Tell the Conversation**, and the next, about 3
+    seconds later, bound.
+  - Not run: one program per build, since one build turned on all four; Codex and
+    OpenCode; a Herdr TUI Host; a non-elevated SSH session against an elevated core;
+    and step 33, as the run changed nothing in the repository, so
+    `confirmedWindowsCoreChatPrograms` stayed empty at `4521499c`.
+
+A recheck of the fixes made after those runs ran on the same machine on 2026-11-04,
+with the same Windows build, Windows PowerShell, OpenSSH and herdr-core 0.1.16, the
+Herdr desktop app 0.1.12, and the portable PowerShell 7.6.7 for step 35. The phone was
+a Heeler Debug 0.1.16 (37) Simulator build of `4e499227` on iOS 26.5, with the same
+elevated Device Key login, and the core was started in the desktop session the same
+way. Chat ran on a local build of the same commit whose one changed line listed
+Claude Code, Grok Build, Pi and Oh My Pi; everything else, the `npx` Agent's listing
+in step 27 included, ran on the tip build. Programs: Claude Code 2.1.286 (the
+account's winget install) and 2.1.316 (npm and `npx`), Grok Build 1.0.70 signed in by
+device code, Pi 1.4.0 and Oh My Pi 18.13.3. Claude Code, Pi and Oh My Pi answered
+through an endpoint the run set in the core's environment, and Claude Code ran with
+`CLAUDE_CONFIG_DIR` naming a folder of the run's. Every Agent was started over the
+core's pipe in New Agent's form, apart from the two the desktop app started. Each
+result was seen once unless it says otherwise.
+
+- [#587](https://github.com/ZingerLittleBee/Heeler/issues/587), recheck:
+  - Passed: step 1, whose Device Key footer names
+    `C:\ProgramData\ssh\administrators_authorized_keys` and whose not-running note
+    names the pipe in the account's own case; step 2, where the Host connected by
+    itself with nothing tapped; step 35 under Windows PowerShell 5.1, PowerShell 7.6.7
+    whose profile printed a line and called `Set-Location`, and PowerShell 7.6.7 whose
+    profile only called `Set-Location`. Under each the Host connected, an attached
+    Terminal's frames stayed whole, and a killed link came back within 2 seconds; all
+    five Preflight checks were green under the printing profile. `DefaultShell` was
+    put back and proved by the export's hash, and the safety task never ran.
+  - Step 9 in part, as that step records.
+  - Seen: on four **Reconnect**s Host detail read only **Connecting…**, with no
+    subtitle, for 1 to 3 seconds. The printing profile still broke scp, and under the
+    silent one scp's relative paths started in the profile's folder (step 35). While
+    `DefaultShell` was PowerShell 7.6.7, another SSH client's Herdr TUI bridge, not the
+    run's, connected under it with the test profile, and was replaced by one under
+    `cmd.exe` only about 4 minutes after the value was put back.
+  - Not run: a **Connecting…** after a failed attempt, steps 3 and 5 to 8 and 34 (Core
+    Environment's `HERDR_CHECK` text), and Windows PowerShell 5.1 with a `Set-Location`
+    profile. Step 4's Direct Input was used only to type `/exit` into Grok Build and
+    Claude Code (#588 and #589).
+- [#588](https://github.com/ZingerLittleBee/Heeler/issues/588), recheck:
+  - Passed in part: step 14 with a 31-byte text file added after a typed word. The
+    path went in after a space, under the picked name with its space, `#`,
+    parentheses, `&`, `+` and `ü` each cleaned to `_`, and the file on the machine
+    had the same hash, read by the run rather than by a program in the Terminal, since
+    the draft was cleared and never sent. The file stayed after the Terminal was
+    closed and went with `terminal.rm`.
+  - Seen: step 11, Grok Build 1.0.70's `/exit` again left `grok.exe` running, until
+    its Terminal was closed from Heeler (exit code 1, reason `killed`).
+  - Not run: steps 10, 12, 13 and 15.
+- [#589](https://github.com/ZingerLittleBee/Heeler/issues/589), recheck:
+  - Passed: steps 18 and 22 with Claude Code 2.1.316, as those steps record, and
+    step 19's exit with Claude Code 2.1.286 and Pi 1.4.0 from the desktop app.
+    Pi there ran as `node.exe` on its `dist\bundle\cli.js`, the account's fnm
+    `node.exe` since `pi.cmd` found none beside it, and was listed as Pi.
+  - Not run: step 19's Send while the agent runs, step 18 with 2.1.286, and steps
+    17, 20, 21 and 23.
+- [#590](https://github.com/ZingerLittleBee/Heeler/issues/590), recheck, passed:
+  - Grok Build 1.0.70 (step 29) and Oh My Pi 18.13.3 with a profile and without
+    (steps 31 and 32) bound, showed the reply and sent from Chat, so both joined
+    `confirmedWindowsCoreChatPrograms` (step 33). Claude Code 2.1.316 through `npx`
+    (step 27) did the same. Claude Code 2.1.286 and npm 2.1.316, and Pi 1.4.0 once
+    **Add Heeler's Extension…** had written the same three files, bound and sent from
+    Chat again. Step 28 passed, with the held draft and notice it records.
+  - Seen: with no status to follow, as for Claude Code 2.1.286 after `/clear` and
+    Grok Build after `/new`, an open Chat did not check again. Shown again, Claude
+    Code's Chat followed, and Grok Build's, opened again, said it can't tell over the
+    saved messages. No Send was tried in between, so whether Send held there was not
+    seen. Grok Build reported no status on
+    this core, so it read **Unknown** and offered no Stop. Pi ran on the account's fnm
+    `node.exe` here too, which the account's PowerShell profile put ahead of the
+    run's.
+  - Not run: Stop and a Blocked card on Grok Build and Oh My Pi, a Send after Grok
+    Build's `/new`, a Chat opened before Grok Build writes its row, Oh My Pi without
+    the extension, Codex and OpenCode, a Herdr TUI Host, a non-elevated SSH session
+    against an elevated core, and one program per build.
+- Step 36, Tear down, recheck: Remove Host forgot the Host's trusted host key, wrote
+  no `live-activity.enabled-hosts`, and its confirmation names the trusted host key.
+  The Host had no recent-workspace entry, so that half was not seen. The test key
+  lines were removed with the access list kept, and the key was refused.

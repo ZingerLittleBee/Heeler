@@ -778,6 +778,17 @@ UPDATE_USAGE_VECTOR=1 node --test --test-name-pattern='shared v1 vector' plugin/
 node --test --test-name-pattern='shared v1 vector' plugin/test/usage-worker.test.js
 ```
 
+The table is mirrored into the Host Helper, so a changed table is a Helper
+change. Bump `helper/version.json`,
+[host-helper-version-v1.json](test-vectors/host-helper-version-v1.json) and
+`HostHelperCompatibility.bundled`, then, from the repository root, regenerate the
+mirror and manifest, which carries the version, and run the test that checks them:
+
+```sh
+node scripts/generate-host-helper-manifest.mjs
+node --test plugin/test/helper-closure.test.js
+```
+
 Review the shared [usage-v1 vector](test-vectors/usage-v1.json) diff and the
 Swift literal price expectations in
 [AgentUsageTests](../Tests/HeelerTests/AgentUsageTests.swift).

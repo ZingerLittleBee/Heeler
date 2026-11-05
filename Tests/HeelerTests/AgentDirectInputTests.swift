@@ -174,8 +174,8 @@ struct AgentDirectInputTests {
             manageSnippets: { events.append(.snippets) },
             showSkills: nil,
             showWorktreeDetails: nil,
-            renameAgent: { events.append(.renameAgent) },
-            renameWorkspace: { events.append(.renameWorkspace) },
+            renameAgent: nil,
+            renameWorkspace: nil,
             closeAgent: { events.append(.closeAgent) },
             backToConsole: { events.append(.back) })
         let busy = AgentComposerActions(
@@ -238,6 +238,8 @@ struct AgentDirectInputTests {
             (.snippets, ready, true, true),
             (.worktreeDetails, gated, false, true),
             (.worktreeDetails, ready, true, true),
+            (.renameAgent, gated, false, true),
+            (.renameWorkspace, gated, false, true),
             (.renameAgent, ready, true, true),
             (.renameWorkspace, ready, true, true),
             (.closeAgent, ready, true, true),

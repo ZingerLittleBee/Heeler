@@ -139,6 +139,11 @@ final class RenameStore {
             "The Host is not connected."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case TransportError.coreMutationOutcomeUnknown:
+            "The Host did not confirm the rename. It may still apply, so check the desktop app before trying again."
+        case let refused as HerdrAppControl.Refused:
+            refused.reason.map { "The desktop app refused the rename: \($0)" }
+                ?? "The desktop app could not be reached."
         case let apiError as HerdrAPIError:
             "herdr rejected the rename: \(apiError.message)"
         default:

@@ -24,6 +24,10 @@ final class StartAgentStore {
         /// The start succeeded; the payload is the started Agent's Console
         /// identity, which the owner opens after the screen dismisses.
         case started(ConsoleAgent.ID)
+        /// A Template started a program that is running and is no Agent until it
+        /// reports. Its row is in the Terminals list, and an Agent detail would
+        /// read as gone.
+        case startedAsTerminal
     }
 
     enum AgentDiscoveryState: Equatable {
@@ -31,6 +35,18 @@ final class StartAgentStore {
         case loading
         case loaded
         case failed(String)
+    }
+
+    /// What the form's Agent picker can hold.
+    enum AgentChoice: Hashable {
+        case kind(SupportedAgentKind)
+        case template(AgentTemplate)
+    }
+
+    /// A complete choice, with what it starts under, read once at submit.
+    private enum Launch {
+        case kind(SupportedAgentKind, arguments: [String], name: String)
+        case template(AgentTemplate, name: String?)
     }
 
     /// Context inherited when the flow opens from an agent's own screen: the
@@ -95,6 +111,8 @@ final class StartAgentStore {
                 pickedWorkspaceID = nil
                 availableAgentKinds = []
                 selectedAgentKind = nil
+                availableTemplates = []
+                selectedTemplate = nil
                 selectedPresetID = nil
                 agentDiscoveryState = .idle
                 launchTarget = .existingWorkspace
@@ -149,6 +167,7 @@ final class StartAgentStore {
     /// else the Host's first.
     var selectedAgentKind: SupportedAgentKind? {
         didSet {
+            if selectedAgentKind != nil { selectedTemplate = nil }
             // Another harness leaves the preset behind.
             if let selectedPreset, selectedPreset.kind != selectedAgentKind { selectedPresetID = nil }
         }
@@ -158,6 +177,25 @@ final class StartAgentStore {
     var selectedPresetID: LaunchPreset.ID? {
         didSet {
             if let selectedPreset, selectedAgentKind != selectedPreset.kind { selectedAgentKind = selectedPreset.kind }
+        }
+    }
+    /// The Template selected in place of a kind.
+    var selectedTemplate: AgentTemplate? {
+        didSet { if selectedTemplate != nil { selectedAgentKind = nil } }
+    }
+    /// Either one, as the form's picker holds it.
+    var selectedAgent: AgentChoice? {
+        get {
+            selectedTemplate.map(AgentChoice.template) ?? selectedAgentKind.map(AgentChoice.kind)
+        }
+        set {
+            switch newValue {
+            case .kind(let kind): selectedAgentKind = kind
+            case .template(let template): selectedTemplate = template
+            case nil:
+                selectedAgentKind = nil
+                selectedTemplate = nil
+            }
         }
     }
     /// Optional native arguments, parsed into argv without invoking a shell.
@@ -224,25 +262,37 @@ final class StartAgentStore {
     private(set) var state: State = .editing
     private(set) var agentDiscoveryState: AgentDiscoveryState = .idle
     private(set) var availableAgentKinds: [SupportedAgentKind] = []
+    /// The Host's Templates, offered beside the kinds.
+    private(set) var availableTemplates: [AgentTemplate] = []
 
     private let workspacesProvider: (Host.ID) -> [ConsoleWorkspace]
-    /// The agent names already live on a Host, so a generated default never
-    /// collides with them. Names only: herdr's duplicate check ignores
-    /// detected kind labels, but the Console reports those as names too, and
-    /// skipping them merely bumps the suffix.
+    /// The names already live on a Host, so a generated default never collides
+    /// with them. A herdr-core Host's Terminals hold theirs whether or not they
+    /// are Agents. herdr's duplicate check ignores detected kind labels, but the
+    /// Console reports those as names too, and skipping them merely bumps the
+    /// suffix.
     private let existingAgentNames: (Host.ID) -> Set<String>
     private let discoverAgentKinds: (Host.ID) async throws -> [SupportedAgentKind]
+    private let discoverTemplates: (Host.ID) async throws -> [AgentTemplate]
     /// Resolves the Host's home directory for a name-only New Workspace
     /// launch; fetched at submit so an unreachable Host never blocks editing.
     private let remoteHome: (Host.ID) async throws -> String
+    /// Whether a Host's desktop app could apply a typed Workspace name now.
+    private let offersDesktopAppNames: (Host.ID) -> Bool
+    /// Whether a connected Host serves Worktrees, which a herdr-core Host's
+    /// platform decides.
+    private let offersConnectedWorktrees: (Host.ID) -> Bool
     /// Dispatches the assembled request through the matching Transport
     /// launch variant.
     private let start: (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent
+    private let startTemplate: (TemplateLaunchRequest, Host.ID) async throws -> Agent
     /// Suspends (bounded) until the started Agent is visible in the Console.
     /// The row the owner navigates to exists only after the post-start resync
     /// lands; waiting here keeps the opened detail from flashing its
     /// missing-Agent placeholder over a launch that just succeeded.
     private let awaitAgentVisible: (ConsoleAgent.ID) async -> Void
+    private let isAgentListed: (ConsoleAgent.ID) -> Bool
+    private let programExit: (ConsoleAgent.ID) -> ProgramExit?
     @ObservationIgnored private let recents: RecentLaunchStore
     /// The device's Launch Presets, read when the form shows them.
     private let presetsProvider: () -> [LaunchPreset]
@@ -259,16 +309,26 @@ final class StartAgentStore {
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace],
         existingAgentNames: @escaping (Host.ID) -> Set<String>,
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
+        discoverTemplates: @escaping (Host.ID) async throws -> [AgentTemplate] = { _ in [] },
+        startTemplate: @escaping (TemplateLaunchRequest, Host.ID) async throws -> Agent = { _, _ in
+            throw TransportError.hostFeatureUnavailable(feature: "Templates")
+        },
         remoteHome: @escaping (Host.ID) async throws -> String,
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
+        isAgentListed: @escaping (ConsoleAgent.ID) -> Bool = { _ in true },
+        programExit: @escaping (ConsoleAgent.ID) -> ProgramExit? = { _ in nil },
         origin: LaunchOrigin? = nil,
         recents: RecentLaunchStore = RecentLaunchStore(),
+        offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false },
+        offersConnectedWorktrees: @escaping (Host.ID) -> Bool = { _ in false },
         presets: @escaping () -> [LaunchPreset] = { [] },
         accountVariable: @escaping (Host.ID, SupportedAgentKind) async throws -> String? = { _, kind in
             kind.configDirectoryVariable
         }
     ) {
+        self.offersDesktopAppNames = offersDesktopAppNames
+        self.offersConnectedWorktrees = offersConnectedWorktrees
         self.presetsProvider = presets
         self.accountVariable = accountVariable
         self.hosts = hosts
@@ -276,9 +336,13 @@ final class StartAgentStore {
         self.workspacesProvider = workspaces
         self.existingAgentNames = existingAgentNames
         self.discoverAgentKinds = discoverAgentKinds
+        self.discoverTemplates = discoverTemplates
         self.remoteHome = remoteHome
         self.start = start
+        self.startTemplate = startTemplate
         self.awaitAgentVisible = awaitAgentVisible
+        self.isAgentListed = isAgentListed
+        self.programExit = programExit
         self.recents = recents
         // Pre-select when there is no choice to make.
         self.selectedHostID = origin?.hostID ?? (hosts.count == 1 ? hosts.first?.id : nil)
@@ -290,7 +354,40 @@ final class StartAgentStore {
     /// hold, so the origin flow drops the option rather than silently
     /// ignoring the requested directory. New Workspace likewise has no
     /// source Workspace to branch from.
-    var offersWorktree: Bool { origin == nil && launchTarget == .existingWorkspace }
+    var offersWorktree: Bool {
+        origin == nil && launchTarget == .existingWorkspace
+            && (selectedHost?.capabilities.worktrees != false
+                || selectedHostID.map(offersConnectedWorktrees) == true)
+    }
+
+    /// A herdr-core Host has no generated branch or base: Heeler makes the
+    /// Worktree as the Herdr desktop app does, on the branch the user names, from
+    /// the Workspace's HEAD (ADR 0032).
+    var worktreeNeedsBranch: Bool {
+        selectedHost?.serverKind == .herdrCore
+    }
+
+    /// Whether the form asks for Workspace and tab names. Its Agent name is
+    /// independent of them.
+    var offersWorkspaceAndTabNames: Bool {
+        selectedHost?.capabilities.tabNames != false
+    }
+
+    /// Whether New Workspace asks for a name. A herdr-core Host has none of its
+    /// own, so only while its desktop app can apply one.
+    var offersWorkspaceName: Bool {
+        offersWorkspaceAndTabNames || selectedHostID.map(offersDesktopAppNames) == true
+    }
+
+    /// A herdr-core Host finds Agents through the user's interactive shell
+    /// (ADR 0032), not the Host's PATH.
+    var discoversThroughUserShell: Bool {
+        selectedHost?.serverKind == .herdrCore
+    }
+
+    private var selectedHost: Host? {
+        hosts.first(where: { $0.id == selectedHostID })
+    }
 
     /// Whether the form offers Existing vs New Workspace. Origin launches
     /// inherit the origin agent's Workspace and directory, so the choice
@@ -324,9 +421,14 @@ final class StartAgentStore {
     /// a Host and Agent are selected. Shown as the field's placeholder so the
     /// fallback is never a surprise.
     var defaultAgentName: String? {
-        guard let selectedHostID, let kind = selectedAgentKind else { return nil }
+        guard let selectedHostID else { return nil }
+        let taken = existingAgentNames(selectedHostID)
+        if let selectedTemplate {
+            return Self.defaultAgentName(forTemplate: selectedTemplate.name, taken: taken)
+        }
+        guard let kind = selectedAgentKind else { return nil }
         let base = selectedPreset.flatMap(Self.agentNameBase) ?? kind.rawValue
-        return Self.defaultAgentName(base: base, taken: existingAgentNames(selectedHostID))
+        return Self.defaultAgentName(base: base, taken: taken)
     }
 
     /// The presets of the harnesses the selected Host has.
@@ -346,6 +448,13 @@ final class StartAgentStore {
         return AgentName.validationError(name) == nil ? name : nil
     }
 
+    /// A Template's command is its own, so the form asks for no arguments.
+    var offersArguments: Bool { selectedTemplate == nil }
+
+    /// A Template's start can wait out the program's first report, long enough
+    /// for the form to say so.
+    var isStartingTemplate: Bool { state == .starting && selectedTemplate != nil }
+
     /// User-facing branch feedback; nil while the toggle is off or the field
     /// is empty (empty means "use herdr's generated branch").
     var worktreeBranchErrorMessage: String? {
@@ -359,11 +468,34 @@ final class StartAgentStore {
     var canSubmit: Bool {
         selectedHostID != nil && hasLaunchTarget
             && nameErrorMessage == nil
-            && selectedAgentKind != nil
-            && parsedArguments.isSuccess
+            && hasCompleteAgentChoice
             && worktreeBranchErrorMessage == nil
-            && agentDiscoveryState == .loaded
+            && !isMissingNeededBranch
             && state != .starting
+    }
+
+    private var isMissingNeededBranch: Bool {
+        offersWorktree && startsInNewWorktree && worktreeNeedsBranch
+            && Self.nonEmptyTrimmed(worktreeBranch) == nil
+    }
+
+    /// A Template goes through no shell, so it stays open when discovery failed.
+    private var hasCompleteAgentChoice: Bool {
+        if selectedTemplate != nil { return true }
+        return selectedAgentKind != nil && parsedArguments.isSuccess
+            && agentDiscoveryState == .loaded
+    }
+
+    private var pendingLaunch: Launch? {
+        let typed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let typedName = typed.isEmpty ? nil : typed
+        if let selectedTemplate {
+            return .template(selectedTemplate, name: typedName ?? defaultAgentName)
+        }
+        guard let selectedAgentKind, case .success(let arguments) = parsedArguments,
+            let agentName = typedName ?? defaultAgentName
+        else { return nil }
+        return .kind(selectedAgentKind, arguments: arguments, name: agentName)
     }
 
     /// Existing Workspace and origin launches need a reported Workspace;
@@ -388,15 +520,20 @@ final class StartAgentStore {
     }
 
     func discoverAgents() async {
+        availableAgentKinds = []
+        selectedAgentKind = nil
+        availableTemplates = []
+        selectedTemplate = nil
         guard let hostID = selectedHostID else {
-            availableAgentKinds = []
-            selectedAgentKind = nil
             agentDiscoveryState = .idle
             return
         }
-        availableAgentKinds = []
-        selectedAgentKind = nil
         agentDiscoveryState = .loading
+        // Heeler's own list does not depend on this one, so an ask that fails
+        // leaves the form with Heeler's agents.
+        let templates = (try? await discoverTemplates(hostID)) ?? []
+        guard selectedHostID == hostID else { return }
+        availableTemplates = templates
         do {
             let kinds = try await discoverAgentKinds(hostID)
             guard selectedHostID == hostID else { return }
@@ -406,12 +543,14 @@ final class StartAgentStore {
             } else {
                 selectedAgentKind = kinds.first
             }
+            if kinds.isEmpty { selectedTemplate = templates.first }
             agentDiscoveryState = .loaded
         } catch is CancellationError {
             guard selectedHostID == hostID else { return }
             agentDiscoveryState = .idle
         } catch {
             guard selectedHostID == hostID else { return }
+            selectedTemplate = templates.first
             agentDiscoveryState = .failed(Self.discoveryMessage(for: error))
         }
     }
@@ -423,18 +562,12 @@ final class StartAgentStore {
         guard
             !isStarting,
             let hostID = selectedHostID,
-            let kind = selectedAgentKind,
-            case .success(let arguments) = parsedArguments,
+            let launch = pendingLaunch,
             worktreeBranchErrorMessage == nil,
+            !isMissingNeededBranch,
             nameErrorMessage == nil
         else { return }
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let preset = selectedPreset
-        let agentName =
-            trimmedName.isEmpty
-            ? Self.defaultAgentName(
-                base: preset.flatMap(Self.agentNameBase) ?? kind.rawValue, taken: existingAgentNames(hostID))
-            : trimmedName
         isStarting = true
         defer { isStarting = false }
         // A name-only New Workspace launch has no browsed directory: fall
@@ -474,7 +607,8 @@ final class StartAgentStore {
         // meanwhile is not launched.
         let target = SubmittedTarget(destination: destination, workspaceID: selectedWorkspaceID, tabLabel: tabLabel)
         state = .starting
-        var launchArguments = arguments
+        var launchArguments: [String] = []
+        if case .kind(_, let arguments, _) = launch { launchArguments = arguments }
         var environment: [String: String] = [:]
         if let preset {
             do {
@@ -494,9 +628,9 @@ final class StartAgentStore {
                     state = .editing
                     return
                 }
-                let launch = try preset.launch(formArguments: arguments, home: home, accountVariable: variable)
-                launchArguments = launch.arguments
-                environment = launch.environment
+                let presetLaunch = try preset.launch(formArguments: launchArguments, home: home, accountVariable: variable)
+                launchArguments = presetLaunch.arguments
+                environment = presetLaunch.environment
             } catch let problem as LaunchPreset.Problem {
                 state = .failed(problem.message)
                 return
@@ -512,28 +646,58 @@ final class StartAgentStore {
         case .existingWorkspace, .newWorktree:
             workspaceID = target.workspaceID
         }
-        let request = AgentLaunchRequest(
-            kind: kind.rawValue,
-            name: agentName,
-            arguments: launchArguments,
-            workspaceID: workspaceID,
-            cwd: origin?.cwd,
-            tabLabel: Self.nonEmptyTrimmed(target.tabLabel),
-            environment: environment)
         do {
-            let agent = try await start(request, destination, hostID)
+            let agent: Agent
+            switch launch {
+            case .kind(let kind, _, let agentName):
+                agent = try await start(
+                    AgentLaunchRequest(
+                        kind: kind.rawValue,
+                        name: agentName,
+                        arguments: launchArguments,
+                        workspaceID: workspaceID,
+                        cwd: origin?.cwd,
+                        tabLabel: offersWorkspaceAndTabNames ? Self.nonEmptyTrimmed(target.tabLabel) : nil,
+                        environment: environment),
+                    destination, hostID)
+            case .template(let template, let agentName):
+                var newWorkspace: NewWorkspaceSpec?
+                if case .newWorkspace(let spec) = destination { newWorkspace = spec }
+                var worktree: WorktreeSpec?
+                if case .newWorktree(let spec) = destination { worktree = spec }
+                agent = try await startTemplate(
+                    TemplateLaunchRequest(
+                        template: template.name, name: agentName, workspaceID: workspaceID,
+                        cwd: origin?.cwd, newWorkspace: newWorkspace, worktree: worktree),
+                    hostID)
+            }
             if case .newWorkspace = destination {
                 recents.rememberWorkspace(agent.workspaceID, for: hostID)
             } else if let workspaceID {
                 recents.rememberWorkspace(workspaceID, for: hostID)
             }
-            recents.rememberAgentKind(kind)
+            if case .kind(let kind, _, _) = launch { recents.rememberAgentKind(kind) }
             let startedID = ConsoleAgent.ID(hostID: hostID, paneID: agent.paneID)
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.
             await awaitAgentVisible(startedID)
-            state = .started(startedID)
+            switch launch {
+            case .template(let template, _):
+                if let exit = programExit(startedID) {
+                    state = .failed(Self.message(forTemplate: template.name, endedWith: exit))
+                } else {
+                    state = isAgentListed(startedID) ? .started(startedID) : .startedAsTerminal
+                }
+            case .kind(let kind, _, _):
+                if let exit = programExit(startedID) {
+                    state = .failed(Self.message(forKind: kind, endedWith: exit))
+                } else {
+                    state = .started(startedID)
+                }
+            }
         } catch {
+            var kind: SupportedAgentKind?
+            if case .kind(let launched, _, _) = launch { kind = launched }
             state = .failed(Self.message(for: error, launchedKind: kind))
         }
     }
@@ -560,7 +724,7 @@ final class StartAgentStore {
                 return .newWorktree(
                     WorktreeSpec(
                         branch: Self.nonEmptyTrimmed(worktreeBranch),
-                        base: Self.nonEmptyTrimmed(worktreeBase)))
+                        base: worktreeNeedsBranch ? nil : Self.nonEmptyTrimmed(worktreeBase)))
             }
             return .existingWorkspace
         case .newWorkspace:
@@ -570,7 +734,7 @@ final class StartAgentStore {
             return .newWorkspace(
                 NewWorkspaceSpec(
                     directory: directory,
-                    label: Self.nonEmptyTrimmed(newWorkspaceLabel)))
+                    label: offersWorkspaceName ? Self.nonEmptyTrimmed(newWorkspaceLabel) : nil))
         }
     }
 
@@ -669,6 +833,15 @@ final class StartAgentStore {
         defaultAgentName(base: kind.rawValue, taken: taken)
     }
 
+    /// A Template's file name may be no agent name, or leave no room for a
+    /// suffix: that Agent goes unnamed, and its row shows what it runs.
+    static func defaultAgentName(forTemplate template: String, taken: Set<String>) -> String? {
+        let name = defaultAgentName(base: template, taken: taken)
+        // A suffix that would shorten the Template's name names no Agent.
+        guard name.hasPrefix(template) else { return nil }
+        return AgentName.validationError(name) == nil ? name : nil
+    }
+
     static func defaultAgentName(base: String, taken: Set<String>) -> String {
         guard taken.contains(base) else { return base }
         var suffix = 2
@@ -735,8 +908,13 @@ final class StartAgentStore {
             "The Host is not connected."
         case TransportError.timedOut:
             "Agent detection timed out."
+        case TransportError.hostFeatureUnavailable(let feature):
+            feature
+        case TransportError.malformedResponse(let detail):
+            detail
         default:
-            "Detecting Agents failed: \(error)"
+            TransportError.herdrCoreLinkMessage(for: error)
+                ?? "Detecting Agents failed: \(error)"
         }
     }
 
@@ -753,14 +931,59 @@ final class StartAgentStore {
         }
     }
 
+    /// The core reports a command `sh -c` could not find as exit code 127.
+    private static func message(forTemplate template: String, endedWith exit: ProgramExit) -> String {
+        message(
+            for: template, endedWith: exit,
+            commandNotFound: "That code means its command was not found: a Template runs without your shell, "
+                + "so it needs a full path or a PATH of its own.")
+    }
+
+    /// A kind goes through the Host's login shell, so its 127 is that shell's.
+    private static func message(forKind kind: SupportedAgentKind, endedWith exit: ProgramExit) -> String {
+        message(
+            for: kind.displayName, endedWith: exit,
+            commandNotFound: "That code means the Host's shell could not find its command.")
+    }
+
     private static func message(
-        for error: any Error, launchedKind: SupportedAgentKind
+        for program: String, endedWith exit: ProgramExit, commandNotFound: String
+    ) -> String {
+        switch exit.code {
+        case 0:
+            "\(program) finished right after it started, so no Agent is running."
+        case 127:
+            "\(program) ended right after it started, with exit code 127, so no Agent is running. "
+                + commandNotFound
+        case let code?:
+            "\(program) ended right after it started, with exit code \(code), so no Agent is running."
+        case nil:
+            "\(program) ended right after it started, so no Agent is running."
+        }
+    }
+
+    private static func message(
+        for error: any Error, launchedKind: SupportedAgentKind?
     ) -> String {
         switch error {
         case TransportError.sshUnreachable:
             "The Host is not connected."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case TransportError.gitTimedOut:
+            "The Host's git did not answer in time."
+        case TransportError.coreMutationOutcomeUnknown:
+            "The Host did not confirm the launch. The Agent may still have started, "
+                + "so check the Host before trying again."
+        case TransportError.hostFeatureUnavailable(let feature):
+            feature
+        case let worktree as HerdrCoreWorktreeError:
+            worktree.message
+        case let template as HerdrCoreTemplateError:
+            template.message
+        case let failure as WorktreeAgentStartFailure:
+            "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. "
+                + message(for: failure.underlying, launchedKind: launchedKind)
         case let apiError as HerdrAPIError where apiError.code == "not_git_worktree":
             // The one dedicated worktree.create error code (#97); everything
             // else collapses into worktree_create_failed with raw git stderr,
@@ -787,15 +1010,20 @@ final class StartAgentStore {
         case let apiError as HerdrAPIError:
             "herdr rejected the command: \(apiError.message)"
         default:
-            "Starting the agent failed: \(error)"
+            TransportError.herdrCoreLinkMessage(for: error)
+                ?? "Starting the agent failed: \(error)"
         }
     }
 }
 
 extension StartAgentStore.LaunchOrigin {
-    /// Beside `agent`: its Host, Workspace, and launch directory.
-    init(beside agent: ConsoleAgent) {
-        self.init(hostID: agent.hostID, workspaceID: agent.agent.workspaceID, cwd: agent.agent.cwd)
+    /// Beside `agent`: its Host, Workspace, and the directory a launch there
+    /// starts in, which for a derived core Workspace is the Workspace's own.
+    @MainActor init(beside agent: ConsoleAgent, in console: ConsoleStore) {
+        self.init(
+            hostID: agent.hostID, workspaceID: agent.agent.workspaceID,
+            cwd: console.launchDirectory(
+                ofWorkspace: agent.agent.workspaceID, asked: agent.agent.cwd, on: agent.hostID))
     }
 }
 

@@ -25,7 +25,11 @@ struct ShellTerminalView: View {
     /// Nil hides the Close Terminal action entirely (previews, tests).
     var isClosingTerminal: Bool = false
     var onCloseTerminal: (@MainActor () -> Void)? = nil
+    /// What Terminal Ended says instead of its own words.
+    var finishedMessage: String? = nil
     var managesLifecycle = true
+    /// False on a Host whose terminals have no Take Over: any viewer may type.
+    var offersTakeOver = true
     var surfaceRetention: TerminalSurfaceRetention?
     var title = "Terminal"
     var backTitle = "Back to Agent"
@@ -117,6 +121,7 @@ struct ShellTerminalView: View {
             return true
         }
         screen.theme = terminal.themes.theme
+        screen.displayColors = terminal.themes.colors(for: colorScheme)
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
         screen.onFontSizeChanged = { terminal.zoom.setFontSize($0) }
@@ -624,12 +629,19 @@ struct ShellTerminalView: View {
                 ) {
                     Button("Reattach") { store.retryTerminal() }
                         .buttonStyle(.terminalStatusPrimary)
-                    if !managesLifecycle {
+                    if !managesLifecycle, offersTakeOver {
                         Button("Take Over") { store.takeOverTerminal() }
                             .buttonStyle(.terminalStatusSecondary)
                             .accessibilityHint("Disconnects another client's attachment to this terminal")
                     }
                 }
+            case .finished:
+                TerminalStatusDialog(
+                    glyph: .symbol("stop.circle"),
+                    title: presentation.title,
+                    message: finishedMessage ?? presentation.message,
+                    palette: themePalette,
+                    dimsBackground: presentation.dimsBackground)
             }
         }
     }

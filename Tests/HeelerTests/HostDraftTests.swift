@@ -16,6 +16,77 @@ struct HostDraftTests {
         #expect(rebuilt == host)
     }
 
+    @Test func coreKindSurvivesEditingAndDuplication() throws {
+        let host = Host(
+            name: "Desktop", address: "box.example", username: "dev",
+            serverKind: .herdrCore, sessionName: "work")
+        let draft = HostDraft(host: host)
+        #expect(draft.serverKind == .herdrCore)
+        #expect(try #require(draft.makeHost(id: host.id)) == host)
+
+        let duplicate = HostDraft(duplicating: host, password: nil, existingNames: ["Desktop"])
+        let copied = try #require(duplicate.makeHost())
+        #expect(copied.serverKind == .herdrCore)
+        #expect(copied.sessionName == "work")
+        #expect(copied.name == "Desktop copy")
+    }
+
+    @Test func aNewDraftIsUnconfirmedAndACopyKeepsItsHostsKind() throws {
+        var draft = HostDraft()
+        draft.address = "box.example"
+        draft.username = "dev"
+        let host = try #require(draft.makeHost())
+        #expect(host.serverKind == .unconfirmed)
+        let copy = HostDraft(duplicating: host, password: nil, existingNames: [])
+        #expect(try #require(copy.makeHost()).serverKind == .unconfirmed)
+
+        let tui = Host(address: "box.example", username: "dev", serverKind: .herdrTUI)
+        let tuiCopy = HostDraft(duplicating: tui, password: nil, existingNames: [])
+        #expect(try #require(tuiCopy.makeHost()).serverKind == .herdrTUI)
+    }
+
+    /// Which rule a name answers to depends on the kind the user confirms, and
+    /// confirming says why it was refused.
+    @Test(arguments: ["work session", "a/b", ".", String(repeating: "a", count: 65)])
+    func aNewDraftAcceptsAnySessionNameUntilItsKindIsConfirmed(_ name: String) throws {
+        var draft = HostDraft()
+        draft.address = "box.example"
+        draft.username = "dev"
+        draft.sessionName = "  \(name) "
+
+        #expect(try #require(draft.makeHost()).sessionName == name)
+    }
+
+    /// `serverKind` has no setter outside the draft, so Edit can only hand the
+    /// store the kind the Host already has, whatever else changes.
+    @MainActor
+    @Test(arguments: [ServerKind.herdrTUI, .herdrCore])
+    func editingKeepsTheKindTheStoreRequires(_ kind: ServerKind) throws {
+        let host = Host(name: "Desktop", address: "box.example", username: "dev", serverKind: kind)
+        let store = HostStore(volatileHosts: [host])
+        var draft = HostDraft(host: host)
+        draft.name = "Renamed"
+        draft.sessionName = "work"
+        draft.authMethod = .password
+        draft.password = "secret"
+
+        let edited = try #require(draft.makeHost(id: host.id))
+        try store.update(edited, password: draft.passwordUpdate)
+
+        #expect(store.hosts.map(\.serverKind) == [kind])
+        #expect(store.hosts.map(\.name) == ["Renamed"])
+    }
+
+    @Test func anEndpointPairingStaysHerdrTUI() throws {
+        let endpoint = try #require(HerdrEndpoint(
+            socketPath: "/srv/app/herdr/herdr.sock", executablePath: "/srv/app/bin/herdr"))
+        let draft = HostDraft(host: Host(
+            address: "box.example", username: "dev", herdrEndpoint: endpoint))
+        let saved = try #require(draft.makeHost())
+        #expect(saved.serverKind == .herdrTUI)
+        #expect(saved.herdrEndpoint == endpoint)
+    }
+
     @Test func prefillsAndRoundTripsAJumpHost() throws {
         let host = Host(
             id: UUID(), name: "Behind NAT", address: "127.0.0.1", port: 12_222,
@@ -110,13 +181,68 @@ struct HostDraftTests {
         ]
 
         for sessionName in invalidNames {
-            var draft = HostDraft()
-            draft.address = "host.example"
-            draft.username = "dev"
+            var draft = HostDraft(host: Host(address: "host.example", username: "dev", serverKind: .herdrTUI))
             draft.sessionName = sessionName
 
             #expect(!draft.isValid, "unexpectedly accepted session name: \(sessionName)")
         }
+    }
+
+    private func coreDraft(sessionName: String) -> HostDraft {
+        var draft = HostDraft(host: Host(address: "box.example", username: "dev", serverKind: .herdrCore))
+        draft.sessionName = sessionName
+        return draft
+    }
+
+    @Test(arguments: ["desktop session", "作業", "O'Brien $project `local`", String(repeating: "a", count: 65)])
+    func coreDraftsAcceptNamesTheTUIRefuses(_ name: String) throws {
+        #expect(try #require(coreDraft(sessionName: name).makeHost()).sessionName == name)
+
+        var tui = HostDraft(host: Host(address: "box.example", username: "dev", serverKind: .herdrTUI))
+        tui.sessionName = name
+        #expect(!tui.isValid)
+    }
+
+    /// hc's `session()` in paths.rs (v0.1.13) trims the name and reads blank as
+    /// `default`.
+    @Test(arguments: [
+        (" work ", "work"), ("\n\twork\r\n", "work"), ("Team space\t", "Team space"),
+        ("", "default"), (" \n\t", "default"),
+    ])
+    func coreDraftsTrimTheSessionNameAsHcDoes(_ typed: String, _ saved: String) throws {
+        #expect(try #require(coreDraft(sessionName: typed).makeHost()).sessionName == saved)
+    }
+
+    /// Every name hc's `session()` refuses: `.`, `..`, control characters and
+    /// the characters a path can't hold, also once trimmed.
+    @Test(arguments: [
+        ".", "..", " . ", "\n..\t", "a/b", "a\\b", "a:b", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b",
+        "a\tb", "a\nb", "a\u{7f}b", "a\u{85}b", "a\u{0}b",
+    ])
+    func coreDraftsRefuseNamesHcRefuses(_ name: String) {
+        let draft = coreDraft(sessionName: name)
+        #expect(!draft.isValid)
+        #expect(draft.makeHost() == nil)
+    }
+
+    /// The core takes a space; a native Windows Host's `connect` line does not, so
+    /// the form says why before Save rather than the Host after it (#587).
+    @Test func aCoreHostFoundOnWindowsRefusesWhatItsConnectLineCannotCarry() throws {
+        let draft = coreDraft(sessionName: "hwa1103-main x")
+        #expect(draft.sessionNameRefusal() == nil)
+        #expect(draft.canSave(editing: nil))
+
+        let refusal = try #require(draft.sessionNameRefusal(onNativeWindows: true))
+        #expect(refusal == HerdrCoreSessionName.windowsRefusal("hwa1103-main x"))
+        #expect(!refusal.hasSuffix(".."))
+        #expect(!draft.canSave(editing: nil, onNativeWindows: true))
+        #expect(coreDraft(sessionName: "hwa1103-main").canSave(editing: nil, onNativeWindows: true))
+    }
+
+    @Test func aRefusalTheCoreMakesIsShownWhereverTheHostIs() {
+        let draft = coreDraft(sessionName: "a/b")
+        #expect(draft.sessionNameRefusal() == HerdrCoreSessionName.refusal("a/b"))
+        #expect(!draft.canSave(editing: nil))
     }
 
     @Test func acceptsHerdrSessionNameCharacterSetAndLengthLimit() {

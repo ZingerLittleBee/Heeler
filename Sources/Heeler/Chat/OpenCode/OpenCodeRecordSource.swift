@@ -16,6 +16,10 @@ import Foundation
 /// A read whose output was cut reads again at half its budget, twice at
 /// most.
 struct OpenCodeRecordSource: ChatTranscriptSource {
+    /// A look past its budget starts over at the newest records, so what it did not
+    /// read is before the window, not ahead of it.
+    var hasUnreadRecords: Bool { false }
+
     /// Bytes of slimmed JSON each read asks for.
     struct Budgets: Sendable {
         /// An open, or a poll that starts over.
@@ -37,6 +41,8 @@ struct OpenCodeRecordSource: ChatTranscriptSource {
     let session: OpenCodeSessionID
     let budgets: Budgets
     private var isOpen = false
+    /// Where the session was found. A tail looks in OpenCode 2's tables first.
+    private var tables: OpenCodeQuery.Tables = .v2
     /// The event counter at the last newer read.
     private var eventSeq: Int64?
     /// The rows held, by `seq`: every row from `lowSeq` to `highSeq`.
@@ -216,7 +222,13 @@ struct OpenCodeRecordSource: ChatTranscriptSource {
                 }
                 return .lines(chatLines(records))
             case .sessionMissing(let otherStores):
+                // OpenCode 2 writes a new session with its first message.
+                tables = .v2
                 return .missing(otherStores: otherStores)
+            case .unavailable(.olderOpenCode) where tables == .v2:
+                // Only OpenCode 1.x's tables can hold it (ADR 0025).
+                tables = .v1
+                return try await readTail(files)
             case .unavailable(let problem):
                 throw Self.unavailable(problem)
             case .unchanged:
@@ -264,7 +276,7 @@ struct OpenCodeRecordSource: ChatTranscriptSource {
         guard let queryOpenCode = files.queryOpenCode else {
             throw TransportError.hostFeatureUnavailable(feature: "Chat")
         }
-        return try await queryOpenCode(OpenCodeQuery(session: session, kind: kind))
+        return try await queryOpenCode(OpenCodeQuery(session: session, kind: kind, tables: tables))
     }
 
     /// Chat shows a subagent's session only inside its parent's.
@@ -275,7 +287,7 @@ struct OpenCodeRecordSource: ChatTranscriptSource {
         throw ChatSourceUnavailable(reason: .sessionStore(.opencode, .subagentSession))
     }
 
-    private static func unavailable(_ problem: OpenCodeStoreProblem) -> ChatSourceUnavailable {
+    static func unavailable(_ problem: OpenCodeStoreProblem) -> ChatSourceUnavailable {
         let reason: ChatSessionStoreProblem =
             switch problem {
             case .noStore(let path): .noStore(path: path)

@@ -12,10 +12,11 @@ struct TransportErrorPresentation: Equatable, Sendable {
     let recoverySuggestion: String?
 
     /// `summary` [+ ": " + `detail`] + "." — what happened, no instruction.
-    /// A detail cut short with an ellipsis already ends the sentence.
+    /// A detail that already ends its sentence, with a period or an ellipsis
+    /// where it was cut short, gets no second one.
     var explanation: String {
         if let detail {
-            return detail.hasSuffix("…") ? "\(summary): \(detail)" : "\(summary): \(detail)."
+            return detail.hasSuffix("…") || detail.hasSuffix(".") ? "\(summary): \(detail)" : "\(summary): \(detail)."
         }
         return "\(summary)."
     }
@@ -30,6 +31,17 @@ struct TransportErrorPresentation: Equatable, Sendable {
 }
 
 extension TransportError {
+    /// A core stopped or replaced with SSH still up, in the words every surface
+    /// shares. Nil for any other error, whose surface keeps its own copy.
+    static func herdrCoreLinkMessage(for error: any Error) -> String? {
+        guard let transportError = error as? TransportError else { return nil }
+        switch transportError {
+        case .herdrCoreNotRunning, .herdrCoreInventoryStale, .herdrCoreTerminalGone:
+            return transportError.presentation.message
+        default: return nil
+        }
+    }
+
     var presentation: TransportErrorPresentation {
         switch self {
         case .hostFeatureUnavailable(let feature):
@@ -134,6 +146,68 @@ extension TransportError {
                 summary: "Connection timed out",
                 detail: nil,
                 recoverySuggestion: nil)
+        case .coreMutationOutcomeUnknown:
+            TransportErrorPresentation(
+                summary: "The Host did not confirm the action",
+                detail: "It may still complete. Check the Terminal before trying again.",
+                recoverySuggestion: nil)
+        case .herdrCoreInventoryStale:
+            TransportErrorPresentation(
+                summary: "The Host's Terminals are being read again",
+                detail: "Nothing was sent",
+                recoverySuggestion: "Try again once they are back.")
+        case .herdrCoreTerminalGone:
+            TransportErrorPresentation(
+                summary: "This Terminal belongs to a core that is gone",
+                detail: "Nothing was sent",
+                recoverySuggestion: "Open it again from the list.")
+        case .herdrCoreNotInstalled:
+            TransportErrorPresentation(
+                summary: "herdr-core is not installed",
+                detail: "It is not on the SSH PATH or at ~/.local/bin/herdr-core, or where its installer puts it on native Windows",
+                recoverySuggestion: "Install herdr-core on the Host, then check again.")
+        case .herdrCoreNotRunning(let socketPath, _) where HerdrCoreLocator.isWindowsPipe(socketPath):
+            TransportErrorPresentation(
+                summary: "herdr-core is not running",
+                detail: "The named pipe \(socketPath) does not exist",
+                recoverySuggestion:
+                    "Start the core on that machine in your desktop session, in a PowerShell window "
+                    + "not run as administrator. Heeler keeps checking.")
+        case .herdrCoreNotRunning(let socketPath, let socketFilePresent):
+            socketFilePresent
+                ? TransportErrorPresentation(
+                    summary: "herdr-core is not running",
+                    detail: "A socket file is left at \(socketPath): a core stopped or crashed, "
+                        + "or the SSH server refuses socket forwarding",
+                    recoverySuggestion:
+                        "Start the core on the Host, or allow stream-local forwarding in its "
+                        + "SSH server, then check again.")
+                : TransportErrorPresentation(
+                    summary: "herdr-core is not running",
+                    detail: "Nothing is listening at \(socketPath)",
+                    recoverySuggestion: "Start the core on the Host, then check again.")
+        case .herdrCoreForwardingRefused(let socketPath):
+            TransportErrorPresentation(
+                summary: "The SSH server refuses socket forwarding",
+                detail: "herdr-core is running, but SSH will not open \(socketPath)",
+                recoverySuggestion:
+                    "Allow stream-local forwarding in the Host's SSH server, then check again.")
+        case .herdrCoreUpdateRequired(let command):
+            TransportErrorPresentation(
+                summary: "herdr-core needs an update",
+                detail: "This core lacks what the app needs",
+                recoverySuggestion: "Run \(command) on the Host, then check again.")
+        case .herdrCoreSocketPathTooLong(let path, let limit):
+            TransportErrorPresentation(
+                summary: "The herdr-core socket path is too long",
+                detail: "\(path) is over this Host's limit of \(limit) bytes",
+                recoverySuggestion:
+                    "Use a shorter core session name, or set a shorter socket in the core's config.")
+        case .herdrCoreSessionNameRefused(let reason):
+            TransportErrorPresentation(
+                summary: "This session name can't be used",
+                detail: Self.droppingTrailingPeriods(reason),
+                recoverySuggestion: "Edit the Host's session name.")
         case .gitTimedOut:
             TransportErrorPresentation(
                 summary: "Reading Changes timed out",

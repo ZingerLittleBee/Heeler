@@ -4,7 +4,7 @@
 # Use the gate's system Bash, including macOS Bash 3.2 empty-array behavior.
 # Cases intentionally isolate exported boundary variables in subshells. The
 # dynamically extracted shipped functions consume the globals and stubs below.
-# shellcheck disable=SC2030,SC2031,SC2034,SC2329
+# shellcheck disable=SC2012,SC2030,SC2031,SC2034,SC2154,SC2329
 set -euo pipefail
 
 # Mock boundaries must not opt into a native worker's evidence or build
@@ -18,7 +18,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-simulator-recovery.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-for function in prepare_evidence_directory prepare_app_build_directory record_phase opt_in_build_settings start_background_build cancel_background_build run_app_fixture_suites assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
+for function in prepare_evidence_directory prepare_app_build_directory record_phase opt_in_build_settings start_background_build cancel_background_build run_app_fixture_suites run_core_fixture_suite stop_core_fixture download_core_fixture_binary claim_core_port claim_port_block assign_port_block assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
     claim_simulator claim_resource_lock release_resource_lock write_lock_owner \
     lock_is_stale acquire_claim_guard release_claim_guard \
     clear_simulator_environment push_simulator_environment; do
@@ -30,6 +30,13 @@ for function in prepare_evidence_directory prepare_app_build_directory record_ph
     [[ -n "$body" ]] || { echo "Missing shipped function: $function" >&2; exit 1; }
     eval "$body"
 done
+for constant in port_block_size port_block_base_default port_block_count core_port_base_default core_port_count; do
+    value=$(sed -n "s/^$constant=//p" "$repo_root/scripts/run-ci-ios-tests.sh")
+    [[ -n "$value" ]] || { echo "Missing shipped constant: $constant" >&2; exit 1; }
+    printf -v "$constant" '%s' "$value"
+done
+
+core_archive_cache_dir="$work/core-archive-cache"
 
 mkdir -p "$work/bin"
 cat > "$work/bin/xcodebuild" <<'STUB'
@@ -110,7 +117,7 @@ export ORIGINAL=AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA
 export REPLACEMENT=BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB
 export OCCUPIED=CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC
 
-fail() { echo "FAIL $SCENARIO: $*" >&2; exit 1; }
+fail() { echo "FAIL ${SCENARIO:-controls}: $*" >&2; exit 1; }
 # Avoid delays in the test; simulator recovery still runs the shipped loop.
 sleep() { :; }
 
@@ -330,6 +337,7 @@ run_shard_case() (
     run_suite() { printf 'suite %s\n' "$*" >> "$fixture_dir/events"; }
     start_password_sshd() { echo start-password >> "$fixture_dir/events"; }
     stop_privileged_sshd() { echo stop-password >> "$fixture_dir/events"; }
+    run_core_fixture_suite() { run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests; }
     run_app_fixture_suites
     case "$shard" in
         session-weak)
@@ -344,7 +352,8 @@ EXPECTED
         transport)
             cat > "$fixture_dir/expected" <<'EXPECTED'
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
-suite SharedFixtureE2ETests 121 6 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests PairingCeremonyE2ETests
+suite SharedFixtureE2ETests 126 6 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests PairingCeremonyE2ETests
+suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             [[ ! -e "$fixture_dir/WeakNetworkE2ETests.log" ]] || fail 'transport included Weak'
             ;;
@@ -354,7 +363,8 @@ start-password
 suite HeelerSSHSessionE2ETests 13 1 0 HeelerSSHSessionE2ETests
 stop-password
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
-suite SharedFixtureE2ETests 132 7 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
+suite SharedFixtureE2ETests 137 7 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
+suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             ;;
         ordinary)
@@ -367,6 +377,214 @@ EXPECTED
     printf 'PASS shard-%s\n' "$shard"
 )
 for shard in all session-weak transport ordinary; do run_shard_case "$shard"; done
+
+# A fixture port claim takes one plain lock and nothing else. The port probe
+# says free here, so only those locks keep a second run off a reserved port.
+(
+    port_block_base_override=""
+    run_lock_dir=""
+    core_port_lock_dir=""
+    active_claim_guard=""
+    active_resource_lock=""
+    lock_root="$work/port-locks"
+    mkdir -p "$lock_root"
+    lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
+    port_is_busy() { return 1; }
+    describe_port_holder() { return 1; }
+    expect_locks() {
+        local held
+        held=$(ls -A "$lock_root" | tr '\n' ' ')
+        [[ "$held" == "$1 " ]] || fail "$2 (held: $held)"
+    }
+
+    ((core_port_base_default > port_block_base_default + port_block_size * port_block_count - 1)) \
+        || fail 'core pool overlaps the default block grid'
+
+    lock_owner_token=first-run
+    claim_port_block
+    [[ "$modern_port" == 55222 && "$post_quantum_port" == 55234 ]] || fail 'first block moved off the grid start'
+    [[ "$run_lock_dir" == "$lock_root/block-55222" ]] || fail 'block lock not recorded for cleanup'
+    expect_locks 'block-55222' 'a block claim took more than its own lock'
+    claim_core_port
+    [[ "$core_port" == 55400 ]] || fail "first core port was $core_port"
+    [[ "$core_port_lock_dir" == "$lock_root/core-port-55400" ]] || fail 'core lock not recorded for cleanup'
+    expect_locks 'block-55222 core-port-55400' 'a core claim took more than its own lock'
+    first_core_lock=$core_port_lock_dir
+
+    # The next run gets the adjacent block and the next candidate.
+    lock_owner_token=second-run
+    claim_port_block
+    [[ "$modern_port" == 55235 ]] || fail "adjacent block was refused, got $modern_port"
+    claim_core_port
+    [[ "$core_port" == 55401 ]] || fail "second core port was $core_port"
+    expect_locks 'block-55222 block-55235 core-port-55400 core-port-55401' 'a second run took more than its own locks'
+
+    # A release only frees the caller's own lock.
+    release_resource_lock "$first_core_lock" 'core fixture port'
+    release_resource_lock "$core_port_lock_dir" 'core fixture port'
+    release_resource_lock "$run_lock_dir" 'fixture port block'
+    expect_locks 'block-55222 core-port-55400' 'a release touched another owner or kept its own lock'
+
+    # A listening candidate is skipped without taking its lock.
+    lock_owner_token=busy-run
+    port_is_busy() { [[ "$1" == 55401 ]]; }
+    claim_core_port
+    [[ "$core_port" == 55402 ]] || fail "busy candidate was not skipped, got $core_port"
+    release_resource_lock "$core_port_lock_dir" 'core fixture port'
+    port_is_busy() { return 1; }
+
+    # An off-grid override also takes only its own lock. Every candidate now
+    # sits inside this run's own block, so core has nothing left to claim.
+    lock_owner_token=override-run
+    port_block_base_override=55395
+    claim_port_block
+    expect_locks 'block-55222 block-55395 core-port-55400' 'an override took more than its own lock'
+    if claim_core_port 2>/dev/null; then fail 'core port overlaps its explicit main reservation'; fi
+    expect_locks 'block-55222 block-55395 core-port-55400' 'a refused core claim left a lock behind'
+
+    # Refusal names the live owner of the block it wanted.
+    lock_owner_token=refused-run
+    status=0
+    (claim_port_block) > "$work/port-refused.log" 2>&1 || status=$?
+    [[ "$status" == 1 ]] || fail 'a held block was claimed'
+    grep -qF "block 55395: claimed by live run pid $$" "$work/port-refused.log" || fail 'refusal lost the block owner'
+    echo 'PASS fixture-port-plain-locks'
+)
+
+# Diagnostic I/O is fallible, but must not bypass the actual process owner.
+for stop_result in pass fail; do (
+    fixture_dir="$work/core-logcopy-$stop_result/main"
+    core_fixture_dir="$work/core-logcopy-$stop_result/core"
+    mkdir -p "$fixture_dir" "$core_fixture_dir/logs" "$core_fixture_dir/bin"
+    echo fixture-log > "$core_fixture_dir/logs/sshd.log"
+    echo retained-executable > "$core_fixture_dir/bin/herdr-core"
+    core_log="$work/core-logcopy-$stop_result/called"
+    fixture_python=core_stop_stub
+    core_stop_stub() { echo called > "$core_log"; [[ "$stop_result" == pass ]]; }
+    cp() { return 1; }
+    status=0
+    stop_core_fixture || status=$?
+    [[ -f "$core_log" ]] || fail 'log-copy error skipped core shutdown'
+    [[ "$status" == 1 ]] || fail 'log-copy failure disappeared from final status'
+    if [[ "$stop_result" == pass ]]; then
+        [[ -z "$core_fixture_dir" ]] || fail 'successful shutdown retained ownership'
+    else
+        [[ -n "$core_fixture_dir" ]] || fail 'failed shutdown lost cleanup ownership'
+        rm -rf "$fixture_dir"
+        [[ -f "$core_fixture_dir/bin/herdr-core" ]] || fail 'outer cleanup deleted retry executable'
+    fi
+    echo "PASS core-logcopy-stop-$stop_result"
+); done
+
+# The core phase must swap the actual Simulator config, restore the legacy
+# config afterwards, and retain ownership for cleanup when native tests fail.
+for result in pass fail; do (
+    fixture_dir="$work/core-$result"
+    mkdir -p "$fixture_dir"
+    fixture_configuration_base64=legacy-config
+    HEELER_SSH_E2E_CONFIG=legacy-config
+    HEELER_SSH_JUMP_E2E_CONFIG=jump-config
+    HEELER_PAIRING_E2E_CONFIG=pairing-config
+    start_core_fixture() {
+        core_fixture_dir="$fixture_dir/core"
+        mkdir -p "$core_fixture_dir"
+        echo core-config > "$core_fixture_dir/core-test-config"
+        echo start >> "$fixture_dir/events"
+    }
+    push_simulator_environment() { echo "config $HEELER_SSH_E2E_CONFIG $*" >> "$fixture_dir/events"; }
+    run_suite() {
+        echo "suite $*" >> "$fixture_dir/events"
+        [[ "$result" == pass ]] || return 65
+    }
+    stop_core_fixture() { echo stop >> "$fixture_dir/events"; core_fixture_dir=""; }
+    status=0
+    run_core_fixture_suite || status=$?
+    cat > "$fixture_dir/expected" <<'EXPECTED'
+start
+config core-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
+EXPECTED
+    if [[ "$result" == pass ]]; then
+        [[ "$status" == 0 && -z "$core_fixture_dir" ]] || fail 'core success retained fixture ownership'
+        cat >> "$fixture_dir/expected" <<'EXPECTED'
+config legacy-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+stop
+EXPECTED
+    else
+        [[ "$status" == 65 && -n "$core_fixture_dir" ]] || fail 'core failure hid status or lost cleanup ownership'
+    fi
+    diff -u "$fixture_dir/expected" "$fixture_dir/events" || fail 'core phase environment or execution order drifted'
+    printf 'PASS core-phase-%s\n' "$result"
+); done
+
+# A wrong release archive must never be extracted or run, even though the
+# download succeeded. Execute the shipped verifier against hostile bytes.
+(
+    fixture_dir="$work/core-bad-checksum"
+    mkdir -p "$fixture_dir"
+    curl() { local last=""; for last in "$@"; do :; done; echo tampered > "$last"; }
+    tar() { touch "$fixture_dir/extracted"; }
+    if download_core_fixture_binary > "$fixture_dir/output" 2>&1; then
+        fail 'core accepted an archive without its pinned checksum'
+    fi
+    grep -qF 'archive checksum mismatch' "$fixture_dir/output" || fail 'core archive failed for an unrelated reason'
+    [[ ! -e "$fixture_dir/extracted" ]] || fail 'core extracted an unchecked archive'
+    echo 'PASS core-download-checksum'
+)
+
+# The archive cache: what is restored is verified before extraction, a bad one
+# is replaced by a checked download, and a download fills the cache.
+core_archive_pin() {
+    local target=macos-aarch64
+    [[ "$(uname -m)" == x86_64 ]] && target=macos-x86_64
+    awk -v target="$target" '$2 == target { print $1 }' "$repo_root/scripts/fixtures/herdr-core-archive.sha256"
+}
+(
+    fixture_dir="$work/core-cache-hit"
+    core_archive_cache_dir="$fixture_dir/cache"
+    mkdir -p "$core_archive_cache_dir"
+    pin=$(core_archive_pin)
+    echo good > "$core_archive_cache_dir/herdr-core-$pin.tar.gz"
+    shasum() { [[ "$(cat "$3")" == good ]] && echo "$pin  $3" || echo "bad  $3"; }
+    curl() { touch "$fixture_dir/downloaded"; return 1; }
+    tar() { printf '#!/bin/sh\necho "hc 0.1.13"\n' > "$fixture_dir/herdr-core-0.1.13/herdr-core"; touch "$fixture_dir/extracted"; }
+    download_core_fixture_binary > "$fixture_dir/output" 2>&1 || fail 'core refused a good cached archive'
+    [[ ! -e "$fixture_dir/downloaded" ]] || fail 'core downloaded past a good cached archive'
+    [[ -e "$fixture_dir/extracted" ]] || fail 'core did not extract a good cached archive'
+    echo 'PASS core-cache-hit'
+)
+(
+    fixture_dir="$work/core-cache-tampered"
+    core_archive_cache_dir="$fixture_dir/cache"
+    mkdir -p "$core_archive_cache_dir"
+    pin=$(core_archive_pin)
+    echo tampered > "$core_archive_cache_dir/herdr-core-$pin.tar.gz"
+    shasum() { [[ "$(cat "$3")" == good ]] && echo "$pin  $3" || echo "bad  $3"; }
+    curl() { local last=""; for last in "$@"; do :; done; echo good > "$last"; }
+    tar() {
+        [[ "$(cat "$fixture_dir/herdr-core-0.1.13/core.tar.gz")" == good ]] || fail 'core extracted a tampered cached archive'
+        printf '#!/bin/sh\necho "hc 0.1.13"\n' > "$fixture_dir/herdr-core-0.1.13/herdr-core"
+        touch "$fixture_dir/extracted"
+    }
+    download_core_fixture_binary > "$fixture_dir/output" 2>&1 || fail 'core did not recover from a tampered cached archive'
+    grep -qF 'Discarding a cached' "$fixture_dir/output" || fail 'core kept a tampered cached archive silently'
+    [[ -e "$fixture_dir/extracted" ]] || fail 'core did not extract the checked download'
+    [[ "$(cat "$core_archive_cache_dir/herdr-core-$pin.tar.gz")" == good ]] || fail 'core left a tampered archive in the cache'
+    echo 'PASS core-cache-tampered'
+)
+(
+    fixture_dir="$work/core-cache-bad-download"
+    core_archive_cache_dir="$fixture_dir/cache"
+    mkdir -p "$fixture_dir"
+    curl() { local last=""; for last in "$@"; do :; done; echo tampered > "$last"; }
+    tar() { touch "$fixture_dir/extracted"; }
+    if download_core_fixture_binary > "$fixture_dir/output" 2>&1; then
+        fail 'core accepted an unchecked download into the cache'
+    fi
+    [[ ! -e "$fixture_dir/extracted" ]] || fail 'core extracted an unchecked download'
+    [[ -z "$(ls -A "$core_archive_cache_dir" 2>/dev/null)" ]] || fail 'core cached an unchecked download'
+    echo 'PASS core-cache-bad-download'
+)
 
 (
     ci_app_shard=session-weak
@@ -424,7 +642,7 @@ for function in cleanup preserve_failure_diagnostics dump_fixture_logs; do
     [[ -n "$body" ]] || fail "missing cleanup function $function"
     eval "$body"
 done
-for reason in preparation-failure parent-cancellation; do
+for reason in preparation-failure parent-cancellation core-stop-failure; do
     (
         export SCENARIO=background-stall
         export CASE_DIR="$work/$reason"
@@ -450,12 +668,32 @@ for reason in preparation-failure parent-cancellation; do
         password_pid=""
         password_log="$fixture_dir/password.log"
         password_log_printed=0
+        fixture_log_tail_lines=80
         password_user_cleanup_needed=0
         active_claim_guard=""
         active_resource_lock=""
         account_lock_dir=""
         run_lock_dir=""
         device_lock_dir=""
+        core_fixture_dir=""
+        if [[ "$reason" == core-stop-failure ]]; then
+            core_fixture_dir="$CASE_DIR/core"
+            mkdir -p "$core_fixture_dir/bin" "$core_fixture_dir/logs"
+            echo retained-core > "$core_fixture_dir/bin/herdr-core"
+            echo fixture-log > "$core_fixture_dir/logs/sshd.log"
+            fixture_python=core_stop_failure
+            core_stop_failure() { echo called > "$CASE_DIR/core-stop-called"; return 1; }
+        fi
+        # Cleanup owns the fixture port locks on every exit path.
+        lock_root="$CASE_DIR/locks"
+        mkdir -p "$lock_root"
+        lock_owner_token=ours
+        lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
+        port_block_base_override=""
+        core_port_lock_dir=""
+        port_is_busy() { return 1; }
+        claim_port_block
+        claim_core_port
         export HEELER_CI_APP_DERIVED_DATA_PATH="$CASE_DIR/app-derived"
         prepare_app_build_directory
         start_background_build first
@@ -481,12 +719,17 @@ for reason in preparation-failure parent-cancellation; do
     [[ "$status" == "$expected" ]] || { cat "$work/$reason.log" >&2; fail "$reason changed parent exit status $status"; }
     [[ "$(cat "$work/$reason/cancel-order")" == fixture-present ]] || fail 'fixture deleted before build reaped'
     [[ "$(cat "$work/$reason/build-cancel-order")" == products-present ]] || fail 'build directory deleted before build reaped'
-    [[ ! -d "$work/$reason/fixture" ]] || fail 'fixture not cleaned after build cancellation'
+    [[ ! -d "$work/$reason/fixture" ]] || { cat "$work/$reason.log" >&2; fail 'fixture not cleaned after build cancellation'; }
     [[ ! -d "$work/$reason/app-derived" ]] || fail 'owned stable build directory leaked'
     ! kill -0 "$(cat "$work/$reason/build-child.pid")" 2>/dev/null || fail 'owned build child survived cleanup'
+    if [[ "$reason" == core-stop-failure ]]; then
+        [[ -f "$work/$reason/core-stop-called" ]] || fail 'outer cleanup did not attempt core shutdown'
+        [[ -f "$work/$reason/core/bin/herdr-core" ]] || fail 'outer cleanup lost retained core executable'
+    fi
+    [[ -z "$(ls -A "$work/$reason/locks")" ]] || fail 'cleanup leaked a fixture port lock'
     printf 'PASS overlap-%s\n' "$reason"
 done
-echo 'Passed 2 owned build cleanup scenarios.'
+echo 'Passed 3 owned build cleanup scenarios.'
 
 for scenario in new settings stale-phase stale-worker stale-metrics unexpected symlink; do
     (

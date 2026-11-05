@@ -54,6 +54,15 @@ struct AgentUsageStoreTests {
             "Usage needs plugin 0.7.0 or newer; this Host has 0.6.2."))
         #expect(await transport.agentUsageReads == 0)
     }
+    @Test func aCoreHostsNeedForTheHelperIsShownNotRetried() async {
+        let store = AgentUsageStore(hostID: UUID()) { _, _ in
+            throw AgentUsageHostHelperNeed.notInstalled
+        }
+        await store.refresh()
+        #expect(store.state == .hostHelper(.notInstalled))
+        #expect(AgentUsageScope.reason(for: store.state) == "Needs the Host Helper")
+    }
+
     @Test func windowsIsExplainedWithoutStartingAQuery() async {
         let hostID = UUID()
         let transport = ScriptedTransport()
@@ -307,6 +316,8 @@ struct AgentUsageStoreTests {
             (decoding, .failed(AgentUsageStore.pluginFailureMessage)),
             (AgentUsageError.unsupportedVersion, .updateRequired),
             (TransportError.hostFeatureUnavailable(feature: "Usage"), .unsupportedPlatform),
+            (AgentUsageHostHelperNeed.notInstalled, .hostHelper(.notInstalled)),
+            (AgentUsageHostHelperNeed.outdated, .hostHelper(.outdated)),
         ]
         for (error, expected) in cases {
             #expect(AgentUsageStore.state(for: error) == expected, "\(error)")
@@ -640,6 +651,11 @@ enum AgentUsageFixture {
     /// As a query without `--claude-limits` answers: every Claude Code
     /// Account's limits are off too.
     static func report(refreshing: Bool) throws -> AgentUsageReport {
+        try AgentUsageReport.decode(reportData(refreshing: refreshing))
+    }
+
+    /// The same report as the query prints it.
+    static func reportData(refreshing: Bool) throws -> Data {
         var object = try #require(JSONSerialization.jsonObject(with: data()) as? [String: Any])
         object["refreshing"] = refreshing
         var programs = try #require(object["programs"] as? [[String: Any]])
@@ -651,7 +667,7 @@ enum AgentUsageFixture {
             programs[0]["accounts"] = accounts
         }
         object["programs"] = programs
-        return try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+        return try JSONSerialization.data(withJSONObject: object)
     }
 
     static func report() throws -> AgentUsageReport {

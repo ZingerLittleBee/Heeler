@@ -147,17 +147,21 @@ port_block_size=13
 port_block_base_default=55222
 # How many disjoint blocks the machine hands out before it refuses to guess.
 port_block_count=8
+# The herdr-core fixture takes one port from its own pool, outside the block grid.
+core_port_base_default=55400
+core_port_count=8
 # Pin a block explicitly, for a caller that would rather not negotiate.
 port_block_base_override="${HEELER_CI_PORT_BASE:-}"
 
-# Cross-run coordination lives here: one owned lock per port block, Simulator,
-# or account-allocation critical section. A short-lived atomic claim guard
-# serializes owner publication, stale reclamation, and token-checked release.
-# Ports still decide whether a block is usable; these locks only let a run say
-# what it holds, and let the next run tell "someone is working" apart from
-# "something crashed".
+# Cross-run coordination lives here: one owned lock per port block, core fixture
+# port, Simulator, or account-allocation critical section. A short-lived atomic
+# claim guard serializes owner publication, stale reclamation, and token-checked
+# release. Ports still decide whether a block is usable; these locks only let a
+# run say what it holds, and let the next run tell "someone is working" apart
+# from "something crashed".
 lock_root=/tmp/heeler-ci-locks
 run_lock_dir=""
+core_port_lock_dir=""
 device_lock_dir=""
 account_lock_dir=""
 active_claim_guard=""
@@ -176,6 +180,7 @@ owned_app_build_directory=""
 # actions/cache so libghostty's XCFramework is not re-fetched every run.
 # Package-lane builds have no remote SwiftPM deps and leave this unused.
 source_packages_dir="${HEELER_CI_SOURCE_PACKAGES_DIR:-$repo_root/.ci/source-packages}"
+core_archive_cache_dir="${HEELER_CI_CORE_ARCHIVE_DIR:-$repo_root/.ci/herdr-core-archive}"
 diagnostic_run_id="${GITHUB_RUN_ID:-local-$$}"
 diagnostic_attempt="${GITHUB_RUN_ATTEMPT:-1}"
 diagnostic_root="${RUNNER_TEMP:-/tmp}/heeler-ci-diagnostics-$diagnostic_run_id-$diagnostic_attempt"
@@ -197,6 +202,7 @@ pairing_mismatched_pid=""
 password_pid=""
 fake_herdr_pid=""
 weak_network_pid=""
+core_fixture_dir=""
 simulator_udid=""
 simulator_destination=""
 simulator_environment_variables=()
@@ -602,7 +608,7 @@ dump_fixture_logs() {
         [[ -s "$log" ]] || continue
         name=$(basename "$log")
         case "$name" in
-            sshd-*.log | weak-network.log | fake-herdr.log | stall-server.log | fixture-readiness.log) ;;
+            sshd-*.log | weak-network.log | fake-herdr.log | herdr-core-sshd.log | stall-server.log | fixture-readiness.log) ;;
             *) continue ;;
         esac
         echo "===== $log (last $fixture_log_tail_lines lines)" >&2
@@ -661,6 +667,9 @@ cleanup() {
 
     cancel_background_build
     clear_simulator_environment || { [[ "$status" != 0 ]] || status=1; }
+    if [[ -n "${core_fixture_dir:-}" ]]; then
+        stop_core_fixture || { [[ "$status" != 0 ]] || status=1; }
+    fi
     if [[ -n "$stall_pid" ]]; then
         kill "$stall_pid" >/dev/null 2>&1
         wait "$stall_pid" 2>/dev/null
@@ -761,6 +770,7 @@ cleanup() {
         release_claim_guard "$active_claim_guard"
     fi
     release_resource_lock "$account_lock_dir" "password account allocation" || status=1
+    release_resource_lock "${core_port_lock_dir:-}" "core fixture port" || status=1
     release_resource_lock "$run_lock_dir" "fixture port block" || status=1
     release_resource_lock "$device_lock_dir" "simulator" || status=1
 
@@ -1331,12 +1341,37 @@ claim_port_block() {
     exit 1
 }
 
+# One plain lock per candidate port. Cleanup releases it after the fixture stops.
+claim_core_port() {
+    local candidate slot lock
+    for ((slot = 0; slot < core_port_count; slot += 1)); do
+        candidate=$((core_port_base_default + slot))
+        # Explicit main-block overrides can occupy this pool too.
+        if ((candidate >= modern_port && candidate <= post_quantum_port)); then
+            continue
+        fi
+        port_is_busy "$candidate" && continue
+        lock="$lock_root/core-port-$candidate"
+        if claim_resource_lock "$lock" "core fixture port $candidate"; then
+            core_port_lock_dir="$lock"
+            core_port=$candidate
+            return 0
+        fi
+    done
+    echo "Every separate core fixture port is reserved or listening" >&2
+    return 1
+}
+
 prepare_app_build_directory
 
 if [[ "$ci_lane" != app || "$ci_app_shard" != ordinary ]]; then
 claim_port_block
 printf 'Claimed fixture port block %s-%s\n' \
     "$modern_port" "$((modern_port + port_block_size - 1))" >&2
+if [[ "$ci_lane" == app && -z "$ci_diagnostic_target" ]] \
+    && [[ "$ci_app_shard" == all || "$ci_app_shard" == transport ]]; then
+    claim_core_port
+fi
 fi
 
 # Claim the simulator before fixture keygen/sshd work so boot overlaps that
@@ -2223,6 +2258,87 @@ run_ci_diagnostic() {
     fi
 }
 
+# Exact upstream release archives from https://releases.herdr.dev/core/0.1.13/manifest.json.
+# CI never runs the installer or updates the runner's installed/live core.
+download_core_fixture_binary() {
+    local release_dir="$fixture_dir/herdr-core-0.1.13"
+    local target checksum archive cached
+    case "$(uname -m)" in
+        arm64 | aarch64) target=macos-aarch64 ;;
+        x86_64) target=macos-x86_64 ;;
+        *) echo "No pinned herdr-core fixture for this architecture" >&2; return 1 ;;
+    esac
+    checksum=$(awk -v target="$target" '$2 == target { print $1 }' \
+        "$repo_root/scripts/fixtures/herdr-core-archive.sha256") || return 1
+    [[ -n "$checksum" ]] || { echo "No pinned herdr-core checksum for $target" >&2; return 1; }
+    mkdir -p "$release_dir" || return 1
+    archive="$release_dir/core.tar.gz"
+    cached="$core_archive_cache_dir/herdr-core-$checksum.tar.gz"
+    # A restored archive earns no trust from its cache key: it is verified like a
+    # download, and a bad one is replaced rather than left to fail every run.
+    if [[ -f "$cached" ]]; then
+        cp "$cached" "$archive" || return 1
+        if [[ "$(shasum -a 256 "$archive" | awk '{print $1}')" != "$checksum" ]]; then
+            echo "Discarding a cached herdr-core archive with the wrong checksum" >&2
+            rm -f "$cached" "$archive" || return 1
+        fi
+    fi
+    if [[ ! -f "$archive" ]]; then
+        curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 120 \
+            "https://releases.herdr.dev/core/0.1.13/herdr-core-$target.tar.gz" -o "$archive" || return 1
+    fi
+    if [[ "$(shasum -a 256 "$archive" | awk '{print $1}')" != "$checksum" ]]; then
+        echo "Pinned herdr-core 0.1.13 archive checksum mismatch" >&2
+        return 1
+    fi
+    mkdir -p "$core_archive_cache_dir" || return 1
+    cp "$archive" "$cached" || return 1
+    # Extract only the named executable, never arbitrary paths from the archive.
+    tar -xzf "$archive" -C "$release_dir" herdr-core || return 1
+    chmod 700 "$release_dir/herdr-core" || return 1
+    [[ "$("$release_dir/herdr-core" --version)" == 'hc 0.1.13' ]] || {
+        echo "Pinned herdr-core fixture version mismatch" >&2; return 1;
+    }
+}
+
+start_core_fixture() {
+    download_core_fixture_binary || return 1
+    core_fixture_dir=$(mktemp -d /tmp/hc-ci.XXXXXX) || return 1
+    "$fixture_python" "$repo_root/scripts/fixtures/herdr-core-ssh.py" start \
+        --root "$core_fixture_dir" --port "$core_port" \
+        --core "$fixture_dir/herdr-core-0.1.13/herdr-core" || return 1
+}
+
+stop_core_fixture() {
+    [[ -n "${core_fixture_dir:-}" ]] || return 0
+    local log_copy_status=0
+    if [[ -f "$core_fixture_dir/logs/sshd.log" ]]; then
+        cp "$core_fixture_dir/logs/sshd.log" "$fixture_dir/herdr-core-sshd.log" || log_copy_status=1
+    fi
+    # Diagnostic preservation cannot short-circuit process shutdown.
+    "$fixture_python" "$repo_root/scripts/fixtures/herdr-core-ssh.py" stop \
+        --root "$core_fixture_dir" || {
+        echo "Could not stop isolated herdr-core fixture; preserved $core_fixture_dir" >&2
+        return 1
+    }
+    core_fixture_dir=""
+    return "$log_copy_status"
+}
+
+run_core_fixture_suite() {
+    start_core_fixture || return 1
+    # Reuse the scheme's existing private configuration channel. Recovery must
+    # restore this phase's config, not the preceding legacy fixture's.
+    HEELER_SSH_E2E_CONFIG=$(<"$core_fixture_dir/core-test-config")
+    push_simulator_environment HEELER_SSH_E2E_CONFIG \
+        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
+    run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests || return $?
+    HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
+    push_simulator_environment HEELER_SSH_E2E_CONFIG \
+        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
+    stop_core_fixture || return 1
+}
+
 # These phases share fixture state only within their worker. DirectStreamLocal
 # must observe the stale socket before TransportBehavior relinks it.
 run_app_fixture_suites() {
@@ -2246,13 +2362,13 @@ run_app_fixture_suites() {
             run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
                 HeelerSSHDirectStreamLocalE2ETests || return $?
             if [[ "$ci_app_shard" == all ]]; then
-                run_suite SharedFixtureE2ETests 132 7 0 \
+                run_suite SharedFixtureE2ETests 137 7 0 \
                     HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests \
                     HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests \
                     ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests || return $?
                 ln -s SharedFixtureE2ETests.log "$fixture_dir/WeakNetworkE2ETests.log"
             else
-                run_suite SharedFixtureE2ETests 121 6 0 \
+                run_suite SharedFixtureE2ETests 126 6 0 \
                     HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests \
                     HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests \
                     ImageStagingE2ETests PairingCeremonyE2ETests || return $?
@@ -2263,6 +2379,7 @@ run_app_fixture_suites() {
                 ImageStagingE2ETests PairingCeremonyE2ETests; do
                 ln -s SharedFixtureE2ETests.log "$fixture_dir/$suite.log"
             done
+            run_core_fixture_suite || return $?
             ;;
     esac
 }

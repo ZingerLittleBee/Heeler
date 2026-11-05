@@ -54,6 +54,8 @@ final class ComposerStagingStore {
             }
         }
 
+        fileprivate var noun: String { displayName.lowercased() }
+
         fileprivate var preparationIcon: String {
             switch self {
             case .image: "photo"
@@ -197,6 +199,8 @@ final class ComposerStagingStore {
     private var operationID: UInt64 = 0
     private var cancellationDisposition: CancellationDisposition?
     private var insertsPathIntoComposer = true
+    /// A core Host's upload says a transport failure in the transport's words.
+    private let saysTransportFailures: Bool
     /// Optional per-operation terminal events. The picker path does not set this.
     @ObservationIgnored
     var onOperationEvent: (@MainActor (OperationEvent) -> Void)?
@@ -207,8 +211,10 @@ final class ComposerStagingStore {
         stageImage: @escaping ImageStager,
         stageFile: @escaping FileStager,
         clipboard: any AttachmentClipboard = SystemAttachmentClipboard(),
-        composer: any ComposerDraftOperations
+        composer: any ComposerDraftOperations,
+        saysTransportFailures: Bool = false
     ) {
+        self.saysTransportFailures = saysTransportFailures
         imageAdapter = ImageAdapter(preparer: imagePreparer, stage: stageImage)
         fileAdapter = FileAdapter(preparer: filePreparer, stage: stageFile)
         self.clipboard = clipboard
@@ -424,7 +430,7 @@ final class ComposerStagingStore {
             copied = true
         } catch {}
         if insertsPathIntoComposer {
-            composer.insertIntoDraft("\(staged.path) ")
+            composer.insertPathIntoDraft(staged.path)
         }
         state = .completed(
             Outcome(medium: staged.medium, path: staged.path, copied: copied))
@@ -454,7 +460,7 @@ final class ComposerStagingStore {
             return
         }
 
-        let failure = Self.failure(for: error, medium: medium)
+        let failure = Self.failure(for: error, medium: medium, saysTransportFailures: saysTransportFailures)
         if !failure.isRetryable {
             discardRetainedPreparedSource()
         }
@@ -475,7 +481,7 @@ final class ComposerStagingStore {
         error is CancellationError || (error as? AttachmentStagingError) == .cancelled
     }
 
-    private static func failure(for error: any Error, medium: Medium) -> Failure {
+    private static func failure(for error: any Error, medium: Medium, saysTransportFailures: Bool) -> Failure {
         if let transportError = error as? TransportError,
             case .hostFeatureUnavailable = transportError
         {
@@ -490,6 +496,31 @@ final class ComposerStagingStore {
                 medium: medium,
                 message: "The Host is not connected. Reconnect, then retry the upload.",
                 isRetryable: true)
+        case AttachmentStagingError.exceedsCoreFileLimit:
+            Failure(
+                medium: medium,
+                message: "This \(medium.noun) is over the 8 MiB limit on a native Windows Host. Nothing was sent.",
+                isRetryable: false)
+        case TransportError.coreMutationOutcomeUnknown:
+            Failure(
+                medium: medium,
+                message: "The Host did not confirm the \(medium.noun). Retry sends another copy.",
+                isRetryable: true)
+        case let refusal as HerdrAPIError where refusal.code == "finished" || refusal.code == "not_found":
+            Failure(
+                medium: medium,
+                message: "This Terminal has ended, so the \(medium.noun) was not sent.",
+                isRetryable: false)
+        case let refusal as HerdrAPIError:
+            Failure(
+                medium: medium,
+                message: "The Host refused the \(medium.noun): \(refusal.message)",
+                isRetryable: false)
+        case let transportError as TransportError where saysTransportFailures && !isSSHUnreachable(transportError):
+            Failure(
+                medium: medium,
+                message: transportError.presentation.message,
+                isRetryable: transportError.isRetryable)
         case AttachmentStagingError.sftpUnavailable:
             Failure(
                 medium: medium,
@@ -557,6 +588,11 @@ final class ComposerStagingStore {
                 message: "\(medium.displayName) preparation failed.",
                 isRetryable: false)
         }
+    }
+
+    private static func isSSHUnreachable(_ error: TransportError) -> Bool {
+        if case .sshUnreachable = error { return true }
+        return false
     }
 
     private static func presentation(for state: State) -> Presentation? {

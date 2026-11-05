@@ -34,7 +34,7 @@ The estimated cost is not a bill. It prices the tokens this Host's Transcripts s
 
 ### Turn on Claude Code limits
 
-Claude Code limits are off until you turn them on for each Host. Tap **Details** beside **Usage Limits**, then turn on **Claude Code limits**. The plugin asks Claude Code on that computer for your plan limits; Heeler never handles your sign-in.
+Claude Code limits are off until you turn them on for each Host. Tap **Details** beside **Usage Limits**, then turn on **Claude Code limits**. The plugin, or on a herdr-core Host the Host Helper, asks Claude Code on that computer for your plan limits; Heeler never handles your sign-in.
 
 ## Turn Usage off
 

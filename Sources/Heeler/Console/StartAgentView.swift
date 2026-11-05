@@ -24,13 +24,10 @@ struct StartAgentView: View {
             initialValue: StartAgentStore(
                 hosts: hosts,
                 workspaces: { console.workspaces(for: $0) },
-                existingAgentNames: { hostID in
-                    Set(
-                        console.agents
-                            .filter { $0.hostID == hostID }
-                            .compactMap { $0.agent.name })
-                },
+                existingAgentNames: { console.takenAgentNames(on: $0) },
                 discoverAgentKinds: { try await console.availableAgentKinds(on: $0) },
+                discoverTemplates: { try await console.availableTemplates(on: $0) },
+                startTemplate: { try await console.startTemplate($0, on: $1) },
                 remoteHome: { try await console.remoteHomeDirectory(on: $0) },
                 start: { params, destination, hostID in
                     switch destination {
@@ -45,7 +42,11 @@ struct StartAgentView: View {
                     }
                 },
                 awaitAgentVisible: { await console.waitForAgent($0) },
+                isAgentListed: { id in console.agents.contains { $0.id == id } },
+                programExit: { console.programExit(of: $0) },
                 origin: origin,
+                offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces },
+                offersConnectedWorktrees: { console.capabilities(for: $0).worktrees },
                 presets: { console.launchPresets.presets },
                 accountVariable: { hostID, kind in try await console.accountVariable(for: kind, on: hostID) }))
     }
@@ -62,7 +63,9 @@ struct StartAgentView: View {
                     } header: {
                         Text("Directory")
                     } footer: {
-                        Text("The Agent starts in a new tab here, next to the one you opened this from.")
+                        Text(store.offersWorkspaceAndTabNames
+                            ? "The Agent starts in a new tab here, next to the one you opened this from."
+                            : "The Agent starts in this directory.")
                     }
                 } else {
                     Section("Host") {
@@ -89,10 +92,12 @@ struct StartAgentView: View {
                             onSelectNewWorkspace: store.selectNewWorkspace,
                             onNewWorkspace: openDirectoryBrowser)
                         if store.launchTarget == .newWorkspace {
-                            TextField(
-                                "Workspace name (optional)",
-                                text: $store.newWorkspaceLabel)
-                                .autocorrectionDisabled()
+                            if store.offersWorkspaceName {
+                                TextField(
+                                    "Workspace name (optional)",
+                                    text: $store.newWorkspaceLabel)
+                                    .autocorrectionDisabled()
+                            }
                             if store.newWorkspaceDirectory.isEmpty {
                                 Label(
                                     "Directory: the Host's home directory",
@@ -113,9 +118,9 @@ struct StartAgentView: View {
                         Text("Workspace")
                     } footer: {
                         if store.launchTarget == .newWorkspace {
-                            Text(
-                                "Creates a fresh Workspace on the Host. An empty name uses the directory's name."
-                            )
+                            Text(store.offersWorkspaceName
+                                ? "Creates a fresh Workspace on the Host. An empty name uses the directory's name."
+                                : "Creates a Workspace in this directory, named after its folder.")
                         }
                     }
                 }
@@ -125,14 +130,18 @@ struct StartAgentView: View {
                         Toggle("Start in a new worktree", isOn: $store.startsInNewWorktree)
                             .disabled(store.selectedWorkspaceID == nil)
                         if store.startsInNewWorktree {
-                            TextField("Branch (optional)", text: $store.worktreeBranch)
+                            TextField(
+                                store.worktreeNeedsBranch ? "Branch" : "Branch (optional)",
+                                text: $store.worktreeBranch)
                                 .font(.callout.monospaced())
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
-                            TextField("Base (optional)", text: $store.worktreeBase)
-                                .font(.callout.monospaced())
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
+                            if !store.worktreeNeedsBranch {
+                                TextField("Base (optional)", text: $store.worktreeBase)
+                                    .font(.callout.monospaced())
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                            }
                         }
                     } header: {
                         Text("Worktree")
@@ -140,6 +149,10 @@ struct StartAgentView: View {
                         if let message = store.worktreeBranchErrorMessage {
                             Text(message)
                                 .foregroundStyle(.red)
+                        } else if store.startsInNewWorktree, store.worktreeNeedsBranch {
+                            Text(
+                                "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD."
+                            )
                         } else if store.startsInNewWorktree {
                             Text(
                                 "A fresh checkout of the workspace's repository. Empty fields use a generated worktree/ branch off HEAD."
@@ -154,6 +167,11 @@ struct StartAgentView: View {
 
                 Section {
                     switch store.agentDiscoveryState {
+                    case _ where store.isStartingTemplate:
+                        HStack {
+                            ProgressView()
+                            Text("Starting \(store.selectedTemplate?.name ?? "the Template")…")
+                        }
                     case .idle:
                         Text("Select a Host to detect installed Agents.")
                             .foregroundStyle(.secondary)
@@ -162,7 +180,7 @@ struct StartAgentView: View {
                             ProgressView()
                             Text("Detecting installed Agents…")
                         }
-                    case .loaded where store.availableAgentKinds.isEmpty:
+                    case .loaded where store.availableAgentKinds.isEmpty && store.availableTemplates.isEmpty:
                         ContentUnavailableView(
                             "No Agents Found",
                             systemImage: "magnifyingglass",
@@ -184,18 +202,16 @@ struct StartAgentView: View {
                                 LaunchPresetSummary(preset: preset)
                             }
                         }
-                        Picker("Agent", selection: $store.selectedAgentKind) {
-                            ForEach(store.availableAgentKinds) { @Sendable kind in
-                                Text("\(kind.displayName) (\(kind.executable))")
-                                    .tag(SupportedAgentKind?.some(kind))
-                            }
-                        }
+                        agentPicker
                         Button("Detect Again", systemImage: "arrow.clockwise") {
                             Task { await store.discoverAgents() }
                         }
                     case .failed(let message):
                         Label(message, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.red)
+                        if !store.availableTemplates.isEmpty {
+                            agentPicker
+                        }
                         Button("Retry", systemImage: "arrow.clockwise") {
                             Task { await store.discoverAgents() }
                         }
@@ -203,7 +219,18 @@ struct StartAgentView: View {
                 } header: {
                     Text("Agent")
                 } footer: {
-                    Text("Agents installed and launchable from this Host's PATH. Launch Presets live in Settings › Agents & Accounts.")
+                    if let template = store.selectedTemplate {
+                        VStack(alignment: .leading) {
+                            if !template.description.isEmpty {
+                                Text(template.description)
+                            }
+                            Text("Its first start can take up to 35 seconds.")
+                        }
+                    } else {
+                        Text(store.discoversThroughUserShell
+                            ? "Agents your own shell on this Host can run. Launch Presets live in Settings › Agents & Accounts."
+                            : "Agents installed and launchable from this Host's PATH. Launch Presets live in Settings › Agents & Accounts.")
+                    }
                 }
 
                 Section {
@@ -223,29 +250,33 @@ struct StartAgentView: View {
                     }
                 }
 
-                Section {
-                    TextField("Tab name (optional)", text: $store.tabLabel)
-                        .autocorrectionDisabled()
-                } header: {
-                    Text("Tab Name")
-                } footer: {
-                    Text("Empty lets herdr or a title plugin name the tab.")
+                if store.offersWorkspaceAndTabNames {
+                    Section {
+                        TextField("Tab name (optional)", text: $store.tabLabel)
+                            .autocorrectionDisabled()
+                    } header: {
+                        Text("Tab Name")
+                    } footer: {
+                        Text("Empty lets herdr or a title plugin name the tab.")
+                    }
                 }
 
-                Section {
-                    AgentArgumentsField(
-                        text: $store.arguments,
-                        placeholder: "Arguments (optional)")
-                } header: {
-                    Text("Arguments")
-                } footer: {
-                    if let message = store.argumentErrorMessage {
-                        Text(message)
-                            .foregroundStyle(.red)
-                    } else {
-                        Text(
-                            "Quotes and backslash escapes are supported.\ne.g. \(Text(#"--model "gpt 5" --continue"#).monospaced())"
-                        )
+                if store.offersArguments {
+                    Section {
+                        AgentArgumentsField(
+                            text: $store.arguments,
+                            placeholder: "Arguments (optional)")
+                    } header: {
+                        Text("Arguments")
+                    } footer: {
+                        if let message = store.argumentErrorMessage {
+                            Text(message)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text(
+                                "Quotes and backslash escapes are supported.\ne.g. \(Text(#"--model "gpt 5" --continue"#).monospaced())"
+                            )
+                        }
                     }
                 }
 
@@ -262,6 +293,9 @@ struct StartAgentView: View {
             // The form grows as a Host adds its Agent and argument rows; a
             // fixed form cut them off under a scroll.
             .consoleSheetPage()
+            .task(id: store.selectedHostID) {
+                if let hostID = store.selectedHostID { await console.checkNewAgentOffers(on: hostID) }
+            }
             .navigationTitle("New Agent")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -284,6 +318,8 @@ struct StartAgentView: View {
                 if case .started(let id) = store.state {
                     dismiss()
                     onStarted(id)
+                } else if store.state == .startedAsTerminal {
+                    dismiss()
                 }
             }
             .task(id: store.selectedHostID) {
@@ -298,6 +334,23 @@ struct StartAgentView: View {
                 }
             }
             .interactiveDismissDisabled(!store.canDismiss)
+        }
+    }
+
+    private var agentPicker: some View {
+        Picker("Agent", selection: $store.selectedAgent) {
+            ForEach(store.availableAgentKinds) { @Sendable kind in
+                Text("\(kind.displayName) (\(kind.executable))")
+                    .tag(StartAgentStore.AgentChoice?.some(.kind(kind)))
+            }
+            if !store.availableTemplates.isEmpty {
+                Section("Templates") {
+                    ForEach(store.availableTemplates) { @Sendable template in
+                        Text(template.name)
+                            .tag(StartAgentStore.AgentChoice?.some(.template(template)))
+                    }
+                }
+            }
         }
     }
 

@@ -11,8 +11,9 @@ enum ChatKeyDelivery: Equatable, Sendable {
 }
 
 /// Chat's Agent controls: keys pressed in the Agent's program through
-/// `agent.send_keys` (ADR 0024), never through the Attach PTY. One request
-/// at a time, in the order pressed, as typed keys would arrive.
+/// `agent.send_keys` (ADR 0024), never through the Attach PTY, or on herdr-core
+/// through an attach of Chat's own (ADR 0035). One request at a time, in the
+/// order pressed, as typed keys would arrive.
 @MainActor
 @Observable
 final class ChatAgentKeysStore {
@@ -56,6 +57,8 @@ final class ChatAgentKeysStore {
                 try await send(names)
                 self?.failure = nil
                 return .sent
+            } catch let refusal as HerdrCoreChatTyping.Refusal {
+                return .withheld(refusal.message)
             } catch {
                 self?.failure = "Couldn't reach the Agent, so the key may not have gone."
                 return .failed

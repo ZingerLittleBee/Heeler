@@ -4,7 +4,7 @@ Fixes for the problems you are most likely to meet in [Chat](chat.md). Most othe
 
 ## There is no Show Chat
 
-Chat works only for Claude Code, Codex, Pi, Oh My Pi, Grok Build, and OpenCode on macOS and Linux Hosts. After Heeler starts, **Show Chat** also stays hidden until the Host connects.
+With herdr, Chat works only for Claude Code, Codex, Pi, Oh My Pi, Grok Build, and OpenCode on macOS and Linux Hosts. On a herdr-core Host, native Windows included, [herdr-core](herdr-core.md#chat) lists the programs Chat opens for on each system. After Heeler starts, **Show Chat** also stays hidden until the Host connects.
 
 ## Waiting for Conversation
 
@@ -18,7 +18,7 @@ If Codex still waits after you have sent prompts, it was probably started withou
 
 ## Codex Started Without --no-daemon
 
-Codex was started without `--no-daemon` while its background server runs, so herdr can't tell which terminal its conversation is in ([Set up the Host](chat.md#set-up-the-host)). Agents that herdr brings back after a restart also start without it, unless you use the alias in [Set up the Host](chat.md#set-up-the-host). Exit Codex and run `codex --no-daemon resume` to continue the same conversation. When a conversation already shows, a banner warns that it may be another terminal's.
+Codex was started without `--no-daemon` while its background server runs, so herdr can't tell which terminal its conversation is in ([Set up the Host](chat.md#set-up-the-host)). Agents that herdr brings back after a restart also start without it, unless you use the alias in [Set up the Host](chat.md#set-up-the-host). Exit Codex and run `codex --no-daemon resume` to continue the same conversation. If Codex says the conversation is open in another app, the background server still holds it: run `codex app-server daemon stop`, which also ends any other Codex on that server, then resume again. When a conversation already shows, a banner warns that it may be another terminal's.
 
 Codex tracks the cause in [openai/codex#48500](https://github.com/openai/codex/issues/48500): its background server runs herdr's integration with the settings of the terminal that started the server. [openai/codex#44902](https://github.com/openai/codex/issues/44902) proposes a fix, and herdr follows it in [herdrdev/herdr#4649](https://github.com/herdrdev/herdr/issues/4649).
 
@@ -52,7 +52,7 @@ Heeler doesn't recognize this question, for example any question from Pi. Use th
 
 ## Reading OpenCode's conversations needs sqlite3 or python3 on the Host
 
-Install `sqlite3` or Python 3 on the Host, then tap **Check Again**. If Chat says the conversations are in OpenCode's 1.x format, upgrade OpenCode to 2.x.
+Install `sqlite3` or Python 3 on the Host, then tap **Check Again**. If Chat says it can't list OpenCode's 1.x conversations, add Heeler's plugin with **Let Chat Follow OpenCode…** or upgrade OpenCode to 2.x.
 
 ## SFTP is unavailable on this Host
 

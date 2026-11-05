@@ -37,7 +37,7 @@ struct PreflightReportTests {
     /// (ADR 0011): the checklist must not send anyone off to install a helper.
     @Test func theChecklistNeverAsksForSocat() {
         for check in PreflightCheck.allCases {
-            #expect(!check.title.localizedCaseInsensitiveContains("socat"))
+            #expect(!check.title(for: .herdrTUI).localizedCaseInsensitiveContains("socat"))
         }
     }
 
@@ -115,7 +115,10 @@ struct PreflightReportTests {
             Issue.record("connection check should fail")
             return
         }
-        #expect(keyHint.contains("authorized_keys"))
+        #expect(keyHint.contains("~/.ssh/authorized_keys"))
+        // Windows OpenSSH reads an administrator's keys from here alone.
+        #expect(keyHint.contains(#"C:\ProgramData\ssh\administrators_authorized_keys"#))
+        #expect(keyHint.contains("only Administrators and SYSTEM"))
         #expect(rsaHint.contains("RSA Key"))
         #expect(rsaHint.contains("SSH identities"))
         #expect(passwordHint.contains("password"))
@@ -243,9 +246,45 @@ struct PreflightReportTests {
         }
     }
 
+    /// Each herdr-core outcome fails the check it disproves and says all of
+    /// its presentation; what comes after it stays unknown.
+    @Test func herdrCoreOutcomesFailTheCheckTheyDisprove() {
+        let cases: [(TransportError, PreflightCheck)] = [
+            (.herdrCoreNotInstalled, .herdrInstalled),
+            (.herdrCoreNotRunning(socketPath: "/s", socketFilePresent: false), .serverRunning),
+            (.herdrCoreNotRunning(socketPath: "/s", socketFilePresent: true), .serverRunning),
+            (.herdrCoreSocketPathTooLong(path: "/s", limit: 103), .serverRunning),
+            (.herdrCoreForwardingRefused(socketPath: "/s"), .serverRunning),
+            (.herdrCoreUpdateRequired(command: "/opt/herdr-core update"), .protocolCompatible),
+        ]
+        for (error, check) in cases {
+            let report = PreflightReport.failure(error, authMethod: .deviceKey)
+            #expect(report[check] == .failed(hint: error.presentation.message), "\(error)")
+            #expect(report[.connection] == .passed)
+            #expect(!report.isFullyPassed)
+        }
+    }
+
     @Test func plainFailureAttachesTheGivenHintToTheGivenCheck() {
         let report = PreflightReport.failure(check: .connection, hint: "no password saved")
         #expect(report[.connection] == .failed(hint: "no password saved"))
         #expect(report[.herdrInstalled] == .blocked)
+    }
+
+    @Test func aRefusedSessionNameFailsTheEnvironmentCheckWithOnePeriod() throws {
+        let refusal = try #require(HerdrCoreSessionName.windowsRefusal("my work"))
+        let report = PreflightReport.failure(.herdrCoreSessionNameRefused(reason: refusal), authMethod: .deviceKey)
+        let hint = "This session name can't be used: \(refusal) Edit the Host's session name."
+        #expect(report[.remoteEnvironment] == .failed(hint: hint))
+    }
+
+    /// That refusal is a whole sentence already.
+    @Test func aFeatureThatEndsItsOwnSentenceGetsNoSecondPeriod() throws {
+        let refusal = try #require(HerdrCoreSessionName.windowsRefusal("my work"))
+        let report = PreflightReport.failure(.hostFeatureUnavailable(feature: refusal), authMethod: .deviceKey)
+        #expect(report[.remoteEnvironment] == .failed(hint: refusal))
+        #expect(
+            PreflightReport.failure(.hostFeatureUnavailable(feature: "Uploads"), authMethod: .deviceKey)[.remoteEnvironment]
+                == .failed(hint: "Uploads."))
     }
 }

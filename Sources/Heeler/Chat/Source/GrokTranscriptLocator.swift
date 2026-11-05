@@ -2,8 +2,10 @@ import Foundation
 
 /// Finds a Grok Build session's transcript, `<group>/<id>/updates.jsonl`
 /// under `~/.grok/sessions`, then under each added Account's `GROK_HOME`.
-/// herdr does not report an Agent's environment, so a custom home is
-/// searched only once it is an Account (#621).
+/// herdr does not report an Agent's environment, so on Herdr TUI a custom
+/// home is searched only once it is an Account (#621). On herdr-core
+/// `configRoot` is the Agent's own `GROK_HOME`, the one home searched, and
+/// the id may be the UUIDv4 Heeler started it with (ADR 0034).
 ///
 /// The group names the directory the session started in, so the Agent's
 /// directories are tried first: the directory percent-encoded, or for a name
@@ -32,10 +34,20 @@ struct GrokTranscriptLocator: Sendable {
     /// The most groups looked into per search, like Pi's `directoryBudget`.
     var groupBudget = 200
 
-    func locate(sessionID: String, directories: [String]) async throws -> Result<String, Failure> {
-        guard ConversationReference.lowercaseUUIDv7(sessionID) != nil else { return .failure(.mismatched) }
-        let home = try await files.home()
-        let grokHomes = try await files.configRoots(for: .grok, defaultRoot: RemoteFilePath.join(home, ".grok"))
+    func locate(
+        sessionID: String, directories: [String], configRoot: String? = nil
+    ) async throws -> Result<String, Failure> {
+        let acceptedID =
+            configRoot == nil
+            ? ConversationReference.lowercaseUUIDv7(sessionID) : ConversationReference.lowercaseUUID(sessionID)
+        guard acceptedID != nil else { return .failure(.mismatched) }
+        let grokHomes: [String]
+        if let configRoot {
+            grokHomes = [configRoot]
+        } else {
+            let home = try await files.home()
+            grokHomes = try await files.configRoots(for: .grok, defaultRoot: RemoteFilePath.join(home, ".grok"))
+        }
         var searchedAll = true
         var sawMismatch = false
         let found = try await ChatHostFiles.firstAnswer(across: grokHomes) { grokHome -> String? in

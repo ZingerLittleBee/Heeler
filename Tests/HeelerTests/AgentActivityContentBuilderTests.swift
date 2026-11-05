@@ -134,6 +134,35 @@ struct AgentActivityContentBuilderTests {
         #expect(desire.agents.map(\.paneID) == ["w:p4"])
     }
 
+    /// The relay and the widget know three statuses, so Error is Blocked to them.
+    @Test func anErrorAgentCountsAndReadsAsBlocked() throws {
+        let desire = try #require(
+            AgentActivityContentBuilder.desire(
+                from: [
+                    agent("w:p1", .working),
+                    agent("w:p2", .blocked),
+                    agent("w:p3", .error),
+                ],
+                hostName: "mbp"))
+
+        #expect(desire.counts == .init(working: 1, blocked: 2, done: 0))
+        #expect(desire.agents.map(\.paneID) == ["w:p2", "w:p3", "w:p1"])
+        #expect(desire.agents.map(\.status) == ["blocked", "blocked", "working"])
+    }
+
+    @Test func anErrorAgentAloneKeepsAnActivityAlive() {
+        #expect(AgentActivityContentBuilder.desire(from: [agent("w:p1", .error)], hostName: "mbp") != nil)
+    }
+
+    @Test func anErrorAgentKeepsItsOwnWordInAConfiguredStatusField() throws {
+        let layout = AgentRowLayout(rows: [[.init(.status)]])
+        let desire = try #require(
+            AgentActivityContentBuilder.desire(
+                from: [agent("w:p1", .error)], hostName: "mbp", layout: layout))
+
+        #expect(desire.agents.first?.rows?.first?.first?.text == "Error")
+    }
+
     @Test func returnsNilWhenNothingIsEligible() {
         let agents = [
             agent("w:p1", .idle),

@@ -42,6 +42,40 @@ enum AgentRowSide: Hashable, Sendable {
     var other: AgentRowSide { self == .leading ? .trailing : .leading }
 }
 
+/// The fields one side of a row slot can still add. `row` holds both sides of
+/// the slot, since a field sits on one side at most. A Host following a plugin
+/// splits them into herdr's and Heeler's and takes `$` plugin names; any other
+/// Host offers one list and its Terminals' labels.
+struct AgentLayoutFieldOffer: Equatable {
+    let herdrFields: [AgentRowToken]
+    let heelerFields: [AgentRowToken]
+    let hostFields: [AgentRowToken]
+    let labelFields: [AgentRowToken]
+    let acceptsPluginFields: Bool
+
+    init(row: AgentRow, side: AgentRowSide = .leading, followsPlugin: Bool, labelKeys: [String]) {
+        let available = { AgentLayoutTokensEditing.availableBuiltins(in: row, from: $0) }
+        let heeler = AgentLayoutTokensEditing.availableHeelerFields(in: row, side: side)
+        if followsPlugin {
+            herdrFields = available(AgentRowToken.herdrBuiltins)
+            heelerFields = heeler
+            hostFields = []
+            labelFields = []
+        } else {
+            herdrFields = []
+            heelerFields = []
+            // `state_text` is herdr's status text, which no row draws.
+            hostFields = available(AgentRowToken.herdrBuiltins.filter { $0 != .stateText }) + heeler
+            labelFields = available(labelKeys.compactMap(AgentRowToken.terminalLabel))
+        }
+        acceptsPluginFields = followsPlugin
+    }
+
+    var hasBuiltins: Bool {
+        !herdrFields.isEmpty || !heelerFields.isEmpty || !hostFields.isEmpty
+    }
+}
+
 /// Field mutations over both sides of the Console's three row slots, each
 /// persisted at once through `AgentListFieldsEditor.commit`. A row index
 /// outside those slots is a no-op: it never inserts a row or writes another
@@ -102,12 +136,16 @@ enum AgentLayoutTokensEditing {
     }
 
     static func navigationSubtitle(
-        hostName: String, rowIndex: Int? = nil, side: AgentRowSide = .leading
+        hostName: String, rowIndex: Int? = nil, side: AgentRowSide = .leading, followsPlugin: Bool = true
     ) -> String {
         var parts: [String] = []
         if !hostName.isEmpty { parts.append(hostName) }
         if let rowIndex, let slot = AgentRowSlot.forRow(rowIndex) {
-            parts.append(side == .trailing ? "right side" : "\(slot.label) row")
+            if side == .trailing {
+                parts.append("right side")
+            } else if followsPlugin {
+                parts.append("\(slot.label) row")
+            }
         }
         return parts.joined(separator: " · ")
     }
@@ -177,6 +215,8 @@ enum AgentLayoutTokensEditing {
             "Changes totals of the Agent's Checkout"
         case .custom:
             "Plugin field. Values come from herdr plugins and display as plain text."
+        case .label:
+            "Terminal label"
         }
     }
 
@@ -209,6 +249,13 @@ enum AgentLayoutTokensEditing {
             return nil
         }
         guard !row.contains(where: { $0.token == token }) else { return nil }
+        return token
+    }
+
+    static func labelToken(from raw: String, alreadyIn row: AgentRow) -> AgentRowToken? {
+        guard let token = AgentRowToken.terminalLabel(raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+            !row.contains(where: { $0.token == token })
+        else { return nil }
         return token
     }
 

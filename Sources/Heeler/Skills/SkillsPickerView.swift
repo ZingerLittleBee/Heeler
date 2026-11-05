@@ -45,7 +45,8 @@ struct SkillsPickerView: View {
     }
 
     /// Before the first list arrives: a spinner, the failure with a retry,
-    /// or the honest "nothing installed" answer.
+    /// or the honest "nothing installed" answer, which can be read again: the
+    /// list is cached per connection, so a Skill added since stays unseen.
     @ViewBuilder
     private var emptyContent: some View {
         switch store.phase {
@@ -66,6 +67,8 @@ struct SkillsPickerView: View {
                 Label("No Skills", systemImage: "sparkles")
             } description: {
                 Text("No skills found for this agent.")
+            } actions: {
+                Button("Refresh") { Task { await store.refresh() } }
             }
         }
     }

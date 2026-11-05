@@ -2,8 +2,15 @@ import Foundation
 import Observation
 
 /// The Console aggregate: reconciles the Host catalog and publishes one
-/// Agent list with independent Pin and per-Host sidebar ordering. Each HostConsoleProjection
+/// Agent list with independent Pin and per-Host sidebar ordering. Each ConsoleHostProjection
 /// owns its own convergence, retry, snippets and Host-scoped RPC behavior.
+/// How a close or a removal ended, for the Console to say with its screen gone.
+struct ConsoleOutcomeNotice: Identifiable, Equatable {
+    let id = UUID()
+    let title: String
+    let message: String
+}
+
 @MainActor
 @Observable
 final class ConsoleStore {
@@ -16,7 +23,18 @@ final class ConsoleStore {
     }
 
     private(set) var agents: [ConsoleAgent] = []
+    /// Agents off the list whose program was lost or ended. Only a detail
+    /// already open on one reads them, through `detailAgent(for:)`.
+    private(set) var departedAgents: [ConsoleAgent] = []
     private(set) var terminals: [ConsoleTerminal] = []
+    /// See `sceneDidEnd`.
+    @ObservationIgnored private var endedScenes: Set<UUID> = []
+    private struct AgentViewer {
+        let agent: ConsoleAgent.ID
+        let scene: UUID?
+    }
+    /// See `setAgentShown`.
+    @ObservationIgnored private var agentViewers: [UUID: AgentViewer] = [:]
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
     private(set) var hostStandingFailures: [Host.ID: TransportError] = [:]
     private(set) var hostLatencies: [Host.ID: Duration] = [:]
@@ -24,6 +42,13 @@ final class ConsoleStore {
     /// The route each connected Host's current connection reached.
     private(set) var hostRouteIDs: [Host.ID: HostRoute.ID] = [:]
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
+    /// Connected core Hosts whose core inherited variables that break things.
+    private(set) var hostCoreEnvironmentNotices: [Host.ID: HerdrCoreEnvironmentNotice] = [:]
+    /// Why each core Agent reading Unknown does (ADR 0034). No Herdr TUI Agent is here.
+    private(set) var coreStatusExplanations: [ConsoleAgent.ID: HerdrCoreStatusExplanation] = [:]
+    /// The harness configuration edits this device applied (ADR 0033).
+    let harnessEdits: HarnessConfigEditStore
+    private let hostHelperBundle: @Sendable () throws -> HostHelperBundle
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
     /// Hosts whose current connection has not produced its first snapshot.
     /// Their empty Agent projection is loading state, not proof that a pane
@@ -39,19 +64,29 @@ final class ConsoleStore {
     /// Successful or snapshot-reconciled removals keyed by the exact Agents
     /// that belonged to the validated worktree. This survives their rows
     /// disappearing so Agent detail can show a stable result.
+    /// Outcomes whose screen had gone by the time they came. Off the Console's
+    /// projections on purpose: a reconnect that clears an inventory leaves these.
+    private(set) var outcomeNotices: [ConsoleOutcomeNotice] = []
     private(set) var removedWorktreesByAgent: [
         ConsoleAgent.ID: WorktreeRemovalReceipt
     ] = [:]
-    /// Each Host's platform as its connection reported it; Chat offers
-    /// itself only on a Host known to be POSIX. Kept across reconnects of
-    /// one catalog entry, so a reconnect does not take an open Chat away,
-    /// and asked again on each new connection.
+    /// Each Host's platform as its connection reported it; a core Host's Chat and
+    /// uploads wait for it, and what they offer then follows `HostCapabilities`. Kept
+    /// across reconnects of one catalog entry, so a reconnect does not take an
+    /// open Chat away, and asked again on each new connection.
     private(set) var hostPlatforms: [Host.ID: HostPlatform] = [:]
+    /// What each core Host's desktop app can name right now.
+    private(set) var hostDesktopAppNaming: [Host.ID: HerdrAppNaming] = [:]
+    /// Each core Host's kernel, as its locator prints it, once a link has located its core.
+    private(set) var hostCoreKernels: [Host.ID: String] = [:]
+    /// The core each core Host's inventory comes from. A detail reads it, so it
+    /// redraws once the Host no longer serves the core it opened on.
+    private(set) var hostCores: [Host.ID: String] = [:]
     /// The connection each Host's platform was last asked on.
     @ObservationIgnored private var hostPlatformGenerations: [Host.ID: UInt64] = [:]
 
     @ObservationIgnored private var projections: [
-        Host.ID: HostConsoleProjection
+        Host.ID: any ConsoleHostProjection
     ] = [:]
     /// Skills probed per Host connection: keyed on the connection generation
     /// so a reconnect naturally invalidates, and evicted per Host on insert
@@ -77,8 +112,8 @@ final class ConsoleStore {
         }
         return store
     }
-    /// Composer ownership sits above the detail branch so a transient
-    /// missing-Agent placeholder during reconnect cannot destroy a draft, and
+    /// Composer ownership sits above the detail branch so a failed Host's
+    /// missing-Agent placeholder cannot destroy a draft, and
     /// no view's lifetime decides an upload's.
     @ObservationIgnored private var composerSessions: [
         ConsoleAgent.ID: AgentComposerSession
@@ -98,6 +133,19 @@ final class ConsoleStore {
     }
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
+    @ObservationIgnored private let makeCoreSession: @Sendable (Host) -> HerdrCoreHostSession
+    @ObservationIgnored private let herdrAppRename: Bool
+    @ObservationIgnored private let coreSendClock: BlockedCardClock
+    @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
+    @ObservationIgnored private let coreStopClock: BlockedCardClock
+    @ObservationIgnored private let coreLinuxChatPrograms: Set<ChatProgram>
+    @ObservationIgnored private let coreMacOSChatPrograms: Set<ChatProgram>
+    @ObservationIgnored private let chatTiming: AgentChatStore.Timing
+    @ObservationIgnored private let chatNow: @Sendable () -> Date
+    @ObservationIgnored private let coreWindowsChatPrograms: Set<ChatProgram>
+    /// A core Host's connection for the files rooted at its Host Helper, dialed
+    /// for each use and apart from the session its projection holds.
+    @ObservationIgnored private let connectCore: @Sendable (Host) async throws -> any HerdrCoreTransport
     @ObservationIgnored private let snapshotRetryDelay: Duration
     @ObservationIgnored private let chatPrefetchRetryDelay: Duration
     @ObservationIgnored private var isActive = false
@@ -118,6 +166,9 @@ final class ConsoleStore {
     /// Hosts that share a plugin config directory share its Account file,
     /// so every Host's Account changes take turns.
     @ObservationIgnored private let usageAccountFileGate = GitExecGate()
+    /// Hears what this device has seen on a core Host, for its Host Helper.
+    @ObservationIgnored var onCoreSeenMarksChanged:
+        (@MainActor (Host.ID, String, [String: HerdrCoreTurnState.Mark]) -> Void)?
     @ObservationIgnored private var hostAccountsStores: [Host.ID: HostAccountsStore] = [:]
     /// The device's Launch Presets (#622).
     let launchPresets = LaunchPresetStore()
@@ -150,6 +201,8 @@ final class ConsoleStore {
     /// One Chat per Agent whose detail has shown it, kept like the Composer
     /// so leaving and returning keeps the conversation and its position.
     @ObservationIgnored private var chatStores: [ConsoleAgent.ID: AgentChatStore] = [:]
+    /// The last session event each core Agent's Chat has heard of.
+    @ObservationIgnored private var chatSessionEventRevisions: [ConsoleAgent.ID: UInt64] = [:]
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var terminalTransportGenerations: [Host.ID: UInt64] = [:]
 
@@ -163,10 +216,37 @@ final class ConsoleStore {
         usageSettings: AgentUsageSettings = AgentUsageSettings(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory(),
+        connectCore: @escaping @Sendable (Host) async throws -> any HerdrCoreTransport =
+            ConsoleStore.sshCoreConnector(),
         chatAdapter: @escaping @Sendable (ChatProgram) -> ChatTranscriptAdapter? = {
             ChatTranscriptAdapter.standard(for: $0)
-        }
+        },
+        makeCoreSession: @escaping @Sendable (Host) -> HerdrCoreHostSession =
+            ConsoleStore.coreSessionFactory(),
+        coreStopClock: BlockedCardClock = .live,
+        coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
+        harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore(),
+        hostHelperBundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
+        herdrAppRename: Bool = HerdrAppControl.isRenameOn,
+        coreSendClock: BlockedCardClock = .live,
+        coreLinuxChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedLinuxCoreChatPrograms,
+        coreMacOSChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedMacOSCoreChatPrograms,
+        coreWindowsChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedWindowsCoreChatPrograms,
+        chatTiming: AgentChatStore.Timing = AgentChatStore.Timing(),
+        chatNow: @escaping @Sendable () -> Date = { Date() }
     ) {
+        self.coreLinuxChatPrograms = coreLinuxChatPrograms
+        self.coreMacOSChatPrograms = coreMacOSChatPrograms
+        self.coreWindowsChatPrograms = coreWindowsChatPrograms
+        self.chatTiming = chatTiming
+        self.chatNow = chatNow
+        self.coreSendClock = coreSendClock
+        self.makeCoreSession = makeCoreSession
+        self.coreStopClock = coreStopClock
+        self.herdrAppRename = herdrAppRename
+        self.coreHostMemory = coreHostMemory
+        self.harnessEdits = harnessEdits
+        self.hostHelperBundle = hostHelperBundle
         self.chatCache = chatCache
         cachedChats = ConsoleChatCache(cache: chatCache)
         self.usageWidgets = usageWidgets
@@ -180,6 +260,7 @@ final class ConsoleStore {
         self.pins = pins
         self.rowLayouts = rowLayouts
         self.makeSession = makeSession
+        self.connectCore = connectCore
     }
 
     /// Pins or unpins the Agent and re-sorts the published list in the same
@@ -190,10 +271,21 @@ final class ConsoleStore {
     }
 
     /// Aligns Host projections with the catalog. Editing a Host replaces its
-    /// projection because its connection coordinates may have changed.
-    func setHosts(_ hosts: [Host]) {
+    /// projection because its connection coordinates may have changed. A Host
+    /// waiting for its Server Kind is not the Console's yet.
+    ///
+    /// `hostsOutOfSight` is `HostStore.hostsOutOfSight`: Hosts in the catalog that
+    /// are not listed, whose device memory stays. Nil says the catalog could not be
+    /// read, so nobody can say which Hosts went and none of that memory is swept.
+    func setHosts(_ catalogHosts: [Host], hostsOutOfSight: Set<Host.ID>? = []) {
+        let hosts = catalogHosts.filter(\.serverKind.isConfirmed)
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         catalog = hosts
+        if let hostsOutOfSight {
+            let retained = hostsOutOfSight.union(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id))
+            coreHostMemory.retainHosts(retained)
+            harnessEdits.retainHosts(retained)
+        }
         cachedChats.setHosts(hosts)
         for id in projections.keys where incoming[id] != projections[id]?.host {
             chatPrefetchTasks[id]?.cancel()
@@ -211,6 +303,7 @@ final class ConsoleStore {
         for (id, store) in chatStores where incoming[id.hostID] != projections[id.hostID]?.host {
             store.end()
             chatStores[id] = nil
+            chatSessionEventRevisions[id] = nil
         }
         // Also the launch-time sweep: a Host removed while the app was not
         // running leaves a cache no one else would delete. Chained, so the
@@ -269,7 +362,11 @@ final class ConsoleStore {
             for projection in projections {
                 await projection.resume()
             }
-            guard revalidating else { return }
+            guard revalidating else {
+                // A core Host with no connection never reports coming up.
+                refreshStaleWidgetUsage()
+                return
+            }
             // Every Host, not only one the user has navigated to: recovery
             // that depends on navigation just trades the Retry button for
             // another hidden step, and the Console is a single list across
@@ -352,22 +449,61 @@ final class ConsoleStore {
     /// The returned runner resolves the Host's live projection on every
     /// call: editing a Host replaces its projection (and session), and a
     /// runner captured by a long-lived Attach screen must follow it there
-    /// instead of staying bound to the ended session.
-    func terminalRunner(for hostID: Host.ID) -> TerminalSessionRunner {
-        { [weak self] request, handler in
+    /// instead of staying bound to the ended session. Its pipeline keeps to one
+    /// core, for a Server Kind that has them, however many projections it sees.
+    func terminalRunner(
+        for hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) -> TerminalSessionRunner {
+        let pin = corePin ?? TerminalCorePin()
+        return { [weak self] request, handler in
             guard let runner = await self?.liveTerminalRunner(for: hostID) else {
                 throw TransportError.sshUnreachable(
                     detail: "The Host is not connected.")
             }
-            try await runner(request, handler)
+            try await runner(request, handler.keeping(to: pin))
         }
+    }
+
+    /// A pin naming the core whose inventory this Host shows now, for a detail
+    /// opening on one of its rows. A Herdr TUI Host has no core to name.
+    func coreProjection(on hostID: Host.ID) -> HerdrCoreConsoleProjection? {
+        projections[hostID] as? HerdrCoreConsoleProjection
+    }
+
+    func corePin(on hostID: Host.ID) -> TerminalCorePin {
+        TerminalCorePin(joined: hostCores[hostID])
+    }
+
+    /// Whether this Host has moved on from the core `pin` keeps to. An address then
+    /// means another Terminal, so nothing a detail holding `pin` does may go by it.
+    func hasLeftCore(_ pin: TerminalCorePin?, on hostID: Host.ID) -> Bool {
+        guard let pin, let core = hostCores[hostID] else { return false }
+        return !pin.admits(core)
+    }
+
+    /// What an ended terminal says in a detail that keeps to `corePin`, or nil for
+    /// its own words.
+    func terminalEndedMessage(keepingTo corePin: TerminalCorePin?, on hostID: Host.ID) -> String? {
+        hasLeftCore(corePin, on: hostID) ? TerminalStatusPresentation.coreGoneMessage : nil
+    }
+
+    /// What Agent Ended says for `id`, when it has more to say than its plain
+    /// words: another core's exit at the address is no word about this Terminal.
+    func agentEndedMessage(of id: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin?) -> String? {
+        if let message = terminalEndedMessage(keepingTo: corePin, on: id.hostID) { return message }
+        // The exit lives in the inventory, which a reconnect empties for a while.
+        // Its rows are what say it changed, so the open dialog redraws.
+        _ = terminals
+        return programExit(of: id)?.code.map(TerminalStatusPresentation.finishedMessage(exitCode:))
     }
 
     /// Late-bound for the same reason as `terminalRunner(for:)`: a retryable
     /// upload taken before a Host edit must stage over the new session.
-    func imageStager(for hostID: Host.ID) -> ImageStager {
+    func imageStager(
+        for hostID: Host.ID, beside paneID: String, keepingTo corePin: TerminalCorePin
+    ) -> ImageStager {
         { [weak self] image, reporter in
-            guard let stager = await self?.liveImageStager(for: hostID) else {
+            guard let stager = await self?.projections[hostID]?.imageStager(beside: paneID, keepingTo: corePin) else {
                 throw TransportError.sshUnreachable(
                     detail: "The Host is not connected.")
             }
@@ -375,9 +511,11 @@ final class ConsoleStore {
         }
     }
 
-    func fileStager(for hostID: Host.ID) -> FileStager {
+    func fileStager(
+        for hostID: Host.ID, beside paneID: String, keepingTo corePin: TerminalCorePin
+    ) -> FileStager {
         { [weak self] file, reporter in
-            guard let stager = await self?.liveFileStager(for: hostID) else {
+            guard let stager = await self?.projections[hostID]?.fileStager(beside: paneID, keepingTo: corePin) else {
                 throw TransportError.sshUnreachable(
                     detail: "The Host is not connected.")
             }
@@ -389,12 +527,8 @@ final class ConsoleStore {
         projections[hostID]?.terminalRunner()
     }
 
-    private func liveImageStager(for hostID: Host.ID) -> ImageStager? {
-        projections[hostID]?.imageStager()
-    }
-
     /// Ranged Host-file reads for the terminal usage strip (#325). Late-bound
-    /// for the same reason as `imageStager(for:)`: the strip refreshes on a
+    /// for the same reason as `imageStager(for:beside:keepingTo:)`: the strip refreshes on a
     /// timer, and a reconnect between two refreshes must not leave it reading
     /// through the transport that was replaced.
     func sessionFileReader(for hostID: Host.ID) -> SessionFileReader {
@@ -429,17 +563,13 @@ final class ConsoleStore {
         projections[hostID]?.modelContextWindowResolver()
     }
 
-    private func liveFileStager(for hostID: Host.ID) -> FileStager? {
-        projections[hostID]?.fileStager()
-    }
-
     func workspaces(for hostID: Host.ID) -> [ConsoleWorkspace] {
         workspacesByHost[hostID] ?? []
     }
 
     /// The projection behind every Host-scoped RPC; an unconnected Host
     /// fails loudly instead of silently dropping the action.
-    private func projection(for hostID: Host.ID) throws -> HostConsoleProjection {
+    private func projection(for hostID: Host.ID) throws -> any ConsoleHostProjection {
         guard let projection = projections[hostID] else {
             throw TransportError.sshUnreachable(
                 detail: "The Host is not connected.")
@@ -457,8 +587,8 @@ final class ConsoleStore {
         hostPlatformGenerations[hostID] = generation
         let platform: HostPlatform
         do {
-            platform = try await projection.session.withTransport { transport in
-                try await transport.hostPlatform()
+            platform = try await projection.withHostServices { services in
+                try await services.hostPlatform()
             }
         } catch {
             if projections[hostID] === projection, hostPlatformGenerations[hostID] == generation {
@@ -474,29 +604,45 @@ final class ConsoleStore {
     func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
         try await projection(for: hostID).availableAgentKinds()
     }
+
+    func availableTemplates(on hostID: Host.ID) async throws -> [AgentTemplate] {
+        try await projection(for: hostID).availableTemplates()
+    }
+
+    @discardableResult
+    func startTemplate(
+        _ request: TemplateLaunchRequest, on hostID: Host.ID
+    ) async throws -> Agent {
+        try await projection(for: hostID).startTemplate(request)
+    }
+
+    /// See `ConsoleHostProjection.launchDirectory(ofWorkspace:asked:)`.
+    func launchDirectory(ofWorkspace workspaceID: String, asked: String, on hostID: Host.ID) -> String {
+        projections[hostID]?.launchDirectory(ofWorkspace: workspaceID, asked: asked) ?? asked
+    }
+
+    /// See `ConsoleHostProjection.programExit(ofPane:)`.
+    func programExit(of id: ConsoleAgent.ID) -> ProgramExit? {
+        projections[id.hostID]?.programExit(ofPane: id.paneID)
+    }
+
+    /// The names a new Agent's generated default keeps clear of on `hostID`.
+    func takenAgentNames(on hostID: Host.ID) -> Set<String> {
+        Set(agents.filter { $0.hostID == hostID }.compactMap { $0.agent.name })
+            .union(projections[hostID]?.heldTerminalNames ?? [])
+    }
+
     /// Resolves the Host's remote home directory for the New Workspace
     /// directory browser (#280). Throws the error's own presentation,
     /// including homeDirectoryUnresolvable when the probe fails.
     func remoteHomeDirectory(on hostID: Host.ID) async throws -> String {
-        try await projection(for: hostID).session.withTransport { transport in
-            guard let ssh = transport as? HeelerSSHTransport else {
-                throw TransportError.sshUnreachable(
-                    detail: "This Host cannot list remote directories.")
-            }
-            return try await ssh.remoteHomeDirectory()
-        }
+        try await projection(for: hostID).remoteHomeDirectory()
     }
 
     /// Lists one absolute remote path's subdirectories for the New Workspace
     /// directory browser (#280).
     func listRemoteDirectories(at path: String, on hostID: Host.ID) async throws -> RemoteDirectoryListing {
-        try await projection(for: hostID).session.withTransport { transport in
-            guard let ssh = transport as? HeelerSSHTransport else {
-                throw TransportError.sshUnreachable(
-                    detail: "This Host cannot list remote directories.")
-            }
-            return try await ssh.listDirectories(at: path)
-        }
+        try await projection(for: hostID).listRemoteDirectories(at: path)
     }
 
     private struct SkillsCacheKey: Hashable {
@@ -522,8 +668,8 @@ final class ConsoleStore {
             return cached
         }
         let query = SkillListQuery(kind: kind, projectRoot: projectRoot)
-        let skills = try await projection(for: hostID).session.withTransport { transport in
-            try await transport.listSkills(query)
+        let skills = try await projection(for: hostID).withHostServices { services in
+            try await services.listSkills(query)
         }
         skillsCache = skillsCache.filter {
             $0.key.hostID != hostID || $0.key.generation == generation
@@ -536,8 +682,8 @@ final class ConsoleStore {
     /// the Host's live Console connection. Uncached — it is user-triggered,
     /// one file at a time.
     func readSkillFile(path: String, on hostID: Host.ID) async throws -> String {
-        try await projection(for: hostID).session.withTransport { transport in
-            try await transport.readSkillFile(atPath: path)
+        try await projection(for: hostID).withHostServices { services in
+            try await services.readSkillFile(atPath: path)
         }
     }
 
@@ -555,8 +701,8 @@ final class ConsoleStore {
     func listUntrackedDirectory(
         _ request: UntrackedDirectoryRequest, on hostID: Host.ID
     ) async throws -> UntrackedDirectoryListing {
-        try await projection(for: hostID).session.withTransport { transport in
-            try await transport.listUntrackedDirectory(request)
+        try await projection(for: hostID).withHostServices { services in
+            try await services.listUntrackedDirectory(request)
         }
     }
 
@@ -566,8 +712,8 @@ final class ConsoleStore {
     func readChanges(
         _ request: ChangesReadRequest, on hostID: Host.ID
     ) async throws -> CheckoutChangesRead {
-        try await projection(for: hostID).session.withTransport { transport in
-            try await transport.readChanges(request)
+        try await projection(for: hostID).withHostServices { services in
+            try await services.readChanges(request)
         }
     }
 
@@ -575,8 +721,8 @@ final class ConsoleStore {
     func readFilePatch(
         _ request: FilePatchRequest, on hostID: Host.ID
     ) async throws -> FilePatch {
-        try await projection(for: hostID).session.withTransport { transport in
-            try await transport.readFilePatch(request)
+        try await projection(for: hostID).withHostServices { services in
+            try await services.readFilePatch(request)
         }
     }
 
@@ -584,67 +730,117 @@ final class ConsoleStore {
     /// Console connection rather than dialing a parallel connection or holding
     /// an RPC open for Agent completion.
     func promptAgent(_ params: AgentPromptParams, on hostID: Host.ID) async throws -> Agent {
-        try await projection(for: hostID).session.withTransportOnce { transport in
-            try await transport.promptAgent(params)
-        }
+        try await projection(for: hostID).promptAgent(params)
     }
 
     /// The Agent's screen as herdr renders it now, colors kept
     /// (`agent.read`). Chat reads it around a send instead of the Attach
     /// PTY, which it never touches.
-    func readAgentScreen(_ paneID: String, on hostID: Host.ID) async throws -> ANSIScreen {
-        let read = try await projection(for: hostID).session.withTransport { transport in
-            try await transport.readAgent(
-                AgentReadParams(source: .visible, target: paneID, format: .ansi, stripANSI: false))
-        }
-        return ANSIScreenDecoder.decode(read.text)
+    func readAgentScreen(
+        _ paneID: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) async throws -> ANSIScreen {
+        guard !hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+        return try await projection(for: hostID).readAgentScreen(paneID)
     }
 
     /// Presses keys in the Agent's program (`agent.send_keys`): a Blocked
     /// card's answers and the Agent controls, never through the Attach PTY.
-    func sendAgentKeys(_ keys: [String], to paneID: String, on hostID: Host.ID) async throws {
-        try requireReadyForInput(hostID)
-        try await projection(for: hostID).session.withTransportOnce { transport in
-            try await transport.sendAgentKeys(AgentSendKeysParams(keys: keys, target: paneID))
+    func sendAgentKeys(
+        _ keys: [String], to paneID: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) async throws {
+        guard !hasLeftCore(corePin, on: hostID) else {
+            throw HerdrCoreChatTyping.Refusal(message: TransportError.herdrCoreTerminalGone.presentation.message)
         }
+        try requireReadyForInput(hostID)
+        try await projection(for: hostID).sendAgentKeys(keys, to: paneID)
     }
 
     /// Types one line of text into the Agent's pane (`pane.send_input`): a
     /// Blocked card's note or typed answer.
     func pasteIntoAgent(_ text: String, paneID: String, on hostID: Host.ID) async throws {
         try requireReadyForInput(hostID)
-        try await projection(for: hostID).session.withTransportOnce { transport in
-            try await transport.sendPaneInput(PaneSendInputParams(paneID: paneID, text: text))
-        }
+        try await projection(for: hostID).pasteIntoAgent(text, paneID: paneID)
     }
 
     /// Recovery rejects new input rather than holding it for the replacement.
+    /// Nothing left Heeler, which a core Host's Chat tells from a key that may have gone.
     private func requireReadyForInput(_ hostID: Host.ID) throws {
         guard isHostReadyForInput(hostID) else {
+            if coreProjection(on: hostID) != nil {
+                throw HerdrCoreChatTyping.Refusal(message: "The Host is not ready.")
+            }
             throw TransportError.sshUnreachable(detail: "The Host is not ready.")
         }
     }
 
     /// One Composer and staging per selected Agent for the lifetime of its
-    /// Host catalog entry. The Console detail may be replaced by a reconnect
-    /// placeholder; retaining the session here keeps its entirely local draft
-    /// intact.
+    /// Host catalog entry. A failed Host's placeholder may replace the Console
+    /// detail; retaining the session here keeps its entirely local draft intact.
     func composerSession(for agent: ConsoleAgent) -> AgentComposerSession {
-        if let existing = composerSessions[agent.id] { return existing }
         let hostID = agent.hostID
+        // Another core's Agent is another Agent. A detail still open on the old
+        // one keeps its own session, which keeps to the old core (`ConsoleDetailCores`).
+        if let existing = composerSessions[agent.id] {
+            if !hasLeftCore(existing.corePin, on: hostID) { return existing }
+            existing.leaveStaging()
+        }
+        let corePin = self.corePin(on: hostID)
+        let coreSend =
+            projections[hostID] is HerdrCoreConsoleProjection
+            ? HerdrCoreComposerSend(
+                address: agent.agent.paneID,
+                projection: { [weak self] in self?.projections[hostID] as? HerdrCoreConsoleProjection },
+                corePin: corePin,
+                clock: coreSendClock,
+                isOnWindows: { [weak self] in
+                    self?.capabilities(for: hostID).isNativeWindowsCore == true
+                })
+            : nil
         let composer = AgentComposerStore(
             target: agent.agent.paneID,
             initialStatus: agent.agent.status,
-            statusUpdates: agentStatusUpdates(for: agent.id)
+            statusUpdates: agentStatusUpdates(for: agent.id),
+            coreSend: coreSend
         ) { [weak self] params in
             guard let self else { throw TransportError.cancelled }
             return try await self.promptAgent(params, on: hostID)
         }
         composer.isConnectionAvailable = isHostReadyForInput(hostID)
         let session = AgentComposerSession(
-            composer: composer, stageImage: imageStager(for: hostID), stageFile: fileStager(for: hostID))
+            composer: composer,
+            stageImage: imageStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
+            stageFile: fileStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
+            corePin: corePin,
+            isOnCoreHost: coreSend != nil,
+            filePreparer: WindowsCoreFilePreparer(isOnWindows: { [weak self] in
+                self?.capabilities(for: hostID).isNativeWindowsCore == true
+            }))
         composerSessions[agent.id] = session
+        requestHostPlatforms(Array(projections.values))
         return session
+    }
+
+    /// The terminal Composer's Stop, or nil to keep Send. A core Agent has one
+    /// only while it is listed, so while it holds the foreground: a Terminal that
+    /// has ever reported keeps Esc as its interrupt key after its Agent exits, and
+    /// the shell left behind must not get it. `pressEsc` is Stop on any other Host.
+    func terminalInterrupt(
+        for agent: ConsoleAgent,
+        keepingTo corePin: TerminalCorePin? = nil,
+        pressEsc: @escaping @MainActor () async -> AgentInterruptOutcome
+    ) -> AgentComposerInterrupt? {
+        guard capabilities(for: agent.hostID).composerStop else { return nil }
+        let hostID = agent.hostID
+        guard projections[hostID] is HerdrCoreConsoleProjection else {
+            return .terminal(forAgentKind: agent.agent.kind, pressEsc)
+        }
+        guard let listed = agents.first(where: { $0.id == agent.id }) else { return nil }
+        let stop = HerdrCoreComposerStop(
+            address: listed.agent.paneID,
+            projection: { [weak self] in self?.projections[hostID] as? HerdrCoreConsoleProjection },
+            corePin: corePin ?? TerminalCorePin(),
+            clock: coreStopClock)
+        return .coreTerminal(forAgentKind: listed.agent.kind) { await stop.perform() }
     }
 
     func composerStore(for agent: ConsoleAgent) -> AgentComposerStore {
@@ -655,47 +851,108 @@ final class ConsoleStore {
     /// Agent and its Host entry last. Nil when the Host is not in the
     /// catalog or the program has no transcript adapter.
     func chatStore(for agent: ConsoleAgent, program: ChatProgram) -> AgentChatStore? {
+        guard capabilities(for: agent.hostID).offersChat(for: program) else { return nil }
         if let existing = chatStores[agent.id], existing.program == program { return existing }
         guard let host = projections[agent.hostID]?.host, let adapter = chatAdapter(program) else {
             return nil
         }
+        let core = projections[agent.hostID] as? HerdrCoreConsoleProjection
+        if let core, core.chatCacheScope == nil { return nil }
         chatStores[agent.id]?.end()
         let hostID = agent.hostID
         let paneID = agent.agent.paneID
+        var source = AgentChatSource(
+            hostID: hostID, socketLocation: host.socketLocation,
+            files: chatHostFiles(for: hostID),
+            agentInfo: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.liveChatAgentInfo(hostID: hostID, paneID: paneID)
+            },
+            cache: chatCache, adapter: adapter,
+            cachedSession: { [weak self] agent in
+                guard let self else { return nil }
+                return await self.cachedChats.cachedSession(for: agent, on: host)
+            },
+            processInfo: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.projection(for: hostID).processInfo(paneID: paneID)
+            },
+            screen: BlockedScreenIO(
+                readScreen: { [weak self] in
+                    guard let self else { throw TransportError.cancelled }
+                    return try await self.readAgentScreen(paneID, on: hostID)
+                },
+                sendKeys: { [weak self] keys in
+                    guard let self else { throw TransportError.cancelled }
+                    try await self.sendAgentKeys(keys, to: paneID, on: hostID)
+                },
+                paste: { [weak self] text in
+                    guard let self else { throw TransportError.cancelled }
+                    try await self.pasteIntoAgent(text, paneID: paneID, on: hostID)
+                }))
+        if let core {
+            source.screen = core.chatTyping(at: paneID).blockedScreen
+            // No record names a session here.
+            source.processInfo = nil
+            source.coreScope = core.chatCacheScope
+            source.sessionEvidence = { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.checkChatSession(paneID: paneID, program: program, on: hostID)
+            }
+            source.picks = chatPicks(paneID: paneID, program: program, on: hostID, scope: core.chatCacheScope)
+            // Only events after this store exists are news to it.
+            chatSessionEventRevisions[agent.id] = core.sessionEventRevision(of: paneID)
+        }
         let store = AgentChatStore(
-            agentID: agent.id, agent: agent.agent, program: program,
-            source: AgentChatSource(
-                hostID: hostID, socketLocation: host.socketLocation,
-                files: chatHostFiles(for: hostID),
-                agentInfo: { [weak self] in
-                    guard let self else { throw TransportError.cancelled }
-                    return try await self.liveChatAgentInfo(hostID: hostID, paneID: paneID)
-                },
-                cache: chatCache, adapter: adapter,
-                cachedSession: { [weak self] agent in
-                    guard let self else { return nil }
-                    return await self.cachedChats.cachedSession(for: agent, on: host)
-                },
-                processInfo: { [weak self] in
-                    guard let self else { throw TransportError.cancelled }
-                    return try await self.projection(for: hostID).processInfo(paneID: paneID)
-                },
-                screen: BlockedScreenIO(
-                    readScreen: { [weak self] in
-                        guard let self else { throw TransportError.cancelled }
-                        return try await self.readAgentScreen(paneID, on: hostID)
-                    },
-                    sendKeys: { [weak self] keys in
-                        guard let self else { throw TransportError.cancelled }
-                        try await self.sendAgentKeys(keys, to: paneID, on: hostID)
-                    },
-                    paste: { [weak self] text in
-                        guard let self else { throw TransportError.cancelled }
-                        try await self.pasteIntoAgent(text, paneID: paneID, on: hostID)
-                    })))
+            agentID: agent.id, agent: agent.agent, program: program, source: source, timing: chatTiming, now: chatNow)
         if !isActive { store.suspend() }
         chatStores[agent.id] = store
         return store
+    }
+
+    /// Chat's Stop for this Agent (ADR 0024). On a herdr-core Template's Terminal
+    /// it presses the Template's stop key (ADR 0035).
+    func chatStopPlan(for agent: ConsoleAgent, program: ChatProgram) -> ChatStopPlan {
+        let plan = ChatStopPlan.standard(for: program)
+        guard let core = projections[agent.hostID] as? HerdrCoreConsoleProjection,
+            let stopKey = core.terminalRecord(at: agent.agent.paneID)?.stop
+        else { return plan }
+        return plan.pressing(templateStopKey: stopKey)
+    }
+
+    /// A confirmation is an action a detail takes on an address, so it keeps to the
+    /// detail's core (ADR 0031).
+    private func chatPicks(paneID: String, program: ChatProgram, on hostID: Host.ID, scope: String?) -> ChatPickIO {
+        ChatPickIO(
+            list: { [weak self] pin in
+                guard let self, let core = self.projections[hostID] as? HerdrCoreConsoleProjection else {
+                    throw TransportError.cancelled
+                }
+                guard !self.hasLeftCore(pin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                return try await core.chatCandidates(paneID: paneID, program: program)
+            },
+            confirm: { [weak self] candidate, list, pin in
+                guard let self, let core = self.projections[hostID] as? HerdrCoreConsoleProjection else {
+                    throw TransportError.cancelled
+                }
+                guard !self.hasLeftCore(pin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                try await core.writeChatPick(candidate, of: list, paneID: paneID)
+            },
+            drop: { [weak self] in
+                guard let core = self?.projections[hostID] as? HerdrCoreConsoleProjection else { return }
+                core.dropChatPick(paneID: paneID, scope: scope, program: program)
+            },
+            cannotTell: { [weak self] in
+                let core = self?.projections[hostID] as? HerdrCoreConsoleProjection
+                return core?.chatCannotTell(program) ?? .cannotTellSession(program)
+            })
+    }
+
+    private func checkChatSession(
+        paneID: String, program: ChatProgram, on hostID: Host.ID
+    ) async throws -> ChatSessionEvidence {
+        guard let core = projections[hostID] as? HerdrCoreConsoleProjection else { throw TransportError.cancelled }
+        return try await core.checkChatSession(paneID: paneID, program: program)
     }
 
     /// Chat's transcript reads and store queries on the Host's live
@@ -840,15 +1097,15 @@ final class ConsoleStore {
             request, workspace: workspace)
     }
 
-    /// Suspends until `id` is reported by its Host's sync machinery, or the
-    /// timeout elapses. The new-agent flow (#12) opens the started Agent's
+    /// Suspends until `id` is reported by its Host's sync machinery, its program
+    /// has ended for good, or the timeout elapses. The new-agent flow (#12) opens the started Agent's
     /// terminal, and the row it navigates to exists only once the post-start
     /// resync lands — waiting keeps the detail column from flashing its
     /// missing-Agent placeholder over a launch that just succeeded.
     func waitForAgent(_ id: ConsoleAgent.ID, timeout: Duration = .seconds(5)) async {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
-        while !agents.contains(where: { $0.id == id }) {
+        while !agents.contains(where: { $0.id == id }), programExit(of: id) == nil {
             guard clock.now < deadline,
                 (try? await Task.sleep(for: .milliseconds(50))) != nil
             else { return }
@@ -877,7 +1134,11 @@ final class ConsoleStore {
         }
     }
 
-    func closePane(_ paneID: String, on hostID: Host.ID) async throws {
+    /// `corePin` is a detail's: a row acts on the inventory it came from.
+    func closePane(
+        _ paneID: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) async throws {
+        guard !hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
         try await projection(for: hostID).closePane(paneID)
     }
 
@@ -993,6 +1254,12 @@ final class ConsoleStore {
                 paneID: terminal.paneID, tabID: terminal.tabID, terminalID: terminal.terminalID))
     }
 
+    /// A close nobody answered may have happened, so it is left to the user to
+    /// check, and nothing sends it again.
+    static let closeUnconfirmedMessage =
+        "The Host did not confirm the close. The Terminal may already have ended, "
+        + "so check it before trying again."
+
     /// User-facing copy for a failed `tab.close`. `TransportError` is not a
     /// `LocalizedError`, so `localizedDescription` would read as an opaque
     /// Foundation code; mirror the rename path's mapping instead.
@@ -1002,12 +1269,16 @@ final class ConsoleStore {
             "The Host is not connected."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case TransportError.coreMutationOutcomeUnknown:
+            closeUnconfirmedMessage
+        case let refusal as HerdrCoreCloseRefusal:
+            "herdr-core rejected the close: \(refusal.message)"
         case let apiError as HerdrAPIError:
             "herdr rejected the close: \(apiError.message)"
         case TransportError.apiRejected(_, let message):
             "herdr rejected the close: \(message)"
         default:
-            "Closing failed: \(error)"
+            TransportError.herdrCoreLinkMessage(for: error) ?? "Closing failed: \(error)"
         }
     }
 
@@ -1018,13 +1289,61 @@ final class ConsoleStore {
     }
 
     func removeWorktree(
-        _ request: WorktreeRemovalRequest, on hostID: Host.ID
+        _ request: WorktreeRemovalRequest, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws -> WorktreeRemovalReceipt {
-        try await projection(for: hostID).removeWorktree(request)
+        guard !hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+        return try await projection(for: hostID).removeWorktree(request)
+    }
+
+    /// Where a core Host's close or removal says how it ended once the screen that
+    /// asked has gone. Nil on a Herdr TUI Host, whose screens stay as they were.
+    func outcomeReporter(on hostID: Host.ID, title: String) -> ((String) -> Void)? {
+        guard catalog.contains(where: { $0.id == hostID && $0.serverKind == .herdrCore }) else {
+            return nil
+        }
+        return { [weak self] message in
+            self?.outcomeNotices.append(ConsoleOutcomeNotice(title: title, message: message))
+        }
+    }
+
+    func dismissOutcomeNotice(_ notice: ConsoleOutcomeNotice) {
+        outcomeNotices.removeAll { $0.id == notice.id }
+    }
+
+    /// The other Workspaces on this Worktree's checkout. Removing it ends only its
+    /// own Workspace (ADR 0032), so the confirmation names these.
+    func workspaceLabels(sharingCheckoutOf identity: WorktreeIdentity) -> [String] {
+        workspaces(for: identity.hostID)
+            .filter { $0.id != identity.workspaceID && $0.checkoutPath == identity.checkoutPath }
+            .map(\.label)
+    }
+
+    func worktreeRemovalRisk(
+        _ request: WorktreeRemovalRequest, on hostID: Host.ID
+    ) async throws -> WorktreeRemovalRisk? {
+        try await projection(for: hostID).worktreeRemovalRisk(request)
     }
 
     func focusAgent(_ paneID: String, on hostID: Host.ID) async throws {
         try await projection(for: hostID).focusAgent(paneID)
+    }
+
+    /// Which Agent one Agent detail shows now, nil once it shows none. On a core
+    /// Host this is what Done per device reads: a shown Agent's turns are seen as
+    /// they end, whichever window shows it.
+    func setAgentShown(_ agent: ConsoleAgent.ID?, viewer: UUID, scene: UUID?) {
+        // A window that ended may still run a late update.
+        let shown = scene.map(endedScenes.contains) == true ? nil : agent
+        let previous = agentViewers[viewer]?.agent
+        guard previous != shown else { return }
+        agentViewers[viewer] = shown.map { AgentViewer(agent: $0, scene: scene) }
+        for hostID in Set([previous?.hostID, shown?.hostID].compactMap(\.self)) {
+            projections[hostID]?.setShownAgents(shownAgents(on: hostID))
+        }
+    }
+
+    private func shownAgents(on hostID: Host.ID) -> Set<String> {
+        Set(agentViewers.values.lazy.filter { $0.agent.hostID == hostID }.map(\.agent.paneID))
     }
 
     func renameAgent(
@@ -1039,25 +1358,50 @@ final class ConsoleStore {
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
     }
 
+    /// Asks a core Host whether its desktop app is running now, for a surface
+    /// about to offer a name.
+    func checkDesktopApp(on hostID: Host.ID) async {
+        await (projections[hostID] as? HerdrCoreConsoleProjection)?.checkDesktopApp()
+    }
+
+    /// What New Agent offers a core Host waits on its platform (Worktrees) and
+    /// its desktop app (names), so the form asks for both as it opens.
+    func checkNewAgentOffers(on hostID: Host.ID) async {
+        guard projections[hostID] is HerdrCoreConsoleProjection else { return }
+        await resolveHostPlatform(hostID)
+        await checkDesktopApp(on: hostID)
+    }
+
+    /// Each Server Kind has its own projection, behind one seam (ADR 0032).
     private func startProjection(for host: Host) {
-        let session = makeSession(
-            host,
-            HostConsoleProjection.subscriptions(paneIDs: []))
-        let projection = HostConsoleProjection(
-            host: host,
-            session: session,
-            snapshotRetryDelay: snapshotRetryDelay
-        ) { [weak self] in
-            self?.rebuild()
-        }
+        let onChange: @MainActor @Sendable () -> Void = { [weak self] in self?.rebuild() }
+        let projection: any ConsoleHostProjection =
+            switch host.serverKind {
+            case .herdrCore:
+                HerdrCoreConsoleProjection(
+                    host: host, session: makeCoreSession(host), memory: coreHostMemory, pins: pins,
+                    gitGate: gitExecGate(for: host.id), herdrAppRename: herdrAppRename,
+                    chatTypingClock: coreSendClock,
+                    onSeenMarksChanged: { [weak self, id = host.id] core, marks in
+                        self?.onCoreSeenMarksChanged?(id, core, marks)
+                    },
+                    onChange: onChange)
+            default:
+                HostConsoleProjection(
+                    host: host,
+                    session: makeSession(host, HostConsoleProjection.subscriptions(paneIDs: [])),
+                    snapshotRetryDelay: snapshotRetryDelay,
+                    onChange: onChange)
+            }
         projections[host.id] = projection
+        projection.setShownAgents(shownAgents(on: host.id))
         projection.start(isActive: isActive)
     }
 
     private func rebuild() {
         let current = Array(projections.values)
         reconcileTerminalConnections(current)
-        requestChatHostPlatforms(current)
+        requestHostPlatforms(current)
         // A configured Host without a session update is awaiting its first
         // activation, not gone. Publish that pending connection to every
         // surface, including the list and saved Chat banners. Removed Hosts
@@ -1093,6 +1437,34 @@ final class ConsoleStore {
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.syncError.map { (projection.host.id, $0) }
             })
+        hostCoreEnvironmentNotices = Dictionary(
+            uniqueKeysWithValues: current.compactMap { projection in
+                HerdrCoreEnvironmentNotice(names: projection.leakedEnvironmentNames)
+                    .map { (projection.host.id, $0) }
+            })
+        coreStatusExplanations = Dictionary(
+            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
+                .flatMap { projection in
+                    projection.statusExplanations.map {
+                        (ConsoleAgent.ID(hostID: projection.host.id, paneID: $0.key), $0.value)
+                    }
+                })
+        let nextDesktopAppNaming = Dictionary(
+            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
+                .compactMap { projection in
+                    projection.desktopAppNaming.map { (projection.host.id, $0) }
+                })
+        if hostDesktopAppNaming != nextDesktopAppNaming {
+            hostDesktopAppNaming = nextDesktopAppNaming
+        }
+        let nextCoreKernels = Dictionary(
+            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
+                .compactMap { projection in projection.kernel.map { (projection.host.id, $0) } })
+        if hostCoreKernels != nextCoreKernels { hostCoreKernels = nextCoreKernels }
+        let nextCores = Dictionary(
+            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
+                .compactMap { projection in projection.inventoryCore.map { (projection.host.id, $0) } })
+        if hostCores != nextCores { hostCores = nextCores }
         hostConnectionGenerations = Dictionary(
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.transportGeneration)
@@ -1122,7 +1494,8 @@ final class ConsoleStore {
         }
         let sidebarConnections = Dictionary(uniqueKeysWithValues: current.compactMap { projection
             -> (Host.ID, HerdrSidebarSnapshotStore.Connection)? in
-            guard isActive, projection.status == .connected, !projection.isAwaitingSnapshot,
+            guard projection.host.capabilities.syncLayoutFromPlugin, isActive,
+                projection.status == .connected, !projection.isAwaitingSnapshot,
                 let generation = hostConnectionGenerations[projection.host.id]
             else { return nil }
             return (projection.host.id, HerdrSidebarSnapshotStore.Connection(
@@ -1146,6 +1519,10 @@ final class ConsoleStore {
             return lhs.paneID < rhs.paneID
         }
         if terminals != nextTerminals { terminals = nextTerminals }
+        // Ahead of the Agents: a detail must never find its Agent in neither.
+        let nextDeparted = current.flatMap { $0.departedAgentsByPane.values }
+            .sorted { ($0.hostID.uuidString, $0.agent.paneID) < ($1.hostID.uuidString, $1.agent.paneID) }
+        if departedAgents != nextDeparted { departedAgents = nextDeparted }
         rebuildAgentOrder()
         publishAgentStatuses()
         publishChatAgents()
@@ -1157,7 +1534,7 @@ final class ConsoleStore {
         rowChanges.retain { liveAgents.contains($0) || awaiting.contains($0.hostID) }
     }
 
-    private func reconcileTerminalConnections(_ current: [HostConsoleProjection]) {
+    private func reconcileTerminalConnections(_ current: [any ConsoleHostProjection]) {
         for projection in current {
             let hostID = projection.host.id
             let generation = projection.transportGeneration
@@ -1189,7 +1566,9 @@ final class ConsoleStore {
                         paneID: $0.paneID, tabID: $0.tabID, terminalID: $0.terminalID)
                 })
             let revision = projection.sidebarRevision
+            // A detail stays on a departed Agent, and so does its terminal.
             let agents = Array(projection.agentsByPane.values)
+                + Array(projection.departedAgentsByPane.values)
             let isCurrent: @MainActor () -> Bool = { [weak self, weak projection] in
                 guard let self, let projection else { return false }
                 return projections[hostID] === projection && !projection.isAwaitingSnapshot
@@ -1207,17 +1586,25 @@ final class ConsoleStore {
     /// soon as a connection lists a Claude or Codex Agent means a detail
     /// opening on Chat rarely has to show the terminal first. The answer is
     /// usually already known to the transport, which learned it connecting.
-    private func requestChatHostPlatforms(_ current: [HostConsoleProjection]) {
+    /// A core Host's Add needs it too, once an Agent has a Composer to show it.
+    private func requestHostPlatforms(_ current: [any ConsoleHostProjection]) {
         for projection in current
         where projection.status == .connected && !projection.isAwaitingSnapshot {
             let hostID = projection.host.id
             guard hostPlatformGenerations[hostID] != projection.transportGeneration,
-                projection.agentsByPane.values.contains(where: {
-                    AgentChatAvailability.mayOfferChat(for: $0.agent, hasAdapter: { chatAdapter($0) != nil })
-                })
+                mayOfferChat(on: projection)
+                    || (projection.host.serverKind == .herdrCore
+                        && (herdrAppRename || composerSessions.keys.contains { $0.hostID == hostID }))
             else { continue }
             Task { [weak self] in await self?.resolveHostPlatform(hostID) }
         }
+    }
+
+    private func mayOfferChat(on projection: any ConsoleHostProjection) -> Bool {
+        projection.host.capabilities.chat
+            && projection.agentsByPane.values.contains(where: {
+                AgentChatAvailability.mayOfferChat(for: $0.agent, hasAdapter: { chatAdapter($0) != nil })
+            })
     }
 
     /// All current terminal Panes, including Agents, across the Workspace's Tabs.
@@ -1227,7 +1614,22 @@ final class ConsoleStore {
 
     func rowLayout(for hostID: Host.ID) -> AgentRowLayout {
         rowLayouts.resolvedLayout(
-            for: hostID, pluginSnapshot: sidebarSnapshots.snapshot(for: hostID))
+            for: hostID, pluginSnapshot: sidebarSnapshots.snapshot(for: hostID),
+            followsPlugin: capabilities(for: hostID).syncLayoutFromPlugin)
+    }
+
+    /// The fields this Host's Live Activity carries. Label fields are only for
+    /// a core Host, whose Helper reads them: a Herdr TUI Host has no label to
+    /// show, and plugin 0.8.0 reads a field it does not know as a malformed
+    /// layout, which costs that Host all of its Live Activity rows.
+    func liveActivityRowLayout(for hostID: Host.ID) -> AgentRowLayout {
+        let layout = rowLayout(for: hostID)
+        return coreHost(hostID) == nil ? layout.droppingTerminalLabels() : layout
+    }
+
+    /// The labels on the Host's Terminals right now, offered as row fields.
+    func terminalLabelKeys(on hostID: Host.ID) -> [String] {
+        projections[hostID]?.terminalLabelKeys ?? []
     }
 
     func refreshSidebarLayouts() async {
@@ -1246,6 +1648,13 @@ final class ConsoleStore {
         if let store = agentUsageStores[hostID] { return store }
         let store = AgentUsageStore(hostID: hostID, reader: .init { [weak self] timeZone, claudeLimits in
             guard let self else { throw TransportError.cancelled }
+            if let host = self.coreHost(hostID) {
+                return try await self.withCoreConnection(host) { transport in
+                    try await AgentUsageStore.reading(
+                        overHelper: transport.hostHelperHost, session: host.sessionName,
+                        timeZone: timeZone, claudeLimits: claudeLimits)
+                }
+            }
             return try await self.withNotificationTransport(for: hostID) { transport in
                 try await AgentUsageStore.reading(
                     over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
@@ -1256,6 +1665,25 @@ final class ConsoleStore {
         return store
     }
 
+    /// One Host as the Usage tab reads it.
+    func agentUsageEntry(for host: Host) -> AgentUsageHostEntry {
+        let store = agentUsageStore(for: host.id)
+        return AgentUsageHostEntry(
+            id: host.id, name: host.displayName, store: store,
+            isConnected: usageHasConnection(host, state: store.state),
+            readsOverHostHelper: host.serverKind == .herdrCore)
+    }
+
+    /// Whether a Host's Usage has a connection to answer over. A Herdr TUI Host
+    /// borrows the Console's. A core Host's read dials one when the Console has
+    /// none: its Helper answers with the core stopped, and a native Windows Host
+    /// says why it has none though its session never connects. So only a read
+    /// that could not reach the Host makes a core Host not connected.
+    private func usageHasConnection(_ host: Host, state: AgentUsageStore.State) -> Bool {
+        if hostStatuses[host.id] == .connected { return true }
+        return host.serverKind == .herdrCore && !state.couldNotReachHost
+    }
+
     /// The Host's Accounts for every harness (#621), kept for as long as
     /// the Console runs. Usage joins in while it is on.
     func hostAccountsStore(for hostID: Host.ID) -> HostAccountsStore {
@@ -1264,7 +1692,7 @@ final class ConsoleStore {
             hostID: hostID,
             onHost: { [weak self] operation in
                 guard let self else { throw TransportError.cancelled }
-                try await self.withNotificationTransport(for: hostID, operation)
+                try await self.withUsageHost(for: hostID, operation)
             },
             fileGate: usageAccountFileGate,
             usage: { [weak self] in
@@ -1339,19 +1767,28 @@ final class ConsoleStore {
         }
         usageWidgets.publish(catalog.map { host in
             let store = agentUsageStores[host.id]
+            let state = store?.state ?? .idle
             return AgentUsageWidgetReading(
-                id: host.id, name: host.displayName, state: store?.state ?? .idle, readAt: store?.readAt,
-                isConnected: hostStatuses[host.id] == .connected)
+                id: host.id, name: host.displayName, state: state, readAt: store?.readAt,
+                isConnected: usageHasConnection(host, state: state),
+                keepsLastAnswerUntilRead: host.serverKind == .herdrCore)
         })
     }
 
-    /// Reads Usage again for each connected Host whose widget figures went
-    /// stale, so returning to the app updates the widgets without opening
+    /// Whether a read for the widgets can run now. A Herdr TUI Host borrows the
+    /// Console's connection. A core Host's read dials one when the Console has
+    /// none, so a stopped core or a native Windows Host still gets its answer.
+    private func canReadUsageForWidgets(_ id: Host.ID) -> Bool {
+        hostStatuses[id] == .connected || coreHost(id) != nil
+    }
+
+    /// Reads Usage again for each Host that can be read and whose widget figures
+    /// went stale, so returning to the app updates the widgets without opening
     /// Usage. Nothing is read while no Usage widget is installed.
     private func refreshStaleWidgetUsage() {
         guard let usageWidgets, isActive, isUsageEnabled else { return }
         let hostIDs = catalog.map(\.id).filter { id in
-            hostStatuses[id] == .connected && widgetUsageRefreshes[id] == nil
+            canReadUsageForWidgets(id) && widgetUsageRefreshes[id] == nil
                 && agentUsageStores[id]?.isLoading != true
                 && usageWidgets.isStale(id, readAt: agentUsageStores[id]?.readAt)
         }
@@ -1362,7 +1799,7 @@ final class ConsoleStore {
                     if self?.widgetUsageRefreshes[id]?.id == refresh { self?.widgetUsageRefreshes[id] = nil }
                 }
                 guard await usageWidgets.widgetsInstalled(), !Task.isCancelled, let self,
-                    hostStatuses[id] == .connected
+                    canReadUsageForWidgets(id)
                 else { return }
                 await agentUsageStore(for: id).refresh()
             }
@@ -1386,8 +1823,12 @@ final class ConsoleStore {
 
     private func rebuildAgentOrder() {
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
-        let sorts = Dictionary(uniqueKeysWithValues: projections.keys.compactMap { id in
-            sidebarSnapshots.snapshot(for: id).map { (id, $0.agentPanelSort) }
+        // A Host with no plugin has no snapshot to say: it keeps status priority,
+        // and within a status the order its projection lists, the desktop app's.
+        let sorts = Dictionary(uniqueKeysWithValues: projections.compactMap { id, projection in
+            projection.host.capabilities.syncLayoutFromPlugin
+                ? sidebarSnapshots.snapshot(for: id).map { (id, $0.agentPanelSort) }
+                : (id, AgentPanelSort.priority)
         })
         let pinRanks = Dictionary(uniqueKeysWithValues: unsorted.compactMap { agent in
             pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
@@ -1396,17 +1837,12 @@ final class ConsoleStore {
         agents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
     }
 
-    /// Live rows plus saved Chat entry points while a Host is unproven. The
-    /// separate `agents` property remains the only realtime inventory.
-    var chatDisplayAgents: [ConsoleAgent] {
-        agents + savedChatAgents.map(\.agent).consoleSorted(sortByHost: [:]) { [pins] in
-            pins.pinRank(hostID: $0.id.hostID, paneID: $0.id.paneID)
-        }
-    }
-
-    /// Keep an already selected terminal mounted through automatic recovery,
-    /// without presenting stale metadata as live inventory in other surfaces.
-    func agentForDetail(_ id: ConsoleAgent.ID) -> ConsoleAgent? {
+    /// What a detail column shows for this selection: an Agent on the list, the
+    /// Agent as last listed while its Host recovers, a saved Chat, or a departed
+    /// Agent, which no list shows. A selected terminal stays mounted through
+    /// automatic recovery, without stale metadata reading as live inventory on
+    /// other surfaces.
+    func detailAgent(for id: ConsoleAgent.ID) -> ConsoleAgent? {
         if let live = agents.first(where: { $0.id == id }) { return live }
         if let projection = projections[id.hostID] {
             let isRecovering: Bool
@@ -1424,7 +1860,26 @@ final class ConsoleStore {
                 return previous
             }
         }
-        return chatDisplayAgents.first(where: { $0.id == id })
+        return chatDisplayAgents.first { $0.id == id } ?? departedAgents.first { $0.id == id }
+    }
+
+    /// What became of an Agent a detail stays open on, for its Chat to say. Nil
+    /// while the Agent is there.
+    func chatDeparture(of id: ConsoleAgent.ID) -> ChatAgentDeparture? {
+        guard departedAgents.contains(where: { $0.id == id }) else { return nil }
+        // The Console hides a finished Terminal.
+        guard let terminal = terminals.first(where: { $0.hostID == id.hostID && $0.paneID == id.paneID }) else {
+            return .ended
+        }
+        return terminal.isRestarting ? .restarting : .shell
+    }
+
+    /// Live rows plus saved Chat entry points while a Host is unproven. The
+    /// separate `agents` property remains the only realtime inventory.
+    var chatDisplayAgents: [ConsoleAgent] {
+        agents + savedChatAgents.map(\.agent).consoleSorted(sortByHost: [:]) { [pins] in
+            pins.pinRank(hostID: $0.id.hostID, paneID: $0.id.paneID)
+        }
     }
 
     func isHostReadyForInput(_ hostID: Host.ID) -> Bool {
@@ -1504,11 +1959,222 @@ final class ConsoleStore {
             statusSeverity: issue?.severity, isEmpty: false, inventoryNoun: "Agents")
     }
 
-    func chatProgram(for agent: ConsoleAgent) -> ChatProgram? {
+    /// A window closed, or the system disconnected it. What it shows still
+    /// reads as selected, so its screens never let go of a core Terminal on
+    /// their own, and one that did not would stay a viewer the Terminal sizes
+    /// to. A Herdr TUI Host keeps its window rules, which go through
+    /// `HostTerminalOwnership`.
+    func sceneDidEnd(_ sceneID: UUID) {
+        endedScenes.insert(sceneID)
+        for (viewer, shown) in agentViewers where shown.scene == sceneID {
+            setAgentShown(nil, viewer: viewer, scene: sceneID)
+        }
+        agentTerminals.sceneDidEnd(sceneID)
+        terminalConnections.sceneDidEnd(sceneID) { [self] hostID in
+            !capabilities(for: hostID).takeOver
+        }
+    }
+
+    /// SwiftUI can pair a window's root `onDisappear` with an `onAppear`.
+    func sceneDidStart(_ sceneID: UUID) {
+        endedScenes.remove(sceneID)
+    }
+
+    /// A window that ended may still run a load it started or a late update.
+    /// Its screens ask this before showing a core Terminal again.
+    func hasSceneEnded(_ sceneID: UUID?, on hostID: Host.ID) -> Bool {
+        guard let sceneID, endedScenes.contains(sceneID) else { return false }
+        return !capabilities(for: hostID).takeOver
+    }
+
+    /// What the Host offers. A detail can outlive its Host's catalog entry for
+    /// a moment; its actions stay as they were and fail as not connected.
+    func capabilities(for hostID: Host.ID) -> HostCapabilities {
+        HostCapabilities(
+            serverKind: catalog.first(where: { $0.id == hostID })?.serverKind ?? .herdrTUI,
+            platform: hostPlatforms[hostID],
+            desktopAppNaming: hostDesktopAppNaming[hostID],
+            coreKernel: hostCoreKernels[hostID],
+            coreLinuxChatPrograms: coreLinuxChatPrograms,
+            coreMacOSChatPrograms: coreMacOSChatPrograms,
+            coreWindowsChatPrograms: coreWindowsChatPrograms,
+            isLocatingCore: hostStatuses[hostID] == .connecting)
+    }
+
+    /// Add Host found a native Windows machine here. A Unix Host says nothing until
+    /// its first attempt has, as nothing could start before that attempt. This one's
+    /// first attempt may never reach it, and offers must not wait.
+    func noteWindowsCore(on hostID: Host.ID) {
+        coreHostMemory.noteKernel(HerdrCoreLocator.windowsKernel, for: hostID)
+    }
+
+    // MARK: Harness configuration edits
+
+    /// The Grok Build edit an Unknown Grok Build Agent offers. `process` is the
+    /// Agent's, whose `GROK_HOME` says which file its program reads.
+    /// The edit this explanation may offer, where its Host can make it: it reads
+    /// the Agent's environment and writes a POSIX path, neither of which a native
+    /// Windows core Host serves (ADR 0033).
+    func grokBuildEditFlow(
+        for explanation: HerdrCoreStatusExplanation, on hostID: Host.ID
+    ) -> HarnessConfigEditFlow? {
+        guard explanation.offersGrokBuildEdit, capabilities(for: hostID).hostScripts else { return nil }
+        return grokBuildEditFlow(on: hostID, process: explanation.agentProcess)
+    }
+
+    func grokBuildEditFlow(on hostID: Host.ID, process: Int?) -> HarnessConfigEditFlow {
+        HarnessConfigEditFlow(
+            hostID: hostID, editID: GrokBuildProgramStatusEdit.id, store: harnessEdits,
+            services: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.harnessEditServices(on: hostID)
+            },
+            makeEdit: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.grokBuildEdit(on: hostID, process: process)
+            })
+    }
+
+    /// Heeler's extension on a native Windows core Host (ADR 0033). A detail keeps to
+    /// its own core: a Host that has moved on writes nothing more, even part way.
+    func windowsExtensionFlow(
+        for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) -> HerdrCoreWindowsExtensionFlow {
+        let hostID = agentID.hostID
+        func core(of store: ConsoleStore) throws -> HerdrCoreConsoleProjection {
+            guard !store.hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+            guard let core = store.projections[hostID] as? HerdrCoreConsoleProjection else {
+                throw TransportError.cancelled
+            }
+            return core
+        }
+        return HerdrCoreWindowsExtensionFlow(
+            locate: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await core(of: self).windowsExtensionFolders()
+            },
+            write: { [weak self] folders in
+                guard let self else { throw TransportError.cancelled }
+                guard let contents = try self.hostHelperBundle().files[HerdrCoreWindowsExtensions.bundlePath] else {
+                    throw HostHelperBundle.LoadError.unreadable(HerdrCoreWindowsExtensions.bundlePath)
+                }
+                for folder in folders {
+                    try await core(of: self).writeWindowsExtension(contents, to: folder)
+                }
+            })
+    }
+
+    /// The OpenCode edit a Chat that can't bind offers. It keeps to `corePin`, as
+    /// anything a detail does: past that core there is no Agent left to do it for.
+    func openCodePluginEditFlow(
+        for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) -> HarnessConfigEditFlow {
+        let hostID = agentID.hostID
+        return HarnessConfigEditFlow(
+            hostID: hostID, editID: OpenCodePluginEdit.id, store: harnessEdits,
+            services: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                guard !self.hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                return try await self.harnessEditServices(on: hostID)
+            },
+            makeEdit: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                guard !self.hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                return try await self.openCodePluginEdit(paneID: agentID.paneID, on: hostID)
+            })
+    }
+
+    /// A Host detail row's own way to its edit, which can only undo it.
+    func harnessEditFlow(for edit: HarnessConfigAppliedEdit, on hostID: Host.ID) -> HarnessConfigEditFlow {
+        HarnessConfigEditFlow(
+            hostID: hostID, listing: edit, store: harnessEdits,
+            services: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.harnessEditServices(on: hostID)
+            })
+    }
+
+    private func harnessEditServices(on hostID: Host.ID) async throws -> any HostServices {
+        try await projection(for: hostID).withHostServices { $0 }
+    }
+
+    private func grokBuildEdit(on hostID: Host.ID, process: Int?) async throws -> HarnessConfigEdit {
+        guard let core = projections[hostID] as? HerdrCoreConsoleProjection else {
+            throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
+        }
+        // Only an environment that was read can say `GROK_HOME` is unset. Taking an
+        // unreadable one for unset would edit a file this Agent may not read.
+        guard let process else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
+        let grokHome: String?
+        switch await core.processVariable("GROK_HOME", pid: process) {
+        case .value(let value): grokHome = value
+        case .unset: grokHome = nil
+        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let home = try await harnessEditServices(on: hostID).hostHomeDirectory()
+        guard let path = GrokBuildProgramStatusEdit.configPath(grokHome: grokHome, home: home) else {
+            throw HarnessConfigEditError.unresolvedPath
+        }
+        return GrokBuildProgramStatusEdit.edit(path: path)
+    }
+
+    private func openCodePluginEdit(paneID: String, on hostID: Host.ID) async throws -> HarnessConfigEdit {
+        guard let core = projections[hostID] as? HerdrCoreConsoleProjection else {
+            throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
+        }
+        // Only an environment that was read can say a variable is unset.
+        guard let foreground = core.foreground(of: paneID), let process = foreground.pid else {
+            throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        // The release is the Agent's own, which its PATH found, and not the login
+        // shell's (herdr compatibility, OpenCode on a signed-in Linux core).
+        let path: String?
+        switch await core.processVariable("PATH", pid: process) {
+        case .value(let value): path = value
+        case .unset: path = nil
+        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let version = try await core.openCodeVersion(
+            running: OpenCodePluginEdit.program(running: foreground.argv), path: path, directory: foreground.cwd)
+        guard let form = OpenCodePluginEdit.ConfigForm.of(version: version) else {
+            throw HarnessConfigEditError.openCodeVersionUnknown
+        }
+        let services = try await harnessEditServices(on: hostID)
+        let home: String
+        switch await core.processVariable("HOME", pid: process) {
+        case .value(let value): home = value
+        case .unset: home = try await services.hostHomeDirectory()
+        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let xdgConfigHome: String?
+        switch await core.processVariable("XDG_CONFIG_HOME", pid: process) {
+        case .value(let value): xdgConfigHome = value
+        case .unset: xdgConfigHome = nil
+        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        guard let directory = OpenCodePluginEdit.configDirectory(xdgConfigHome: xdgConfigHome, home: home) else {
+            throw HarnessConfigEditError.unresolvedPath
+        }
+        return OpenCodePluginEdit.edit(
+            configDirectory: directory,
+            fileName: try await OpenCodePluginEdit.fileName(in: directory, form: form, over: services),
+            form: form, files: try OpenCodePluginEdit.pluginFiles(from: try hostHelperBundle()))
+    }
+
+    func chatProgram(for agent: ConsoleAgent, keepingTo corePin: TerminalCorePin? = nil) -> ChatProgram? {
+        // Chat goes on to the address's new Agent. A detail stays with the old one,
+        // which has no Chat left to show.
+        guard !hasLeftCore(corePin, on: agent.hostID) else { return nil }
+        let capabilities = capabilities(for: agent.hostID)
+        guard capabilities.chat else { return nil }
+        if let program = ChatProgram(rawValue: agent.agent.kind), !capabilities.offersChat(for: program) {
+            return nil
+        }
         let platform = hostPlatforms[agent.hostID]
         if let platform {
             return AgentChatAvailability.program(
-                for: agent.agent, platform: platform, hasAdapter: { chatAdapter($0) != nil })
+                for: agent.agent, platform: platform, isNativeWindowsCore: capabilities.isNativeWindowsCore,
+                hasAdapter: { chatAdapter($0) != nil })
         }
         guard let host = projections[agent.hostID]?.host,
             cachedChats.agents(on: host).contains(where: { $0.id == agent.id }) else { return nil }
@@ -1519,7 +2185,8 @@ final class ConsoleStore {
     private func reconcileChatCache() {
         for projection in projections.values {
             let host = projection.host
-            guard isActive, projection.status == .connected, !projection.isAwaitingSnapshot else {
+            guard host.capabilities.chat, isActive,
+                projection.status == .connected, !projection.isAwaitingSnapshot else {
                 chatPrefetchTasks[host.id]?.cancel()
                 chatPrefetchTasks[host.id] = nil
                 chatPrefetched = chatPrefetched.filter { $0.key.hostID != host.id }
@@ -1601,18 +2268,44 @@ final class ConsoleStore {
     }
 
     /// Hands each Chat its Agent's latest record, and ends the Chats of
-    /// Agents a current snapshot no longer lists.
+    /// Agents a current snapshot no longer lists. A departed Agent's detail
+    /// stays open, and its Chat with it, until the Agent is back or gone.
     private func publishChatAgents() {
         guard !chatStores.isEmpty else { return }
         let current = Dictionary(agents.map { ($0.id, $0.agent) }) { first, _ in first }
         for (id, store) in chatStores {
-            if let agent = current[id] {
+            let core = projections[id.hostID] as? HerdrCoreConsoleProjection
+            // Another core's Agents are other Agents: its Transcripts are keyed
+            // apart, and this store is keyed to the last one.
+            if let core, store.coreScope != core.chatCacheScope {
+                let viewers = store.viewerTokens
+                store.end()
+                chatStores[id] = nil
+                chatSessionEventRevisions[id] = nil
+                // A Chat on screen says so only once, when it appears, and it
+                // stays on screen across this.
+                if !viewers.isEmpty, let agent = agents.first(where: { $0.id == id }),
+                    let next = chatStore(for: agent, program: store.program)
+                {
+                    for viewer in viewers { next.show(viewer) }
+                }
+                continue
+            }
+            if let core {
+                let revision = core.sessionEventRevision(of: id.paneID)
+                if chatSessionEventRevisions.updateValue(revision, forKey: id) != revision {
+                    store.sessionEvidenceMayHaveChanged()
+                }
+            }
+            if let agent = current[id] ?? departedAgents.first(where: { $0.id == id })?.agent {
                 store.agentDidChange(agent)
             } else if hostStatuses[id.hostID] == .connected,
                 !hostsAwaitingSnapshot.contains(id.hostID)
             {
                 store.end()
                 chatStores[id] = nil
+                chatSessionEventRevisions[id] = nil
+                core?.settleChatPick(paneID: id.paneID, program: store.program)
             }
         }
     }
@@ -1647,16 +2340,113 @@ final class ConsoleStore {
 extension ConsoleStore: NotificationTransportProvider {
     /// Notification Registration work borrows the Host's live Console
     /// connection (#75) instead of dialing a second one; an unconnected Host
-    /// fails loudly like every other Host-scoped RPC here.
+    /// fails loudly like every other Host-scoped RPC here. A herdr-core Host's
+    /// projection says it has no plugin, and its plugin surfaces say so.
     func withNotificationTransport<Value: Sendable>(
         for hostID: Host.ID,
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value {
-        try await projection(for: hostID).session.withTransport(operation)
+        try await projection(for: hostID).withNotificationTransport(operation)
+    }
+
+    /// The root follows the Server Kind: a herdr-core Host's files are the Host
+    /// Helper's, every other Host's the plugin's, over its live connection.
+    func withNotificationFiles<Value: Sendable>(
+        for hostID: Host.ID,
+        _ operation: @escaping @Sendable (any HostNotificationFiles) async throws -> Value
+    ) async throws -> Value {
+        guard let host = coreHost(hostID) else {
+            return try await projection(for: hostID).withNotificationTransport { transport in
+                try await operation(transport)
+            }
+        }
+        return try await withCoreConnection(host) { transport in
+            try await operation(HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName))
+        }
+    }
+
+    /// What Usage's Account changes run over. It follows the Server Kind too.
+    fileprivate func withUsageHost(
+        for hostID: Host.ID,
+        _ operation: @escaping @Sendable (any HostServices & HostNotificationFiles) async throws -> Void
+    ) async throws {
+        guard let host = coreHost(hostID) else {
+            return try await withNotificationTransport(for: hostID) { try await operation($0) }
+        }
+        try await withCoreConnection(host) { transport in
+            try await operation(HostHelperUsageHost(
+                services: transport.hostServices,
+                files: HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName)))
+        }
+    }
+
+    /// What this device has seen on a core Host. Nil on any other Host.
+    func coreSeenMarks(on hostID: Host.ID) -> (core: String, marks: [String: HerdrCoreTurnState.Mark])? {
+        (projections[hostID] as? HerdrCoreConsoleProjection)?.currentSeenMarks
+    }
+
+    /// Whether this Host's notification files can be asked for now. A stopped
+    /// core leaves a core Host's SSH up and its Helper's files in reach, and it
+    /// reads as reconnecting for as long as it stays stopped.
+    func canReachNotificationFiles(_ hostID: Host.ID) -> Bool {
+        switch hostStatuses[hostID] {
+        case .connected: true
+        case .reconnecting(_, _, .herdrCoreNotRunning): coreHost(hostID) != nil
+        default: false
+        }
+    }
+
+    fileprivate func coreHost(_ hostID: Host.ID) -> Host? {
+        catalog.first { $0.id == hostID && $0.serverKind == .herdrCore }
+    }
+
+    /// A core Host's connection for one operation: the Console's own while it
+    /// has one, else one dialed for the operation, since a Helper answers
+    /// whether or not a core runs.
+    fileprivate func withCoreConnection<Value: Sendable>(
+        _ host: Host,
+        _ operation: @escaping @Sendable (any HerdrCoreTransport) async throws -> Value
+    ) async throws -> Value {
+        if let session = (projections[host.id] as? HerdrCoreConsoleProjection)?.session,
+            let live = try? await session.withTransport({ $0 }), await live.isConnected
+        {
+            return try await operation(live)
+        }
+        let transport = try await connectCore(host)
+        do {
+            let value = try await operation(transport)
+            try? await transport.close()
+            return value
+        } catch {
+            try? await transport.close()
+            throw error
+        }
     }
 }
 
 extension ConsoleStore {
+    /// A core Host's connection, from the catalog's credentials. As for the
+    /// session factory, a key that still needs trusting is declined.
+    static func sshCoreConnector(
+        connector: any TransportConnector = SSHTransportConnector(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared
+    ) -> @Sendable (Host) async throws -> any HerdrCoreTransport {
+        { host in
+            let resolved: SSHCredentials
+            do {
+                resolved = try credentials.credentials(for: host)
+            } catch HostCredentialsError.passwordNotSet {
+                throw TransportError.authenticationFailed
+            }
+            let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
+            return try await connector.connectCore(
+                settings: SSHTransportSettings(
+                    host: host, credentials: resolved, hostKeyPolicy: policy, overlays: overlays))
+        }
+    }
+
     /// The production session factory: SSH transports built from the Host
     /// catalog's credentials. TOFU is restricted to already-trusted
     /// fingerprints; the Console never prompts.
@@ -1668,20 +2458,43 @@ extension ConsoleStore {
     ) -> @Sendable (Host, [EventSubscription]) -> EventsSession {
         { host, subscriptions in
             EventsSession(subscriptions: subscriptions) {
-                let resolved: SSHCredentials
-                do {
-                    resolved = try credentials.credentials(for: host)
-                } catch HostCredentialsError.passwordNotSet {
-                    throw TransportError.authenticationFailed
-                }
-                let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
-                return try await connector.connect(
-                    settings: SSHTransportSettings(
-                        host: host,
-                        credentials: resolved,
-                        hostKeyPolicy: policy,
-                        overlays: overlays))
+                try await connector.connect(
+                    settings: consoleSettings(
+                        for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays))
             }
         }
+    }
+
+    /// The herdr-core Hosts' equivalent, with the same trust rules.
+    static func coreSessionFactory(
+        connector: any TransportConnector = SSHTransportConnector(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared
+    ) -> @Sendable (Host) -> HerdrCoreHostSession {
+        { host in
+            HerdrCoreHostSession {
+                try await connector.connectCore(
+                    settings: consoleSettings(
+                        for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays))
+            }
+        }
+    }
+
+    private static func consoleSettings(
+        for host: Host, knownHosts: any KnownHostsStore, credentials: HostCredentialsProvider,
+        overlays: OverlayNetworkRuntime
+    ) throws -> SSHTransportSettings {
+        let resolved: SSHCredentials
+        do {
+            resolved = try credentials.credentials(for: host)
+        } catch HostCredentialsError.passwordNotSet {
+            throw TransportError.authenticationFailed
+        }
+        return SSHTransportSettings(
+            host: host,
+            credentials: resolved,
+            hostKeyPolicy: HostKeyPolicy(knownHosts: knownHosts) { _ in false },
+            overlays: overlays)
     }
 }

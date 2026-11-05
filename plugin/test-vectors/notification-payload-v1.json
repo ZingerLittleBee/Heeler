@@ -52,6 +52,19 @@
       }
     },
     {
+      "name": "error agent on a herdr-core Terminal, sent under the Blocked trigger",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"QEFCQ0RFRkdISUpL\",\"ct\":\"mZveQkhZpTnvsCAUt0Z4MheicGaVVmNCAiMrx7sxnq_5fIbf_IP9MVOGZB2zIf2uuFOQAAT-0Tq4Ke0wEMYKsJZ8v89nqgmQdaAT9bQFaWQDrMD_E6TVdkl7lVmfZQ\"}",
+      "payload": {
+        "paneId": "t7",
+        "agentKind": "claude",
+        "status": "error",
+        "timestamp": 1793393947,
+        "project": "app"
+      }
+    },
+    {
       "name": "unknown plaintext field is ignored (additive v1 metadata)",
       "decodeOnly": true,
       "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",

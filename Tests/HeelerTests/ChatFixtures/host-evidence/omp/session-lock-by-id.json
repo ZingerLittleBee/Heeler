@@ -1,0 +1,130 @@
+{
+  "program": "omp",
+  "version": "omp/18.13.3",
+  "core": "0.1.13",
+  "source": "Oh My Pi's lease, read from the process's own sockets while its first reply and title were held, then taken with the program's own tryAcquireSessionLease",
+  "method": "Live in a throwaway Lima VM (Ubuntu 24.04.4, Linux 6.8 aarch64), herdr-core 0.1.13 started by absolute path under a unique HC_SESSION. The model was a local fake on 127.0.0.1 with a dummy key, and nothing was signed in; this is not hc-lab and not a signed-in account.",
+  "sourceSays": "src/session/session-storage.ts tryAcquireSessionLease is keyed by the id in the journal's header, at <state root>/run/session-owners/<id>; pi-utils file-lock adds `.lock`. On Linux the native lock hashes that into the socket name, and on Unix other than Linux it is a flock sidecar with that path (source only, not run here).",
+  "runs": [
+    {
+      "atPromptProcessLocks": "process locks: []",
+      "polled": [
+        "0.8 screen_reply=0 file=0 fresh=1 open=0 locks=[]",
+        "10.1 screen_reply=0 file=0 fresh=1 open=0 locks=[]",
+        "10.6 screen_reply=1 file=1 fresh=0 open=0 locks=[@omp-file-lock-333686078e4343f24e7fd393472186f8 ]",
+        "33.0 screen_reply=1 file=1 fresh=0 open=0 locks=[@omp-file-lock-333686078e4343f24e7fd393472186f8 ]"
+      ],
+      "firstSessionId": "01900000-0000-7000-8000-000000000001",
+      "processLockInTheWindow": "@omp-file-lock-333686078e4343f24e7fd393472186f8",
+      "probeInTheWindow": {
+        "thatId": {
+          "id": "01900000-0000-7000-8000-000000000001",
+          "ownersDir": "/home/user/lab/iso/omp/home/.omp/run/session-owners",
+          "acquired": false,
+          "socket": null
+        },
+        "unrelatedId": {
+          "id": "01900000-0000-7000-8000-000000000002",
+          "ownersDir": "/home/user/lab/iso/omp/home/.omp/run/session-owners",
+          "acquired": true,
+          "socket": "@omp-file-lock-b712dda84d1cd3695971a52df2216e94"
+        }
+      },
+      "secondSessionIdAfterNew": "01900000-0000-7000-8000-000000000003",
+      "processLockAfterNew": "@omp-file-lock-187db6e61b265d301170055a326d8248",
+      "probeAfterTheProcessEnded": [
+        {
+          "id": "01900000-0000-7000-8000-000000000001",
+          "ownersDir": "/home/user/lab/iso/omp/home/.omp/run/session-owners",
+          "acquired": true,
+          "socket": "@omp-file-lock-333686078e4343f24e7fd393472186f8"
+        },
+        {
+          "id": "01900000-0000-7000-8000-000000000003",
+          "ownersDir": "/home/user/lab/iso/omp/home/.omp/run/session-owners",
+          "acquired": true,
+          "socket": "@omp-file-lock-187db6e61b265d301170055a326d8248"
+        }
+      ],
+      "firstIdNamesTheLockItHeld": true,
+      "secondIdNamesTheLockItHeld": true
+    },
+    {
+      "atPromptProcessLocks": "process locks: []",
+      "polled": [
+        "0.8 screen_reply=0 file=0 fresh=1 open=0 locks=[]",
+        "9.9 screen_reply=0 file=0 fresh=1 open=0 locks=[]",
+        "10.5 screen_reply=1 file=1 fresh=0 open=0 locks=[@omp-file-lock-ab880973778ada63fd73655e93308a6b ]",
+        "32.6 screen_reply=1 file=1 fresh=0 open=0 locks=[@omp-file-lock-ab880973778ada63fd73655e93308a6b ]"
+      ],
+      "firstSessionId": "01900000-0000-7000-8000-000000000004",
+      "processLockInTheWindow": "@omp-file-lock-ab880973778ada63fd73655e93308a6b",
+      "probeInTheWindow": {
+        "thatId": {
+          "id": "01900000-0000-7000-8000-000000000004",
+          "ownersDir": "/home/user/lab/iso/omp/home/.omp/run/session-owners",
+          "acquired": false,
+          "socket": null
+        },
+        "unrelatedId": {
+          "id": "01900000-0000-7000-8000-000000000002",
+          "ownersDir": "/home/user/lab/iso/omp/home/.omp/run/session-owners",
+          "acquired": true,
+          "socket": "@omp-file-lock-b712dda84d1cd3695971a52df2216e94"
+        }
+      },
+      "secondSessionIdAfterNew": "01900000-0000-7000-8000-000000000005",
+      "processLockAfterNew": "@omp-file-lock-bc4d05e0243c9a2c65ac51f710868158",
+      "probeAfterTheProcessEnded": [
+        {
+          "id": "01900000-0000-7000-8000-000000000004",
+          "ownersDir": "/home/user/lab/iso/omp/home/.omp/run/session-owners",
+          "acquired": true,
+          "socket": "@omp-file-lock-ab880973778ada63fd73655e93308a6b"
+        },
+        {
+          "id": "01900000-0000-7000-8000-000000000005",
+          "ownersDir": "/home/user/lab/iso/omp/home/.omp/run/session-owners",
+          "acquired": true,
+          "socket": "@omp-file-lock-bc4d05e0243c9a2c65ac51f710868158"
+        }
+      ],
+      "firstIdNamesTheLockItHeld": true,
+      "secondIdNamesTheLockItHeld": true
+    }
+  ],
+  "inventedIdsAndHomes": {
+    "homeUser": [
+      {
+        "lockPathInput": "/home/user/.omp/run/session-owners/01900000-0000-7000-8000-00000000aaaa.lock",
+        "socket": "@omp-file-lock-4c49eedda6fc8aa08b1d156ece283d9a"
+      },
+      {
+        "lockPathInput": "/home/user/.omp/run/session-owners/01900000-0000-7000-8000-00000000bbbb.lock",
+        "socket": "@omp-file-lock-de1739480615fc4a6587000cc0e6d457"
+      }
+    ],
+    "homeUserAgain": [
+      {
+        "lockPathInput": "/home/user/.omp/run/session-owners/01900000-0000-7000-8000-00000000aaaa.lock",
+        "socket": "@omp-file-lock-4c49eedda6fc8aa08b1d156ece283d9a"
+      },
+      {
+        "lockPathInput": "/home/user/.omp/run/session-owners/01900000-0000-7000-8000-00000000bbbb.lock",
+        "socket": "@omp-file-lock-de1739480615fc4a6587000cc0e6d457"
+      }
+    ],
+    "homeOther": [
+      {
+        "lockPathInput": "/home/other/.omp/run/session-owners/01900000-0000-7000-8000-00000000aaaa.lock",
+        "socket": "@omp-file-lock-42c41c525d52ee26a1b6b9f19893fa4c"
+      },
+      {
+        "lockPathInput": "/home/other/.omp/run/session-owners/01900000-0000-7000-8000-00000000bbbb.lock",
+        "socket": "@omp-file-lock-4018a93c093b2a4b189a7c48d567a875"
+      }
+    ]
+  },
+  "hashFunction": "Not identified. Tried against the invented vectors, on the path with `.lock`, without it, and with a few prefixes: MD5, truncated SHA-1, SHA-256, SHA-512, BLAKE2b, BLAKE2s, BLAKE3 and the xxHash 128-bit and paired 64-bit forms, 112 combinations with no match. So whether a Host can compute this name without running Oh My Pi's code is open.",
+  "observed": "The Terminal's process holds no @omp-file-lock socket at the prompt. It holds exactly one from the same sample the file appears in, through the time the file is not open, and `/new` replaces it with another. Inside that window the program's own function refused the lease for the session id in the file's name and granted it for an unrelated id. After the process ended, that function bound the very names the process had held, for both ids in both runs. The same id and home give the same name, and another home gives another, so the name is decided by the owners directory and the session id, one lock to one session."
+}

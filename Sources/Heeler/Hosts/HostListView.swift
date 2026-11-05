@@ -23,10 +23,10 @@ struct HostRemovalRequest: Equatable {
     var message: String {
         var sentences = [
             deletesNotificationKey
-                ? "This permanently deletes the Host configuration, any saved password, "
-                    + "and the Notification Key from the Keychain."
-                : "This permanently deletes the Host configuration and any saved password "
-                    + "from the Keychain."
+                ? "This permanently deletes the Host configuration, its trusted host key, any "
+                    + "saved password, and the Notification Key from the Keychain."
+                : "This permanently deletes the Host configuration, its trusted host key, and "
+                    + "any saved password from the Keychain."
         ]
         if leavesNotificationsBehind {
             sentences.append(
@@ -49,7 +49,8 @@ struct HostRemovalDependencies: Sendable {
     /// The removals under way. App-owned, so a Hosts list rebuilt mid-removal
     /// still shows them and another window cannot start the same one.
     var inFlight = HostRemovalsInFlight()
-    /// Whether the Host's connection is up, for the confirmation's copy.
+    /// Whether the Host can be asked to stop notifying this device, for the
+    /// confirmation's copy.
     var isConnected: @MainActor @Sendable (Host.ID) -> Bool = { _ in false }
     /// Whether this device holds a Notification Key for the Host.
     var hasNotificationKey: @MainActor @Sendable (Host.ID) -> Bool = { _ in false }
@@ -63,6 +64,10 @@ struct HostRemovalDependencies: Sendable {
     /// Runs once per Host after its catalog removal succeeds, so the Host
     /// is already gone from `HostStore.hosts`. Not called when it fails.
     var didRemoveHost: @MainActor @Sendable (Host.ID) -> Void = { _ in }
+    /// Forgets what this device kept about the Host outside the catalog: its
+    /// trusted host key and the Workspace New Agent last picked there. Runs
+    /// after `didRemoveHost`.
+    var forgetHostRecords: @MainActor @Sendable (Host.ID) async -> Void = { _ in }
 }
 
 extension HostRemovalDependencies {
@@ -70,22 +75,24 @@ extension HostRemovalDependencies {
     /// revoked over its live Console connection, its Notification Key goes
     /// through the preferences store's key store (volatile in demo mode),
     /// and once it leaves the catalog its Live Activity ends and its opt-in
-    /// goes with it.
+    /// goes with it, as do its trusted host key and recent Workspace.
     @MainActor
     static func app(
         console: ConsoleStore,
         notificationPreferences: NotificationPreferencesStore,
         liveActivities: HostLiveActivityCoordinator,
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        recentLaunches: RecentLaunchStore = RecentLaunchStore(),
         revokeTimeout: Duration = .seconds(6)
     ) -> HostRemovalDependencies {
         HostRemovalDependencies(
-            isConnected: { [weak console] id in console?.hostStatuses[id] == .connected },
+            isConnected: { [weak console] id in console?.canReachNotificationFiles(id) == true },
             hasNotificationKey: { [weak notificationPreferences] id in
                 notificationPreferences?.hasNotificationKey(for: id) ?? false
             },
             revokeNotifications: { [weak console, weak notificationPreferences] host in
                 await notificationPreferences?.revokeRegistration(
-                    for: host, isConnected: console?.hostStatuses[host.id] == .connected,
+                    for: host, isConnected: console?.canReachNotificationFiles(host.id) == true,
                     timeout: revokeTimeout)
             },
             forgetNotificationKey: { [weak notificationPreferences] id in
@@ -93,6 +100,10 @@ extension HostRemovalDependencies {
             },
             didRemoveHost: { [weak liveActivities] id in
                 liveActivities?.forgetHost(id)
+            },
+            forgetHostRecords: { id in
+                await knownHosts.forgetHost(id)
+                recentLaunches.forgetWorkspace(for: id)
             })
     }
 }
@@ -188,6 +199,7 @@ final class HostRemovalStore {
                 return
             }
             dependencies.didRemoveHost(host.id)
+            await dependencies.forgetHostRecords(host.id)
         }
     }
 
@@ -212,6 +224,9 @@ struct HostListView: View {
     private let routeIDs: [Host.ID: HostRoute.ID]
     /// Why a connected Host's Agents could not be synced, per Host.
     private let syncIssues: [Host.ID: String]
+    private let coreEnvironmentNotices: [Host.ID: HerdrCoreEnvironmentNotice]
+    /// The Console, for the harness edits this device applied on a Host.
+    private let harnessEdits: ConsoleStore?
     /// Hosts whose Host-detail Reconnect request is in flight. Distinct from
     /// `EventsSessionStatus.reconnecting`.
     private let manualReconnectInFlightHostIDs: Set<Host.ID>
@@ -257,6 +272,8 @@ struct HostListView: View {
         latencies: [Host.ID: Duration] = [:],
         routeIDs: [Host.ID: HostRoute.ID] = [:],
         syncIssues: [Host.ID: String] = [:],
+        coreEnvironmentNotices: [Host.ID: HerdrCoreEnvironmentNotice] = [:],
+        harnessEdits: ConsoleStore? = nil,
         manualReconnectInFlightHostIDs: Set<Host.ID> = [],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
         stopConnecting: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
@@ -273,6 +290,8 @@ struct HostListView: View {
         self.latencies = latencies
         self.routeIDs = routeIDs
         self.syncIssues = syncIssues
+        self.coreEnvironmentNotices = coreEnvironmentNotices
+        self.harnessEdits = harnessEdits
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
         self.stopConnecting = stopConnecting
@@ -296,7 +315,7 @@ struct HostListView: View {
                             "The saved Host catalog could not be read. Its original data was preserved; "
                                 + "reinstalling or adding a Host would risk losing it.")
                     }
-                } else if store.hosts.isEmpty {
+                } else if store.hosts.isEmpty, store.coreCatalogLoadError == nil {
                     ContentUnavailableView {
                         Label("No Hosts", systemImage: "server.rack")
                     } description: {
@@ -313,6 +332,14 @@ struct HostListView: View {
                     }
                 } else {
                     List {
+                        if store.coreCatalogLoadError != nil {
+                            Section {
+                                Label(
+                                    "The saved herdr-core Hosts could not be read. Their original "
+                                        + "data was preserved, and no herdr-core Host can be added.",
+                                    systemImage: "externaldrive.badge.exclamationmark")
+                            }
+                        }
                         ForEach(HostListEntry.grouped(entries)) { @Sendable section in
                             MainActorContent {
                                 let isCollapsed = isCollapsed(section.group)
@@ -363,9 +390,10 @@ struct HostListView: View {
                         usage: usageStore?(id),
                         openUsage: openUsage.map { open in { open(id) } },
                         connectionStatus: connectionStatuses[id],
-                        standingFailure: standingFailures[id],
                         connectedRouteID: routeIDs[id],
                         syncIssue: syncIssues[id],
+                        coreEnvironmentNotice: coreEnvironmentNotices[id],
+                        harnessEdits: harnessEdits,
                         isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                         retryConnection: retryAction(for: id),
                         stopConnecting: stopAction(for: id),
@@ -744,6 +772,8 @@ private struct HostGroupHeader: View {
 /// One Hosts list row. A problem is named by its Summary alone; Host
 /// detail, a tap away, shows the whole Transport Error Presentation.
 struct HostRowPresentation: Equatable {
+    /// Beside the name: which server the Host is for.
+    let serverKind: String
     let group: HostHealthGroup
     let tone: HostConnectionTone
     /// Under the name: the address while connected and in sync, otherwise
@@ -766,6 +796,17 @@ struct HostRowPresentation: Equatable {
         syncIssue: String? = nil,
         canRetry: Bool = true
     ) {
+        serverKind = host.serverKind.displayName
+        guard host.serverKind.isConfirmed else {
+            group = .notConnected
+            tone = .paused
+            detail = "Confirm its Server Kind"
+            isProblem = false
+            trailing = nil
+            offersRetry = false
+            isDialing = false
+            return
+        }
         let problem = HostConnectionDetailPresentation(
             host: host, status: status, standingFailure: standingFailure)
         let chip = HostConnectionPresentation(
@@ -826,9 +867,16 @@ private struct HostRowLabel: View {
         HStack(spacing: 12) {
             HostStatusGlyph(tone: presentation.tone)
             VStack(alignment: .leading, spacing: 2) {
-                Text(host.displayName)
-                    .font(.headline)
-                    .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(host.displayName)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(presentation.serverKind)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                }
                 Text(presentation.detail)
                     .font(.subheadline)
                     .foregroundStyle(presentation.isProblem ? Color.red : Color.secondary)

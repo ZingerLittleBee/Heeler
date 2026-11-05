@@ -1,0 +1,354 @@
+// Agent Notifications for Blocked, Error and Done, from what the core reports
+// (ADR 0033). A listener for the core follower: it folds events into each Terminal's
+// turns as the app does, and after a debounce sends what its current state calls for
+// to the devices registered for that core session, sealed with each device's
+// Notification Key, exactly as the plugin's notify hook does on Herdr TUI.
+//
+// Sending decides from state, not from the event at hand, so a connection that ended
+// inside the debounce, or a Helper that restarted there, loses nothing: what each
+// Terminal was last notified of is kept on disk, and every connection looks again.
+// A send that failed also looks again by itself, a limited number of times, since a
+// quiet Terminal has no event to bring the next decision.
+// A core seen for the first time sets that memory without sending, so installing
+// the Helper, or a new core id, does not announce everything that already happened.
+
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
+
+import { agentIn } from "../core/agent-rule.js";
+import { normalizeSessionName } from "../core/session-name.js";
+import { AGENT_EVENTS, decisionSignature, foldEvent, foldRecord } from "../core/turn-fold.js";
+import { TurnState } from "../core/turn-state.js";
+import { strippedSidebarTitle } from "../shared/activity-rows.js";
+import { collapseKeyFor, sendAlertPush } from "../shared/delivery/push.js";
+import { pruneAlertTokens, readAlertDevices, registeredSessions } from "../shared/delivery/registrations.js";
+import { forDisplay } from "../shared/display-text.js";
+import { readNotificationConfig } from "../shared/notification-config.js";
+import { encryptNotificationEnvelope, notificationKeyId } from "../shared/notification-envelope.js";
+import { readSeenMark, removeSeenMarks } from "./seen-marks.js";
+
+const MEMORY_VERSION = 1;
+// Error is sent under the Blocked trigger, in its own word.
+const ATTENTION_STATUSES = new Set(["blocked", "error"]);
+// A failed send's next tries, each wait double the last up to the ceiling. Kept in
+// memory only: after them, or a restart, the next decision is what tries again.
+const RETRY_FIRST_DELAY_MS = 30_000;
+const RETRY_DELAY_CEILING_MS = 5 * 60_000;
+const RETRY_ATTEMPT_LIMIT = 5;
+
+const realRetryTimers = {
+  set(run, delayMs) {
+    const timer = setTimeout(run, delayMs);
+    timer.unref?.();
+    return timer;
+  },
+  clear: clearTimeout,
+};
+
+const sameMark = (left, right) => left?.turn === right?.turn && left?.word === right?.word;
+const tokensFrom = (value) => (Array.isArray(value) ? value.filter((token) => typeof token === "string") : []);
+
+class Terminal {
+  turns = new TurnState();
+  /** The attention status last notified, until the Agent is confirmed to have left it. */
+  notified = null;
+  /** The finished turn last decided on. */
+  notifiedTurn = null;
+  /** Tokens `notified` has yet to reach, because their send failed. */
+  unsentStatus = [];
+  /** Tokens `notifiedTurn` has yet to reach, because their send failed. */
+  unsentTurn = [];
+  timer = null;
+  /** What the pending timer's wait is about. */
+  signature = null;
+  deciding = Promise.resolve();
+  /** The wait before trying a failed send again, apart from the debounce. */
+  retryTimer = null;
+  /** Waits armed since a send last reached everyone or the state changed. */
+  retryAttempts = 0;
+
+  toJSON() {
+    return {
+      turns: this.turns,
+      notified: this.notified,
+      notifiedTurn: this.notifiedTurn,
+      unsentStatus: this.unsentStatus,
+      unsentTurn: this.unsentTurn,
+    };
+  }
+
+  static restore(value) {
+    const terminal = new Terminal();
+    terminal.turns = TurnState.restore(value?.turns);
+    terminal.notified = typeof value?.notified === "string" ? value.notified : null;
+    terminal.notifiedTurn = TurnState.restore({ ended: value?.notifiedTurn }).ended;
+    terminal.unsentStatus = tokensFrom(value?.unsentStatus);
+    terminal.unsentTurn = tokensFrom(value?.unsentTurn);
+    return terminal;
+  }
+}
+
+/** A listener for `followCoreSession`, sending for the registrations under the Helper's `directory`. */
+export function notificationListener({ directory, log = () => {}, retryTimers = realRetryTimers }) {
+  const sessions = new Map();
+  const say = (session, line) => log(`core session ${JSON.stringify(session)}: ${line}`);
+  const memoryPath = (session) => join(directory, "state", "notify", `${session}.json`);
+
+  function sessionNamed(session) {
+    let memory = sessions.get(session);
+    if (memory !== undefined) return memory;
+    memory = { core: null, inventory: null, terminals: new Map() };
+    try {
+      const file = JSON.parse(readFileSync(memoryPath(session), "utf8"));
+      if (file?.v === MEMORY_VERSION && typeof file.core === "string") {
+        memory.core = file.core;
+        for (const [address, value] of Object.entries(file.terminals ?? {})) {
+          memory.terminals.set(address, Terminal.restore(value));
+        }
+      }
+    } catch {
+      // Absent or unreadable: this core reads as seen for the first time.
+    }
+    sessions.set(session, memory);
+    return memory;
+  }
+
+  function remember(session, memory) {
+    const path = memoryPath(session);
+    const temporary = `${path}.tmp-${process.pid}`;
+    try {
+      mkdirSync(join(directory, "state", "notify"), { recursive: true, mode: 0o700 });
+      const terminals = Object.fromEntries(memory.terminals);
+      writeFileSync(temporary, JSON.stringify({ v: MEMORY_VERSION, core: memory.core, terminals }), { mode: 0o600 });
+      renameSync(temporary, path);
+    } catch (error) {
+      say(session, `could not save what it notified: ${error.message}`);
+    }
+  }
+
+  function clearRetry(terminal) {
+    retryTimers.clear(terminal.retryTimer);
+    terminal.retryTimer = null;
+  }
+
+  function forgetTimers(memory) {
+    for (const terminal of memory.terminals.values()) {
+      clearTimeout(terminal.timer);
+      terminal.timer = null;
+      clearRetry(terminal);
+    }
+  }
+
+  /** Sends one notification to each device, and returns the tokens whose send failed. */
+  async function deliver(session, address, record, agent, status, flag, wants = () => true) {
+    const config = readNotificationConfig(directory);
+    const devices = readAlertDevices(directory, flag, session).filter(wants);
+    if (devices.length === 0) return [];
+    const payload = {
+      paneId: address,
+      agentKind: agent.kind,
+      status,
+      timestamp: Math.floor(Date.now() / 1000),
+      project: forDisplay(typeof record.cwd === "string" && record.cwd !== "" ? basename(record.cwd) : null),
+      title: forDisplay(strippedSidebarTitle(record.title)),
+    };
+    const gone = [];
+    const failed = [];
+    for (const device of devices) {
+      try {
+        const envelope = encryptNotificationEnvelope(payload, device.key);
+        const outcome = await sendAlertPush(config.relayUrl, device, envelope, collapseKeyFor(device.key, address), config.retryDelayMs);
+        if (outcome !== "ok") gone.push(device);
+      } catch (error) {
+        failed.push(device.token);
+        say(session, `could not notify about ${JSON.stringify(address)}: ${error.message}`);
+      }
+    }
+    // Housekeeping, which says nothing of who heard this: the next 410 tries it again.
+    try {
+      if (gone.length > 0) {
+        pruneAlertTokens(directory, new Set(gone.map((device) => device.token)));
+        for (const device of gone) removeSeenMarks(directory, notificationKeyId(device.key));
+      }
+    } catch (error) {
+      say(session, `could not remove a device the relay says is gone: ${error.message}`);
+    }
+    return failed;
+  }
+
+  async function decide(session, memory, address) {
+    const terminal = memory.terminals.get(address);
+    const record = memory.inventory?.get(address);
+    if (terminal === undefined || record === undefined) return;
+    const { notified, notifiedTurn } = terminal;
+    await send(session, memory, address, terminal, record);
+    const isNewState = terminal.notified !== notified || !sameMark(terminal.notifiedTurn, notifiedTurn);
+    const hasUnsent = terminal.unsentStatus.length > 0 || terminal.unsentTurn.length > 0;
+    if (isNewState || !hasUnsent) {
+      clearRetry(terminal);
+      terminal.retryAttempts = 0;
+    }
+    // During the send the connection can have ended or the core's Terminal gone.
+    if (!hasUnsent || memory.inventory === null || memory.terminals.get(address) !== terminal) return;
+    if (terminal.retryTimer === null) retryLater(session, memory, address, terminal);
+  }
+
+  async function send(session, memory, address, terminal, record) {
+    const agent = agentIn(record);
+    // A send that failed waits for the next decision while what it said still holds.
+    // What was notified is noted only once `deliver` returns: a report during the send
+    // saves this memory, and a Helper killed there must send again after its restart.
+    const isUnsent = (unsent) => (device) => unsent.includes(device.token);
+    if (agent?.status !== "idle") terminal.unsentTurn = [];
+    if (agent !== null && ATTENTION_STATUSES.has(agent.status)) {
+      const status = agent.status;
+      if (terminal.notified !== status) {
+        terminal.unsentStatus = await deliver(session, address, record, agent, status, "blocked");
+        terminal.notified = status;
+      } else if (terminal.unsentStatus.length > 0) {
+        terminal.unsentStatus = await deliver(session, address, record, agent, status, "blocked", isUnsent(terminal.unsentStatus));
+      } else {
+        return;
+      }
+    } else {
+      terminal.notified = null;
+      terminal.unsentStatus = [];
+      const ended = terminal.turns.ended;
+      if (agent?.status === "idle" && ended !== null) {
+        const stillDone = (device) =>
+          terminal.turns.isDoneFor(readSeenMark(directory, notificationKeyId(device.key), memory.core, address));
+        if (!sameMark(terminal.notifiedTurn, ended)) {
+          terminal.unsentTurn = await deliver(session, address, record, agent, "done", "done", stillDone);
+          terminal.notifiedTurn = ended;
+        } else if (terminal.unsentTurn.length > 0) {
+          const unsent = isUnsent(terminal.unsentTurn);
+          terminal.unsentTurn = await deliver(session, address, record, agent, "done", "done", (device) => unsent(device) && stillDone(device));
+        }
+      }
+    }
+    remember(session, memory);
+  }
+
+  // One at a time per Terminal: the relay can take a while, and a decision made
+  // during another's send must see what that send settled.
+  function decideNext(session, memory, address, terminal) {
+    terminal.deciding = terminal.deciding
+      .then(() => decide(session, memory, address))
+      .catch((error) => say(session, `could not decide about ${JSON.stringify(address)}: ${error.message}`));
+    return terminal.deciding;
+  }
+
+  /** Only a status that still holds after the debounce notifies, so a flap never reaches the user. */
+  function decideLater(session, memory, address) {
+    const terminal = memory.terminals.get(address);
+    if (terminal === undefined) return;
+    clearTimeout(terminal.timer);
+    terminal.timer = setTimeout(() => {
+      terminal.timer = null;
+      decideNext(session, memory, address, terminal);
+    }, readNotificationConfig(directory).debounceMs);
+    terminal.timer.unref?.();
+  }
+
+  /** Decides again by itself, apart from the debounce and whatever it is waiting for. */
+  function retryLater(session, memory, address, terminal) {
+    if (terminal.retryAttempts >= RETRY_ATTEMPT_LIMIT) return;
+    const delayMs = Math.min(RETRY_FIRST_DELAY_MS * 2 ** terminal.retryAttempts, RETRY_DELAY_CEILING_MS);
+    terminal.retryAttempts += 1;
+    terminal.retryTimer = retryTimers.set(() => {
+      terminal.retryTimer = null;
+      // A debounce under way is about a change, and its decision tries this too.
+      return terminal.timer === null ? decideNext(session, memory, address, terminal) : undefined;
+    }, delayMs);
+  }
+
+  /** A snapshot's Terminals. With `settled`, what they show already counts as notified. */
+  function foldSnapshot(session, memory, inventory, { settled }) {
+    memory.inventory = inventory;
+    for (const [address, terminal] of memory.terminals) {
+      if (inventory.has(address)) continue;
+      clearTimeout(terminal.timer);
+      clearRetry(terminal);
+      memory.terminals.delete(address);
+    }
+    for (const [address, record] of inventory) {
+      let terminal = memory.terminals.get(address);
+      if (terminal === undefined) {
+        terminal = new Terminal();
+        memory.terminals.set(address, terminal);
+      }
+      foldRecord(terminal.turns, record);
+      if (settled) {
+        const status = agentIn(record)?.status;
+        terminal.notified = ATTENTION_STATUSES.has(status) ? status : null;
+        terminal.notifiedTurn = terminal.turns.ended;
+      }
+      terminal.signature = decisionSignature(record, terminal.turns);
+      decideLater(session, memory, address);
+    }
+    remember(session, memory);
+  }
+
+  // Each callback is guarded: a listener that throws would end the core's connection.
+  const guarded = (body) => (report) => {
+    try {
+      body(report);
+    } catch (error) {
+      say(report.session, `could not follow for notifications: ${error.message}`);
+    }
+  };
+
+  return {
+    connected: guarded(({ session, coreId, inventory }) => {
+      const memory = sessionNamed(session);
+      const isKnownCore = memory.core === coreId;
+      if (!isKnownCore) {
+        forgetTimers(memory);
+        memory.terminals.clear();
+        memory.core = coreId;
+      }
+      foldSnapshot(session, memory, inventory, { settled: !isKnownCore });
+    }),
+    inventoryReplaced: guarded(({ session, inventory }) => {
+      foldSnapshot(session, sessionNamed(session), inventory, { settled: false });
+    }),
+    event: guarded(({ session, event, inventory }) => {
+      const memory = sessionNamed(session);
+      memory.inventory = inventory;
+      if (event.type === "removed") {
+        const terminal = memory.terminals.get(event.terminal);
+        clearTimeout(terminal?.timer);
+        if (terminal !== undefined) clearRetry(terminal);
+        memory.terminals.delete(event.terminal);
+        remember(session, memory);
+        return;
+      }
+      if (!AGENT_EVENTS.has(event.type)) return;
+      const record = inventory.get(event.terminal);
+      if (record === undefined) return;
+      let terminal = memory.terminals.get(event.terminal);
+      if (terminal === undefined) {
+        terminal = new Terminal();
+        memory.terminals.set(event.terminal, terminal);
+      }
+      foldEvent(terminal.turns, event, record);
+      remember(session, memory);
+      const signature = decisionSignature(record, terminal.turns);
+      const isWaitingForThis = terminal.timer !== null && signature === terminal.signature;
+      terminal.signature = signature;
+      if (!isWaitingForThis) decideLater(session, memory, event.terminal);
+    }),
+    ended: guarded(({ session }) => {
+      const memory = sessionNamed(session);
+      forgetTimers(memory);
+      memory.inventory = null;
+      // With no device left here, what happens next is nobody's to hear of when one
+      // registers again, so that device starts from what the core shows then.
+      const isRegistered = registeredSessions(directory).some((name) => normalizeSessionName(name) === session);
+      if (!isRegistered) {
+        sessions.delete(session);
+        rmSync(memoryPath(session), { force: true });
+      }
+    }),
+  };
+}

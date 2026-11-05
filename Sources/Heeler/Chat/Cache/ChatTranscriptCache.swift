@@ -18,7 +18,12 @@ struct ChatCacheKey: Hashable, Codable, Sendable {
         self.conversationID = conversationID
     }
 
-    init(hostID: UUID, socketLocation: HerdrSocketLocation, reference: ConversationReference) {
+    /// `coreScope` is `coreScope(session:coreID:)` on a herdr-core Host, which
+    /// keeps its entries apart from another core's on the same Host.
+    init(
+        hostID: UUID, socketLocation: HerdrSocketLocation, reference: ConversationReference,
+        coreScope: String? = nil
+    ) {
         let session =
             switch socketLocation {
             case .defaultSession: ""
@@ -26,8 +31,14 @@ struct ChatCacheKey: Hashable, Codable, Sendable {
             case .absolutePath(let path): "path:\(path)"
             }
         self.init(
-            hostID: hostID, herdrSession: session, program: reference.program,
+            hostID: hostID, herdrSession: coreScope ?? session, program: reference.program,
             conversationID: reference.sessionID)
+    }
+
+    /// A core session name holds no `:` (`HerdrCoreSessionName`), and no Herdr
+    /// TUI session starts with `core:`, so no two of these name the same thing.
+    static func coreScope(session: String, coreID: String) -> String {
+        "core:\(HerdrCoreSessionName.normalized(session)):\(coreID)"
     }
 
     /// The document's file name: a digest, so no session name, path or id

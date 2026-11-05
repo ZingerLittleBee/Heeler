@@ -1,5 +1,6 @@
 import Foundation
 import GhosttyTerminal
+import GhosttyTheme
 import SwiftUI
 import Testing
 
@@ -52,6 +53,46 @@ struct TerminalThemeSettingsTests {
                 == TerminalTheme(
                     light: TerminalThemeOption.solarized.configuration(isDark: false),
                     dark: TerminalThemeOption.tokyoNight.configuration(isDark: true)))
+    }
+
+    /// A herdr-core attach reports `#rrggbb`, and the catalog writes colors
+    /// however its source did.
+    @Test func reportedColorsAreInTheFormACoreTakes() {
+        let written = TerminalThemeColors(
+            GhosttyThemeDefinition(
+                name: "Written", background: "282A36", foreground: " #F8F8F2 ", cursorColor: "ff0000"))
+        #expect(written.background == "#282a36")
+        #expect(written.foreground == "#f8f8f2")
+        #expect(written.cursor == "#ff0000")
+
+        let unusable = TerminalThemeColors(
+            GhosttyThemeDefinition(name: "Unusable", background: "fff", foreground: "zzzzzz"))
+        #expect(unusable.background == nil)
+        #expect(unusable.foreground == nil)
+        #expect(unusable.cursor == nil)
+    }
+
+    @Test func everyThemeReportsBothColorsInEitherAppearance() throws {
+        let isColor = /#[0-9a-f]{6}/
+        for option in TerminalThemeOption.allCases {
+            for isDark in [false, true] {
+                let colors = try #require(option.colors(isDark: isDark), "\(option)")
+                #expect(try isColor.wholeMatch(in: try #require(colors.foreground)) != nil, "\(option)")
+                #expect(try isColor.wholeMatch(in: try #require(colors.background)) != nil, "\(option)")
+            }
+        }
+    }
+
+    @Test func reportedColorsComeFromTheSlotOfTheAppearance() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let settings = TerminalThemeSettings(defaults: defaults)
+
+        settings.select(.tokyoNight, for: .light)
+        settings.select(.zenburn, for: .dark)
+
+        #expect(settings.colors(for: .light)?.background == "#e1e2e7")
+        #expect(settings.colors(for: .dark)?.background == "#3f3f3f")
     }
 
     /// The chrome around the terminal (safe areas, transparent bar region) is

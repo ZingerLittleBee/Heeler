@@ -19,6 +19,9 @@ enum GrokSessionCheck {
         "Grok Build is on its welcome screen, where a message starts a new session. Go back with Resume session (Ctrl+R) in the terminal, or start the new one there."
     static let sessionLineReason =
         "Grok Build's screen shows another session. If you just ran /new or /clear, Chat follows it in a moment; send again then. Otherwise switch back to this conversation in the terminal first."
+    /// On herdr-core, where Chat doesn't follow the session on screen.
+    static let coreSessionLineReason =
+        "Grok Build's screen shows another session. Switch back to this conversation in the terminal, then send again."
     static let unknownPromptReason =
         "Grok Build's screen shows a message this conversation doesn't have. It may be in another session, or the terminal may be scrolled up. Check the terminal, then send again."
     static let agentViewReason =
@@ -42,7 +45,7 @@ enum GrokSessionCheck {
         // (`lifecycle.rs`, `load.rs`), so the screen shows that session,
         // whatever messages follow the line.
         if let line = grok.sessionLine, line.sessionID != input.sessionID.lowercased() {
-            return .otherSession(sessionLineReason)
+            return .otherSession(input.followsSessionMoves ? sessionLineReason : coreSessionLineReason)
         }
         return newestMessage(grok, input)
     }

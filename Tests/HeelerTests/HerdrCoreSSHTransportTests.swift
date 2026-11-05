@@ -1,0 +1,473 @@
+import Foundation
+import Testing
+
+@testable import Heeler
+
+/// The framed transport over a scripted locator exec and a fake core socket:
+/// which outcome the Host reads, and that nothing but the locator and one
+/// channel ever happens.
+@Suite struct HerdrCoreSSHTransportTests {
+    // MARK: Connecting
+
+    @Test func aRunningCoreConnectsOverTheLockedSocketWithOneFramedHello() async throws {
+        let host = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(lock: "/tmp/elsewhere.sock", socketFile: true),
+            channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let transport = host.transport()
+
+        let info = try await transport.hello()
+
+        #expect(info.coreID == "c1")
+        #expect(info.version == "0.1.13")
+        #expect(await host.log == ["locator", "open /tmp/elsewhere.sock"])
+        let socket = try #require(await host.socket)
+        let line = try JSONDecoder().decode(JSONValue.self, from: await socket.nextWrittenLine())
+        #expect(line["params"] == .object(["generation": .number(1), "framed": .bool(true)]))
+        try await transport.close()
+    }
+
+    @Test func callersThatRaceShareOneLink() async throws {
+        let host = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let transport = host.transport()
+
+        async let first = transport.hello()
+        async let second = transport.hello()
+        _ = try await (first, second)
+
+        #expect(await host.log == ["locator", "open \(ScriptedCoreHost.socketPath)"])
+        try await transport.close()
+    }
+
+    @Test func aLaterHelloReusesTheLink() async throws {
+        let host = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let transport = host.transport()
+
+        _ = try await transport.hello()
+        _ = try await transport.hello()
+
+        #expect(await host.log == ["locator", "open \(ScriptedCoreHost.socketPath)"])
+        try await transport.close()
+    }
+
+    @Test func noLockTriesTheSessionsDefaultSocket() async throws {
+        let host = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let transport = host.transport()
+
+        _ = try await transport.hello()
+
+        #expect(await host.log.last == "open \(ScriptedCoreHost.socketPath)")
+        try await transport.close()
+    }
+
+    @Test func aVersionOtherThanTheTestedOneIsAdvisory() async throws {
+        let host = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(version: "9.8.7"),
+            channel: .answersHello(ScriptedCoreHost.helloReply(result: .object([
+                "generation": .number(1), "version": .string("9.8.7"),
+                "core": .object(["id": .string("c1"), "name": .string("lab")]),
+                "framed": .bool(true),
+                "features": .array(["framed", "attach", "events", "status"].map(JSONValue.string)),
+            ]))))
+        let transport = host.transport()
+
+        #expect(try await transport.hello().version == "9.8.7")
+        try await transport.close()
+    }
+
+    @Test func serverStatusAnswersOverTheLinkItOpens() async throws {
+        let host = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let transport = host.transport()
+        let status = Task { try await transport.serverStatus() }
+        let socket = try await waitForSocket(host)
+
+        let request = await socket.nextRequest()
+        #expect(request.method == "server.status")
+        try await socket.reply(to: request.id, result: .object([
+            "core": .object(["id": .string("c1"), "name": .string("lab")]),
+            "version": .string("0.1.13"), "pid": .number(4242), "uptime_ms": .number(100),
+        ]))
+
+        #expect(try await status.value.pid == 4242)
+        #expect(await host.log == ["locator", "open \(ScriptedCoreHost.socketPath)"])
+        try await transport.close()
+    }
+
+    @Test func closeEndsTheLinkThenTheConnection() async throws {
+        let host = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let transport = host.transport()
+        _ = try await transport.hello()
+        let socket = try #require(await host.socket)
+
+        try await transport.close()
+
+        #expect(await socket.isClosed)
+        #expect(await host.log.last == "close")
+    }
+
+    // MARK: The confirmed Start
+
+    @Test func startLocatesThenRunsTheProbedPathForTheSession() async throws {
+        let host = ScriptedCoreHost(channel: .refused)
+
+        let outcome = try await host.transport(session: "work team").startCore()
+
+        #expect(outcome == .started)
+        #expect(await host.log == ["locator", "start"])
+        let script = try #require(await host.scripts.last)
+        #expect(script == #""$SHELL" -lic 'HC_SESSION='\''work team'\'' exec '\''/home/me/.local/bin/herdr-core'\'' server start'"#)
+    }
+
+    @Test func startReadsTheOutcomeOfTheExec() async throws {
+        let running = ScriptedCoreHost(start: .alreadyRunning, channel: .refused)
+        #expect(try await running.transport().startCore() == .alreadyRunning)
+
+        let refused = ScriptedCoreHost(
+            start: .exits(status: 1, stdout: "", stderr: "bash: no job control\nnope\n"), channel: .refused)
+        #expect(try await refused.transport().startCore() == .failed(detail: "nope"))
+    }
+
+    @Test func aMacOSCoreIsNeverStartedEvenIfAsked() async throws {
+        let host = ScriptedCoreHost(locator: ScriptedCoreHost.locatorLines(kernel: "Darwin"), channel: .refused)
+
+        await #expect(throws: TransportError.self) { try await host.transport().startCore() }
+
+        #expect(await host.log == ["locator"])
+    }
+
+    @Test func noProgramStartsNothing() async throws {
+        let host = ScriptedCoreHost(locator: ScriptedCoreHost.locatorLines(executable: nil), channel: .refused)
+
+        await #expect(throws: TransportError.herdrCoreNotInstalled) { try await host.transport().startCore() }
+
+        #expect(await host.log == ["locator"])
+    }
+
+    @Test func aFailedHelloLeavesWhatTheLocatorFound() async throws {
+        let host = ScriptedCoreHost(channel: .refused)
+        let transport = host.transport()
+        #expect(await transport.lastLocation() == nil)
+
+        _ = try? await transport.hello()
+
+        #expect(await transport.lastLocation()?.executablePath == ScriptedCoreHost.installedPath)
+        #expect(await transport.lastLocation()?.kernel == "Linux")
+    }
+
+    // MARK: What the Host reads
+
+    @Test func noProgramReadsNotInstalledAndOpensNothing() async {
+        let host = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(executable: nil),
+            channel: .answersHello(ScriptedCoreHost.helloReply()))
+
+        await #expect(throws: TransportError.herdrCoreNotInstalled) {
+            try await host.transport().hello()
+        }
+        #expect(await host.log == ["locator"])
+    }
+
+    @Test func aRefusedChannelWithNoSocketFileReadsNotRunning() async {
+        let host = ScriptedCoreHost(channel: .refused)
+
+        await #expect(
+            throws: TransportError.herdrCoreNotRunning(
+                socketPath: ScriptedCoreHost.socketPath, socketFilePresent: false)
+        ) {
+            try await host.transport().hello()
+        }
+    }
+
+    @Test func aStaleLockReadsNotRunningAtTheLockedPath() async {
+        let host = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(lock: "/tmp/gone.sock", socketFile: false),
+            channel: .refused)
+
+        await #expect(
+            throws: TransportError.herdrCoreNotRunning(socketPath: "/tmp/gone.sock", socketFilePresent: false)
+        ) {
+            try await host.transport().hello()
+        }
+    }
+
+    @Test func aRefusedChannelWithASocketFileLeftBehindReadsNotRunningWithIt() async {
+        let host = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .refused)
+
+        await #expect(
+            throws: TransportError.herdrCoreNotRunning(
+                socketPath: ScriptedCoreHost.socketPath, socketFilePresent: true)
+        ) {
+            try await host.transport().hello()
+        }
+    }
+
+    @Test func anOverLongSocketPathReadsTooLongInsteadOfNotRunning() async {
+        let path = "/" + String(repeating: "a", count: 107)
+        let host = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(defaultPath: path),
+            channel: .answersHello(ScriptedCoreHost.helloReply()))
+
+        await #expect(throws: TransportError.herdrCoreSocketPathTooLong(path: path, limit: 107)) {
+            try await host.transport().hello()
+        }
+        #expect(await host.log == ["locator"])
+    }
+
+    @Test(arguments: [
+        ["framed", "attach", "events"], ["framed", "attach", "status"], ["framed", "events", "status"],
+        ["attach", "events", "status"], [],
+    ])
+    func aMissingFeatureReadsUpdateRequiredByTheProbedPath(features: [String]) async throws {
+        let host = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply(features: features)))
+
+        await #expect(
+            throws: TransportError.herdrCoreUpdateRequired(
+                command: "\(ScriptedCoreHost.installedPath) update")
+        ) {
+            try await host.transport().hello()
+        }
+        let socket = try #require(await host.socket)
+        await socket.waitUntilClosed()
+    }
+
+    @Test(arguments: ["unknown_method", "needs_framed", "unsupported_generation"])
+    func anOlderCoresErrorReadsUpdateRequired(kind: String) async {
+        let host = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply(errorKind: kind)))
+
+        await #expect(
+            throws: TransportError.herdrCoreUpdateRequired(
+                command: "\(ScriptedCoreHost.installedPath) update")
+        ) {
+            try await host.transport().hello()
+        }
+    }
+
+    @Test func unknownMethodLaterOnTheLinkAlsoReadsUpdateRequired() async throws {
+        let host = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let transport = host.transport()
+        let status = Task { try await transport.serverStatus() }
+        let socket = try await waitForSocket(host)
+
+        let request = await socket.nextRequest()
+        try await socket.replyError(to: request.id, kind: "unknown_method")
+
+        await #expect(
+            throws: TransportError.herdrCoreUpdateRequired(
+                command: "\(ScriptedCoreHost.installedPath) update")
+        ) {
+            try await status.value
+        }
+        try await transport.close()
+    }
+
+    @Test func aFailedOpenIsNotKeptSoTheNextCallLooksAgain() async {
+        let host = ScriptedCoreHost(channel: .refused)
+        let transport = host.transport()
+
+        await #expect(throws: TransportError.self) { try await transport.hello() }
+        await #expect(throws: TransportError.self) { try await transport.hello() }
+
+        #expect(await host.log.filter { $0 == "locator" }.count == 2)
+    }
+
+    // MARK: What it refuses to act on
+
+    @Test func aSessionNameHCRefusesNeverReachesTheHost() async {
+        let host = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply()))
+
+        await #expect(throws: TransportError.self) {
+            try await host.transport(session: "../invalid-session").hello()
+        }
+        #expect(await host.log.isEmpty)
+    }
+
+    @Test func theSessionReachesTheLocatorNormalized() async throws {
+        let host = ScriptedCoreHost(channel: .refused)
+
+        _ = try await host.transport(session: "  phone work\n").locate()
+
+        #expect(await host.scripts.first?.hasPrefix("__session='phone work'\n") == true)
+    }
+
+    @Test func aShellThatPrintsAtStartupStillConnects() async throws {
+        let host = ScriptedCoreHost(
+            shellBanner: Data("Welcome to box\n".utf8) + Data([0xFF, 0xFE, 0x0A]),
+            channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let transport = host.transport()
+
+        #expect(try await transport.hello().coreID == "c1")
+        #expect(await host.log == ["locator", "open \(ScriptedCoreHost.socketPath)"])
+        try await transport.close()
+    }
+
+    @Test func aShellThatPrintsAtStartupStillReadsEachConnectState() async {
+        let banner = Data("Welcome to box\n".utf8)
+        let notInstalled = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(executable: nil), shellBanner: banner, channel: .refused)
+        await #expect(throws: TransportError.herdrCoreNotInstalled) {
+            try await notInstalled.transport().hello()
+        }
+
+        let notRunning = ScriptedCoreHost(shellBanner: banner, channel: .refused)
+        await #expect {
+            try await notRunning.transport().hello()
+        } throws: { error in
+            if case TransportError.herdrCoreNotRunning = error { return true }
+            return false
+        }
+
+        let tooLong = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(defaultPath: "/" + String(repeating: "a", count: 200)),
+            shellBanner: banner, channel: .refused)
+        await #expect {
+            try await tooLong.transport().hello()
+        } throws: { error in
+            if case TransportError.herdrCoreSocketPathTooLong = error { return true }
+            return false
+        }
+
+        let oldCore = ScriptedCoreHost(
+            shellBanner: banner, channel: .answersHello(ScriptedCoreHost.helloReply(features: ["framed"])))
+        await #expect {
+            try await oldCore.transport().hello()
+        } throws: { error in
+            if case TransportError.herdrCoreUpdateRequired = error { return true }
+            return false
+        }
+    }
+
+    @Test func aLocatorThatFailsOrPrintsNonsenseIsMalformed() async {
+        let failed = ScriptedCoreHost(locatorStatus: 127, channel: .refused)
+        await #expect {
+            try await failed.transport().hello()
+        } throws: { error in
+            if case TransportError.malformedResponse = error { return true }
+            return false
+        }
+        let nonsense = ScriptedCoreHost(locator: ["not the locator"], channel: .refused)
+        await #expect {
+            try await nonsense.transport().hello()
+        } throws: { error in
+            if case TransportError.malformedResponse = error { return true }
+            return false
+        }
+        #expect(await nonsense.log == ["locator"])
+    }
+
+    @Test func aLocatorCutShortIsARetryableChannelFailure() async {
+        let nonce = ScriptedCoreHost.nonce
+        let cuts: [(String, GitExecResult)] = [
+            ("killed by a signal", GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 143)),
+            ("no output at all", GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 0)),
+            (
+                "begin with no end",
+                GitExecResult(stdout: Data("\n\(nonce) begin\nkernel Linux\n".utf8), stderr: Data(), exitStatus: 0)
+            ),
+        ]
+        for (name, answer) in cuts {
+            let host = ScriptedCoreHost(channel: .refused)
+            await host.answerNextLocator(answer)
+            await #expect("\(name)") {
+                try await host.transport().hello()
+            } throws: { error in
+                guard let failure = error as? TransportError, failure.isRetryable else { return false }
+                if case .channelFailed = failure { return true }
+                return false
+            }
+        }
+    }
+
+    // MARK: Addresses belong to one core
+
+    /// A transport subscribed to `c1`, whose link ended with `c2` now at the socket.
+    private func transportWhoseCoreChanged(
+        _ host: ScriptedCoreHost
+    ) async throws -> HerdrCoreSSHTransport {
+        let transport = host.transport()
+        let stream = try await transport.subscribeEvents()
+        #expect(stream.coreID == "c1")
+        let socket = try #require(await host.socket)
+        await host.setChannel(.core(.init(id: "c2", terminals: [])))
+        await socket.deliverEndOfFile()
+        while await !socket.isClosed { await Task.yield() }
+        return transport
+    }
+
+    @Test func aSubscriptionSaysTheCoreOfTheLinkItIsOnNotOfAnEarlierHello() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
+        let transport = host.transport()
+        #expect(try await transport.hello().coreID == "c1")
+        let first = try #require(await host.socket)
+
+        await host.setChannel(.core(.init(id: "c2")))
+        await first.deliverEndOfFile()
+        while await !first.isClosed { await Task.yield() }
+
+        #expect(try await transport.subscribeEvents().coreID == "c2")
+        #expect(await host.sockets.count == 2)
+    }
+
+    @Test func nothingAddressedCrossesToAnotherCoreBeforeItsSnapshot() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
+        let transport = try await transportWhoseCoreChanged(host)
+        let before = await host.methods
+
+        await #expect(throws: TransportError.herdrCoreInventoryStale) { try await transport.killTerminal("t3") }
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            try await transport.interruptTerminal("t3", timeout: .seconds(1))
+        }
+        await #expect(throws: TransportError.herdrCoreInventoryStale) { try await transport.terminalRecord("t3") }
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            try await transport.runTerminal(params: .object([:]))
+        }
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            try await transport.runTemplate(params: .object([:]))
+        }
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            _ = try await transport.attachTerminal(
+                TerminalAttachRequest(target: .terminal("t3"), cols: 80, rows: 24))
+        }
+        #expect(await host.methods == before)
+
+        // The new core's own snapshot makes its addresses good.
+        #expect(try await transport.subscribeEvents().coreID == "c2")
+        let server = try await transport.serverStatus()
+        #expect(server.coreID == "c2")
+    }
+
+    @Test func theSameCoreRestartedKeepsItsAddresses() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
+        let transport = host.transport()
+        _ = try await transport.subscribeEvents()
+        let first = try #require(await host.socket)
+        await first.deliverEndOfFile()
+        while await !first.isClosed { await Task.yield() }
+
+        _ = try await transport.readTerminal("t3")
+        #expect(await host.methods.contains("terminal.read"))
+        #expect(await host.sockets.count == 2)
+    }
+
+    @Test func anAttachNamingItsCoreGoesToNoOther() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c2")))
+        let transport = host.transport()
+        _ = try await transport.subscribeEvents()
+        var request = TerminalAttachRequest(target: .terminal("t3"), cols: 80, rows: 24)
+        request.coreID = "c1"
+
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            _ = try await transport.attachTerminal(request)
+        }
+        #expect(await host.attaches.isEmpty)
+    }
+
+    private func waitForSocket(_ host: ScriptedCoreHost) async throws -> FakeCoreSocket {
+        var budget = PollBudget(.seconds(10))
+        while budget.hasTimeLeft {
+            if let socket = await host.socket { return socket }
+            try await Task.sleep(for: .milliseconds(5))
+            budget.charge()
+        }
+        return try #require(await host.socket)
+    }
+}

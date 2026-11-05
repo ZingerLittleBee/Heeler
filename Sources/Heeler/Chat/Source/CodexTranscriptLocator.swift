@@ -35,6 +35,9 @@ enum CodexTranscriptUnavailable: Error, Hashable, Sendable {
 /// happened, so today's neighbourhood is searched too; archiving moves files
 /// unchanged into the flat `archived_sessions/`. Directory listings are
 /// filtered on the Host by the thread id, so a busy day costs only matches.
+///
+/// `configRoot` is the Agent's own `CODEX_HOME` on herdr-core (ADR 0034). Without
+/// one it looks under `~/.codex`, then each added Account's home.
 struct CodexTranscriptLocator: Sendable {
     let files: ChatHostFiles
     let now: @Sendable () -> Date
@@ -44,11 +47,18 @@ struct CodexTranscriptLocator: Sendable {
         self.now = now
     }
 
-    func locate(threadID: String) async throws -> Result<CodexTranscriptLocation, CodexTranscriptUnavailable> {
-        let home = try await files.home()
-        // A thread lives under one Codex home: the default's, else an
-        // added Account's (`CODEX_HOME`).
-        let roots = try await files.configRoots(for: .codex, defaultRoot: RemoteFilePath.join(home, ".codex"))
+    func locate(
+        threadID: String, configRoot: String? = nil
+    ) async throws -> Result<CodexTranscriptLocation, CodexTranscriptUnavailable> {
+        // A thread lives under one Codex home: the Agent's own when its process
+        // names one, else the default's or an added Account's (`CODEX_HOME`).
+        let roots: [String]
+        if let configRoot {
+            roots = [configRoot]
+        } else {
+            let home = try await files.home()
+            roots = try await files.configRoots(for: .codex, defaultRoot: RemoteFilePath.join(home, ".codex"))
+        }
         let now = now()
         return try await ChatHostFiles.firstAnswer(across: roots) {
             root -> Result<CodexTranscriptLocation, CodexTranscriptUnavailable>? in

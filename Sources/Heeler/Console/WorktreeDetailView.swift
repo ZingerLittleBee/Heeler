@@ -3,14 +3,18 @@ import UIKit
 
 struct WorktreeDetailView: View {
     @State private var store: WorktreeDetailStore
+    /// Where a failure goes once the sheet is off screen.
+    let reportAfterLeaving: ((String) -> Void)?
     let onRemoved: (WorktreeRemovalReceipt) -> Void
     @Environment(\.dismiss) private var dismiss
 
     init(
         store: WorktreeDetailStore,
+        reportAfterLeaving: ((String) -> Void)? = nil,
         onRemoved: @escaping (WorktreeRemovalReceipt) -> Void
     ) {
         _store = State(initialValue: store)
+        self.reportAfterLeaving = reportAfterLeaving
         self.onRemoved = onRemoved
     }
 
@@ -84,14 +88,17 @@ struct WorktreeDetailView: View {
             ) {
                 feedbackActions
             } message: {
-                Text(feedbackMessage)
+                Text(store.feedbackMessage)
             }
             .onChange(of: store.removalPhase) { _, phase in
                 guard case .removed(let receipt) = phase else { return }
                 onRemoved(receipt)
                 dismiss()
             }
+            .onAppear { store.didReturnToScreen() }
+            .onDisappear { store.didLeaveScreen(reportingTo: reportAfterLeaving) }
             .task { await store.loadBranchIfNeeded() }
+            .task { await store.loadRemovalRiskIfNeeded() }
         }
     }
 
@@ -129,15 +136,6 @@ struct WorktreeDetailView: View {
         switch store.removalPhase {
         case .unconfirmed: "Removal Unconfirmed"
         default: "Couldn't Remove Worktree"
-        }
-    }
-
-    private var feedbackMessage: String {
-        switch store.removalPhase {
-        case .failed(let message): message
-        case .stale(let message): message
-        case .unconfirmed: WorktreeRemovalError.outcomeUnconfirmed.message
-        default: ""
         }
     }
 

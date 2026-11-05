@@ -46,6 +46,94 @@ struct GrokTranscriptLocatorTests {
         return try await locator.locate(sessionID: sessionID, directories: directories)
     }
 
+    // MARK: A native Windows directory
+
+    /// `C:\proj` is no path the Host's file calls take, so its group is not worked out
+    /// from it: every group is looked into, within the budget, and the file's head
+    /// says which is the session's.
+    @Test func aWindowsDirectoryIsFoundThroughTheListingWithinTheBudget() async throws {
+        let files = VirtualHostFiles()
+        let grokHome = "/C:/Users/me/.grok"
+        let path = "\(grokHome)/sessions/C%3A%5Cproj/\(Self.startedID)/updates.jsonl"
+        await files.write(Self.record(sessionID: Self.startedID), at: path)
+        await files.makeDirectory("\(grokHome)/sessions/C%3A%5Cother")
+
+        let locator = GrokTranscriptLocator(files: files.hostFiles())
+        let found = try await locator.locate(
+            sessionID: Self.startedID, directories: [#"C:\proj"#], configRoot: grokHome)
+        #expect(found == .success(path))
+
+        var spent = GrokTranscriptLocator(files: files.hostFiles())
+        spent.groupBudget = 0
+        let unfound = try await spent.locate(
+            sessionID: Self.startedID, directories: [#"C:\proj"#], configRoot: grokHome)
+        #expect(unfound == .failure(.notFound(searchedAll: false)))
+    }
+
+    // MARK: The Agent's own root
+
+    private static let startedID = "00000000-0000-4000-8000-000000000001"
+
+    /// On herdr-core the root is the Agent's own `GROK_HOME`, and the id may be the
+    /// UUIDv4 Heeler started it with (ADR 0034, `host-evidence/grok/s-flag.json`).
+    @Test func aGivenRootIsWhereItLooksAndTakesTheIDItWasStartedWith() async throws {
+        let files = VirtualHostFiles()
+        let grokHome = "/srv/work account"
+        let path = "\(grokHome)/sessions/\(Self.group)/\(Self.startedID)/updates.jsonl"
+        await files.write(Self.record(sessionID: Self.startedID), at: path)
+
+        let found = try await GrokTranscriptLocator(files: files.hostFiles())
+            .locate(sessionID: Self.startedID, directories: [Self.cwd], configRoot: grokHome)
+
+        #expect(found == .success(path))
+    }
+
+    @Test func aGivenRootNeverFallsBackToTheHome() async throws {
+        let files = VirtualHostFiles()
+        await files.write(Self.record(sessionID: Self.sessionID), at: Self.transcriptPath())
+
+        let found = try await GrokTranscriptLocator(files: files.hostFiles())
+            .locate(sessionID: Self.sessionID, directories: [Self.cwd], configRoot: "/srv/empty")
+
+        #expect(found == .failure(.notFound(searchedAll: true)))
+    }
+
+    @Test func aGivenRootSearchesItsOwnWorktreesFirst() async throws {
+        let files = VirtualHostFiles()
+        let grokHome = "/srv/grok"
+        let worktree = try #require(GrokTranscriptLocator.groupName(forDirectory: "\(grokHome)/worktrees/a"))
+        let path = "\(grokHome)/sessions/\(worktree)/\(Self.sessionID)/updates.jsonl"
+        await files.write(Self.record(sessionID: Self.sessionID), at: path)
+        await files.write(Data(), at: "\(grokHome)/sessions/zzz/placeholder")
+
+        let found = try await GrokTranscriptLocator(files: files.hostFiles())
+            .locate(sessionID: Self.sessionID, directories: [Self.cwd], configRoot: grokHome)
+
+        #expect(found == .success(path))
+    }
+
+    /// Herdr TUI reports only UUIDv7 ids, and its behavior does not change.
+    @Test func withoutARootOnlyAUUIDv7Counts() async throws {
+        let files = VirtualHostFiles()
+        await files.write(
+            Self.record(sessionID: Self.startedID), at: Self.transcriptPath(sessionID: Self.startedID))
+
+        #expect(try await Self.locate(files, sessionID: Self.startedID) == .failure(.mismatched))
+    }
+
+    @Test func aGivenRootLeavesTheAccountsUnsearched() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.grok-work"], for: .grok)
+        await files.write(
+            Self.record(sessionID: Self.sessionID),
+            at: "/home/dev/.grok-work/sessions/\(Self.group)/\(Self.sessionID)/updates.jsonl")
+
+        let found = try await GrokTranscriptLocator(files: files.hostFiles())
+            .locate(sessionID: Self.sessionID, directories: [Self.cwd], configRoot: "/srv/empty")
+
+        #expect(found == .failure(.notFound(searchedAll: true)))
+    }
+
     // MARK: Accounts
 
     /// An Agent started with `GROK_HOME` set to an added Account's

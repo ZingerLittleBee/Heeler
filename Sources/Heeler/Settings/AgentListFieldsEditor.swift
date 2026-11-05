@@ -6,7 +6,8 @@ import Observation
 /// and `replaceWithPluginFields` wrap that session around a single change so
 /// the Agent List Fields screen can edit inline and persist immediately.
 /// Hosts without a saved choice show their herdr fields, or Heeler's
-/// fallback when the plugin has none.
+/// fallback when the plugin has none. A Host that does not follow a plugin
+/// starts from Heeler's own fields and never asks for plugin fields.
 @MainActor
 @Observable
 final class AgentListFieldsEditor {
@@ -24,7 +25,7 @@ final class AgentListFieldsEditor {
     }
 
     enum LayoutSource: Equatable {
-        case draft, saved, plugin, pluginDefaults, loading, missing, unavailable
+        case draft, saved, plugin, pluginDefaults, loading, missing, unavailable, heeler
     }
 
     typealias Fetch = @MainActor (Host.ID) async -> HerdrSidebarSnapshotStore.HostState?
@@ -32,22 +33,31 @@ final class AgentListFieldsEditor {
     let layouts: AgentRowLayoutStore
     let snapshots: HerdrSidebarSnapshotStore
     private let fetch: Fetch
+    private let followsPlugin: @MainActor (Host.ID) -> Bool
     private(set) var isEditing = false
     private(set) var drafts: [Host.ID: AgentRowLayout] = [:]
     private(set) var syncStates: [Host.ID: SyncState] = [:]
     var errorMessage: String?
     @ObservationIgnored private var syncRequests: [Host.ID: UUID] = [:]
 
-    init(layouts: AgentRowLayoutStore, snapshots: HerdrSidebarSnapshotStore, fetch: @escaping Fetch) {
+    init(
+        layouts: AgentRowLayoutStore,
+        snapshots: HerdrSidebarSnapshotStore,
+        fetch: @escaping Fetch,
+        followsPlugin: @escaping @MainActor (Host.ID) -> Bool = { _ in true }
+    ) {
         self.layouts = layouts
         self.snapshots = snapshots
         self.fetch = fetch
+        self.followsPlugin = followsPlugin
     }
 
     /// The Console's layout for this Host, or its draft while editing.
     func layout(for hostID: Host.ID) -> AgentRowLayout {
         if isEditing, let draft = drafts[hostID] { return draft }
-        return layouts.resolvedLayout(for: hostID, pluginSnapshot: snapshots.snapshot(for: hostID))
+        return layouts.resolvedLayout(
+            for: hostID, pluginSnapshot: snapshots.snapshot(for: hostID),
+            followsPlugin: followsPlugin(hostID))
     }
 
     func source(for hostID: Host.ID) -> LayoutSource {
@@ -58,6 +68,7 @@ final class AgentListFieldsEditor {
     /// Saved or snapshot provenance, ignoring an in-memory draft. Never `.draft`.
     func underlyingSource(for hostID: Host.ID) -> LayoutSource {
         if layouts.hostLayouts[hostID] != nil { return .saved }
+        guard followsPlugin(hostID) else { return .heeler }
         switch snapshots.states[hostID] {
         case .loading: return .loading
         case .loaded(let snapshot?): return snapshot.diagnostics.isEmpty ? .plugin : .pluginDefaults
@@ -197,6 +208,7 @@ final class AgentListFieldsEditor {
     /// saves immediately. The resulting `syncStates` entry survives the save
     /// so the screen can report what happened; the next change clears it.
     func replaceWithPluginFields(_ hostID: Host.ID, hostName: String = "this Host") async {
+        guard followsPlugin(hostID) else { return }
         let wasEditing = isEditing
         if !wasEditing { beginEditing() }
         await syncFromPlugin(hostID, hostName: hostName)
@@ -223,7 +235,7 @@ final class AgentListFieldsEditor {
     /// `hostName` is only interpolated into the unread-snapshot failure copy.
     /// The one-argument call stays valid and uses "this Host".
     func syncFromPlugin(_ hostID: Host.ID, hostName: String = "this Host") async {
-        guard isEditing else { return }
+        guard isEditing, followsPlugin(hostID) else { return }
         let request = UUID()
         syncRequests[hostID] = request
         syncStates[hostID] = .syncing

@@ -144,12 +144,12 @@ struct AgentCardStatusRingTests {
     /// breaks into dashes where color must not carry it alone.
     @Test func blockedDashesItsRingWhereColorCannotCarryIt() {
         func rings(_ differentiating: Bool) -> [AgentStatusAvatar.Ring] {
-            [.working, .done, .blocked, .idle, .unknown, AgentStatus(rawValue: "paused")].map {
+            [.working, .done, .blocked, .error, .idle, .unknown, AgentStatus(rawValue: "paused")].map {
                 AgentStatusAvatar.ring(for: $0, differentiatingWithoutColor: differentiating)
             }
         }
-        #expect(rings(false) == [.turning, .closed, .closed, .hairline, .hairline, .hairline])
-        #expect(rings(true) == [.turning, .closed, .dashed, .hairline, .hairline, .hairline])
+        #expect(rings(false) == [.turning, .closed, .closed, .closed, .hairline, .hairline, .hairline])
+        #expect(rings(true) == [.turning, .closed, .dashed, .dashed, .hairline, .hairline, .hairline])
     }
 
     /// In a Workspace card the avatar fills the card's icon column.

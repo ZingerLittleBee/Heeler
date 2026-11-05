@@ -658,7 +658,7 @@ struct AgentUsageHostLimits: View {
         } header: {
             if isFirst { header }
         } footer: {
-            if card.carriesToggle { ClaudeUsageLimitsNote() }
+            if card.carriesToggle { ClaudeUsageLimitsNote(readsOverHostHelper: entry.readsOverHostHelper) }
         }
     }
 }

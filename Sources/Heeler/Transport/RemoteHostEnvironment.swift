@@ -71,15 +71,26 @@ enum RemoteHostEnvironment: Sendable, Equatable {
 /// Paths are PowerShell literals inside UTF-16LE, never login-shell arguments.
 enum PowerShellCommand {
     static let streamMarker = "__HEELER_STREAM_READY__"
-    static func encoded(_ script: String) -> String {
+    static func encoded(_ script: String, loadingProfile: Bool = false) -> String {
         let bytes = script.utf16.flatMap { [UInt8($0 & 0xff), UInt8($0 >> 8)] }
-        return "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand "
+        let profile = loadingProfile ? "" : "-NoProfile "
+        return "powershell.exe -NoLogo \(profile)-NonInteractive -EncodedCommand "
             + Data(bytes).base64EncodedString()
     }
 
+    /// Doubles every character PowerShell closes a single-quoted string on, which
+    /// includes three typographic quotes a folder can be named with. Each doubled
+    /// character reads back as itself.
     static func literal(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+        var quoted = "'"
+        for character in value.unicodeScalars {
+            if singleQuotes.contains(character) { quoted.unicodeScalars.append(character) }
+            quoted.unicodeScalars.append(character)
+        }
+        return quoted + "'"
     }
+
+    private static let singleQuotes: Set<Unicode.Scalar> = ["'", "\u{2018}", "\u{2019}", "\u{201A}", "\u{201B}"]
 
     static let preamble = """
         $ErrorActionPreference = 'Stop'

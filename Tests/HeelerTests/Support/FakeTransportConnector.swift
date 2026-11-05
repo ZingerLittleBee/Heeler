@@ -182,7 +182,7 @@ final actor FakeTransportConnector: TransportConnector {
         case hangs(Duration)
     }
 
-    private let outcome: Outcome
+    private var outcome: Outcome
     /// The host key the fake "server" presents; nil skips host key
     /// evaluation entirely.
     private let presentedKeyBlob: Data?
@@ -192,6 +192,7 @@ final actor FakeTransportConnector: TransportConnector {
     private let sessions: [HerdrSession]
     private let plugin: Result<HeelerPluginInstallation?, TransportError>?
     private let pluginSteps: FakePluginSteps
+    private let core: ScriptedCoreHost?
     private(set) var capturedSettings: [SSHTransportSettings] = []
     private(set) var transports: [FakeTransport] = []
 
@@ -199,14 +200,62 @@ final actor FakeTransportConnector: TransportConnector {
         outcome: Outcome, presentedKeyBlob: Data? = nil, presentedJumpKeyBlob: Data? = nil,
         sessions: [HerdrSession] = [],
         plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
-        pluginSteps: FakePluginSteps = FakePluginSteps()
+        pluginSteps: FakePluginSteps = FakePluginSteps(),
+        core: ScriptedCoreHost? = nil
     ) {
+        self.core = core
         self.outcome = outcome
         self.presentedKeyBlob = presentedKeyBlob
         self.presentedJumpKeyBlob = presentedJumpKeyBlob
         self.sessions = sessions
         self.plugin = plugin
         self.pluginSteps = pluginSteps
+    }
+
+    /// The Host changes between checks: it goes out of reach, say.
+    func setOutcome(_ outcome: Outcome) {
+        self.outcome = outcome
+    }
+
+    /// The real framed transport over a scripted Host, for this Host's session.
+    func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
+        capturedSettings.append(settings)
+        switch outcome {
+        case .connectFails(let error):
+            throw error
+        case .hangs(let duration):
+            await Task.detached { try? await Task.sleep(for: duration) }.value
+            throw TransportError.timedOut
+        case .connects:
+            break
+        }
+        guard let core else {
+            throw TransportError.hostFeatureUnavailable(feature: "herdr-core Hosts")
+        }
+        return core.transport(session: settings.coreSessionName)
+    }
+
+    func connectForDetection(
+        settings: SSHTransportSettings
+    ) async throws -> any ServerKindDetectionConnection {
+        capturedSettings.append(settings)
+        if let presentedKeyBlob {
+            try await evaluateHostKey(
+                HostKeyFingerprint(publicKeyBlob: presentedKeyBlob), settings: settings)
+        }
+        switch outcome {
+        case .connectFails(let error):
+            throw error
+        case .hangs(let duration):
+            await Task.detached { try? await Task.sleep(for: duration) }.value
+            throw TransportError.timedOut
+        case .connects:
+            break
+        }
+        guard let core else {
+            throw TransportError.hostFeatureUnavailable(feature: "Server Kind detection")
+        }
+        return core
     }
 
     func connect(settings: SSHTransportSettings) async throws -> any Transport {

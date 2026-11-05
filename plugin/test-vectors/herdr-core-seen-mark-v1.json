@@ -1,0 +1,125 @@
+{
+  "description": "A device's seen marks on a herdr-core Host (ADR 0033), written by the app's HerdrCoreSeenMarkFile over SFTP into the Host Helper's directory and read by the Helper's seen-marks.js. Each device has one file, named from its Notification Key id and never from a Terminal address. `files` holds what the app writes byte for byte, and what the Helper reads back: `core` is the core the marks belong to, and a mark is one Terminal's `terminal`, `turn` and status `word`, with no `word` for a Terminal that has reported nothing. `unreadable` holds files the Helper reads as no marks at all, which leaves their Agents counted as Done. `done` holds whether a device with `mark` counts an Agent whose latest finished turn is `ended` as Done.",
+  "files": [
+    {
+      "name": "one Agent's finished turn",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "fileName": "seen-Yw3NKWbEM2Y.json",
+      "core": "c1",
+      "marks": [
+        { "terminal": "t1", "turn": 3, "word": "done" }
+      ],
+      "contents": "{\"core\":\"c1\",\"device\":\"Yw3NKWbEM2Y\",\"marks\":[{\"terminal\":\"t1\",\"turn\":3,\"word\":\"done\"}],\"v\":1}"
+    },
+    {
+      "name": "several Terminals in address order, one with no report yet, under a second key",
+      "key": "__79_Pv6-fj39vX08_Lx8O_u7ezr6uno5-bl5OPi4eA",
+      "keyId": "GGXACDHnP34",
+      "fileName": "seen-GGXACDHnP34.json",
+      "core": "9f1c2d3e-core",
+      "marks": [
+        { "terminal": "t10", "turn": 7, "word": "idle" },
+        { "terminal": "t2", "turn": 1, "word": "blocked" },
+        { "terminal": "t3", "turn": 0 }
+      ],
+      "contents": "{\"core\":\"9f1c2d3e-core\",\"device\":\"GGXACDHnP34\",\"marks\":[{\"terminal\":\"t10\",\"turn\":7,\"word\":\"idle\"},{\"terminal\":\"t2\",\"turn\":1,\"word\":\"blocked\"},{\"terminal\":\"t3\",\"turn\":0}],\"v\":1}"
+    },
+    {
+      "name": "no marks yet",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "fileName": "seen-Yw3NKWbEM2Y.json",
+      "core": "c1",
+      "marks": [],
+      "contents": "{\"core\":\"c1\",\"device\":\"Yw3NKWbEM2Y\",\"marks\":[],\"v\":1}"
+    }
+  ],
+  "unreadable": [
+    {
+      "name": "not JSON",
+      "keyId": "Yw3NKWbEM2Y",
+      "contents": "not json at all"
+    },
+    {
+      "name": "a version this Helper does not read",
+      "keyId": "Yw3NKWbEM2Y",
+      "contents": "{\"core\":\"c1\",\"device\":\"Yw3NKWbEM2Y\",\"marks\":[{\"terminal\":\"t1\",\"turn\":3,\"word\":\"done\"}],\"v\":2}"
+    },
+    {
+      "name": "another device's marks",
+      "keyId": "Yw3NKWbEM2Y",
+      "contents": "{\"core\":\"c1\",\"device\":\"GGXACDHnP34\",\"marks\":[{\"terminal\":\"t1\",\"turn\":3,\"word\":\"done\"}],\"v\":1}"
+    },
+    {
+      "name": "no core",
+      "keyId": "Yw3NKWbEM2Y",
+      "contents": "{\"device\":\"Yw3NKWbEM2Y\",\"marks\":[{\"terminal\":\"t1\",\"turn\":3,\"word\":\"done\"}],\"v\":1}"
+    }
+  ],
+  "done": [
+    {
+      "name": "no mark leaves the turn Done",
+      "source": "ADR 0033: a mark that fails to write leaves that Agent counted as Done",
+      "ended": { "turn": 3, "word": "done" },
+      "mark": null,
+      "done": true
+    },
+    {
+      "name": "a mark of the turn that ended withholds it",
+      "source": "ADR 0033: the app marks the turn that ended",
+      "ended": { "turn": 3, "word": "done" },
+      "mark": { "turn": 3, "word": "done" },
+      "done": false
+    },
+    {
+      "name": "a mark of an idle that ended a turn withholds it",
+      "source": "ADR 0033: Working to Idle ends a turn for a program not known to report done",
+      "ended": { "turn": 3, "word": "idle" },
+      "mark": { "turn": 3, "word": "idle" },
+      "done": false
+    },
+    {
+      "name": "a mark from before the turn ended leaves it Done",
+      "source": "ADR 0033: Done counts a turn that ended after the device's last mark",
+      "ended": { "turn": 3, "word": "done" },
+      "mark": { "turn": 2, "word": "done" },
+      "done": true
+    },
+    {
+      "name": "a mark while Working, at the count before the end, leaves it Done",
+      "source": "ADR 0033: leaving Working moves the count",
+      "ended": { "turn": 3, "word": "done" },
+      "mark": { "turn": 2, "word": "working" },
+      "done": true
+    },
+    {
+      "name": "an Agent opened while Blocked has not seen the Done that follows",
+      "source": "HerdrCoreTurnState.Mark: the word tells two points at one count apart",
+      "ended": { "turn": 3, "word": "done" },
+      "mark": { "turn": 3, "word": "blocked" },
+      "done": true
+    },
+    {
+      "name": "an Agent opened in Error has not seen the Done that follows",
+      "source": "HerdrCoreTurnState.Mark: the word tells two points at one count apart",
+      "ended": { "turn": 3, "word": "done" },
+      "mark": { "turn": 3, "word": "error" },
+      "done": true
+    },
+    {
+      "name": "a mark of idle at the same count, after a key turned done into idle, withholds it",
+      "source": "HerdrCoreTurnState.markSeen: with no ended turn known to the app it marks where the Agent stands",
+      "ended": { "turn": 3, "word": "done" },
+      "mark": { "turn": 3, "word": "idle" },
+      "done": false
+    },
+    {
+      "name": "a mark from a later count withholds it",
+      "source": "ADR 0033: Done counts a turn that ended after the device's last mark",
+      "ended": { "turn": 3, "word": "done" },
+      "mark": { "turn": 4, "word": "working" },
+      "done": false
+    }
+  ]
+}

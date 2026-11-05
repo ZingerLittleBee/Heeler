@@ -433,6 +433,38 @@ struct AgentComposerStopOwnershipTests {
 @MainActor
 @Suite("Agent Composer fold, Stop and notices, hosted", .serialized)
 struct AgentComposerFoldHostedTests {
+    @Test func aHostThatCannotSendShowsNeitherSendStopNorAdd() async throws {
+        let harness = ComposerHarness(status: .working)
+        let controller = UIHostingController(
+            rootView: ComposerHost(harness: harness, collapses: false, offersSend: false, offersAdd: false))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            controller.view.layoutIfNeeded()
+            #expect(Self.editor(in: controller.view) != nil)
+            #expect(Self.accessible(labeled: "Stop", in: controller.view) == nil)
+            #expect(Self.accessible(labeled: "Send", in: controller.view) == nil)
+            #expect(Self.accessible(labeled: "Add", in: controller.view) == nil)
+            harness.composer.replaceDraft(with: "draft")
+            controller.view.layoutIfNeeded()
+            #expect(Self.accessible(labeled: "Send", in: controller.view) == nil)
+        }
+    }
+
+    @Test func aHostThatCanSendStillShowsThem() async throws {
+        let harness = ComposerHarness(status: .working)
+        let controller = UIHostingController(rootView: ComposerHost(harness: harness, collapses: false))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try #require(await Self.eventually {
+                controller.view.layoutIfNeeded()
+                return Self.accessible(labeled: "Stop", in: controller.view) != nil
+                    && Self.accessible(labeled: "Add", in: controller.view) != nil
+            })
+        }
+    }
+
     @Test func chatFoldsToOneLineUntilTheEditorTakesFocus() async throws {
         let harness = ComposerHarness(status: .idle)
         let controller = UIHostingController(rootView: ComposerHost(harness: harness, collapses: true))
@@ -749,33 +781,7 @@ struct AgentComposerFoldHostedTests {
     }
 
     private static func accessible(labeled label: String, in root: UIView) -> NSObject? {
-        var visited = Set<ObjectIdentifier>()
-        var match: NSObject?
-        func visit(_ node: NSObject) {
-            guard match == nil, visited.insert(ObjectIdentifier(node)).inserted else { return }
-            if node.accessibilityLabel == label {
-                match = node
-                return
-            }
-            for element in node.accessibilityElements ?? [] {
-                if let object = element as? NSObject { visit(object) }
-            }
-            // SwiftUI containers can expose an empty or incomplete array
-            // while their indexed accessibility API owns the live controls.
-            let count = node.accessibilityElementCount()
-            if count > 0, count != NSNotFound {
-                for index in 0..<count {
-                    if let object = node.accessibilityElement(at: index) as? NSObject {
-                        visit(object)
-                    }
-                }
-            }
-            if let view = node as? UIView {
-                for subview in view.subviews { visit(subview) }
-            }
-        }
-        visit(root)
-        return match
+        accessibleElement(labeled: label, in: root)
     }
 
     private static func eventually(
@@ -875,6 +881,8 @@ private struct ComposerHost: View {
     let collapses: Bool
     /// Each route shows only the notices its own refusals leave.
     var sendPolicy: ComposerDeliveryPolicy = .terminal
+    var offersSend = true
+    var offersAdd = true
 
     var body: some View {
         AgentComposerView(
@@ -890,8 +898,8 @@ private struct ComposerHost: View {
             actions: AgentComposerActions(
                 canBegin: true,
                 attachLinkCount: 0,
-                addImage: {},
-                addFile: {},
+                addImage: offersAdd ? {} : nil,
+                addFile: offersAdd ? {} : nil,
                 showAttachLinks: {},
                 openTerminal: nil,
                 isOpeningTerminal: false,
@@ -915,6 +923,7 @@ private struct ComposerHost: View {
             interrupt: .escape { [harness] in
                 harness.escapes += 1
                 return .sent
-            })
+            },
+            offersSend: offersSend)
     }
 }

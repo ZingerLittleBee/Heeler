@@ -192,6 +192,22 @@ struct ChatTimelineProjectionTests {
         #expect(Self.ids(idle) == ["u1", "[turn a1]", "a1"])
     }
 
+    /// A new Claude Code conversation opens with the `/clear` that made it,
+    /// a turn no `turn_duration` closes. With no status from the Agent it
+    /// doesn't count as work; a reported status still decides.
+    @Test func aCommandOnlyTurnDoesNotRunWhileTheAgentReportsNoState() {
+        let rows = [Self.notice("clear", .command)]
+        let turns = [Self.turn("clear", ended: false)]
+        let unknown = Self.project(rows, turns: turns, signals: ChatTurnSignals(activity: .unknown))
+        #expect(Self.ids(unknown) == ["clear"])
+        let working = Self.project(rows, turns: turns, signals: ChatTurnSignals(activity: .working))
+        #expect(Self.ids(working) == ["clear", "[working]"])
+        let prompted = Self.project(
+            rows + [Self.user("u1")], turns: turns + [Self.turn("u1", ended: false)],
+            signals: ChatTurnSignals(activity: .unknown))
+        #expect(Self.ids(prompted) == ["clear", "u1", "[working]"])
+    }
+
     /// Saved rows read as last seen while nothing live backs them: an open
     /// turn the Agent's unknown state can't close settles instead of
     /// counting minutes from stale rows (SND-12).

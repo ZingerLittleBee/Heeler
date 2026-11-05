@@ -5,7 +5,7 @@ import Foundation
 /// the EventsSession that supplies them. ConsoleStore only aggregates the
 /// resulting rows and observable Host state.
 @MainActor
-final class HostConsoleProjection {
+final class HostConsoleProjection: ConsoleHostProjection {
     let host: Host
     let session: EventsSession
 
@@ -29,15 +29,15 @@ final class HostConsoleProjection {
     /// `EventsSession.currentRouteID` exactly as `latency` is.
     private(set) var routeID: UUID?
     private(set) var syncError: String?
+    let leakedEnvironmentNames: Set<String> = []
     private(set) var transportGeneration: UInt64 = 0
     private(set) var sidebarRevision: UInt64 = 0
+    /// Labels are herdr-core's; a Herdr TUI Pane has none.
+    let terminalLabelKeys: [String] = []
     /// Whether the Host's current connection generation has produced a
     /// snapshot. `.connected` arrives before that request completes, so an
     /// empty projection in this window means "unknown", not "no Agents".
     private(set) var isAwaitingSnapshot = true
-    /// Until a snapshot proves what the Host runs, its Console rows may be
-    /// saved Chat entries.
-    var showsSavedChats: Bool { status != .connected || isAwaitingSnapshot }
     /// The Transport the applied snapshot was requested on. A silent
     /// replacement keeps the inventory, which stays presentable but is no
     /// longer proof of the Host's state.
@@ -284,7 +284,7 @@ final class HostConsoleProjection {
         await refreshSidebarMetadata()
     }
 
-    func imageStager() -> ImageStager {
+    func imageStager(beside _: String, keepingTo _: TerminalCorePin) -> ImageStager {
         let session = session
         return { image, reporter in
             try await session.withTransport { transport in
@@ -361,7 +361,7 @@ final class HostConsoleProjection {
         }
     }
 
-    func fileStager() -> FileStager {
+    func fileStager(beside _: String, keepingTo _: TerminalCorePin) -> FileStager {
         let session = session
         return { file, reporter in
             try await session.withTransport { transport in
@@ -369,6 +369,73 @@ final class HostConsoleProjection {
                     await reporter.report(progress)
                 }
             }
+        }
+    }
+
+    func withHostServices<Value: Sendable>(
+        _ operation: @escaping @Sendable (any HostServices) async throws -> Value
+    ) async throws -> Value {
+        try await session.withTransport { transport in
+            try await operation(transport)
+        }
+    }
+
+    func withNotificationTransport<Value: Sendable>(
+        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        try await session.withTransport(operation)
+    }
+
+    /// The Host's home directory for the New Workspace browser (#280).
+    func remoteHomeDirectory() async throws -> String {
+        try await session.withTransport { transport in
+            guard let ssh = transport as? HeelerSSHTransport else {
+                throw TransportError.sshUnreachable(
+                    detail: "This Host cannot list remote directories.")
+            }
+            return try await ssh.remoteHomeDirectory()
+        }
+    }
+
+    /// One absolute path's subdirectories for the New Workspace browser (#280).
+    func listRemoteDirectories(at path: String) async throws -> RemoteDirectoryListing {
+        try await session.withTransport { transport in
+            guard let ssh = transport as? HeelerSSHTransport else {
+                throw TransportError.sshUnreachable(
+                    detail: "This Host cannot list remote directories.")
+            }
+            return try await ssh.listDirectories(at: path)
+        }
+    }
+
+    /// Composer's one-shot delivery: prompts borrow this connection rather
+    /// than dialing a parallel one or holding an RPC open for completion.
+    func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
+        try await session.withTransportOnce { transport in
+            try await transport.promptAgent(params)
+        }
+    }
+
+    /// The Agent's screen as herdr renders it now, colors kept (`agent.read`).
+    func readAgentScreen(_ paneID: String) async throws -> ANSIScreen {
+        let read = try await session.withTransport { transport in
+            try await transport.readAgent(
+                AgentReadParams(source: .visible, target: paneID, format: .ansi, stripANSI: false))
+        }
+        return ANSIScreenDecoder.decode(read.text)
+    }
+
+    /// Presses keys in the Agent's program (`agent.send_keys`).
+    func sendAgentKeys(_ keys: [String], to paneID: String) async throws {
+        try await session.withTransportOnce { transport in
+            try await transport.sendAgentKeys(AgentSendKeysParams(keys: keys, target: paneID))
+        }
+    }
+
+    /// Types one line of text into the Agent's pane (`pane.send_input`).
+    func pasteIntoAgent(_ text: String, paneID: String) async throws {
+        try await session.withTransportOnce { transport in
+            try await transport.sendPaneInput(PaneSendInputParams(paneID: paneID, text: text))
         }
     }
 
@@ -514,6 +581,11 @@ final class HostConsoleProjection {
         }
     }
 
+    /// herdr refuses a removal that would lose anything, and says so then.
+    func worktreeRemovalRisk(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk? {
+        nil
+    }
+
     private func authorizeWorktreeRemoval(_ request: WorktreeRemovalRequest) throws {
         guard
             var operation = worktreeRemovalOperations[request.id],
@@ -605,6 +677,9 @@ final class HostConsoleProjection {
             false
         }
     }
+
+    /// herdr keeps its own unseen completion, which `focusAgent` reports to.
+    func setShownAgents(_ paneIDs: Set<String>) {}
 
     /// Focus can mark sibling Panes seen too; only a full Host snapshot can
     /// supply the resulting authoritative statuses, including Live Activity.
@@ -817,57 +892,15 @@ final class HostConsoleProjection {
         requestGeneration: UInt64
     ) {
         sidebarRevision &+= 1
-        let paneByID = Dictionary(snapshot.panes.map { ($0.paneID, $0) }) { first, _ in first }
-        let workspaceByID = Dictionary(
-            snapshot.workspaces.map { ($0.workspaceID, $0) }) { first, _ in first }
-        let tabByID = Dictionary(
-            snapshot.tabs.map { ($0.tabID, $0) }) { first, _ in first }
-        var tabCounts: [String: Int] = [:]
-        var tabPositions: [String: Int] = [:]
-        for tab in snapshot.tabs where tabPositions[tab.tabID] == nil {
-            tabCounts[tab.workspaceID, default: 0] += 1
-            tabPositions[tab.tabID] = tabCounts[tab.workspaceID]
+        let builder = ConsolePaneRowBuilder(host: host, inventory: snapshot)
+        let liveChange: (String) -> PaneInfo? = { [latestPaneChanges] paneID in
+            guard let change = latestPaneChanges[paneID], change.revision > paneStartRevision
+            else { return nil }
+            return change.pane
         }
-        var tabPaneIDs: [String: Set<String>] = [:]
-        for pane in snapshot.panes {
-            tabPaneIDs[pane.tabID, default: []].insert(pane.paneID)
-        }
-        for agent in snapshot.agents {
-            tabPaneIDs[agent.tabID, default: []].insert(agent.paneID)
-        }
-        var nextAgents: [String: ConsoleAgent] = [:]
-        for (snapshotOrder, info) in snapshot.agents.enumerated() {
-            let agent = Agent(info)
-            let workspace = workspaceByID[agent.workspaceID]
-            let tab = tabByID[agent.tabID].flatMap {
-                $0.workspaceID == agent.workspaceID ? $0 : nil
-            }
-            var row = ConsoleAgent(
-                hostID: host.id,
-                hostName: host.displayName,
-                agent: agent,
-                workspaceLabel: workspace?.label,
-                repositoryCheckout: workspace?.worktree.map(RepositoryCheckout.init),
-                lastOutputSnippet: agentsByPane[agent.paneID]?.lastOutputSnippet,
-                hostUsername: host.username,
-                tabLabel: tab?.label,
-                tabPosition: tab.flatMap { tabPositions[$0.tabID] },
-                workspaceTabCount: max(workspace?.tabCount ?? 0, tabCounts[agent.workspaceID] ?? 0),
-                tabPaneCount: max(tab?.paneCount ?? 0, tabPaneIDs[agent.tabID]?.count ?? 0),
-                snapshotOrder: snapshotOrder,
-                paneLabel: paneByID[agent.paneID].flatMap {
-                    $0.tabID == agent.tabID && $0.workspaceID == agent.workspaceID ? $0.label : nil
-                })
-            if let pane = paneByID[agent.paneID] {
-                row.updateDirectory(from: pane)
-            }
-            // A live directory observed during this request is newer than
-            // its response, even when the snapshot has no terminal entry.
-            if let change = latestPaneChanges[agent.paneID], change.revision > paneStartRevision {
-                row.updateDirectory(from: change.pane)
-            }
-            nextAgents[agent.paneID] = row
-        }
+        var nextAgents = builder.agentRows(
+            lastOutputSnippet: { agentsByPane[$0]?.lastOutputSnippet },
+            liveChange: liveChange)
         for (paneID, change) in latestStatusChanges
         where change.revision > snapshotStartRevision {
             guard var row = nextAgents[paneID] else { continue }
@@ -877,43 +910,10 @@ final class HostConsoleProjection {
         latestStatusChanges.removeAll(keepingCapacity: true)
         isAwaitingSnapshot = false
         agentsByPane = nextAgents
-        let workspacePositions = Dictionary(
-            snapshot.workspaces.enumerated().map { ($0.element.workspaceID, $0.offset) }
-        ) { first, _ in first }
-        var nextTerminals: [String: ConsoleTerminal] = [:]
-        for (order, snapshotPane) in snapshot.panes.enumerated() {
-            let pane: PaneInfo
-            if let change = latestPaneChanges[snapshotPane.paneID],
-                change.revision > paneStartRevision,
-                change.pane.terminalID == snapshotPane.terminalID,
-                change.pane.workspaceID == snapshotPane.workspaceID,
-                change.pane.tabID == snapshotPane.tabID
-            {
-                pane = change.pane
-            } else {
-                pane = snapshotPane
-            }
-            let tab = tabByID[pane.tabID].flatMap {
-                $0.workspaceID == pane.workspaceID ? $0 : nil
-            }
-            nextTerminals[pane.paneID] = ConsoleTerminal(
-                hostID: host.id, hostName: host.displayName, hostUsername: host.username,
-                pane: pane, workspaceLabel: workspaceByID[pane.workspaceID]?.label,
-                tabLabel: tab?.label,
-                workspaceOrder: workspacePositions[pane.workspaceID] ?? Int.max,
-                tabPosition: tab.flatMap { tabPositions[$0.tabID] }, snapshotOrder: order,
-                snapshotAgentKind: nextAgents[pane.paneID]?.agent.kind)
-        }
+        terminalsByPane = builder.terminalRows(agents: nextAgents, liveChange: liveChange)
         latestPaneChanges.removeAll(keepingCapacity: true)
-        terminalsByPane = nextTerminals
-        workspacesByID = workspaceByID
-        workspaces = snapshot.workspaces.enumerated()
-            .map { order, workspace in
-                ConsoleWorkspace(
-                    id: workspace.workspaceID, label: workspace.label, order: order,
-                    checkoutPath: workspace.worktree?.checkoutPath)
-            }
-            .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+        workspacesByID = builder.workspaceByID
+        workspaces = builder.workspaceRows()
         pruneReceiptsReintroducedByCurrentSnapshot(
             requestGeneration: requestGeneration)
         reconcileUnconfirmedWorktreeRemovals(requestGeneration: requestGeneration)

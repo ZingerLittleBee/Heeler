@@ -87,12 +87,22 @@ struct ClaudeTranscriptLocator: Sendable {
 
     /// `searchesEveryProject` false keeps to the Agent's directories, a
     /// few stats, for a new session whose file comes under one of them.
+    ///
+    /// `configRoot` is the Agent's own config dir when a check of its process
+    /// found the session there (ADR 0034). A session it found is running, so
+    /// with no file it is one still to write. Nil looks under `~/.claude`,
+    /// then each added Account's directory.
     func locate(
-        sessionID: String, directories: [String], searchesEveryProject: Bool = true
+        sessionID: String, directories: [String], searchesEveryProject: Bool = true, configRoot: String? = nil
     ) async throws -> Result<ClaudeTranscriptLocation, ClaudeTranscriptUnavailable> {
-        let home = try await files.home()
-        let configs = try await files.configRoots(
-            for: .claude, defaultRoot: RemoteFilePath.join(home, ".claude"))
+        let configs: [String]
+        if let configRoot {
+            configs = [configRoot]
+        } else {
+            let home = try await files.home()
+            configs = try await files.configRoots(
+                for: .claude, defaultRoot: RemoteFilePath.join(home, ".claude"))
+        }
         let fileName = "\(sessionID).jsonl"
         let plan = Self.plan(directories: directories)
         var tried = Set<String>()
@@ -159,6 +169,9 @@ struct ClaudeTranscriptLocator: Sendable {
         }
         func missing(searchedAll: Bool) async throws -> ClaudeTranscriptUnavailable {
             if sawMismatch { return .mismatched }
+            // A session the Agent's process named is running: with no file, it
+            // is one still to write.
+            if configRoot != nil, refusal == nil { return .notWritten }
             for config in configs where !refused.contains(config) {
                 if try await sessionStarted(config: config, sessionID: sessionID) { return .notWritten }
             }
@@ -215,7 +228,7 @@ struct ClaudeTranscriptLocator: Sendable {
     static func plan(directories: [String]) -> Plan {
         var keys: [String] = []
         var prefixes: [String] = []
-        for directory in directories where directory.hasPrefix("/") {
+        for directory in directories where directory.hasPrefix("/") || RemoteHostPath.isWindowsAbsolute(directory) {
             for key in [
                 ClaudeProjectKey.key(forDirectory: directory),
                 ClaudeProjectKey.unnormalizedKey(forDirectory: directory),

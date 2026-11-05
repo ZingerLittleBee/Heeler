@@ -111,7 +111,7 @@ struct TranscriptFollower: Sendable {
     var hasOlder: Bool { (windowStart ?? 0) > 0 }
 
     /// Whether the last look saw bytes this follower has not read yet.
-    var hasUnreadBytes: Bool { knownSize.map { $0 > readOffset } ?? false }
+    var hasUnreadRecords: Bool { knownSize.map { $0 > readOffset } ?? false }
 
     /// Reads the file's last `tailWindow` bytes. Nil when the file is gone.
     mutating func open(_ files: ChatHostFiles) async throws -> [ChatLine]? {

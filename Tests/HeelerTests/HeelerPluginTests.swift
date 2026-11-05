@@ -200,6 +200,7 @@ struct HeelerPluginPresentationTests {
         let cases: [(HeelerPluginStatus, String)] = [
             (.checking, "Checking…"),
             (.unsupportedPlatform, "Not supported on Windows"),
+            (.unsupportedServerKind, "Not supported on herdr-core"),
             (.unavailable, "Unknown"),
             (.installed(HeelerPluginInstallation(version: "0.6.0")), "0.6.0"),
             // The plugin branch moved ahead of this build.
@@ -420,6 +421,15 @@ struct HeelerPluginPresentationTests {
         #expect(linked.commands.isEmpty)
     }
 
+    @Test func corePluginFailureDoesNotOfferATuiInstallOrClaimWindows() {
+        let status = HeelerPluginStatus(.failure(HeelerPluginUnavailableError.herdrCore))
+        #expect(status == .unsupportedServerKind)
+        let presentation = HeelerPluginPresentation(status, session: "")
+        #expect(presentation.value == "Not supported on herdr-core")
+        #expect(presentation.notice == nil)
+        #expect(status.confirmedVersion == nil)
+    }
+
     @Test func notInstalledOffersTheInstallCommandCalmly() throws {
         let notice = try #require(HeelerPluginPresentation(.notInstalled, session: "").notice)
         #expect(notice.tone == .info)
@@ -478,7 +488,7 @@ struct HeelerPluginPresentationTests {
             HeelerPluginStatus.installed(HeelerPluginInstallation(version: "0.4.0"))
                 .requirements(for: [.sidebarFields]).isEmpty)
         let unconfirmed: [HeelerPluginStatus] = [
-            .checking, .unavailable, .notInstalled, .unsupportedPlatform,
+            .checking, .unavailable, .notInstalled, .unsupportedPlatform, .unsupportedServerKind,
             .installed(HeelerPluginInstallation(version: "0.3.0", isEnabled: false)),
             .installed(HeelerPluginInstallation(version: "0.3.0", hasManifestWarning: true)),
             .installed(HeelerPluginInstallation(version: "dev")),

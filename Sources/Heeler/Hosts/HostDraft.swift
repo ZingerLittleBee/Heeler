@@ -71,6 +71,10 @@ struct HostDraft: Equatable, Sendable {
     var name = ""
     var username = ""
     var authMethod: Host.AuthMethod = .deviceKey
+    /// A new Host is unconfirmed until its Host detail confirms a kind. Set from
+    /// the Host being edited or duplicated. Nothing in the form changes it
+    /// (ADR 0031).
+    private(set) var serverKind: ServerKind = .unconfirmed
     /// Blank means "keep the stored password" when editing.
     var password = ""
     var sessionName = ""
@@ -89,6 +93,7 @@ struct HostDraft: Equatable, Sendable {
         name = host.name
         username = host.username
         authMethod = host.authMethod
+        serverKind = host.serverKind
         sessionName = host.sessionName
         herdrEndpoint = host.herdrEndpoint
         routes = host.routes.map(HostRouteDraft.init(route:))
@@ -209,19 +214,28 @@ struct HostDraft: Equatable, Sendable {
     }
 
     var isValid: Bool {
-        let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespaces)
         return !routes.isEmpty
             && routes.allSatisfy(\.isValid)
             && !username.trimmingCharacters(in: .whitespaces).isEmpty
-            && (trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName))
+            && (herdrEndpoint == nil ? serverKind : .herdrTUI).isValidSessionName(sessionName)
+    }
+
+    /// Why this Host cannot use its session name, nil when it can. A herdr-core
+    /// Host on native Windows takes fewer names than the core does, which only a
+    /// Host already found there can know (`HerdrCoreSessionName.windowsRefusal`).
+    func sessionNameRefusal(onNativeWindows: Bool = false) -> String? {
+        let kind = herdrEndpoint == nil ? serverKind : .herdrTUI
+        if let refusal = kind.sessionNameRefusal(sessionName) { return refusal }
+        guard onNativeWindows, kind == .herdrCore else { return nil }
+        return HerdrCoreSessionName.windowsRefusal(sessionName)
     }
 
     /// Form-level validity including credential intent. A blank password can
     /// only mean "keep current" when the existing Host already used password
     /// authentication; new Hosts and Device Key -> Password changes require
     /// an actual secret to persist.
-    func canSave(editing existingHost: Host?) -> Bool {
-        guard isValid else { return false }
+    func canSave(editing existingHost: Host?, onNativeWindows: Bool = false) -> Bool {
+        guard isValid, sessionNameRefusal(onNativeWindows: onNativeWindows) == nil else { return false }
         guard authMethod == .password, password.isEmpty else { return true }
         return existingHost?.authMethod == .password
     }
@@ -238,7 +252,8 @@ struct HostDraft: Equatable, Sendable {
             name: name.trimmingCharacters(in: .whitespaces),
             username: username.trimmingCharacters(in: .whitespaces),
             authMethod: authMethod,
-            sessionName: sessionName.trimmingCharacters(in: .whitespaces),
+            serverKind: serverKind,
+            sessionName: serverKind.storedSessionName(sessionName),
             herdrEndpoint: herdrEndpoint,
             routes: routes)
     }

@@ -23,6 +23,11 @@ enum ComposerRefusal: Equatable, Sendable {
     case commandUnavailable(String)
     /// The Agent's input box is not in a state to take a message.
     case inputNotReady(String)
+    /// The program has bracketed paste off, so a paste would read as typing.
+    case programNotAcceptingPaste
+    /// A paste went out and its submit did not. The reason says whether the
+    /// text may still be in the terminal, which no later status changes.
+    case notSubmitted(String)
 
     var message: String {
         switch self {
@@ -38,13 +43,17 @@ enum ComposerRefusal: Equatable, Sendable {
             reason
         case .inputNotReady(let reason):
             reason
+        case .programNotAcceptingPaste:
+            "The program is not accepting a paste right now, so nothing was sent."
+        case .notSubmitted(let reason):
+            reason
         }
     }
 
     /// Whether the terminal can do what Chat declined.
     var suggestsTerminal: Bool {
         switch self {
-        case .agentBlocked, .commandAwaitsIdle, .commandUnavailable: false
+        case .agentBlocked, .commandAwaitsIdle, .commandUnavailable, .programNotAcceptingPaste, .notSubmitted: false
         case .unsafeText, .unknownCommand, .inputNotReady: true
         }
     }
@@ -58,8 +67,8 @@ enum ComposerRefusal: Equatable, Sendable {
         switch self {
         case .agentBlocked: ChatAgentActivity(status) != .blocked
         case .commandAwaitsIdle: ChatAgentActivity(status) == .idle
-        case .inputNotReady: true
-        case .unsafeText, .unknownCommand, .commandUnavailable: false
+        case .inputNotReady, .programNotAcceptingPaste: true
+        case .unsafeText, .unknownCommand, .commandUnavailable, .notSubmitted: false
         }
     }
 }
@@ -81,6 +90,14 @@ struct ComposerDeliveryPolicy: Sendable {
     /// Runs after `agent.prompt` succeeds with the text it sent; false means
     /// the text never left the Agent's input box. Nothing is resent.
     var verify: (@MainActor (String) async -> Bool)?
+    /// The Attach of the window sending, which a herdr-core Send on this route
+    /// types into: one Agent's Composer can be open in several windows, each with
+    /// a viewer of its own. Nothing on a Herdr TUI Host.
+    var coreAttach: AgentAttachStore?
+    /// Which conversation Chat follows, a number that changes whenever it
+    /// follows another (`AgentChatStore.conversationGeneration`). A refusal
+    /// about the input box notes it, and ends once Chat follows another.
+    var conversation: (@MainActor () -> Int)?
 
     static let terminal = ComposerDeliveryPolicy(
         route: .terminal, insertsIntoAttachWhenBlocked: true, outgoingText: { $0 },
@@ -93,4 +110,7 @@ struct ComposerNotice: Equatable {
     let refusal: ComposerRefusal
     /// The surface that was refused; only it shows the notice.
     let route: ComposerRoute
+    /// The conversation Chat followed when the refusal came
+    /// (`ComposerDeliveryPolicy.conversation`).
+    var conversation: Int?
 }

@@ -13,11 +13,19 @@ enum ChatComposerEchoes {
             guard message.route == .chat else { return nil }
             let isDelivered =
                 switch message.state {
-                case .delivered, .undelivered: true
+                // A step with no answer may still have reached the program,
+                // and the Transcript is what can show that it did.
+                case .delivered, .undelivered, .outcomeUnknown: true
                 case .sending, .failed: false
                 }
+            let mayNotHaveGone =
+                switch message.state {
+                case .undelivered, .outcomeUnknown: true
+                case .sending, .delivered, .failed: false
+                }
             return AgentChatStore.SentMessage(
-                id: message.id, text: rules.outgoingText(message.text), isDelivered: isDelivered)
+                id: message.id, text: rules.outgoingText(message.text), isDelivered: isDelivered,
+                mayNotHaveGone: mayNotHaveGone)
         }
     }
 
@@ -62,6 +70,9 @@ enum ChatComposerEchoes {
             case .failed(let detail):
                 guard message.id == latest else { return nil }
                 state = .failed(detail)
+            case .outcomeUnknown:
+                // Only the program's log naming another session says more.
+                state = status == .misdirected ? .misdirected : .outcomeUnknown
             }
             return ChatPendingEcho(id: message.id, text: message.text, state: state)
         }

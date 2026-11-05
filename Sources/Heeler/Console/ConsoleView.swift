@@ -92,6 +92,11 @@ struct ConsoleView: View {
     /// beside their own detail, so a list tab comes back to what it showed
     /// rather than to the other list's pick.
     @State private var rememberedSelections: [ConsoleTab: ParkedSelection] = [:]
+    /// The core each detail in this window keeps to, past its views.
+    @State private var detailCores = ConsoleDetailCores()
+    /// Bumped by each pick that replaces a detail left on a gone core, at an address
+    /// a new detail would otherwise reuse the old one's state for.
+    @State private var detailOpening = 0
     /// A request to open Hosts, as a tab or a sheet, on one Host's detail.
     /// Each request rebuilds the list so it lands there even when that Host
     /// is already on its stack.
@@ -161,6 +166,10 @@ struct ConsoleView: View {
     @Environment(\.agentSceneRouting) private var sceneRouting
 
     var body: some View {
+        tabs.modifier(ConsoleDetailCoresRetention(cores: detailCores, held: heldDetails))
+    }
+
+    private var tabs: some View {
         TabView(selection: tabViewSelection) {
             Tab(ConsoleTab.agents.title, systemImage: "sparkles", value: ConsoleTab.agents) {
                 splitView(for: usesSidebarNavigation ? shownListTab : .agents)
@@ -213,10 +222,15 @@ struct ConsoleView: View {
         .sheet(item: $startAgentRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
-                StartAgentView(hosts: hosts.hosts, console: console, origin: request.origin) { id in
+                StartAgentView(
+                    hosts: hosts.consoleHosts.offeringNewItem(
+                        listsTerminals: false, capabilities: { console.capabilities(for: $0.id) }),
+                    console: console, origin: request.origin
+                ) { id in
                     // A fresh launch lands in its own terminal, exactly
                     // as tapping the new row would, on the list that has it.
                     if currentTab != .agents { selectedTab.wrappedValue = .agents }
+                    openAnew(.agent(id))
                     notificationRouter.path = [id]
                     detailDidOpenFromSidebar()
                 }
@@ -231,20 +245,25 @@ struct ConsoleView: View {
         } message: {
             Text(pendingTabClose.map(tabCloseMessage(for:)) ?? "")
         }
+        .modifier(ConsoleNoticesAndResets(
+            console: console,
+            pendingSavedChatRemoval: $pendingSavedChatRemoval,
+            savedChatRemovalMessage: savedChatRemovalMessage(for:),
+            removeSavedChat: removeSavedChat,
+            leaveUsage: leaveUsage))
         .alert("Could Not Close", isPresented: tabCloseErrorPresented) {
             Button("OK", role: .cancel) { tabCloseError = nil }
         } message: {
             Text(tabCloseError ?? "")
         }
-        .modifier(SavedChatRemovalAlert(
-            pending: $pendingSavedChatRemoval,
-            message: savedChatRemovalMessage(for:),
-            remove: removeSavedChat))
         .sheet(isPresented: $isStartingTerminal) {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // NewTerminalView brings its own NavigationStack.
                 NewTerminalView(
-                    hosts: hosts.hosts, console: console, initialHostID: hostFilter
+                    hosts: hosts.consoleHosts.offeringNewItem(
+                        listsTerminals: true, capabilities: { console.capabilities(for: $0.id) }),
+                    console: console,
+                    initialHostID: hostFilter
                 ) {
                     // A new shell lands in its terminal, as tapping its row would.
                     selectTerminal($0)
@@ -256,7 +275,7 @@ struct ConsoleView: View {
         }
         .sheet(item: $connectionDetailRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
-                if let host = hosts.hosts.first(where: { $0.id == request.id }),
+                if let host = hosts.consoleHosts.first(where: { $0.id == request.id }),
                     let detail = connectionDetail(for: request)
                 {
                     HostConnectionDetailView(
@@ -300,7 +319,6 @@ struct ConsoleView: View {
             guard let link = UsageWidgetLink.target(from: url) else { return }
             openUsage(link)
         }
-        .modifier(UsageTurnedOffReset(isEnabled: console.isUsageEnabled, reset: leaveUsage))
         // Retries answered, the Host no longer failing, drop what they saw.
         .onChange(of: hostIssuesSheetExplained) { _, explained in
             hostIssuesLastFailures = hostIssuesLastFailures.filter { explained.contains($0.key) }
@@ -365,7 +383,7 @@ struct ConsoleView: View {
         }
         // A filter pointing at a removed Host would silently hide every
         // Agent; fall back to All Hosts instead.
-        .onChange(of: hosts.hosts) { _, hosts in
+        .onChange(of: hosts.consoleHosts) { _, hosts in
             if let hostFilter, !hosts.contains(where: { $0.id == hostFilter }) {
                 self.hostFilter = nil
             }
@@ -441,6 +459,8 @@ struct ConsoleView: View {
             latencies: console.hostLatencies,
             routeIDs: console.hostRouteIDs,
             syncIssues: console.hostSyncErrors,
+            coreEnvironmentNotices: console.hostCoreEnvironmentNotices,
+            harnessEdits: console,
             manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
             retryConnection: { await reconnectHost($0) },
             stopConnecting: { await console.cancelHostConnection($0) },
@@ -460,7 +480,7 @@ struct ConsoleView: View {
             relaySettings: relaySettings,
             liveActivities: liveActivities,
             console: console,
-            hosts: hosts.hosts,
+            hosts: hosts.consoleHosts,
             onHostAdded: { id in
                 if isShowingSettingsSheet {
                     pendingSettingsHostID = id
@@ -479,11 +499,7 @@ struct ConsoleView: View {
 
     /// Every Host the Usage tab can read, in catalog order.
     private var usageEntries: [AgentUsageHostEntry] {
-        hosts.hosts.map { host in
-            AgentUsageHostEntry(
-                id: host.id, name: host.displayName, store: console.agentUsageStore(for: host.id),
-                isConnected: console.hostStatuses[host.id] == .connected)
-        }
+        hosts.consoleHosts.map(console.agentUsageEntry(for:))
     }
 
     /// Usage, as a tab; beside an iPad's sidebar, its own split view whose
@@ -535,7 +551,7 @@ struct ConsoleView: View {
                         showsLimits: $usageShowsLimits, limitsRequested: $usageLimitsRequested,
                         allowsColumns: true)
                         .navigationTitle(
-                            usageScopeHostID.flatMap { id in hosts.hosts.first { $0.id == id }?.displayName }
+                            usageScopeHostID.flatMap { id in hosts.consoleHosts.first { $0.id == id }?.displayName }
                                 ?? "All Hosts")
                         .toolbarTitleDisplayMode(.inlineLarge)
                 }
@@ -575,7 +591,7 @@ struct ConsoleView: View {
     /// Limits, that Host's limits. A Host since removed opens All Hosts.
     private func openUsage(_ link: UsageWidgetLink.Target) {
         guard console.isUsageEnabled else { return }
-        let hostID = link.hostID.flatMap { id in hosts.hosts.contains { $0.id == id } ? id : nil }
+        let hostID = link.hostID.flatMap { id in hosts.consoleHosts.contains { $0.id == id } ? id : nil }
         usageScopeHostID = hostID
         isShowingHostsSheet = false
         isShowingSettingsSheet = false
@@ -669,6 +685,24 @@ struct ConsoleView: View {
         isShowingSettingsSheet = false
     }
 
+    /// What the detail column shows, whatever the list marks.
+    private var detailOnStage: ConsoleSelection? {
+        if let id = notificationRouter.path.last { return .agent(id) }
+        return selectedTerminal.map { .terminal($0.id) }
+    }
+
+    /// The details this window may come back to as they were.
+    private var heldDetails: Set<ConsoleSelection> {
+        var held = Set(rememberedSelections.values.map(\.selection))
+        if let detailOnStage { held.insert(detailOnStage) }
+        return held
+    }
+
+    /// Replaces a detail left on a gone core, if `selection` names one.
+    private func openAnew(_ selection: ConsoleSelection) {
+        if detailCores.openAnew(selection, console: console) { detailOpening += 1 }
+    }
+
     /// What the detail shows, as a list tab parks it.
     private var parkedSelection: ParkedSelection? {
         if let id = notificationRouter.path.last { return .agent(id) }
@@ -682,7 +716,8 @@ struct ConsoleView: View {
         rememberedSelections[leaving] = parkedSelection
         switch rememberedSelections[arriving] {
         case .agent(let id)
-        where console.agents.contains(where: { $0.id == id }) || isUnreported(id):
+        where console.agents.contains(where: { $0.id == id })
+            || console.departedAgents.contains(where: { $0.id == id }) || isUnreported(id):
             selectedTerminal = nil
             notificationRouter.path = [id]
         case .terminal(let parked) where isRestorable(parked):
@@ -943,11 +978,11 @@ struct ConsoleView: View {
                     focus: $focusedSearch, tab: .agents,
                     prompt: "Search Agents", showsField: !usesSidebarNavigation))
         case .terminals:
-            if hosts.hosts.isEmpty {
+            if hosts.consoleHosts.isEmpty {
                 noHostsView
             } else {
                 TerminalListView(
-                    hosts: hosts.hosts,
+                    hosts: hosts.consoleHosts,
                     console: console,
                     presentation: terminalPresentation,
                     filteredHostID: hostFilter,
@@ -969,7 +1004,7 @@ struct ConsoleView: View {
     }
 
     /// A filter is meaningless with a single Host.
-    private var filtersByHost: Bool { hosts.hosts.count > 1 }
+    private var filtersByHost: Bool { hosts.consoleHosts.count > 1 }
 
     /// At the largest text sizes a bar cannot fit its title beside three
     /// buttons, so the Host filter joins the presentation menu. An iPad
@@ -981,7 +1016,7 @@ struct ConsoleView: View {
     private var hostFilterPicker: some View {
         Picker("Host", selection: $hostFilter) {
             Text("All Hosts").tag(Host.ID?.none)
-            ForEach(hosts.hosts) { @Sendable host in
+            ForEach(hosts.consoleHosts) { @Sendable host in
                 Text(host.displayName).tag(Host.ID?.some(host.id))
             }
         }
@@ -1058,7 +1093,7 @@ struct ConsoleView: View {
                 hostFilterMenu.hoverEffect(.highlight)
             }
         }
-        if !usesSidebarNavigation, horizontalSizeClass != .regular, !hosts.hosts.isEmpty {
+        if !usesSidebarNavigation, horizontalSizeClass != .regular, !hosts.consoleHosts.isEmpty {
             ToolbarItem(placement: .primaryAction) {
                 presentationMenu(for: tab).hoverEffect(.highlight)
             }
@@ -1070,7 +1105,7 @@ struct ConsoleView: View {
             // only this way.
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 0) {
-                    if !hosts.hosts.isEmpty { newItemButton(for: tab) }
+                    if !hosts.consoleHosts.isEmpty { newItemButton(for: tab) }
                     Button("Hide Sidebar", systemImage: "sidebar.left") {
                         withAnimation(reduceMotion ? nil : .snappy) {
                             splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
@@ -1081,7 +1116,7 @@ struct ConsoleView: View {
                 .buttonStyle(SidebarIconButtonStyle())
             }
             .toolbarItemBackground(.hidden)
-        } else if horizontalSizeClass != .regular, !hosts.hosts.isEmpty {
+        } else if horizontalSizeClass != .regular, !hosts.consoleHosts.isEmpty {
             ToolbarItem(placement: .primaryAction) {
                 newItemButton(for: tab).hoverEffect(.highlight)
             }
@@ -1096,7 +1131,7 @@ struct ConsoleView: View {
             if filtersByHost, !foldsHostFilter {
                 hostFilterMenu.roundPointerHighlight()
             }
-            if !hosts.hosts.isEmpty {
+            if !hosts.consoleHosts.isEmpty {
                 presentationMenu(for: tab).roundPointerHighlight()
                 newItemButton(for: tab)
             }
@@ -1110,14 +1145,22 @@ struct ConsoleView: View {
 
     /// One button for both lists, so a sidebar switching lists keeps its
     /// bar as it is.
+    @ViewBuilder
     private func newItemButton(for tab: ConsoleTab) -> some View {
-        Button(tab == .terminals ? "New Terminal" : "New Agent", systemImage: "plus") {
-            if tab == .terminals {
-                isStartingTerminal = true
-            } else {
-                startAgentRequest = StartAgentRequest()
+        if offersNewItem(on: tab) {
+            Button(tab == .terminals ? "New Terminal" : "New Agent", systemImage: "plus") {
+                if tab == .terminals {
+                    isStartingTerminal = true
+                } else {
+                    startAgentRequest = StartAgentRequest()
+                }
             }
         }
+    }
+
+    private func offersNewItem(on tab: ConsoleTab) -> Bool {
+        hosts.consoleHosts.offersNewItem(
+            listsTerminals: tab == .terminals, capabilities: { console.capabilities(for: $0.id) })
     }
 
     /// An iPad sidebar's foot, standing in for the tab bar: Hosts and
@@ -1132,7 +1175,7 @@ struct ConsoleView: View {
             if filtersByHost, !foldsHostFilter {
                 hostFilterMenu.roundPointerHighlight()
             }
-            if !hosts.hosts.isEmpty {
+            if !hosts.consoleHosts.isEmpty {
                 presentationMenu(for: tab).roundPointerHighlight()
             }
         }
@@ -1172,7 +1215,8 @@ struct ConsoleView: View {
                         || isShowingHostsSheet || isShowingSettingsSheet
                         || isPresentingOverConsole,
                     inputMode: inputMode.mode,
-                    navigationAnchor: agentsListAnchor)
+                    navigationAnchor: agentsListAnchor,
+                    offersNewItem: offersNewItem(on: currentTab))
             },
             titles: ConsoleCommandTitles(
                 listsTerminals: currentTab == .terminals,
@@ -1227,8 +1271,10 @@ struct ConsoleView: View {
     private var selectedItem: Binding<ConsoleSelection?> {
         Binding(
             get: {
-                if let id = notificationRouter.path.last { return .agent(id) }
-                return selectedTerminal.map { .terminal($0.id) }
+                guard let shown = detailOnStage else { return nil }
+                // Beside the list only: pushed over it, the row is out of reach.
+                return horizontalSizeClass == .regular
+                    ? detailCores.listSelection(for: shown, console: console) : shown
             },
             set: { selection in
                 switch selection {
@@ -1237,6 +1283,7 @@ struct ConsoleView: View {
                     if let terminal = console.terminals.first(where: { $0.id == id }) {
                         selectTerminal(terminal)
                     }
+                case .leftBehind: break
                 case nil: clearSelection()
                 }
                 if selection != nil { detailDidOpenFromSidebar() }
@@ -1298,6 +1345,7 @@ struct ConsoleView: View {
 
     private func selectAgent(_ id: ConsoleAgent.ID) {
         changeSelection {
+            openAnew(.agent(id))
             showAgentsList(parking: parkedSelection)
             selectedTerminal = nil
             notificationRouter.path = [id]
@@ -1309,6 +1357,7 @@ struct ConsoleView: View {
             selectAgent(agentID)
         } else {
             changeSelection {
+                openAnew(.terminal(terminal.id))
                 notificationRouter.path = []
                 selectedTerminal = terminal
             }
@@ -1382,6 +1431,7 @@ struct ConsoleView: View {
             agentShowingChat != id
         else { return nil }
         let showsTerminalSurface = console.agents.contains(where: { $0.id == id })
+            || console.departedAgents.contains(where: { $0.id == id })
         let showsTerminalSyncSurface = !showsTerminalSurface
             && MissingAgentPresentation(agentID: id, console: console, hosts: hosts)
                 .renderingMode == .progress
@@ -1398,14 +1448,14 @@ struct ConsoleView: View {
         if let id = notificationRouter.path.last {
             if let receipt = matchingRemovedWorktreeReceipt(for: id) {
                 removedWorktreeSurface(receipt)
-            } else if let agent = console.agentForDetail(id) {
+            } else if let agent = console.detailAgent(for: id) {
                 AgentDetailView(
                     agent: agent,
                     console: console,
                     terminal: terminal,
                     inputMode: inputMode,
                     detailSurface: detailSurface,
-                    hosts: hosts.hosts,
+                    hosts: hosts.consoleHosts,
                     activity: activity,
                     keyboardHandoff: keyboardHandoff,
                     keyboardInset: keyboardInset,
@@ -1415,12 +1465,12 @@ struct ConsoleView: View {
                         // terminal on a spurious reappearance.
                         isVisible: { [notificationRouter] in
                             notificationRouter.path.last == id
-                                && console.agentForDetail(id) != nil
+                                && console.detailAgent(for: id) != nil
                                 && currentTab == tab
                         },
-                        terminalAccess: { [sceneRouting] in
-                            sceneRouting?.terminalAccess(for: id.hostID) ?? .holds
-                        }),
+                        hostID: id.hostID,
+                        console: console,
+                        sceneRouting: sceneRouting),
                     onSwitch: { selectAgent($0) },
                     onClosed: { clearSelection() },
                     onSelectTerminal: { selectTerminal($0) },
@@ -1439,12 +1489,13 @@ struct ConsoleView: View {
                         }
                     },
                     repeatLandings: notificationRouter.repeatLandings,
-                    shellRoute: shellRoute(over: id)
+                    shellRoute: shellRoute(over: id),
+                    composerSession: detailCores.session(for: agent, console: console)
                 )
                 // Selecting another Agent must tear down the previous terminal
                 // pipeline; without the explicit identity the detail column
                 // would reuse the old view's state.
-                .id(id)
+                .id(ConsoleDetailIdentity(shown: .agent(id), opening: detailOpening))
             } else {
                 // The Agent is gone from the list, but not necessarily
                 // because its pane went: a failed Host empties the list the
@@ -1462,6 +1513,7 @@ struct ConsoleView: View {
                 terminal: console.terminals.first(where: { $0.id == selectedTerminal.id })
                     ?? selectedTerminal,
                 console: console,
+                corePin: detailCores.pin(for: selectedTerminal, console: console),
                 settings: terminal,
                 activity: activity,
                 onSelectAgent: { selectAgent($0) },
@@ -1475,13 +1527,14 @@ struct ConsoleView: View {
                 },
                 keyboardHandoff: keyboardHandoff,
                 onBack: { clearSelection() })
-                .id(selectedTerminal.id)
+                .id(ConsoleDetailIdentity(shown: .terminal(selectedTerminal.id), opening: detailOpening))
         } else {
             ConsoleEmptyDetailView(
                 presentation: ConsoleEmptyDetailPresentation(
-                    hasHosts: !hosts.hosts.isEmpty,
+                    hasHosts: !hosts.consoleHosts.isEmpty,
                     showsAgentsAction: splitVisibility(for: tab).showsAgentsAction,
-                    listsTerminals: tab == .terminals)
+                    listsTerminals: tab == .terminals,
+                    offersNewItem: offersNewItem(on: tab))
             ) { action in
                 switch action {
                 case .showAgents:
@@ -1691,8 +1744,10 @@ struct ConsoleView: View {
             agentLink(
                 agent,
                 isSaved: saved[agent.id] != nil,
-                // A saved Agent's Workspace may be gone with its Host session.
-                newAgentOrigin: saved[agent.id] == nil ? StartAgentStore.LaunchOrigin(beside: agent) : nil,
+                // A saved Agent's Workspace may be gone with its Host session,
+                // and its detail's New Agent shows only where the Host starts Agents.
+                newAgentOrigin: saved[agent.id] == nil && console.capabilities(for: agent.hostID).startsAgents
+                    ? StartAgentStore.LaunchOrigin(beside: agent, in: console) : nil,
                 background: ConsoleWorkspaceCardRow(
                     placed: placed, indent: .icon,
                     top: standsAlone ? (placed.followsHeader ? 0 : 6) : 2, bottom: standsAlone ? 6 : 4,
@@ -1873,7 +1928,7 @@ struct ConsoleView: View {
             agent,
             isSaved: saved != nil,
             background: ConsoleRowSelectionBackground(
-                isSelected: notificationRouter.path.last == agent.id)
+                isSelected: selectedItem.wrappedValue == .agent(agent.id))
         ) {
             AgentCardView(
                 agent: agent,
@@ -1905,7 +1960,10 @@ struct ConsoleView: View {
         background: Background,
         @ViewBuilder label: () -> RowContent, @ViewBuilder preview: () -> Preview
     ) -> some View {
-        NavigationLink(value: ConsoleSelection.agent(agent.id)) {
+        let offers = ConsoleAgentRowOffers(
+            capabilities: console.capabilities(for: agent.hostID),
+            supportsMultipleWindows: supportsMultipleWindows)
+        return NavigationLink(value: ConsoleSelection.agent(agent.id)) {
             label()
                 .modifier(ConsoleRowSelectionContent())
         }
@@ -1930,7 +1988,7 @@ struct ConsoleView: View {
                         hostID: agent.hostID, paneID: agent.agent.paneID)
                 }
                 // Never on iPhone, and not for the Agent this window already shows.
-                if supportsMultipleWindows, notificationRouter.path.last != agent.id {
+                if offers.opensInNewWindow, notificationRouter.path.last != agent.id {
                     Button("Open in New Window", systemImage: "plus.rectangle.on.rectangle") {
                         openInNewWindow(agent)
                     }
@@ -1944,12 +2002,13 @@ struct ConsoleView: View {
                 }
                 // Asks first, like the swipe. A menu item can be destructive:
                 // the row stays put until the close succeeds.
-                Divider()
                 if isSaved {
+                    Divider()
                     Button(SavedChatRemovalCopy.action, systemImage: "trash", role: .destructive) {
                         pendingSavedChatRemoval = agent
                     }
-                } else {
+                } else if offers.closes {
+                    Divider()
                     Button(
                         "Close \(closeScope(for: agent))", systemImage: "trash",
                         role: .destructive
@@ -1964,7 +2023,7 @@ struct ConsoleView: View {
             AgentWindowDrag(
                 route: AgentRoute(agentID: agent.id),
                 title: agent.agent.displayName,
-                isEnabled: supportsMultipleWindows))
+                isEnabled: offers.opensInNewWindow))
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             let pinned = console.pins.isPinned(
                 hostID: agent.hostID, paneID: agent.agent.paneID)
@@ -1981,16 +2040,18 @@ struct ConsoleView: View {
         // first. No `.destructive` role: List would animate the row out
         // while the confirmation is still up, even if the user cancels.
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button {
-                if isSaved {
-                    pendingSavedChatRemoval = agent
-                } else {
-                    pendingTabClose = agent
+            if isSaved || offers.closes {
+                Button {
+                    if isSaved {
+                        pendingSavedChatRemoval = agent
+                    } else {
+                        pendingTabClose = agent
+                    }
+                } label: {
+                    Label(isSaved ? SavedChatRemovalCopy.confirm : "Close", systemImage: "trash")
                 }
-            } label: {
-                Label(isSaved ? SavedChatRemovalCopy.confirm : "Close", systemImage: "trash")
+                .tint(.red)
             }
-            .tint(.red)
         }
     }
 
@@ -2101,7 +2162,7 @@ struct ConsoleView: View {
 
     private var agentsSurface: ConsoleAgentsSurface {
         ConsoleAgentsSurface(
-            hostCount: hosts.hosts.count,
+            hostCount: hosts.consoleHosts.count,
             filteredHostName: hostFilter == nil ? nil : filteredHostName,
             filteredAgentCount: filteredAgents.count,
             visibleIssueCount: visibleHostIssues.count,
@@ -2112,7 +2173,7 @@ struct ConsoleView: View {
 
     private var hostSections: [ConsoleHostSection] {
         listPresentation.sections(
-            hosts: hosts.hosts,
+            hosts: hosts.consoleHosts,
             console: console,
             filteredHostID: hostFilter,
             searchQuery: agentSearchText)
@@ -2121,10 +2182,11 @@ struct ConsoleView: View {
     private var workspaceCards: [ConsoleWorkspaceCard] {
         ConsoleWorkspaceCard.cards(
             listPresentation.workspaceSections(
-                hosts: hosts.hosts, console: console,
+                hosts: hosts.consoleHosts, console: console,
                 filteredHostID: hostFilter, searchQuery: agentSearchText))
     }
 
+    /// Where previous and next can land.
     private var visibleAgentIDs: [ConsoleAgent.ID] {
         switch listPresentation.mode {
         case .flat: filteredAgents.map(\.id)
@@ -2204,7 +2266,7 @@ struct ConsoleView: View {
     }
 
     private var filteredHostName: String {
-        hosts.hosts.first(where: { $0.id == hostFilter })?.displayName ?? "this Host"
+        hosts.consoleHosts.first(where: { $0.id == hostFilter })?.displayName ?? "this Host"
     }
 
     private struct HostsTabRequest {
@@ -2220,7 +2282,7 @@ struct ConsoleView: View {
     /// One actionable status per Host. A disconnected session takes priority;
     /// otherwise a connected Host can still have a failing snapshot RPC.
     private var hostIssues: [ConsoleHostStatusPresentation] {
-        hosts.hosts.compactMap { host in
+        hosts.consoleHosts.compactMap { host in
             ConsoleHostStatusPresentation(
                 host: host,
                 status: console.hostStatuses[host.id],
@@ -2247,7 +2309,7 @@ struct ConsoleView: View {
                 presentHosts(id)
             }
         ) { id in
-            if let host = hosts.hosts.first(where: { $0.id == id }),
+            if let host = hosts.consoleHosts.first(where: { $0.id == id }),
                 let detail = hostIssuesSheetDetail(for: id)
             {
                 HostConnectionDetailContent(
@@ -2288,7 +2350,7 @@ struct ConsoleView: View {
     private func connectionDetail(
         for request: ConnectionDetailRequest
     ) -> HostConnectionDetailPresentation? {
-        guard let host = hosts.hosts.first(where: { $0.id == request.id }) else { return nil }
+        guard let host = hosts.consoleHosts.first(where: { $0.id == request.id }) else { return nil }
         return HostConnectionDetailPresentation(
             host: host,
             status: console.hostStatuses[request.id],
@@ -2739,13 +2801,31 @@ struct MissingAgentPresentation: Equatable {
         self.init(
             agentID: agentID,
             hostStatuses: console.hostStatuses,
-            hosts: hosts.hosts,
+            hosts: hosts.consoleHosts,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
             hostStandingFailures: console.hostStandingFailures)
     }
 }
 
-/// A saved Chat row's swipe or context menu asks here before removing it.
+/// One link of `ConsoleView.body`'s chain, which is at the type checker's limit.
+private struct ConsoleNoticesAndResets: ViewModifier {
+    let console: ConsoleStore
+    @Binding var pendingSavedChatRemoval: ConsoleAgent?
+    let savedChatRemovalMessage: (ConsoleAgent) -> String
+    let removeSavedChat: (ConsoleAgent) -> Void
+    let leaveUsage: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .modifier(ConsoleOutcomeNoticeAlert(console: console))
+            .modifier(SavedChatRemovalAlert(
+                pending: $pendingSavedChatRemoval,
+                message: savedChatRemovalMessage,
+                remove: removeSavedChat))
+            .modifier(UsageTurnedOffReset(isEnabled: console.isUsageEnabled, reset: leaveUsage))
+    }
+}
+
 private struct UsageTurnedOffReset: ViewModifier {
     let isEnabled: Bool
     let reset: () -> Void
@@ -2757,6 +2837,7 @@ private struct UsageTurnedOffReset: ViewModifier {
     }
 }
 
+/// A saved Chat row's swipe or context menu asks here before removing it.
 private struct SavedChatRemovalAlert: ViewModifier {
     @Binding var pending: ConsoleAgent?
     let message: (ConsoleAgent) -> String
@@ -2843,6 +2924,25 @@ struct AgentDetailStage {
     }
 }
 
+extension AgentDetailStage {
+    /// A detail in a window of the app: whether it holds its Host's channel is
+    /// the scene directory's say, on a Host that has one to hand over.
+    @MainActor
+    init(
+        isVisible: @escaping () -> Bool,
+        hostID: Host.ID,
+        console: ConsoleStore,
+        sceneRouting: AgentSceneRouting?
+    ) {
+        self.init(
+            isVisible: isVisible,
+            terminalAccess: {
+                console.capabilities(for: hostID)
+                    .terminalAccess(sceneRouting?.terminalAccess(for: hostID))
+            })
+    }
+}
+
 /// Mirrors the Live Activity count chips so a collapsed Host communicates
 /// the same status distribution at a glance.
 struct ConsoleHostStatusCountPills: View {
@@ -2909,6 +3009,25 @@ private struct ConsoleAgentListStyle: ViewModifier {
 enum ConsoleSelection: Hashable {
     case agent(ConsoleAgent.ID)
     case terminal(ConsoleTerminal.ID)
+    /// A detail left on a core its Host no longer serves. No row carries this: the
+    /// row at its address is another Terminal (see `ConsoleDetailCores`).
+    indirect case leftBehind(ConsoleSelection)
+}
+
+/// Lets the details this window can no longer come back to go.
+private struct ConsoleDetailCoresRetention: ViewModifier {
+    let cores: ConsoleDetailCores
+    let held: Set<ConsoleSelection>
+
+    func body(content: Content) -> some View {
+        content.onChange(of: held) { _, held in cores.keep(only: held) }
+    }
+}
+
+/// A detail's identity in the detail column.
+private struct ConsoleDetailIdentity: Hashable {
+    let shown: ConsoleSelection
+    let opening: Int
 }
 
 /// One presentation of the New Agent sheet: beside `origin`'s Agent when a
@@ -2924,6 +3043,13 @@ private enum ParkedSelection {
     /// The terminal itself, not its id: a reconnecting Host lists none of
     /// its terminals, and the tab still comes back to this one.
     case terminal(ConsoleTerminal)
+
+    var selection: ConsoleSelection {
+        switch self {
+        case .agent(let id): .agent(id)
+        case .terminal(let terminal): .terminal(terminal.id)
+        }
+    }
 }
 
 extension EnvironmentValues {
@@ -2966,6 +3092,25 @@ struct NavigationBarBand: Equatable {
 
 /// Reports where the enclosing navigation bar sits within its column, a
 /// frame SwiftUI does not expose.
+/// Says how a close or a removal ended when the screen that asked has gone.
+private struct ConsoleOutcomeNoticeAlert: ViewModifier {
+    let console: ConsoleStore
+
+    func body(content: Content) -> some View {
+        let notice = console.outcomeNotices.first
+        content.alert(
+            notice?.title ?? "",
+            isPresented: Binding(
+                get: { notice != nil },
+                set: { if !$0, let notice { console.dismissOutcomeNotice(notice) } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(notice?.message ?? "")
+        }
+    }
+}
+
 private struct NavigationBarTopReader: UIViewRepresentable {
     let onChange: @MainActor (NavigationBarBand) -> Void
 

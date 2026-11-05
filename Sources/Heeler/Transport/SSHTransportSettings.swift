@@ -41,6 +41,9 @@ struct SSHTransportSettings: Sendable {
     /// Changes reads have a separate, shorter budget. Calibrate this value
     /// against large repositories and weak networks without changing RPCs.
     static let defaultGitExecTimeout: Duration = .seconds(10)
+    /// `git worktree add` and `remove` write a whole checkout, which a large
+    /// repository takes tens of seconds over.
+    static let defaultGitMutationTimeout: Duration = .seconds(120)
     /// Chat's store queries (ADR 0025) have their own budget, so calibrating
     /// one feature leaves the other alone.
     static let defaultChatQueryTimeout: Duration = .seconds(10)
@@ -87,6 +90,10 @@ struct SSHTransportSettings: Sendable {
     var hostKeyTrust: HostKeyTrust = .endpoint
     /// Which herdr socket to reach on the Host.
     var socket: HerdrSocketLocation
+    /// Explicit server selection; no fallback from a refused legacy socket.
+    var serverKind: ServerKind = .herdrTUI
+    /// Core's session name; its default session is named "default".
+    var coreSessionName = "default"
     /// The launcher of the Host's herdr endpoint (Pairing Code v2, ADR 0023).
     /// When set, the session list, plugin list, and plugin config-dir
     /// commands are its builders, and the wake and attach execs run it in

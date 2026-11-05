@@ -23,6 +23,52 @@ struct AgentChatSource: Sendable {
     var processInfo: (@Sendable () async throws -> PaneProcessInfo)?
     /// The Agent's pane, which a Blocked card reads and answers.
     var screen: BlockedScreenIO = .unavailable
+    /// A herdr-core Host reports no session, so Chat checks the Agent's process
+    /// in place of `agentInfo`, and only when Chat opens or an event says the
+    /// answer may have changed, never on a timer (ADR 0034).
+    var sessionEvidence: (@Sendable () async throws -> ChatSessionEvidence)?
+    /// The core session and core id, which key the cache beside the Host: nil
+    /// on Herdr TUI, whose session the socket location names.
+    var coreScope: String?
+    /// Listing and confirming candidates, where a check can find nothing (ADR 0034).
+    var picks: ChatPickIO?
+}
+
+/// What a confirmed candidate goes through, keeping to the detail's core.
+struct ChatPickIO: Sendable {
+    var list: @MainActor @Sendable (TerminalCorePin?) async throws -> ChatCandidatesAnswer
+    var confirm:
+        @MainActor @Sendable (ChatSessionCandidate, ChatSessionCandidates, TerminalCorePin?) async throws -> Void
+    /// The send guard failed: forgets the choice on this device and removes its label.
+    var drop: @MainActor @Sendable () -> Void
+    /// What Chat says once the choice is gone, in this Host's form.
+    var cannotTell: @MainActor @Sendable () -> ChatUnavailableReason
+}
+
+/// Chat's candidate list on request.
+enum ChatCandidatesState: Equatable, Sendable {
+    case notAsked
+    case loading
+    case listed(ChatSessionCandidates)
+    /// Why there is nothing to choose from.
+    case unavailable(String)
+}
+
+/// Where the user's confirmation stands.
+enum ChatPickConfirmation: Equatable, Sendable {
+    case none
+    case saving
+    case confirmed
+    /// The core refused, or the write never went.
+    case failed(String)
+    /// The write went and no answer came. It may have landed, so it is not repeated.
+    case outcomeUnknown
+}
+
+/// What a candidate holds, for the user to read before choosing it.
+enum ChatCandidatePreview: Equatable, Sendable {
+    case conversation(title: String?, entries: [ChatEntry])
+    case unreadable(String)
 }
 
 /// One Agent's Chat (ADR 0024): the conversation herdr says the Agent is
@@ -71,6 +117,16 @@ final class AgentChatStore {
         /// box for unrecorded sends, overdue or not, that the turn which
         /// just ended put back.
         var returnCheckDelay: TimeInterval = 1
+        /// How long after a confirmed pick's turn ends a read must start before its
+        /// send guard judges the Transcript: the program may still be writing, a
+        /// queued send may be about to start the next turn, and Pi's return check
+        /// runs in this time.
+        var pickGuardSettle: TimeInterval = 2
+        /// On herdr-core, how long after the Agent reports idle Chat checks its
+        /// process once more while it can't tell, for a program that writes its
+        /// evidence just after: Grok Build its `active_sessions.json` row, and Oh
+        /// My Pi without its extension the open of its session file (ADR 0034).
+        var lateEvidenceCheck: [ChatProgram: TimeInterval] = [.grok: 3, .omp: 10]
         var backgroundWorkStaleness = ChatBackgroundWork.Staleness()
     }
 
@@ -80,8 +136,12 @@ final class AgentChatStore {
         let id: UUID
         /// What herdr typed: the draft after Chat's rewrite.
         let text: String
-        /// `agent.prompt` took it, so the program may record it.
+        /// `agent.prompt` took it, or a herdr-core step got no answer: either
+        /// way the program may record it.
         let isDelivered: Bool
+        /// It stayed in the Agent's input box, or a herdr-core step got no answer, so it
+        /// may never have reached the program, and a Transcript without it proves nothing.
+        var mayNotHaveGone = false
     }
 
     /// Where a sent message stands against the transcript.
@@ -155,6 +215,10 @@ final class AgentChatStore {
     /// Whether a read of the launch has finished, so a missing notice
     /// means none rather than not known yet.
     private(set) var hasCheckedLaunch = false
+    /// The candidate list the user asked for.
+    private(set) var candidates = ChatCandidatesState.notAsked
+    /// Where the user's confirmation of a candidate stands.
+    private(set) var pickConfirmation = ChatPickConfirmation.none
     /// From `retry()` until a turn of the loop that began after it ends,
     /// so Check Again shows the look it asked for.
     private(set) var isRetrying = false
@@ -166,12 +230,27 @@ final class AgentChatStore {
         program.mayShareSessionServer && source.processInfo != nil && !hasCheckedLaunch
     }
 
+    /// On herdr-core, a check found the program in another conversation of
+    /// its own (`/clear` in Claude Code) and Chat moved there with no Send
+    /// waiting on it. The draft may have been written for the last one, so
+    /// the next Send stops once, as a Send whose own check moves Chat does,
+    /// unless the draft changed since.
+    @ObservationIgnored private var movedSinceDraft = false
+    /// The Composer's draft as last seen (`draftDidChange`), and what it held
+    /// when Chat moved: a refused Send puts the same text back, which is no
+    /// draft written since.
+    @ObservationIgnored private var composerDraft = ""
+    @ObservationIgnored private var draftAtMove = ""
+    /// When the one check `Timing.lateEvidenceCheck` allows after an idle report
+    /// is due. Only a running loop, which a Chat on screen keeps, takes it; one
+    /// overdue when Chat opens is the check opening makes anyway.
+    @ObservationIgnored private var lateEvidenceCheckAt: Date?
     @ObservationIgnored private let source: AgentChatSource
     /// The pictures image rows show, read over the same Host connection.
     @ObservationIgnored let thumbnails: ChatImageThumbnails
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private let now: @Sendable () -> Date
-    @ObservationIgnored private var agent: Agent
+    @ObservationIgnored private(set) var agent: Agent
     /// Whether this conversation has had a live read. Until then the
     /// Background Work list stays empty: saved work alone could have ended
     /// long ago (ADR 0024).
@@ -188,6 +267,22 @@ final class AgentChatStore {
     /// another (`checkStartScreen`).
     @ObservationIgnored private var staleSession: ConversationReference?
     @ObservationIgnored private var staleTitle: String?
+    /// Whether the last check bound a confirmed pick, which a send guard watches.
+    @ObservationIgnored private var followsPick = false
+    /// Sends made on the pick, until a turn's end says whether each arrived.
+    @ObservationIgnored private var pickGuardSends: Set<UUID> = []
+    @ObservationIgnored private var pickGuardTurnEnd: Date?
+    /// When the last read began that reached the end of what the source holds. Only
+    /// such a read shows a message is not there.
+    @ObservationIgnored private var pickGuardReadStart: Date?
+    /// Candidates the user has read, the only ones a confirmation may name.
+    @ObservationIgnored private var previewedCandidates: Set<String> = []
+    /// Why the last check of the Agent's process bound nothing.
+    @ObservationIgnored private var evidenceReason: ChatUnavailableReason?
+    /// Where the last check that bound says the Agent keeps its Transcripts,
+    /// and the directory it filed this conversation under, if it said.
+    @ObservationIgnored private var evidenceRoot: String?
+    @ObservationIgnored private var evidenceDirectory: String?
     /// Retry asks the start-screen watch for a look at the screen.
     @ObservationIgnored private var screenCheckRequested = false
     /// Counts calls to `retry()`, so a turn ends `isRetrying` only when
@@ -321,6 +416,7 @@ final class AgentChatStore {
         /// First seen already delivered, so its floor is unknown.
         let isOrphan: Bool
         var deliveredAt: Date?
+        var mayNotHaveGone: Bool
     }
 
     /// Where a send's witness stands: its mark, taken when the send first
@@ -409,6 +505,9 @@ final class AgentChatStore {
         stopLoop()
         blocked.hide()
     }
+
+    /// The Chat views on screen, for a store that takes this one's place.
+    var viewerTokens: Set<UUID> { viewers }
 
     /// The app went to the background; Chat keeps its place.
     func suspend() {
@@ -538,6 +637,8 @@ final class AgentChatStore {
         guard isConnected != isHostConnected else { return }
         isHostConnected = isConnected
         guard isConnected else { return }
+        // Whatever happened meanwhile sent no event this Chat saw.
+        sessionEvidenceMayHaveChanged()
         let waiting = waitingOutputs
         for id in waiting {
             loadOutput(id)
@@ -577,7 +678,8 @@ final class AgentChatStore {
     /// session Chat has not seen.
     func noteSent() {
         lastActivity = now()
-        needsAgentRefresh = true
+        // A check of a process waits for an event: a Send had its own just now.
+        if source.sessionEvidence == nil { needsAgentRefresh = true }
         nextOpen = nil
         failedOpens = 0
         wake()
@@ -593,6 +695,7 @@ final class AgentChatStore {
         discardedSends.formIntersection(ids)
         extendedSends.formIntersection(ids)
         returnChecked.formIntersection(ids)
+        pickGuardSends.formIntersection(ids)
         refusedSends = refusedSends.filter { ids.contains($0.key) }
         compactChecked.formIntersection(ids)
         compactingSeen = compactingSeen.filter { ids.contains($0.key) }
@@ -601,9 +704,11 @@ final class AgentChatStore {
         misdirectedSends.formIntersection(ids)
         for message in messages {
             if let index = sends.firstIndex(where: { $0.id == message.id }) {
+                sends[index].mayNotHaveGone = message.mayNotHaveGone
                 guard message.isDelivered != (sends[index].deliveredAt != nil) else { continue }
                 sends[index].deliveredAt = message.isDelivered ? now() : nil
                 if message.isDelivered {
+                    if followsPick, !Self.isCommand(message.text) { pickGuardSends.insert(message.id) }
                     witnessDelivery(of: message.id)
                     noteSent()
                 }
@@ -615,7 +720,8 @@ final class AgentChatStore {
                         id: message.id, key: source.adapter.echoKey(message.text), text: message.text,
                         generation: conversationGeneration, layout: conversation.layoutGeneration,
                         floor: conversation.readOffset, knownEntries: knownEntries,
-                        isOrphan: message.isDelivered, deliveredAt: message.isDelivered ? now() : nil))
+                        isOrphan: message.isDelivered, deliveredAt: message.isDelivered ? now() : nil,
+                        mayNotHaveGone: message.mayNotHaveGone))
                 if !message.isDelivered { takeWitnessMark(for: message.id) }
             }
         }
@@ -673,7 +779,8 @@ final class AgentChatStore {
             sessionID: sessionID, transcript: conversation.transcript, activity: ChatAgentActivity(agent.status),
             polledSinceIdle: idleSince.flatMap { idle in lastReadStartedAt.map { $0 >= idle } } ?? false,
             unrecordedSendKeys: Set(recent.map(\.key)),
-            misdirectedSendKeys: Set(unrecorded.filter { misdirectedSends.contains($0.id) }.map(\.key)))
+            misdirectedSendKeys: Set(unrecorded.filter { misdirectedSends.contains($0.id) }.map(\.key)),
+            followsSessionMoves: source.sessionEvidence == nil)
     }
 
     /// The skills the Host offers, so a Codex `$name` prompt shows as the
@@ -684,13 +791,28 @@ final class AgentChatStore {
         wake()
     }
 
+    /// The core whose Transcripts this Chat keeps; see `AgentChatSource`.
+    var coreScope: String? { source.coreScope }
+
+    /// A status, turn or foreground event of the Agent's Terminal: the next
+    /// step checks its process again, however many arrived by then.
+    func sessionEvidenceMayHaveChanged() {
+        guard source.sessionEvidence != nil else { return }
+        needsAgentRefresh = true
+        wake()
+    }
+
     /// The Console's latest record of the Agent, from a snapshot or a status
     /// change.
     func agentDidChange(_ next: Agent) {
         let statusChanged = next.status != agent.status
         let sessionChanged = next.agentSession != agent.agentSession
         let identityChanged = !sameIdentity(agent, next)
-        if identityChanged { forgetStaleSession() }
+        if identityChanged {
+            forgetStaleSession()
+            evidenceReason = nil
+            sessionEvidenceMayHaveChanged()
+        }
         let reported = resolveReported(next.agentSession)
         // While the start screen marks a conversation stale, the same record
         // handed over again is no report: OpenCode changes its conversation
@@ -711,7 +833,11 @@ final class AgentChatStore {
         let activity = ChatAgentActivity(next.status)
         blocked.update(activity: activity)
         noteActivity(activity)
+        notePickGuardActivity(from: previous, to: activity)
         idleSince = activity == .idle ? now() : nil
+        lateEvidenceCheckAt =
+            activity == .idle && source.sessionEvidence != nil
+            ? timing.lateEvidenceCheck[program].map { now().addingTimeInterval($0) } : nil
         // Answering a dialog resumes the turn it interrupted.
         if activity == .working, previous != .working, previous != .blocked { turnStartedAt = now() }
         returnChecked = []
@@ -739,6 +865,10 @@ final class AgentChatStore {
         }
         await restoreIfNeeded()
         guard !Task.isCancelled else { return }
+        if let due = lateEvidenceCheckAt, now() >= due {
+            lateEvidenceCheckAt = nil
+            if evidenceReason != nil { needsAgentRefresh = true }
+        }
         if needsAgentRefresh || sessionRecheckIsDue, let fresh = await refreshAgent() {
             guard !Task.isCancelled else { return }
             await checkStartScreen(fresh)
@@ -798,6 +928,7 @@ final class AgentChatStore {
         apply(snapshot, from: engine)
         if polled || opened, case .following = snapshot.phase, snapshot.readFailure == nil {
             lastReadStartedAt = readStart
+            if !snapshot.hasUnreadRecords { pickGuardReadStart = readStart }
         }
         matchSends()
         // Persist the transcript before optional journal requests can wait
@@ -810,6 +941,8 @@ final class AgentChatStore {
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         await checkSendWitnesses()
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
+        judgePickGuard()
+        guard engine === self.engine, !isAwaitingSession else { return }
         // A journal read adds a deadline of its own, so a round whose
         // transcript read failed leaves the journals for later.
         if polled, case .following = snapshot.phase, snapshot.readFailure == nil {
@@ -907,6 +1040,11 @@ final class AgentChatStore {
     /// its deadline holds the Host's query lane until its watchdog ends it
     /// (ADR 0025).
     var interval: Duration {
+        guard let due = lateEvidenceCheckAt else { return loopPace }
+        return min(loopPace, .seconds(max(0, due.timeIntervalSince(now()))))
+    }
+
+    private var loopPace: Duration {
         if engine == nil { return .seconds(timing.sessionRecheck) }
         guard source.adapter.readsByQuery else { return pace(active: timing.activeInterval) }
         let pace = pace(active: timing.queryActiveInterval)
@@ -944,6 +1082,7 @@ final class AgentChatStore {
     // MARK: Session
 
     private var sessionRecheckIsDue: Bool {
+        guard source.sessionEvidence == nil else { return false }
         let interval: TimeInterval
         if engine == nil || isUnavailable || agentRefreshFailure != nil
             || consecutiveAgentRefreshLinkFailures > 0
@@ -966,6 +1105,14 @@ final class AgentChatStore {
         lastAgentRefresh = now()
         let recordRevision = sessionRecordRevision
         do {
+            if let sessionEvidence = source.sessionEvidence {
+                let evidence = try await sessionEvidence()
+                guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return nil }
+                agentRefreshFailure = nil
+                updateReadFailure()
+                adoptEvidence(evidence)
+                return nil
+            }
             let fresh = try await source.agentInfo()
             guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return nil }
             consecutiveAgentRefreshLinkFailures = 0
@@ -979,9 +1126,13 @@ final class AgentChatStore {
             else { return nil }
             let failure = error as? TransportError
                 ?? .channelFailed(detail: String(describing: type(of: error)))
-            consecutiveAgentRefreshLinkFailures =
-                Self.isLinkFailure(failure) ? consecutiveAgentRefreshLinkFailures + 1 : 0
-            guard consecutiveAgentRefreshLinkFailures != 1 else { return nil }
+            // A core Host's check never runs on a timer, so no second one would
+            // come to say so: it says so now.
+            if source.sessionEvidence == nil {
+                consecutiveAgentRefreshLinkFailures =
+                    Self.isLinkFailure(failure) ? consecutiveAgentRefreshLinkFailures + 1 : 0
+                guard consecutiveAgentRefreshLinkFailures != 1 else { return nil }
+            }
             agentRefreshFailure = failure
             updateReadFailure()
             return nil
@@ -1012,6 +1163,66 @@ final class AgentChatStore {
             needsLaunchCheck = true
         }
         adopt(resolveReported(fresh.agentSession), replacingAgent: identityChanged)
+    }
+
+    /// Follows what a check of the Agent's process found, as `adoptRecord` does
+    /// a herdr record.
+    private func adoptEvidence(_ evidence: ChatSessionEvidence) {
+        switch evidence {
+        case .bound(let sessionID, let transcriptRoot, let directory):
+            forgetPick()
+            let shown = followed
+            adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: directory)
+            if let shown, let followed, !followed.namesSameSession(as: shown) {
+                movedSinceDraft = true
+                draftAtMove = composerDraft
+            }
+        case .picked(let sessionID, let transcriptRoot):
+            followsPick = true
+            adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: nil)
+        case .unavailable(let reason):
+            let leavesPick = followsPick
+            forgetPick()
+            evidenceReason = reason
+            if leavesPick {
+                leavePickedConversation()
+            } else {
+                awaitSession(reason)
+            }
+        case .pickUnconfirmed(let reason):
+            evidenceReason = reason
+            awaitSession(reason)
+        }
+    }
+
+    /// Nothing the check found names a session. Whatever Chat has been showing stays
+    /// readable (`isAwaitingSession`).
+    private func awaitSession(_ reason: ChatUnavailableReason) {
+        guard resolution == .noSession else {
+            adopt(.noSession)
+            return
+        }
+        if isAwaitingSession {
+            conversation.phase = .unavailable(reason)
+        } else {
+            showUnavailable()
+        }
+    }
+
+    private func adoptBinding(sessionID: String, transcriptRoot: String?, directory: String?) {
+        evidenceReason = nil
+        evidenceDirectory = directory
+        let reference = ConversationReference(program: program, sessionID: sessionID)
+        // Its id and its file, in either order, are the conversation Chat is reading.
+        if case .following = conversation.phase, let followed, resolution == .bound(followed),
+            followed != reference, followed.namesSameSession(as: reference)
+        {
+            return
+        }
+        // The same id under another root is another file.
+        let movedRoot = followed != nil && evidenceRoot != transcriptRoot
+        evidenceRoot = transcriptRoot
+        adopt(.bound(reference), replacingAgent: movedRoot)
     }
 
     /// Due while Chat shows the conversation, after anything that may mean
@@ -1090,13 +1301,16 @@ final class AgentChatStore {
     /// Why Chat shows no conversation while it awaits a session from herdr:
     /// none reported, or only the one the program left for its home screen.
     private var awaitingReason: ChatUnavailableReason {
-        staleSession == nil ? .noSession(program) : .startScreen(program)
+        evidenceReason ?? (staleSession == nil ? .noSession(program) : .startScreen(program))
     }
 
     /// Whether the conversation shows `awaitingReason`.
     private var showsAwaitingReason: Bool {
         switch conversation.phase {
-        case .unavailable(.noSession), .unavailable(.startScreen): true
+        case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
+            .unavailable(.cannotTellSessionOnWindows), .unavailable(.cannotReadProcessesOnWindows),
+            .unavailable(.extensionNotLoaded), .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
+            true
         default: false
         }
     }
@@ -1141,12 +1355,16 @@ final class AgentChatStore {
         }
         if let engine { Task { await engine.save(force: true) } }
         followed = target
+        // What was sent went into the last conversation.
+        pickGuardSends = []
+        pickGuardTurnEnd = nil
         transcriptReadFailure = nil
         conversationGeneration += 1
         // herdr reports another session: whatever went astray, Chat follows
         // the one the Agent is in now.
         sessionConcern = nil
         lastReadStartedAt = nil
+        pickGuardReadStart = nil
         engine = target.map(makeEngine)
         restored = false
         appliedRevision = nil
@@ -1174,12 +1392,16 @@ final class AgentChatStore {
     private func showUnavailable() {
         let reason: ChatUnavailableReason =
             switch resolution {
-            case .noSession: .noSession(program)
+            case .noSession: evidenceReason ?? .noSession(program)
             case .unidentified: .unidentifiedSession(program)
             case .unsupported, .bound: .unsupportedSession
             }
         var next = ChatConversationSnapshot()
-        next.phase = .unavailable(reason)
+        // Before its first check a core Agent still may bind, with no herdr to
+        // wait for: it stays looking.
+        if source.sessionEvidence == nil || evidenceReason != nil {
+            next.phase = .unavailable(reason)
+        }
         next.readFailure = agentRefreshFailure
         if conversation != next { conversation = next }
     }
@@ -1188,14 +1410,175 @@ final class AgentChatStore {
         ChatConversationEngine(
             reference: reference,
             cacheKey: ChatCacheKey(
-                hostID: source.hostID, socketLocation: source.socketLocation, reference: reference),
-            files: source.files, cache: source.cache, adapter: source.adapter, now: now)
+                hostID: source.hostID, socketLocation: source.socketLocation, reference: reference,
+                coreScope: source.coreScope),
+            files: source.files, cache: source.cache, adapter: source.adapter,
+            transcriptRoot: source.sessionEvidence == nil ? nil : evidenceRoot,
+            sessionMayPrecedeItsStore: source.sessionEvidence != nil, now: now)
+    }
+
+    // MARK: Candidates
+
+    /// Whether Chat can list candidates: a check on a core found nothing exact. A
+    /// Codex on its shared daemon reads as another reason and gets no list, and
+    /// Herdr TUI has no picks to make (ADR 0034).
+    var offersCandidates: Bool {
+        guard acceptsPicks, case .unavailable(let reason) = conversation.phase else { return false }
+        return reason.leavesItToAPick
+    }
+
+    /// Whether this Chat's Host keeps a pick at all, which only a core does.
+    var acceptsPicks: Bool { source.picks != nil }
+
+    /// Lists candidates, on the user's request. Nothing about the Chat changes until
+    /// the user confirms one.
+    func listCandidates(keepingTo pin: TerminalCorePin? = nil) async {
+        guard let picks = source.picks, offersCandidates else { return }
+        candidates = .loading
+        pickConfirmation = .none
+        previewedCandidates = []
+        do {
+            switch try await picks.list(pin) {
+            case .listed(let list):
+                candidates = .listed(list)
+            case .sharedDaemon:
+                candidates = .unavailable(ChatUnavailableReason.codexSharedDaemon.explanation)
+            case .noProcess:
+                candidates = .unavailable(
+                    "Heeler can't read this Agent's process, and a choice needs it. Check that the program still runs in its terminal. On a Mac, a program started through a script that Apple's /bin/sh or /bin/zsh keeps running can't be read, so start it directly instead.")
+            }
+        } catch {
+            candidates = .unavailable(Self.message(for: error))
+        }
+    }
+
+    /// Reads a candidate's conversation, for the user to read before choosing it.
+    /// It touches nothing Chat follows, and its read is kept nowhere.
+    func previewCandidate(_ candidate: ChatSessionCandidate) async -> ChatCandidatePreview {
+        guard case .listed(let list) = candidates else { return .unreadable("This list is out of date.") }
+        let reference = ConversationReference(program: program, sessionID: candidate.conversationID)
+        let engine = ChatConversationEngine(
+            reference: reference,
+            cacheKey: ChatCacheKey(
+                hostID: source.hostID, socketLocation: source.socketLocation, reference: reference,
+                coreScope: source.coreScope),
+            files: source.files, cache: VolatileChatTranscriptCache(), adapter: source.adapter,
+            transcriptRoot: list.transcriptRoot, now: now)
+        let snapshot = await engine.open(directories: list.directories, context: projectionContext)
+        if case .unavailable(let reason) = snapshot.phase { return .unreadable(reason.explanation) }
+        if let failure = snapshot.readFailure { return .unreadable(failure.presentation.message) }
+        let entries = snapshot.transcript.entries.filter { entry in
+            switch entry.content {
+            case .user, .assistant: true
+            default: false
+            }
+        }
+        guard !entries.isEmpty else { return .unreadable("This conversation has no messages to show yet.") }
+        previewedCandidates.insert(candidate.id)
+        return .conversation(title: snapshot.transcript.title, entries: Array(entries.suffix(Self.previewEntryLimit)))
+    }
+
+    private static let previewEntryLimit = 40
+
+    /// Stores the user's choice as the Terminal's label, which the next check adopts
+    /// on this device and any other. Only a candidate the user has read can go, and
+    /// a write that gets no answer goes once: asking again takes a fresh list.
+    func confirmCandidate(_ candidate: ChatSessionCandidate, keepingTo pin: TerminalCorePin? = nil) async {
+        guard let picks = source.picks, case .listed(let list) = candidates, list.candidates.contains(candidate),
+            previewedCandidates.contains(candidate.id), pickConfirmation != .saving,
+            pickConfirmation != .outcomeUnknown
+        else { return }
+        pickConfirmation = .saving
+        do {
+            try await picks.confirm(candidate, list, pin)
+            pickConfirmation = .confirmed
+            candidates = .notAsked
+            sessionEvidenceMayHaveChanged()
+        } catch TransportError.coreMutationOutcomeUnknown {
+            pickConfirmation = .outcomeUnknown
+            // If it landed, the core's labels event brings it to the next check.
+            sessionEvidenceMayHaveChanged()
+        } catch {
+            pickConfirmation = .failed(Self.message(for: error))
+        }
+    }
+
+    private static func message(for error: any Error) -> String {
+        if let refusal = error as? HerdrAPIError { return refusal.message }
+        if let failure = error as? TransportError { return failure.presentation.message }
+        if let failure = error as? ChatSourceUnavailable { return failure.reason.explanation }
+        return "Heeler couldn't reach this Host. Try again."
+    }
+
+    private func forgetPick() {
+        followsPick = false
+        pickGuardSends = []
+        pickGuardTurnEnd = nil
+    }
+
+    /// The pick was all that said this is the Agent's conversation, and it no longer
+    /// stands. An exact binding that goes quiet keeps its last document readable, since
+    /// nothing says it was wrong. This one was only ever the user's word, so nothing
+    /// of it stays on screen (ADR 0034).
+    private func leavePickedConversation() {
+        resolution = .noSession
+        continuedSession = nil
+        followReference()
+    }
+
+    /// A `/` command is the program's to answer, and many never reach a Transcript,
+    /// so it says nothing about which conversation took it.
+    private static func isCommand(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/")
+    }
+
+    private func notePickGuardActivity(from previous: ChatAgentActivity, to next: ChatAgentActivity) {
+        switch next {
+        case .working, .blocked:
+            pickGuardTurnEnd = nil
+        case .idle:
+            if previous == .working || previous == .blocked, !pickGuardSends.isEmpty { pickGuardTurnEnd = now() }
+        case .unknown:
+            break
+        }
+    }
+
+    /// The send guard: once the Agent's turn has ended and a read has started since,
+    /// a message Chat sent that the bound Transcript still does not hold says the
+    /// pick is wrong, and Chat stops showing it. A message the program put back or
+    /// refused went nowhere, and one left in the input box or with no answer may not
+    /// have gone at all, so those prove nothing, unless the program's own log says
+    /// another session took it (ADR 0034). The read has to prove it too: one stopped
+    /// by its budget has not reached the message, and a source reopened at a tail short
+    /// of its start since the send may have left it before the window.
+    private func judgePickGuard() {
+        guard followsPick, let turnEnd = pickGuardTurnEnd, !pickGuardSends.isEmpty,
+            let read = pickGuardReadStart, read >= turnEnd.addingTimeInterval(timing.pickGuardSettle)
+        else { return }
+        var missing = false
+        for send in sends where pickGuardSends.contains(send.id) {
+            guard let delivered = send.deliveredAt, delivered <= turnEnd else { continue }
+            pickGuardSends.remove(send.id)
+            switch sendStatuses[send.id] {
+            case .misdirected?: missing = true
+            case .awaiting?, .overdue?:
+                let isInReadWindow = send.layout == conversation.layoutGeneration || conversation.readsFromStart
+                missing = missing || (!send.mayNotHaveGone && isInReadWindow)
+            default: break
+            }
+        }
+        pickGuardTurnEnd = nil
+        guard missing else { return }
+        // A check on its way read the label as it was.
+        sessionRecordRevision += 1
+        source.picks?.drop()
+        adoptEvidence(.unavailable(source.picks?.cannotTell() ?? .cannotTellSession(program)))
     }
 
     // MARK: Start screen
 
-    /// The start-screen watch (ADR 0025), for a program that leaves its
-    /// conversation without herdr reporting it
+    /// The start-screen watch (ADR 0025), on Herdr TUI, for a program that leaves
+    /// its conversation without herdr reporting it
     /// (`ChatProgram.leavesSessionWithoutReport`): after OpenCode's `/new`
     /// herdr keeps reporting the conversation OpenCode left for its home
     /// screen. Each record read while Chat shows the idle Agent reads the
@@ -1264,12 +1647,16 @@ final class AgentChatStore {
 
     /// The check before each send, for a program that can leave its
     /// conversation without herdr reporting it
-    /// (`ChatProgram.confirmsSessionBeforeSend`): reads the Agent's record
+    /// (`ChatProgram.confirmsSessionBeforeSend`), and on herdr-core for any
+    /// program (`confirmBindingBeforeSend`): reads the Agent's record
     /// once and adopts it, so Chat follows a session herdr newly reports,
     /// then compares the terminal title with the conversation's. Returns
     /// why the message would land outside the conversation Chat shows, or
     /// nil to go on.
     func confirmSessionBeforeSend() async -> String? {
+        if let sessionEvidence = source.sessionEvidence {
+            return await confirmBindingBeforeSend(sessionEvidence)
+        }
         guard program.confirmsSessionBeforeSend else { return nil }
         let shown = followed
         let recordRevision = sessionRecordRevision
@@ -1289,10 +1676,83 @@ final class AgentChatStore {
         }
         let verdict = OpenCodeTerminalTitle.verdict(
             terminalTitle: fresh.terminalTitleStripped, sessionTitle: conversation.transcript.title)
-        if case .differs(let title) = verdict {
-            return "\(name)'s terminal shows another conversation (\(title)). Open this one in the terminal, then send again."
-        }
+        if case .differs(let title) = verdict { return otherConversationReason(title) }
         return nil
+    }
+
+    private func otherConversationReason(_ title: String) -> String {
+        "\(program.chatName)'s terminal shows another conversation (\(title)). Open this one in the terminal, then send again."
+    }
+
+    /// Whether each send first checks the conversation. No server reports a move
+    /// on herdr-core, so there a send always asks the Host again (ADR 0034).
+    var confirmsSessionBeforeSend: Bool {
+        source.sessionEvidence != nil || program.confirmsSessionBeforeSend
+    }
+
+    /// On herdr-core: one more check of what the Host shows about the process,
+    /// then, for a program that can leave its conversation with nothing there
+    /// saying so, what its terminal's title says.
+    private func confirmBindingBeforeSend(
+        _ sessionEvidence: @Sendable () async throws -> ChatSessionEvidence
+    ) async -> String? {
+        let shown = followed
+        // Read before the check: the Send emptying the draft must not end it.
+        let movedUnseen = movedSinceDraft
+        let recordRevision = sessionRecordRevision
+        guard let evidence = try? await sessionEvidence(), !Task.isCancelled,
+            recordRevision == sessionRecordRevision
+        else { return Self.uncheckedSessionReason(program) }
+        let before = resolution
+        adoptEvidence(evidence)
+        if resolution != before { wake() }
+        let name = program.chatName
+        switch evidence {
+        case .unavailable, .pickUnconfirmed:
+            return "Heeler can't tell which conversation \(name) shows, so it sent nothing."
+        case .bound, .picked:
+            break
+        }
+        let isSameConversation =
+            switch (followed, shown) {
+            case (let followed?, let shown?): followed.namesSameSession(as: shown)
+            default: followed == shown
+            }
+        if !isSameConversation {
+            movedSinceDraft = false
+            return "\(name) now shows another conversation. Chat is switching to it; check it, then send again."
+        }
+        if movedUnseen, movedSinceDraft {
+            movedSinceDraft = false
+            return "\(name) moved to another conversation, which Chat now shows. Check it, then send again."
+        }
+        return program.confirmsSessionBeforeSend ? coreTitleConcern : nil
+    }
+
+    /// The Composer's draft changed. Text written since Chat moved is for the
+    /// conversation it shows now. Emptying it, as a Send does, says nothing,
+    /// and nor does a refused Send putting the same text back.
+    func draftDidChange(to draft: String) {
+        composerDraft = draft
+        guard !draft.isEmpty, draft != draftAtMove else { return }
+        movedSinceDraft = false
+    }
+
+    /// No herdr reports OpenCode's moves on a core and its argv keeps the id it
+    /// started with, so the check above still binds that conversation and the title
+    /// is what is left to tell (ADR 0034). It reads the Console's latest record, which
+    /// the core's title events keep, and is stricter than Herdr TUI's about
+    /// `OpenCode`, where herdr reports the conversation that title may stand for.
+    private var coreTitleConcern: String? {
+        let title = agent.terminalTitle.map(TerminalTitleGlyphs.strip)
+        let sessionTitle = conversation.transcript.title
+        if case .differs(let shown) = OpenCodeTerminalTitle.verdict(terminalTitle: title, sessionTitle: sessionTitle) {
+            return otherConversationReason(shown)
+        }
+        guard title == OpenCodeTerminalTitle.untitled,
+            OpenCodeTerminalTitle.expected(sessionTitle: sessionTitle) != OpenCodeTerminalTitle.untitled
+        else { return nil }
+        return "\(program.chatName)'s terminal isn't showing this conversation. Open it in the terminal, then send again."
     }
 
     /// Why a send that couldn't be checked sent nothing: the Agent's record
@@ -1401,13 +1861,14 @@ final class AgentChatStore {
         let delay = delays.isEmpty ? 0 : delays[min(failedOpens, delays.count - 1)]
         failedOpens += 1
         nextOpen = now().addingTimeInterval(delay)
-        // Not found may mean the session moved on: ask herdr again first.
-        needsAgentRefresh = true
+        // Not found may mean the session moved on: ask herdr again first. A
+        // check of a process waits for an event, or this would be its timer.
+        if source.sessionEvidence == nil { needsAgentRefresh = true }
     }
 
     private var directories: [String] {
         var directories: [String] = []
-        for directory in [agent.foregroundCwd, agent.cwd].compactMap(\.self)
+        for directory in [evidenceDirectory, agent.foregroundCwd, agent.cwd].compactMap(\.self)
         where !directory.isEmpty && !directories.contains(directory) {
             directories.append(directory)
         }
@@ -1571,9 +2032,10 @@ final class AgentChatStore {
         let oldestAwaiting = sends.compactMap { statuses[$0.id] == .awaiting ? $0.deliveredAt : nil }.min()
         busySpells.removeAll { spell in oldestAwaiting.map { spell.end <= $0 } ?? true }
         // The program may have forked into a session herdr has not
-        // reported through the snapshot yet.
+        // reported through the snapshot yet. A check of a process waits for
+        // an event, or this clock would be its timer.
         if becameOverdue {
-            needsAgentRefresh = true
+            if source.sessionEvidence == nil { needsAgentRefresh = true }
             needsRelocate = true
             wake()
         }
@@ -1997,7 +2459,8 @@ extension ChatProgram {
     /// idles (`AgentChatStore.checkStartScreen`). OpenCode 2.0.32's `/new`
     /// opens its home screen, where herdr's integration reports nothing and
     /// herdr keeps the conversation it left (ADR 0025). Opting in needs the
-    /// program's screen reader and terminal title in the watch.
+    /// program's screen reader and terminal title in the watch. It runs on
+    /// Herdr TUI only: a core has no record to re-read (ADR 0034).
     var leavesSessionWithoutReport: Bool {
         switch self {
         case .claude, .codex, .pi, .omp, .grok: false

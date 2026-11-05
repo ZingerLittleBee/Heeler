@@ -63,6 +63,220 @@ struct ConsoleStoreTests {
             tabPaneCount: tabPaneCount)
     }
 
+    /// The Herdr TUI projection speaks herdr's API, which a core does not
+    /// serve, so a core Host gets a session of its own and never that one
+    /// (ADR 0032).
+    @Test func aCoreHostNeverGetsAHerdrTUISession() async throws {
+        let tui = Host.fixture()
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        let inventory = SessionSnapshot(
+            agents: [.fixture(paneID: "w1:p1")], layouts: [],
+            panes: [
+                PaneInfo(
+                    agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1,
+                    tabID: "w1:t1", terminalID: "term", workspaceID: "w1")
+            ],
+            protocolVersion: 17, tabs: [], version: "0.7.5-fake",
+            workspaces: [.fixture(workspaceID: "w1", label: "Proj")])
+        let scripted = [
+            tui.id: ScriptedTransport(snapshot: inventory),
+            core.id: ScriptedTransport(snapshot: inventory),
+        ]
+        let sessionsMade = Mutex<[Host.ID]>([])
+        let dials = Mutex<[Host.ID]>([])
+        let coreSessionsMade = Mutex<[Host.ID]>([])
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            makeSession: { host, subscriptions in
+                sessionsMade.withLock { $0.append(host.id) }
+                return EventsSession(
+                    subscriptions: subscriptions,
+                    connect: {
+                        dials.withLock { $0.append(host.id) }
+                        guard let transport = scripted[host.id] else {
+                            throw TransportError.sshUnreachable(detail: "unscripted host")
+                        }
+                        return transport
+                    },
+                    reconnectPolicy: Self.fastPolicy,
+                    keepalive: nil)
+            },
+            makeCoreSession: { host in
+                coreSessionsMade.withLock { $0.append(host.id) }
+                return HerdrCoreHostSession(
+                    connect: { throw TransportError.herdrCoreNotInstalled }, keepalive: nil)
+            })
+        defer { store.setHosts([]) }
+
+        store.setHosts([core, tui])
+        await store.resume()
+        await store.retryHost(core.id)
+        await store.reactivate()
+        try await waitUntil("the Herdr TUI Host is listed") { store.agents.count == 1 }
+        try await waitUntil("the core Host reads its failure") {
+            store.hostStatuses[core.id] == .failed(.herdrCoreNotInstalled)
+        }
+
+        #expect(sessionsMade.withLock { $0 } == [tui.id])
+        #expect(coreSessionsMade.withLock { $0 } == [core.id])
+        #expect(dials.withLock { Set($0) } == [tui.id])
+        #expect(store.agents.map(\.hostID) == [tui.id])
+        #expect(store.terminals.map(\.hostID) == [tui.id])
+        #expect(store.workspaces(for: tui.id).map(\.id) == ["w1"])
+        #expect(store.workspaces(for: core.id).isEmpty)
+    }
+
+    /// Nothing half-configured reaches the Console: an unconfirmed Host is not
+    /// dialed, and confirming it as Herdr TUI brings it in as any other Host.
+    @Test func anUnconfirmedHostStaysOutUntilConfirmedAsHerdrTUI() async throws {
+        let catalog = HostStore(volatileHosts: [
+            Host(address: "box.example", username: "dev", serverKind: .unconfirmed)
+        ])
+        let id = try #require(catalog.hosts.first?.id)
+        let transport = ScriptedTransport(snapshot: SessionSnapshot(
+            agents: [.fixture(paneID: "w1:p1")], layouts: [],
+            panes: [
+                PaneInfo(
+                    agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1,
+                    tabID: "w1:t1", terminalID: "term", workspaceID: "w1")
+            ],
+            protocolVersion: 17, tabs: [], version: "0.7.5-fake",
+            workspaces: [.fixture(workspaceID: "w1", label: "Proj")]))
+        let dials = Mutex<[Host.ID]>([])
+        let store = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { host, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: {
+                    dials.withLock { $0.append(host.id) }
+                    return transport
+                },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: nil)
+        }
+        defer { store.setHosts([]) }
+
+        store.setHosts(catalog.hosts)
+        await store.resume()
+        await store.retryHost(id)
+        await store.reactivate()
+
+        #expect(dials.withLock { $0 }.isEmpty)
+        #expect(store.agents.isEmpty)
+        #expect(store.hostStatuses[id] == nil)
+
+        try catalog.confirmServerKind(.herdrTUI, for: id)
+        store.setHosts(catalog.hosts)
+        await store.resume()
+        try await waitUntil("the confirmed Host is listed") { store.agents.count == 1 }
+
+        #expect(dials.withLock { Set($0) } == [id])
+        #expect(store.agents.map(\.hostID) == [id])
+    }
+
+    /// A core Host has no plugin to read: its Usage comes from its Host Helper,
+    /// and with none it says so rather than blaming the link.
+    @Test func aCoreHostsUsageNeedsTheHostHelper() async {
+        let helper = ScriptedCoreHost(channel: .refused)
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        let store = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { ScriptedTransport(snapshot: .fixture(agents: [])) }, keepalive: nil)
+            },
+            connectCore: { _ in helper.transport() })
+        defer { store.setHosts([]) }
+        store.setHosts([core])
+
+        let usage = store.agentUsageStore(for: core.id)
+        await usage.refresh()
+
+        #expect(usage.state == .hostHelper(.notInstalled))
+
+        store.setHosts([])
+        #expect(store.agentUsageStore(for: core.id) !== usage)
+    }
+
+    /// A TUI Host beside it still reads its plugin, so the answer is the
+    /// Server Kind's and not a missing connection's.
+    @Test func aCoreHostsPluginStatusIsUnsupportedByServerKind() async {
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        let tui = Host.fixture()
+        let store = makeStore(transports: [tui.id: ScriptedTransport()])
+        defer { store.setHosts([]) }
+        store.setHosts([core, tui])
+
+        let statuses = HeelerPluginStatusStore()
+        await statuses.refresh([core.id, tui.id], transports: store)
+
+        #expect(statuses.status(for: core.id) == .unsupportedServerKind)
+        #expect(statuses.status(for: tui.id) != .unsupportedServerKind)
+    }
+
+    /// Herdr TUI reports no exit, so its Agent Ended dialog keeps these words.
+    @Test func aHerdrTUIAgentEndedKeepsItsExactWords() {
+        let tui = Host.fixture()
+        let store = makeStore(transports: [tui.id: ScriptedTransport()])
+        defer { store.setHosts([]) }
+        store.setHosts([tui])
+
+        let id = ConsoleAgent.ID(hostID: tui.id, paneID: "w1-1")
+        #expect(store.agentEndedMessage(of: id, keepingTo: store.corePin(on: tui.id)) == nil)
+        #expect(TerminalStatusPresentation.finished.message == "Its program exited, so it will not come back.")
+    }
+
+    /// A Herdr TUI Host has no core, so a window holds nothing for its details: the
+    /// store's session is theirs, and a pick from the list replaces none of them.
+    @Test func aHerdrTUIDetailHasNoCoreToKeepTo() {
+        let tui = Host.fixture()
+        let store = makeStore(transports: [tui.id: ScriptedTransport()])
+        defer { store.setHosts([]) }
+        store.setHosts([tui])
+        let agent = ConsoleAgent(
+            hostID: tui.id, hostName: tui.displayName,
+            agent: Agent(
+                terminalID: "t", kind: "claude", title: "", status: .idle,
+                workspaceID: "w", tabID: "t", paneID: "w1-1", cwd: "", revision: 1),
+            workspaceLabel: nil, repositoryCheckout: nil, snapshotOrder: 0)
+        let cores = ConsoleDetailCores()
+
+        #expect(cores.session(for: agent, console: store) === store.composerSession(for: agent))
+        #expect(cores.listSelection(for: .agent(agent.id), console: store) == .agent(agent.id))
+        #expect(!cores.openAnew(.agent(agent.id), console: store))
+        #expect(cores.session(for: agent, console: store) === store.composerSession(for: agent))
+    }
+
+    /// Actions only Herdr TUI can serve are offered by Server Kind, not
+    /// attempted and failed (ADR 0032). Later tickets turn on each core action
+    /// as they build it.
+    @Test func aHerdrTUIHostOffersEveryActionAndACoreHostNone() {
+        let tui = Host.fixture()
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        let store = makeStore(transports: [:])
+        defer { store.setHosts([]) }
+        store.setHosts([tui, core])
+
+        #expect(store.capabilities(for: tui.id) == HostCapabilities(
+            startsAgents: true, startsTerminals: true, renameAgent: true, renamesWorkspaces: true, worktrees: true, uploads: true,
+            composerSend: true, chat: true, tabNames: true, closeTab: true,
+            syncLayoutFromPlugin: true))
+        #expect(store.capabilities(for: tui.id).renameWorkspace(id: "w1"))
+        // Nothing is known of this core Host's platform before its first attempt.
+        #expect(store.capabilities(for: core.id) == HostCapabilities(
+            startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
+            composerSend: false, chat: false, tabNames: false, closeTab: true,
+            syncLayoutFromPlugin: false, takeOver: false, composerStop: false))
+        #expect(!store.capabilities(for: core.id).renameWorkspace(id: "w1"))
+    }
+
+    /// A detail can outlive its Host's catalog entry for a moment; its actions
+    /// stay as they were and fail as not connected if tried.
+    @Test func aHostOutsideTheCatalogKeepsTheActionsItOffered() {
+        let store = makeStore(transports: [:])
+
+        #expect(store.capabilities(for: UUID()) == HostCapabilities(serverKind: .herdrTUI))
+    }
+
     @Test func theLastTabInAWorkspaceAsksBeforeClosingIt() {
         // (#swipe): the confirmation only stands between the swipe and a
         // close when the tab is the workspace's last one — closing it takes
@@ -482,9 +696,17 @@ struct ConsoleStoreTests {
             console.hostStatuses[host.id] == .connected
         }
         try await ceremony.register(host: host, deviceToken: token, over: transport)
+        // Every platform's acceptance cleanup found these left after Remove Host,
+        // and an empty Live Activity list written for a Host never opted in.
+        let knownHosts = InMemoryKnownHostsStore()
+        let trust = HostKeyTrust.hostKey(host.id)
+        await knownHosts.setFingerprint(
+            HostKeyFingerprint(publicKeyBlob: Data("key".utf8)), host: trust.host, port: trust.port)
+        let recents = RecentLaunchStore(defaults: defaults)
+        recents.rememberWorkspace("w1", for: host.id)
         let dependencies = HostRemovalDependencies.app(
             console: console, notificationPreferences: preferences,
-            liveActivities: liveActivities)
+            liveActivities: liveActivities, knownHosts: knownHosts, recentLaunches: recents)
         let removal = HostRemovalStore(store: hostStore)
 
         removal.requestRemoval([host.id], dependencies: dependencies)
@@ -499,6 +721,9 @@ struct ConsoleStoreTests {
         let file = try NotificationRegistrationFile.decode(
             await transport.notificationRegistration)
         #expect(file.devices.isEmpty)
+        #expect(await knownHosts.fingerprints(host: trust.host, port: trust.port).isEmpty)
+        #expect(recents.workspaceID(for: host.id) == nil)
+        #expect(defaults.object(forKey: "live-activity.enabled-hosts") == nil)
 
         // What the app model's catalog observer does next.
         console.setHosts(hostStore.hosts)
@@ -985,7 +1210,7 @@ struct ConsoleStoreTests {
         }
 
         #expect(store.agents.isEmpty)
-        #expect(store.agentForDetail(agent.id) == agent)
+        #expect(store.detailAgent(for: agent.id) == agent)
         #expect(!composer.canSend)
         #expect(await composer.send() == .ignored)
         #expect(composer.draft == "keep this unsent draft")
@@ -996,7 +1221,7 @@ struct ConsoleStoreTests {
         try await waitUntil("a fresh empty inventory must retire the retained detail") {
             store.hostStatuses[host.id] == .connected && !store.hostsAwaitingSnapshot.contains(host.id)
         }
-        #expect(store.agentForDetail(agent.id) == nil)
+        #expect(store.detailAgent(for: agent.id) == nil)
         #expect(composer.draft == "keep this unsent draft")
 
         store.setHosts([])
@@ -1038,6 +1263,29 @@ struct ConsoleStoreTests {
 
         #expect(store.agents.isEmpty)
 
+        store.setHosts([])
+    }
+
+    /// The explanation and its edit belong to herdr-core: on a Herdr TUI Host an
+    /// Unknown Grok Build Agent has neither, and no edit reaches its files.
+    @Test func aHerdrTUIAgentHasNoStatusExplanationOrHarnessEdit() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .unknown, kind: "grok")]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Agent should list") { !store.agents.isEmpty }
+        #expect(store.coreStatusExplanations.isEmpty)
+
+        let flow = store.grokBuildEditFlow(on: host.id, process: 70)
+        await flow.review()
+        #expect(
+            flow.phase
+                == .failed(
+                    TransportError.hostFeatureUnavailable(feature: "Editing Host files").presentation.message))
+        #expect(store.harnessEdits.edits(on: host.id).isEmpty)
         store.setHosts([])
     }
 
@@ -2904,7 +3152,7 @@ struct ConsoleStoreTests {
             store.hostStatuses[host.id] == .suspended
         }
         #expect(store.agents.isEmpty)
-        #expect(store.agentForDetail(agent.id) == agent)
+        #expect(store.detailAgent(for: agent.id) == agent)
         #expect(!store.isHostReadyForInput(host.id))
     }
 
@@ -2925,7 +3173,7 @@ struct ConsoleStoreTests {
             store.hostStatuses[host.id] == .connected
         }
         let runner = store.terminalRunner(for: host.id)
-        let stager = store.imageStager(for: host.id)
+        let stager = store.imageStager(for: host.id, beside: "w1:p1", keepingTo: TerminalCorePin())
 
         var edited = host
         edited.name = "alpha (renamed)"

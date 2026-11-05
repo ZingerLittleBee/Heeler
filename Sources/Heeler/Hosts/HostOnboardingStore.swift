@@ -35,13 +35,24 @@ struct HostOnboardingDependencies: Sendable {
     var connector: any TransportConnector = SSHTransportConnector()
     var knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared
     var credentials = HostCredentialsProvider()
+    /// An action on a Host's Helper has run, so what follows it should look again.
+    var hostHelperDidChange: @MainActor @Sendable () -> Void = {}
+    /// What this device applied, for removing the Helper to undo what goes with it.
+    var harnessEdits: HarnessConfigEditStore?
+    /// Add Host's detection found a native Windows machine behind this Host, which
+    /// its first connection may never reach to say.
+    var noteWindowsCore: @MainActor @Sendable (Host.ID) -> Void = { _ in }
+    /// The kernel a herdr-core Host's locator last found, nil before any has.
+    var coreKernel: @MainActor @Sendable (Host.ID) -> String? = { _ in nil }
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
 /// connect (surfacing the TOFU first-connect prompt), discover sessions,
 /// ping the selected session, and render the outcome as the checklist. A
 /// Host with a herdr endpoint (ADR 0023) skips discovery, because its socket
-/// already fixes the session, and must instead prove its launcher answers.
+/// already fixes the session, and must instead prove its launcher answers. A
+/// Host added unconfirmed first detects which servers it runs and has the user
+/// confirm one kind, then runs that kind's checks (ADR 0031).
 @MainActor
 @Observable
 final class HostOnboardingStore {
@@ -77,8 +88,22 @@ final class HostOnboardingStore {
     /// Set when the last run stopped at an Overlay Network that needs an
     /// interactive sign-in; the UI offers to open it.
     private(set) var overlayLoginURL: URL?
+    /// What an unconfirmed Host's one detection exec found.
+    private(set) var detection: ServerKindDetection?
+    /// Why a reached Host could not be read, which leaves its kind to the user.
+    private(set) var detectionFailure: String?
+    /// Why the last confirmation was refused, for the user to read.
+    private(set) var confirmationRefusal: String?
+    /// What the locator found on a core Host the last checks read as not running.
+    private var notRunningCore: HerdrCoreLocator.Location?
+    /// Set from the user's request until they answer it.
+    private(set) var coreStartConfirmation: CoreStartConfirmation?
+    private(set) var coreStart: CoreStartState = .idle
 
-    let host: Host
+    /// A herdr-core Host's Host Helper, read with its checks.
+    private(set) var hostHelper: HostHelperStore?
+
+    private(set) var host: Host
 
     @ObservationIgnored private let connector: any TransportConnector
     @ObservationIgnored private let knownHosts: any KnownHostsStore
@@ -87,6 +112,8 @@ final class HostOnboardingStore {
     /// The transport deliberately has no confirmation timeout (#2); the UI
     /// layer owns it (spec #20). An unanswered candidate is declined.
     @ObservationIgnored private let fingerprintTimeout: Duration
+    @ObservationIgnored private let coreHolderRestart: HerdrCoreHolderRestartPolicy
+    @ObservationIgnored private let sleep: HerdrCoreHostSession.Sleep
     @ObservationIgnored private var fingerprintDecision: CheckedContinuation<Bool, Never>?
     @ObservationIgnored private var fingerprintTimeoutTask: Task<Void, Never>?
     /// Identifies the prompt `fingerprintDecision` answers.
@@ -94,6 +121,13 @@ final class HostOnboardingStore {
     @ObservationIgnored private var checks: Task<Void, Never>?
     /// Identifies the run whose trust prompts may still be shown.
     @ObservationIgnored private var currentRun = UUID()
+    @ObservationIgnored private let hostHelperDidChange: @MainActor () -> Void
+    @ObservationIgnored private let noteWindowsCore: @MainActor (Host.ID) -> Void
+    @ObservationIgnored private let hostHelperHealthGap: @Sendable () async throws -> Void
+    @ObservationIgnored private let harnessEdits: HarnessConfigEditStore?
+    /// A Mac's second health read, which outlives the run that began it and owns
+    /// that run's connection until it ends.
+    @ObservationIgnored private(set) var hostHelperConfirmation: Task<Void, Never>?
 
     init(
         host: Host,
@@ -101,20 +135,37 @@ final class HostOnboardingStore {
         knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
         credentials: HostCredentialsProvider = HostCredentialsProvider(),
         overlays: OverlayNetworkRuntime = .shared,
-        fingerprintTimeout: Duration = .seconds(60)
+        fingerprintTimeout: Duration = .seconds(60),
+        coreHolderRestart: HerdrCoreHolderRestartPolicy = .default,
+        sleep: @escaping HerdrCoreHostSession.Sleep = { try await Task.sleep(for: $0) },
+        hostHelperDidChange: @escaping @MainActor () -> Void = {},
+        hostHelperHealthGap: @escaping @Sendable () async throws -> Void = {
+            try await Task.sleep(for: HostHelperLaunchAgent.healthGap)
+        },
+        harnessEdits: HarnessConfigEditStore? = nil,
+        noteWindowsCore: @escaping @MainActor (Host.ID) -> Void = { _ in }
     ) {
+        self.noteWindowsCore = noteWindowsCore
+        self.hostHelperHealthGap = hostHelperHealthGap
+        self.harnessEdits = harnessEdits
+        self.coreHolderRestart = coreHolderRestart
+        self.sleep = sleep
         self.host = host
         self.connector = connector
         self.knownHosts = knownHosts
         self.credentials = credentials
         self.overlays = overlays
         self.fingerprintTimeout = fingerprintTimeout
+        self.hostHelperDidChange = hostHelperDidChange
     }
 
     /// Runs the preflight once: connect + ping, rendered into `report`.
     /// `cancelChecks()` (or cancelling the caller) ends it at once.
-    func runChecks() async {
-        guard phase != .running, pluginAction != .running else { return }
+    /// `coreReportedRunning` is true only straight after a Start, when the core
+    /// has just said it runs, which a refused channel then cannot contradict.
+    func runChecks(coreReportedRunning: Bool = false) async {
+        guard phase != .running, pluginAction != .running, coreStart != .running else { return }
+        cancelHostHelperConfirmation()
         phase = .running
         pluginAction = .idle
         report = nil
@@ -124,9 +175,20 @@ final class HostOnboardingStore {
         pluginStatus = .checking
         pendingHostKeyReplacement = nil
         overlayLoginURL = nil
+        detection = nil
+        detectionFailure = nil
+        confirmationRefusal = nil
+        notRunningCore = nil
+        coreStartConfirmation = nil
+        coreStart = .idle
+        if host.serverKind == .herdrCore {
+            let hostHelper = hostHelper ?? makeHostHelper()
+            hostHelper.checkStarted()
+            self.hostHelper = hostHelper
+        }
         let run = UUID()
         currentRun = run
-        let task = Task { await self.performChecks(run: run) }
+        let task = Task { await self.performChecks(run: run, coreReportedRunning: coreReportedRunning) }
         checks = task
         await withTaskCancellationHandler {
             await task.value
@@ -138,9 +200,22 @@ final class HostOnboardingStore {
         if task.isCancelled {
             markCancelled()
         } else {
-            if pluginStatus == .checking { pluginStatus = .unavailable }
+            settleUnreadStatuses()
             phase = .finished
         }
+    }
+
+    /// What a finished run never got to read is unknown, not still being checked.
+    private func settleUnreadStatuses() {
+        if pluginStatus == .checking { pluginStatus = .unavailable }
+        guard hostHelperConfirmation == nil else { return }
+        hostHelper?.checkEnded(
+            unreadBecause: report?.failureHint ?? "The checks ended before reading this Host.")
+    }
+
+    private func cancelHostHelperConfirmation() {
+        hostHelperConfirmation?.cancel()
+        hostHelperConfirmation = nil
     }
 
     /// Stops a preflight still connecting — through an Overlay Network
@@ -159,13 +234,14 @@ final class HostOnboardingStore {
         resolveFingerprint(false)
         report = .failure(TransportError.cancelled, authMethod: host.authMethod)
         overlayLoginURL = nil
-        if pluginStatus == .checking { pluginStatus = .unavailable }
+        cancelHostHelperConfirmation()
+        settleUnreadStatuses()
         phase = .finished
     }
 
     /// The checks themselves. Every write after an await first checks for
     /// cancellation: a cancelled run may still finish in the background.
-    private func performChecks(run: UUID) async {
+    private func performChecks(run: UUID, coreReportedRunning: Bool) async {
         let resolved: SSHCredentials
         do {
             resolved = try credentials.credentials(for: host)
@@ -192,6 +268,16 @@ final class HostOnboardingStore {
         }
         let settings = SSHTransportSettings(
             host: host, credentials: resolved, hostKeyPolicy: policy, overlays: overlays)
+        switch host.serverKind {
+        case .unconfirmed:
+            await performDetection(settings: settings)
+            return
+        case .herdrCore:
+            await performCoreChecks(settings: settings, coreReportedRunning: coreReportedRunning)
+            return
+        case .herdrTUI:
+            break
+        }
         do {
             let transport = try await connector.connect(settings: settings)
             guard !Task.isCancelled else {
@@ -244,6 +330,281 @@ final class HostOnboardingStore {
             captureHostKeyReplacement(error)
             report = failureReport(error)
         }
+    }
+
+    /// A core Host's preflight: the locator, `hello` with its feature gate, and
+    /// close. It starts nothing. The plugin does not run here, whatever the core
+    /// answers, and no Herdr TUI session is looked for.
+    private func performCoreChecks(settings: SSHTransportSettings, coreReportedRunning: Bool) async {
+        pluginStatus = .unsupportedServerKind
+        do {
+            let transport = try await connector.connectCore(settings: settings)
+            guard !Task.isCancelled else {
+                try? await transport.close()
+                return
+            }
+            // The Helper does not need a core, so it reads whether one runs or not.
+            // Beside the core's checks, and a Mac's second health read, over ten
+            // seconds away, goes on after them: they should not wait for it.
+            let helper = hostHelper
+            async let helperRead = helper?.beginRefresh(over: transport)
+            do {
+                // Straight after a Start nothing is on its way back: the core
+                // said it runs, so a refused channel is SSH's refusal.
+                let info =
+                    coreReportedRunning
+                    ? try await transport.hello()
+                    : try await transport.helloAcrossHolderRestart(
+                        policy: coreHolderRestart, sleep: sleep, isWanted: { !Task.isCancelled })
+                if !Task.isCancelled {
+                    serverInfo = ServerInfo(version: info.version, protocolVersion: info.generation)
+                    report = .allPassed
+                }
+            } catch let TransportError.herdrCoreNotRunning(socketPath, _) where coreReportedRunning {
+                if !Task.isCancelled {
+                    report = failureReport(TransportError.herdrCoreForwardingRefused(socketPath: socketPath))
+                }
+            } catch {
+                let location = await transport.lastLocation()
+                if !Task.isCancelled {
+                    if case TransportError.herdrCoreNotRunning = error { notRunningCore = location }
+                    report = failureReport(error)
+                }
+            }
+            guard let confirmation = await helperRead, !Task.isCancelled else {
+                try? await transport.close()
+                return
+            }
+            hostHelperConfirmation = Task {
+                await confirmation()
+                try? await transport.close()
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            captureHostKeyReplacement(error)
+            report = failureReport(error)
+        }
+    }
+
+    /// The Helper's actions dial for themselves, after the preflight settled the
+    /// Host key: a key that still needs trusting is declined.
+    private func makeHostHelper() -> HostHelperStore {
+        let host = host
+        let connector = connector
+        let knownHosts = knownHosts
+        let credentials = credentials
+        let overlays = overlays
+        let store = HostHelperStore(
+            connect: {
+                let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
+                return try await connector.connectCore(
+                    settings: SSHTransportSettings(
+                        host: host, credentials: try credentials.credentials(for: host),
+                        hostKeyPolicy: policy, overlays: overlays))
+            },
+            healthGap: hostHelperHealthGap,
+            undoEdits: { [harnessEdits, hostID = host.id] services in
+                try await harnessEdits?.undoEditsGoingWithTheHelper(on: hostID, over: services)
+            })
+        store.onChanged = hostHelperDidChange
+        return store
+    }
+
+    /// One exec over a connection of its own, which starts no server. A Host
+    /// out of reach reads as the preflight's connection failure.
+    private func performDetection(settings: SSHTransportSettings) async {
+        do {
+            let connection = try await connector.connectForDetection(settings: settings)
+            guard !Task.isCancelled else {
+                try? await connection.close()
+                return
+            }
+            do {
+                let found = try await ServerKindDetection.run(over: connection, session: host.sessionName)
+                if !Task.isCancelled { detection = found }
+            } catch {
+                if !Task.isCancelled {
+                    detectionFailure = (error as? TransportError)?.presentation.message ?? "\(error)"
+                }
+            }
+            try? await connection.close()
+        } catch {
+            guard !Task.isCancelled else { return }
+            captureHostKeyReplacement(error)
+            report = failureReport(error)
+        }
+    }
+
+    /// The kinds the user may confirm: none until the Host has been reached.
+    var offeredKinds: [ServerKind] {
+        guard host.serverKind == .unconfirmed else { return [] }
+        if let detection { return detection.offeredKinds }
+        return detectionFailure == nil ? [] : ServerKindDetection.offeredWithoutFindings
+    }
+
+    /// What the confirmation adds to the findings it lists, if anything.
+    var confirmationNote: String? {
+        if let detectionFailure {
+            return "Heeler could not read what this Host runs, so the choice is yours. \(detectionFailure)"
+        }
+        guard let detection else { return nil }
+        if case .sessionRefused(let reason) = detection.herdrCore {
+            return reason
+        }
+        if detection.foundKinds.count > 1 {
+            return "This machine runs both. A Host is one kind: confirm one here, then add the "
+                + "machine again for the other."
+        }
+        return detection.foundKinds.isEmpty
+            ? "Neither was found. Choose the one you will use, and its checks say how to set it up."
+            : nil
+    }
+
+    /// Confirms the Host's kind, once, then runs that kind's checks. A name refused
+    /// for that kind, by its server or by what this Host's platform can carry, leaves
+    /// the Host as it was and says why.
+    func confirmServerKind(_ kind: ServerKind, in catalog: HostStore) async {
+        guard phase != .running, offeredKinds.contains(kind) else { return }
+        if kind == .herdrCore, case .sessionRefused(let reason) = detection?.herdrCore {
+            confirmationRefusal = reason
+            return
+        }
+        if kind == .herdrCore, case .socketPathTooLong(_, let path, let limit) = detection?.herdrCore {
+            confirmationRefusal =
+                TransportError.herdrCoreSocketPathTooLong(path: path, limit: limit).presentation.message
+            return
+        }
+        if kind == .herdrCore, detection?.isNativeWindows == true { noteWindowsCore(host.id) }
+        do {
+            host = try catalog.confirmServerKind(kind, for: host.id)
+        } catch HostStoreError.sessionNameRefused(let reason) {
+            confirmationRefusal = reason
+            return
+        } catch HostStoreError.catalogUnreadable where catalog.coreCatalogLoadError != nil {
+            confirmationRefusal =
+                "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added."
+            return
+        } catch {
+            confirmationRefusal = "The Server Kind could not be saved. (\(error))"
+            return
+        }
+        await runChecks()
+    }
+
+    func dismissConfirmationRefusal() {
+        confirmationRefusal = nil
+    }
+
+    /// What this Host offers once its checks read not running: Start on Linux,
+    /// instructions anywhere else, naming the probed path and the core session.
+    var coreStartOffer: CoreStartOffer? {
+        guard phase == .finished, let notRunningCore, let path = notRunningCore.executablePath else {
+            return nil
+        }
+        if notRunningCore.isNativeWindows {
+            return .windowsInstructions(
+                command: HerdrCoreStart.windowsManualCommand(executablePath: path, session: host.sessionName))
+        }
+        return notRunningCore.appMayStartCore
+            ? .start
+            : .instructions(
+                command: HerdrCoreStart.manualCommand(executablePath: path, session: host.sessionName))
+    }
+
+    /// Asks the user. Nothing runs until `confirmCoreStart`.
+    func requestCoreStart() {
+        guard coreStartOffer == .start, coreStart != .running else { return }
+        coreStartConfirmation = CoreStartConfirmation(
+            session: HerdrCoreSessionName.normalized(host.sessionName))
+    }
+
+    func cancelCoreStart() {
+        coreStartConfirmation = nil
+    }
+
+    /// The one action that starts a core (ADR 0031), after which the checks run
+    /// again. A core that reported itself running and still refuses its channel
+    /// leaves only the SSH server to blame.
+    func confirmCoreStart() async {
+        guard let confirmation = coreStartConfirmation else { return }
+        coreStartConfirmation = nil
+        guard phase != .running, coreStart != .running, pluginAction != .running else { return }
+        coreStart = .running
+        let result = await performCoreStart()
+        switch result {
+        case .failed(let message):
+            coreStart = .failed(message: message)
+        case .started, .alreadyRunning:
+            coreStart = .idle
+            await runChecks(coreReportedRunning: true)
+            coreStart =
+                result == .started
+                ? .started(session: confirmation.session)
+                : .alreadyRunning(session: confirmation.session)
+        }
+    }
+
+    private enum CoreStartResult: Equatable {
+        case started
+        case alreadyRunning
+        case failed(message: String)
+    }
+
+    /// The start over a connection of its own, like a plugin action's. The
+    /// preflight already settled the Host key, so a key that still needs
+    /// trusting is declined rather than asked about.
+    private func performCoreStart() async -> CoreStartResult {
+        let summary = "herdr-core did not start"
+        let resolved: SSHCredentials
+        do {
+            resolved = try credentials.credentials(for: host)
+        } catch {
+            return .failed(message: "\(summary): Could not load this Host's credentials. (\(error))")
+        }
+        let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
+        let settings = SSHTransportSettings(
+            host: host, credentials: resolved, hostKeyPolicy: policy, overlays: overlays)
+        let transport: any HerdrCoreTransport
+        do {
+            transport = try await connector.connectCore(settings: settings)
+        } catch {
+            return .failed(message: "\(summary): \(Self.reason(error))")
+        }
+        let outcome: Result<HerdrCoreStart.Outcome, any Error>
+        do {
+            outcome = .success(try await transport.startCore())
+        } catch {
+            outcome = .failure(error)
+        }
+        try? await transport.close()
+        switch outcome {
+        case .success(.started):
+            return .started
+        case .success(.alreadyRunning):
+            return .alreadyRunning
+        case .success(.failed(let detail?)):
+            return .failed(message: "\(summary): \(detail).")
+        case .success(.failed(nil)):
+            return .failed(message: "\(summary).")
+        case .failure(TransportError.timedOut):
+            return .failed(
+                message: "The start did not finish in time, and a startup file in your shell may be "
+                    + "waiting for input. Run the checks again to see whether the core came up.")
+        case .failure(let error):
+            return .failed(message: "\(summary): \(Self.reason(error))")
+        }
+    }
+
+    private static func reason(_ error: any Error) -> String {
+        (error as? TransportError)?.presentation.message ?? "\(error)"
+    }
+
+    /// The Host's kind, with the version a core's `hello` reported, which is
+    /// advisory: a core other than the one this build was tested with still
+    /// connects if `hello` passes.
+    var serverKindSummary: String {
+        guard host.serverKind == .herdrCore, let serverInfo else { return host.serverKind.displayName }
+        return "\(host.serverKind.displayName) \(serverInfo.version)"
     }
 
     var pluginPresentation: HeelerPluginPresentation {
@@ -321,7 +682,7 @@ final class HostOnboardingStore {
         switch status {
         case .installed, .notInstalled:
             pluginStatus = status
-        case .checking, .unsupportedPlatform, .unavailable:
+        case .checking, .unsupportedPlatform, .unsupportedServerKind, .unavailable:
             // An unreadable plugin keeps the last status in place. A step
             // whose connection dropped may have finished all the same.
             guard let stepError else {
@@ -379,7 +740,7 @@ final class HostOnboardingStore {
                         + "changed. Run the checks again."))
             }
             installed = version
-        case .checking, .unsupportedPlatform, .unavailable:
+        case .checking, .unsupportedPlatform, .unsupportedServerKind, .unavailable:
             return .refused(HeelerPluginActionFailure(
                 message: "Heeler could not read the Host's plugin before changing it, so "
                     + "nothing changed. Run the checks again."))

@@ -253,6 +253,9 @@ struct AgentUsageLimitsView: View {
         case "noPlanLimits": return "This sign-in has no plan Usage Limits."
         case "keychainUnavailable":
             return "\(programName) could not use this Mac’s keychain. Start herdr from a terminal on the Mac, then refresh."
+        case AgentUsageReport.Program.UsageLimits.keychainNeedsUserLogin:
+            return "\(programName)’s Usage Limits need your own login on this Mac. "
+                + "The Host Helper and SSH cannot reach its login keychain."
         default: return "Usage Limits could not be read. Try refreshing."
         }
     }

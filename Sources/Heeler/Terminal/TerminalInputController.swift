@@ -46,6 +46,7 @@ final class TerminalInputController {
 
     private var nextGeneration: UInt64 = 0
     private var writer: ((Data) -> Void)?
+    private var acknowledgedWriter: (@Sendable (Data) async throws -> Void)?
     private var scroller: ((Data, Int) -> Void)?
     private var discardPendingScroll: (() -> Void)?
     private var pendingPasteText: String?
@@ -55,25 +56,47 @@ final class TerminalInputController {
     private var pendingPasteIsBracketed = false
     /// A channel can own a writer before the Attach client is ready for input.
     private var readyGeneration: SessionGeneration?
+    /// The session whose Attach said its first paint is in.
+    private var paintedGeneration: SessionGeneration?
     private var heldInsertion = ""
+    private enum SessionMilestone {
+        case ready
+        case painted
+    }
+    @ObservationIgnored private var sessionWaiters:
+        [UUID: (milestone: SessionMilestone, continuation: CheckedContinuation<Void, Never>)] = [:]
 
     var canConfirmPaste: Bool {
         isEnabled && writer != nil && pendingPasteText != nil
+    }
+
+    /// The session, once its Attach has produced output and can take input.
+    var readySession: SessionGeneration? {
+        readyGeneration == liveGeneration ? readyGeneration : nil
+    }
+
+    /// The session, once its modes can be believed: a herdr-core paint turns them
+    /// all off before it sets the program's, and output alone says only that it began.
+    var paintedSession: SessionGeneration? {
+        paintedGeneration == liveGeneration ? paintedGeneration : nil
     }
 
     @discardableResult
     func beginSession(
         writer: @escaping (Data) -> Void,
         scroller: ((Data, Int) -> Void)? = nil,
-        discardPendingScroll: (() -> Void)? = nil
+        discardPendingScroll: (() -> Void)? = nil,
+        acknowledgedWriter: (@Sendable (Data) async throws -> Void)? = nil
     ) -> SessionGeneration {
         self.discardPendingScroll?()
         nextGeneration &+= 1
         let generation = SessionGeneration(value: nextGeneration)
         liveGeneration = generation
         readyGeneration = nil
+        paintedGeneration = nil
         userMessageIndex.reset()
         self.writer = writer
+        self.acknowledgedWriter = acknowledgedWriter
         self.scroller = scroller
         self.discardPendingScroll = discardPendingScroll
         return generation
@@ -85,7 +108,9 @@ final class TerminalInputController {
         discardPendingScroll = nil
         liveGeneration = nil
         readyGeneration = nil
+        paintedGeneration = nil
         writer = nil
+        acknowledgedWriter = nil
         scroller = nil
         userMessageIndex.reset()
         if !preservingPendingPaste {
@@ -101,9 +126,58 @@ final class TerminalInputController {
         discardPendingScroll = nil
         liveGeneration = nil
         readyGeneration = nil
+        paintedGeneration = nil
         writer = nil
+        acknowledgedWriter = nil
         scroller = nil
         userMessageIndex.reset()
+    }
+
+    /// Returns once a session is ready, or the caller is cancelled.
+    func untilSessionIsReady() async {
+        guard readySession == nil else { return }
+        await untilSession(reaches: .ready)
+    }
+
+    /// Returns once a session's first paint is in, or the caller is cancelled.
+    func untilSessionHasPainted() async {
+        guard paintedSession == nil else { return }
+        await untilSession(reaches: .painted)
+    }
+
+    private func untilSession(reaches milestone: SessionMilestone) async {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume()
+                } else {
+                    sessionWaiters[id] = (milestone, continuation)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.sessionWaiters.removeValue(forKey: id)?.continuation.resume()
+            }
+        }
+    }
+
+    private func resumeSessionWaiters(at milestone: SessionMilestone) {
+        for (id, waiter) in sessionWaiters where waiter.milestone == milestone {
+            sessionWaiters[id] = nil
+            waiter.continuation.resume()
+        }
+    }
+
+    /// Writes `data` on `generation`'s session and returns once it has left.
+    /// Throws `TerminalAttachInputError.sessionEnded` when that session is gone
+    /// and nothing was written, or what the session's write threw. Nothing is
+    /// indexed: the caller records its own message once it is submitted.
+    func writeAcknowledged(_ data: Data, generation: SessionGeneration) async throws {
+        guard generation == liveGeneration, let acknowledgedWriter else {
+            throw TerminalAttachInputError.sessionEnded
+        }
+        try await acknowledgedWriter(data)
     }
 
     /// Sends ordinary terminal bytes if a live Attach session exists.
@@ -187,6 +261,13 @@ final class TerminalInputController {
         let text = heldInsertion
         heldInsertion = ""
         if !text.isEmpty { insertSnippet(text, bracketedPaste: false) }
+        resumeSessionWaiters(at: .ready)
+    }
+
+    func sessionDidPaint(_ generation: SessionGeneration) {
+        guard generation == liveGeneration, paintedGeneration != generation else { return }
+        paintedGeneration = generation
+        resumeSessionWaiters(at: .painted)
     }
 
     /// Only a departure discards text; ending or replacing a pipeline keeps it.

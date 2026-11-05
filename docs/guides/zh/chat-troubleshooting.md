@@ -5,7 +5,7 @@
 
 ## 没有 Show Chat
 
-Chat 只支持 macOS 和 Linux Host 上的 Claude Code、Codex、Pi、Oh My Pi、Grok Build 和 OpenCode。此外，Heeler 启动后，在 Host 连接上之前，**Show Chat** 也不会出现。
+使用 herdr 时，Chat 只支持 macOS 和 Linux Host 上的 Claude Code、Codex、Pi、Oh My Pi、Grok Build 和 OpenCode。herdr-core Host（包括原生 Windows 上的）在各系统上为哪些程序打开 Chat，请参阅 [herdr-core](herdr-core.md#chat)。此外，Heeler 启动后，在 Host 连接上之前，**Show Chat** 也不会出现。
 
 ## Waiting for Conversation
 
@@ -19,7 +19,7 @@ herdr 还没有告诉 Heeler 这个 Agent 正在哪个对话中。
 
 ## Codex Started Without --no-daemon
 
-Codex 启动时没有加 `--no-daemon`，而它的后台服务正在运行，所以 herdr 无法判断它的对话在哪个终端里（参见[配置 Host](chat.md#配置-host)）。herdr 重启后恢复的 Agent 也不带这个参数，除非你用了[配置 Host](chat.md#配置-host) 中的别名。请退出 Codex，然后运行 `codex --no-daemon resume` 继续原来的对话。如果已经显示了对话，顶部的横幅会提醒它可能属于另一个终端。
+Codex 启动时没有加 `--no-daemon`，而它的后台服务正在运行，所以 herdr 无法判断它的对话在哪个终端里（参见[配置 Host](chat.md#配置-host)）。herdr 重启后恢复的 Agent 也不带这个参数，除非你用了[配置 Host](chat.md#配置-host) 中的别名。请退出 Codex，然后运行 `codex --no-daemon resume` 继续原来的对话。如果 Codex 提示这个对话已在另一个应用中打开，说明后台服务仍占着它：运行 `codex app-server daemon stop`（这也会结束该服务上的其他 Codex），再恢复一次。如果已经显示了对话，顶部的横幅会提醒它可能属于另一个终端。
 
 Codex 在 [openai/codex#48500](https://github.com/openai/codex/issues/48500) 中跟踪这个问题的原因：它的后台服务运行 herdr 集成时，使用的是启动该服务的那个终端的设置。[openai/codex#44902](https://github.com/openai/codex/issues/44902) 提出了修复方案，herdr 在 [herdrdev/herdr#4649](https://github.com/herdrdev/herdr/issues/4649) 中跟进。
 
@@ -53,7 +53,7 @@ Heeler 不认识这个问题，例如 Pi 的所有问题。用卡片上的键按
 
 ## Reading OpenCode's conversations needs sqlite3 or python3 on the Host
 
-在 Host 上安装 `sqlite3` 或 Python 3，然后轻点 **Check Again**。如果 Chat 提示对话是 OpenCode 1.x 格式，请把 OpenCode 升级到 2.x。
+在 Host 上安装 `sqlite3` 或 Python 3，然后轻点 **Check Again**。如果 Chat 提示无法列出 OpenCode 1.x 的对话，请通过 **Let Chat Follow OpenCode…** 添加 Heeler 的插件，或把 OpenCode 升级到 2.x。
 
 ## SFTP is unavailable on this Host
 

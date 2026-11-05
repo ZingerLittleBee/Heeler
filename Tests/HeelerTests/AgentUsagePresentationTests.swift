@@ -106,11 +106,26 @@ struct AgentUsagePresentationTests {
 
     @Test func eachHostStateShowsItsCopy() async throws {
         let available = try AgentUsageFixture.report(refreshing: true)
+        // Integer.formatted() uses the process locale, not SwiftUI's locale
+        // environment below. Keep the fixture's exact count while allowing
+        // the device's grouping separator, as the unpriced-token test does.
+        let todayTokens = "Today: \(Int64(882_000).formatted()) tokens"
         let cases: [(AgentUsageContent, [String])] = [
             (.init(state: .loading), ["Loading Usage…"]),
             (.init(state: .requirement("Usage needs plugin 0.7.0 or newer; this Host has 0.6.2.")),
              ["Usage needs plugin 0.7.0 or newer; this Host has 0.6.2."]),
             (.init(state: .unsupportedPlatform), ["Not supported on Windows"]),
+            (.init(state: .hostHelper(.notInstalled)),
+             ["Usage needs the Host Helper. See this Host's details."]),
+            (.init(state: .hostHelper(.outdated)),
+             ["Usage needs a newer Host Helper. Update it from this Host's details."]),
+            (.init(state: .hostHelper(.waitingForCore)),
+             ["The Host Helper has not reached this session's core yet. Start the core if it is not running."]),
+            (.init(state: .hostHelper(.nodeGone)),
+             ["The Node.js the Host Helper was set up with has gone from this Host. "
+                + "Repair it from this Host's details."]),
+            (.init(state: .hostHelper(.notOnWindows)),
+             ["Usage comes with the Host Helper, which is not available on native Windows yet."]),
             (.init(state: .runtimeMissing),
              ["Use any Agent on this computer once, or restart herdr, then refresh Usage."]),
             (.init(state: .updateRequired), ["Update Heeler to read this Host's Usage format."]),
@@ -120,11 +135,11 @@ struct AgentUsagePresentationTests {
             (.init(state: .available(try AgentUsageFixture.noDataReport())),
              ["Claude Code", "Codex", "No Token Usage recorded on this Host yet."]),
             (.init(state: .available(available)),
-             ["Refreshing", "Today: 882,000 tokens"]),
+             ["Refreshing", todayTokens]),
             (.init(state: .available(available), refreshFailure: AgentUsageStore.connectionFailureMessage,
                 isRetryingRefresh: true),
              ["Last refresh failed", AgentUsageStore.connectionFailureMessage,
-              "Showing the last report while Heeler retries.", "Today: 882,000 tokens"]),
+              "Showing the last report while Heeler retries.", todayTokens]),
             (.init(state: .available(try AgentUsageFixture.report()),
                 refreshFailure: AgentUsageStore.timeoutMessage),
              ["Last refresh failed", "Showing the last report. Pull to try again."]),

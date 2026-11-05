@@ -191,10 +191,18 @@ struct OpenCodeProbeTests {
                     #expect(!refused.contains(token.lowercased()), "names \(token)")
                 }
                 if tokens.contains("sqlite_master") {
-                    // The 1.x tables are named only to tell an older store apart.
-                    #expect(statement == OpenCodeProbe.tablesStatement)
-                    #expect(
-                        Set(literals).isSubset(of: ["T ", ",", "table", "session", "message", "part", "session_v2"]))
+                    // The 1.x tables are named only to tell an older store apart, and
+                    // whether they are there to hold a session 2's tables do not.
+                    if statement.hasPrefix("SELECT 'M'") {
+                        let session = query.session.map { [$0.rawValue] } ?? []
+                        #expect(Set(literals).subtracting(session).isSubset(of: ["M", " 1", "", "table", "message"]))
+                    } else {
+                        #expect(statement == OpenCodeProbe.tablesStatement)
+                        #expect(
+                            Set(literals).isSubset(of: [
+                                "T ", ",", "table", "session", "message", "part", "session_v2",
+                            ]))
+                    }
                 }
                 if tokens.contains("pragma_table_info") {
                     // `need(t, c)` pairs, then the line's tag and separators.

@@ -395,6 +395,16 @@ public final class SSHConnection: Sendable {
     }
 
 #if DEBUG
+    /// A connection that never shook hands, carrying the identification a real
+    /// server would have sent. It is for what the app decides from that string
+    /// alone: `isConnected` is false and nothing can reach a server through it.
+    public static func neverConnectedForTesting(serverIdentification: String) -> SSHConnection {
+        SSHConnection(
+            driver: SessionDriver(),
+            hostKey: SSHHostKey(algorithm: "none", key: Data()),
+            serverIdentification: serverIdentification)
+    }
+
     public func delayNextSFTPWriteForTesting(_ delay: Duration) async {
         await driver.delayNextSFTPWriteForTesting(delay)
     }

@@ -11,9 +11,10 @@ import os
 @MainActor
 @Observable
 final class HostAccountsStore {
-    /// Runs one operation over the Host's connection.
+    /// Runs one operation over the Host's connection: on a herdr-core Host, the
+    /// Host Helper's Account file beside the Host's own file services (ADR 0033).
     typealias HostOperation = @MainActor (
-        _ operation: @escaping @Sendable (any Transport) async throws -> Void
+        _ operation: @escaping @Sendable (any HostServices & HostNotificationFiles) async throws -> Void
     ) async throws -> Void
 
     /// What one change is about, so its row can show a spinner.
@@ -107,7 +108,9 @@ final class HostAccountsStore {
     ) {
         self.init(
             hostID: hostID,
-            onHost: { operation in try await transports.withNotificationTransport(for: hostID, operation) },
+            onHost: { operation in
+                try await transports.withNotificationTransport(for: hostID) { try await operation($0) }
+            },
             usage: usage)
     }
 
@@ -336,7 +339,7 @@ final class HostAccountsStore {
     /// one of the harness's own files, or, for a harness Heeler knows none
     /// of, is a directory.
     nonisolated static func holdsHarness(
-        _ kind: SupportedAgentKind, at directory: String, over transport: any Transport
+        _ kind: SupportedAgentKind, at directory: String, over transport: any HostServices
     ) async throws -> Bool {
         let base = directory.count > 1 && directory.hasSuffix("/") ? String(directory.dropLast()) : directory
         let markers = kind.accountMarkers
@@ -350,7 +353,7 @@ final class HostAccountsStore {
     // MARK: Plumbing
 
     private func onHostValue<Value: Sendable>(
-        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+        _ operation: @escaping @Sendable (any HostServices & HostNotificationFiles) async throws -> Value
     ) async throws -> Value {
         guard let onHost else { throw TransportError.hostFeatureUnavailable(feature: "Accounts") }
         let result = OSAllocatedUnfairLock<Value?>(initialState: nil)

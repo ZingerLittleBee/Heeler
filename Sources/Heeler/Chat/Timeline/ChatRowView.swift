@@ -260,6 +260,8 @@ private struct ChatPendingBubble: View {
             nil
         case .unconfirmed:
             ("Sent. It hasn't appeared in the conversation yet.", "clock", .secondary)
+        case .outcomeUnknown:
+            ("May or may not have reached the Agent. Check the terminal.", "exclamationmark.triangle", .orange)
         case .failed(let reason):
             ("Not sent. \(reason)", "exclamationmark.triangle", .red)
         case .notDelivered:

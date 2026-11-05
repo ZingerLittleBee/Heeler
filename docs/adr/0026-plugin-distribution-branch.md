@@ -20,9 +20,10 @@ The plugin is installed from a branch that holds nothing else:
 - `make plugin` (`scripts/publish-plugin.sh`) builds the branch's tree from
   `plugin/` on `origin/main` with git plumbing: the runtime files
   (`herdr-plugin.toml`, `package.json`, `package-lock.json`, `src/`,
-  `README.md`) and the repository `LICENSE`, at the root. `test/` and
-  `test-vectors/` stay behind. An install is about 3 MB, most of it
-  `node_modules` from the unchanged `npm ci` build step.
+  `README.md`) and the repository `LICENSE`, at the root. `test/`,
+  `test-vectors/` and the Host Helper's `helper/` (ADR 0033) stay behind, and
+  a change confined to them publishes nothing. An install is about 3 MB, most
+  of it `node_modules` from the unchanged `npm ci` build step.
 - Each publish appends one commit naming its source commit on `main` and
   is pushed without force. herdr fetches only the newest commit, so the
   history costs installs nothing and keeps every version installable with

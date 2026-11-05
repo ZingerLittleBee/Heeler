@@ -1,4 +1,5 @@
 import Foundation
+import Testing
 
 @testable import Heeler
 
@@ -970,6 +971,18 @@ final actor ScriptedTransport: Transport {
         nextFilePatchReadGate = nil
         if let gate { await gate.waitUntilOpen() }
         return try outcome.get()
+    }
+
+    /// Only a herdr-core projection asks for Checkouts.
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
+        Issue.record("A Herdr TUI path asked for Checkouts: \(directories)")
+        throw ChangesReadError.unavailable
+    }
+
+    /// Only a herdr-core Worktree runs git commands: herdr runs its own.
+    func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult {
+        Issue.record("A Herdr TUI path ran git: \(command.arguments)")
+        throw ChangesReadError.unavailable
     }
 
     func gateNextSidebarLayoutRead(_ gate: ScriptedTransportCallGate) {

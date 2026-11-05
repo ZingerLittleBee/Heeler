@@ -232,11 +232,14 @@ after a reboot.
 
 ## Supported features and further checks
 
-Native Windows supports manual SSH connections, session selection, live
-Agents and Terminals, and directory browsing. Pairing, Chat, Usage, Changes,
-Skills, uploads, and notification registration are currently unavailable. Keep
-herdr running before connecting; Heeler does not start the Windows server
+A native Windows Herdr TUI Host supports manual SSH connections, session
+selection, live Agents and Terminals, and directory browsing. Pairing, Chat, Usage,
+Changes, Skills, uploads, and notification registration are currently unavailable.
+Keep herdr running before connecting; Heeler does not start the Windows server
 automatically.
+
+For a herdr-core Host on Windows, see
+[Native Windows in Connect herdr-core](herdr-core.md#native-windows).
 
 For resize, scrolling, reconnect, session isolation, and authentication
 acceptance checks, use the [Windows test checklist](native-windows-testing.md).

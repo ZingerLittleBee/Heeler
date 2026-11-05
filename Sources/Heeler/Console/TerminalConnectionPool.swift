@@ -30,6 +30,7 @@ final class TerminalConnectionPool {
         let store: ShellTerminalStore
         let surfaceRetention = TerminalSurfaceRetention()
         fileprivate let retentionID = UUID()
+        fileprivate let corePin: TerminalCorePin?
         fileprivate let lifetime: Lifetime
         fileprivate var ownerID: UUID?
         /// The window the owner shows in; see `mayClaim`.
@@ -41,12 +42,23 @@ final class TerminalConnectionPool {
         fileprivate var expiry: Task<Void, Never>?
 
         fileprivate var isVisible: Bool { ownerID != nil && (isPresented?() ?? false) }
+        /// Only a core Terminal ends this way. Nobody is looking at it, so opening
+        /// its address again means whatever runs there now.
+        fileprivate var isOverAndLeft: Bool { !isVisible && store.terminalStatus == .finished }
+
+        /// Whether this is another Terminal than the one `pin` keeps to, however its
+        /// identity reads: addresses do not cross cores.
+        fileprivate func keepsToAnotherCore(than pin: TerminalCorePin?) -> Bool {
+            guard let pin, let corePin else { return false }
+            return !corePin.keepsToSameCore(as: pin)
+        }
 
         fileprivate init(
             store: ShellTerminalStore, lifetime: Lifetime, ownerID: UUID, selectionID: UUID,
-            isPresented: @escaping @MainActor () -> Bool
+            corePin: TerminalCorePin?, isPresented: @escaping @MainActor () -> Bool
         ) {
             self.store = store
+            self.corePin = corePin
             self.lifetime = lifetime
             self.ownerID = ownerID
             self.selectionID = selectionID
@@ -83,13 +95,15 @@ final class TerminalConnectionPool {
     /// Mutations serialize through teardown, so eviction never temporarily
     /// exceeds the budget and a second tap cannot create another owner.
     ///
-    /// `sceneID` is the owner's window; see `mayClaim`.
+    /// `sceneID` is the owner's window; see `mayClaim`. `corePin` is what `runTerminal`
+    /// keeps to: this window's pipeline on another core makes way for a new one.
     func select(
         hostID: Host.ID,
         identity: ShellTerminalIdentity,
         ownerID: UUID,
         sceneID: UUID? = nil,
         generation: UInt64?,
+        corePin: TerminalCorePin? = nil,
         isPresented: @escaping @MainActor () -> Bool = { true },
         runTerminal: @escaping TerminalSessionRunner
     ) async throws -> Entry {
@@ -99,6 +113,13 @@ final class TerminalConnectionPool {
             await previous?.value
             try Task.checkCancellation()
             let key = Key(hostID: hostID, identity: identity)
+            if let entry = entries[key],
+                entry.isOverAndLeft
+                    || (entry.keepsToAnotherCore(than: corePin) && mayClaim(entry, ownerID: ownerID, sceneID: sceneID))
+            {
+                await removeEntry(key)
+                try Task.checkCancellation()
+            }
             if let entry = entries[key] {
                 guard mayClaim(entry, ownerID: ownerID, sceneID: sceneID) else {
                     throw Failure.alreadyVisible
@@ -124,7 +145,7 @@ final class TerminalConnectionPool {
                 runTerminal: runTerminal)
             let entry = Entry(
                 store: store, lifetime: lifetime, ownerID: ownerID, selectionID: selectionID,
-                isPresented: isPresented)
+                corePin: corePin, isPresented: isPresented)
             entry.ownerSceneID = sceneID
             entries[key] = entry
             do {
@@ -170,10 +191,12 @@ final class TerminalConnectionPool {
         ownerID: UUID,
         sceneID: UUID? = nil,
         generation: UInt64?,
+        corePin: TerminalCorePin? = nil,
         isPresented: @escaping @MainActor () -> Bool = { true }
     ) -> Entry? {
         let key = Key(hostID: hostID, identity: identity)
-        guard let entry = entries[key], mayClaim(entry, ownerID: ownerID, sceneID: sceneID)
+        guard let entry = entries[key], !entry.isOverAndLeft, !entry.keepsToAnotherCore(than: corePin),
+            mayClaim(entry, ownerID: ownerID, sceneID: sceneID)
         else { return nil }
         claim(
             entry, key: key, ownerID: ownerID, sceneID: sceneID, selectionID: UUID(),
@@ -205,6 +228,7 @@ final class TerminalConnectionPool {
         entry.idleSince = nil
         entry.idleID = nil
         budget.touch(key: budgetKey(key), ownerID: entry.retentionID)
+        entry.store.setTerminalViewed(true)
         entry.store.transportGenerationDidChange(generation)
     }
 
@@ -226,6 +250,7 @@ final class TerminalConnectionPool {
         entry.idleID = idleID
         budget.markIdle(key: budgetKey(key), ownerID: entry.retentionID)
         entry.store.cancelPaste()
+        entry.store.setTerminalViewed(false)
         entry.surfaceRetention.detachCallbacks(keepingKeyboard: keepingKeyboard)
         entry.expiry?.cancel()
         let timeout = idleTimeout
@@ -237,6 +262,17 @@ final class TerminalConnectionPool {
                     self.entries[key] === entry else { return }
                 await self.removeEntry(key)
             }
+        }
+    }
+
+    /// A closed window's screen still reads as selected when it disappears,
+    /// so it never releases. Left alone, its terminal would read as open in a
+    /// window that no longer exists, hold its slot, and never start its timer.
+    /// `applies` names the Hosts whose terminals follow their window.
+    func sceneDidEnd(_ sceneID: UUID, where applies: (Host.ID) -> Bool) {
+        for (key, entry) in entries where entry.ownerSceneID == sceneID && applies(key.hostID) {
+            guard let ownerID = entry.ownerID else { continue }
+            release(hostID: key.hostID, identity: key.identity, ownerID: ownerID)
         }
     }
 

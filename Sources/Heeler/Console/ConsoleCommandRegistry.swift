@@ -104,6 +104,8 @@ struct ConsoleCommandTarget {
         /// Agents list's: another tab on screen, and the Agent that list
         /// still holds for its return.
         var navigationAnchor: ConsoleAgent.ID? = nil
+        /// Whether the list on screen has a Host that can start its New item.
+        var offersNewItem = true
     }
 
     let registry: ConsoleCommandRegistry
@@ -164,7 +166,7 @@ struct ConsoleCommandTarget {
             focus: focus, hasSelection: context.selection != nil,
             agentCount: context.agents.count,
             inputMode: terminal?.inputMode ?? context.inputMode,
-            hasDraft: composer?.hasDraft() ?? false)
+            hasDraft: composer?.hasDraft() ?? false, offersNewItem: context.offersNewItem)
         guard availability.allows(action) else { return false }
         switch action {
         case .toggleInputMode: return terminal?.toggleInputMode != nil
