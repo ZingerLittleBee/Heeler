@@ -134,29 +134,47 @@ final class HostAccountsStore {
     }
 
     /// `kind`'s Default Account, then its added ones in the file's order.
-    /// Where Usage reports the harness's Accounts, its list is shown, with
-    /// each one's state; otherwise the file's.
+    /// The file is the list once it is read: Usage adds only each
+    /// Account's state, by id, and the Default Account's folder. Until the
+    /// file is read, Usage's list stands in for it.
     func rows(for kind: SupportedAgentKind) -> [Row] {
-        if let reported = usageProgram(kind)?.accounts {
-            return reported.map { account in
+        let reported = usageProgram(kind)?.accounts
+        guard loadState == .loaded || reported == nil else {
+            return (reported ?? []).map { account in
                 Row(
                     id: account.id, isDefault: account.isDefault, name: account.name,
                     directory: account.directory, state: account.state)
             }
         }
+        let byID = Dictionary((reported ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let defaultName = file.defaultDisplayName(for: kind)
         let defaultRow = Row(
             id: UsageAccountFile.defaultAccountID, isDefault: true,
             name: defaultName == AgentUsageReport.Account.defaultDisplayName ? nil : defaultName,
-            directory: nil, state: nil)
+            directory: byID[UsageAccountFile.defaultAccountID]?.directory,
+            state: byID[UsageAccountFile.defaultAccountID]?.state)
         return [defaultRow] + file.accounts(for: kind).map { account in
-            Row(id: account.id, isDefault: false, name: account.name, directory: account.directory, state: nil)
+            // A state Usage read for another folder under this id is not this Account's.
+            let reading = byID[account.id].flatMap { $0.directory == account.directory ? $0 : nil }
+            return Row(
+                id: account.id, isDefault: false, name: account.name, directory: account.directory,
+                state: reading?.state)
         }
     }
 
-    /// Directories Usage suggests for `kind`, none counted until added.
+    /// Directories Usage suggests for `kind`, none counted until added;
+    /// one the file already lists or ignores is left out.
     func suggestions(for kind: SupportedAgentKind) -> [AgentUsageReport.AccountSuggestion] {
-        usageProgram(kind)?.accountSuggestions ?? []
+        let suggested = usageProgram(kind)?.accountSuggestions ?? []
+        guard loadState == .loaded else { return suggested }
+        let known = Set((file.directories(for: kind) + file.ignored(for: kind)).map(Self.comparable))
+        return suggested.filter { !known.contains(Self.comparable($0.directory)) }
+    }
+
+    private static func comparable(_ path: String) -> String {
+        var path = path
+        while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        return path
     }
 
     /// The Default Account's directory, where Usage reports it.
