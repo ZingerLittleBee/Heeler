@@ -234,7 +234,7 @@ struct HerdrCoreWindowsConsoleTests {
         #expect(offers.composerSend, sourceLocation: sourceLocation)
         #expect(offers.composerStop, sourceLocation: sourceLocation)
         #expect(offers.chat, sourceLocation: sourceLocation)
-        #expect(offers.chatPrograms == [.claude, .pi], sourceLocation: sourceLocation)
+        #expect(offers.chatPrograms == [.claude, .grok, .pi, .omp], sourceLocation: sourceLocation)
         #expect(!offers.hostScripts, sourceLocation: sourceLocation)
         #expect(!offers.offersChanges(directory: #"C:\work"#), sourceLocation: sourceLocation)
     }

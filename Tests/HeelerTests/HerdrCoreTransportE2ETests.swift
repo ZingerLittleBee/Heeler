@@ -103,7 +103,7 @@ struct HerdrCoreTransportE2ETests {
             do {
                 _ = try await refused.hello()
                 Issue.record("A session name hc refuses reached the Host")
-            } catch TransportError.hostFeatureUnavailable {}
+            } catch TransportError.herdrCoreSessionNameRefused {}
             try await refused.close()
 
             // Nor does a core that is not running, or not there at all.
