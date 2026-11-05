@@ -620,7 +620,10 @@ done in the app.
 | Live change | Rename or reorder in the document, or set or clear a label | The cards follow within a moment, without reconnecting |
 | Mac with the desktop app | Add that Mac as a herdr-core Host | The same spaces and tabs as the window, in its order and under its names; a space the app has not named reads the same in both |
 | New Workspace on that Mac | New Terminal, **New Workspace**, pick a folder, **Open** | A new space appears in the window, unnamed and last, and reads the same in both. `doc.get` shows only the app's own writes |
-| Rename on that Mac, a debug build launched with `--herdr-app-rename` | With the app running: type a name in New Workspace, then **Rename Workspace** from a space's Agent | The typed name lands once after the app adopts the space, and Rename lands in the window and in the Console. With the app quit, the name field and Rename are gone. Turn `HerdrAppControl.isRenameConfirmed` on only when all of this holds over SSH |
+| Rename on that Mac | With the app running: type a name in New Workspace, then **Rename Workspace** from the Composer's More menu of a space's Agent, once to a name that parses as a number such as `2026` | The typed name lands once after the app adopts the space, and Rename lands in the window and in the Console, a number as text |
+| Rename with the app quit | Quit the app and, in an Agent detail left open, **Rename Workspace**. Then open New Agent, and open the Agent again. Start the app from its icon and open the Agent again | The rename says **The desktop app could not be reached.**, the space keeps its name, and Rename leaves the menu. New Agent has no name field and the reopened Agent no Rename. With the app back, both return |
+
+On 2026-11-05 a Simulator debug build of `5fc2b2c8`, with rename forced on, passed both Rename rows on the owner's Mac (Herdr desktop 0.1.13, herdr-core 0.1.18, macOS 27.0.1), the desktop app started from its icon each time.
 
 ## Detection states
 

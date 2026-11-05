@@ -87,7 +87,10 @@ struct HerdrCoreAgentsTests {
             },
             makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) },
             coreHostMemory: HerdrCoreHostMemory(
-                defaults: UserDefaults(suiteName: "core-agents-\(UUID().uuidString)") ?? .standard))
+                defaults: UserDefaults(suiteName: "core-agents-\(UUID().uuidString)") ?? .standard),
+            // Rename asks the platform as each connection lands; this follows the asks
+            // a Composer and New Agent make.
+            herdrAppRename: false)
         store.setHosts([host])
         await store.resume()
         try await waitUntil("the first snapshot") { !store.hostsAwaitingSnapshot.contains(host.id) }

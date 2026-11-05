@@ -67,7 +67,10 @@ struct HerdrCoreWindowsConsoleTests {
             },
             coreHostMemory: memory
                 ?? HerdrCoreHostMemory(
-                    defaults: UserDefaults(suiteName: "core-windows-\(UUID().uuidString)") ?? .standard))
+                    defaults: UserDefaults(suiteName: "core-windows-\(UUID().uuidString)") ?? .standard),
+            // Rename asks the platform as each connection lands; this follows the asks
+            // a Composer and New Agent make.
+            herdrAppRename: false)
     }
 
     private func waitUntil(

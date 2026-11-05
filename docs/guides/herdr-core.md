@@ -59,7 +59,7 @@ Heeler's own connection, launch, staging, Composer and Chat on Windows have run 
 
 ## Console
 
-A core Host's Terminals follow the Herdr desktop app's organization when the core has one. Heeler reads it and never changes it.
+A core Host's Terminals follow the Herdr desktop app's organization when the core has one. Heeler reads it and never writes it: a rename goes through the desktop app.
 
 - Each desktop space is a card under its own name, in the desktop app's order. A row reads **Tab “name”**, or **Tab N** for a tab with no name.
 - A space that only a Terminal's label names follows the desktop app's spaces, named for the folder of its git checkout, or for its directory outside one.
@@ -67,6 +67,8 @@ A core Host's Terminals follow the Herdr desktop app's organization when the cor
 - Every other Terminal goes in a card named for its launch directory.
 
 A changed space, tab or label moves the rows within a moment, with no reconnect.
+
+On macOS and Linux, while the desktop app runs on the Host, **Rename Workspace** in an Agent's More menu renames that Agent's space, in the window and here. If you quit the app with an Agent open, its Rename may still show: it then says **The desktop app could not be reached.**, renames nothing, and goes away.
 
 ## Agents and status
 
@@ -193,7 +195,7 @@ Pick where it starts, for an Agent and for **New Terminal** alike:
 | A directory's Workspace | In that Workspace's directory, even after a Terminal in it moved elsewhere | In that Workspace, and not in the desktop app's layout until you adopt it there |
 | **New Workspace** or **Browse Directory…** | In the directory you chose | In a new Workspace of its own, even when another already uses that directory. A running desktop app shows it as a new space. Until the desktop app names it, it is named for its first Terminal's checkout folder |
 
-Heeler asks for no tab or Workspace name on this kind of Host.
+Heeler asks for no tab name on this kind of Host. **New Workspace** has a name field while the desktop app runs on a macOS or Linux Host, and the app gives the space that name once it shows it.
 
 Heeler gives an Agent a session of its own from the start where the program takes one, unless your arguments already pick a session, as `--resume` does. Codex runs with `--no-daemon`. OpenCode gets its session only from version 2.1.
 
@@ -337,7 +339,7 @@ When Heeler can't read the Agent's process at all, **Can't Tell the Conversation
 
 ## Known limits
 
-- Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.
+- Agents can't be renamed on a core Host, and a Workspace only through a running Herdr desktop app on macOS or Linux.
 - Chat opens for Claude Code, Codex, Grok Build, [Pi and Oh My Pi](#pi-and-oh-my-pi) on Linux and [macOS](#chat-on-macos), and for Claude Code, Grok Build, Pi and Oh My Pi on [native Windows](#chat-on-windows). OpenCode opens on none of them yet, and its Agents offer the terminal alone.
 - After you choose a conversation for a Pi without the [Host Helper](#host-helper) or an OpenCode without its plugin, an in-process `/new` changes nothing Heeler can see. Chat keeps showing the old conversation until a message you send from Chat fails to appear in it, and only then drops your choice. A program that reports no status never ends a turn, so that check waits until it does.
 - Right after `/new` in Codex, before any message there, nothing on the Host has changed. Chat keeps showing the old conversation, and a Send goes to the new one. After `/new`, keep to the terminal until you have exited Codex and run `codex resume --no-daemon`.

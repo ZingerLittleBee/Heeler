@@ -50,7 +50,10 @@ struct HerdrCoreTerminalStoreTests {
                     return session
                 },
                 coreHostMemory: HerdrCoreHostMemory(
-                    defaults: UserDefaults(suiteName: "core-terminals-\(UUID().uuidString)") ?? .standard))
+                    defaults: UserDefaults(suiteName: "core-terminals-\(UUID().uuidString)") ?? .standard),
+                // Rename asks the platform as each connection lands; this follows the asks
+                // a Composer and New Agent make.
+                herdrAppRename: false)
             console.setHosts([host])
             await console.resume()
             try await until("the first snapshot") { [console, host] in

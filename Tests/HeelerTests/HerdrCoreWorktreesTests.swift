@@ -102,7 +102,10 @@ struct HerdrCoreWorktreesTests {
                 },
                 makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) },
                 coreHostMemory: HerdrCoreHostMemory(
-                    defaults: UserDefaults(suiteName: "core-worktrees-\(UUID().uuidString)") ?? .standard))
+                    defaults: UserDefaults(suiteName: "core-worktrees-\(UUID().uuidString)") ?? .standard),
+                // Rename asks the platform as each connection lands; this follows the asks
+                // a Composer and New Agent make.
+                herdrAppRename: false)
             store.setHosts([host])
             await store.resume()
             try await until("the first snapshot") { !self.store.hostsAwaitingSnapshot.contains(self.host.id) }

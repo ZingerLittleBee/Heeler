@@ -323,9 +323,17 @@ with test clients, not the app.
   ([window.rs](https://github.com/herdrdev/herdr-app/blob/v0.1.9/src/window.rs#L4363-L4367)),
   so it can show an exited Agent's status that Heeler hides.
 - Renaming over SSH depends on `herdr-app do` reaching the desktop app's
-  socket from an SSH session (unverified). Rename and applying a typed name
-  therefore ship off, behind `HerdrAppControl.isRenameConfirmed`, until the
-  owner's check on a desktop Mac passes; New Workspace does not depend on it.
+  socket from an SSH session. The owner's check on a Mac passed on 2026-11-05
+  (Herdr desktop 0.1.13, herdr-core 0.1.18, macOS 27.0.1;
+  [compatibility notes](../agents/herdr-compatibility.md#versioned-observations)),
+  so Rename and applying a typed name are on; no Linux desktop has run it.
+  `HerdrAppControl.isRenameOn` turns both off again if a desktop app release
+  stops answering from SSH; New Workspace does not depend on it.
+- Heeler asks `herdr-app status` when it connects, returns to the foreground,
+  opens an Agent detail, New Agent or New Terminal, and after a rename fails,
+  and does not poll. An Agent detail left open while the app quits keeps
+  offering Rename until that one `do` fails: nothing is renamed, the sheet says
+  the app could not be reached, and the offer goes.
 - On Windows a Staged Image or File larger than 8 MiB is refused before it is
   sent, as the core refuses it (`invalid_params`); exactly 8 MiB is accepted.
   Over one SSH exec a put in one 8 MiB frame arrived with the same hash and 8 MiB

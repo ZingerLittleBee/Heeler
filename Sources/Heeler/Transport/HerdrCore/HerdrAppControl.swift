@@ -5,23 +5,10 @@ import Foundation
 /// one bounded exec and judges what comes back. Nothing here sends anything
 /// twice, and neither `status` nor `do` opens a window or starts a core.
 enum HerdrAppControl {
-    /// Whether `herdr-app do` reaches the desktop app from an SSH session is
-    /// unverified (ADR 0032). Turn this on only when every step of the owner's
-    /// check on a desktop Mac has passed.
-    private static let isRenameConfirmed = false
-
-    #if DEBUG
-    /// For Simulator checks against the fixture's stub `herdr-app`.
-    static let renameArgument = "--herdr-app-rename"
-    #endif
-
-    /// Whether Rename and applying a typed name are offered at all.
-    static var isRenameOn: Bool {
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains(renameArgument) { return true }
-        #endif
-        return isRenameConfirmed
-    }
+    /// Whether Rename and applying a typed name are offered at all. The owner's
+    /// check on a desktop Mac passed over SSH (ADR 0032); turn this off if a
+    /// desktop app release stops answering `herdr-app do` from an SSH session.
+    static let isRenameOn = true
 
     /// What the app answered to `do`.
     enum DoOutcome: Equatable, Sendable {

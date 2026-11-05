@@ -46,7 +46,10 @@ struct HerdrCoreStagingTests {
                         keepalive: nil)
                 },
                 coreHostMemory: HerdrCoreHostMemory(
-                    defaults: UserDefaults(suiteName: "core-staging-\(UUID().uuidString)") ?? .standard))
+                    defaults: UserDefaults(suiteName: "core-staging-\(UUID().uuidString)") ?? .standard),
+                // Rename asks the platform as each connection lands; this follows the asks
+                // a Composer and New Agent make.
+                herdrAppRename: false)
             console.setHosts([host])
             await console.resume()
             try await HerdrCoreStagingTests.until("the Agent") { [console] in !console.agents.isEmpty }

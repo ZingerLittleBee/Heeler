@@ -171,8 +171,7 @@ struct HerdrCoreDesktopAppNamingTests {
         private var sequence = 10
         private var version = 1
 
-        /// `rename` nil leaves the capability at the app's default.
-        init(host: Host, rename: Bool? = true, isRunning: Bool = true) async throws {
+        init(host: Host, rename: Bool = true, isRunning: Bool = true) async throws {
             self.host = host
             let transport = ScriptedCoreTransport(
                 subscribeResults: [
@@ -202,16 +201,9 @@ struct HerdrCoreDesktopAppNamingTests {
             let makeCoreSession: @Sendable (Host) -> HerdrCoreHostSession = { _ in
                 HerdrCoreHostSession(connect: { transport }, keepalive: nil)
             }
-            store =
-                if let rename {
-                    ConsoleStore(
-                        makeSession: makeSession, makeCoreSession: makeCoreSession,
-                        coreHostMemory: HerdrCoreHostMemory(), herdrAppRename: rename)
-                } else {
-                    ConsoleStore(
-                        makeSession: makeSession, makeCoreSession: makeCoreSession,
-                        coreHostMemory: HerdrCoreHostMemory())
-                }
+            store = ConsoleStore(
+                makeSession: makeSession, makeCoreSession: makeCoreSession,
+                coreHostMemory: HerdrCoreHostMemory(), herdrAppRename: rename)
             store.setHosts([host])
             await store.resume()
             try await until("the first snapshot") { !self.store.hostsAwaitingSnapshot.contains(host.id) }
@@ -318,8 +310,8 @@ struct HerdrCoreDesktopAppNamingTests {
 
     // MARK: The capability
 
-    @Test func withTheCapabilityAtItsDefaultStatusIsNotAskedAndNothingShows() async throws {
-        let fixture = try await Fixture(host: host, rename: nil, isRunning: true)
+    @Test func withTheCapabilityOffStatusIsNotAskedAndNothingShows() async throws {
+        let fixture = try await Fixture(host: host, rename: false, isRunning: true)
         defer { fixture.finish() }
 
         #expect(!fixture.capabilities.namesNewWorkspaces)
