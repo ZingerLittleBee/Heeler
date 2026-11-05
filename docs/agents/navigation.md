@@ -178,12 +178,14 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   herdr's environment, [usage-query.js](../../plugin/src/usage-query.js)
   reads snapshots, and [usage-worker.js](../../plugin/src/usage-worker.js)
   coordinates [scanners, limit readers, buckets and pricing](../../plugin/src/usage).
-  There, [accounts.js](../../plugin/src/usage/accounts.js) reads the Account
-  file and gives each Account its state,
+  There, [programs.js](../../plugin/src/usage/programs.js) names each
+  program with Accounts (Claude Code, Codex: variable, Default Account,
+  markers), [accounts.js](../../plugin/src/usage/accounts.js) reads a
+  program's section of the Account file and gives each Account its state,
   [account-suggestions.js](../../plugin/src/usage/account-suggestions.js)
   lists home candidates and merges the suggestions, and
-  [claude-agents.js](../../plugin/src/usage/claude-agents.js) records the
-  `CLAUDE_CONFIG_DIR` of running Claude Code Agents from the activity hook.
+  [program-agents.js](../../plugin/src/usage/program-agents.js) records the
+  `CLAUDE_CONFIG_DIR` or `CODEX_HOME` of running Agents from the activity hook.
   Read the [design](../design/agent-usage.md) and
   [ADR 0028](../adr/0028-plugin-collects-agent-usage-on-the-host.md).
   Focused app coverage: `AgentUsageStoreTests` and `ClaudeUsagePreferenceTests`

@@ -61,7 +61,7 @@ async function run() {
   try {
     const now = Date.now();
     const cutoff = now - RETENTION;
-    // Only directories are caches; claude-agents.json sits beside them.
+    // Only directories are caches; the programs' agents files sit beside them.
     for (const entry of readdirSync(join(runtime.stateDir, "usage"), { withFileTypes: true })) {
       const sibling = join(runtime.stateDir, "usage", entry.name);
       if (sibling === directory || !entry.isDirectory()) continue;

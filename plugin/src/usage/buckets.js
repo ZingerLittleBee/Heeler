@@ -84,7 +84,8 @@ function tokenUsage(buckets, dates, dayInZone) {
  * The `usage` v1 report. `accounts` are Claude Code's Accounts as the Account
  * file names them now: an Account that just left adds nothing, even before
  * the next run removes its buckets. A bucket written before Accounts belongs
- * to the Default Account.
+ * to the Default Account. `programs.codex` gives Codex's Accounts and
+ * suggestions the same way; without it, the Codex entry lists none.
  */
 export function reportFromSnapshot(snapshot, timeZone, refreshing, now = Date.now(), claudeLimits = false,
   { accounts, suggestions = [], programs: others = {} }) {
