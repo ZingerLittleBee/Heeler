@@ -601,7 +601,7 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
         let uncounted = accounts.filter { !$0.isReadable }.map { account in
             Self.unread(
                 accountID: account.id, account: account.displayName,
-                reason: ClaudeAccountsListing.stateLine(account.state) ?? "")
+                reason: AccountsListing.stateLine(account.state) ?? "")
         }
         return counted + uncounted
     }
@@ -653,7 +653,7 @@ struct AgentUsageHostLimits: View {
             }
             if card.carriesToggle {
                 ClaudeUsageLimitsToggle(store: entry.store)
-                ClaudeAccountsEntry(hostName: entry.name, store: entry.store)
+                ClaudeAccountsRequirementNote(store: entry.store)
             }
         } header: {
             if isFirst { header }
@@ -682,36 +682,14 @@ struct AgentUsageUncountedAccount: View {
     }
 }
 
-/// The way from the Claude Code limits toggle to the Host's Accounts, with
-/// how many there are; on an older plugin, the update they need instead.
-struct ClaudeAccountsEntry: View {
-    let hostName: String
+/// Under the Claude Code limits toggle on an older plugin: the update
+/// Claude Code Accounts need before Usage counts them. Accounts themselves
+/// are managed in Settings › Agents & Accounts.
+struct ClaudeAccountsRequirementNote: View {
     let store: AgentUsageStore
-    /// Opens the Accounts as a form sheet; nil pushes them in the enclosing
-    /// navigation stack.
-    var open: (() -> Void)?
-
-    /// Whether the entry shows anything on this Host.
-    static func isShown(for store: AgentUsageStore) -> Bool {
-        store.supportsClaudeAccounts || store.claudeAccountsRequirement != nil
-    }
 
     var body: some View {
-        if store.supportsClaudeAccounts {
-            let count = ClaudeAccountsListing(state: store.state).accounts.count
-            if let open {
-                Button(action: open) { label(count: count, showsChevron: true) }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("usage.accounts.open")
-            } else {
-                NavigationLink {
-                    ClaudeAccountsSheet(hostName: hostName, store: store, isPushed: true)
-                } label: {
-                    label(count: count, showsChevron: false)
-                }
-                .accessibilityIdentifier("usage.accounts.open")
-            }
-        } else if let note = store.claudeAccountsRequirement {
+        if let note = store.claudeAccountsRequirement {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Claude Code Accounts")
                 Text(note)
@@ -721,24 +699,6 @@ struct ClaudeAccountsEntry: View {
             }
             .accessibilityElement(children: .combine)
         }
-    }
-
-    private func label(count: Int, showsChevron: Bool) -> some View {
-        HStack(spacing: 8) {
-            Text("Claude Code Accounts")
-            Spacer(minLength: 8)
-            if count > 0 {
-                Text(count.formatted())
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            if showsChevron {
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .contentShape(.rect)
     }
 }
 

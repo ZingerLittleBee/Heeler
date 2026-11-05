@@ -15,4 +15,28 @@ extension SupportedAgentKind {
         default: nil
         }
     }
+
+    /// One file or folder a harness keeps in its config directory.
+    struct AccountMarker: Sendable {
+        let name: String
+        let kind: RemoteFileKind
+
+        var label: String { kind == .directory ? "a \(name) folder" : name }
+    }
+
+    /// What tells a harness's config directory apart from any folder: one
+    /// of these is enough. Empty where Heeler knows none; any directory
+    /// then does.
+    var accountMarkers: [AccountMarker] {
+        switch self {
+        case .claude: [.init(name: ".claude.json", kind: .regular), .init(name: "projects", kind: .directory)]
+        case .codex:
+            [
+                .init(name: "auth.json", kind: .regular), .init(name: "config.toml", kind: .regular),
+                .init(name: "sessions", kind: .directory),
+            ]
+        case .grok, .pi, .omp: [.init(name: "sessions", kind: .directory)]
+        default: []
+        }
+    }
 }

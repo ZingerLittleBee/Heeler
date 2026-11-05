@@ -797,27 +797,29 @@ struct ClaudeUsagePreferenceTests {
         @Test func theStudioHostsAccountFileCanBeEdited() async throws {
             let studio = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.studioHostID })
             let transport = try DemoScreenshotFixture.transport(for: studio)
-            let store = AgentUsageStore(
-                hostID: studio.id, transports: ScriptedTransportProvider(transports: [studio.id: transport]))
+            let provider = ScriptedTransportProvider(transports: [studio.id: transport])
+            let store = AgentUsageStore(hostID: studio.id, transports: provider)
+            let accounts = HostAccountsStore(hostID: studio.id, transports: provider, usage: { store })
             await store.refresh()
+            await accounts.load()
             #expect(store.supportsClaudeAccounts)
-            guard case .available(let report) = store.state,
-                let team = report.claudeProgram?.accountSuggestions?.first(where: { $0.name == "claude-team" })
-            else { Issue.record("No suggestion to add"); return }
-            #expect(await store.addAccount(team))
+            let team = try #require(accounts.suggestions(for: .claude).first { $0.name == "claude-team" })
+            #expect(await accounts.add(team, for: .claude))
             guard case .available(let added) = store.state else { Issue.record("No report"); return }
             #expect(added.claudeProgram?.accounts?.map(\.displayName) == ["Default", "claude-2", "work", "claude-team"])
             #expect(added.claudeProgram?.accounts?.last?.state == .ok)
             #expect(added.claudeProgram?.accountSuggestions?.map(\.name) == ["claude-work"])
             // A directory the demo Host does not hold is refused.
-            #expect(await store.addAccount(directory: "/Users/developer/Downloads") == .refused(.notClaudeDirectory))
-            let teamAccount = try #require(added.claudeProgram?.accounts?.last)
-            #expect(await store.removeAccount(teamAccount))
+            #expect(
+                await accounts.add(directory: "/Users/developer/Downloads", for: .claude)
+                    == .refused(.notHarnessDirectory(.claude)))
+            let teamAccount = try #require(accounts.rows(for: .claude).last)
+            #expect(await accounts.remove(teamAccount, for: .claude))
             guard case .available(let restored) = store.state else { Issue.record("No report"); return }
             #expect(restored.claudeProgram?.accounts?.map(\.displayName) == ["Default", "claude-2", "work"])
             // Removed, it is not offered again at once.
             #expect(restored.claudeProgram?.accountSuggestions?.map(\.name) == ["claude-work"])
-            #expect(store.accountChangeFailure == nil)
+            #expect(accounts.changeFailure == nil)
         }
 
         /// The demo's other Claude Code directories are the studio Host's:
@@ -827,16 +829,17 @@ struct ClaudeUsagePreferenceTests {
         @Test func onlyTheStudioHostHoldsTheDemoAccountDirectories() async throws {
             let build = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.buildHostID })
             let transport = try DemoScreenshotFixture.transport(for: build)
-            let store = AgentUsageStore(
-                hostID: build.id, transports: ScriptedTransportProvider(transports: [build.id: transport]))
+            let provider = ScriptedTransportProvider(transports: [build.id: transport])
+            let store = AgentUsageStore(hostID: build.id, transports: provider)
+            let accounts = HostAccountsStore(hostID: build.id, transports: provider, usage: { store })
             await store.refresh()
             #expect(store.supportsClaudeAccounts)
             let directory = "\(DemoChatSample.home)/.claude-2"
-            #expect(await store.addAccount(directory: directory) == .refused(.notClaudeDirectory))
+            #expect(await accounts.add(directory: directory, for: .claude) == .refused(.notHarnessDirectory(.claude)))
             let home = try await transport.listFiles(RemoteFileListingRequest(directory: DemoChatSample.home))
             #expect(home?.entries.contains { $0.name == ".claude-2" } != true)
             let chat = "\(DemoChatSample.home)/.claude"
-            #expect(await store.addAccount(directory: chat) == .refused(.notClaudeDirectory))
+            #expect(await accounts.add(directory: chat, for: .claude) == .refused(.notHarnessDirectory(.claude)))
             // Chat still finds and reads its transcripts there.
             let projects = try await transport.listFiles(
                 RemoteFileListingRequest(directory: chat + "/projects", kinds: [.directory]))

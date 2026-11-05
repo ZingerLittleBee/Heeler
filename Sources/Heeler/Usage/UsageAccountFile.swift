@@ -1,18 +1,19 @@
 import Foundation
 
-/// Why a Claude Code Account change was refused or could not be saved, in
-/// the words the Accounts sheet shows.
-enum ClaudeAccountError: Error, Equatable, Sendable {
+/// Why an Account change was refused or could not be saved, in the words
+/// the Accounts screen shows.
+enum AgentAccountError: Error, Equatable, Sendable {
     /// A newer Heeler wrote the Account file; rewriting it could lose what
     /// that version added.
     case unsupportedFileVersion(Int)
-    /// The Default Account and three added ones are already listed.
+    /// The harness's Default Account and three added ones are already listed.
     case limitReached
     /// The directory is already an Account, the Default Account included.
     case alreadyListed
     case notAbsolute
-    /// The directory holds neither `.claude.json` nor `projects/`.
-    case notClaudeDirectory
+    /// The directory holds none of the harness's own files
+    /// (`SupportedAgentKind.accountMarkers`), or is no directory.
+    case notHarnessDirectory(SupportedAgentKind)
     case emptyName
     case nameTaken(String)
     /// Another device removed the Account since this list was read.
@@ -29,14 +30,16 @@ enum ClaudeAccountError: Error, Equatable, Sendable {
         case .unsupportedFileVersion:
             "A newer version of Heeler saved this Host’s Accounts. Update Heeler to change them."
         case .limitReached:
-            "A Host can have up to four Claude Code Accounts. Remove one to add another."
+            "A harness can have up to four Accounts on a Host. Remove one to add another."
         case .alreadyListed:
             "This directory is already an Account."
         case .notAbsolute:
             "Choose a directory by its full path."
-        case .notClaudeDirectory:
-            "This directory has no Claude Code sign-in or Transcripts. Choose one that holds "
-                + ".claude.json or a projects folder."
+        case .notHarnessDirectory(let kind):
+            kind.accountMarkers.isEmpty
+                ? "Choose a folder for \(kind.displayName)’s settings."
+                : "This folder has none of \(kind.displayName)’s files. Choose one that holds "
+                    + ListFormatter.localizedString(byJoining: kind.accountMarkers.map(\.label)) + "."
         case .emptyName:
             "Enter a name for this Account."
         case .nameTaken(let name):
@@ -187,7 +190,7 @@ struct UsageAccountFile: Codable, Equatable, Sendable {
     private init(_ object: [String: JSONValue]) throws {
         guard case .number(let version) = object["version"] else { return }
         guard version == Double(Self.version) else {
-            throw ClaudeAccountError.unsupportedFileVersion(Int(exactly: version) ?? Int.max)
+            throw AgentAccountError.unsupportedFileVersion(Int(exactly: version) ?? Int.max)
         }
         otherFields = object.filter { !["version", "claude", "programs"].contains($0.key) }
         if case .object(let section) = object["claude"] { claude = Section(section) }
@@ -254,7 +257,7 @@ struct UsageAccountFile: Codable, Equatable, Sendable {
     /// Names the variable `kind`'s Accounts set; empty forgets it.
     mutating func setVariable(_ variable: String, for kind: SupportedAgentKind) throws {
         let variable = Self.trimmed(variable)
-        guard variable.isEmpty || Self.isVariable(variable) else { throw ClaudeAccountError.invalidVariable }
+        guard variable.isEmpty || Self.isVariable(variable) else { throw AgentAccountError.invalidVariable }
         edit(kind) { $0.variable = variable.isEmpty || variable == kind.configDirectoryVariable ? nil : variable }
     }
 
@@ -284,13 +287,13 @@ struct UsageAccountFile: Codable, Equatable, Sendable {
         directory: String, name: String? = nil, defaultDirectory: String?, for kind: SupportedAgentKind = .claude,
         using generator: inout Generator
     ) throws -> Account {
-        guard Self.isAbsolute(directory) else { throw ClaudeAccountError.notAbsolute }
+        guard Self.isAbsolute(directory) else { throw AgentAccountError.notAbsolute }
         let key = Self.comparable(directory)
         let existing = accounts(for: kind)
         guard !existing.contains(where: { Self.comparable($0.directory) == key }),
             defaultDirectory.map(Self.comparable) != key
-        else { throw ClaudeAccountError.alreadyListed }
-        guard existing.count < Self.accountLimit else { throw ClaudeAccountError.limitReached }
+        else { throw AgentAccountError.alreadyListed }
+        guard existing.count < Self.accountLimit else { throw AgentAccountError.limitReached }
         var id = Self.randomID(using: &generator)
         while existing.contains(where: { $0.id == id }) { id = Self.randomID(using: &generator) }
         let account = Account(
@@ -319,16 +322,16 @@ struct UsageAccountFile: Codable, Equatable, Sendable {
         if accountID == Self.defaultAccountID {
             let shown = name.isEmpty ? AgentUsageReport.Account.defaultDisplayName : name
             guard !accounts(for: kind).contains(where: { $0.name == shown }) else {
-                throw ClaudeAccountError.nameTaken(shown)
+                throw AgentAccountError.nameTaken(shown)
             }
             edit(kind) { $0.defaultName = name.isEmpty ? nil : name }
             return
         }
         guard let index = accounts(for: kind).firstIndex(where: { $0.id == accountID }) else {
-            throw ClaudeAccountError.accountNotFound
+            throw AgentAccountError.accountNotFound
         }
-        guard !name.isEmpty else { throw ClaudeAccountError.emptyName }
-        guard !isNameTaken(name, byOtherThan: accountID, for: kind) else { throw ClaudeAccountError.nameTaken(name) }
+        guard !name.isEmpty else { throw AgentAccountError.emptyName }
+        guard !isNameTaken(name, byOtherThan: accountID, for: kind) else { throw AgentAccountError.nameTaken(name) }
         edit(kind) { $0.accounts[index].name = name }
     }
 
@@ -350,7 +353,7 @@ struct UsageAccountFile: Codable, Equatable, Sendable {
     /// Account's (`defaultDirectory`), stays as it is: a suggestion shown
     /// before it was added cannot dismiss it.
     mutating func ignore(directory: String, defaultDirectory: String?, for kind: SupportedAgentKind = .claude) throws {
-        guard Self.isAbsolute(directory) else { throw ClaudeAccountError.notAbsolute }
+        guard Self.isAbsolute(directory) else { throw AgentAccountError.notAbsolute }
         let key = Self.comparable(directory)
         guard !accounts(for: kind).contains(where: { Self.comparable($0.directory) == key }),
             defaultDirectory.map(Self.comparable) != key,

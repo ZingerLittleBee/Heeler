@@ -118,6 +118,7 @@ final class ConsoleStore {
     /// Hosts that share a plugin config directory share its Account file,
     /// so every Host's Account changes take turns.
     @ObservationIgnored private let usageAccountFileGate = GitExecGate()
+    @ObservationIgnored private var hostAccountsStores: [Host.ID: HostAccountsStore] = [:]
     /// Writes the widgets' snapshot of those readings. Only the app passes
     /// one: demo mode and tests must not replace the real widgets' figures.
     @ObservationIgnored let usageWidgets: AgentUsageWidgetPublisher?
@@ -1241,22 +1242,34 @@ final class ConsoleStore {
 
     func agentUsageStore(for hostID: Host.ID) -> AgentUsageStore {
         if let store = agentUsageStores[hostID] { return store }
-        let store = AgentUsageStore(
-            hostID: hostID,
-            onHost: { [weak self] operation in
-                guard let self else { throw TransportError.cancelled }
-                try await self.withNotificationTransport(for: hostID, operation)
-            },
-            accountFileGate: usageAccountFileGate
-        ) { [weak self] timeZone, claudeLimits in
+        let store = AgentUsageStore(hostID: hostID, reader: .init { [weak self] timeZone, claudeLimits in
             guard let self else { throw TransportError.cancelled }
             return try await self.withNotificationTransport(for: hostID) { transport in
                 try await AgentUsageStore.reading(
                     over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
             }
-        }
+        })
         store.didChange = { [weak self] in self?.publishUsageWidgets() }
         agentUsageStores[hostID] = store
+        return store
+    }
+
+    /// The Host's Accounts for every harness (#621), kept for as long as
+    /// the Console runs. Usage joins in while it is on.
+    func hostAccountsStore(for hostID: Host.ID) -> HostAccountsStore {
+        if let store = hostAccountsStores[hostID] { return store }
+        let store = HostAccountsStore(
+            hostID: hostID,
+            onHost: { [weak self] operation in
+                guard let self else { throw TransportError.cancelled }
+                try await self.withNotificationTransport(for: hostID, operation)
+            },
+            fileGate: usageAccountFileGate,
+            usage: { [weak self] in
+                guard let self, self.isUsageEnabled else { return nil }
+                return self.agentUsageStore(for: hostID)
+            })
+        hostAccountsStores[hostID] = store
         return store
     }
 
