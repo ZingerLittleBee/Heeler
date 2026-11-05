@@ -719,15 +719,16 @@ def local_apple() -> AppStoreConnect:
     return AppStoreConnect(credentials)
 
 
-def released_entries(text: str) -> list[tuple[str, str]]:
-    """(category, entry) for every entry outside [Unreleased], each on one line."""
-    entries, category, entry, released = [], None, None, False
+def changelog_entries(text: str) -> list[tuple[str, str]]:
+    """(category, entry) for every entry, each on one line. [Unreleased] counts:
+    a build from that commit has those changes. A cut leaves it empty."""
+    entries, category, entry = [], None, None
     for line in text.splitlines():
         if line.startswith("## "):
-            released, category, entry = not line.startswith("## [Unreleased]"), None, None
+            category, entry = None, None
         elif line.startswith("### "):
             category, entry = line[4:].strip(), None
-        elif released and category and line.startswith("- "):
+        elif category and line.startswith("- "):
             entry = [line[2:].strip()]
             entries.append((category, entry))
         elif entry is not None and line.startswith("  ") and line.strip():
@@ -777,8 +778,8 @@ def beta_notes() -> None:
         run("git", "merge-base", "--is-ancestor", source, candidate.source)
     except ReleaseError:
         raise ReleaseError(f"{source[:8]} is not an ancestor of {candidate.tag}") from None
-    before = set(released_entries(run("git", "show", f"{source}:CHANGELOG.md")))
-    added = [entry for entry in released_entries(run("git", "show", f"{candidate.source}:CHANGELOG.md"))
+    before = set(changelog_entries(run("git", "show", f"{source}:CHANGELOG.md")))
+    added = [entry for entry in changelog_entries(run("git", "show", f"{candidate.source}:CHANGELOG.md"))
              if entry not in before]
     print(f"Changelog entries new in {candidate.tag}:" if added else f"No changelog entries are new in {candidate.tag}.")
     for category in dict.fromkeys(category for category, _ in added):
