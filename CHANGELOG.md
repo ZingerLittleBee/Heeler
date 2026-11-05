@@ -13,20 +13,20 @@ Entries reference the pull request that made the change.
   Launch Presets. Each Host lists its Accounts by harness; add one from the
   folders Heeler finds, or choose any folder, for Claude Code, Codex, Grok,
   Pi, Gemini CLI or any other harness Heeler supports. Usage and Chat both
-  read them. (#621)
+  read them. (#632)
 - Chat finds an Agent's conversation in any of its harness's Accounts, not
   only the Default one, so an Agent started with its own config folder opens
-  in Chat. (#621)
+  in Chat. (#632)
 - Usage counts Codex Accounts too, each with its own Token Usage and Usage
-  Limits card. Needs plugin 0.9.0. (#621)
+  Limits card. Needs plugin 0.9.0. (#632)
 - Launch Presets save a harness with its Account, arguments and environment
   variables under a name, ready to pick in New Agent. `~` and `$HOME` in a
-  preset are each Host's home folder. (#622)
+  preset are each Host's home folder. (#632)
 
 ### Changed
 
 - Accounts moved out of Usage into Settings › Agents & Accounts. Usage's
-  notice about Account folders it found opens the same screen. (#621)
+  notice about Account folders it found opens the same screen. (#632)
 
 - The banner warning that a Codex conversation may be another terminal's
   now offers **Read More**, which opens the guide on what is happening and
