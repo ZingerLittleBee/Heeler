@@ -1,28 +1,27 @@
 import { readdirSync, realpathSync, statSync } from "node:fs";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
+import { USAGE_PROGRAMS } from "./programs.js";
 
 const SUGGESTION_LIMIT = 8;
 // The native call gives the stored case on a volume that ignores case, as the Accounts' check does.
 const realPath = path => { try { return realpathSync.native(path); } catch { return null; } };
 const isDirectory = path => { try { return statSync(path).isDirectory(); } catch { return false; } };
-const isFile = path => { try { return statSync(path).isFile(); } catch { return false; } };
 
 /**
- * Directories in `$HOME` and the XDG config directory that look like a Claude
- * Code config directory, from one listing of each and never recursively.
- * Claude Code's own `.claude.json` or `projects/` tells them apart from
- * third-party folders such as `~/.claude-squad`; the config directory's prefix
- * is case-sensitive because Claude Desktop uses `Claude`.
+ * Directories that look like the program's config directory, from one
+ * listing of each of its parents (`$HOME`, and for Claude Code the XDG
+ * config directory) and never recursively. The program's own markers tell
+ * them apart from third-party folders with the same prefix.
  */
-export function homeCandidates(runtime) {
-  const home = runtime.env.HOME;
+export function homeCandidates(runtime, program = "claude") {
+  const { homeListings, looksLikeHome } = USAGE_PROGRAMS[program];
   const candidates = [];
-  for (const [parent, prefix] of [[home, ".claude"], [resolve(home, runtime.env.XDG_CONFIG_HOME || join(home, ".config")), "claude"]]) {
+  for (const [parent, prefix] of homeListings(runtime.env)) {
     let names;
     try { names = readdirSync(parent).sort(); } catch { continue; }
     for (const name of names) {
       const path = join(parent, name);
-      if (name.startsWith(prefix) && isDirectory(path) && (isFile(join(path, ".claude.json")) || isDirectory(join(path, "projects")))) candidates.push(path);
+      if (name.startsWith(prefix) && isDirectory(path) && looksLikeHome(path)) candidates.push(path);
     }
   }
   return candidates;

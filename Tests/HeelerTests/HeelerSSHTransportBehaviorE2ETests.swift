@@ -1093,6 +1093,85 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(!recorded.contains { $0.hasPrefix("tab.create ") })
     }
 
+    /// A Launch Preset's environment (an Account's CLAUDE_CONFIG_DIR) rides
+    /// on the call that creates the pane: herdr types the Agent into that
+    /// pane's shell, which hands the variables on (#622).
+    @Test("an agent start carries its environment on tab.create")
+    func agentStartCarriesEnvironmentOnTabCreate() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("ok")
+        _ = try await transport.startAgent(
+            AgentLaunchRequest(
+                kind: "claude", name: "work", arguments: ["--dangerously-skip-permissions"],
+                workspaceID: "workspace-1", cwd: "/fixture/\(token)", tabLabel: "Work",
+                environment: ["CLAUDE_CONFIG_DIR": "/home/fixture/.claude-work"]))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 2)
+        #expect(
+            recorded[0]
+                == #"tab.create {"cwd":"/fixture/\#(token)","env":{"CLAUDE_CONFIG_DIR":"/home/fixture/.claude-work"},"focus":false,"label":"Work","workspace_id":"workspace-1"}"#
+        )
+        #expect(
+            recorded[1]
+                == #"agent.start {"args":["--dangerously-skip-permissions"],"kind":"claude","name":"work","pane_id":"pane:\#(token)"}"#
+        )
+    }
+
+    @Test("a new-workspace agent start carries its environment on workspace.create")
+    func newWorkspaceAgentStartCarriesEnvironment() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("ok")
+        _ = try await transport.startAgentInNewWorkspace(
+            AgentLaunchRequest(kind: "claude", name: "work", environment: ["CLAUDE_CONFIG_DIR": "/c"]),
+            workspace: NewWorkspaceSpec(directory: "/fixture/\(token)", label: "App"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 2)
+        #expect(
+            recorded[0]
+                == #"workspace.create {"cwd":"/fixture/\#(token)","env":{"CLAUDE_CONFIG_DIR":"/c"},"focus":false,"label":"App"}"#
+        )
+        #expect(recorded[1].hasPrefix("agent.start "))
+    }
+
+    /// `worktree.create` takes no `env`, so a launch with an environment
+    /// opens its own tab in the new worktree Workspace, starts there, and
+    /// closes the bare root pane the worktree came with.
+    @Test("a worktree agent start with an environment starts in its own tab")
+    func worktreeAgentStartWithEnvironmentStartsInItsOwnTab() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("ok")
+        _ = try await transport.startAgentInNewWorktree(
+            AgentLaunchRequest(
+                kind: "claude", name: "work", workspaceID: "workspace-1", tabLabel: "Work",
+                environment: ["CLAUDE_CONFIG_DIR": "/c"]),
+            worktree: WorktreeSpec(branch: "task/\(token)", base: "main"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 4)
+        #expect(recorded[0].hasPrefix("worktree.create "))
+        #expect(!recorded[0].contains(#""env""#))
+        #expect(
+            recorded[1]
+                == #"tab.create {"env":{"CLAUDE_CONFIG_DIR":"/c"},"focus":false,"label":"Work","workspace_id":"workspace:\#(token)"}"#
+        )
+        #expect(recorded[2].hasPrefix("agent.start "))
+        #expect(recorded[3] == #"pane.close {"pane_id":"pane:\#(token)"}"#)
+    }
+
     /// The new-Workspace half of the same compensation: a refused launch
     /// would otherwise leave an empty Workspace behind.
     @Test("a refused new-workspace agent start closes the workspace it created")

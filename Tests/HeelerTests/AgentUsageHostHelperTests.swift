@@ -204,12 +204,12 @@ struct AgentUsageHostHelperTests {
         defer { console.setHosts([]) }
         await helper.seedFolder(Self.directory, mode: 0o700)
 
-        let store = console.agentUsageStore(for: host.id)
-        await store.pullToRefresh()
+        let store = console.hostAccountsStore(for: host.id)
+        try await store.load()
         let suggestion = try JSONDecoder().decode(
             AgentUsageReport.AccountSuggestion.self,
             from: Data(#"{"directory":"/home/me/.claude-work","name":"claude-work","source":"agent"}"#.utf8))
-        #expect(await store.addAccount(suggestion))
+        #expect(await store.add(suggestion, for: .claude))
 
         let written = try #require(await helper.files[Self.accountFile]?.contents)
         let file = try UsageAccountFile.decode(written)
@@ -221,8 +221,8 @@ struct AgentUsageHostHelperTests {
         let (console, host, _) = console(helper)
         defer { console.setHosts([]) }
 
-        let store = console.agentUsageStore(for: host.id)
-        await store.loadHostHome()
+        let store = console.hostAccountsStore(for: host.id)
+        try await store.load()
 
         #expect(store.hostHome == ScriptedHelperHost.home)
     }

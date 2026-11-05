@@ -331,6 +331,31 @@ struct ConsoleStoreTests {
         #expect(await condition(), comment)
     }
 
+    @Test func aLaunchReadsTheCurrentAccountVariableAndRefusesAReadFailure() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport()
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the Host connects") { store.hostStatuses[host.id] == .connected }
+        #expect(try await store.accountVariable(for: .amp, on: host.id) == nil)
+
+        var file = UsageAccountFile()
+        for variable in ["AMP_HOME", "AMP_CONFIG_HOME"] {
+            try file.setVariable(variable, for: .amp)
+            await transport.setUsageAccountFile(try file.encoded())
+            #expect(try await store.accountVariable(for: .amp, on: host.id) == variable)
+        }
+
+        let failure = NotificationRegistrationError.readFailed(detail: "permission denied")
+        await transport.setUsageAccountFileReadFailure(failure)
+        await #expect(throws: failure) { try await store.accountVariable(for: .amp, on: host.id) }
+        await transport.setUsageAccountFileReadFailure(nil)
+        await transport.setUsageAccountFile(nil)
+        #expect(try await store.accountVariable(for: .amp, on: host.id) == nil)
+    }
+
     @Test func removingAHostDropsItsChatCache() async throws {
         let cache = VolatileChatTranscriptCache()
         let kept = Host.fixture()

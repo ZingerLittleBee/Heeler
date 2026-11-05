@@ -12,7 +12,8 @@ import { fileURLToPath } from "node:url";
 
 import { followCoreSession } from "../helper/core/follower.js";
 import { agentDirectories } from "../helper/shared/usage/agent-directories.js";
-import { claudeAgentPid } from "../helper/usage/claude-terminal.js";
+import { ACCOUNT_PROGRAMS } from "../helper/shared/usage/programs.js";
+import { accountAgentOf } from "../helper/usage/account-agent.js";
 import { usageListener } from "../helper/usage/recorder.js";
 import { FakeCore, exchange, waitFor } from "./support/fake-core.js";
 
@@ -225,10 +226,10 @@ suite("Claude Code Account suggestions", () => {
   const live = (address, fields) => ({ address, state: "live", pid: 1, ...fields });
   const snapshot = (...terminals) => ({ channel: 1, seq: 1, terminals });
 
-  async function agentDirectory(name) {
+  async function agentDirectory(name, variable = "CLAUDE_CONFIG_DIR") {
     const path = join(root, name);
     mkdirSync(path);
-    return { path, process: await coreProcess({ HOME: root, CLAUDE_CONFIG_DIR: path }) };
+    return { path, process: await coreProcess({ HOME: root, [variable]: path }) };
   }
 
   async function startCore(options) {
@@ -287,7 +288,25 @@ suite("Claude Code Account suggestions", () => {
     assert.deepEqual(agentDirectories(stateDir()), [claude.path]);
   });
 
-  test("what it takes for Claude Code is the shared Agent rule's answer", () => {
+  test("a Codex Agent's home is noted apart from Claude Code's directories", async () => {
+    const claude = await agentDirectory("claude-beside");
+    const codex = await agentDirectory("codex-work", "CODEX_HOME");
+    await startCore({
+      snapshot: snapshot(
+        live("t1", { foreground: { argv: ["claude"], name: "claude", pid: claude.process.pid } }),
+        live("t2", { foreground: { argv: ["/opt/homebrew/bin/codex"], name: "codex", pid: codex.process.pid } }),
+      ),
+    });
+
+    follow("work");
+    await waitFor(() => agentDirectories(stateDir(), Date.now(), "codex").length === 1, "the Codex home", PATIENCE_MS);
+    await waitFor(() => agentDirectories(stateDir()).length === 1, "the Claude Code directory", PATIENCE_MS);
+
+    assert.deepEqual(agentDirectories(stateDir(), Date.now(), "codex"), [codex.path]);
+    assert.deepEqual(agentDirectories(stateDir()), [claude.path]);
+  });
+
+  test("which Agents count is the shared Agent rule's answer", () => {
     const vector = JSON.parse(readFileSync(new URL("../test-vectors/herdr-core-agent-rule-v1.json", import.meta.url), "utf8"));
     // Only a process can be read, and a first spawn still pending has none. Cases
     // with foreground events are the inventory's to apply.
@@ -295,8 +314,9 @@ suite("Claude Code Account suggestions", () => {
     const cases = vector.cases.filter((entry) => !entry.foregroundEvents);
     assert.ok(cases.length > 100);
     for (const entry of cases) {
-      const isClaude = entry.expected?.kind === "claude";
-      assert.equal(claudeAgentPid(entry.record) !== null, isClaude && !notRead.has(entry.name), entry.name);
+      const kind = entry.expected?.kind;
+      const counted = ACCOUNT_PROGRAMS.includes(kind) && !notRead.has(entry.name) ? kind : null;
+      assert.equal(accountAgentOf(entry.record)?.program ?? null, counted, entry.name);
     }
   });
 

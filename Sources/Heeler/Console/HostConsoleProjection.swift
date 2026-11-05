@@ -338,6 +338,10 @@ final class HostConsoleProjection: ConsoleHostProjection {
             },
             queryOpenCode: { query in
                 try await session.withTransport { try await $0.queryOpenCode(query) }
+            },
+            accountDirectories: { kind in
+                let data = try await session.withTransport { try await $0.readUsageAccountFile() }
+                return try UsageAccountFile.decode(data).directories(for: kind)
             })
     }
 

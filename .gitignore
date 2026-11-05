@@ -36,8 +36,9 @@ __pycache__/
 .testloop/*
 !.testloop/reports/
 
-# Agent workspace (research reports, scratch)
-.claude/
+# Agent workspace (research reports, scratch); project skills are shared
+.claude/*
+!.claude/skills/
 
 # Lefthook per-developer overrides
 lefthook-local.yml

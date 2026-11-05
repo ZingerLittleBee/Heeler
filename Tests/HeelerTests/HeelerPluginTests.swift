@@ -452,6 +452,15 @@ struct HeelerPluginPresentationTests {
         #expect(requirements.allSatisfy { $0.note.contains(version) })
     }
 
+    /// Plugin 0.9.0 counts Codex Accounts in Usage (#621).
+    @Test func codexAccountsNeedPlugin090() {
+        #expect(HeelerPluginFeature.codexAccounts.minimumVersion == PluginVersion(0, 9, 0))
+        #expect(!HeelerPluginFeature.codexAccounts.isSupported(by: PluginVersion(0, 8, 0)))
+        #expect(
+            HeelerPluginFeature.codexAccounts.requirementNote(installed: PluginVersion(0, 8, 0))
+                == "Usage counts Codex Accounts from plugin 0.9.0; this Host has 0.8.0.")
+    }
+
     /// Plugin 0.8.0 reports Accounts and reads the Account file the app
     /// writes; 0.7.x does neither, so the update notice names it.
     @Test func claudeCodeAccountsNeedPlugin080() throws {
@@ -468,7 +477,7 @@ struct HeelerPluginPresentationTests {
         #expect(notice.message.contains("0.7.1 → 0.8.0"))
         #expect(notice.notes == ["Claude Code Accounts need plugin 0.8.0 or newer; this Host has 0.7.1."])
         #expect(
-            HeelerPluginStatus.installed(HeelerPluginInstallation(version: "0.8.0"))
+            HeelerPluginStatus.installed(HeelerPluginInstallation(version: "0.9.0"))
                 .requirements(for: HeelerPluginFeature.allCases).isEmpty)
     }
 

@@ -62,7 +62,8 @@ enum ClaudeTranscriptUnavailable: Error, Hashable, Sendable {
     case mismatched
 }
 
-/// Finds a Claude Code session transcript under `~/.claude/projects`.
+/// Finds a Claude Code session transcript under `~/.claude/projects`, then
+/// under each added Account's `projects` (#621).
 ///
 /// Claude files a session under the key of the directory it started in, so
 /// the Agent's current and launch directories are tried first, both
@@ -89,26 +90,28 @@ struct ClaudeTranscriptLocator: Sendable {
     ///
     /// `configRoot` is the Agent's own config dir when a check of its process
     /// found the session there (ADR 0034). A session it found is running, so
-    /// with no file it is one still to write. Nil looks under `~/.claude`.
+    /// with no file it is one still to write. Nil looks under `~/.claude`,
+    /// then each added Account's directory.
     func locate(
         sessionID: String, directories: [String], searchesEveryProject: Bool = true, configRoot: String? = nil
     ) async throws -> Result<ClaudeTranscriptLocation, ClaudeTranscriptUnavailable> {
-        let root: String
+        let configs: [String]
         if let configRoot {
-            root = configRoot
+            configs = [configRoot]
         } else {
-            root = RemoteFilePath.join(try await files.home(), ".claude")
+            let home = try await files.home()
+            configs = try await files.configRoots(
+                for: .claude, defaultRoot: RemoteFilePath.join(home, ".claude"))
         }
-        let projects = RemoteFilePath.join(root, "projects")
         let fileName = "\(sessionID).jsonl"
         let plan = Self.plan(directories: directories)
         var tried = Set<String>()
         var stats = 0
         var sawMismatch = false
 
-        func attempt(_ key: String) async throws -> ClaudeTranscriptLocation? {
-            guard tried.insert(key).inserted else { return nil }
+        func attempt(_ projects: String, _ key: String) async throws -> ClaudeTranscriptLocation? {
             let directory = RemoteFilePath.join(projects, key)
+            guard tried.insert(directory).inserted else { return nil }
             let path = RemoteFilePath.join(directory, fileName)
             stats += 1
             guard let status = try await files.status(path), Self.isUsable(status) else { return nil }
@@ -122,52 +125,91 @@ struct ClaudeTranscriptLocator: Sendable {
             }
         }
 
-        for key in plan.exactKeys {
-            if let found = try await attempt(key) { return .success(found) }
-        }
-        for prefix in plan.longKeyPrefixes {
-            let listing = try await files.list(
-                RemoteFileListingRequest(
-                    directory: projects, kinds: [.directory, .symlink], namePrefix: prefix,
-                    maximumEntries: 100))
-            for entry in listing?.entries ?? [] {
-                if let found = try await attempt(entry.name) { return .success(found) }
+        // A config root the Host will not let Heeler read is skipped, so a
+        // later Account can still hold the session; the refusal is thrown
+        // when no root does.
+        var refusal: (any Error)?
+        var refused: Set<String> = []
+        func skippingRefusal<Value>(_ config: String, _ work: () async throws -> Value?) async throws -> Value? {
+            guard !refused.contains(config) else { return nil }
+            do {
+                return try await work()
+            } catch TransportError.hostFileUnreadable(let status) {
+                refused.insert(config)
+                refusal = refusal ?? TransportError.hostFileUnreadable(status: status)
+                return nil
             }
         }
+
+        // The Agent's own directories under every config root first, the
+        // Default Account's before the added ones'.
+        for config in configs {
+            let projects = RemoteFilePath.join(config, "projects")
+            let found = try await skippingRefusal(config) { () -> ClaudeTranscriptLocation? in
+                for key in plan.exactKeys {
+                    if let found = try await attempt(projects, key) { return found }
+                }
+                for prefix in plan.longKeyPrefixes {
+                    let listing = try await files.list(
+                        RemoteFileListingRequest(
+                            directory: projects, kinds: [.directory, .symlink], namePrefix: prefix,
+                            maximumEntries: 100))
+                    for entry in listing?.entries ?? [] {
+                        if let found = try await attempt(projects, entry.name) { return found }
+                    }
+                }
+                return nil
+            }
+            if let found { return .success(found) }
+        }
         guard searchesEveryProject else {
-            return .failure(sawMismatch ? .mismatched : .notFound(searchedAll: false))
+            if sawMismatch { return .failure(.mismatched) }
+            if let refusal { throw refusal }
+            return .failure(.notFound(searchedAll: false))
         }
         func missing(searchedAll: Bool) async throws -> ClaudeTranscriptUnavailable {
             if sawMismatch { return .mismatched }
-            if configRoot != nil { return .notWritten }
-            return try await sessionStarted(root: root, sessionID: sessionID)
-                ? .notWritten : .notFound(searchedAll: searchedAll)
-        }
-        guard
-            let listing = try await files.list(
-                RemoteFileListingRequest(
-                    directory: projects, kinds: [.directory, .symlink],
-                    maximumEntries: projectListingLimit, maximumScanned: 20_000))
-        else {
-            return .failure(try await missing(searchedAll: true))
-        }
-        let ordered = Self.byClosestName(listing.entries.map(\.name), to: plan.exactKeys.first ?? "")
-        var searchedAll = !listing.truncated && !listing.scanIncomplete
-        for name in ordered where !tried.contains(name) {
-            guard stats < statBudget else {
-                searchedAll = false
-                break
+            // A session the Agent's process named is running: with no file, it
+            // is one still to write.
+            if configRoot != nil, refusal == nil { return .notWritten }
+            for config in configs where !refused.contains(config) {
+                if try await sessionStarted(config: config, sessionID: sessionID) { return .notWritten }
             }
-            if let found = try await attempt(name) { return .success(found) }
+            if let refusal { throw refusal }
+            return .notFound(searchedAll: searchedAll)
         }
-        return .failure(try await missing(searchedAll: searchedAll))
+        var searchedAll = true
+        var budgetSpent = false
+        for config in configs where !budgetSpent {
+            let projects = RemoteFilePath.join(config, "projects")
+            let found = try await skippingRefusal(config) { () -> ClaudeTranscriptLocation? in
+                guard
+                    let listing = try await files.list(
+                        RemoteFileListingRequest(
+                            directory: projects, kinds: [.directory, .symlink],
+                            maximumEntries: projectListingLimit, maximumScanned: 20_000))
+                else { return nil }
+                let ordered = Self.byClosestName(listing.entries.map(\.name), to: plan.exactKeys.first ?? "")
+                if listing.truncated || listing.scanIncomplete { searchedAll = false }
+                for name in ordered where !tried.contains(RemoteFilePath.join(projects, name)) {
+                    guard stats < statBudget else {
+                        budgetSpent = true
+                        return nil
+                    }
+                    if let found = try await attempt(projects, name) { return found }
+                }
+                return nil
+            }
+            if let found { return .success(found) }
+        }
+        return .failure(try await missing(searchedAll: searchedAll && !budgetSpent))
     }
 
-    /// Whether Claude Code started the session under `root`: its
+    /// Whether Claude Code started the session under `config`: its
     /// `session-env/<id>` is a directory. One the Host won't let Heeler
     /// see is no sign either way.
-    private func sessionStarted(root: String, sessionID: String) async throws -> Bool {
-        let path = RemoteFilePath.join(root, "session-env", sessionID)
+    private func sessionStarted(config: String, sessionID: String) async throws -> Bool {
+        let path = RemoteFilePath.join(config, "session-env", sessionID)
         do {
             guard let status = try await files.status(path) else { return false }
             return status.kind == nil || status.kind == .directory

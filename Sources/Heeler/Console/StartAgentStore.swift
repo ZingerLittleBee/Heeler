@@ -113,6 +113,7 @@ final class StartAgentStore {
                 selectedAgentKind = nil
                 availableTemplates = []
                 selectedTemplate = nil
+                selectedPresetID = nil
                 agentDiscoveryState = .idle
                 launchTarget = .existingWorkspace
                 newWorkspaceDirectory = ""
@@ -165,7 +166,18 @@ final class StartAgentStore {
     /// probe defaults it to the kind last started, when this Host has it,
     /// else the Host's first.
     var selectedAgentKind: SupportedAgentKind? {
-        didSet { if selectedAgentKind != nil { selectedTemplate = nil } }
+        didSet {
+            if selectedAgentKind != nil { selectedTemplate = nil }
+            // Another harness leaves the preset behind.
+            if let selectedPreset, selectedPreset.kind != selectedAgentKind { selectedPresetID = nil }
+        }
+    }
+    /// The Launch Preset the Agent starts from (#622); nil starts the
+    /// harness as the form describes it. Picking one picks its harness.
+    var selectedPresetID: LaunchPreset.ID? {
+        didSet {
+            if let selectedPreset, selectedAgentKind != selectedPreset.kind { selectedAgentKind = selectedPreset.kind }
+        }
     }
     /// The Template selected in place of a kind.
     var selectedTemplate: AgentTemplate? {
@@ -282,6 +294,11 @@ final class StartAgentStore {
     private let isAgentListed: (ConsoleAgent.ID) -> Bool
     private let programExit: (ConsoleAgent.ID) -> ProgramExit?
     @ObservationIgnored private let recents: RecentLaunchStore
+    /// The device's Launch Presets, read when the form shows them.
+    private let presetsProvider: () -> [LaunchPreset]
+    /// The variable a harness's Accounts set on a Host (its Accounts'
+    /// `variable`, else the harness's own); nil when neither is known.
+    private let accountVariable: (Host.ID, SupportedAgentKind) async throws -> String?
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
     /// before `state == .starting` disables the button.
@@ -304,10 +321,16 @@ final class StartAgentStore {
         origin: LaunchOrigin? = nil,
         recents: RecentLaunchStore = RecentLaunchStore(),
         offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false },
-        offersConnectedWorktrees: @escaping (Host.ID) -> Bool = { _ in false }
+        offersConnectedWorktrees: @escaping (Host.ID) -> Bool = { _ in false },
+        presets: @escaping () -> [LaunchPreset] = { [] },
+        accountVariable: @escaping (Host.ID, SupportedAgentKind) async throws -> String? = { _, kind in
+            kind.configDirectoryVariable
+        }
     ) {
         self.offersDesktopAppNames = offersDesktopAppNames
         self.offersConnectedWorktrees = offersConnectedWorktrees
+        self.presetsProvider = presets
+        self.accountVariable = accountVariable
         self.hosts = hosts
         self.origin = origin
         self.workspacesProvider = workspaces
@@ -403,7 +426,26 @@ final class StartAgentStore {
         if let selectedTemplate {
             return Self.defaultAgentName(forTemplate: selectedTemplate.name, taken: taken)
         }
-        return selectedAgentKind.map { Self.defaultAgentName(for: $0, taken: taken) }
+        guard let kind = selectedAgentKind else { return nil }
+        let base = selectedPreset.flatMap(Self.agentNameBase) ?? kind.rawValue
+        return Self.defaultAgentName(base: base, taken: taken)
+    }
+
+    /// The presets of the harnesses the selected Host has.
+    var availablePresets: [LaunchPreset] {
+        presetsProvider().filter { availableAgentKinds.contains($0.kind) }
+    }
+
+    var selectedPreset: LaunchPreset? {
+        guard let selectedPresetID else { return nil }
+        return presetsProvider().first { $0.id == selectedPresetID }
+    }
+
+    /// A preset's name as an Agent name when herdr accepts it lowercased
+    /// (`Work` gives `work`); nil otherwise.
+    private static func agentNameBase(_ preset: LaunchPreset) -> String? {
+        let name = preset.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return AgentName.validationError(name) == nil ? name : nil
     }
 
     /// A Template's command is its own, so the form asks for no arguments.
@@ -525,6 +567,7 @@ final class StartAgentStore {
             !isMissingNeededBranch,
             nameErrorMessage == nil
         else { return }
+        let preset = selectedPreset
         isStarting = true
         defer { isStarting = false }
         // A name-only New Workspace launch has no browsed directory: fall
@@ -559,26 +602,63 @@ final class StartAgentStore {
             }
         }
         guard let destination = launchDestination else { return }
+        // A preset may await the Host below while the form stays editable:
+        // what the launch is sent to is fixed here, and a form changed
+        // meanwhile is not launched.
+        let target = SubmittedTarget(destination: destination, workspaceID: selectedWorkspaceID, tabLabel: tabLabel)
         state = .starting
+        var launchArguments: [String] = []
+        if case .kind(_, let arguments, _) = launch { launchArguments = arguments }
+        var environment: [String: String] = [:]
+        if let preset {
+            do {
+                let home = preset.needsHome ? try await remoteHome(hostID) : nil
+                let variable: String?
+                do {
+                    variable = preset.accountDirectory == nil ? nil : try await accountVariable(hostID, preset.kind)
+                } catch {
+                    state = .failed(HostAccountsStore.changeMessage(for: error))
+                    return
+                }
+                guard selectedHostID == hostID, selectedPresetID == preset.id,
+                    launchDestination.map({
+                        SubmittedTarget(destination: $0, workspaceID: selectedWorkspaceID, tabLabel: tabLabel)
+                    }) == target
+                else {
+                    state = .editing
+                    return
+                }
+                let presetLaunch = try preset.launch(formArguments: launchArguments, home: home, accountVariable: variable)
+                launchArguments = presetLaunch.arguments
+                environment = presetLaunch.environment
+            } catch let problem as LaunchPreset.Problem {
+                state = .failed(problem.message)
+                return
+            } catch {
+                state = .failed(Self.homeProbeMessage(for: error))
+                return
+            }
+        }
         let workspaceID: String?
         switch destination {
         case .newWorkspace:
             workspaceID = nil
         case .existingWorkspace, .newWorktree:
-            workspaceID = selectedWorkspaceID
+            workspaceID = target.workspaceID
         }
         do {
             let agent: Agent
             switch launch {
-            case .kind(let kind, let arguments, let agentName):
+            case .kind(let kind, _, let agentName):
                 agent = try await start(
                     AgentLaunchRequest(
                         kind: kind.rawValue,
                         name: agentName,
-                        arguments: arguments,
+                        arguments: launchArguments,
                         workspaceID: workspaceID,
                         cwd: origin?.cwd,
-                        tabLabel: offersWorkspaceAndTabNames ? Self.nonEmptyTrimmed(tabLabel) : nil),
+                        tabLabel: offersWorkspaceAndTabNames ? Self.nonEmptyTrimmed(target.tabLabel) : nil,
+                        environment: environment),
                     destination, hostID)
             case .template(let template, let agentName):
                 var newWorkspace: NewWorkspaceSpec?
@@ -622,6 +702,13 @@ final class StartAgentStore {
         }
     }
 
+    /// Where a submitted launch goes, as the form said when it was submitted.
+    private struct SubmittedTarget: Equatable {
+        let destination: LaunchDestination
+        let workspaceID: String?
+        let tabLabel: String
+    }
+
     /// Assembles the Transport variant from the current form. Nil when the
     /// chosen target is incomplete, so `submit()` is a no-op rather than
     /// inventing a Workspace id.
@@ -655,7 +742,7 @@ final class StartAgentStore {
     /// passing it through a shell. Quotes group whitespace, adjacent quoted
     /// and unquoted segments join one argument, and backslash escapes the next
     /// character. Empty quoted arguments are preserved.
-    static func parseArguments(_ input: String) -> Result<[String], ArgumentError> {
+    nonisolated static func parseArguments(_ input: String) -> Result<[String], ArgumentError> {
         enum Quote {
             case single
             case double
@@ -743,27 +830,38 @@ final class StartAgentStore {
     /// `kind-3`, … skipping names already live on the Host. Kind identifiers
     /// are lowercase ASCII, so the result always passes herdr's name rule.
     static func defaultAgentName(for kind: SupportedAgentKind, taken: Set<String>) -> String {
-        firstFreeName(from: kind.rawValue, taken: taken)
+        defaultAgentName(base: kind.rawValue, taken: taken)
     }
 
     /// A Template's file name may be no agent name, or leave no room for a
     /// suffix: that Agent goes unnamed, and its row shows what it runs.
     static func defaultAgentName(forTemplate template: String, taken: Set<String>) -> String? {
-        let name = firstFreeName(from: template, taken: taken)
+        let name = defaultAgentName(base: template, taken: taken)
+        // A suffix that would shorten the Template's name names no Agent.
+        guard name.hasPrefix(template) else { return nil }
         return AgentName.validationError(name) == nil ? name : nil
     }
 
-    private static func firstFreeName(from base: String, taken: Set<String>) -> String {
+    static func defaultAgentName(base: String, taken: Set<String>) -> String {
         guard taken.contains(base) else { return base }
         var suffix = 2
-        while taken.contains("\(base)-\(suffix)") { suffix += 1 }
-        return "\(base)-\(suffix)"
+        while taken.contains(suffixed(base, suffix)) { suffix += 1 }
+        return suffixed(base, suffix)
     }
+
+    /// `base-n`, the base shortened so the whole stays within herdr's
+    /// 32-character name limit (a preset's name can use all 32).
+    private static func suffixed(_ base: String, _ suffix: Int) -> String {
+        let tail = "-\(suffix)"
+        return String(base.prefix(max(1, agentNameLimit - tail.count))) + tail
+    }
+
+    private static let agentNameLimit = 32
 
     /// Normalizes smart punctuation that arrives through paste or a
     /// third-party keyboard. The editor itself disables these substitutions;
     /// this is a defensive parse-boundary fallback, never an edit-time write.
-    static func normalizeSmartPunctuation(_ text: String) -> String {
+    nonisolated static func normalizeSmartPunctuation(_ text: String) -> String {
         guard text.contains(where: Self.isSmartPunctuation) else { return text }
         var result = ""
         result.reserveCapacity(text.count + 2)
@@ -784,7 +882,7 @@ final class StartAgentStore {
         return result
     }
 
-    private static func isSmartPunctuation(_ character: Character) -> Bool {
+    private nonisolated static func isSmartPunctuation(_ character: Character) -> Bool {
         switch character {
         case "\u{201C}", "\u{201D}", "\u{2018}", "\u{2019}", "\u{2014}", "\u{2013}":
             true
@@ -798,7 +896,7 @@ final class StartAgentStore {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private static func isControl(_ character: Character) -> Bool {
+    private nonisolated static func isControl(_ character: Character) -> Bool {
         character.unicodeScalars.contains {
             CharacterSet.controlCharacters.contains($0)
         }

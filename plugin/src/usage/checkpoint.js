@@ -15,9 +15,9 @@ export const CHECKPOINT_VERSION = 3;
  * a Transcript counts: every cache built under another version rebuilds once.
  * Version 2 recovers rollout tails appended before Codex compressed them;
  * version 3 leaves unknown Codex service tiers unpriced; version 4 attributes
- * Claude Code records to Accounts.
+ * Claude Code records to Accounts; version 5 isolates Codex fork parents by Account.
  */
-export const SCANNER_VERSION = 4;
+export const SCANNER_VERSION = 5;
 const CHUNK = 1 << 20;
 
 const digest = text => createHash("sha256").update(text).digest("hex");

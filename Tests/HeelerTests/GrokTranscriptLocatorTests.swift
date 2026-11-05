@@ -121,6 +121,43 @@ struct GrokTranscriptLocatorTests {
         #expect(try await Self.locate(files, sessionID: Self.startedID) == .failure(.mismatched))
     }
 
+    @Test func aGivenRootLeavesTheAccountsUnsearched() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.grok-work"], for: .grok)
+        await files.write(
+            Self.record(sessionID: Self.sessionID),
+            at: "/home/dev/.grok-work/sessions/\(Self.group)/\(Self.sessionID)/updates.jsonl")
+
+        let found = try await GrokTranscriptLocator(files: files.hostFiles())
+            .locate(sessionID: Self.sessionID, directories: [Self.cwd], configRoot: "/srv/empty")
+
+        #expect(found == .failure(.notFound(searchedAll: true)))
+    }
+
+    // MARK: Accounts
+
+    /// An Agent started with `GROK_HOME` set to an added Account's
+    /// directory files its sessions there (#621).
+    @Test func findsTheSessionUnderAnAddedAccountsHome() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.grok-work"], for: .grok)
+        let path = "/home/dev/.grok-work/sessions/\(Self.group)/\(Self.sessionID)/updates.jsonl"
+        await files.write(Self.record(sessionID: Self.sessionID), at: path)
+
+        #expect(try await Self.locate(files) == .success(path))
+    }
+
+    @Test func anUnreadableEarlierAccountDoesNotHideALaterOne() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.grok-a", "/home/dev/.grok-work"], for: .grok)
+        await files.failNext(
+            .list, path: "/home/dev/.grok-a/sessions", with: TransportError.hostFileUnreadable(status: 3), count: 5)
+        let path = "/home/dev/.grok-work/sessions/\(Self.group)/\(Self.sessionID)/updates.jsonl"
+        await files.write(Self.record(sessionID: Self.sessionID), at: path)
+
+        #expect(try await Self.locate(files) == .success(path))
+    }
+
     // MARK: Groups
 
     @Test func findsTheSessionInThePaneDirectorysGroup() async throws {

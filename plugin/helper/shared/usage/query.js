@@ -4,9 +4,12 @@ import { cacheDirectory, readJSON, writeJSON, activeLock, reserveWorker, release
 import { reportFromSnapshot } from "./buckets.js";
 import { checkpointCurrent } from "./checkpoint.js";
 import { readUsageRuntime } from "./runtime-record.js";
-import { claudeAccounts, readAccountFile } from "./accounts.js";
+import { programAccounts, readAccountFile } from "./accounts.js";
 import { accountSuggestions } from "./account-suggestions.js";
 import { agentDirectories } from "./agent-directories.js";
+import { ACCOUNT_PROGRAMS } from "./programs.js";
+
+const sameAccounts = (before, now) => Array.isArray(before) && before.length === now.length && now.every(id => before.includes(id));
 
 /**
  * Start one detached worker unless another holds the lock; true while one runs.
@@ -52,12 +55,15 @@ export function usageReport({ timeZone, claudeLimits, runtimeDirectory, accountD
   const directory = cacheDirectory(runtime);
   const snapshot = readJSON(join(directory, "buckets.json"));
   const failures = refreshFailures(directory);
-  const accountFile = readAccountFile(accountDirectory);
-  const accounts = claudeAccounts(runtime, accountFile);
-  const counted = accounts.filter(account => account.state === "ok").map(account => account.id);
+  const files = Object.fromEntries(ACCOUNT_PROGRAMS.map(program => [program, readAccountFile(accountDirectory, program)]));
+  const programs = Object.fromEntries(ACCOUNT_PROGRAMS.map(program => [program, programAccounts(runtime, files[program], program)]));
+  const countedOf = program => programs[program].filter(account => account.state === "ok").map(account => account.id);
+  const counted = countedOf("claude");
+  const codexCounted = countedOf("codex");
   // An Account added, removed or back since the last run is counted at once.
-  const accountsChanged = !Array.isArray(snapshot?.countedAccounts) || snapshot.countedAccounts.length !== counted.length
-    || !counted.every(id => snapshot.countedAccounts.includes(id));
+  // A snapshot from before Codex Accounts counted the Default one.
+  const accountsChanged = !sameAccounts(snapshot?.countedAccounts, counted)
+    || !sameAccounts(snapshot?.countedCodexAccounts ?? ["default"], codexCounted);
   const stale = !snapshot?.complete || !checkpointCurrent(snapshot?.checkpoint) || accountsChanged
     || snapshot?.breakdownsVersion !== 1 || !(Date.now() - Date.parse(snapshot.generatedAt) <= 60_000);
   let refreshing = false;
@@ -81,9 +87,15 @@ export function usageReport({ timeZone, claudeLimits, runtimeDirectory, accountD
   const failed = failures.failing ? "The background refresh failed repeatedly."
     : startFailed && stale ? "The background refresh could not start." : null;
   const served = failed ? { ...snapshot, errors: { claude: failed, codex: failed,
-    ...Object.fromEntries(counted.map(id => [`claude:${id}`, failed])), ...snapshot?.errors } } : snapshot;
+    ...Object.fromEntries(counted.map(id => [`claude:${id}`, failed])),
+    ...Object.fromEntries(codexCounted.map(id => [`codex:${id}`, failed])), ...snapshot?.errors } } : snapshot;
   // Suggestions are checked against the Account file as it is now, not as the last run saw it.
-  const suggestions = accountSuggestions({ agents: agentDirectories(runtime.stateDir), accounts, ignored: accountFile.ignored,
-    candidates: Array.isArray(snapshot?.claudeCandidates) ? snapshot.claudeCandidates : [] });
-  return reportFromSnapshot(served, timeZone, refreshing, Date.now(), claudeLimits, { accounts, suggestions });
+  const suggestions = Object.fromEntries(ACCOUNT_PROGRAMS.map(program => {
+    const candidates = snapshot?.[`${program}Candidates`];
+    return [program, accountSuggestions({ agents: agentDirectories(runtime.stateDir, Date.now(), program), accounts: programs[program],
+      ignored: files[program].ignored, candidates: Array.isArray(candidates) ? candidates : [] })];
+  }));
+  return reportFromSnapshot(served, timeZone, refreshing, Date.now(), claudeLimits, {
+    accounts: programs.claude, suggestions: suggestions.claude,
+    programs: { codex: { accounts: programs.codex, suggestions: suggestions.codex } } });
 }

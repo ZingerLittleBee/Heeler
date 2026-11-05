@@ -46,7 +46,9 @@ struct StartAgentView: View {
                 programExit: { console.programExit(of: $0) },
                 origin: origin,
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces },
-                offersConnectedWorktrees: { console.capabilities(for: $0).worktrees }))
+                offersConnectedWorktrees: { console.capabilities(for: $0).worktrees },
+                presets: { console.launchPresets.presets },
+                accountVariable: { hostID, kind in try await console.accountVariable(for: kind, on: hostID) }))
     }
 
     var body: some View {
@@ -188,6 +190,18 @@ struct StartAgentView: View {
                             Task { await store.discoverAgents() }
                         }
                     case .loaded:
+                        if !store.availablePresets.isEmpty {
+                            Picker("Preset", selection: $store.selectedPresetID) {
+                                Text("None").tag(LaunchPreset.ID?.none)
+                                ForEach(store.availablePresets) { @Sendable preset in
+                                    Text(preset.name).tag(LaunchPreset.ID?.some(preset.id))
+                                }
+                            }
+                            .accessibilityIdentifier("startAgent.preset")
+                            if let preset = store.selectedPreset {
+                                LaunchPresetSummary(preset: preset)
+                            }
+                        }
                         agentPicker
                         Button("Detect Again", systemImage: "arrow.clockwise") {
                             Task { await store.discoverAgents() }
@@ -214,8 +228,8 @@ struct StartAgentView: View {
                         }
                     } else {
                         Text(store.discoversThroughUserShell
-                            ? "Agents your own shell on this Host can run."
-                            : "Agents installed and launchable from this Host's PATH.")
+                            ? "Agents your own shell on this Host can run. Launch Presets live in Settings › Agents & Accounts."
+                            : "Agents installed and launchable from this Host's PATH. Launch Presets live in Settings › Agents & Accounts.")
                     }
                 }
 

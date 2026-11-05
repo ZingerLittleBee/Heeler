@@ -27,7 +27,8 @@ import {
 } from "./activity-state.js";
 import { readNotificationConfig } from "./notification-config.js";
 import { readUsageRuntime, recordUsageRuntime } from "./usage-runtime.js";
-import { noteClaudeAgent } from "./usage/claude-agents.js";
+import { noteProgramAgent } from "./usage/program-agents.js";
+import { ACCOUNT_PROGRAMS } from "./usage/programs.js";
 import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
 import { optionalText } from "./display-text.js";
 import { hookSession, sessionStateDir } from "./session.js";
@@ -211,13 +212,14 @@ function requireEnv(name) {
 }
 
 /**
- * A Claude Code Agent's config directory is a Usage Account suggestion. It is
- * learned only once Usage has a runtime, and never fails the hook.
+ * The config directory of an Agent whose program has Usage Accounts (Claude
+ * Code, Codex) is an Account suggestion. It is learned only once Usage has a
+ * runtime, and never fails the hook.
  */
-async function learnClaudeAgent(configDir, binPath, session, paneId) {
+async function learnProgramAgent(configDir, binPath, session, paneId, program) {
   try {
     const runtime = readUsageRuntime(configDir);
-    if (runtime) await noteClaudeAgent({ stateDir: runtime.stateDir, herdr: binPath, session, paneId });
+    if (runtime) await noteProgramAgent({ stateDir: runtime.stateDir, herdr: binPath, session, paneId, program });
   } catch {
     // Suggestions are best effort; the next status change tries again.
   }
@@ -239,7 +241,8 @@ async function main() {
 
   const event = parseStatusEvent(eventJson);
   // Runs beside the Live Activity update, which never waits for it.
-  const learning = event.agentKind === "claude" ? learnClaudeAgent(configDir, binPath, session, event.paneId) : null;
+  const learning = ACCOUNT_PROGRAMS.includes(event.agentKind)
+    ? learnProgramAgent(configDir, binPath, session, event.paneId, event.agentKind) : null;
   try {
     await updateLiveActivity(configDir, session, stateDir, binPath, event);
   } finally {

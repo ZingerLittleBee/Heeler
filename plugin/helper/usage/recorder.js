@@ -6,7 +6,7 @@
 import { noteAgentDirectory } from "../shared/usage/agent-directories.js";
 import { readProcessEnvironment } from "../shared/usage/process-environment.js";
 import { ENVIRONMENT_NAMES, writeUsageRuntime } from "../shared/usage/runtime-record.js";
-import { claudeAgentPid } from "./claude-terminal.js";
+import { accountAgentOf } from "./account-agent.js";
 import { helperStateDirectory, sessionRuntimeDirectory } from "./layout.js";
 
 const READ_TIME_LIMIT_MS = 3000;
@@ -38,17 +38,19 @@ export function usageListener({ directory, log = () => {} }) {
   // One at a time, since each note rewrites the file the last one wrote.
   let notes = Promise.resolve();
   const noteAgent = (session, address, record) => {
-    const pid = claudeAgentPid(record);
-    if (pid === null) return;
+    const agent = accountAgentOf(record);
+    if (agent === null) return;
+    const { program, pid } = agent;
     notes = notes
       .then(() => noteAgentDirectory({
         stateDir: helperStateDirectory(directory),
         session,
         // A new process in the same Terminal is a new Agent to look at.
         paneId: `${address}:${pid}`,
+        program,
         pidOf: async () => pid,
       }))
-      .catch(() => say(session, `could not note the Claude Code directory of ${JSON.stringify(address)}`));
+      .catch(() => say(session, `could not note the ${program} directory of ${JSON.stringify(address)}`));
   };
   const noteAgents = (session, inventory) => {
     for (const [address, record] of inventory) noteAgent(session, address, record);

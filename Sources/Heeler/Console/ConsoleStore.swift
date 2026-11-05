@@ -169,6 +169,9 @@ final class ConsoleStore {
     /// Hears what this device has seen on a core Host, for its Host Helper.
     @ObservationIgnored var onCoreSeenMarksChanged:
         (@MainActor (Host.ID, String, [String: HerdrCoreTurnState.Mark]) -> Void)?
+    @ObservationIgnored private var hostAccountsStores: [Host.ID: HostAccountsStore] = [:]
+    /// The device's Launch Presets (#622).
+    let launchPresets = LaunchPresetStore()
     /// Writes the widgets' snapshot of those readings. Only the app passes
     /// one: demo mode and tests must not replace the real widgets' figures.
     @ObservationIgnored let usageWidgets: AgentUsageWidgetPublisher?
@@ -978,6 +981,10 @@ final class ConsoleStore {
                     throw TransportError.hostFeatureUnavailable(feature: "Chat")
                 }
                 return try await queryOpenCode(query)
+            },
+            accountDirectories: { [weak self] kind in
+                guard let self else { throw TransportError.cancelled }
+                return try await liveChatHostFiles(for: hostID).accountDirectories(kind)
             })
     }
 
@@ -1639,14 +1646,7 @@ final class ConsoleStore {
 
     func agentUsageStore(for hostID: Host.ID) -> AgentUsageStore {
         if let store = agentUsageStores[hostID] { return store }
-        let store = AgentUsageStore(
-            hostID: hostID,
-            onHost: { [weak self] operation in
-                guard let self else { throw TransportError.cancelled }
-                try await self.withUsageHost(for: hostID, operation)
-            },
-            accountFileGate: usageAccountFileGate
-        ) { [weak self] timeZone, claudeLimits in
+        let store = AgentUsageStore(hostID: hostID, reader: .init { [weak self] timeZone, claudeLimits in
             guard let self else { throw TransportError.cancelled }
             if let host = self.coreHost(hostID) {
                 return try await self.withCoreConnection(host) { transport in
@@ -1659,7 +1659,7 @@ final class ConsoleStore {
                 try await AgentUsageStore.reading(
                     over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
             }
-        }
+        })
         store.didChange = { [weak self] in self?.publishUsageWidgets() }
         agentUsageStores[hostID] = store
         return store
@@ -1682,6 +1682,61 @@ final class ConsoleStore {
     private func usageHasConnection(_ host: Host, state: AgentUsageStore.State) -> Bool {
         if hostStatuses[host.id] == .connected { return true }
         return host.serverKind == .herdrCore && !state.couldNotReachHost
+    }
+
+    /// The Host's Accounts for every harness (#621), kept for as long as
+    /// the Console runs. Usage joins in while it is on.
+    func hostAccountsStore(for hostID: Host.ID) -> HostAccountsStore {
+        if let store = hostAccountsStores[hostID] { return store }
+        let store = HostAccountsStore(
+            hostID: hostID,
+            onHost: { [weak self] operation in
+                guard let self else { throw TransportError.cancelled }
+                try await self.withUsageHost(for: hostID, operation)
+            },
+            fileGate: usageAccountFileGate,
+            usage: { [weak self] in
+                guard let self, self.isUsageEnabled else { return nil }
+                return self.agentUsageStore(for: hostID)
+            })
+        hostAccountsStores[hostID] = store
+        return store
+    }
+
+    /// The variable `kind`'s Accounts set on a Host, for a Launch Preset
+    /// with an Account: the Host's Accounts name it, else the harness does.
+    func accountVariable(for kind: SupportedAgentKind, on hostID: Host.ID) async throws -> String? {
+        let store = hostAccountsStore(for: hostID)
+        try await store.load()
+        return store.variable(for: kind)
+    }
+
+    /// One Account a Launch Preset can name: its folder with `~` for the
+    /// home, so one preset serves every Host that keeps it there.
+    struct PresetAccountChoice: Hashable, Identifiable {
+        let name: String
+        let directory: String
+        let hostName: String
+        var id: String { directory }
+    }
+
+    /// Loads every Host's Accounts, for a preset's Account picker.
+    func loadAllHostAccounts() async {
+        for host in catalog { try? await hostAccountsStore(for: host.id).load() }
+    }
+
+    /// The Accounts of `kind` the Hosts loaded so far keep, each folder once.
+    func presetAccountChoices(for kind: SupportedAgentKind) -> [PresetAccountChoice] {
+        var choices: [PresetAccountChoice] = []
+        for host in catalog {
+            guard let store = hostAccountsStores[host.id] else { continue }
+            for account in store.file.accounts(for: kind) {
+                let directory = AccountsListing.displayDirectory(account.directory, home: store.hostHome)
+                guard !choices.contains(where: { $0.directory == directory }) else { continue }
+                choices.append(.init(name: account.name, directory: directory, hostName: host.displayName))
+            }
+        }
+        return choices
     }
 
     /// Whether Usage is on: its tab, its Host section, and its reads.

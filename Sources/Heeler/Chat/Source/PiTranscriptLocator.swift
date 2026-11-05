@@ -33,12 +33,45 @@ struct PiTranscriptLocator: Sendable {
         }
         guard let id = ConversationReference.canonicalUUID(reference.sessionID) else { return .failure(.mismatched) }
         let home = try await files.home()
-        let root = sessionsRoot ?? RemoteFilePath.join(home, reference.program == .pi ? ".pi" : ".omp", "agent", "sessions")
+        // On herdr-core the Agent's own sessions root is the one searched.
+        // Otherwise each agent directory (`PI_CODING_AGENT_DIR`): the
+        // default's, then each added Account's.
+        let roots: [String]
+        if let sessionsRoot {
+            roots = [sessionsRoot]
+        } else {
+            let kind: SupportedAgentKind = reference.program == .pi ? .pi : .omp
+            let agentDirectories = try await files.configRoots(
+                for: kind, defaultRoot: RemoteFilePath.join(home, reference.program == .pi ? ".pi" : ".omp", "agent"))
+            roots = agentDirectories.map { RemoteFilePath.join($0, "sessions") }
+        }
+        var searchedAll = true
+        var mismatch = false
+        let answer = try await ChatHostFiles.firstAnswer(across: roots) {
+            root -> Result<String, PiTranscriptUnavailable>? in
+            switch try await search(
+                root: root, id: id, home: home, reference: reference, directories: directories,
+                isAgentsOwn: sessionsRoot != nil, searchesEveryProject: searchesEveryProject)
+            {
+            case .failure(.mismatched): mismatch = true
+            case .failure(.notFound(let all)): searchedAll = searchedAll && all
+            case let result: return result
+            }
+            return nil
+        }
+        if let answer { return answer }
+        return .failure(mismatch ? .mismatched : .notFound(searchedAll: searchedAll))
+    }
+
+    private func search(
+        root: String, id: String, home: String, reference: ConversationReference, directories: [String],
+        isAgentsOwn: Bool, searchesEveryProject: Bool
+    ) async throws -> Result<String, PiTranscriptUnavailable> {
         var queue = directories.filter(RemoteFilePath.isAcceptable).map { directory in
             RemoteFilePath.join(root, Self.projectKey(directory))
         }
         // A folder from `PI_CODING_AGENT_SESSION_DIR` holds its files directly.
-        if sessionsRoot != nil { queue.append(root) }
+        if isAgentsOwn { queue.append(root) }
         // OMP also uses home-relative keys in recent releases.
         if reference.program == .omp {
             for directory in directories where directory.hasPrefix(home + "/") {

@@ -1,5 +1,5 @@
 {
-  "version": "0.5.3",
+  "version": "0.5.4",
   "files": [
     {
       "path": "core/agent-rule.js",
@@ -119,19 +119,19 @@
     },
     {
       "path": "shared/usage/account-suggestions.js",
-      "sha256": "0ad997f5b2de1879f507676b22593869b586040f0886ceff023de9a7d31c85eb"
+      "sha256": "43d6bb62525d580090cd07fdc912d8ede8b511c239aad6cf095d4e8fd059904f"
     },
     {
       "path": "shared/usage/accounts.js",
-      "sha256": "be9a0934ba0da5056062edc0ef82c3da9849150eb1ffc8ac0f2cbf96e52c61f0"
+      "sha256": "70c3ad9b25657d5454eedf1fcc6971f65c332763b5b7ab186bf0541197371d24"
     },
     {
       "path": "shared/usage/agent-directories.js",
-      "sha256": "27badcf037e5fac089760bdf1836c32416b47a214b568e5ec5f88227aaf38577"
+      "sha256": "e9ebe184b5c5ac31650f6b951c4ebb299b59338ae9711d24ef8fc8406482d08b"
     },
     {
       "path": "shared/usage/buckets.js",
-      "sha256": "f954342971ffa608cbd32539157839aba5997c9f0ac74248b9f4f451d5c147a0"
+      "sha256": "dd4e202dc7418549c82f91614e50c19764cad6c99a7d786f65cb9a81362f6dd9"
     },
     {
       "path": "shared/usage/cache.js",
@@ -139,7 +139,7 @@
     },
     {
       "path": "shared/usage/checkpoint.js",
-      "sha256": "186cfa8bb510d5730cf891598480a8847c825f6e3ac7b4a4cefb229b8deb8883"
+      "sha256": "51b84a92b6a86e07888edbcf5c1dcb1a7bc4823d763048a7752648f2075e1ed3"
     },
     {
       "path": "shared/usage/claude-limits.js",
@@ -155,7 +155,7 @@
     },
     {
       "path": "shared/usage/codex-limits.js",
-      "sha256": "71e65a5226e0effb2beaeaf30c41a0c3a532132a2ce4dbd8ad4d83bc0f2884c8"
+      "sha256": "3950feecb333df088ab79209814bba349ca054a9d7d7c712b175469acb47afb7"
     },
     {
       "path": "shared/usage/codex-scanner.js",
@@ -186,8 +186,12 @@
       "sha256": "d947513f4c02e1f93f1421f53a6e705b8a4dfcdaaf3f1d941394cd6078eb32f7"
     },
     {
+      "path": "shared/usage/programs.js",
+      "sha256": "6856bd2c17de68919ecc5c34053c64d6ec433962af4cbe805f8269d387108b29"
+    },
+    {
       "path": "shared/usage/query.js",
-      "sha256": "09986b1c6685e6033eba40ffc35c62ba19a18712ef41158ba0a9f7c5378965cb"
+      "sha256": "406b7e455b008312a829b60f534c3f4b9aefb44d2a27960c19c6bb451c31f517"
     },
     {
       "path": "shared/usage/runtime-record.js",
@@ -195,7 +199,7 @@
     },
     {
       "path": "shared/usage/worker.js",
-      "sha256": "3bf605fb153d8ff3b77b907f9ef44a9751f45f431485d9a4c4cc715b6db1d91f"
+      "sha256": "0fbc4df78372ecc022db51307e39bea872971f0f14284f54701b408870156f60"
     },
     {
       "path": "usage-query.js",
@@ -206,8 +210,8 @@
       "sha256": "6c46176b11a0fb73dd54ae05d9c50d5700ff8d7f351f2d41f35c3aab7fa18509"
     },
     {
-      "path": "usage/claude-terminal.js",
-      "sha256": "e8ffc2110035b5fcc488464abcf1ef11ff392ded0133c6c09c74dbd71e7d7b47"
+      "path": "usage/account-agent.js",
+      "sha256": "4b1defe1528103f7ed884b778bbbe282529391b09d91dba62204aa17baaae26e"
     },
     {
       "path": "usage/layout.js",
@@ -215,11 +219,11 @@
     },
     {
       "path": "usage/recorder.js",
-      "sha256": "de4207a03676239275e66a37ac07be64479d3fb18922a58385f076a4b830a16c"
+      "sha256": "d95b49762de9d5738cdb1224b528177be9b805cf47cc0cbb1b1eff41255bf660"
     },
     {
       "path": "version.json",
-      "sha256": "c275982d0b13644369e5cbc792eb3bb7538fedb07e2ab3f5eb19a8cdd5a8fa36"
+      "sha256": "59ab7afba94dee9766819a574758e34d412c08ccb448481c352af3d4fdd9a7d6"
     }
   ]
 }

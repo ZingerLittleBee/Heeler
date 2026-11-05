@@ -1,0 +1,46 @@
+# Reruns the failed jobs of a build tag's Release run when GitHub gave some of
+# them no runner, as when macOS arm64 capacity runs out. Every other failure
+# waits for `make testflight-retry`. testflight.py stops after the run's third
+# attempt, so a lasting shortage cannot rerun it forever.
+#
+# `workflows` must match release.yml's `name`; test-testflight.py checks that.
+# Rehearsals and passing runs are ignored.
+
+name: Release retry
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: release-retry-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    name: Retry a runner shortage
+    if: ${{ github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion != 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write   # rerun the failed jobs
+      checks: read     # read why a job never started
+      contents: write  # checkpoints are drafts, visible only with write access
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Rerun the failed jobs after a runner shortage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          YES: '1'
+        run: python3 scripts/testflight.py ci-retry

@@ -1,47 +1,49 @@
 import SwiftUI
 
-/// Browses remote folders and selects a Workspace draft, or a Claude Code
-/// Account's directory. Starting the Agent remains a separate action on the
+/// Browses remote folders and selects a Workspace draft, or an Account's
+/// directory. Starting the Agent remains a separate action on the
 /// owning New Agent form.
 struct RemoteDirectoryBrowserView: View {
     /// What the chosen folder is for, which sets the sheet's words.
     enum Purpose {
         /// A new Workspace's or Terminal's directory, filled into a form.
         case workspace
-        /// A Claude Code Account, added as soon as it is chosen.
-        case claudeAccount
+        /// A harness's Account, added as soon as it is chosen.
+        case account(SupportedAgentKind)
 
         var title: String {
             switch self {
             case .workspace: "Browse Directories"
-            case .claudeAccount: "Choose Directory"
+            case .account: "Choose Directory"
             }
         }
 
         var useTitle: String {
             switch self {
             case .workspace: "Select"
-            case .claudeAccount: "Add"
+            case .account: "Add"
             }
         }
 
         var useLabel: String {
             switch self {
             case .workspace: "Select folder"
-            case .claudeAccount: "Add folder as an Account"
+            case .account: "Add folder as an Account"
             }
         }
 
         var emptyDescription: String {
             switch self {
             case .workspace: "You can select this folder for the new Workspace."
-            case .claudeAccount: "You can add this folder as a Claude Code Account."
+            case .account(let kind): "You can add this folder as a \(kind.displayName) Account."
             }
         }
 
-        /// Whether the sheet offers to hide dot folders. A Claude Code
-        /// Account usually is one, so its sheet always lists them.
-        var offersHidingDotFolders: Bool { self == .workspace }
+        /// Whether the sheet offers to hide dot folders. An Account's
+        /// directory usually is one, so its sheet always lists them.
+        var offersHidingDotFolders: Bool {
+            if case .workspace = self { true } else { false }
+        }
     }
 
     /// The defaults key for hiding dot folders while browsing for a

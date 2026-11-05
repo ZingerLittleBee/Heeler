@@ -899,7 +899,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let record = try fold(
             runReply: try await transport.runTerminal(
                 params: HerdrCoreLaunch.agentRequest(
-                    kind: kind, name: request.name, arguments: request.arguments, shell: shell,
+                    kind: kind, name: request.name, arguments: request.arguments,
+                    environment: request.environment, shell: shell,
                     openCodeVersion: openCodeVersion, placement: placement)))
         return agent(at: record, kind: kind.rawValue)
     }
@@ -1780,6 +1781,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             },
             queryOpenCode: { query in
                 try await session.withTransport { $0.hostServices }.queryOpenCode(query)
+            },
+            // A core Host's Accounts are in the Host Helper's Account file (ADR 0033).
+            accountDirectories: { kind in
+                let host = try await session.withTransport { $0.hostHelperHost }
+                let data = try await HostHelperFiles(host: host).readUsageAccountFile()
+                return try UsageAccountFile.decode(data).directories(for: kind)
             })
     }
 

@@ -108,20 +108,21 @@ struct HerdrCoreLaunchTests {
 
         func startAgent(
             _ kind: SupportedAgentKind, arguments: [String] = [], workspaceID: String? = nil,
-            cwd: String? = nil
+            cwd: String? = nil, environment: [String: String] = [:]
         ) async throws -> Agent {
             try await store.startAgent(
                 AgentLaunchRequest(
                     kind: kind.rawValue, name: kind.rawValue, arguments: arguments,
-                    workspaceID: workspaceID ?? derived, cwd: cwd),
+                    workspaceID: workspaceID ?? derived, cwd: cwd, environment: environment),
                 on: host.id)
         }
 
         /// The params of the one launch it runs.
         func launch(
-            _ kind: SupportedAgentKind, arguments: [String] = [], workspaceID: String? = nil
+            _ kind: SupportedAgentKind, arguments: [String] = [], workspaceID: String? = nil,
+            environment: [String: String] = [:]
         ) async throws -> JSONValue {
-            _ = try await startAgent(kind, arguments: arguments, workspaceID: workspaceID)
+            _ = try await startAgent(kind, arguments: arguments, workspaceID: workspaceID, environment: environment)
             return try #require(await transport.runs.last)
         }
 
@@ -206,6 +207,24 @@ struct HerdrCoreLaunchTests {
         #expect(params["line"] == nil)
         #expect((Self.environment(of: params) ?? [:]) == blanks)
         #expect(Self.environment(of: params)?["PATH"] == nil)
+    }
+
+    /// A Launch Preset's variables (#622) ride on the run, and one it sets wins
+    /// over a variable the launch blanks.
+    @Test func aPresetsEnvironmentRidesOnTheRunOverTheBlanks() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+
+        let params = try await fixture.launch(
+            .claude,
+            environment: ["CLAUDE_CONFIG_DIR": "/home/dev/.claude-work", "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1"])
+
+        #expect(
+            Self.environment(of: params)
+                == [
+                    "CLAUDE_CONFIG_DIR": "/home/dev/.claude-work", "CLAUDE_CODE_CHILD_SESSION": "",
+                    "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1",
+                ])
     }
 
     @Test func aFishLoginShellGetsFishsForm() async throws {

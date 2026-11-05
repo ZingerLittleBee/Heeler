@@ -50,9 +50,11 @@ enum HerdrCoreLaunch {
         request(argv: nil, name: nil, environment: [:], placement: placement)
     }
 
+    /// `environment` is the launch's own, a Launch Preset's (#622); it wins over
+    /// the variables blanked for `kind`.
     static func agentRequest(
-        kind: SupportedAgentKind, name: String?, arguments: [String], shell: String,
-        openCodeVersion: String?, placement: Placement
+        kind: SupportedAgentKind, name: String?, arguments: [String], environment: [String: String] = [:],
+        shell: String, openCodeVersion: String?, placement: Placement
     ) -> JSONValue {
         let session = sessionStart(kind: kind, arguments: arguments, openCodeVersion: openCodeVersion)
         var labeled = placement
@@ -60,7 +62,8 @@ enum HerdrCoreLaunch {
         return request(
             argv: HerdrCoreShellLaunch.argv(
                 shell: shell, program: [kind.executable] + session.flags + arguments),
-            name: name, environment: blankedVariables(kind), placement: labeled)
+            name: name, environment: blankedVariables(kind).merging(environment) { _, launch in launch },
+            placement: labeled)
     }
 
     /// A Template by its name, as the core runs it: no shell, session flags or

@@ -1,10 +1,11 @@
 import Foundation
 
 /// Finds a Grok Build session's transcript, `<group>/<id>/updates.jsonl`
-/// under `~/.grok/sessions`. A custom `GROK_HOME` lives in the Agent's
-/// environment, which herdr does not report, so on Herdr TUI it is not searched.
-/// On herdr-core `configRoot` is the Agent's own `GROK_HOME`, and the id may be
-/// the UUIDv4 Heeler started it with (ADR 0034).
+/// under `~/.grok/sessions`, then under each added Account's `GROK_HOME`.
+/// herdr does not report an Agent's environment, so on Herdr TUI a custom
+/// home is searched only once it is an Account (#621). On herdr-core
+/// `configRoot` is the Agent's own `GROK_HOME`, the one home searched, and
+/// the id may be the UUIDv4 Heeler started it with (ADR 0034).
 ///
 /// The group names the directory the session started in, so the Agent's
 /// directories are tried first: the directory percent-encoded, or for a name
@@ -40,12 +41,32 @@ struct GrokTranscriptLocator: Sendable {
             configRoot == nil
             ? ConversationReference.lowercaseUUIDv7(sessionID) : ConversationReference.lowercaseUUID(sessionID)
         guard acceptedID != nil else { return .failure(.mismatched) }
-        let grokHome: String
+        let grokHomes: [String]
         if let configRoot {
-            grokHome = configRoot
+            grokHomes = [configRoot]
         } else {
-            grokHome = RemoteFilePath.join(try await files.home(), ".grok")
+            let home = try await files.home()
+            grokHomes = try await files.configRoots(for: .grok, defaultRoot: RemoteFilePath.join(home, ".grok"))
         }
+        var searchedAll = true
+        var sawMismatch = false
+        let found = try await ChatHostFiles.firstAnswer(across: grokHomes) { grokHome -> String? in
+            switch try await search(in: grokHome, sessionID: sessionID, directories: directories) {
+            case .success(let path): return path
+            case .failure(.mismatched): sawMismatch = true
+            case .failure(.notFound(let all)): searchedAll = searchedAll && all
+            }
+            return nil
+        }
+        if let found { return .success(found) }
+        return .failure(sawMismatch ? .mismatched : .notFound(searchedAll: searchedAll))
+    }
+
+    /// Searches one Grok home (`GROK_HOME`): its `sessions`, then its
+    /// worktrees' groups first among the rest.
+    private func search(in grokHome: String, sessionID: String, directories: [String]) async throws
+        -> Result<String, Failure>
+    {
         let root = RemoteFilePath.join(grokHome, "sessions")
         var tried = Set<String>()
         var searchedAll = true

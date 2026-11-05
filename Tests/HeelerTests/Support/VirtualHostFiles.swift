@@ -9,7 +9,7 @@ import Foundation
 /// its end. Every mutation advances a whole-second modification clock.
 actor VirtualHostFiles {
     enum Operation: Hashable, Sendable {
-        case status, list, read, home
+        case status, list, read, home, accounts
     }
 
     /// Thrown by every read past the budget `setReadBudget(_:)` sets.
@@ -34,6 +34,9 @@ actor VirtualHostFiles {
     private(set) var reads: [RemoteFileRange] = []
     private(set) var listings: [RemoteFileListingRequest] = []
     private(set) var statuses: [String] = []
+    /// Each harness's added Accounts' directories, as the Host's Account
+    /// file lists them.
+    private var accountDirectories: [SupportedAgentKind: [String]] = [:]
 
     init(home: String = "/home/dev") {
         homeDirectory = home
@@ -46,6 +49,15 @@ actor VirtualHostFiles {
     }
 
     // MARK: Mutation
+
+    func setAccountDirectories(_ directories: [String], for kind: SupportedAgentKind) {
+        accountDirectories[kind] = directories
+    }
+
+    func accounts(for kind: SupportedAgentKind) throws -> [String] {
+        try throwFault(.accounts)
+        return accountDirectories[kind] ?? []
+    }
 
     func write(_ data: Data, at path: String) {
         makeParents(of: path)
@@ -139,7 +151,7 @@ actor VirtualHostFiles {
     }
 
     func listFiles(_ request: RemoteFileListingRequest) throws -> RemoteFileListing? {
-        try throwFault(.list)
+        try throwFault(.list, path: request.directory)
         listings.append(request)
         guard let (directory, node) = resolve(request.directory), case .directory = node else {
             return nil
@@ -195,7 +207,8 @@ actor VirtualHostFiles {
             status: { try await self.fileStatus(atPath: $0) },
             list: { try await self.listFiles($0) },
             read: { try await self.readRange($0) },
-            home: { try await self.home() })
+            home: { try await self.home() },
+            accountDirectories: { try await self.accounts(for: $0) })
     }
 
     // MARK: Helpers

@@ -413,10 +413,15 @@ struct AgentLaunchRequest: Sendable, Equatable {
     /// unnamed so herdr or a plugin can title it. Kept separate from the
     /// slug-constrained agent name because a tab label accepts any text.
     let tabLabel: String?
+    /// Environment for the shell herdr types the Agent into, as a Launch
+    /// Preset sets it (#622): an Account's folder variable and any others.
+    /// It rides on the call that creates the pane; values are passed as
+    /// given, the home folder already expanded.
+    let environment: [String: String]
 
     init(
         kind: String, name: String, arguments: [String] = [], workspaceID: String? = nil,
-        cwd: String? = nil, tabLabel: String? = nil
+        cwd: String? = nil, tabLabel: String? = nil, environment: [String: String] = [:]
     ) {
         self.kind = kind
         self.name = name
@@ -424,7 +429,11 @@ struct AgentLaunchRequest: Sendable, Equatable {
         self.workspaceID = workspaceID
         self.cwd = cwd
         self.tabLabel = tabLabel
+        self.environment = environment
     }
+
+    /// The creating call's `env`; nil keeps it off the wire.
+    var environmentParameter: [String: String]? { environment.isEmpty ? nil : environment }
 }
 
 /// An agent role saved on a herdr-core Host, by the name New Agent starts it with.

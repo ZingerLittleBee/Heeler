@@ -352,7 +352,7 @@ EXPECTED
         transport)
             cat > "$fixture_dir/expected" <<'EXPECTED'
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
-suite SharedFixtureE2ETests 123 6 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests PairingCeremonyE2ETests
+suite SharedFixtureE2ETests 126 6 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests PairingCeremonyE2ETests
 suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             [[ ! -e "$fixture_dir/WeakNetworkE2ETests.log" ]] || fail 'transport included Weak'
@@ -363,7 +363,7 @@ start-password
 suite HeelerSSHSessionE2ETests 13 1 0 HeelerSSHSessionE2ETests
 stop-password
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
-suite SharedFixtureE2ETests 134 7 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
+suite SharedFixtureE2ETests 137 7 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
 suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             ;;
