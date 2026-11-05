@@ -119,6 +119,8 @@ final class ConsoleStore {
     /// so every Host's Account changes take turns.
     @ObservationIgnored private let usageAccountFileGate = GitExecGate()
     @ObservationIgnored private var hostAccountsStores: [Host.ID: HostAccountsStore] = [:]
+    /// The device's Launch Presets (#622).
+    let launchPresets = LaunchPresetStore()
     /// Writes the widgets' snapshot of those readings. Only the app passes
     /// one: demo mode and tests must not replace the real widgets' figures.
     @ObservationIgnored let usageWidgets: AgentUsageWidgetPublisher?
@@ -1271,6 +1273,42 @@ final class ConsoleStore {
             })
         hostAccountsStores[hostID] = store
         return store
+    }
+
+    /// The variable `kind`'s Accounts set on a Host, for a Launch Preset
+    /// with an Account: the Host's Accounts name it, else the harness does.
+    func accountVariable(for kind: SupportedAgentKind, on hostID: Host.ID) async -> String? {
+        let store = hostAccountsStore(for: hostID)
+        if store.loadState != .loaded { await store.load() }
+        return store.variable(for: kind)
+    }
+
+    /// One Account a Launch Preset can name: its folder with `~` for the
+    /// home, so one preset serves every Host that keeps it there.
+    struct PresetAccountChoice: Hashable, Identifiable {
+        let name: String
+        let directory: String
+        let hostName: String
+        var id: String { directory }
+    }
+
+    /// Loads every Host's Accounts, for a preset's Account picker.
+    func loadAllHostAccounts() async {
+        for host in catalog { await hostAccountsStore(for: host.id).load() }
+    }
+
+    /// The Accounts of `kind` the Hosts loaded so far keep, each folder once.
+    func presetAccountChoices(for kind: SupportedAgentKind) -> [PresetAccountChoice] {
+        var choices: [PresetAccountChoice] = []
+        for host in catalog {
+            guard let store = hostAccountsStores[host.id] else { continue }
+            for account in store.file.accounts(for: kind) {
+                let directory = AccountsListing.displayDirectory(account.directory, home: store.hostHome)
+                guard !choices.contains(where: { $0.directory == directory }) else { continue }
+                choices.append(.init(name: account.name, directory: directory, hostName: host.displayName))
+            }
+        }
+        return choices
     }
 
     /// Whether Usage is on: its tab, its Host section, and its reads.

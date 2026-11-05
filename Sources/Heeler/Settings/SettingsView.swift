@@ -164,6 +164,12 @@ struct SettingsView: View {
                     }
                     .accessibilityIdentifier(Self.agentListDestination.rawValue)
                     NavigationLink {
+                        AgentsAndAccountsSettingsView(console: console, hosts: hosts)
+                    } label: {
+                        Label("Agents & Accounts", systemImage: "person.crop.rectangle.stack")
+                    }
+                    .accessibilityIdentifier("settings.agentsAndAccounts")
+                    NavigationLink {
                         NotificationSettingsView(
                             pushRegistration: pushRegistration,
                             notificationPreferences: notificationPreferences,

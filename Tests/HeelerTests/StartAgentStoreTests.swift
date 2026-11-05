@@ -63,6 +63,10 @@ struct StartAgentStoreTests {
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void = { _ in },
         origin: StartAgentStore.LaunchOrigin? = nil,
         recents: RecentLaunchStore? = nil,
+        presets: [LaunchPreset] = [],
+        accountVariable: @escaping (Host.ID, SupportedAgentKind) async -> String? = { _, kind in
+            kind.configDirectoryVariable
+        },
         recorder: StartRecorder
     ) -> StartAgentStore {
         StartAgentStore(
@@ -75,7 +79,9 @@ struct StartAgentStoreTests {
             },
             awaitAgentVisible: awaitAgentVisible,
             origin: origin,
-            recents: recents ?? makeRecents())
+            recents: recents ?? makeRecents(),
+            presets: { presets },
+            accountVariable: accountVariable)
     }
 
     /// The `.started` state a default-recorder submit lands in: the recorder's
@@ -1434,5 +1440,77 @@ struct StartAgentStoreTests {
 
         #expect(store.state == .editing)
         #expect(recorder.params.isEmpty)
+    }
+
+    // MARK: Launch Presets (#622)
+
+    private static let work = LaunchPreset(
+        name: "Work", kind: .claude, accountDirectory: "~/.claude-work", arguments: "--dangerously-skip-permissions",
+        environment: [.init(name: "ANTHROPIC_LOG", value: "debug")])
+    private static let yolo = LaunchPreset(name: "YOLO", kind: .codex, arguments: "--yolo")
+
+    /// A Host is offered the presets of the harnesses it has; picking one
+    /// picks its harness, and launching sends its arguments before the
+    /// form's and its environment on the creating call.
+    @Test func aPresetLaunchesItsHarnessWithItsArgumentsAndEnvironment() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host], workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Existing")] },
+            agentKinds: { _ in [.claude, .gemini] }, presets: [Self.work, Self.yolo], recorder: recorder)
+        await store.discoverAgents()
+        #expect(store.availablePresets.map(\.name) == ["Work"])
+
+        store.selectedPresetID = Self.work.id
+        #expect(store.selectedAgentKind == .claude)
+        #expect(store.defaultAgentName == "work")
+        store.arguments = "--resume"
+        await store.submit()
+
+        #expect(store.state == started(on: host))
+        let request = recorder.params.first
+        #expect(request?.kind == "claude")
+        #expect(request?.name == "work")
+        #expect(request?.arguments == ["--dangerously-skip-permissions", "--resume"])
+        #expect(
+            request?.environment
+                == ["CLAUDE_CONFIG_DIR": "/home/you/.claude-work", "ANTHROPIC_LOG": "debug"])
+    }
+
+    /// Picking another harness leaves the preset; the launch is plain again.
+    @Test func choosingAnotherHarnessLeavesThePreset() async {
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [Host.fixture()], workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Existing")] },
+            agentKinds: { _ in [.claude, .codex] }, presets: [Self.work], recorder: recorder)
+        await store.discoverAgents()
+        store.selectedPresetID = Self.work.id
+        store.selectedAgentKind = .codex
+        #expect(store.selectedPresetID == nil)
+        await store.submit()
+        #expect(recorder.params.first?.environment == [:])
+        #expect(recorder.params.first?.arguments == [])
+    }
+
+    /// The Account's folder variable comes from the Host's Accounts; a
+    /// harness without one says so instead of launching the Default Account.
+    @Test func aPresetsAccountUsesTheHostsFolderVariable() async {
+        let amp = LaunchPreset(name: "Amp Work", kind: .amp, accountDirectory: "/srv/amp-work")
+        let recorder = StartRecorder()
+        var variable: String? = nil
+        let store = makeStore(
+            hosts: [Host.fixture()], workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Existing")] },
+            agentKinds: { _ in [.amp] }, presets: [amp], accountVariable: { _, _ in variable }, recorder: recorder)
+        await store.discoverAgents()
+        store.selectedPresetID = amp.id
+        await store.submit()
+        #expect(store.state == .failed(LaunchPreset.Problem.noFolderVariable(.amp).message))
+        #expect(recorder.params.isEmpty)
+
+        variable = "AMP_HOME"
+        await store.submit()
+        #expect(recorder.params.first?.environment == ["AMP_HOME": "/srv/amp-work"])
+        // A name that is no Agent name falls back to the harness's.
+        #expect(recorder.params.first?.name == "amp")
     }
 }

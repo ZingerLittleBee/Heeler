@@ -45,7 +45,9 @@ struct StartAgentView: View {
                     }
                 },
                 awaitAgentVisible: { await console.waitForAgent($0) },
-                origin: origin))
+                origin: origin,
+                presets: { console.launchPresets.presets },
+                accountVariable: { hostID, kind in await console.accountVariable(for: kind, on: hostID) }))
     }
 
     var body: some View {
@@ -170,6 +172,18 @@ struct StartAgentView: View {
                             Task { await store.discoverAgents() }
                         }
                     case .loaded:
+                        if !store.availablePresets.isEmpty {
+                            Picker("Preset", selection: $store.selectedPresetID) {
+                                Text("None").tag(LaunchPreset.ID?.none)
+                                ForEach(store.availablePresets) { @Sendable preset in
+                                    Text(preset.name).tag(LaunchPreset.ID?.some(preset.id))
+                                }
+                            }
+                            .accessibilityIdentifier("startAgent.preset")
+                            if let preset = store.selectedPreset {
+                                LaunchPresetSummary(preset: preset)
+                            }
+                        }
                         Picker("Agent", selection: $store.selectedAgentKind) {
                             ForEach(store.availableAgentKinds) { @Sendable kind in
                                 Text("\(kind.displayName) (\(kind.executable))")
@@ -189,7 +203,7 @@ struct StartAgentView: View {
                 } header: {
                     Text("Agent")
                 } footer: {
-                    Text("Agents installed and launchable from this Host's PATH.")
+                    Text("Agents installed and launchable from this Host's PATH. Launch Presets live in Settings › Agents & Accounts.")
                 }
 
                 Section {
