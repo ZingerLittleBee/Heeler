@@ -1058,13 +1058,21 @@ private struct ChatNoticeRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Label {
-                Text(verbatim: titlePrefix + notice.title)
-                    .modifier(ChatFontDesign(isCode: isCode))
-            } icon: {
-                Image(systemName: symbol)
+            if let command = notice.userCommandText {
+                ChatBubble {
+                    Text(verbatim: command)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .accessibilityLabel("You: \(command)")
+                }
+            } else {
+                Label {
+                    Text(verbatim: notice.title)
+                } icon: {
+                    Image(systemName: symbol)
+                }
+                .font(.footnote)
             }
-            .font(.footnote)
             if let detail = notice.detail, !detail.isEmpty {
                 Text(verbatim: detail)
                     .font(.caption)
@@ -1076,22 +1084,6 @@ private struct ChatNoticeRow: View {
         }
         .foregroundStyle(notice.kind == .error ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// The mark the program's prompt puts before what the user typed.
-    private var titlePrefix: String {
-        switch notice.kind {
-        case .shellCommand: "! "
-        case .pythonCommand: "$ "
-        default: ""
-        }
-    }
-
-    private var isCode: Bool {
-        switch notice.kind {
-        case .command, .shellCommand, .pythonCommand: true
-        default: false
-        }
     }
 
     private var symbol: String {

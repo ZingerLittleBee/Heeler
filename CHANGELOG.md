@@ -53,6 +53,9 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Show user commands in Chat with the same right-aligned bubble and text size
+  as other user messages, keeping command output below the bubble.
+
 - Accounts moved out of Usage into Settings › Agents & Accounts. Usage's
   notice about Account folders it found opens the same screen. (#632)
 

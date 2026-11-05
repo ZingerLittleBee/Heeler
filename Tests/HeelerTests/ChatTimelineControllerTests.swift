@@ -1795,6 +1795,58 @@ struct ChatRowViewTests {
     private static let actions = ChatRowActions(
         toggle: { _ in }, loadOlder: {}, copy: { _ in }, selectText: { _ in }, missingOutputText: "")
 
+    @Test(arguments: [
+        ChatNotice(kind: .shellCommand, title: "gh release edit builds/0.1.17/40 --notes-file /tmp/release-notes.md --prerelease --latest=false"),
+        ChatNotice(kind: .command, title: "/model opus"),
+        ChatNotice(kind: .pythonCommand, title: "print('hello')"),
+    ])
+    func userCommandsShareTheMessageBubble(notice: ChatNotice) async throws {
+        let text = try #require(notice.userCommandText)
+        let entries = [
+            ChatEntry(id: ChatEntryID("message"), sourceOffset: 0, content: .user(ChatUserMessage(text: text))),
+            ChatEntry(id: ChatEntryID("command"), sourceOffset: 1, content: .notice(notice)),
+        ]
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: entries))
+        let message = try #require(rows.first { $0.id == .entry(entries[0].id) })
+        let command = try #require(rows.first { $0.id == .entry(entries[1].id) })
+        #expect(command.topSpacing == 24)
+        #expect(command.copyText == notice.title)
+        for width in [CGFloat(320), 402, 768] {
+            let messageHost = UIHostingController(rootView: ChatRowView(row: message, isExpanded: false, actions: Self.actions))
+            let commandHost = UIHostingController(rootView: ChatRowView(row: command, isExpanded: false, actions: Self.actions))
+            let size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+            let messageHeight = messageHost.sizeThatFits(in: size).height - message.topSpacing
+            let commandHeight = commandHost.sizeThatFits(in: size).height - command.topSpacing
+            #expect(abs(commandHeight - messageHeight) <= 1, "at width \(width)")
+        }
+        var result = notice
+        result.detail = "Command completed."
+        let resultRows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [
+            entries[0],
+            ChatEntry(id: entries[1].id, sourceOffset: 1, content: .notice(result)),
+        ]))
+        let host = UIHostingController(rootView: VStack(spacing: 0) {
+            ForEach(resultRows) { row in
+                ChatRowView(row: row, isExpanded: false, actions: Self.actions)
+            }
+        }.frame(width: 402).fixedSize(horizontal: false, vertical: true))
+        host.safeAreaRegions = []
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 650), rootViewController: host)
+        defer { window.isHidden = true }
+        host.view.layoutIfNeeded()
+        let labels = AccessibilityProbe.labels(in: host.view)
+        #expect(labels.contains { $0.contains("You: \(text)") && $0.contains("Command completed.") })
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            window.overrideUserInterfaceStyle = style
+            host.view.layoutIfNeeded()
+            let image = UIGraphicsImageRenderer(bounds: host.view.bounds).image { _ in
+                host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+            }
+            Attachment.record(image, named: "user-command-\(notice.kind.rawValue)-\(style.rawValue)", as: .png)
+        }
+    }
+
     /// A cell is exactly as tall as its row measured and offers that height
     /// as the row's limit. A SwiftUI stack held to a limit shares it out by
     /// flexibility, which once cut the last line of a code block sitting
