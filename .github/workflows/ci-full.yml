@@ -70,9 +70,10 @@ permissions:
 jobs:
   app-tests:
     name: App tests (${{ matrix.shard }})
-    # macos-26 ships Xcode 26.x and the iOS 26 simulator runtimes. Pinned
-    # rather than macos-latest for reproducibility.
-    runs-on: macos-26
+    # Same toolchain as the release archive (release.yml). The xcode-27 image's
+    # iOS 27.0 runtime carries iPhone 17; its 27.1 runtime has only iPhone Duo,
+    # so the default name-based destination resolves to iOS 27.0.
+    runs-on: xcode-27
     # The job limit leaves the setup and upload steps room around the test step.
     timeout-minutes: ${{ inputs.layout == 'serial' && 80 || (matrix.shard == 'ordinary' && 70 || 60) }}
     strategy:
@@ -80,7 +81,7 @@ jobs:
       matrix:
         shard: ${{ fromJSON(inputs.layout == 'serial' && '["all"]' || '["session-weak","transport","ordinary"]') }}
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/test-evidence/app-${{ matrix.shard }}
       HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
       # Each matrix job owns a separate runner, but compiler command paths must
@@ -252,10 +253,10 @@ jobs:
 
   heelerssh-package-e2e:
     name: HeelerSSH package E2E (iOS Simulator)
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 36
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/test-evidence/package
       HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
       HEELER_CI_DISABLE_COMPILATION_CACHE: '1'

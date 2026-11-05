@@ -24,14 +24,14 @@ concurrency:
 jobs:
   diagnose:
     name: Diagnose ${{ matrix.target }}
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(inputs.target == 'all' && '["ssh-jump","staging","weak"]' || format('["{0}"]', inputs.target)) }}
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/diagnostics-${{ matrix.target }}
       HEELER_CI_OVERLAP_BUILD: '1'
       HEELER_CI_DISABLE_COMPILATION_CACHE: '1'
