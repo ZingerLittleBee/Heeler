@@ -5,7 +5,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claudeAccounts, readAccountFile } from "../src/usage/accounts.js";
+import { claudeAccounts, programAccounts, readAccountFile } from "../src/usage/accounts.js";
 import { cacheDirectory, usageRoots } from "../src/usage/cache.js";
 
 const plugin = fileURLToPath(new URL("..", import.meta.url));
@@ -91,6 +91,57 @@ test("an Account file that is missing, malformed or of another version adds no A
   ] } }));
   assert.deepEqual(readAccountFile(root), { defaultName: "Main", ignored: ["/home/u/.claude-old"],
     accounts: [entry, { id: "work_1-A", directory: "/Volumes/x/.claude", name: "work" }] });
+});
+
+test("another program's Accounts come from its section under programs, and programs.claude is never Claude Code's", t => {
+  const root = mkdtempSync(join(tmpdir(), "heeler-program-file-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const empty = { defaultName: null, accounts: [], ignored: [] };
+  const path = join(root, "usage-accounts.json");
+  const claude = { id: "7f3c9a2e", directory: "/home/u/.claude-2", name: "claude-2" };
+  const codex = { id: "a1b2c3d4", directory: "/home/u/.codex-work", name: "codex-work" };
+  writeFileSync(path, JSON.stringify({ version: 1, claude: { defaultName: null, accounts: [claude] },
+    programs: { codex: { defaultName: "Personal", accounts: [codex, { ...codex, id: "b1b2c3d4" }], ignored: ["/home/u/.codex-old"], variable: "CODEX_HOME" },
+      claude: { accounts: [{ ...claude, id: "ffffffff", name: "elsewhere" }] } } }));
+  assert.deepEqual(readAccountFile(root), { ...empty, accounts: [claude] });
+  assert.deepEqual(readAccountFile(root, "claude"), { ...empty, accounts: [claude] });
+  assert.deepEqual(readAccountFile(root, "codex"), { defaultName: "Personal", accounts: [codex], ignored: ["/home/u/.codex-old"] });
+  // A program without a section, or a file from before sections, adds nothing.
+  assert.deepEqual(readAccountFile(root, "gemini"), empty);
+  for (const programs of [undefined, [], "codex", { codex: [] }]) {
+    writeFileSync(path, JSON.stringify({ version: 1, claude: { accounts: [] }, programs }));
+    assert.deepEqual(readAccountFile(root, "codex"), empty);
+  }
+  // Another program's Accounts need no Claude Code section.
+  writeFileSync(path, JSON.stringify({ version: 1, programs: { codex: { accounts: [codex] } } }));
+  assert.deepEqual(readAccountFile(root, "codex"), { ...empty, accounts: [codex] });
+  assert.deepEqual(readAccountFile(root), empty);
+  writeFileSync(path, JSON.stringify({ version: 2, programs: { codex: { accounts: [codex] } } }));
+  assert.deepEqual(readAccountFile(root, "codex"), empty);
+});
+
+test("Codex's Default Account is the Codex home the recorded environment names, and added ones follow its rules", t => {
+  const root = mkdtempSync(join(tmpdir(), "heeler-codex-accounts-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const home = join(root, "home");
+  const directory = name => { const path = join(root, name); mkdirSync(path, { recursive: true }); return path; };
+  const primary = directory("home/.codex");
+  const work = directory("work");
+  symlinkSync(primary, join(root, "link-to-default"));
+  const file = { defaultName: "Main", accounts: [
+    { id: "work0001", directory: work, name: "work" }, { id: "gone0001", directory: join(root, "gone"), name: "gone" },
+    { id: "again001", directory: join(root, "link-to-default"), name: "again" },
+    { id: "extra001", directory: directory("e1"), name: "e1" }, { id: "extra002", directory: directory("e2"), name: "e2" },
+    { id: "extra003", directory: directory("e3"), name: "e3" }] };
+  const accounts = programAccounts({ env: { HOME: home, CODEX_HOME: null } }, file, "codex");
+  assert.deepEqual(accounts[0], { id: "default", isDefault: true, name: "Main", directory: primary, roots: [primary], state: "ok" });
+  assert.deepEqual(accounts.map(account => [account.id, account.state]), [["default", "ok"], ["work0001", "ok"],
+    ["gone0001", "missing"], ["again001", "duplicate"], ["extra001", "ok"], ["extra002", "ok"], ["extra003", "overLimit"]]);
+  const custom = programAccounts({ env: { HOME: home, CODEX_HOME: work } }, { defaultName: null, accounts: [] }, "codex");
+  assert.deepEqual(custom, [{ id: "default", isDefault: true, name: null, directory: work, roots: [work], state: "ok" }]);
+  // Claude Code's Accounts are the same rules over its own roots.
+  assert.deepEqual(claudeAccounts({ env: { HOME: home } }, { defaultName: null, accounts: [] }),
+    programAccounts({ env: { HOME: home } }, { defaultName: null, accounts: [] }, "claude"));
 });
 
 test("added Accounts are missing, duplicate by real path, over the limit or ok, in file order", t => {

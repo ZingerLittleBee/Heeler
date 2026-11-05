@@ -80,3 +80,52 @@ test("daily totals and coverage honor DST and remain isolated between query time
     }
   }
 });
+
+test("Codex reports each Account's Token Usage and Usage Limits, its total the counted Accounts' sum", () => {
+  const now = Date.parse("2026-03-09T12:00:00Z");
+  const bucket = (tokens, account) => ({ timestamp: Date.parse("2026-03-09T10:00:00Z"), program: "codex", model: "gpt-test",
+    ...(account === undefined ? {} : { account }), tokens: { input: tokens, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, total: tokens },
+    estimatedCostUSD: 0, unpricedTokens: 0 });
+  const reading = percent => ({ state: "ok", source: "service", observedAt: "2026-03-09T11:00:00Z",
+    windows: [{ id: "primary", durationMinutes: 300, usedPercent: percent, resetsAt: null, expired: false }] });
+  const codex = { accounts: [
+    { id: "default", isDefault: true, name: null, directory: "/home/u/.codex", state: "ok" },
+    { id: "work0001", isDefault: false, name: "work", directory: "/home/u/.codex-work", state: "ok" },
+    { id: "gone0001", isDefault: false, name: "gone", directory: "/home/u/.codex-gone", state: "missing" },
+  ], suggestions: [{ directory: "/home/u/.codex-2", name: "codex-2", source: "home" }] };
+  // Buckets before Accounts carry no Account and are the Default Account's; one left behind by an Account that no longer counts adds nothing.
+  const snapshot = { complete: true, buckets: [bucket(10), bucket(5, "work0001"), bucket(100, "gone0001")],
+    countedCodexAccounts: ["default", "work0001"], errors: {},
+    usageLimits: { codex: reading(20), codexAccounts: { work0001: reading(70) } } };
+
+  const program = reportFromSnapshot(snapshot, "UTC", false, now, false, { ...claude, programs: { codex } }).programs[1];
+
+  assert.equal(program.program, "codex");
+  assert.equal(program.tokenUsage.totals.today.tokens.total, 15);
+  assert.equal(program.usageLimits.windows[0].usedPercent, 20);
+  assert.deepEqual(program.accounts.map(account => [account.id, account.state, account.tokenUsage?.totals.today.tokens.total,
+    account.usageLimits?.windows[0].usedPercent]), [["default", "ok", 10, 20], ["work0001", "ok", 5, 70], ["gone0001", "missing", undefined, undefined]]);
+  assert.deepEqual(program.accounts[2], { id: "gone0001", isDefault: false, name: "gone", directory: "/home/u/.codex-gone", state: "missing" });
+  assert.deepEqual(program.accountSuggestions, codex.suggestions);
+
+  // An Account's own read error is its own; the program's covers the Accounts the snapshot counted.
+  const states = errors => reportFromSnapshot({ ...snapshot, errors }, "UTC", false, now, false, { ...claude, programs: { codex } })
+    .programs[1].accounts.slice(0, 2).map(account => account.tokenUsage.state);
+  assert.deepEqual(states({ "codex:work0001": "Could not read the Codex Transcripts." }), ["ok", "error"]);
+  assert.deepEqual(states({ codex: "Could not read the Codex Transcripts." }), ["error", "error"]);
+  // A Codex Account added since the last run is not read yet: it has no limits reading.
+  const added = reportFromSnapshot({ ...snapshot, countedCodexAccounts: ["default"], usageLimits: { codex: reading(20) } }, "UTC", true, now, false,
+    { ...claude, programs: { codex } }).programs[1].accounts[1];
+  assert.deepEqual([added.tokenUsage.state, added.usageLimits], ["ok", { state: "unavailable", reason: "notReadYet" }]);
+});
+
+test("without Codex Accounts, the Codex entry lists only its Default Account beside what it reported before", () => {
+  const snapshot = snapshotFor(["2026-03-08T09:30:00Z"]);
+  const before = reportFromSnapshot(snapshot, "UTC", false, Date.parse("2026-03-08T12:00:00Z"), false, claude).programs[1];
+  const codex = { accounts: [{ id: "default", isDefault: true, name: null, directory: "/home/u/.codex", state: "ok" }], suggestions: [] };
+  const { accounts, accountSuggestions, ...program } = reportFromSnapshot(snapshot, "UTC", false, Date.parse("2026-03-08T12:00:00Z"), false,
+    { ...claude, programs: { codex } }).programs[1];
+  assert.deepEqual(program, before);
+  assert.deepEqual(accounts, [{ ...codex.accounts[0], tokenUsage: before.tokenUsage, usageLimits: before.usageLimits }]);
+  assert.deepEqual(accountSuggestions, []);
+});

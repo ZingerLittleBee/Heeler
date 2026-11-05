@@ -78,7 +78,7 @@ sequenceDiagram
 | Component | Runs in | Role |
 | --- | --- | --- |
 | Runtime recorder (in the startup hook `src/sidebar-hook.js` and the `pane.agent_status_changed` hook `src/activity-hook.js`) | herdr's environment | Writes `runtime.json` and `runtime-node` to the plugin config directory |
-| Agent directory recorder (in `src/activity-hook.js`) | herdr's environment | Records running Claude Code Agents' `CLAUDE_CONFIG_DIR` as Account suggestions |
+| Agent directory recorder (in `src/activity-hook.js`, `src/usage/program-agents.js`) | herdr's environment | Records running Claude Code Agents' `CLAUDE_CONFIG_DIR` and Codex Agents' `CODEX_HOME` as Account suggestions |
 | `src/usage-query.js` | the app's SSH exec | Reads the cache, spawns the worker when needed, prints the contract |
 | `src/usage-worker.js` | detached from the query | Scans Transcripts, reads Usage Limits, writes the cache |
 | `src/usage/claude-*.js`, `src/usage/codex-*.js` | worker | Per-program Transcript scanners and limit readers |
@@ -722,8 +722,11 @@ OAuth token and calling `/api/oauth/usage` directly was rejected (ADR 0028).
 ## Accounts
 
 Claude Code usage is read per Account
-([ADR 0030](../adr/0030-usage-counts-the-accounts-the-user-adds.md)). Codex
-has only its Default Account, `${CODEX_HOME:-~/.codex}`.
+([ADR 0030](../adr/0030-usage-counts-the-accounts-the-user-adds.md)), and
+since plugin 0.9.0 Codex usage too, from the Account file's `programs.codex`
+section. Codex's Default Account is `${CODEX_HOME:-~/.codex}` in the
+recorded environment. The rules below are Claude Code's; Codex's differ only
+where [Codex Accounts](#codex-accounts) says.
 
 ### Default Account
 
@@ -753,10 +756,28 @@ directory 0700); the query and the worker only read it.
       { "id": "7f3c9a2e", "directory": "/home/u/.claude-2", "name": "claude-2" }
     ],
     "ignored": ["/home/u/.claude-backup"]
+  },
+  "programs": {
+    "codex": {
+      "defaultName": null,
+      "accounts": [
+        { "id": "a1b2c3d4", "directory": "/home/u/.codex-work", "name": "codex-work" }
+      ],
+      "ignored": [],
+      "variable": "CODEX_HOME"
+    }
   }
 }
 ```
 
+- `claude` is Claude Code's section, where it was before other programs
+  had Accounts. `programs` holds every other program's section, keyed by
+  herdr agent kind, in the same shape; `programs.claude` is never Claude
+  Code's. `variable` names the environment variable that points the
+  program at an Account's directory; the app fills it for programs it does
+  not know one for, and the plugin, which reads only `programs.codex`
+  (plugin 0.9.0), takes Codex's from its own table. Each section's rules
+  below apply within that section.
 - `defaultName`: the Default Account's name, or null for the app's own
   label ("Default").
 - `accounts`: the added Accounts in the order the user added them, at most
@@ -823,6 +844,26 @@ run at once, and until it ends the report already leaves the Account out.
   Account, and answers anything else with `error` and `requestFailed`.
 - A query starts a worker when any `ok` Account's next allowed read has
   come.
+
+### Codex Accounts
+
+- Codex records and files of the Default Account carry no Account id, as
+  before Accounts, so a Host without Codex Accounts keeps its cache. An
+  added Account's carry its id, and its response keys are prefixed with it:
+  a response copied into two Accounts' homes counts once in each.
+- An added Account's Usage Limits run the recorded `codex app-server` with
+  `CODEX_HOME` set to its `directory`, each on its own 60-second throttle
+  in `limits.json`'s `codexAccounts`; the Default Account's stay under
+  `codex`. Each falls back to the last limits its own sessions recorded.
+  Codex limits need no consent, so every `ok` Account is read.
+- The snapshot keeps `countedCodexAccounts` beside `countedAccounts`, and
+  `usageLimits.codexAccounts` beside `claudeAccounts`; an Account's own
+  listing error is `errors["codex:<id>"]`, and `errors.codex` means no
+  Codex Account could be listed. A snapshot from before Codex Accounts
+  counted the Default Account.
+- Suggestions: a running Codex Agent's `CODEX_HOME` (in
+  `usage/codex-agents.json`), and `.codex*` directories in `$HOME` that hold
+  `auth.json` or `sessions/`.
 
 ### Suggestions
 
@@ -1006,8 +1047,8 @@ tests and decoded by the Swift tests.
   included, by `durationMinutes` ("5-hour", "Weekly"), never by id.
 - `daily` always has one entry per day in the window, zero-filled.
 - `directories` holds at most 10 entries over 30 days, by total tokens.
-- `accounts` and `accountSuggestions` (plugin 0.8.0 and later, Claude Code
-  only): every Account, the Default Account first and the rest in the
+- `accounts` and `accountSuggestions` (plugin 0.8.0 and later for Claude
+  Code, 0.9.0 and later for Codex): every Account, the Default Account first and the rest in the
   Account file's order ([Accounts](#accounts)). The program's own
   `tokenUsage` adds up its `ok` Accounts and its `usageLimits` is the
   Default Account's, so an app that ignores `accounts` sees the Host total

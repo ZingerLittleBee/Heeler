@@ -145,12 +145,16 @@ test("query returns the empty cache without exposing runtime paths", async (t) =
         accounts: [{ id: "default", isDefault: true, name: null, directory: f.env.CLAUDE_CONFIG_DIR, state: "ok",
           tokenUsage: { state: "noData" }, usageLimits: { state: "error", reason: "requestFailed" } }],
         accountSuggestions: [] },
-      { program: "codex", tokenUsage: { state: "noData" }, usageLimits: { state: "error", reason: "requestFailed" } },
+      { program: "codex", tokenUsage: { state: "noData" }, usageLimits: { state: "error", reason: "requestFailed" },
+        accounts: [{ id: "default", isDefault: true, name: null, directory: f.env.CODEX_HOME, state: "ok",
+          tokenUsage: { state: "noData" }, usageLimits: { state: "error", reason: "requestFailed" } }],
+        accountSuggestions: [] },
     ],
   };
   assert.deepEqual(report, expected);
-  // Only the Default Account's directory names a Host path.
-  assert.equal(result.stdout.replace(JSON.stringify(f.env.CLAUDE_CONFIG_DIR), "").includes(f.root), false);
+  // Only the Default Accounts' directories name a Host path.
+  assert.equal(result.stdout.replace(JSON.stringify(f.env.CLAUDE_CONFIG_DIR), "").replace(JSON.stringify(f.env.CODEX_HOME), "")
+    .includes(f.root), false);
 
 });
 

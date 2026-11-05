@@ -18,19 +18,65 @@ struct ChatHostFiles: Sendable {
     /// Reads one OpenCode session from OpenCode's database on the Host
     /// (`Transport.queryOpenCode`); nil where nothing can, as in the demo.
     let queryOpenCode: (@Sendable (_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse)?
+    /// The directories of a harness's added Accounts, from the Host's
+    /// Account file: each is a config root the harness may file sessions
+    /// under besides its default. Empty where the file names none.
+    let accountDirectories: @Sendable (_ kind: SupportedAgentKind) async throws -> [String]
 
     init(
         status: @escaping @Sendable (_ path: String) async throws -> RemoteFileStatus?,
         list: @escaping @Sendable (_ request: RemoteFileListingRequest) async throws -> RemoteFileListing?,
         read: @escaping @Sendable (_ range: RemoteFileRange) async throws -> RemoteFileSlice,
         home: @escaping @Sendable () async throws -> String,
-        queryOpenCode: (@Sendable (_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse)? = nil
+        queryOpenCode: (@Sendable (_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse)? = nil,
+        accountDirectories: @escaping @Sendable (_ kind: SupportedAgentKind) async throws -> [String] = { _ in [] }
     ) {
         self.status = status
         self.list = list
         self.read = read
         self.home = home
         self.queryOpenCode = queryOpenCode
+        self.accountDirectories = accountDirectories
+    }
+
+    /// Runs `search` on each root in turn until one returns a value. A root
+    /// the Host will not let Heeler read is skipped so a later Account can
+    /// still answer; its refusal is rethrown when no root does.
+    /// Cancellation and connection failures end the search at once.
+    static func firstAnswer<Value>(
+        across roots: [String], _ search: (String) async throws -> Value?
+    ) async throws -> Value? {
+        var refusal: (any Error)?
+        for root in roots {
+            do {
+                if let value = try await search(root) { return value }
+            } catch TransportError.hostFileUnreadable(let status) {
+                refusal = refusal ?? TransportError.hostFileUnreadable(status: status)
+            }
+        }
+        if let refusal { throw refusal }
+        return nil
+    }
+
+    /// `defaultRoot`, then each added Account's directory for `kind`, each
+    /// once. An Account file the Host will not give up adds nothing: the
+    /// default root is still searched.
+    func configRoots(for kind: SupportedAgentKind, defaultRoot: String) async throws -> [String] {
+        var roots = [defaultRoot]
+        let added: [String]
+        do {
+            added = try await accountDirectories(kind)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            added = []
+        }
+        for directory in added where directory.hasPrefix("/") {
+            var root = directory
+            while root.count > 1, root.hasSuffix("/") { root.removeLast() }
+            if !roots.contains(root) { roots.append(root) }
+        }
+        return roots
     }
 
     /// Reads `[start, end)` in pieces of at most `chunk` bytes. Nil when the
