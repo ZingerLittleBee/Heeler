@@ -35,6 +35,61 @@ def script_module(name):
     return module
 
 
+class FakeAppStoreConnect:
+    """App Store Connect's external testing endpoints, recording every write."""
+
+    def __init__(self, group_builds=(("0.1.16", 37),), state="READY_FOR_BETA_SUBMISSION", submit_on_add=False):
+        self.groups = [("public", "Public Beta", False), ("team", "Heeler Team", True)]
+        self.group_builds = list(group_builds)
+        self.state, self.submit_on_add = state, submit_on_add
+        self.build_groups, self.localizations = [], {"en-US": ("l1", "Earlier notes")}
+        self.requests, self.writes = [], []
+
+    def __call__(self, request, timeout):
+        parsed = urlsplit(request.full_url)
+        path, query = parsed.path.removeprefix("/v1/"), {key: values[0] for key, values in parse_qs(parsed.query).items()}
+        self.requests.append(path)
+        if request.get_method() != "GET":
+            body = json.loads(request.data)
+            self.writes.append((request.get_method(), path, body))
+            if path == "betaBuildLocalizations":
+                attributes = body["data"]["attributes"]
+                self.localizations[attributes["locale"]] = (f"l{len(self.localizations) + 1}", attributes["whatsNew"])
+            elif path.startswith("betaBuildLocalizations/"):
+                locale = next(key for key, (identity, _) in self.localizations.items() if path.endswith("/" + identity))
+                self.localizations[locale] = (self.localizations[locale][0], body["data"]["attributes"]["whatsNew"])
+            elif path.endswith("/relationships/builds"):
+                self.build_groups.append(path.split("/")[1])
+                if self.submit_on_add:
+                    self.state = "WAITING_FOR_BETA_REVIEW"
+            elif path == "betaAppReviewSubmissions":
+                self.state = "WAITING_FOR_BETA_REVIEW"
+            return io.BytesIO(b"")
+        if path == "apps":
+            data = {"data": [{"id": "app", "attributes": {"bundleId": query["filter[bundleId]"]}}]}
+        elif path == "betaGroups":
+            data = {"data": [{"id": identity, "attributes": {"name": name, "isInternalGroup": internal}}
+                             for identity, name, internal in self.groups]}
+        elif "filter[betaGroups]" in query:
+            assert query["sort"] == "-uploadedDate"
+            data = {"data": [{"id": f"g{index}", "attributes": {"version": str(number)},
+                              "relationships": {"preReleaseVersion": {"data": {"id": f"v{index}"}}}}
+                             for index, (_, number) in enumerate(self.group_builds)],
+                    "included": [{"type": "preReleaseVersions", "id": f"v{index}", "attributes": {"version": version}}
+                                 for index, (version, _) in enumerate(self.group_builds)]}
+        else:
+            assert (query["filter[version]"], query["filter[preReleaseVersion.version]"]) == ("38", "0.2.0")
+            data = {"data": [{"id": "b38", "attributes": {"processingState": "VALID"}, "relationships": {
+                        "buildBetaDetail": {"data": {"id": "d38"}},
+                        "betaBuildLocalizations": {"data": [{"id": identity} for identity, _ in self.localizations.values()]},
+                        "betaGroups": {"data": [{"id": identity} for identity in self.build_groups]}}}],
+                    "included": [{"type": "buildBetaDetails", "id": "d38", "attributes": {"externalBuildState": self.state}},
+                                 *({"type": "betaBuildLocalizations", "id": identity,
+                                    "attributes": {"locale": locale, "whatsNew": text}}
+                                   for locale, (identity, text) in self.localizations.items())]}
+        return io.BytesIO(json.dumps(data).encode())
+
+
 class TestFlightCommands(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -179,6 +234,40 @@ Path('Heeler.xcodeproj/project.pbxproj').write_text(
                  patch.object(module, "AppStoreConnect") as apple, \
                  contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 apple.return_value.inventory.return_value = inventory
+                code = module.main()
+        finally:
+            os.chdir(cwd)
+        return code, stdout.getvalue() + stderr.getvalue()
+
+    def local(self, command, apple, **env):
+        """Run a maintainer command with the Team API key in a fake Keychain."""
+        if not hasattr(self, "keychain"):
+            key = self.root / "AuthKey.p8"
+            subprocess.run(["openssl", "genpkey", "-algorithm", "EC", "-pkeyopt", "ec_paramgen_curve:P-256",
+                            "-out", str(key)], check=True, capture_output=True)
+            self.keychain = self.root / "keychain.json"
+            self.keychain.write_text(json.dumps({"ASC_API_KEY_ID": "key", "ASC_API_ISSUER_ID": "issuer",
+                                                 "ASC_API_KEY_P8": base64.b64encode(key.read_bytes()).decode()}))
+            self.executable("security", f'''#!/usr/bin/env python3
+import json, sys
+args = sys.argv[1:]
+assert args[:3] == ["find-generic-password", "-s", "heeler-app-store-connect"] and args[5:] == ["-w"], args
+items = json.load(open({str(self.keychain)!r}))
+if args[4] not in items: sys.exit(44)
+print(items[args[4]])
+''')
+        spec = importlib.util.spec_from_file_location("testflight_local", self.repo / "scripts/testflight.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        environ = {key: value for key, value in self.env.items() if not key.startswith("ASC_")}
+        environ.update(env)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        cwd = Path.cwd()
+        try:
+            with patch.dict(os.environ, environ, clear=True), patch.object(sys, "argv", ["testflight", command]), \
+                 patch("app_store_connect.urlopen", side_effect=apple), \
+                 contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 code = module.main()
         finally:
             os.chdir(cwd)
@@ -625,6 +714,101 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
                           "conclusion": "failure", "event": "push"}]
         self.external.write_text(json.dumps(state))
         self.assertIn('"state": "reserved"', self.cli("status", TAG="builds/0.2.0/38").stdout)
+
+    def test_notes_list_the_entries_external_testers_have_not_had(self):
+        self.command("git", "tag", "v0.1.16")
+        self.command("git", "push", "--quiet", "origin", "v0.1.16")
+        self.cli("cut", VERSION="0.2.0")
+        code, output = self.local("notes", FakeAppStoreConnect(), TAG="builds/0.2.0/38")
+        self.assertEqual(code, 0, output)
+        self.assertIn("Public Beta has 0.1.16 (37), built from", output)
+        self.assertIn("### Fixed\n\n- Repair SSH. (#7)", output)
+        self.assertNotIn("Old feature", output)
+
+        self.assertEqual(self.ci("ci-init", Inventory(None, 37, False))[0], 0)
+        state = json.loads(self.external.read_text())
+        state["runs"] = [{"id": 123, "head_sha": self.command("git", "rev-parse", "HEAD").stdout.strip(),
+                          "status": "completed", "conclusion": "failure", "event": "push"}]
+        self.external.write_text(json.dumps(state))
+        notes = self.repo / "CHANGELOG.md"
+        notes.write_text(notes.read_text().replace(
+            "## [Unreleased]\n", "## [Unreleased]\n\n### Added\n\n- Speak to the\n  Composer. (#9)\n", 1))
+        self.command("git", "commit", "--quiet", "-am", "add notes")
+        self.command("git", "push", "--quiet", "origin", "main")
+        self.cli("cut")
+        apple = FakeAppStoreConnect(group_builds=(("0.2.0", 39), ("0.2.0", 38), ("0.1.16", 37)))
+        code, output = self.local("notes", apple, TAG="builds/0.2.0/39")
+        self.assertEqual(code, 0, output)
+        self.assertIn("Public Beta has 0.2.0 (38), built from", output)
+        self.assertIn("### Added\n\n- Speak to the Composer. (#9)", output)
+        self.assertNotIn("Repair SSH", output)
+
+        apple = FakeAppStoreConnect()
+        code, output = self.local("notes", apple, TAG="builds/0.2.0/39", SINCE="v0.1.16")
+        self.assertEqual(code, 0, output)
+        self.assertIn("- Repair SSH. (#7)", output)
+        self.assertIn("- Speak to the Composer. (#9)", output)
+        self.assertEqual(apple.requests, [])
+        for apple, problem in ((FakeAppStoreConnect(group_builds=(("0.2.0", 40),)), "already has a newer build"),
+                               (FakeAppStoreConnect(group_builds=()), "has no earlier build; pass SINCE"),
+                               (FakeAppStoreConnect(group_builds=(("0.1.15", 36),)), "No source for 0.1.15 (36)")):
+            with self.subTest(problem=problem):
+                code, output = self.local("notes", apple, TAG="builds/0.2.0/39")
+                self.assertNotEqual(code, 0)
+                self.assertIn(problem, output)
+
+    def test_beta_sets_what_to_test_joins_the_group_and_submits_once(self):
+        self.cli("cut", VERSION="0.2.0")
+        self.assertEqual(self.ci("ci-init", Inventory(None, 37, False))[0], 0)
+        notes = self.root / "notes.json"
+        notes.write_text(json.dumps({"en-US": "New\n- Speak to the Composer.", "zh-Hans": "新增\n- 语音输入。"}))
+        apple = FakeAppStoreConnect()
+        code, output = self.local("beta", apple, TAG="builds/0.2.0/38", NOTES=str(notes))
+        self.assertNotEqual(code, 0)
+        self.assertIn("has not reached TestFlight", output)
+        self.assertEqual(apple.requests, [])
+        state = json.loads(self.external.read_text())
+        release = state["releases"]["builds/0.2.0/38"]
+        release["body"] = release["body"].replace('"state": "reserved"', '"state": "valid"')
+        self.external.write_text(json.dumps(state))
+
+        code, output = self.local("beta", apple, TAG="builds/0.2.0/38", NOTES=str(notes), DRY_RUN="1")
+        self.assertEqual(code, 0, output)
+        for line in ("What to Test (en-US): update", "What to Test (zh-Hans): create",
+                     "Public Beta: add the build", "Beta App Review: submit"):
+            self.assertIn(line, output)
+        self.assertEqual(apple.writes, [])
+
+        code, output = self.local("beta", apple, TAG="builds/0.2.0/38", NOTES=str(notes))
+        self.assertEqual(code, 0, output)
+        self.assertEqual([(method, path) for method, path, _ in apple.writes], [
+            ("PATCH", "betaBuildLocalizations/l1"), ("POST", "betaBuildLocalizations"),
+            ("POST", "betaGroups/public/relationships/builds"), ("POST", "betaAppReviewSubmissions")])
+        self.assertEqual(apple.writes[1][2]["data"]["relationships"]["build"]["data"], {"type": "builds", "id": "b38"})
+        self.assertEqual(apple.localizations["zh-Hans"][1], "新增\n- 语音输入。")
+        self.assertIn("builds/0.2.0/38 is in Public Beta (submitted for review).", output)
+        code, output = self.local("beta", apple, TAG="builds/0.2.0/38", NOTES=str(notes))
+        self.assertEqual(code, 0, output)
+        self.assertEqual(len(apple.writes), 4)
+        self.assertIn("What to Test (zh-Hans): unchanged", output)
+        self.assertIn("Beta App Review: WAITING_FOR_BETA_REVIEW", output)
+
+        apple = FakeAppStoreConnect(submit_on_add=True)
+        self.assertEqual(self.local("beta", apple, TAG="builds/0.2.0/38", NOTES=str(notes))[0], 0)
+        self.assertNotIn("betaAppReviewSubmissions", [path for _, path, _ in apple.writes])
+        long = self.root / "long.json"
+        long.write_text(json.dumps({"en-US": "x" * 4001}))
+        for apple, path, problem in ((FakeAppStoreConnect(), long, "What to Test allows 4000"),
+                                     (FakeAppStoreConnect(state="MISSING_EXPORT_COMPLIANCE"), notes,
+                                      "External testing state is MISSING_EXPORT_COMPLIANCE"),
+                                     (FakeAppStoreConnect(), notes, "external groups: Beta Testers")):
+            with self.subTest(problem=problem):
+                if problem.startswith("external groups"):
+                    apple.groups = [("other", "Beta Testers", False)]
+                code, output = self.local("beta", apple, TAG="builds/0.2.0/38", NOTES=str(path))
+                self.assertNotEqual(code, 0)
+                self.assertIn(problem, output)
+                self.assertEqual(apple.writes, [])
 
     def test_counter_closed_version_and_unproven_existing_build_stop_before_upload(self):
         self.cli("cut", VERSION="0.2.0")

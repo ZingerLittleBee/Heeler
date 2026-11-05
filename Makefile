@@ -29,7 +29,7 @@ IOS_WATCH_DEBOUNCE ?= 1s
 DEVICE ?= $(shell python3 scripts/find-ios-device.py iPhone)
 DEVICE_IPAD ?= $(shell python3 scripts/find-ios-device.py iPad)
 
-.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight testflight-retry release-status release-check bump publish plugin clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
+.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight testflight-retry release-status release-check testflight-notes testflight-beta bump publish plugin clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
 
 # Command-line DERIVED overrides remain supported for either platform.
 test-app test-directory-browser-ui sim build-sim sim-id: DERIVED = $(DERIVED_SIMULATOR)
@@ -240,6 +240,12 @@ release-status: ## Read recorded candidate state, not live store status (TAG=bui
 
 release-check: ## Dispatch signing/validation rehearsal, no upload (VERSION=X.Y.Z)
 	@python3 scripts/testflight.py check
+
+testflight-notes: ## List changelog entries external testers have not had (TAG=builds/X.Y.Z/N [SINCE=commit])
+	@python3 scripts/testflight.py notes
+
+testflight-beta: ## Set What to Test, add to external testing, submit for review (TAG=... NOTES=file.json)
+	@python3 scripts/testflight.py beta
 
 publish upload bump:
 	@echo "$@ is retired. Use make testflight VERSION=X.Y.Z (then make testflight for another build)." >&2

@@ -12,6 +12,8 @@ make testflight VERSION=0.2.1           # explicitly start the next version
 make release-status TAG=builds/0.2.0/39
 make testflight-retry TAG=builds/0.2.0/39
 make release-check VERSION=0.2.0        # signing/validation rehearsal only
+make testflight-notes TAG=builds/0.2.0/39  # changelog entries external testers have not had
+make testflight-beta TAG=builds/0.2.0/39 NOTES=notes.json  # release to external testers
 ```
 
 Numbers are illustrative; migration must establish the real counter first.
@@ -154,6 +156,36 @@ run's steps and App Store Connect inventory with an authorized maintainer.
 Any manual repair must preserve the exact source, version/build, original run,
 and evidence of whether upload started. Do not change `upload_started` back to
 `reserved` merely because a query returns no build.
+
+## External testing
+
+A processed build reaches external testers only after it joins the **Public
+Beta** group and passes Beta App Review. The
+[testflight-beta skill](../../.claude/skills/testflight-beta/SKILL.md) drafts
+each build's What to Test from the changelog. The maintainer tests the build and
+approves the notes before the skill releases it.
+
+`make testflight-notes TAG=...` lists the changelog entries that are new since
+the group's newest build, by upload date. `SINCE=<commit>` replaces that
+lookup. `make testflight-beta TAG=... NOTES=notes.json` does four things:
+
+- requires a `valid` record and an Apple `VALID` build;
+- sets What to Test for each locale in NOTES (`{"en-US": "...", "zh-Hans": "..."}`,
+  at most 4000 characters each);
+- adds the build to `GROUP` (default `Public Beta`);
+- submits the build for Beta App Review, unless adding it already did.
+
+A rerun changes only what differs.
+
+Both commands run on the maintainer's Mac. Environment variables override the
+login Keychain, which holds the Team API key from the `release` environment as
+one generic password per variable. The `.p8` is base64-encoded:
+
+```sh
+security add-generic-password -U -s heeler-app-store-connect -a ASC_API_KEY_ID -w <key id>
+security add-generic-password -U -s heeler-app-store-connect -a ASC_API_ISSUER_ID -w <issuer id>
+security add-generic-password -U -s heeler-app-store-connect -a ASC_API_KEY_P8 -w "$(base64 -i AuthKey_<key id>.p8)"
+```
 
 ## Signing and credentials
 

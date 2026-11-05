@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import hashlib
@@ -19,7 +20,7 @@ import tempfile
 import time
 import zipfile
 
-from app_store_connect import AppStoreConnect, AppleError, Inventory
+from app_store_connect import AppStoreConnect, AppleError, GroupBuild, Inventory
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -688,6 +689,148 @@ def check() -> None:
         run("gh", "workflow", "run", "release.yml", "--ref", "main", "-f", f"version={version}", "--repo", github.repo)
 
 
+# External TestFlight testing. Locally the Team API key comes from the login
+# Keychain: one generic password per variable, the .p8 base64-encoded.
+KEYCHAIN_SERVICE = "heeler-app-store-connect"
+EXTERNAL_GROUP = "Public Beta"
+WHATS_NEW_LIMIT = 4000
+SUBMITTED = ("WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW", "BETA_APPROVED", "READY_FOR_BETA_TESTING", "IN_BETA_TESTING")
+
+
+def local_apple_credentials() -> None:
+    for name in ("ASC_API_KEY_ID", "ASC_API_ISSUER_ID", "ASC_API_KEY_P8"):
+        if os.environ.get(name):
+            continue
+        result = subprocess.run(["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name, "-w"],
+                                text=True, capture_output=True)
+        if result.returncode:
+            raise ReleaseError(f"No {name} in the Keychain item {KEYCHAIN_SERVICE}; see docs/guides/releasing.md")
+        value = result.stdout.strip()
+        os.environ[name] = base64.b64decode(value, validate=True).decode() if name == "ASC_API_KEY_P8" else value
+
+
+def released_entries(text: str) -> list[tuple[str, str]]:
+    """(category, entry) for every entry outside [Unreleased], each on one line."""
+    entries, category, entry, released = [], None, None, False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            released, category, entry = not line.startswith("## [Unreleased]"), None, None
+        elif line.startswith("### "):
+            category, entry = line[4:].strip(), None
+        elif released and category and line.startswith("- "):
+            entry = [line[2:].strip()]
+            entries.append((category, entry))
+        elif entry is not None and line.startswith("  ") and line.strip():
+            entry.append(line.strip())
+        else:
+            entry = None
+    return [(category, " ".join(parts)) for category, parts in entries]
+
+
+def external_source(previous: GroupBuild) -> str:
+    """The commit a build in the external group was built from."""
+    tag = f"builds/{previous.version}/{previous.number}"
+    if tag in remote_tags():
+        return candidate_from_tag(tag).source
+    # Builds through 0.1.17 (38) came from v* release tags.
+    legacy = f"refs/tags/v{previous.version}"
+    try:
+        run("git", "fetch", "--quiet", "origin", f"+{legacy}:{legacy}")
+        source = run("git", "rev-parse", legacy + "^{commit}")
+        if versions(source) == (previous.version, previous.number):
+            return source
+    except ReleaseError:
+        pass
+    raise ReleaseError(f"No source for {previous.version} ({previous.number}); pass SINCE=<commit>")
+
+
+def beta_notes() -> None:
+    """Changelog entries added since the build external testers have now."""
+    candidate = candidate_from_tag(os.environ.get("TAG", ""))
+    since = os.environ.get("SINCE", "")
+    if since:
+        source = run("git", "rev-parse", since + "^{commit}")
+        print(f"Since {since} ({source[:8]})")
+    else:
+        local_apple_credentials()
+        apple = AppStoreConnect()
+        app_id = apple.app_id(candidate.bundle_id, **apple.BETA)
+        group = os.environ.get("GROUP") or EXTERNAL_GROUP
+        previous = next((build for build in apple.group_builds(app_id, apple.external_group(app_id, group))
+                         if (build.version, build.number) != (candidate.version, candidate.build)), None)
+        if previous is None:
+            raise ReleaseError(f"{group} has no earlier build; pass SINCE=<commit>")
+        if version_tuple(previous.version) > version_tuple(candidate.version) or previous.number > candidate.build:
+            raise ReleaseError(f"{group} already has a newer build, {previous.version} ({previous.number})")
+        source = external_source(previous)
+        print(f"{group} has {previous.version} ({previous.number}), built from {source[:8]}")
+    try:
+        run("git", "merge-base", "--is-ancestor", source, candidate.source)
+    except ReleaseError:
+        raise ReleaseError(f"{source[:8]} is not an ancestor of {candidate.tag}") from None
+    before = set(released_entries(run("git", "show", f"{source}:CHANGELOG.md")))
+    added = [entry for entry in released_entries(run("git", "show", f"{candidate.source}:CHANGELOG.md"))
+             if entry not in before]
+    print(f"Changelog entries new in {candidate.tag}:" if added else f"No changelog entries are new in {candidate.tag}.")
+    for category in dict.fromkeys(category for category, _ in added):
+        print(f"\n### {category}\n")
+        for entry in (text for kind, text in added if kind == category):
+            print(f"- {entry}")
+
+
+def read_whats_new(path: str) -> dict[str, str]:
+    if not path:
+        raise ReleaseError("NOTES must name a JSON file mapping locales to What to Test text")
+    notes = json.loads(Path(path).read_text())
+    if not isinstance(notes, dict) or not notes:
+        raise ReleaseError("NOTES must map at least one locale to text")
+    for locale, text in notes.items():
+        if not re.fullmatch(r"[a-z]{2,3}(-[A-Za-z0-9]+)*", locale) or not isinstance(text, str) or not text.strip():
+            raise ReleaseError(f"NOTES: {locale!r} needs a locale code and nonempty text")
+        if len(text) > WHATS_NEW_LIMIT:
+            raise ReleaseError(f"NOTES: {locale} is {len(text)} characters; What to Test allows {WHATS_NEW_LIMIT}")
+    return {locale: text.strip() for locale, text in notes.items()}
+
+
+def external_beta() -> None:
+    """Set What to Test, add a processed build to the external group, and submit
+    it for Beta App Review. Reruns change only what differs."""
+    candidate = candidate_from_tag(os.environ.get("TAG", ""))
+    notes = read_whats_new(os.environ.get("NOTES", ""))
+    release = GitHub().release(candidate.tag)
+    if release is None or BuildRecord.read(release).state != "valid":
+        raise ReleaseError(f"{candidate.tag} has not reached TestFlight; check make release-status")
+    local_apple_credentials()
+    apple = AppStoreConnect()
+    app_id = apple.app_id(candidate.bundle_id, **apple.BETA)
+    group = os.environ.get("GROUP") or EXTERNAL_GROUP
+    group_id = apple.external_group(app_id, group)
+    build = apple.beta_build(app_id, candidate.version, candidate.build)
+    if build.processing_state != "VALID":
+        raise ReleaseError(f"Apple reports {build.processing_state} for {candidate.tag}")
+    if build.external_state != "READY_FOR_BETA_SUBMISSION" and build.external_state not in SUBMITTED:
+        raise ReleaseError(f"External testing state is {build.external_state}; resolve it in App Store Connect")
+    changed = {locale: text for locale, text in notes.items() if build.whats_new.get(locale, ("", ""))[1] != text}
+    for locale in notes:
+        action = ("update" if locale in build.whats_new else "create") if locale in changed else "unchanged"
+        print(f"What to Test ({locale}): {action}")
+    print(f"{group}: {'has the build' if group_id in build.groups else 'add the build'}")
+    print("Beta App Review: " + ("submit" if build.external_state == "READY_FOR_BETA_SUBMISSION"
+                                 else build.external_state))
+    if not confirm():
+        return
+    for locale, text in changed.items():
+        apple.set_whats_new(build, locale, text)
+    if group_id not in build.groups:
+        apple.add_to_group(group_id, build.id)
+    # Re-read: adding the build to a group may have submitted it already.
+    state = apple.beta_build(app_id, candidate.version, candidate.build).external_state
+    if state == "READY_FOR_BETA_SUBMISSION":
+        apple.submit_for_review(build.id)
+        state = "submitted for review"
+    print(f"{candidate.tag} is in {group} ({state}).")
+
+
 def notes_for(text: str, version: str) -> str:
     matches = list(re.finditer(rf"(?m)^## \[{re.escape(version)}\][^\n]*$", text))
     if len(matches) != 1:
@@ -801,6 +944,7 @@ def cut() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = {"cut": cut, "status": status, "retry": lambda: status(retry=True), "check": check,
+                "notes": beta_notes, "beta": external_beta,
                 "ci-init": initialize, "ci-plan": plan, "ci-upload": upload, "ci-retry": automatic_retry,
                 "ci-observe": observe, "ci-publish": publish_record, "ci-symbols": check_symbols}
     parser.add_argument("command", choices=commands)
