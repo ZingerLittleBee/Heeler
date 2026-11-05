@@ -151,7 +151,10 @@ struct AgentDirectInputTests {
         let textBubble = try #require(UIImage(systemName: "text.bubble", withConfiguration: configuration))
         let glyph = CodeBubbleGlyph.image(pointSize: 17)
 
-        #expect(glyph.size == textBubble.size)
+        // iOS 27 symbol metrics can differ between `bubble` and
+        // `text.bubble` by floating-point noise (20.0 vs 19.999999999999996).
+        #expect(abs(glyph.size.width - textBubble.size.width) < 0.01)
+        #expect(abs(glyph.size.height - textBubble.size.height) < 0.01)
         #expect(glyph.renderingMode == .alwaysTemplate)
     }
 
