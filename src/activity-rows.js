@@ -7,6 +7,15 @@ const BUILTINS = new Set([
 ]);
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const LABEL_PREFIX = "label:";
+
+/** Keeps to `AgentRowToken.terminalLabel`, the app's rule for a label it offers. */
+function isLabelField(token) {
+  if (!token.startsWith(LABEL_PREFIX)) return false;
+  const key = token.slice(LABEL_PREFIX.length);
+  return Buffer.byteLength(key) >= 1 && Buffer.byteLength(key) <= 64
+    && !key.includes("=") && /\P{White_Space}/u.test(key) && !/[\p{Cc}\p{Cf}]/u.test(key);
+}
 
 /** Malformed layouts leave older senders' identity rendering intact. */
 export function parseActivityRowLayout(value) {
@@ -17,7 +26,7 @@ export function parseActivityRowLayout(value) {
     const fields = [];
     for (const field of row) {
       if (!field || typeof field.token !== "string") return null;
-      if (!BUILTINS.has(field.token) && !/^\$[A-Za-z0-9_-]{1,32}$/.test(field.token)) return null;
+      if (!BUILTINS.has(field.token) && !/^\$[A-Za-z0-9_-]{1,32}$/.test(field.token) && !isLabelField(field.token)) return null;
       const entry = { token: field.token };
       if (field.fg != null) {
         if (typeof field.fg !== "string" || !COLOR.test(field.fg)) return null;
@@ -37,7 +46,7 @@ export function parseActivityRowLayout(value) {
 }
 
 /** Same single-glyph fallback as Agent.strippedSidebarTitle. */
-function strippedSidebarTitle(raw) {
+export function strippedSidebarTitle(raw) {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   const [first] = [...trimmed];
@@ -72,7 +81,10 @@ export function renderActivityRows(layout, agent, { hostName, workspaceLabels, t
         return status.charAt(0).toUpperCase() + status.slice(1);
       }
       case "directory": return typeof agent.cwd === "string" ? agent.cwd.trim() : null;
-      default: return token.startsWith("$") ? agent.tokens?.[token.slice(1)] : null;
+      default: {
+        if (token.startsWith("$")) return agent.tokens?.[token.slice(1)];
+        return token.startsWith(LABEL_PREFIX) ? agent.tokens?.[token.slice(LABEL_PREFIX.length)] : null;
+      }
     }
   };
   return layout.rows.map((row) => {

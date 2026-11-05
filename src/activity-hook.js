@@ -12,13 +12,11 @@
 // Devices without a plausible `live_activity` registration send nothing;
 // `notify` flags do not gate this path. APNs 410 clears only that field.
 
-import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { encryptActivityEnvelope } from "./activity-envelope.js";
 import {
   ELIGIBLE_STATUSES,
   buildActivityState,
@@ -27,23 +25,19 @@ import {
   sameStatusMap,
   shortHostName,
 } from "./activity-state.js";
-import { parseActivityRowLayout } from "./activity-rows.js";
 import { readNotificationConfig } from "./notification-config.js";
 import { readUsageRuntime, recordUsageRuntime } from "./usage-runtime.js";
-import { noteClaudeAgent } from "./usage/claude-agents.js";
+import { noteProgramAgent } from "./usage/program-agents.js";
+import { ACCOUNT_PROGRAMS } from "./usage/programs.js";
 import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
 import { optionalText } from "./display-text.js";
-import { deliversToSession, hookSession, sessionStateDir } from "./session.js";
-
-const SEND_ATTEMPTS = 3;
-const REQUEST_TIMEOUT_MS = 10_000;
-const KEY_BYTES = 32;
-const APNS_ENVIRONMENTS = new Set(["production", "sandbox"]);
-const ACTIVITY_TOKEN_PATTERN = /^[0-9a-f]{16,200}$/;
-const CT_BUDGET = 2800;
-const APNS_PAYLOAD_BUDGET = 4096;
-const RELAY_REQUEST_BUDGET = 8192;
-const STALE_AFTER_SECONDS = 900;
+import { hookSession, sessionStateDir } from "./session.js";
+import { deliverLiveActivity } from "./delivery/activity-seal.js";
+import {
+  liveActivityPreferences,
+  pruneLiveActivityTokens,
+  readLiveActivityDevices,
+} from "./delivery/registrations.js";
 
 /** Parse HERDR_PLUGIN_EVENT_JSON leniently: require pane id and status only. */
 function parseStatusEvent(raw) {
@@ -67,62 +61,6 @@ function parseStatusEvent(raw) {
     status: status.toLowerCase(),
     agentKind: optionalText(data.agent),
   };
-}
-
-/**
- * Devices whose registration entry carries a usable Live Activity token.
- * `notify` flags do not apply; a missing `live_activity` object means skip.
- * Only entries delivered to this hook's herdr session count (src/session.js).
- */
-function readActivityDevices(configDir, session) {
-  let file;
-  try {
-    file = JSON.parse(readFileSync(join(configDir, "notifications.json"), "utf8"));
-  } catch {
-    return [];
-  }
-  if (file?.v !== 1 || !Array.isArray(file.devices)) return [];
-  const devices = [];
-  for (const entry of file.devices) {
-    if (!deliversToSession(entry, session)) continue;
-    const live = entry?.live_activity;
-    if (typeof live !== "object" || live === null || Array.isArray(live)) continue;
-    if (typeof live.token !== "string" || !ACTIVITY_TOKEN_PATTERN.test(live.token)) continue;
-    const env = APNS_ENVIRONMENTS.has(live.env) ? live.env : entry.env;
-    if (!APNS_ENVIRONMENTS.has(env)) continue;
-    const key = typeof entry.key === "string" ? Buffer.from(entry.key, "base64url") : null;
-    if (key?.length !== KEY_BYTES) continue;
-    devices.push({
-      token: live.token,
-      env,
-      key,
-      pinnedPaneIds: live.pinned_pane_ids,
-      rowLayout: parseActivityRowLayout(live.row_layout),
-      rowHostName: optionalText(live.host_name),
-    });
-  }
-  return devices;
-}
-
-/**
- * Drop `live_activity` from matching device entries, preserving the alert
- * token, key, notify flags, and any field this plugin does not understand.
- */
-function pruneLiveActivity(configDir, tokens) {
-  const path = join(configDir, "notifications.json");
-  let file;
-  try {
-    file = JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return;
-  }
-  if (file?.v !== 1 || !Array.isArray(file.devices)) return;
-  for (const entry of file.devices) {
-    if (tokens.has(entry?.live_activity?.token)) {
-      delete entry.live_activity;
-    }
-  }
-  writeAtomic(path, JSON.stringify(file));
 }
 
 // `stateDir` is already the session's state directory, so each herdr session
@@ -265,141 +203,6 @@ async function listRowContext(binPath, agents, devices) {
   return { tabs, panes };
 }
 
-function devicePreferences(devices) {
-  return createHash("sha256").update(JSON.stringify(devices.map((device) => ({
-    token: device.token, env: device.env, pins: device.pinnedPaneIds,
-    layout: device.rowLayout, host: device.rowHostName,
-  })).sort((left, right) => left.token.localeCompare(right.token)))).digest("hex");
-}
-
-function dropTitles(plaintextObject) {
-  return {
-    agents: plaintextObject.agents.map((agent) => {
-      const entry = {};
-      entry.kind = agent.kind;
-      entry.pane = agent.pane;
-      if (Array.isArray(agent.rows)) entry.rows = agent.rows;
-      entry.status = agent.status;
-      if (typeof agent.workspace === "string" && agent.workspace.length > 0) {
-        entry.workspace = agent.workspace;
-      }
-      return entry;
-    }),
-    host: plaintextObject.host,
-    v: plaintextObject.v,
-  };
-}
-
-function emptyAgents(plaintextObject) {
-  return { agents: [], host: plaintextObject.host, v: plaintextObject.v };
-}
-
-function plaintextAtStep(plaintextObject, step) {
-  if (step <= 0) return plaintextObject;
-  if (step === 1) return dropTitles(plaintextObject);
-  if (step === 2) {
-    const content = dropTitles(plaintextObject);
-    content.agents = content.agents.map(({ rows, ...agent }) => agent);
-    return content;
-  }
-  return emptyAgents(plaintextObject);
-}
-
-function projectedApnsBytes(envelope, { event, timestamp, counts }) {
-  const apns = {
-    aps: {
-      timestamp,
-      event,
-      "content-state": { counts, envelope: JSON.parse(envelope) },
-    },
-  };
-  if (event === "update") apns.aps["stale-date"] = timestamp + STALE_AFTER_SECONDS;
-  else apns.aps["dismissal-date"] = timestamp;
-  return Buffer.byteLength(JSON.stringify(apns));
-}
-
-function relayBody({ device, event, priority, timestamp, counts, envelope }) {
-  const body = {
-    kind: "liveactivity",
-    token: device.token,
-    env: device.env,
-    event,
-    priority,
-    timestamp,
-    counts,
-    envelope,
-  };
-  if (event === "update") body.stale_date = timestamp + STALE_AFTER_SECONDS;
-  else body.dismissal_date = timestamp;
-  return body;
-}
-
-function envelopeFits(envelope, request) {
-  let parsed;
-  try {
-    parsed = JSON.parse(envelope);
-  } catch {
-    return false;
-  }
-  if (typeof parsed.ct === "string" && parsed.ct.length > CT_BUDGET) return false;
-  if (projectedApnsBytes(envelope, request) > APNS_PAYLOAD_BUDGET) return false;
-  const body = JSON.stringify(relayBody({ ...request, envelope }));
-  if (Buffer.byteLength(body) > RELAY_REQUEST_BUDGET) return false;
-  return true;
-}
-
-function sealFitting(plaintextObject, device, request) {
-  let step = 0;
-  let envelope = encryptActivityEnvelope(plaintextAtStep(plaintextObject, step), device.key);
-  const sized = { ...request, device };
-  while (step < 3 && !envelopeFits(envelope, sized)) {
-    step += 1;
-    envelope = encryptActivityEnvelope(plaintextAtStep(plaintextObject, step), device.key);
-  }
-  return { envelope, step };
-}
-
-/**
- * POST one Live Activity push. Transient failures (network, 429, 5xx) retry
- * up to SEND_ATTEMPTS. Returns "ok", "pruned" (APNs 410), or "too_large"
- * (relay-origin 413). Other conclusive failures throw.
- */
-async function postPush(relayUrl, body, retryDelayMs) {
-  const payload = JSON.stringify(body);
-  let lastFailure = "";
-  for (let attempt = 1; attempt <= SEND_ATTEMPTS; attempt += 1) {
-    if (attempt > 1) await sleep(retryDelayMs);
-    let response;
-    try {
-      response = await fetch(`${relayUrl}/push`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: payload,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-    } catch (error) {
-      lastFailure = `relay unreachable: ${error.message}`;
-      continue;
-    }
-    if (response.ok) return "ok";
-    const detail = (await response.text().catch(() => "")).slice(0, 200);
-    if (response.status === 410) return "pruned";
-    if (response.status === 413 && isRelayOrigin413(detail)) return "too_large";
-    lastFailure = `relay answered ${response.status}: ${detail}`;
-    if (response.status !== 429 && response.status < 500) break;
-  }
-  throw new Error(`push for token ${body.token.slice(0, 8)}… failed: ${lastFailure}`);
-}
-
-function isRelayOrigin413(detail) {
-  try {
-    const parsed = JSON.parse(detail);
-    return typeof parsed?.error === "string";
-  } catch {
-    return false;
-  }
-}
-
 function requireEnv(name) {
   const value = process.env[name];
   if (typeof value !== "string" || value.length === 0) {
@@ -408,32 +211,15 @@ function requireEnv(name) {
   return value;
 }
 
-async function deliver(config, device, plaintextObject, request) {
-  let { envelope, step } = sealFitting(plaintextObject, device, request);
-  while (true) {
-    const outcome = await postPush(
-      config.relayUrl,
-      relayBody({ ...request, device, envelope }),
-      config.retryDelayMs,
-    );
-    if (outcome === "ok" || outcome === "pruned") return outcome;
-    if (outcome === "too_large" && step < 3) {
-      step += 1;
-      envelope = encryptActivityEnvelope(plaintextAtStep(plaintextObject, step), device.key);
-      continue;
-    }
-    throw new Error(`push for token ${device.token.slice(0, 8)}… failed: payload too large`);
-  }
-}
-
 /**
- * A Claude Code Agent's config directory is a Usage Account suggestion. It is
- * learned only once Usage has a runtime, and never fails the hook.
+ * The config directory of an Agent whose program has Usage Accounts (Claude
+ * Code, Codex) is an Account suggestion. It is learned only once Usage has a
+ * runtime, and never fails the hook.
  */
-async function learnClaudeAgent(configDir, binPath, session, paneId) {
+async function learnProgramAgent(configDir, binPath, session, paneId, program) {
   try {
     const runtime = readUsageRuntime(configDir);
-    if (runtime) await noteClaudeAgent({ stateDir: runtime.stateDir, herdr: binPath, session, paneId });
+    if (runtime) await noteProgramAgent({ stateDir: runtime.stateDir, herdr: binPath, session, paneId, program });
   } catch {
     // Suggestions are best effort; the next status change tries again.
   }
@@ -455,7 +241,8 @@ async function main() {
 
   const event = parseStatusEvent(eventJson);
   // Runs beside the Live Activity update, which never waits for it.
-  const learning = event.agentKind === "claude" ? learnClaudeAgent(configDir, binPath, session, event.paneId) : null;
+  const learning = ACCOUNT_PROGRAMS.includes(event.agentKind)
+    ? learnProgramAgent(configDir, binPath, session, event.paneId, event.agentKind) : null;
   try {
     await updateLiveActivity(configDir, session, stateDir, binPath, event);
   } finally {
@@ -467,7 +254,7 @@ async function updateLiveActivity(configDir, session, stateDir, binPath, event) 
   const config = readNotificationConfig(configDir);
 
   // Cheap exits before burning a debounce process on a no-op.
-  if (readActivityDevices(configDir, session).length === 0) return;
+  if (readLiveActivityDevices(configDir, session).length === 0) return;
   const lastState = readLastState(stateDir);
   if (lastState?.ended === true && !ELIGIBLE_STATUSES.has(event.status)) return;
 
@@ -476,13 +263,13 @@ async function updateLiveActivity(configDir, session, stateDir, binPath, event) 
   await sleep(config.activityDebounceMs);
   if (claimSuperseded(claim, readClaim(stateDir))) return;
 
-  const devices = readActivityDevices(configDir, session);
+  const devices = readLiveActivityDevices(configDir, session);
   if (devices.length === 0) return;
 
   const agents = await listAgents(binPath);
   const statuses = eligibleStatusMap(agents);
   const previous = lastState?.statuses ?? null;
-  const preferences = devicePreferences(devices);
+  const preferences = liveActivityPreferences(devices);
   if (previous !== null && sameStatusMap(statuses, previous)
       && lastState?.preferences === preferences) return;
 
@@ -523,14 +310,14 @@ async function updateLiveActivity(configDir, session, stateDir, binPath, event) 
       counts: content.counts,
     };
     try {
-      const outcome = await deliver(config, device, content.plaintextObject, request);
+      const outcome = await deliverLiveActivity(config, device, content.plaintextObject, request);
       if (outcome === "ok") delivered = true;
       else pruned.add(device.token);
     } catch (error) {
       failures.push(error.message);
     }
   }
-  if (pruned.size > 0) pruneLiveActivity(configDir, pruned);
+  if (pruned.size > 0) pruneLiveActivityTokens(configDir, pruned);
   if (delivered) {
     writeLastState(stateDir, {
       sent_at_ms: Date.now(),

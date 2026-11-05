@@ -651,6 +651,21 @@ the app's update notice installs from that branch. See
 - Older plugins ignore `usage-accounts.json`: Accounts added in Heeler count
   only once the Host runs 0.8.0.
 
+### Updating to 0.9.0
+
+- Plugin 0.9.0 counts [Codex Accounts](#usage) too. `usage-accounts.json`
+  stays version 1: Claude Code's Accounts stay in its `claude` section, and
+  every other program's sit under a new `programs` object keyed by herdr
+  agent kind (`programs.codex`), with the same fields plus an optional
+  `variable`. Heeler may list Accounts there for programs Usage does not read
+  (for its launch presets and Chat); the plugin reads only `programs.codex`.
+- Without Codex Accounts, Codex Token Usage and Usage Limits stay as before,
+  and its cache is kept: the Default Account's records carry no Account. The
+  report's `codex` entry now lists its Default Account and suggestions.
+- Older plugins ignore `programs`: Codex Accounts added in Heeler count only
+  once the Host runs 0.9.0, and older apps keep the section when they rewrite
+  the file.
+
 ## Usage
 
 Plugin 0.7.0 adds Usage for Claude Code and Codex on Linux and macOS Hosts.
@@ -717,6 +732,17 @@ Dismissed suggestions stay in the file's `ignored` list. See
 [Accounts](../docs/design/agent-usage.md#accounts) in the design and
 [ADR 0030](../docs/adr/0030-usage-counts-the-accounts-the-user-adds.md).
 
+**Codex Accounts** (plugin 0.9.0) follow the same rules from the file's
+`programs.codex` section. The Default Account is `${CODEX_HOME:-~/.codex}`
+in herdr's environment. Each added Account reports its own Token Usage and
+its own Usage Limits, read by running Codex with that Account's
+`CODEX_HOME` on its own one-minute cadence and falling back to the last
+limits its own sessions recorded; the Host total adds them up. Suggestions
+come from a running Codex Agent's `CODEX_HOME` (kept in
+`usage/codex-agents.json`) and from `.codex*` directories in `$HOME` that
+hold `auth.json` or `sessions/`. Each program's variable, Default Account
+and markers come from one table in `src/usage/programs.js`.
+
 Token Usage covers at most 30 days and only the Transcripts still on the
 Host. The page reports coverage, skipped compressed archives and Transcripts
 it could not read. **Estimated API cost** uses a bundled price table, not
@@ -750,6 +776,17 @@ npm ci --prefix plugin
 node --test plugin/test/usage-pricing.test.js plugin/test/usage-query.test.js
 UPDATE_USAGE_VECTOR=1 node --test --test-name-pattern='shared v1 vector' plugin/test/usage-worker.test.js
 node --test --test-name-pattern='shared v1 vector' plugin/test/usage-worker.test.js
+```
+
+The table is mirrored into the Host Helper, so a changed table is a Helper
+change. Bump `helper/version.json`,
+[host-helper-version-v1.json](test-vectors/host-helper-version-v1.json) and
+`HostHelperCompatibility.bundled`, then, from the repository root, regenerate the
+mirror and manifest, which carries the version, and run the test that checks them:
+
+```sh
+node scripts/generate-host-helper-manifest.mjs
+node --test plugin/test/helper-closure.test.js
 ```
 
 Review the shared [usage-v1 vector](test-vectors/usage-v1.json) diff and the
@@ -1032,8 +1069,8 @@ Last-state (`activity/last-state.json`: `sent_at_ms`, `statuses`, `ended`) is
 written only after at least one successful delivery. All state writes are
 temp-file + rename.
 
-For a Claude Code Agent's event, the hook also looks up the config directory
-that Agent runs with, as a [Usage](#usage) Account suggestion. The lookup
+For a Claude Code or Codex Agent's event, the hook also looks up the config
+directory that Agent runs with, as a [Usage](#usage) Account suggestion. The lookup
 runs beside the Live Activity update, gives up after 3 seconds, and never
 fails the hook.
 

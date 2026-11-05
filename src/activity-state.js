@@ -12,7 +12,7 @@ import { parseActivityRowLayout, renderActivityRows } from "./activity-rows.js";
 
 import { forDisplay, optionalText } from "./display-text.js";
 
-export const ELIGIBLE_STATUSES = new Set(["working", "blocked", "done"]);
+export const ELIGIBLE_STATUSES = new Set(["working", "blocked", "error", "done"]);
 const STATUS_RANK = { blocked: 0, done: 1, working: 2 };
 const AGENT_CAP = 5;
 
@@ -155,5 +155,6 @@ function parseEligible(agent) {
   const pane = typeof agent.pane_id === "string" ? agent.pane_id : "";
   const status = typeof agent.agent_status === "string" ? agent.agent_status.toLowerCase() : "";
   if (pane.length === 0 || !ELIGIBLE_STATUSES.has(status)) return null;
-  return { agent, pane, status };
+  // The relay and the widget know three statuses, so Error reads as Blocked here.
+  return { agent, pane, status: status === "error" ? "blocked" : status };
 }
