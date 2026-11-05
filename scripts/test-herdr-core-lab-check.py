@@ -197,8 +197,10 @@ class LabCheckTests(unittest.TestCase):
     def test_the_make_target_stops_without_a_simulator(self):
         def planned(*variables):
             environment = {name: value for name, value in os.environ.items() if name != "SIMULATOR_UDID"}
-            result = subprocess.run(["make", "-n", "verify-core-linux-host", *variables], cwd=SCRIPTS.parent,
-                                    env=environment, capture_output=True, text=True, check=True)
+            # Under `make test-tools` this is a sub-make, which GNU make 4 announces
+            # with "Entering directory" lines unless told not to.
+            result = subprocess.run(["make", "-n", "--no-print-directory", "verify-core-linux-host", *variables],
+                                    cwd=SCRIPTS.parent, env=environment, capture_output=True, text=True, check=True)
             return result.stdout.splitlines()
 
         steps = planned()
