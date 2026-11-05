@@ -91,11 +91,19 @@ async function replaceScreenshots({ localization }) {
   const names = ARGS.files.map((f) => f.name);
   const replaced = before.filter((s) => names.includes(s.name));
   const added = names.filter((n) => !before.some((s) => s.name === n));
-  if (before.length - replaced.length + names.length > 10) throw new Error("A set holds at most 10 screenshots");
-  console.log(`${slot.type}: replace ${replaced.map((s) => s.name).join(", ") || "nothing"}; add ${added.join(", ") || "nothing"}`);
+  const removed = before.filter((s) => ARGS.remove.includes(s.name));
+  const absent = ARGS.remove.filter((n) => !before.some((s) => s.name === n) || names.includes(n));
+  if (absent.length) throw new Error(`Cannot remove ${absent.join(", ")}: not in the set, or also uploaded`);
+  const kept = before.filter((s) => !removed.includes(s));
+  if (kept.length + added.length > 10) throw new Error("A set holds at most 10 screenshots");
+  const at = ARGS.at ?? kept.length + 1;
+  if (at < 1 || at > kept.length + 1) throw new Error(`--at must be between 1 and ${kept.length + 1}`);
+  console.log(`${slot.type}: replace ${replaced.map((s) => s.name).join(", ") || "nothing"}; ` +
+    `remove ${removed.map((s) => s.name).join(", ") || "nothing"}; add ${added.join(", ") || "nothing"}` +
+    (added.length ? ` at position ${at}` : ""));
   if (!ARGS.apply) return console.log("Plan only; pass --apply.");
 
-  for (const old of replaced) await write("DELETE", `appScreenshots/${old.id}`);
+  for (const old of [...replaced, ...removed]) await write("DELETE", `appScreenshots/${old.id}`);
   await goto(`${BASE}/media-manager/${slot.page}`, /of 10 App Screenshots/);
   await page.evaluate((index) => document.querySelectorAll("input[type=file]")[index].setAttribute("data-store-shots", "1"), slot.input);
   await page.setInputFiles('input[data-store-shots="1"]', ARGS.files.map((f) => f.path));
@@ -108,10 +116,10 @@ async function replaceScreenshots({ localization }) {
     if (fresh.length === names.length && fresh.every((s) => s.state === "COMPLETE")) break;
     if (i === 79) throw new Error(`Uploads did not finish: ${JSON.stringify(fresh)}`);
   }
-  // New files take the place of the ones they replace; anything else goes last, in argument order.
+  // New files take the place of the ones they replace; others go to --at, last by default, in argument order.
   const byName = Object.fromEntries(fresh.map((s) => [s.name, s]));
-  const order = before.map((s) => (names.includes(s.name) ? byName[s.name] : s));
-  order.push(...added.map((n) => byName[n]));
+  const order = kept.map((s) => (names.includes(s.name) ? byName[s.name] : s));
+  order.splice(at - 1, 0, ...added.map((n) => byName[n]));
   await write("PATCH", `appScreenshotSets/${setId}/relationships/appScreenshots`, order.map((s) => ({ type: "appScreenshots", id: s.id })));
   console.log((await screenshots(setId)).map((s) => `  ${s.name}  ${s.state}`).join("\n"));
 }

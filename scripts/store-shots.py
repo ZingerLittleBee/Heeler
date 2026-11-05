@@ -390,6 +390,8 @@ def restore(udid: str) -> None:
 
 
 def asc(args: argparse.Namespace) -> None:
+    if args.action != "screenshots" and (args.at is not None or args.remove):
+        raise SystemExit("--at and --remove apply only to screenshots")
     # Text fields have no target, so their file lands in the target position.
     named = [args.target, *args.files] if args.action in ("whats-new", "promo") and args.target else args.files
     files = [str(Path(f).resolve()) for f in named]
@@ -397,7 +399,7 @@ def asc(args: argparse.Namespace) -> None:
     if missing:
         raise SystemExit(f"Missing: {', '.join(missing)}")
     payload = {"action": args.action, "target": args.target, "version": args.version,
-               "locale": args.locale, "apply": args.apply, "appId": args.app_id,
+               "locale": args.locale, "apply": args.apply, "appId": args.app_id, "at": args.at, "remove": args.remove,
                "files": [{"path": f, "name": Path(f).name, "size": Path(f).stat().st_size} for f in files]}
     script = f"const ARGS = {json.dumps(payload)};\n" + ASC_SCRIPT.read_text()
     raise SystemExit(subprocess.run(["ego-browser", "nodejs"], input=script, text=True).returncode)
@@ -427,6 +429,9 @@ def main() -> None:
     store.add_argument("--version", required=True, help="the store version, such as 0.1.16")
     store.add_argument("--locale", default="en-US")
     store.add_argument("--app-id", default="6797263135")
+    store.add_argument("--at", type=int, help="screenshots: the position, from 1, for files not yet in the set (default last)")
+    store.add_argument("--remove", action="append", default=[], metavar="NAME",
+                       help="screenshots: also delete the image with this file name; repeatable")
     store.add_argument("--apply", action="store_true", help="make the change; the default only prints the plan")
     args = parser.parse_args()
     rig = Rig(args.root, args.workspace)

@@ -93,8 +93,17 @@ python3 scripts/store-shots.py asc promo promo.txt --version 0.1.17
 ```
 
 `screenshots` matches by file name and keeps each image's position, deleting the
-old image before it uploads. Targets are `ipad`, `iphone` and `duo`; `creative`
-takes `header` or `search`. It needs ego-browser signed in to App Store Connect.
+old image before it uploads. A file name the set lacks goes last, or at
+`--at N` (counted from 1). `--remove NAME` deletes another image first, to make
+room in a full set of ten:
+
+```sh
+python3 scripts/store-shots.py asc screenshots duo output/app-store/iphone-duo/exports/01b-just-say-it.png \
+  --at 2 --remove 08b-host-connected.png --version 0.1.17
+```
+
+Targets are `ipad`, `iphone` and `duo`; `creative` takes `header` or `search`.
+It needs ego-browser signed in to App Store Connect.
 
 ## 5. Clean up
 
