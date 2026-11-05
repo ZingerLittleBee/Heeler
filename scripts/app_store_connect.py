@@ -66,7 +66,10 @@ def encoded(value: bytes) -> str:
 
 
 class AppStoreConnect:
-    def __init__(self):
+    def __init__(self, credentials: dict[str, str] | None = None):
+        # CI passes the Team API key in the environment; a maintainer's Mac
+        # passes it here, so it never reaches child processes.
+        self.credentials = os.environ if credentials is None else credentials
         self.token = ""
         self.expires = 0
 
@@ -75,15 +78,15 @@ class AppStoreConnect:
         if self.expires > now + 60:
             return self.token
         required = ("ASC_API_KEY_ID", "ASC_API_ISSUER_ID", "ASC_API_KEY_P8")
-        if any(not os.environ.get(key) for key in required):
+        if any(not self.credentials.get(key) for key in required):
             raise AppleError("App Store Connect Team API credentials are missing")
-        header = {"alg": "ES256", "kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"}
-        claims = {"iss": os.environ["ASC_API_ISSUER_ID"], "iat": now,
+        header = {"alg": "ES256", "kid": self.credentials["ASC_API_KEY_ID"], "typ": "JWT"}
+        claims = {"iss": self.credentials["ASC_API_ISSUER_ID"], "iat": now,
                   "exp": now + 600, "aud": "appstoreconnect-v1"}
         message = encoded(json.dumps(header).encode()) + "." + encoded(json.dumps(claims).encode())
         with tempfile.TemporaryDirectory() as directory:
             key = Path(directory) / "AuthKey.p8"
-            key.write_text(os.environ["ASC_API_KEY_P8"])
+            key.write_text(self.credentials["ASC_API_KEY_P8"])
             key.chmod(0o600)
             result = subprocess.run(["openssl", "dgst", "-sha256", "-sign", str(key)],
                                     input=message.encode(), capture_output=True)

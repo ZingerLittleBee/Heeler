@@ -697,16 +697,26 @@ WHATS_NEW_LIMIT = 4000
 SUBMITTED = ("WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW", "BETA_APPROVED", "READY_FOR_BETA_TESTING", "IN_BETA_TESTING")
 
 
-def local_apple_credentials() -> None:
+def local_apple() -> AppStoreConnect:
+    """A client with the Team API key from the environment or the Keychain. The
+    key stays in this process, out of the git and gh children that follow."""
+    credentials = {}
     for name in ("ASC_API_KEY_ID", "ASC_API_ISSUER_ID", "ASC_API_KEY_P8"):
         if os.environ.get(name):
+            credentials[name] = os.environ[name]
             continue
         result = subprocess.run(["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name, "-w"],
                                 text=True, capture_output=True)
         if result.returncode:
             raise ReleaseError(f"No {name} in the Keychain item {KEYCHAIN_SERVICE}; see docs/guides/releasing.md")
-        value = result.stdout.strip()
-        os.environ[name] = base64.b64decode(value, validate=True).decode() if name == "ASC_API_KEY_P8" else value
+        credentials[name] = result.stdout.strip()
+    if not os.environ.get("ASC_API_KEY_P8"):
+        try:
+            credentials["ASC_API_KEY_P8"] = base64.b64decode(credentials["ASC_API_KEY_P8"], validate=True).decode()
+        except ValueError:
+            # The decoder's message can quote the key's bytes.
+            raise ReleaseError(f"ASC_API_KEY_P8 in {KEYCHAIN_SERVICE} must be the .p8 file in base64") from None
+    return AppStoreConnect(credentials)
 
 
 def released_entries(text: str) -> list[tuple[str, str]]:
@@ -752,8 +762,7 @@ def beta_notes() -> None:
         source = run("git", "rev-parse", since + "^{commit}")
         print(f"Since {since} ({source[:8]})")
     else:
-        local_apple_credentials()
-        apple = AppStoreConnect()
+        apple = local_apple()
         app_id = apple.app_id(candidate.bundle_id, **apple.BETA)
         group = os.environ.get("GROUP") or EXTERNAL_GROUP
         previous = next((build for build in apple.group_builds(app_id, apple.external_group(app_id, group))
@@ -798,8 +807,7 @@ def external_beta() -> None:
     release = GitHub().release(candidate.tag)
     if release is None or BuildRecord.read(release).state != "valid":
         raise ReleaseError(f"{candidate.tag} has not reached TestFlight; check make release-status")
-    local_apple_credentials()
-    apple = AppStoreConnect()
+    apple = local_apple()
     app_id = apple.app_id(candidate.bundle_id, **apple.BETA)
     group = os.environ.get("GROUP") or EXTERNAL_GROUP
     group_id = apple.external_group(app_id, group)

@@ -719,6 +719,14 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
         self.assertIn('"state": "reserved"', self.cli("status", TAG="builds/0.2.0/38").stdout)
 
     def test_notes_list_the_entries_external_testers_have_not_had(self):
+        # Every git after the key is read must run without it.
+        git, exposed = shutil.which("git"), self.root / "exposed"
+        self.executable("git", f'''#!/usr/bin/env python3
+import os, sys
+if any(name.startswith("ASC_") for name in os.environ):
+    open({str(exposed)!r}, "a").write(" ".join(sys.argv[1:]) + "\\n")
+os.execv({git!r}, [{git!r}, *sys.argv[1:]])
+''')
         self.command("git", "tag", "v0.1.16")
         self.command("git", "push", "--quiet", "origin", "v0.1.16")
         self.cli("cut", VERSION="0.2.0")
@@ -727,6 +735,7 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
         self.assertIn("Public Beta has 0.1.16 (37), built from", output)
         self.assertIn("### Fixed\n\n- Repair SSH. (#7)", output)
         self.assertNotIn("Old feature", output)
+        self.assertFalse(exposed.exists(), exposed.read_text() if exposed.exists() else "")
 
         self.assertEqual(self.ci("ci-init", Inventory(None, 37, False))[0], 0)
         state = json.loads(self.external.read_text())
@@ -752,6 +761,13 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
         self.assertIn("- Repair SSH. (#7)", output)
         self.assertIn("- Speak to the Composer. (#9)", output)
         self.assertEqual(apple.requests, [])
+        items = json.loads(self.keychain.read_text())
+        self.keychain.write_text(json.dumps(dict(items, ASC_API_KEY_P8=base64.b64encode(b"\xff\xfe secret").decode())))
+        code, output = self.local("notes", FakeAppStoreConnect(), TAG="builds/0.2.0/39")
+        self.assertNotEqual(code, 0)
+        self.assertIn("must be the .p8 file in base64", output)
+        self.assertNotIn("0xff", output)
+        self.keychain.write_text(json.dumps(items))
         for apple, problem in ((FakeAppStoreConnect(group_builds=(("0.2.0", 40),)), "already has a newer build"),
                                (FakeAppStoreConnect(group_builds=()), "has no earlier build; pass SINCE"),
                                (FakeAppStoreConnect(group_builds=(("0.1.15", 36),)), "No source for 0.1.15 (36)")):
