@@ -326,6 +326,20 @@ struct PiChatTests {
                 == .unavailable(.unsupportedFormat("Oh My Pi session version 9")))
     }
 
+    /// An Agent started with `PI_CODING_AGENT_DIR` set to an added
+    /// Account's directory keeps its sessions under that directory (#621).
+    @Test func UUIDLookupSearchesAnAddedAccountsSessions() async throws {
+        let files = VirtualHostFiles(home: "/home/test")
+        await files.setAccountDirectories(["/home/test/.pi-work"], for: .pi)
+        let path = "/home/test/.pi-work/sessions/--project--/2026-10-15_\(Self.id).jsonl"
+        await files.write(Self.header + "\n", at: path)
+
+        let result = try await PiTranscriptLocator(files: files.hostFiles()).locate(
+            reference: .init(program: .pi, sessionID: Self.id), directories: ["/project"])
+
+        #expect(result == .success(path))
+    }
+
     // MARK: A new conversation's file
 
     private static let cacheHost = UUID()

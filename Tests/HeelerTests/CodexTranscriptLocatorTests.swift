@@ -143,4 +143,24 @@ struct CodexTranscriptLocatorTests {
 
         #expect(try await Self.locate(files) == .failure(.notFound))
     }
+
+    /// An Agent started with `CODEX_HOME` set to an added Account's
+    /// directory files its rollouts there (#621).
+    @Test func findsTheRolloutUnderAnAddedAccountsHome() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.codex-work"], for: .codex)
+        let path = "/home/dev/.codex-work/sessions/2026/10/06/\(Self.rolloutName("2026-10-06T12-45-25"))"
+        await files.write(try ChatFixture.data("codex/probe1-rollout.jsonl"), at: path)
+
+        #expect(try await Self.locate(files).get().live?.path == path)
+    }
+
+    @Test func anAccountsArchivedRolloutIsFound() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.codex-work"], for: .codex)
+        let path = "/home/dev/.codex-work/archived_sessions/\(Self.rolloutName("2026-10-06T12-45-25"))"
+        await files.write(Self.meta(id: Self.thread), at: path)
+
+        #expect(try await Self.locate(files).get().live?.path == path)
+    }
 }

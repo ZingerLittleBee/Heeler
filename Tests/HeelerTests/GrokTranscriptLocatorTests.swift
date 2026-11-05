@@ -46,6 +46,19 @@ struct GrokTranscriptLocatorTests {
         return try await locator.locate(sessionID: sessionID, directories: directories)
     }
 
+    // MARK: Accounts
+
+    /// An Agent started with `GROK_HOME` set to an added Account's
+    /// directory files its sessions there (#621).
+    @Test func findsTheSessionUnderAnAddedAccountsHome() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.grok-work"], for: .grok)
+        let path = "/home/dev/.grok-work/sessions/\(Self.group)/\(Self.sessionID)/updates.jsonl"
+        await files.write(Self.record(sessionID: Self.sessionID), at: path)
+
+        #expect(try await Self.locate(files) == .success(path))
+    }
+
     // MARK: Groups
 
     @Test func findsTheSessionInThePaneDirectorysGroup() async throws {

@@ -721,6 +721,10 @@ final class ConsoleStore {
                     throw TransportError.hostFeatureUnavailable(feature: "Chat")
                 }
                 return try await queryOpenCode(query)
+            },
+            accountDirectories: { [weak self] kind in
+                guard let self else { throw TransportError.cancelled }
+                return try await liveChatHostFiles(for: hostID).accountDirectories(kind)
             })
     }
 

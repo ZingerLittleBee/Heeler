@@ -192,6 +192,60 @@ struct ClaudeTranscriptLocatorTests {
         #expect(try found.get().transcriptPath == path)
     }
 
+    // MARK: Claude Code Accounts
+
+    private static let workProjects = "/home/dev/.claude-work/projects"
+    private static let cwdKey = "-private-tmp-heeler-tmp-chat2-probe-claude"
+
+    /// An Agent started with `CLAUDE_CONFIG_DIR` set to an added Account's
+    /// directory files its session there (#621).
+    @Test func findsTheTranscriptUnderAnAddedAccountsDirectory() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.claude-work"], for: .claude)
+        let path = "\(Self.workProjects)/\(Self.cwdKey)/\(Self.sessionID).jsonl"
+        await files.write(try ChatFixture.data("claude/probe2-transcript.jsonl"), at: path)
+
+        let result = try await Self.locate(files)
+
+        #expect(
+            result == .success(
+                ClaudeTranscriptLocation(
+                    projectDirectory: "\(Self.workProjects)/\(Self.cwdKey)", transcriptPath: path,
+                    sessionID: Self.sessionID)))
+        // ~/.claude's own key is tried first, then the Account's.
+        #expect(await files.statuses == [Self.transcriptPath(key: Self.cwdKey), path])
+    }
+
+    @Test func aSessionStartedUnderAnAccountIsNotWrittenYet() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.claude-work/"], for: .claude)
+        await files.makeDirectory("/home/dev/.claude-work/session-env/\(Self.sessionID)")
+
+        #expect(try await Self.locate(files) == .failure(.notWritten))
+    }
+
+    /// The Account file sits in the plugin's config directory; a Host
+    /// without the plugin, or one whose file cannot be read, still has
+    /// `~/.claude` searched.
+    @Test func anUnreadableAccountFileStillSearchesTheDefaultAccount() async throws {
+        let files = VirtualHostFiles()
+        await files.failNext(.accounts, with: TransportError.hostFeatureUnavailable(feature: "Accounts"))
+        let path = Self.transcriptPath(key: Self.cwdKey)
+        await files.write(try ChatFixture.data("claude/probe2-transcript.jsonl"), at: path)
+
+        #expect(try await Self.locate(files).get().transcriptPath == path)
+    }
+
+    @Test func eachAccountsProjectsAreScannedForARelocatedSession() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.claude-work"], for: .claude)
+        await files.makeDirectory("\(Self.projects)/-home-dev-a")
+        let moved = "\(Self.workProjects)/-var-x/\(Self.sessionID).jsonl"
+        await files.write(try ChatFixture.data("claude/probe2-transcript.jsonl"), at: moved)
+
+        #expect(try await Self.locate(files).get().transcriptPath == moved)
+    }
+
     @Test func subagentPathsStayInsideTheSessionDirectory() {
         let location = ClaudeTranscriptLocation(
             projectDirectory: "\(Self.projects)/-k", transcriptPath: "\(Self.projects)/-k/s.jsonl",

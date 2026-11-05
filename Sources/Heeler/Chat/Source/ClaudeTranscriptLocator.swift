@@ -62,7 +62,8 @@ enum ClaudeTranscriptUnavailable: Error, Hashable, Sendable {
     case mismatched
 }
 
-/// Finds a Claude Code session transcript under `~/.claude/projects`.
+/// Finds a Claude Code session transcript under `~/.claude/projects`, then
+/// under each added Account's `projects` (#621).
 ///
 /// Claude files a session under the key of the directory it started in, so
 /// the Agent's current and launch directories are tried first, both
@@ -90,16 +91,17 @@ struct ClaudeTranscriptLocator: Sendable {
         sessionID: String, directories: [String], searchesEveryProject: Bool = true
     ) async throws -> Result<ClaudeTranscriptLocation, ClaudeTranscriptUnavailable> {
         let home = try await files.home()
-        let projects = RemoteFilePath.join(home, ".claude", "projects")
+        let configs = try await files.configRoots(
+            for: .claude, defaultRoot: RemoteFilePath.join(home, ".claude"))
         let fileName = "\(sessionID).jsonl"
         let plan = Self.plan(directories: directories)
         var tried = Set<String>()
         var stats = 0
         var sawMismatch = false
 
-        func attempt(_ key: String) async throws -> ClaudeTranscriptLocation? {
-            guard tried.insert(key).inserted else { return nil }
+        func attempt(_ projects: String, _ key: String) async throws -> ClaudeTranscriptLocation? {
             let directory = RemoteFilePath.join(projects, key)
+            guard tried.insert(directory).inserted else { return nil }
             let path = RemoteFilePath.join(directory, fileName)
             stats += 1
             guard let status = try await files.status(path), Self.isUsable(status) else { return nil }
@@ -113,16 +115,21 @@ struct ClaudeTranscriptLocator: Sendable {
             }
         }
 
-        for key in plan.exactKeys {
-            if let found = try await attempt(key) { return .success(found) }
-        }
-        for prefix in plan.longKeyPrefixes {
-            let listing = try await files.list(
-                RemoteFileListingRequest(
-                    directory: projects, kinds: [.directory, .symlink], namePrefix: prefix,
-                    maximumEntries: 100))
-            for entry in listing?.entries ?? [] {
-                if let found = try await attempt(entry.name) { return .success(found) }
+        // The Agent's own directories under every config root first, the
+        // Default Account's before the added ones'.
+        for config in configs {
+            let projects = RemoteFilePath.join(config, "projects")
+            for key in plan.exactKeys {
+                if let found = try await attempt(projects, key) { return .success(found) }
+            }
+            for prefix in plan.longKeyPrefixes {
+                let listing = try await files.list(
+                    RemoteFileListingRequest(
+                        directory: projects, kinds: [.directory, .symlink], namePrefix: prefix,
+                        maximumEntries: 100))
+                for entry in listing?.entries ?? [] {
+                    if let found = try await attempt(projects, entry.name) { return .success(found) }
+                }
             }
         }
         guard searchesEveryProject else {
@@ -130,34 +137,37 @@ struct ClaudeTranscriptLocator: Sendable {
         }
         func missing(searchedAll: Bool) async throws -> ClaudeTranscriptUnavailable {
             if sawMismatch { return .mismatched }
-            return try await sessionStarted(home: home, sessionID: sessionID)
-                ? .notWritten : .notFound(searchedAll: searchedAll)
-        }
-        guard
-            let listing = try await files.list(
-                RemoteFileListingRequest(
-                    directory: projects, kinds: [.directory, .symlink],
-                    maximumEntries: projectListingLimit, maximumScanned: 20_000))
-        else {
-            return .failure(try await missing(searchedAll: true))
-        }
-        let ordered = Self.byClosestName(listing.entries.map(\.name), to: plan.exactKeys.first ?? "")
-        var searchedAll = !listing.truncated && !listing.scanIncomplete
-        for name in ordered where !tried.contains(name) {
-            guard stats < statBudget else {
-                searchedAll = false
-                break
+            for config in configs {
+                if try await sessionStarted(config: config, sessionID: sessionID) { return .notWritten }
             }
-            if let found = try await attempt(name) { return .success(found) }
+            return .notFound(searchedAll: searchedAll)
+        }
+        var searchedAll = true
+        for config in configs {
+            let projects = RemoteFilePath.join(config, "projects")
+            guard
+                let listing = try await files.list(
+                    RemoteFileListingRequest(
+                        directory: projects, kinds: [.directory, .symlink],
+                        maximumEntries: projectListingLimit, maximumScanned: 20_000))
+            else { continue }
+            let ordered = Self.byClosestName(listing.entries.map(\.name), to: plan.exactKeys.first ?? "")
+            if listing.truncated || listing.scanIncomplete { searchedAll = false }
+            for name in ordered where !tried.contains(RemoteFilePath.join(projects, name)) {
+                guard stats < statBudget else {
+                    return .failure(try await missing(searchedAll: false))
+                }
+                if let found = try await attempt(projects, name) { return .success(found) }
+            }
         }
         return .failure(try await missing(searchedAll: searchedAll))
     }
 
-    /// Whether Claude Code started the session under `home`: its
+    /// Whether Claude Code started the session under `config`: its
     /// `session-env/<id>` is a directory. One the Host won't let Heeler
     /// see is no sign either way.
-    private func sessionStarted(home: String, sessionID: String) async throws -> Bool {
-        let path = RemoteFilePath.join(home, ".claude", "session-env", sessionID)
+    private func sessionStarted(config: String, sessionID: String) async throws -> Bool {
+        let path = RemoteFilePath.join(config, "session-env", sessionID)
         do {
             guard let status = try await files.status(path) else { return false }
             return status.kind == nil || status.kind == .directory
