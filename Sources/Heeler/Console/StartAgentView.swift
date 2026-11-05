@@ -47,7 +47,7 @@ struct StartAgentView: View {
                 awaitAgentVisible: { await console.waitForAgent($0) },
                 origin: origin,
                 presets: { console.launchPresets.presets },
-                accountVariable: { hostID, kind in await console.accountVariable(for: kind, on: hostID) }))
+                accountVariable: { hostID, kind in try await console.accountVariable(for: kind, on: hostID) }))
     }
 
     var body: some View {

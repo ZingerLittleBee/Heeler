@@ -50,7 +50,8 @@ struct CodexTranscriptLocator: Sendable {
         // added Account's (`CODEX_HOME`).
         let roots = try await files.configRoots(for: .codex, defaultRoot: RemoteFilePath.join(home, ".codex"))
         let now = now()
-        let segments = try await ChatHostFiles.firstAnswer(across: roots) { root -> [CodexRolloutSegment]? in
+        return try await ChatHostFiles.firstAnswer(across: roots) {
+            root -> Result<CodexTranscriptLocation, CodexTranscriptUnavailable>? in
             var segments: [CodexRolloutSegment] = []
             for date in Self.dateDirectories(threadID: threadID, now: now) {
                 segments += try await matches(
@@ -60,19 +61,19 @@ struct CodexTranscriptLocator: Sendable {
                 segments = try await matches(
                     in: RemoteFilePath.join(root, "archived_sessions"), threadID: threadID)
             }
-            return segments.isEmpty ? nil : segments
-        } ?? []
-        let ordered = Set(segments).sorted { CodexRolloutFileName.isOrderedBefore($0.name, $1.name) }
-        guard let newest = ordered.last else { return .failure(.notFound) }
-        guard !newest.name.isCompressed else { return .failure(.compressed) }
-        guard try await sessionMetaNames(threadID, in: newest.path) else {
-            return .failure(.mismatched)
-        }
-        // A plain copy shadows a compressed one of the same segment.
-        let readable = ordered.filter { segment in
-            !segment.name.isCompressed
-        }
-        return .success(CodexTranscriptLocation(segments: readable))
+            let ordered = Set(segments).sorted { CodexRolloutFileName.isOrderedBefore($0.name, $1.name) }
+            guard let newest = ordered.last else { return nil }
+            guard !newest.name.isCompressed else { return .failure(.compressed) }
+            // A listed file may still refuse reads; keep that refusal inside the Account search.
+            guard try await sessionMetaNames(threadID, in: newest.path) else {
+                return .failure(.mismatched)
+            }
+            // A plain copy shadows a compressed one of the same segment.
+            let readable = ordered.filter { segment in
+                !segment.name.isCompressed
+            }
+            return .success(CodexTranscriptLocation(segments: readable))
+        } ?? .failure(.notFound)
     }
 
     private func matches(in directory: String, threadID: String) async throws -> [CodexRolloutSegment] {

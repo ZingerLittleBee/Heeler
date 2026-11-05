@@ -820,7 +820,7 @@ struct ClaudeUsagePreferenceTests {
             let store = AgentUsageStore(hostID: studio.id, transports: provider)
             let accounts = HostAccountsStore(hostID: studio.id, transports: provider, usage: { store })
             await store.refresh()
-            await accounts.load()
+            try await accounts.load()
             #expect(store.supportsClaudeAccounts)
             let team = try #require(accounts.suggestions(for: .claude).first { $0.name == "claude-team" })
             #expect(await accounts.add(team, for: .claude))

@@ -72,6 +72,8 @@ final class HostAccountsStore {
     private(set) var loadState: LoadState = .idle
     /// The Account file as last read or written.
     private(set) var file = UsageAccountFile()
+    /// A failed refresh keeps this file authoritative over Usage's older list.
+    private var hasLoadedFile = false
     /// Changes being saved, or read back by Usage.
     private(set) var pendingChanges: Set<Change> = []
     /// The last change that could not be saved; its alert, or the screen
@@ -111,8 +113,9 @@ final class HostAccountsStore {
 
     // MARK: Reading
 
-    /// Reads the Host's Account file and its home folder.
-    func load() async {
+    /// Reads the Host's Account file and its home folder. A failure stays
+    /// visible and is rethrown so a launch cannot use stale variables.
+    func load() async throws {
         if case .idle = loadState { loadState = .loading }
         do {
             let gate = fileGate
@@ -120,9 +123,11 @@ final class HostAccountsStore {
                 try await gate.run { try await transport.readUsageAccountFile() }
             }
             file = try UsageAccountFile.decode(data)
+            hasLoadedFile = true
             loadState = .loaded
         } catch {
-            if case .loaded = loadState {} else { loadState = .failed(Self.changeMessage(for: error)) }
+            loadState = .failed(Self.changeMessage(for: error))
+            throw error
         }
         if hostHome == nil { hostHome = try? await onHostValue { try await $0.hostHomeDirectory() } }
     }
@@ -139,7 +144,7 @@ final class HostAccountsStore {
     /// file is read, Usage's list stands in for it.
     func rows(for kind: SupportedAgentKind) -> [Row] {
         let reported = usageProgram(kind)?.accounts
-        guard loadState == .loaded || reported == nil else {
+        guard hasLoadedFile || reported == nil else {
             return (reported ?? []).map { account in
                 Row(
                     id: account.id, isDefault: account.isDefault, name: account.name,
@@ -166,7 +171,7 @@ final class HostAccountsStore {
     /// one the file already lists or ignores is left out.
     func suggestions(for kind: SupportedAgentKind) -> [AgentUsageReport.AccountSuggestion] {
         let suggested = usageProgram(kind)?.accountSuggestions ?? []
-        guard loadState == .loaded else { return suggested }
+        guard hasLoadedFile else { return suggested }
         let known = Set((file.directories(for: kind) + file.ignored(for: kind)).map(Self.comparable))
         return suggested.filter { !known.contains(Self.comparable($0.directory)) }
     }
@@ -400,6 +405,7 @@ final class HostAccountsStore {
         }
         guard let written = written.withLock({ $0 }) else { return }
         file = written.file
+        hasLoadedFile = true
         loadState = .loaded
         guard written.changed else { return }
         didChange?()

@@ -171,11 +171,11 @@ struct HostAccountsView: View {
             .modifier(AccountChangeFailureAlert(store: store))
         }
         .task {
-            await store.load()
+            try? await store.load()
             if let usage, usage.state == .idle { await usage.pullToRefresh() }
         }
         .refreshable {
-            await store.load()
+            try? await store.load()
             await usage?.pullToRefresh()
         }
         .onAppear {

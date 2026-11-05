@@ -1277,9 +1277,9 @@ final class ConsoleStore {
 
     /// The variable `kind`'s Accounts set on a Host, for a Launch Preset
     /// with an Account: the Host's Accounts name it, else the harness does.
-    func accountVariable(for kind: SupportedAgentKind, on hostID: Host.ID) async -> String? {
+    func accountVariable(for kind: SupportedAgentKind, on hostID: Host.ID) async throws -> String? {
         let store = hostAccountsStore(for: hostID)
-        if store.loadState != .loaded { await store.load() }
+        try await store.load()
         return store.variable(for: kind)
     }
 
@@ -1294,7 +1294,7 @@ final class ConsoleStore {
 
     /// Loads every Host's Accounts, for a preset's Account picker.
     func loadAllHostAccounts() async {
-        for host in catalog { await hostAccountsStore(for: host.id).load() }
+        for host in catalog { try? await hostAccountsStore(for: host.id).load() }
     }
 
     /// The Accounts of `kind` the Hosts loaded so far keep, each folder once.

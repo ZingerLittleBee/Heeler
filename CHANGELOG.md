@@ -32,6 +32,15 @@ Entries reference the pull request that made the change.
   now offers **Read More**, which opens the guide on what is happening and
   how to fix it, instead of Show Agent Terminal. (#627)
 
+### Fixed
+
+- Launch Presets read the Host's current Account variables before starting;
+  an unreadable Account file blocks the launch and shows the error. Accounts
+  keeps the last loaded list visible when a refresh fails. (#632)
+- Codex Chat continues to later Accounts when a matching rollout refuses
+  reads. Token Usage matches copied forks to parents within the same Account
+  and rebuilds older scan caches to correct cross-account totals. (#632)
+
 ## [0.1.17]
 
 ### Added

@@ -248,7 +248,7 @@ final class StartAgentStore {
     private let presetsProvider: () -> [LaunchPreset]
     /// The variable a harness's Accounts set on a Host (its Accounts'
     /// `variable`, else the harness's own); nil when neither is known.
-    private let accountVariable: (Host.ID, SupportedAgentKind) async -> String?
+    private let accountVariable: (Host.ID, SupportedAgentKind) async throws -> String?
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
     /// before `state == .starting` disables the button.
@@ -265,7 +265,7 @@ final class StartAgentStore {
         origin: LaunchOrigin? = nil,
         recents: RecentLaunchStore = RecentLaunchStore(),
         presets: @escaping () -> [LaunchPreset] = { [] },
-        accountVariable: @escaping (Host.ID, SupportedAgentKind) async -> String? = { _, kind in
+        accountVariable: @escaping (Host.ID, SupportedAgentKind) async throws -> String? = { _, kind in
             kind.configDirectoryVariable
         }
     ) {
@@ -479,7 +479,13 @@ final class StartAgentStore {
         if let preset {
             do {
                 let home = preset.needsHome ? try await remoteHome(hostID) : nil
-                let variable = preset.accountDirectory == nil ? nil : await accountVariable(hostID, preset.kind)
+                let variable: String?
+                do {
+                    variable = preset.accountDirectory == nil ? nil : try await accountVariable(hostID, preset.kind)
+                } catch {
+                    state = .failed(HostAccountsStore.changeMessage(for: error))
+                    return
+                }
                 guard selectedHostID == hostID, selectedPresetID == preset.id,
                     launchDestination.map({
                         SubmittedTarget(destination: $0, workspaceID: selectedWorkspaceID, tabLabel: tabLabel)

@@ -64,7 +64,7 @@ struct StartAgentStoreTests {
         origin: StartAgentStore.LaunchOrigin? = nil,
         recents: RecentLaunchStore? = nil,
         presets: [LaunchPreset] = [],
-        accountVariable: @escaping (Host.ID, SupportedAgentKind) async -> String? = { _, kind in
+        accountVariable: @escaping (Host.ID, SupportedAgentKind) async throws -> String? = { _, kind in
             kind.configDirectoryVariable
         },
         recorder: StartRecorder
@@ -1498,9 +1498,13 @@ struct StartAgentStoreTests {
         let amp = LaunchPreset(name: "Amp Work", kind: .amp, accountDirectory: "/srv/amp-work")
         let recorder = StartRecorder()
         var variable: String? = nil
+        var readFails = false
         let store = makeStore(
             hosts: [Host.fixture()], workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Existing")] },
-            agentKinds: { _ in [.amp] }, presets: [amp], accountVariable: { _, _ in variable }, recorder: recorder)
+            agentKinds: { _ in [.amp] }, presets: [amp], accountVariable: { _, _ in
+                if readFails { throw NotificationRegistrationError.readFailed(detail: "permission denied") }
+                return variable
+            }, recorder: recorder)
         await store.discoverAgents()
         store.selectedPresetID = amp.id
         await store.submit()
@@ -1508,6 +1512,12 @@ struct StartAgentStoreTests {
         #expect(recorder.params.isEmpty)
 
         variable = "AMP_HOME"
+        readFails = true
+        await store.submit()
+        #expect(store.state == .failed("Heeler could not read this Host’s Accounts. Try again."))
+        #expect(recorder.params.isEmpty)
+
+        readFails = false
         await store.submit()
         #expect(recorder.params.first?.environment == ["AMP_HOME": "/srv/amp-work"])
         // A name that is no Agent name falls back to the harness's.

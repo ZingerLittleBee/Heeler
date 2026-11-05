@@ -190,34 +190,40 @@ async function run() {
     const appendKey = record => cacheWrite(() => log.append(record));
     const threads = new Map();
     const parentTotals = new Map();
+    const threadKey = (account, id) => JSON.stringify([account ?? "default", id]);
     let pendingPrefix = false;
     // Old copied forks may be read before their parent in newest-first order.
-    // Index headers without loading Transcript content into the query snapshot.
+    // Parent copies in another Account must not determine this Account's inherited prefix.
     for (const file of files.filter(file => file.program === "codex")) {
       const saved = fileStates[file.logicalPath];
       if (saved?.carry.threadId || saved?.finished) {
-        if (saved.carry.threadId && !threads.has(saved.carry.threadId)) threads.set(saved.carry.threadId, file);
+        const key = threadKey(file.account, saved.carry.threadId);
+        if (saved.carry.threadId && !threads.has(key)) threads.set(key, file);
         continue;
       }
       try {
         for await (const { line } of codexLines(file, runtime, maintainHeartbeat)) {
-          if (line?.type === "session_meta" && typeof line.payload?.id === "string" && !threads.has(line.payload.id)) threads.set(line.payload.id, file);
+          if (line?.type === "session_meta" && typeof line.payload?.id === "string") {
+            const key = threadKey(file.account, line.payload.id);
+            if (!threads.has(key)) threads.set(key, file);
+          }
           break;
         }
       } catch (error) { if (runFailure(error)) throw error; /* The main pass reports unavailable or unreadable archives. */ }
     }
-    const totalsForParent = async id => {
-      if (!id || !threads.has(id)) return null;
-      if (!parentTotals.has(id)) {
+    const totalsForParent = async (account, id) => {
+      const key = threadKey(account, id);
+      if (!id || !threads.has(key)) return null;
+      if (!parentTotals.has(key)) {
         const totals = [];
         try {
-          for await (const { line } of codexLines(threads.get(id), runtime, maintainHeartbeat)) {
+          for await (const { line } of codexLines(threads.get(key), runtime, maintainHeartbeat)) {
             if (line?.type === "event_msg" && line.payload?.type === "token_count" && line.payload.info?.total_token_usage) totals.push(codexTotalSignature(line.payload.info.total_token_usage));
           }
-          parentTotals.set(id, totals);
-        } catch (error) { if (runFailure(error)) throw error; parentTotals.set(id, null); }
+          parentTotals.set(key, totals);
+        } catch (error) { if (runFailure(error)) throw error; parentTotals.set(key, null); }
       }
-      return parentTotals.get(id);
+      return parentTotals.get(key);
     };
     for (const file of files) {
       const logicalPath = file.logicalPath || file.path;
@@ -227,13 +233,13 @@ async function run() {
       if (state.finished && !state.carry.pending?.length) continue;
       if (file.program === "codex") {
         const carry = state.carry;
+        const account = state.account;
         // Only a copied fork whose inherited prefix has not ended is matched
         // against its parent; a forked subagent ends on its own markers.
         const needsParent = () => carry.inheritance === "fork" && !carry.inheritedEnded;
-        let parent = needsParent() ? await totalsForParent(carry.parentId) : null;
+        let parent = needsParent() ? await totalsForParent(account, carry.parentId) : null;
         // An added Account's responses count once within it, beside the same
         // responses copied into another Account.
-        const account = state.account;
         const countContributions = contributions => {
           for (const contribution of contributions) {
             const candidate = priceContribution(account === undefined ? contribution
@@ -252,7 +258,7 @@ async function run() {
             if (reading && (!carry.latestLimits || reading.observedAt >= carry.latestLimits.observedAt)) carry.latestLimits = reading;
             countContributions(consumeCodexLine(carry, entry.line, state.offset, cutoff, parent));
             snapshotDue();
-            if (parent === null && needsParent()) parent = await totalsForParent(carry.parentId);
+            if (parent === null && needsParent()) parent = await totalsForParent(account, carry.parentId);
           }
           countContributions(finishCodexRead(carry, Date.now(), parent));
           pendingPrefix ||= carry.pending.length > 0;

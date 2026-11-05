@@ -176,6 +176,16 @@ struct CodexTranscriptLocatorTests {
         await files.write(try ChatFixture.data("codex/probe1-rollout.jsonl"), at: path)
 
         #expect(try await Self.locate(files).get().live?.path == path)
+
+        // Listing may succeed even though the matching file itself is unreadable.
+        let earlier = "/u/account-a/sessions/\(date)/\(Self.rolloutName("2026-10-06T12-45-25"))"
+        await files.write(Self.meta(id: Self.thread), at: earlier)
+        await files.failNext(.read, path: earlier, with: TransportError.hostFileUnreadable(status: 3))
+        #expect(try await Self.locate(files).get().live?.path == path)
+
+        await files.setAccountDirectories(["/u/account-a"], for: .codex)
+        await files.failNext(.read, path: earlier, with: TransportError.hostFileUnreadable(status: 3))
+        await #expect(throws: TransportError.hostFileUnreadable(status: 3)) { try await Self.locate(files) }
     }
 
     /// With nothing found anywhere, the refusal is what Chat reports.

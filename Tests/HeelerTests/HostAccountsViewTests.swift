@@ -77,7 +77,7 @@ struct HostAccountsViewTests {
             """#.utf8))
         let store = HostAccountsStore(
             hostID: hostID, transports: ScriptedTransportProvider(transports: [hostID: transport]))
-        await store.load()
+        try await store.load()
         #expect(!store.isFull(.claude))
         #expect(store.isFull(.codex))
         #expect(AccountsListing.fullFooter == "A harness can have up to four Accounts on a Host. Remove one to add another.")
@@ -225,6 +225,25 @@ struct HostAccountsViewTests {
             #expect(labels.contains { $0.contains(expected) }, "Missing \(expected) in \(labels.sorted())")
         }
         #expect(!labels.contains(AccountsListing.fullFooter))
+    }
+
+    @Test func aFailedRefreshShowsTheErrorBesideTheLastReadAccounts() async throws {
+        let transport = ScriptedTransport()
+        var file = UsageAccountFile()
+        try file.add(directory: "/u/.claude-work", name: "Work", defaultDirectory: nil)
+        await transport.setUsageAccountFile(try file.encoded())
+        let hostID = UUID()
+        let store = HostAccountsStore(
+            hostID: hostID, transports: ScriptedTransportProvider(transports: [hostID: transport]))
+        try await store.load()
+        await transport.setUsageAccountFileReadFailure(
+            NotificationRegistrationError.readFailed(detail: "permission denied"))
+        let message = "Heeler could not read this Host’s Accounts. Try again."
+        let labels = try await renderedLabels(HostAccountsView(hostName: "studio", store: store)) {
+            $0.contains { $0.contains(message) }
+        }
+        #expect(labels.contains { $0.contains(message) })
+        #expect(labels.contains { $0.contains("Work") })
     }
 
     /// A change that failed after an earlier Accounts screen closed is not

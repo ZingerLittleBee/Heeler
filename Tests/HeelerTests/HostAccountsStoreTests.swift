@@ -32,7 +32,7 @@ struct HostAccountsStoreTests {
         let usage = AgentUsageStore(hostID: hostID, transports: provider, defaults: defaults)
         if withUsage { await usage.refresh() }
         let accounts = HostAccountsStore(hostID: hostID, transports: provider, usage: { withUsage ? usage : nil })
-        await accounts.load()
+        try await accounts.load()
         return (accounts, usage, transport)
     }
 
@@ -71,7 +71,7 @@ struct HostAccountsStoreTests {
             {"version": 1, "claude": {"accounts": []}, "programs": {"amp": {"variable": "AMP_HOME",
               "accounts": [{"id": "a1b2c3d4", "directory": "/Users/u/.amp-work", "name": "Work"}]}}}
             """#.utf8))
-        await store.load()
+        try await store.load()
         #expect(store.rows(for: .amp).map(\.displayName) == ["Default", "Work"])
         #expect(store.rows(for: .amp).first?.directory == nil)
         #expect(store.rows(for: .amp).last?.directory == "/Users/u/.amp-work")
@@ -91,13 +91,36 @@ struct HostAccountsStoreTests {
               {"id": "7f3c9a2e", "directory": "/Users/u/.claude-2", "name": "Renamed"},
               {"id": "aaaaaaaa", "directory": "/Users/u/.claude-work", "name": "claude-work"}]}}
             """#.utf8))
-        await store.load()
+        try await store.load()
         let rows = store.rows(for: .claude)
         #expect(rows.map(\.displayName) == ["Default", "Renamed", "claude-work"])
         #expect(rows.map(\.state) == [.ok, .ok, nil])
         #expect(rows.first?.directory == "/Users/u/.claude")
         // A suggestion the file now lists is no longer offered.
         #expect(store.suggestions(for: .claude).map(\.name) == ["claude-personal"])
+    }
+
+    @Test func aFailedRefreshReportsFailureWithoutReplacingTheLastReadWithUsage() async throws {
+        let (store, _, transport) = try await readyStore(matchingFile: true)
+        var file = try await savedFile(transport)
+        try file.rename(accountID: "7f3c9a2e", to: "Renamed")
+        await transport.setUsageAccountFile(try file.encoded())
+        try await store.load()
+        let rows = store.rows(for: .claude)
+        #expect(rows.map(\.displayName) == ["Default", "Renamed", "work"])
+
+        let failure = NotificationRegistrationError.readFailed(detail: "permission denied")
+        await transport.setUsageAccountFileReadFailure(failure)
+        await #expect(throws: failure) { try await store.load() }
+        #expect(store.loadState == .failed("Heeler could not read this Host’s Accounts. Try again."))
+        #expect(store.rows(for: .claude) == rows)
+
+        await transport.setUsageAccountFileReadFailure(nil)
+        try file.rename(accountID: "7f3c9a2e", to: "Recovered")
+        await transport.setUsageAccountFile(try file.encoded())
+        try await store.load()
+        #expect(store.loadState == .loaded)
+        #expect(store.rows(for: .claude).map(\.displayName) == ["Default", "Recovered", "work"])
     }
 
     /// A saved rename shows even when the Usage read after it fails and
@@ -108,7 +131,7 @@ struct HostAccountsStoreTests {
             {"version": 1, "claude": {"accounts": [
               {"id": "7f3c9a2e", "directory": "/Users/u/.claude-2", "name": "claude-2"}]}}
             """#.utf8))
-        await store.load()
+        try await store.load()
         await transport.setAgentUsage(.failure(TransportError.sshUnreachable(detail: "gone")))
         #expect(await store.rename(try account(store, "claude-2"), to: "Max", for: .claude))
         #expect(usage.refreshFailure != nil)
@@ -199,7 +222,7 @@ struct HostAccountsStoreTests {
             {"version": 1, "claude": {"accounts": [
               {"id": "7f3c9a2e", "directory": "/Users/u/.claude-2", "name": "claude-2"}]}}
             """#.utf8))
-        await store.load()
+        try await store.load()
         let claude2 = try account(store, "claude-2")
         let renameRead = ScriptedTransportCallGate()
         await transport.gateNextAgentUsageRead(renameRead)
@@ -219,7 +242,7 @@ struct HostAccountsStoreTests {
               {"id": "7f3c9a2e", "directory": "/Users/u/.claude-2", "name": "claude-2"},
               {"id": "c41d07b9", "directory": "/Volumes/x/.claude", "name": "work"}], "ignored": []}}
             """#.utf8))
-        await store.load()
+        try await store.load()
         #expect(await store.rename(try account(store, "Default"), to: "Personal", for: .claude))
         #expect(try await savedFile(transport).defaultName == "Personal")
         #expect(await store.rename(try account(store, "claude-2"), to: "Max", for: .claude))
@@ -238,7 +261,7 @@ struct HostAccountsStoreTests {
             {"version": 1, "claude": {"accounts": [
               {"id": "7f3c9a2e", "directory": "/Users/u/.claude-2", "name": "claude-2"}]}}
             """#.utf8))
-        await store.load()
+        try await store.load()
         #expect(await store.rename(try account(store, "claude-2"), to: "Default", for: .claude) == false)
         #expect(store.changeFailure?.message == "Another Account on this Host is named Default.")
         #expect(await transport.replacedUsageAccountFiles.isEmpty)

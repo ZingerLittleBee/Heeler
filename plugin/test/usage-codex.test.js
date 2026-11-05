@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, appendFileSync, chmodSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, appendFileSync, chmodSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,8 +33,8 @@ function fixture(t) {
     try { const lock = JSON.parse(readFileSync(join(cache(), "worker.lock"))); if (lock.pid !== process.pid) process.kill(lock.pid, "SIGKILL"); } catch { /* Already finished. */ }
     rmSync(root, { recursive: true, force: true });
   });
-  const transcript = (id, records, area = "sessions/2026/10/23") => {
-    const path = join(env.CODEX_HOME, area, `rollout-${id}.jsonl`);
+  const transcript = (id, records, area = "sessions/2026/10/23", home = env.CODEX_HOME) => {
+    const path = join(home, area, `rollout-${id}.jsonl`);
     mkdirSync(join(path, ".."), { recursive: true });
     writeFileSync(path, records.map(r => JSON.stringify(r)).join("\n") + "\n");
     return path;
@@ -90,6 +90,37 @@ test("an old fork matches a present parent's copied prefix even within one burst
     record("parent", "parent-response", usage(100), at(1050)),
     count(usage(100), usage(100), at(1100)), count(usage(110), usage(10), at(1200))]);
   assert.equal(codex(await f.finish()).totals.today.tokens.total, 110);
+});
+
+test("old forks match parents only within their Account, including checkpointed headers", async t => {
+  const f = fixture(t);
+  const work = join(f.root, "codex-work");
+  const parent = f.transcript("parent", [meta("parent", {}, at(0)),
+    count(usage(100), usage(100), at(100)), count(usage(150), usage(50), at(200))]);
+  const fork = extra => [meta("fork", { forked_from_id: "parent" }, at(1000)),
+    count(usage(100), usage(100), at(1100)), count(usage(150), usage(50), at(1200)),
+    count(usage(150 + extra), usage(extra), at(1300))];
+  f.transcript("fork", fork(10));
+  const otherParent = f.transcript("parent", [meta("parent", {}, at(0)),
+    count(usage(100), usage(100), at(100))], undefined, work);
+  f.transcript("fork", [meta("fork", { forked_from_id: "parent" }, at(1000)),
+    count(usage(100), usage(100), at(1100)), count(usage(107), usage(7), at(1200))], undefined, work);
+  // The shorter copy wins the global newest-first index unless Account is part of its key.
+  const now = Date.now() / 1000;
+  utimesSync(parent, now - 2, now - 2);
+  utimesSync(otherParent, now + 2, now + 2);
+  writeFileSync(join(f.env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"), JSON.stringify({ version: 1,
+    programs: { codex: { accounts: [{ id: "work0001", directory: work, name: "work" }] } } }));
+  const totals = report => report.programs.find(p => p.program === "codex").accounts
+    .map(account => account.tokenUsage.totals.today.tokens.total);
+  assert.deepEqual(totals(await f.finish()), [160, 107]);
+
+  // Existing parent files now supply their headers from the checkpoint, not a new scan.
+  const second = fork(3);
+  second[0].payload.id = "second-fork";
+  f.transcript("second-fork", second);
+  f.stale();
+  assert.deepEqual(totals(await f.finish()), [163, 107]);
 });
 
 test("an old fork without its parent excludes only the leading burst, not a later resume marker", async t => {

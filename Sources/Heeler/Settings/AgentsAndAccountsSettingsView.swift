@@ -92,6 +92,6 @@ private struct HostAccountsRowLabel: View {
         } label: {
             Label(host.displayName, systemImage: "server.rack")
         }
-        .task { if store.loadState == .idle { await store.load() } }
+        .task { if store.loadState == .idle { try? await store.load() } }
     }
 }
