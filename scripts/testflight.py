@@ -778,23 +778,21 @@ def beta_notes() -> None:
             print(f"- {entry}")
 
 
-def read_whats_new(path: str) -> dict[str, str]:
+def read_whats_new(path: str) -> str:
     if not path:
-        raise ReleaseError("NOTES must name a JSON file mapping locales to What to Test text")
-    notes = json.loads(Path(path).read_text())
-    if not isinstance(notes, dict) or not notes:
-        raise ReleaseError("NOTES must map at least one locale to text")
-    for locale, text in notes.items():
-        if not re.fullmatch(r"[a-z]{2,3}(-[A-Za-z0-9]+)*", locale) or not isinstance(text, str) or not text.strip():
-            raise ReleaseError(f"NOTES: {locale!r} needs a locale code and nonempty text")
-        if len(text) > WHATS_NEW_LIMIT:
-            raise ReleaseError(f"NOTES: {locale} is {len(text)} characters; What to Test allows {WHATS_NEW_LIMIT}")
-    return {locale: text.strip() for locale, text in notes.items()}
+        raise ReleaseError("NOTES must name a text file with the What to Test notes")
+    text = Path(path).read_text().strip()
+    if not text:
+        raise ReleaseError("NOTES is empty")
+    if len(text) > WHATS_NEW_LIMIT:
+        raise ReleaseError(f"NOTES is {len(text)} characters; What to Test allows {WHATS_NEW_LIMIT}")
+    return text
 
 
 def external_beta() -> None:
-    """Set What to Test, add a processed build to the external group, and submit
-    it for Beta App Review. Reruns change only what differs."""
+    """Set What to Test in every Test Information locale, add a processed build
+    to the external group, and submit it for Beta App Review. Reruns change only
+    what differs."""
     candidate = candidate_from_tag(os.environ.get("TAG", ""))
     notes = read_whats_new(os.environ.get("NOTES", ""))
     release = GitHub().release(candidate.tag)
@@ -810,8 +808,9 @@ def external_beta() -> None:
         raise ReleaseError(f"Apple reports {build.processing_state} for {candidate.tag}")
     if build.external_state != "READY_FOR_BETA_SUBMISSION" and build.external_state not in SUBMITTED:
         raise ReleaseError(f"External testing state is {build.external_state}; resolve it in App Store Connect")
-    changed = {locale: text for locale, text in notes.items() if build.whats_new.get(locale, ("", ""))[1] != text}
-    for locale in notes:
+    locales = apple.beta_locales(app_id)
+    changed = [locale for locale in locales if build.whats_new.get(locale, ("", ""))[1] != notes]
+    for locale in locales:
         action = ("update" if locale in build.whats_new else "create") if locale in changed else "unchanged"
         print(f"What to Test ({locale}): {action}")
     print(f"{group}: {'has the build' if group_id in build.groups else 'add the build'}")
@@ -819,8 +818,8 @@ def external_beta() -> None:
                                  else build.external_state))
     if not confirm():
         return
-    for locale, text in changed.items():
-        apple.set_whats_new(build, locale, text)
+    for locale in changed:
+        apple.set_whats_new(build, locale, notes)
     if group_id not in build.groups:
         apple.add_to_group(group_id, build.id)
     # Re-read: adding the build to a group may have submitted it already.

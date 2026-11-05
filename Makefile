@@ -244,7 +244,7 @@ release-check: ## Dispatch signing/validation rehearsal, no upload (VERSION=X.Y.
 testflight-notes: ## List changelog entries external testers have not had (TAG=builds/X.Y.Z/N [SINCE=commit])
 	@python3 scripts/testflight.py notes
 
-testflight-beta: ## Set What to Test, add to external testing, submit for review (TAG=... NOTES=file.json)
+testflight-beta: ## Set What to Test, add to external testing, submit for review (TAG=... NOTES=notes.txt)
 	@python3 scripts/testflight.py beta
 
 publish upload bump:

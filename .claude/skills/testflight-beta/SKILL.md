@@ -1,6 +1,6 @@
 ---
 name: testflight-beta
-description: Release a processed TestFlight build to external testers. Drafts its What to Test notes in English and Chinese from CHANGELOG for the maintainer to approve, then adds the build to the Public Beta group and submits it for Beta App Review. Use when a build from `make testflight` has reached TestFlight, or when asked for a build's update notes, 更新日志, What to Test or Public Beta.
+description: Release a processed TestFlight build to external testers. Drafts its What to Test notes, English then Chinese, from CHANGELOG for the maintainer to approve, then adds the build to the Public Beta group and submits it for Beta App Review. Use when a build from `make testflight` has reached TestFlight, or when asked for a build's update notes, 更新日志, What to Test or Public Beta.
 ---
 
 # TestFlight external testing
@@ -37,8 +37,9 @@ that change nothing in the app, such as the website, docs site or CI.
   languages. Check every name against the strings in `Sources/`, because
   CHANGELOG sometimes paraphrases them.
 - Keep any "Update the Heeler plugin to X on the Host" requirement.
-- Use plain text with `- ` bullets and a blank line between sections. Keep each
-  language under 4000 characters.
+- Use plain text with `- ` bullets and a blank line between sections. Write
+  the English, then the Chinese, in one text under 4000 characters: Test
+  Information has only `en-US`, so every tester reads both.
 - Write the Chinese as natural Simplified Chinese. Translate tap as 轻点, touch
   and hold as 长按, and Composer as 输入框.
 
@@ -76,8 +77,8 @@ Fixed
 
 ## 4. Get approval
 
-Save the notes outside the repository, in the scratchpad, as JSON:
-`{"en-US": "…", "zh-Hans": "…"}`. Show both texts in your reply and wait. The
+Save the notes as a text file in the scratchpad, outside the repository.
+Show them in your reply and wait. The
 maintainer tests the build before releasing it. Publish only after they approve
 the notes in their own words, and apply their edits to the file first.
 

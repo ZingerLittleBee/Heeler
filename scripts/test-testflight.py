@@ -40,6 +40,7 @@ class FakeAppStoreConnect:
 
     def __init__(self, group_builds=(("0.1.16", 37),), state="READY_FOR_BETA_SUBMISSION", submit_on_add=False):
         self.groups = [("public", "Public Beta", False), ("team", "Heeler Team", True)]
+        self.locales = ["en-US", "de-DE"]
         self.group_builds = list(group_builds)
         self.state, self.submit_on_add = state, submit_on_add
         self.build_groups, self.localizations = [], {"en-US": ("l1", "Earlier notes")}
@@ -67,6 +68,8 @@ class FakeAppStoreConnect:
             return io.BytesIO(b"")
         if path == "apps":
             data = {"data": [{"id": "app", "attributes": {"bundleId": query["filter[bundleId]"]}}]}
+        elif path == "apps/app/betaAppLocalizations":
+            data = {"data": [{"id": locale, "attributes": {"locale": locale}} for locale in self.locales]}
         elif path == "betaGroups":
             data = {"data": [{"id": identity, "attributes": {"name": name, "isInternalGroup": internal}}
                              for identity, name, internal in self.groups]}
@@ -760,8 +763,8 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
     def test_beta_sets_what_to_test_joins_the_group_and_submits_once(self):
         self.cli("cut", VERSION="0.2.0")
         self.assertEqual(self.ci("ci-init", Inventory(None, 37, False))[0], 0)
-        notes = self.root / "notes.json"
-        notes.write_text(json.dumps({"en-US": "New\n- Speak to the Composer.", "zh-Hans": "新增\n- 语音输入。"}))
+        notes = self.root / "notes.txt"
+        notes.write_text("New\n- Speak to the Composer.\n\n新增\n- 语音输入。\n")
         apple = FakeAppStoreConnect()
         code, output = self.local("beta", apple, TAG="builds/0.2.0/38", NOTES=str(notes))
         self.assertNotEqual(code, 0)
@@ -774,7 +777,7 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
 
         code, output = self.local("beta", apple, TAG="builds/0.2.0/38", NOTES=str(notes), DRY_RUN="1")
         self.assertEqual(code, 0, output)
-        for line in ("What to Test (en-US): update", "What to Test (zh-Hans): create",
+        for line in ("What to Test (en-US): update", "What to Test (de-DE): create",
                      "Public Beta: add the build", "Beta App Review: submit"):
             self.assertIn(line, output)
         self.assertEqual(apple.writes, [])
@@ -785,19 +788,20 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
             ("PATCH", "betaBuildLocalizations/l1"), ("POST", "betaBuildLocalizations"),
             ("POST", "betaGroups/public/relationships/builds"), ("POST", "betaAppReviewSubmissions")])
         self.assertEqual(apple.writes[1][2]["data"]["relationships"]["build"]["data"], {"type": "builds", "id": "b38"})
-        self.assertEqual(apple.localizations["zh-Hans"][1], "新增\n- 语音输入。")
+        self.assertEqual(apple.localizations["en-US"][1], "New\n- Speak to the Composer.\n\n新增\n- 语音输入。")
+        self.assertEqual(apple.localizations["de-DE"][1], apple.localizations["en-US"][1])
         self.assertIn("builds/0.2.0/38 is in Public Beta (submitted for review).", output)
         code, output = self.local("beta", apple, TAG="builds/0.2.0/38", NOTES=str(notes))
         self.assertEqual(code, 0, output)
         self.assertEqual(len(apple.writes), 4)
-        self.assertIn("What to Test (zh-Hans): unchanged", output)
+        self.assertIn("What to Test (de-DE): unchanged", output)
         self.assertIn("Beta App Review: WAITING_FOR_BETA_REVIEW", output)
 
         apple = FakeAppStoreConnect(submit_on_add=True)
         self.assertEqual(self.local("beta", apple, TAG="builds/0.2.0/38", NOTES=str(notes))[0], 0)
         self.assertNotIn("betaAppReviewSubmissions", [path for _, path, _ in apple.writes])
-        long = self.root / "long.json"
-        long.write_text(json.dumps({"en-US": "x" * 4001}))
+        long = self.root / "long.txt"
+        long.write_text("x" * 4001)
         for apple, path, problem in ((FakeAppStoreConnect(), long, "What to Test allows 4000"),
                                      (FakeAppStoreConnect(state="MISSING_EXPORT_COMPLIANCE"), notes,
                                       "External testing state is MISSING_EXPORT_COMPLIANCE"),

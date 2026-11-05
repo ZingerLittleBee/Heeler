@@ -173,6 +173,11 @@ class AppStoreConnect:
             raise AppleError(f"Expected one external TestFlight group named {name!r}; external groups: {names}")
         return named[0]
 
+    def beta_locales(self, app_id: str) -> list[str]:
+        """Locales of the app's Test Information; each has its own What to Test."""
+        return [item["attributes"]["locale"] for page in
+                self.pages(f"apps/{app_id}/betaAppLocalizations", {"limit": 50}, **self.BETA) for item in page["data"]]
+
     def beta_build(self, app_id: str, version: str, number: int) -> BetaBuild:
         pages = list(self.pages("builds", {
             "filter[app]": app_id, "filter[version]": str(number), "filter[preReleaseVersion.version]": version,

@@ -13,7 +13,7 @@ make release-status TAG=builds/0.2.0/39
 make testflight-retry TAG=builds/0.2.0/39
 make release-check VERSION=0.2.0        # signing/validation rehearsal only
 make testflight-notes TAG=builds/0.2.0/39  # changelog entries external testers have not had
-make testflight-beta TAG=builds/0.2.0/39 NOTES=notes.json  # release to external testers
+make testflight-beta TAG=builds/0.2.0/39 NOTES=notes.txt  # release to external testers
 ```
 
 Numbers are illustrative; migration must establish the real counter first.
@@ -167,11 +167,12 @@ approves the notes before the skill releases it.
 
 `make testflight-notes TAG=...` lists the changelog entries that are new since
 the group's newest build, by upload date. `SINCE=<commit>` replaces that
-lookup. `make testflight-beta TAG=... NOTES=notes.json` does four things:
+lookup. `make testflight-beta TAG=... NOTES=notes.txt` does four things:
 
 - requires a `valid` record and an Apple `VALID` build;
-- sets What to Test for each locale in NOTES (`{"en-US": "...", "zh-Hans": "..."}`,
-  at most 4000 characters each);
+- sets What to Test to the text in NOTES, at most 4000 characters, in every
+  Test Information locale. The app has only `en-US`, so the notes carry the
+  English and then the Chinese;
 - adds the build to `GROUP` (default `Public Beta`);
 - submits the build for Beta App Review, unless adding it already did.
 
