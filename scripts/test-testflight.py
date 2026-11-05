@@ -541,6 +541,20 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
                 self.assertIsNotNone(needs)
                 self.assertIn("meta", needs[1])
 
+    def test_the_record_folds_above_the_notes_and_older_records_still_read(self):
+        self.cli("cut", VERSION="0.2.0")
+        self.assertEqual(self.ci("ci-init", Inventory(None, 37, False))[0], 0)
+        release, record = self.record()
+        self.assertRegex(release["body"], r"(?s)\A<!-- heeler-build-record:v1 -->\n<details><summary>Build record"
+                                          r"</summary>\n\n```json\n\{.+\n```\n\n</details>\n\n[^`]*Repair SSH")
+        release["body"] = "<!-- heeler-build-record:v1 -->\n```json\n" + json.dumps(record) + "\n```\n\nNotes"
+        state = json.loads(self.external.read_text())
+        state["releases"]["builds/0.2.0/38"] = release
+        state["runs"] = [{"id": 123, "head_sha": record["candidate"]["source"], "status": "completed",
+                          "conclusion": "failure", "event": "push"}]
+        self.external.write_text(json.dumps(state))
+        self.assertIn('"state": "reserved"', self.cli("status", TAG="builds/0.2.0/38").stdout)
+
     def test_counter_closed_version_and_unproven_existing_build_stop_before_upload(self):
         self.cli("cut", VERSION="0.2.0")
         self.assertEqual(self.ci("ci-init", Inventory(None, 37, False))[0], 0)

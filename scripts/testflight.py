@@ -256,6 +256,13 @@ class GitHub:
         return True
 
 
+RECORD_MARKER = "<!-- heeler-build-record:v1 -->"
+# The record folds above the notes. Older records, such as 0.1.17 (40)'s,
+# have no <details> wrapper.
+RECORD_BODY = re.compile(re.escape(RECORD_MARKER)
+                         + r"\n(?:<details><summary>Build record</summary>\n\n)?```json\n(.+?)\n```", re.S)
+
+
 @dataclass
 class BuildRecord:
     candidate: Candidate
@@ -273,7 +280,7 @@ class BuildRecord:
 
     @classmethod
     def read(cls, release: dict) -> BuildRecord:
-        match = re.match(r"<!-- heeler-build-record:v1 -->\n```json\n(.+?)\n```", release.get("body", ""), re.S)
+        match = RECORD_BODY.match(release.get("body", ""))
         if not match:
             raise ReleaseError("Missing build checkpoint; reconcile before retrying")
         try:
@@ -305,7 +312,8 @@ class BuildRecord:
     def save(self, github: GitHub, release: dict | None) -> dict:
         notes = notes_for(run("git", "show", f"{self.candidate.source}:CHANGELOG.md"), self.candidate.version)
         notes = run(sys.executable, "scripts/format-release-notes.py", input=notes)
-        body = "<!-- heeler-build-record:v1 -->\n```json\n" + json.dumps(asdict(self), indent=2) + "\n```\n\n" + notes
+        body = (f"{RECORD_MARKER}\n<details><summary>Build record</summary>\n\n```json\n"
+                + json.dumps(asdict(self), indent=2) + "\n```\n\n</details>\n\n" + notes)
         payload = {"tag_name": self.candidate.tag, "name": f"{self.candidate.version} ({self.candidate.build}) - TestFlight",
                    "body": body, "draft": True if release is None else release["draft"],
                    "prerelease": True, "make_latest": "false"}
