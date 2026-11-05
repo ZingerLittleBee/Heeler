@@ -134,4 +134,22 @@ struct LaunchPresetTests {
                 == "Enter a name for each variable.")
         #expect(try blank.launch(formArguments: [], home: nil, accountVariable: nil).environment == [:])
     }
+
+    /// Other Folder… with no folder typed is not saved as the Default
+    /// Account: the editor asks for the folder.
+    @MainActor
+    @Test func anOtherFolderChoiceNeedsAFolder() throws {
+        let name = "launch-presets-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = LaunchPresetStore(defaults: defaults)
+        let draft = LaunchPreset(name: "Work", kind: .claude)
+        #expect(
+            LaunchPresetEditor.problem(with: draft, usesOtherFolder: true, store: store)
+                == "Enter the Account’s folder, or choose Default.")
+        #expect(LaunchPresetEditor.problem(with: draft, usesOtherFolder: false, store: store) == nil)
+        var typed = draft
+        typed.accountDirectory = "~/.claude-b"
+        #expect(LaunchPresetEditor.problem(with: typed, usesOtherFolder: true, store: store) == nil)
+    }
 }

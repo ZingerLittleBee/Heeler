@@ -55,7 +55,14 @@ struct LaunchPresetEditor: View {
             } ?? false)
     }
 
-    private var problem: String? { store.problem(with: draft) }
+    private var problem: String? { Self.problem(with: draft, usesOtherFolder: usesOtherFolder, store: store) }
+
+    /// The store's check, plus one only the form knows: Other Folder… chosen
+    /// with no folder typed, which would otherwise save as the Default.
+    static func problem(with draft: LaunchPreset, usesOtherFolder: Bool, store: LaunchPresetStore) -> String? {
+        if usesOtherFolder, draft.accountDirectory == nil { return "Enter the Account’s folder, or choose Default." }
+        return store.problem(with: draft)
+    }
 
     var body: some View {
         Form {
