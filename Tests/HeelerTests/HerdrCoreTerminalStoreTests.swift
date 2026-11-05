@@ -103,6 +103,9 @@ struct HerdrCoreTerminalStoreTests {
         ) async throws -> CoreDetailWindow {
             let settings = try Self.makeSettings(look: look)
             let defaults = try #require(UserDefaults(suiteName: "core-detail-\(UUID().uuidString)"))
+            // The header's Expand / Collapse reads this through @AppStorage; seed it here
+            // so the menus don't depend on what an earlier test left in .standard.
+            defaults.set(true, forKey: "agent.back-header-expanded")
             let inputModeSettings = AgentInputModeSettings(defaults: defaults)
             inputModeSettings.select(inputMode)
             let selection = HostedDetailSelection()
@@ -138,7 +141,8 @@ struct HerdrCoreTerminalStoreTests {
                         onClosed: {},
                         onSelectTerminal: { _ in },
                         changesPresentation: changes)
-                })
+                }
+                .defaultAppStorage(defaults))
             controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
@@ -158,6 +162,8 @@ struct HerdrCoreTerminalStoreTests {
             let activity = AppActivityCoordinator()
             let routing = AgentSceneRouting(directory: directory, sceneID: sceneID)
             let corePin = console.corePin(on: terminal.hostID)
+            let defaults = try #require(UserDefaults(suiteName: "core-shell-\(UUID().uuidString)"))
+            defaults.set(true, forKey: "agent.back-header-expanded")
             let controller = UIHostingController(
                 rootView: NavigationStack {
                     WorkspaceTerminalDetailView(
@@ -171,6 +177,7 @@ struct HerdrCoreTerminalStoreTests {
                         isSelected: { [selection] in selection.showsDetail },
                         onBack: {})
                 }
+                .defaultAppStorage(defaults)
                 .environment(\.agentSceneRouting, routing))
             controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
@@ -1686,8 +1693,8 @@ struct HerdrCoreTerminalStoreTests {
     private static let coreDirectInputMenus: Set<[String]> = [
         ["Terminals", "Changes", "Collapse"],
         [
-            "Back to Console", "Add Image", "Add File", "Show Chat", "Open Terminal", "Changes", "New Agent", "Skills",
-            "Snippets", "Close Agent",
+            "Back to Console", "Add Image", "Paste Image", "Add File", "Show Chat", "Open Terminal", "Changes",
+            "New Agent", "Skills", "Snippets", "Close Agent",
         ],
     ]
     /// On screen for a Host that has them; none are built for a core Host yet.

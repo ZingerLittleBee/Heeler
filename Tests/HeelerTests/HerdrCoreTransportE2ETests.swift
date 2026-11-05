@@ -98,13 +98,16 @@ struct HerdrCoreTransportE2ETests {
     func noLegacyFallback() async throws {
         try await CoreSSHFixture.with { fixture in
             // The session name hc refuses goes nowhere, not to the other Server Kind.
-            let refused = try await SSHTransportConnector().connectCore(
-                settings: fixture.settings(session: "../invalid-session"))
+            // The app refuses it itself (de1477c9) before anything reaches the Host.
             do {
-                _ = try await refused.hello()
-                Issue.record("A session name hc refuses reached the Host")
-            } catch TransportError.hostFeatureUnavailable {}
-            try await refused.close()
+                let refused = try await SSHTransportConnector().connectCore(
+                    settings: fixture.settings(session: "../invalid-session"))
+                do {
+                    _ = try await refused.hello()
+                    Issue.record("A session name hc refuses reached the Host")
+                } catch TransportError.herdrCoreSessionNameRefused {}
+                try? await refused.close()
+            } catch TransportError.herdrCoreSessionNameRefused {}
 
             // Nor does a core that is not running, or not there at all.
             guard case TransportError.herdrCoreNotRunning = try await fixture.helloFailure() else {
