@@ -210,6 +210,68 @@ struct UsageAccountFileTests {
         #expect(file == before)
     }
 
+    // MARK: Other harnesses
+
+    /// Every harness but Claude Code keeps its Accounts under `programs`,
+    /// keyed by its herdr kind, so a plugin that reads only `claude` is
+    /// unaffected (#621).
+    @Test func otherHarnessesKeepTheirAccountsUnderPrograms() throws {
+        var file = try file(#"""
+            {"version": 1, "claude": {"defaultName": null,
+              "accounts": [{"id": "7f3c9a2e", "directory": "/home/u/.claude-2", "name": "claude-2"}], "ignored": []},
+             "programs": {"codex": {"defaultName": null,
+              "accounts": [{"id": "a1b2c3d4", "directory": "/home/u/.codex-work", "name": "codex-work"}], "ignored": []},
+              "claude": {"accounts": [{"id": "bbbbbbbb", "directory": "/elsewhere", "name": "x"}]}}}
+            """#)
+        #expect(file.directories(for: .claude) == ["/home/u/.claude-2"])
+        #expect(file.directories(for: .codex) == ["/home/u/.codex-work"])
+        #expect(file.directories(for: .gemini).isEmpty)
+
+        try file.add(directory: "/home/u/.gemini-work", defaultDirectory: nil, for: .gemini)
+        try file.rename(accountID: "a1b2c3d4", to: "Work", for: .codex)
+        let object = try json(file)
+        let programs = try #require(object["programs"] as? [String: [String: Any]])
+        let gemini = try #require(programs["gemini"]?["accounts"] as? [[String: Any]])
+        #expect(gemini.first?["directory"] as? String == "/home/u/.gemini-work")
+        #expect(gemini.first?["name"] as? String == "gemini-work")
+        #expect((programs["codex"]?["accounts"] as? [[String: Any]])?.first?["name"] as? String == "Work")
+        // Claude Code stays in its own section, untouched by the others.
+        #expect(((object["claude"] as? [String: Any])?["accounts"] as? [[String: Any]])?.count == 1)
+        #expect(try UsageAccountFile.decode(file.encoded()) == file)
+    }
+
+    /// Names only need to be unique within one harness: a Claude Code and a
+    /// Codex Account can both be "Work".
+    @Test func namesAndLimitsAreEachHarnesssOwn() throws {
+        var file = UsageAccountFile()
+        try file.add(directory: "/u/.claude-work", name: "Work", defaultDirectory: nil)
+        let codex = try file.add(directory: "/u/.codex-work", name: "Work", defaultDirectory: nil, for: .codex)
+        #expect(codex.name == "Work")
+        for index in 1...2 { try file.add(directory: "/u/.codex-\(index)", defaultDirectory: nil, for: .codex) }
+        #expect(throws: ClaudeAccountError.limitReached) {
+            try file.add(directory: "/u/.codex-3", defaultDirectory: nil, for: .codex)
+        }
+        try file.add(directory: "/u/.claude-3", defaultDirectory: nil)
+        file.remove(accountID: codex.id, for: .codex)
+        #expect(file.accounts(for: .codex).map(\.directory) == ["/u/.codex-1", "/u/.codex-2"])
+        #expect(file.ignored(for: .codex) == ["/u/.codex-work"])
+        #expect(file.accounts.map(\.directory) == ["/u/.claude-work", "/u/.claude-3"])
+    }
+
+    /// The variable a harness reads its config directory from: a known
+    /// one, or the one the user named for a harness Heeler does not know.
+    @Test func eachHarnessNamesTheVariableItsAccountsSet() throws {
+        var file = UsageAccountFile()
+        #expect(file.variable(for: .claude) == "CLAUDE_CONFIG_DIR")
+        #expect(file.variable(for: .codex) == "CODEX_HOME")
+        #expect(file.variable(for: .amp) == nil)
+        try file.setVariable("AMP_HOME", for: .amp)
+        #expect(file.variable(for: .amp) == "AMP_HOME")
+        #expect(throws: ClaudeAccountError.invalidVariable) { try file.setVariable("1BAD-NAME", for: .amp) }
+        let decoded = try UsageAccountFile.decode(file.encoded())
+        #expect(decoded.variable(for: .amp) == "AMP_HOME")
+    }
+
     @Test(arguments: [
         ("7f3c9a2e", true), ("A-b_C-d_E", true), (String(repeating: "a", count: 32), true),
         ("7f3c9a2", false), (String(repeating: "a", count: 33), false), ("default", false),

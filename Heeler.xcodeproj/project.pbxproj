@@ -163,6 +163,7 @@
 		32FD10D6802D96EF929E544E /* ChatFixtures in Resources */ = {isa = PBXBuildFile; fileRef = 82758F9BDAA54EE7A79E8780 /* ChatFixtures */; };
 		33046B4CC05A07D26F088082 /* AgentLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A9489C21BDCFA7616782BF /* AgentLiveActivityWidget.swift */; };
 		3315C1146C1AFB993AC7D94C /* NodeToolchainProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBE899695C640B1BE7C83265 /* NodeToolchainProbe.swift */; };
+		3340DE7901442FF554DEF9D7 /* AgentAccountKinds.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DF1E766622CCF516CB87EC /* AgentAccountKinds.swift */; };
 		34B5DAE3C8482AF9B3D499A9 /* ChatBackgroundWorkPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8662F9C006A78F4020F3ADF /* ChatBackgroundWorkPresentation.swift */; };
 		35205050C9CB8E473D8A28C0 /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32413805C1AA874DBEE37547 /* Base64URL.swift */; };
 		3541FB43C2803B681D7C619F /* AgentRowRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAAD80C58EF11BE6B6F1D7F6 /* AgentRowRenderer.swift */; };
@@ -1674,6 +1675,7 @@
 		E21D81A4968978A358129216 /* ChatLineFramer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatLineFramer.swift; sourceTree = "<group>"; };
 		E24C0B60FDE0AD3D3ABD13E4 /* AgentListFieldsAddFieldSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentListFieldsAddFieldSheet.swift; sourceTree = "<group>"; };
 		E295975DC35FDF1E786ADF86 /* AgentDetailSurfaceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailSurfaceSettings.swift; sourceTree = "<group>"; };
+		E3DF1E766622CCF516CB87EC /* AgentAccountKinds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentAccountKinds.swift; sourceTree = "<group>"; };
 		E48CA996470393ED037D0364 /* AgentRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRoute.swift; sourceTree = "<group>"; };
 		E4EEFA2D98EF9924DD8A6719 /* LocalNetworkDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkDiscoveryTests.swift; sourceTree = "<group>"; };
 		E4F4EF125BAB77F0DE121AAB /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
@@ -2352,6 +2354,7 @@
 				8676E870CC318F78C437284B /* HeelerAppModel.swift */,
 				4F2771657E65CDB07676F5FB /* Info.plist */,
 				915C9462A4A8AA91C0B91498 /* PrivacyInfo.xcprivacy */,
+				B4D4269344B0CB8C5FF70E2C /* Accounts */,
 				D58AE1771E141F40819928C7 /* Attachments */,
 				53D533A9CEE332AAD8C82C63 /* Changes */,
 				2F6B47E7527F245D04E18259 /* Chat */,
@@ -2831,6 +2834,14 @@
 			path = Transport;
 			sourceTree = "<group>";
 		};
+		B4D4269344B0CB8C5FF70E2C /* Accounts */ = {
+			isa = PBXGroup;
+			children = (
+				E3DF1E766622CCF516CB87EC /* AgentAccountKinds.swift */,
+			);
+			path = Accounts;
+			sourceTree = "<group>";
+		};
 		B62ADE8AB17B60B766C866C1 /* Support */ = {
 			isa = PBXGroup;
 			children = (
@@ -3180,8 +3191,8 @@
 			targets = (
 				081A3B29EFF2C7B2FCAA3248 /* Heeler */,
 				DFFB82C74B73FA5CBCE6D5D2 /* HeelerNotificationService */,
-				9806EA6C63028F1217417282 /* HeelerTests */,
 				134E6CD1AC1396155DAB93E2 /* HeelerWidgets */,
+				9806EA6C63028F1217417282 /* HeelerTests */,
 			);
 		};
 /* End PBXProject section */
@@ -3255,6 +3266,7 @@
 			files = (
 				94088AE0FD84F600CFFE0A3D /* ANSIScreen.swift in Sources */,
 				693D650A778BAC6F2189F32A /* AcknowledgementsView.swift in Sources */,
+				3340DE7901442FF554DEF9D7 /* AgentAccountKinds.swift in Sources */,
 				25BB985078F03303607B97D0 /* AgentActionMenuContent.swift in Sources */,
 				8C7337318B1B3271FD4E85A6 /* AgentActivityAttributes.swift in Sources */,
 				11F7B6617DA23C1B24E3A027 /* AgentActivityContentBuilder.swift in Sources */,
