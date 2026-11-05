@@ -85,6 +85,9 @@ targets:
         # manifest already declares multiple-scene support.
         NSUserActivityTypes:
           - dev.bybee.heeler.agent
+        # Find on Local Network (LocalNetworkDiscovery) browses this type.
+        NSBonjourServices:
+          - _ssh._tcp
         # The Usage widgets' app refresh task (AgentUsageBackgroundRefresh).
         UIBackgroundModes:
           - fetch
@@ -114,9 +117,12 @@ targets:
         # Home-screen name; the App Store listing is "Heeler for herdr".
         INFOPLIST_KEY_CFBundleDisplayName: Heeler
         MARKETING_VERSION: "0.1.17"
-        CURRENT_PROJECT_VERSION: "38"
+        CURRENT_PROJECT_VERSION: "40"
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
+        # Voice Input (ADR 0036) records only after a tap on the Composer's
+        # mic, and uploads to the speech service the user set up.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Heeler records your voice when you tap the microphone in the Composer, and sends the recording to the speech service you chose in Settings to turn it into text."
         # Only exempt encryption is used: standard, published algorithms in
         # SSH (the HeelerSSH package's libssh2/OpenSSL), OS-provided
         # CryptoKit, and the overlay networks' protocols (WireGuard in
@@ -134,7 +140,7 @@ targets:
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
         # In-app overlay nodes (ADR 0021) find peers on the same LAN for direct
         # paths; iOS asks before the first local-network packet.
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby."
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby, and to find machines that offer SSH."
         HEELER_SOURCE_REVISION: ""
         # Beside the vector icons and Agent marks, the catalogs hold the app
         # icon's pre-rendered 1024px images; space-optimized encoding stays
@@ -196,7 +202,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.NotificationService
         MARKETING_VERSION: "0.1.17"
-        CURRENT_PROJECT_VERSION: "38"
+        CURRENT_PROJECT_VERSION: "40"
         # Match the containing app's iPhone and iPad device family.
         TARGETED_DEVICE_FAMILY: "1,2"
 
@@ -246,7 +252,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.Widgets
         MARKETING_VERSION: "0.1.17"
-        CURRENT_PROJECT_VERSION: "38"
+        CURRENT_PROJECT_VERSION: "40"
         # Match the containing app's iPhone and iPad device family.
         TARGETED_DEVICE_FAMILY: "1,2"
 

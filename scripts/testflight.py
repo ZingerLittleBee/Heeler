@@ -36,7 +36,7 @@ class ReleaseError(Exception):
 def run(*args: str, input: str | None = None) -> str:
     result = subprocess.run(args, input=input, text=True, capture_output=True)
     if result.returncode:
-        raise ReleaseError(f"{args[0]} failed: {result.stderr.strip() or result.stdout.strip()}")
+        raise ReleaseError(f"{' '.join(args[:2])} failed: {result.stderr.strip() or result.stdout.strip()}")
     return result.stdout.strip()
 
 
@@ -314,11 +314,47 @@ class BuildRecord:
         return github.api(f"releases/{release['id']}", payload, "PATCH")
 
 
+# release.yml's first job. Every later job needs it, and it succeeds only
+# after saving the checkpoint.
+CANDIDATE_JOB = "Resolve the candidate"
+
+
+def unreserved_problem(github: GitHub, tag: str, source: str) -> str | None:
+    """Why a tag without a checkpoint is unresolved, or None when it is void.
+
+    A rerun refuses to create a missing checkpoint and the tag cannot be pushed
+    again, so once the tag's push run has ended without its candidate job ever
+    succeeding, no job can reserve or upload that build.
+    """
+    runs = [workflow_run for workflow_run in github.api(
+        f"actions/workflows/release.yml/runs?event=push&head_sha={source}&per_page=100")["workflow_runs"]
+        if workflow_run["head_branch"] == tag and workflow_run["head_sha"] == source]
+    if not runs:
+        return "no checkpoint or workflow yet"
+    if len(runs) != 1:
+        return "no checkpoint, several workflow runs; reconcile them"
+    if runs[0]["status"] != "completed":
+        return "no checkpoint, workflow still active"
+    page = github.api(f"actions/runs/{runs[0]['id']}/jobs?filter=all&per_page=100")
+    jobs = page["jobs"]
+    if page["total_count"] != len(jobs):
+        return "no checkpoint, too many jobs to inspect; reconcile them"
+    if any(job["name"] == CANDIDATE_JOB and job["conclusion"] == "success" for job in jobs):
+        return "no checkpoint although the candidate job succeeded; reconcile it"
+    if any(job["name"] != CANDIDATE_JOB and job["conclusion"] != "skipped" for job in jobs):
+        return "no checkpoint although later jobs ran; reconcile it"
+    return None
+
+
 def require_settled(github: GitHub, tags: dict[str, str]) -> None:
     for tag in sorted(tags, key=lambda value: int(value.rsplit("/", 1)[1]), reverse=True):
         release = github.release(tag)
         if release is None:
-            raise ReleaseError(f"{tag} is unresolved (no checkpoint or workflow yet)")
+            problem = unreserved_problem(github, tag, tags[tag])
+            if problem:
+                raise ReleaseError(f"{tag} is unresolved ({problem})")
+            # Void: it never reserved its number, so check the older tags.
+            continue
         record = BuildRecord.read(release)
         if record.candidate.tag != tag or record.candidate.source != tags[tag]:
             raise ReleaseError("Checkpoint identity does not match the immutable tag")
@@ -342,7 +378,10 @@ def candidate_from_tag(tag: str) -> Candidate:
     if not match:
         raise ReleaseError("TAG must be builds/X.Y.Z/N")
     ref = f"refs/tags/{tag}"
-    run("git", "fetch", "--quiet", "origin", f"{ref}:{ref}", "+refs/heads/main:refs/remotes/origin/main")
+    # Forced: on a tag push, actions/checkout leaves a lightweight tag at the
+    # commit, which a plain fetch refuses to replace, failing with no output.
+    # The checks below still require the remote's annotated tag.
+    run("git", "fetch", "--quiet", "origin", f"+{ref}:{ref}", "+refs/heads/main:refs/remotes/origin/main")
     if run("git", "cat-file", "-t", ref) != "tag":
         raise ReleaseError("Build tag must be annotated")
     source = run("git", "rev-parse", ref + "^{commit}")

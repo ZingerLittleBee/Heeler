@@ -37,6 +37,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>HeelerSourceRevision</key>
 	<string>$(HEELER_SOURCE_REVISION)</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ssh._tcp</string>
+	</array>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>dev.bybee.heeler.agent</string>

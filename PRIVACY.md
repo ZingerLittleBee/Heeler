@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: October 20, 2026._
+_Last updated: November 3, 2026._
 
 Heeler is a native iOS console for [herdr](https://herdr.dev). It connects to
 machines you control ("Hosts") over SSH. Heeler has no user accounts,
@@ -10,6 +10,7 @@ by Heeler's developer.
 
 Agent Notifications use the limited-purpose Push Relay described below.
 Optional Overlay Networks use the Tailscale, ZeroTier, or EasyTier services
+you choose, and optional Voice Input sends recordings to the speech service
 you choose, as described below.
 
 ## Data stored on your device and Hosts
@@ -30,7 +31,9 @@ you choose, as described below.
 - **Live agent activity.** Terminal output, prompts, and pane contents travel
   only over the SSH connection between your device and your Host, which is
   encrypted end to end even when an Overlay Network carries it. The limited
-  notification data described below takes a separate route.
+  notification data described below takes a separate route, and so does a
+  Voice Input recording, which goes to your speech service before its text
+  reaches the draft.
 - **Changes.** For each Agent with a working directory whose row the
   Agents list shows, Heeler asks git on your Host for the Checkout's branch
   or detached commit, its upstream branch and how many commits it is ahead
@@ -68,6 +71,9 @@ you choose, as described below.
   container, protected until first unlock and excluded from backups.
   Deleting a network deletes its secrets and state; the ZeroTier identity
   goes with the last ZeroTier network.
+- **Voice Input.** The speech service you choose and its settings are stored
+  locally. Its API key is stored in the Keychain on this device only. A
+  Custom URL's key is tied to that URL, so changing the URL deletes it.
 
 ## Overlay Networks
 
@@ -108,6 +114,31 @@ credentials.
 Deleting a network or signing out of Tailscale in Heeler does not remove the
 device from the provider. Remove it in the provider's admin console, or ask
 the server's operator.
+
+## Voice Input
+
+Voice Input is optional and stays off until you choose a speech service in
+Settings, enter your own API key for it, and agree to send recordings there.
+Heeler's developer operates none of these services and receives no
+recordings, text, or keys.
+
+When you tap the microphone in the Composer, Heeler records until you tap
+again, for at most two minutes, and uploads the recording over HTTPS to the
+service you chose: OpenAI (`api.openai.com`), DeepInfra (`api.deepinfra.com`),
+SiliconFlow (`api.siliconflow.cn`), or a Custom URL you enter. The upload
+carries the audio, the model name, your API key, the Keywords and Prompt you
+enter in Settings and, for some services, the first language your device
+lists. The service returns the text, and Heeler puts it in the Composer draft;
+nothing reaches your Agent until you send it. The service processes the
+recording, and bills your key, under its own privacy terms. A Custom URL sends
+the recording wherever that URL points, under the terms of whoever runs it.
+Heeler refuses redirects, so a recording never goes to a different host from
+the one you agreed to.
+
+While Heeler records, the audio is written to a temporary file with iOS
+Complete file protection, deleted as soon as recording stops. The recording
+then stays in memory only until its text arrives or you dismiss it; after a
+failed upload it is kept so you can retry. It is never saved or backed up.
 
 ## Agent Notifications and the Push Relay
 
@@ -181,6 +212,9 @@ Agent Notifications and Live Activities are optional.
 - Removing a Host from Heeler deletes its local Host record, any saved Host
   password, and its cached Chat conversations.
 - Settings shows the size of the Chat cache, and Clear Chat Cache deletes it.
+- Remove Key in Settings › Voice Input deletes that service's API key and
+  your agreement to send it recordings. You can also turn Voice Input off, or
+  revoke microphone access in iOS Settings.
 
 Heeler has no developer-operated account or user-content database, so there is
 normally no server-side profile or content for the developer to retrieve or

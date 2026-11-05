@@ -87,6 +87,9 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// Stop's wait, per Agent like the draft: the other surface, a rebuilt
     /// one or a reconnect finds an Esc still waiting on the Agent.
     let stop: AgentComposerStopStore
+    /// Voice Input for this draft (ADR 0036). Send waits while it records
+    /// or transcribes, so the text always has a draft to land in.
+    let voice: ComposerVoiceInput
 
     private let target: String
     private var agentStatus: AgentStatus
@@ -116,6 +119,9 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// Set by ``abandonDroppedImagesForTeardown()`` so leave/cancel events
     /// cannot start the next queued upload.
     @ObservationIgnored private var isTearingDownDroppedImages = false
+    /// The editor holds marked text. Writing the draft then would destroy
+    /// it, so Voice Input's text waits until the composition ends.
+    @ObservationIgnored private var isEditorComposing = false
 
     private struct PendingDroppedImage {
         enum Status: Equatable {
@@ -146,6 +152,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         agentNotReadyRetryBudget: Duration = AgentComposerStore.defaultAgentNotReadyRetryBudget,
         stop: AgentComposerStopStore = AgentComposerStopStore(),
         coreSend: HerdrCoreComposerSend? = nil,
+        voice: ComposerVoiceInput = ComposerVoiceInput(),
         prompt: @escaping @Sendable (AgentPromptParams) async throws -> Agent
     ) {
         self.target = target
@@ -153,9 +160,11 @@ final class AgentComposerStore: ComposerDraftOperations {
         self.statusUpdates = statusUpdates
         self.stop = stop
         self.coreSend = coreSend
+        self.voice = voice
         self.agentNotReadyRetryDelay = agentNotReadyRetryDelay
         self.agentNotReadyRetryBudget = agentNotReadyRetryBudget
         self.prompt = prompt
+        voice.onTranscript = { [weak self] in self?.insertVoiceTextIfReady() }
     }
 
     /// The shell-readiness wait in `HeelerSSHTransport.startAgentAwaitingShell`
@@ -171,7 +180,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     var canSend: Bool {
-        isConnectionAvailable && !hasPendingDroppedImages
+        isConnectionAvailable && !hasPendingDroppedImages && !voice.blocksSend
             && draft.contains(where: { !$0.isWhitespace })
     }
 
@@ -179,12 +188,15 @@ final class AgentComposerStore: ComposerDraftOperations {
         !pendingDroppedImages.isEmpty
     }
 
-    /// VoiceOver hint for the Send button. Pending drops disable Send.
+    /// VoiceOver hint for the Send button. Pending drops and Voice Input
+    /// disable Send.
     var sendAccessibilityHint: String {
         !isConnectionAvailable
             ? "Waiting for the Host connection"
             : hasPendingDroppedImages
             ? "Waiting for image…"
+            : voice.blocksSend
+            ? "Waiting for Voice Input…"
             : "Delivers the complete draft to the Agent"
     }
 
@@ -233,6 +245,30 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard draft != text || draftSelection != clamped else { return }
         draft = text
         draftSelection = clamped
+    }
+
+    /// Whether the editor holds marked text, from the input method.
+    func setEditorComposing(_ composing: Bool) {
+        guard isEditorComposing != composing else { return }
+        isEditorComposing = composing
+        if !composing { insertVoiceTextIfReady() }
+    }
+
+    /// Voice Input's one insertion, at the caret like a Snippet. Send waited
+    /// all along, so the draft it lands in is the one the user is editing.
+    private func insertVoiceTextIfReady() {
+        guard !isEditorComposing, let text = voice.takeTranscript() else { return }
+        let range = Self.clamped(draftSelection, to: draft)
+        let characters = draft as NSString
+        let before = range.location > 0
+            ? characters.substring(
+                with: characters.rangeOfComposedCharacterSequence(at: range.location - 1)).last
+            : nil
+        let end = NSMaxRange(range)
+        let after = end < characters.length
+            ? characters.substring(with: characters.rangeOfComposedCharacterSequence(at: end)).first
+            : nil
+        insertIntoDraft(VoiceInputSpacing.fitted(text, after: before, before: after))
     }
 
     /// Forwards dropped images onto ``ComposerStagingStore.begin(_:)``, the

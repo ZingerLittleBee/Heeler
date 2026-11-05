@@ -91,6 +91,7 @@ struct AgentChatSurfaceView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.sceneWindow) private var sceneWindow
@@ -316,8 +317,9 @@ struct AgentChatSurfaceView: View {
             // SwiftUI also hands out disappears nobody caused; the router
             // says whether Chat really left.
             stageExit?.cancel()
-            stageExit = ChatStageExit.watch(isOnStage: isOnStage) { [chat, viewerID] in
+            stageExit = ChatStageExit.watch(isOnStage: isOnStage) { [chat, viewerID, composer] in
                 chat?.hide(viewerID)
+                composer.voice.composerDidLeaveScreen()
             }
         }
         .onChange(of: timelineFeed, initial: true) { _, feed in
@@ -348,9 +350,10 @@ struct AgentChatSurfaceView: View {
             composer.settleUnknownOutcomes(recorded: Set(statuses.filter { $0.value == .recorded }.keys))
         }
         .onChange(of: chat.map { $0.blocked.content != .none } ?? false) { _, isReplaced in
-            // A Blocked card takes the Composer's place and the tools dock
-            // with it. iPad keeps `.tools` without focus, so nothing else
-            // would put the dock away.
+            // A Blocked card takes the Composer's place, Voice Input and the
+            // tools dock with it. iPad keeps `.tools` without focus, so
+            // nothing else would put the dock away.
+            if isReplaced { composer.voice.cancel() }
             guard isReplaced, composerKeyboardPresentation == .tools else { return }
             prepareComposerKeyboardPresentation(.hidden)
             composerKeyboardPresentation = .hidden
@@ -699,9 +702,6 @@ struct AgentChatSurfaceView: View {
             hostStatus: console.hostStatuses[agent.hostID], conversation: chat?.conversation,
             hasPendingEchoes: !pendingEchoes.isEmpty, launchNotice: chat?.launchNotice,
             departure: console.chatDeparture(of: agent.id))
-        let terminalOffered = lines.contains {
-            if case .unavailable(let reason, _) = $0 { !reason.isWaiting } else { false }
-        }
         return lines.map { line in
             var banner = Banner(
                 id: line.id, systemImage: line.systemImage, text: line.text, showsProgress: line.showsProgress)
@@ -726,10 +726,12 @@ struct AgentChatSurfaceView: View {
             case .departure:
                 banner.actionTitle = AgentDetailSurface.terminal.showTitle
                 banner.action = { showAgentTerminal() }
-            case .launch:
-                if !terminalOffered {
-                    banner.actionTitle = AgentDetailSurface.terminal.showTitle
-                    banner.action = { showAgentTerminal() }
+            // The terminal shows nothing wrong, so the guide says what
+            // is happening and how to fix it.
+            case .launch(let notice):
+                if let guide = notice.guideURL {
+                    banner.actionTitle = "Read More"
+                    banner.action = { openURL(guide) }
                 }
             }
             return banner

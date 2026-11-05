@@ -7,7 +7,7 @@ This records the research and original proposal, not the operational contract.
 App Store Connect's private inventory was not inspected; repository build bumps
 are not proof of upload. The user subsequently chose GitHub Actions. Use
 [the release contract](../guides/releasing.md) and
-[ADR 0036](../adr/0036-testflight-build-tags.md) for the implementation.
+[ADR 0037](../adr/0037-testflight-build-tags.md) for the implementation.
 The separate [Xcode Cloud assessment](xcode-cloud-feasibility.md) records why
 that service was not selected.
 

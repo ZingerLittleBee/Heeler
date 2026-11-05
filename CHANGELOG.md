@@ -40,6 +40,9 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- The banner warning that a Codex conversation may be another terminal's
+  now offers **Read More**, which opens the guide on what is happening and
+  how to fix it, instead of Show Agent Terminal. (#627)
 - Keep a staged file's own name on the Host, with each character other than
   a letter, a digit, `.`, `-` or `_` replaced, instead of `file.<ext>`.
   Images still arrive as `image.<ext>`. (#567; PR #538)
@@ -75,7 +78,7 @@ Entries reference the pull request that made the change.
   an empty Live Activity list for a Host that never had one. (#541; PR #538)
 - Offer Refresh on an empty Skills list. (#558; PR #538)
 
-## [0.1.17] - 2026-11-04
+## [0.1.17]
 
 ### Added
 
@@ -135,6 +138,18 @@ Entries reference the pull request that made the change.
   it until you add it as an Account. Update the Heeler plugin to 0.8.0 on
   the Host. (#529; PR #533)
 - Open the documentation from About in Settings. (#594)
+- Speak to the Composer: tap the mic beside Send to record, tap again, and the
+  text lands at the caret for you to review and send. While it listens, a bar
+  shows your voice level and the time, with Cancel to drop the recording, and
+  Send hides so a stray tap cannot send. AirPods record only when they support
+  high-quality recording, otherwise the iPhone does, and Settings can keep it
+  on the iPhone. Keywords and a Prompt in Settings help the service spell the
+  names and terms you say. Voice Input uses your own API key with OpenAI,
+  DeepInfra, SiliconFlow, or any service that takes OpenAI's
+  audio/transcriptions request, set up in Settings › Voice Input. Recordings
+  go only to the service you agree to. (#620)
+- Find SSH machines on the local network with Bonjour when adding a Route;
+  Heeler saves the machine's IP address. (#624)
 
 ### Changed
 
@@ -267,6 +282,8 @@ Entries reference the pull request that made the change.
 - Send from Chat while Claude Code shows a prompt suggestion in its input
   box, instead of holding the message with "Heeler can't find the Agent's
   input box on screen." (#525)
+- On iPhone Duo, Heeler fills the inner display again, with the wide layout,
+  instead of sitting in a phone-sized window in the middle of it. (#626)
 
 ## [0.1.16] - 2026-10-27
 
