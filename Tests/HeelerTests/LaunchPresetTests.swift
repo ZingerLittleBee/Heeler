@@ -116,4 +116,22 @@ struct LaunchPresetTests {
         #expect(throws: LaunchPresetStore.SaveError.self) { try store.save(LaunchPreset(name: "work", kind: .claude)) }
         #expect(store.problem(with: LaunchPreset(name: "Other", kind: .claude)) == nil)
     }
+
+    /// A variable row just added and left empty is no problem and is not
+    /// saved; one with a value but no name asks for the name.
+    @MainActor
+    @Test func anEmptyVariableRowIsIgnored() throws {
+        let name = "launch-presets-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = LaunchPresetStore(defaults: defaults)
+        let blank = LaunchPreset(name: "Work", kind: .claude, environment: [.init(name: " ", value: "")])
+        #expect(store.problem(with: blank) == nil)
+        try store.save(blank)
+        #expect(store.presets.first?.environment == [])
+        #expect(
+            store.problem(with: LaunchPreset(name: "B", kind: .claude, environment: [.init(name: "", value: "debug")]))
+                == "Enter a name for each variable.")
+        #expect(try blank.launch(formArguments: [], home: nil, accountVariable: nil).environment == [:])
+    }
 }

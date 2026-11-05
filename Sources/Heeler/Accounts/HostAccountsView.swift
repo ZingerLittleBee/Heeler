@@ -274,7 +274,9 @@ struct HostAccountsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Usage, Chat and Launch Presets stop using it. The folder and its sign-in stay on \(hostName).")
+            Text(
+                "Usage and Chat stop using it. Launch Presets that name its folder still set it. "
+                    + "The folder and its sign-in stay on \(hostName).")
         }
     }
 

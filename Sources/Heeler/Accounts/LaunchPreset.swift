@@ -11,6 +11,11 @@ struct LaunchPreset: Codable, Equatable, Identifiable, Sendable {
     struct Variable: Codable, Equatable, Hashable, Sendable {
         var name: String
         var value: String
+
+        /// A row added and left empty, which sets nothing.
+        var isBlank: Bool {
+            name.trimmingCharacters(in: .whitespaces).isEmpty && value.isEmpty
+        }
     }
 
     /// What a preset hands the launch.
@@ -70,7 +75,7 @@ struct LaunchPreset: Codable, Equatable, Identifiable, Sendable {
             guard let accountVariable else { throw .noFolderVariable(kind) }
             environment[accountVariable] = try Self.expandingHome(accountDirectory, home: home)
         }
-        for variable in self.environment {
+        for variable in self.environment where !variable.isBlank {
             let name = variable.name.trimmingCharacters(in: .whitespaces)
             guard UsageAccountFile.isVariable(name) else { throw .invalidVariableName(name) }
             environment[name] = try Self.expandingHome(variable.value, home: home)

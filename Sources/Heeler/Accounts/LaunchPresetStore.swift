@@ -37,8 +37,9 @@ final class LaunchPresetStore {
             return error.message
         }
         var seen: Set<String> = []
-        for variable in preset.environment {
+        for variable in preset.environment where !variable.isBlank {
             let variableName = variable.name.trimmingCharacters(in: .whitespaces)
+            guard !variableName.isEmpty else { return "Enter a name for each variable." }
             guard UsageAccountFile.isVariable(variableName) else { return "\(variableName) is not a variable name." }
             guard seen.insert(variableName).inserted else { return "\(variableName) is set twice." }
         }
@@ -50,7 +51,7 @@ final class LaunchPresetStore {
         if let problem = problem(with: preset) { throw SaveError(message: problem) }
         var preset = preset
         preset.name = preset.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        preset.environment = preset.environment.map {
+        preset.environment = preset.environment.filter { !$0.isBlank }.map {
             .init(name: $0.name.trimmingCharacters(in: .whitespaces), value: $0.value)
         }
         if let index = presets.firstIndex(where: { $0.id == preset.id }) {
