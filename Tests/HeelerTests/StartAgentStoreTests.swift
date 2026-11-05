@@ -1513,4 +1513,42 @@ struct StartAgentStoreTests {
         // A name that is no Agent name falls back to the harness's.
         #expect(recorder.params.first?.name == "amp")
     }
+
+    /// The form stays editable while a preset reads the Host's home; a
+    /// destination changed meanwhile is not mixed into the old launch.
+    @Test func aDestinationChangedWhileAPresetReadsTheHomeIsNotLaunched() async throws {
+        let gate = ScriptedTransportCallGate()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [Host.fixture()],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "One"), ConsoleWorkspace(id: "w2", label: "Two")] },
+            remoteHome: { _ in
+                await gate.waitUntilOpen()
+                return "/home/you"
+            },
+            presets: [Self.work], recorder: recorder)
+        await store.discoverAgents()
+        store.selectExistingWorkspace("w1")
+        store.selectedPresetID = Self.work.id
+        let submit = Task { await store.submit() }
+        try await waitUntil("the preset's home read should reach the gate") { await gate.entryCount == 1 }
+
+        store.selectExistingWorkspace("w2")
+        await gate.open()
+        await submit.value
+        #expect(recorder.params.isEmpty)
+        #expect(store.state == .editing)
+    }
+
+    /// A preset named at herdr's 32-character limit still gets a valid
+    /// fallback name once that name is taken.
+    @Test func aLongPresetNameLeavesRoomForTheSuffix() {
+        let base = String(repeating: "a", count: 32)
+        let name = StartAgentStore.defaultAgentName(base: base, taken: [base])
+        #expect(AgentName.validationError(name) == nil)
+        #expect(name == String(repeating: "a", count: 30) + "-2")
+        let trimmed = StartAgentStore.defaultAgentName(
+            base: String(repeating: "a", count: 29) + "-xy", taken: [String(repeating: "a", count: 29) + "-xy"])
+        #expect(AgentName.validationError(trimmed) == nil)
+    }
 }

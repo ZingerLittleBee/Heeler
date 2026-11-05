@@ -469,6 +469,10 @@ final class StartAgentStore {
             }
         }
         guard let destination = launchDestination else { return }
+        // A preset may await the Host below while the form stays editable:
+        // what the launch is sent to is fixed here, and a form changed
+        // meanwhile is not launched.
+        let target = SubmittedTarget(destination: destination, workspaceID: selectedWorkspaceID, tabLabel: tabLabel)
         state = .starting
         var launchArguments = arguments
         var environment: [String: String] = [:]
@@ -476,7 +480,11 @@ final class StartAgentStore {
             do {
                 let home = preset.needsHome ? try await remoteHome(hostID) : nil
                 let variable = preset.accountDirectory == nil ? nil : await accountVariable(hostID, preset.kind)
-                guard selectedHostID == hostID, selectedPresetID == preset.id else {
+                guard selectedHostID == hostID, selectedPresetID == preset.id,
+                    launchDestination.map({
+                        SubmittedTarget(destination: $0, workspaceID: selectedWorkspaceID, tabLabel: tabLabel)
+                    }) == target
+                else {
                     state = .editing
                     return
                 }
@@ -496,7 +504,7 @@ final class StartAgentStore {
         case .newWorkspace:
             workspaceID = nil
         case .existingWorkspace, .newWorktree:
-            workspaceID = selectedWorkspaceID
+            workspaceID = target.workspaceID
         }
         let request = AgentLaunchRequest(
             kind: kind.rawValue,
@@ -504,7 +512,7 @@ final class StartAgentStore {
             arguments: launchArguments,
             workspaceID: workspaceID,
             cwd: origin?.cwd,
-            tabLabel: Self.nonEmptyTrimmed(tabLabel),
+            tabLabel: Self.nonEmptyTrimmed(target.tabLabel),
             environment: environment)
         do {
             let agent = try await start(request, destination, hostID)
@@ -522,6 +530,13 @@ final class StartAgentStore {
         } catch {
             state = .failed(Self.message(for: error, launchedKind: kind))
         }
+    }
+
+    /// Where a submitted launch goes, as the form said when it was submitted.
+    private struct SubmittedTarget: Equatable {
+        let destination: LaunchDestination
+        let workspaceID: String?
+        let tabLabel: String
     }
 
     /// Assembles the Transport variant from the current form. Nil when the
@@ -651,9 +666,18 @@ final class StartAgentStore {
     static func defaultAgentName(base: String, taken: Set<String>) -> String {
         guard taken.contains(base) else { return base }
         var suffix = 2
-        while taken.contains("\(base)-\(suffix)") { suffix += 1 }
-        return "\(base)-\(suffix)"
+        while taken.contains(suffixed(base, suffix)) { suffix += 1 }
+        return suffixed(base, suffix)
     }
+
+    /// `base-n`, the base shortened so the whole stays within herdr's
+    /// 32-character name limit (a preset's name can use all 32).
+    private static func suffixed(_ base: String, _ suffix: Int) -> String {
+        let tail = "-\(suffix)"
+        return String(base.prefix(max(1, agentNameLimit - tail.count))) + tail
+    }
+
+    private static let agentNameLimit = 32
 
     /// Normalizes smart punctuation that arrives through paste or a
     /// third-party keyboard. The editor itself disables these substitutions;
