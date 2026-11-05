@@ -31,7 +31,7 @@ const write = (method, path, data) =>
 
 async function goto(url, ready) {
   await page.goto(url);
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 60; i++) {
     await pause(1000);
     if (ready.test(await page.evaluate(() => document.body.innerText))) return;
   }
