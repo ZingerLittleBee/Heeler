@@ -27,6 +27,14 @@ from app_store_connect import AppStoreConnect, AppleBuild, Inventory
 SCRIPTS = Path(__file__).resolve().parent
 
 
+def script_module(name):
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / "testflight.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 class TestFlightCommands(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -74,6 +82,9 @@ state = json.loads(Path(os.environ['EXTERNAL_STATE']).read_text())
 args = sys.argv[1:]
 if args[:2] == ['auth', 'status']: sys.exit(0)
 if args[:2] == ['repo', 'view']: print('owner/heeler'); sys.exit(0)
+if args[:2] == ['run', 'rerun']:
+    state.setdefault('reruns', []).append(args[2])
+    Path(os.environ['EXTERNAL_STATE']).write_text(json.dumps(state)); sys.exit(0)
 if args[:2] == ['release', 'upload']:
     if state.get('fail_asset'): raise SystemExit('asset storage unavailable')
     file = Path(args[3])
@@ -95,8 +106,14 @@ if '/releases/assets/' in path:
     sys.exit(0)
 if '/releases?' in path:
     print(json.dumps(list(state['releases'].values()))); sys.exit(0)
+if '/check-runs/' in path:
+    print(json.dumps(state.get('annotations', {}).get(path.split('/check-runs/', 1)[1].split('/', 1)[0], [])))
+    sys.exit(0)
 if '/actions/runs/' in path and '/jobs?' in path:
     jobs = state.get('jobs', {}).get(path.split('/actions/runs/', 1)[1].split('/', 1)[0], [])
+    if '/attempts/' in path:
+        attempt = path.split('/attempts/', 1)[1].split('/', 1)[0]
+        jobs = [job for job in jobs if str(job['run_attempt']) == attempt]
     print(json.dumps({'total_count': len(jobs), 'jobs': jobs})); sys.exit(0)
 if '/actions/runs/' in path:
     print(json.dumps(next(run for run in state['runs'] if str(run['id']) == path.rsplit('/', 1)[1]))); sys.exit(0)
@@ -526,10 +543,7 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
         self.assertIn("action=archive", output)
 
     def test_every_later_release_job_needs_the_candidate_job(self):
-        spec = importlib.util.spec_from_file_location("testflight_jobs", SCRIPTS / "testflight.py")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = module
-        spec.loader.exec_module(module)
+        module = script_module("testflight_jobs")
         workflow = (SCRIPTS.parent / ".github/workflows/release.yml").read_text()
         parts = re.split(r"(?m)^  ([a-z][a-z0-9_-]*):\n", workflow.split("\njobs:\n", 1)[1])[1:]
         jobs = dict(zip(parts[0::2], parts[1::2]))
@@ -540,6 +554,63 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
                 needs = re.search(r"(?m)^    needs: (.+)$", body)
                 self.assertIsNotNone(needs)
                 self.assertIn("meta", needs[1])
+
+    def test_only_a_runner_shortage_reruns_automatically_and_at_most_twice(self):
+        self.cli("cut", VERSION="0.2.0")
+        tag = "builds/0.2.0/38"
+        self.assertEqual(self.ci("ci-init", Inventory(None, 37, False))[0], 0)
+        source = self.command("git", "rev-parse", "HEAD").stdout.strip()
+
+        def job(job_id, name, conclusion, *steps):
+            return {"id": job_id, "name": name, "conclusion": conclusion,
+                    "steps": [{"name": step, "conclusion": result} for step, result in steps]}
+
+        no_runner = [{"annotation_level": "failure", "message": "The job was not acquired by Runner of type "
+                                                                "hosted even after multiple attempts"},
+                     {"annotation_level": "notice", "message": "Due to capacity constraints, jobs targeting "
+                                                               "macOS arm64 runners may experience longer queue times."}]
+        candidate = job(1, "Resolve the candidate", "success", ("Checkout", "success"))
+        starved = job(2, "Test gate / HeelerSSH package E2E (iOS Simulator)", "cancelled")
+        summary = job(3, "Test gate / Build & test (iOS Simulator)", "failure",
+                      ("Set up job", "success"), ("Require every worker to succeed", "failure"))
+        shortage = [candidate, starved, summary, job(4, "Upload or observe the candidate", "skipped")]
+
+        def retry(jobs, attempt=1, latest=None, annotations=None):
+            state = json.loads(self.external.read_text())
+            state["runs"] = [{"id": 123, "head_sha": source, "head_branch": tag, "event": "push",
+                              "status": "completed", "conclusion": "failure", "run_attempt": latest or attempt}]
+            state["jobs"] = {"123": [dict(job, run_attempt=attempt) for job in jobs]}
+            state["annotations"] = {"2": no_runner} if annotations is None else annotations
+            state["reruns"] = []
+            self.external.write_text(json.dumps(state))
+            result = self.cli("ci-retry", TAG=tag, RUN_ID="123", RUN_ATTEMPT=str(attempt))
+            return result.stdout, json.loads(self.external.read_text())["reruns"]
+
+        for attempt in (1, 2):
+            with self.subTest(attempt=attempt):
+                output, reruns = retry(shortage, attempt)
+                self.assertEqual(reruns, ["123"], output)
+                self.assertIn("gh run rerun 123 --failed", output)
+        for jobs, options, reason in (
+            (shortage, {"attempt": 3}, "Attempt 3 was the last automatic one"),
+            (shortage, {"latest": 2}, "Attempt 2 has already started"),
+            (shortage, {"annotations": {}}, "package E2E (iOS Simulator) ended cancelled for another reason"),
+            ([*shortage, job(5, "Test gate / App tests (ordinary)", "failure", ("Run tests", "failure"))], {},
+             "App tests (ordinary) ended failure for another reason"),
+            ([candidate, summary], {}, "every job got a runner"),
+        ):
+            with self.subTest(reason=reason):
+                output, reruns = retry(jobs, **options)
+                self.assertEqual(reruns, [])
+                self.assertIn(reason, output)
+
+    def test_automatic_retry_follows_the_release_and_summary_jobs(self):
+        module = script_module("testflight_retry")
+        workflows = SCRIPTS.parent / ".github/workflows"
+        self.assertIn("\nname: Release\n", (workflows / "release.yml").read_text())
+        self.assertIn("\n    workflows: [Release]\n", (workflows / "release-retry.yml").read_text())
+        summary = (workflows / "ci-full.yml").read_text().split("\n  build-test:\n", 1)[1]
+        self.assertEqual(re.search(r"(?m)^      - name: (.+)$", summary)[1], module.WORKER_CHECK)
 
     def test_the_record_folds_above_the_notes_and_older_records_still_read(self):
         self.cli("cut", VERSION="0.2.0")

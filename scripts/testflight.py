@@ -354,6 +354,53 @@ def unreserved_problem(github: GitHub, tag: str, source: str) -> str | None:
     return None
 
 
+# GitHub's annotation on a job it never gave a runner, as when macOS arm64
+# capacity runs out. ci-full.yml's summary job then fails in its first step.
+NO_RUNNER = "The job was not acquired by Runner"
+WORKER_CHECK = "Require every worker to succeed"
+# The push run and at most two automatic retries; later ones need a person.
+AUTOMATIC_ATTEMPTS = 3
+
+
+def runner_shortage_problem(github: GitHub, run_id: str, attempt: int) -> str | None:
+    """Why an attempt's failure needs a person, or None when every failed job
+    either never got a runner or only reports that a worker did not succeed."""
+    page = github.api(f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
+    jobs = page["jobs"]
+    if page["total_count"] != len(jobs):
+        return "too many jobs to inspect"
+    starved = False
+    for job in jobs:
+        if job["conclusion"] in ("success", "skipped"):
+            continue
+        failed_steps = [step["name"] for step in job["steps"] if step["conclusion"] == "failure"]
+        if not job["steps"] and any(
+                annotation["annotation_level"] == "failure" and annotation["message"].startswith(NO_RUNNER)
+                for annotation in github.api(f"check-runs/{job['id']}/annotations")):
+            starved = True
+        elif failed_steps != [WORKER_CHECK]:
+            return f"{job['name']} ended {job['conclusion']} for another reason"
+    return None if starved else "every job got a runner"
+
+
+def automatic_retry() -> None:
+    """Release retry's job: rerun an attempt that failed only for lack of runners."""
+    run_id, attempt = os.environ["RUN_ID"], int(os.environ["RUN_ATTEMPT"])
+    if attempt >= AUTOMATIC_ATTEMPTS:
+        print(f"Attempt {attempt} was the last automatic one; review it before make testflight-retry.")
+        return
+    github = GitHub()
+    latest = github.api(f"actions/runs/{run_id}")["run_attempt"]
+    if latest != attempt:
+        print(f"Attempt {latest} has already started; nothing to retry.")
+        return
+    problem = runner_shortage_problem(github, run_id, attempt)
+    if problem:
+        print(f"No automatic retry: {problem}.")
+        return
+    status(retry=True, run_id=run_id)
+
+
 def require_settled(github: GitHub, tags: dict[str, str]) -> None:
     for tag in sorted(tags, key=lambda value: int(value.rsplit("/", 1)[1]), reverse=True):
         release = github.release(tag)
@@ -593,7 +640,7 @@ def publish_record() -> None:
     print(f"Recorded {record.candidate.tag}; no App Store submission was made.")
 
 
-def status(retry=False) -> None:
+def status(retry=False, run_id: str | None = None) -> None:
     candidate = candidate_from_tag(os.environ.get("TAG", ""))
     github = GitHub()
     release = github.release(candidate.tag)
@@ -602,6 +649,8 @@ def status(retry=False) -> None:
     record = BuildRecord.read(release)
     if record.candidate != candidate:
         raise ReleaseError("Checkpoint source mismatch")
+    if run_id is not None and record.run_id != run_id:
+        raise ReleaseError("Checkpoint names another workflow run")
     workflow_run = github.api(f"actions/runs/{record.run_id}")
     if workflow_run["head_sha"] != candidate.source or workflow_run["event"] != "push":
         raise ReleaseError("Workflow source mismatch")
@@ -752,7 +801,7 @@ def cut() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = {"cut": cut, "status": status, "retry": lambda: status(retry=True), "check": check,
-                "ci-init": initialize, "ci-plan": plan, "ci-upload": upload,
+                "ci-init": initialize, "ci-plan": plan, "ci-upload": upload, "ci-retry": automatic_retry,
                 "ci-observe": observe, "ci-publish": publish_record, "ci-symbols": check_symbols}
     parser.add_argument("command", choices=commands)
     args = parser.parse_args()

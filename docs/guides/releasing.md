@@ -81,6 +81,7 @@ release cutter did. Its tag must identify exactly the tested source and settings
 | Push ordinary `main` or a historical `v*` tag | No distribution workflow |
 | `make release-check VERSION=X.Y.Z` | Manual dispatch from `main`, explicit version, next unreserved build as an override; archive and validate, never upload or reserve a number |
 | `make testflight-retry TAG=...` | Re-run failed jobs of the original tag's run after reporting the recovery action |
+| A tag's run fails because GitHub gave a job no runner | [release-retry.yml](../../.github/workflows/release-retry.yml) re-runs its failed jobs as `make testflight-retry` would, until the run's third attempt |
 | Select a build in App Store Connect | No GitHub Action or new tag |
 
 `meta` validates the immutable source and creates a draft prerelease checkpoint.
@@ -126,6 +127,7 @@ stays frozen so reruns do not change the manifest identity.
 
 | Outcome | Recovery |
 | --- | --- |
+| A job never got a runner, as when GitHub runs short of macOS capacity | Retried automatically until the run's third attempt. After that, check GitHub's status and run `make testflight-retry`. |
 | Test, signing, archive, validation, or pre-upload check fails | Retry a transient failure on the same tag. A code change needs a new build number; the failed tag remains. |
 | dSYM validation or retention fails | No Apple upload starts. Fix a transient storage failure and retry; conflicting/incomplete assets require reconciliation, never overwrite. |
 | Upload response is lost, or Apple has not exposed it yet | Retry observation only. An empty Apple response does not prove the upload failed. The candidate remains unresolved. |
@@ -139,7 +141,10 @@ stays frozen so reruns do not change the manifest identity.
 
 Recovery deliberately uses `gh run rerun --failed`, not a new dispatch from
 `main`: the original run keeps the candidate's SHA and its completed full-test
-evidence. Manual dispatch remains rehearsal-only. GitHub allows reruns for
+evidence. The automatic retry takes the same path and checks, but only when
+every failed job either carries GitHub's "not acquired by Runner" annotation or
+is the test gate's summary, so a test failure or a run cancelled by hand waits
+for a person. Manual dispatch remains rehearsal-only. GitHub allows reruns for
 30 days; after that, operator reconciliation is required. A failed candidate
 proved not to have uploaded can be superseded with a new number, but a known
 or possible upload must be reconciled first. Never delete/re-cut a tag as recovery.
