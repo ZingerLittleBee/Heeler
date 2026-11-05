@@ -35,17 +35,19 @@ struct PiTranscriptLocator: Sendable {
             for: kind, defaultRoot: RemoteFilePath.join(home, reference.program == .pi ? ".pi" : ".omp", "agent"))
         var searchedAll = true
         var mismatch = false
-        for agentDirectory in agentDirectories {
+        let answer = try await ChatHostFiles.firstAnswer(across: agentDirectories) {
+            agentDirectory -> Result<String, PiTranscriptUnavailable>? in
             switch try await search(
                 root: RemoteFilePath.join(agentDirectory, "sessions"), id: id, home: home,
                 reference: reference, directories: directories)
             {
-            case .success(let path): return .success(path)
             case .failure(.mismatched): mismatch = true
             case .failure(.notFound(let all)): searchedAll = searchedAll && all
-            case .failure(let failure): return .failure(failure)
+            case let result: return result
             }
+            return nil
         }
+        if let answer { return answer }
         return .failure(mismatch ? .mismatched : .notFound(searchedAll: searchedAll))
     }
 

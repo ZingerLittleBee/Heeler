@@ -246,6 +246,18 @@ struct ClaudeTranscriptLocatorTests {
         #expect(try await Self.locate(files).get().transcriptPath == moved)
     }
 
+    @Test func anUnreadableEarlierAccountDoesNotHideALaterOne() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.claude-a", "/home/dev/.claude-work"], for: .claude)
+        await files.failNext(
+            .status, path: "/home/dev/.claude-a/projects/\(Self.cwdKey)/\(Self.sessionID).jsonl",
+            with: TransportError.hostFileUnreadable(status: 3))
+        let path = "\(Self.workProjects)/\(Self.cwdKey)/\(Self.sessionID).jsonl"
+        await files.write(try ChatFixture.data("claude/probe2-transcript.jsonl"), at: path)
+
+        #expect(try await Self.locate(files).get().transcriptPath == path)
+    }
+
     @Test func subagentPathsStayInsideTheSessionDirectory() {
         let location = ClaudeTranscriptLocation(
             projectDirectory: "\(Self.projects)/-k", transcriptPath: "\(Self.projects)/-k/s.jsonl",

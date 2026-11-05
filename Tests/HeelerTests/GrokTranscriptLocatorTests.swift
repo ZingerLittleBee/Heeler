@@ -59,6 +59,17 @@ struct GrokTranscriptLocatorTests {
         #expect(try await Self.locate(files) == .success(path))
     }
 
+    @Test func anUnreadableEarlierAccountDoesNotHideALaterOne() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.grok-a", "/home/dev/.grok-work"], for: .grok)
+        await files.failNext(
+            .list, path: "/home/dev/.grok-a/sessions", with: TransportError.hostFileUnreadable(status: 3), count: 5)
+        let path = "/home/dev/.grok-work/sessions/\(Self.group)/\(Self.sessionID)/updates.jsonl"
+        await files.write(Self.record(sessionID: Self.sessionID), at: path)
+
+        #expect(try await Self.locate(files) == .success(path))
+    }
+
     // MARK: Groups
 
     @Test func findsTheSessionInThePaneDirectorysGroup() async throws {

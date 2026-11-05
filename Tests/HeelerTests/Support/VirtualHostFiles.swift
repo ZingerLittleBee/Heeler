@@ -146,7 +146,7 @@ actor VirtualHostFiles {
     }
 
     func listFiles(_ request: RemoteFileListingRequest) throws -> RemoteFileListing? {
-        try throwFault(.list)
+        try throwFault(.list, path: request.directory)
         listings.append(request)
         guard let (directory, node) = resolve(request.directory), case .directory = node else {
             return nil

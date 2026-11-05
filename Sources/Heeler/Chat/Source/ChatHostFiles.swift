@@ -39,6 +39,25 @@ struct ChatHostFiles: Sendable {
         self.accountDirectories = accountDirectories
     }
 
+    /// Runs `search` on each root in turn until one returns a value. A root
+    /// the Host will not let Heeler read is skipped so a later Account can
+    /// still answer; its refusal is rethrown when no root does.
+    /// Cancellation and connection failures end the search at once.
+    static func firstAnswer<Value>(
+        across roots: [String], _ search: (String) async throws -> Value?
+    ) async throws -> Value? {
+        var refusal: (any Error)?
+        for root in roots {
+            do {
+                if let value = try await search(root) { return value }
+            } catch TransportError.hostFileUnreadable(let status) {
+                refusal = refusal ?? TransportError.hostFileUnreadable(status: status)
+            }
+        }
+        if let refusal { throw refusal }
+        return nil
+    }
+
     /// `defaultRoot`, then each added Account's directory for `kind`, each
     /// once. An Account file the Host will not give up adds nothing: the
     /// default root is still searched.

@@ -38,13 +38,15 @@ struct GrokTranscriptLocator: Sendable {
         let grokHomes = try await files.configRoots(for: .grok, defaultRoot: RemoteFilePath.join(home, ".grok"))
         var searchedAll = true
         var sawMismatch = false
-        for grokHome in grokHomes {
+        let found = try await ChatHostFiles.firstAnswer(across: grokHomes) { grokHome -> String? in
             switch try await search(in: grokHome, sessionID: sessionID, directories: directories) {
-            case .success(let path): return .success(path)
+            case .success(let path): return path
             case .failure(.mismatched): sawMismatch = true
             case .failure(.notFound(let all)): searchedAll = searchedAll && all
             }
+            return nil
         }
+        if let found { return .success(found) }
         return .failure(sawMismatch ? .mismatched : .notFound(searchedAll: searchedAll))
     }
 

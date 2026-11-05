@@ -340,6 +340,20 @@ struct PiChatTests {
         #expect(result == .success(path))
     }
 
+    @Test func UUIDLookupSkipsAnUnreadableAccount() async throws {
+        let files = VirtualHostFiles(home: "/home/test")
+        await files.setAccountDirectories(["/home/test/.pi-a", "/home/test/.pi-work"], for: .pi)
+        await files.failNext(
+            .list, path: "/home/test/.pi-a/sessions", with: TransportError.hostFileUnreadable(status: 3), count: 5)
+        let path = "/home/test/.pi-work/sessions/--project--/2026-10-15_\(Self.id).jsonl"
+        await files.write(Self.header + "\n", at: path)
+
+        let result = try await PiTranscriptLocator(files: files.hostFiles()).locate(
+            reference: .init(program: .pi, sessionID: Self.id), directories: ["/project"])
+
+        #expect(result == .success(path))
+    }
+
     // MARK: A new conversation's file
 
     private static let cacheHost = UUID()

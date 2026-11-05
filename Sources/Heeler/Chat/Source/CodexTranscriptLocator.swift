@@ -49,9 +49,10 @@ struct CodexTranscriptLocator: Sendable {
         // A thread lives under one Codex home: the default's, else an
         // added Account's (`CODEX_HOME`).
         let roots = try await files.configRoots(for: .codex, defaultRoot: RemoteFilePath.join(home, ".codex"))
-        var segments: [CodexRolloutSegment] = []
-        for root in roots where segments.isEmpty {
-            for date in Self.dateDirectories(threadID: threadID, now: now()) {
+        let now = now()
+        let segments = try await ChatHostFiles.firstAnswer(across: roots) { root -> [CodexRolloutSegment]? in
+            var segments: [CodexRolloutSegment] = []
+            for date in Self.dateDirectories(threadID: threadID, now: now) {
                 segments += try await matches(
                     in: RemoteFilePath.join(root, "sessions", date), threadID: threadID)
             }
@@ -59,7 +60,8 @@ struct CodexTranscriptLocator: Sendable {
                 segments = try await matches(
                     in: RemoteFilePath.join(root, "archived_sessions"), threadID: threadID)
             }
-        }
+            return segments.isEmpty ? nil : segments
+        } ?? []
         let ordered = Set(segments).sorted { CodexRolloutFileName.isOrderedBefore($0.name, $1.name) }
         guard let newest = ordered.last else { return .failure(.notFound) }
         guard !newest.name.isCompressed else { return .failure(.compressed) }
