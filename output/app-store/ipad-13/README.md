@@ -1,6 +1,6 @@
 # Heeler iPad App Store mockups
 
-Seven landscape exports for the 13-inch iPad screenshot slot. Each export is
+Eight landscape exports for the 13-inch iPad screenshot slot. Each export is
 an opaque RGB PNG at 2752 × 2064 pixels. The numbered filenames define the proposed
 upload order, with the floating-window presentation first.
 
@@ -9,16 +9,19 @@ upload order, with the floating-window presentation first.
 | Order | Export | Focus |
 | --- | --- | --- |
 | 1 | `exports/01-fits-your-workspace.png` | A real floating Heeler window on iPad |
-| 2 | `exports/02-every-agent-one-console.png` | Agent sidebar and a selected Claude Code conversation |
-| 3 | `exports/03-type-directly-stay-in-flow.png` | Direct Input with its shortcut row and the iOS keyboard |
-| 4 | `exports/04-see-what-changed.png` | Changes for an Agent's Checkout beside the Agent sidebar |
-| 5 | `exports/05-every-change-line-by-line.png` | A file's side-by-side diff with edited words marked |
-| 6 | `exports/06-skills-within-reach.png` | Skills in the Direct Input tools keyboard |
-| 7 | `exports/07-a-shell-when-you-need-one.png` | Terminals sidebar and a Shell Terminal in Keys mode |
+| 2 | `exports/01b-just-say-it.png` | Voice Input: the recording bar, then the transcribed draft |
+| 3 | `exports/02-every-agent-one-console.png` | Agent sidebar and a selected Claude Code conversation |
+| 4 | `exports/03-type-directly-stay-in-flow.png` | Direct Input with its shortcut row and the iOS keyboard |
+| 5 | `exports/04-see-what-changed.png` | Changes for an Agent's Checkout beside the Agent sidebar |
+| 6 | `exports/05-every-change-line-by-line.png` | A file's side-by-side diff with edited words marked |
+| 7 | `exports/06-skills-within-reach.png` | Skills in the Direct Input tools keyboard |
+| 8 | `exports/07-a-shell-when-you-need-one.png` | Terminals sidebar and a Shell Terminal in Keys mode |
 
-`contact-sheet.jpg` provides an overview; `index.html` links the seven full-size
-exports. Neither the contact sheet nor the source captures belong in the upload
-set. The locally generated `../ipad-13-app-store.zip` contains only the seven
+`../voice/compose_voice.py` renders the Voice Input export; its sources and
+provenance are in `../voice/`. `compose_mockups.py` renders the other seven,
+and only those seven appear in `manifest.json`, `contact-sheet.jpg` and
+`index.html`. Neither the contact sheet nor the source captures belong in the
+upload set. The locally generated `../ipad-13-app-store.zip` contains only the
 exports and is excluded from Git.
 
 ## Source preservation

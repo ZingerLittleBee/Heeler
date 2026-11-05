@@ -11,6 +11,7 @@ Compose scripts live with their exports:
 | iPhone large display | `output/app-store/iphone-6.9/` | `compose_mockups.py` |
 | iPad 13-inch | `output/app-store/ipad-13/` | `compose_mockups.py` |
 | iPhone Duo, first image | `output/app-store/iphone-duo/` | `compose_mockups.py` |
+| Voice Input, second image of all three | `output/app-store/voice/` | `compose_voice.py` |
 | Header and Search Results | `output/app-store/creative-assets/` | `compose_creative.py` |
 
 ## 1. Start the Agents
@@ -63,6 +64,15 @@ xcrun simctl io "$UDID" screenshot --display=primary-1 capture.png
 That gives 2853 x 2007 in landscape. XCUITest taps miss in this posture on
 Xcode 27, so click through the Device Hub window.
 
+### Voice Input
+
+The simulator's microphone records near silence, so a live recording draws a
+flat waveform. For the waveform, build a local copy whose recorder replays a
+clip synthesized with `say`, and never commit it. The transcript still comes
+from a real transcription service: store your key in Settings › Voice Input
+and accept the consent alert. `output/app-store/voice/README.md` records how
+the current images were made.
+
 ## 3. Compose
 
 Put captures in the slot's source directory and run its script. Inspect the
@@ -83,8 +93,17 @@ python3 scripts/store-shots.py asc promo promo.txt --version 0.1.17
 ```
 
 `screenshots` matches by file name and keeps each image's position, deleting the
-old image before it uploads. Targets are `ipad`, `iphone` and `duo`; `creative`
-takes `header` or `search`. It needs ego-browser signed in to App Store Connect.
+old image before it uploads. A file name the set lacks goes last, or at
+`--at N` (counted from 1). `--remove NAME` deletes another image first, to make
+room in a full set of ten:
+
+```sh
+python3 scripts/store-shots.py asc screenshots duo output/app-store/iphone-duo/exports/01b-just-say-it.png \
+  --at 2 --remove 08b-host-connected.png --version 0.1.17
+```
+
+Targets are `ipad`, `iphone` and `duo`; `creative` takes `header` or `search`.
+It needs ego-browser signed in to App Store Connect.
 
 ## 5. Clean up
 
