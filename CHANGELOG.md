@@ -94,8 +94,6 @@ Entries reference the pull request that made the change.
   an empty Live Activity list for a Host that never had one. (#541; PR #538)
 - Offer Refresh on an empty Skills list. (#558; PR #538)
 
-### Fixed
-
 - Launch Presets read the Host's current Account variables before starting;
   an unreadable Account file blocks the launch and shows the error. Accounts
   keeps the last loaded list visible when a refresh fails. (#632)
