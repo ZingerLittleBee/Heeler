@@ -34,7 +34,7 @@
         "en": "Hosts",
         "zh": "Host"
       },
-      "guides": ["host-routes", "windows-setup", "selinux"]
+      "guides": ["herdr-core", "host-routes", "windows-setup", "selinux"]
     },
     {
       "title": {
@@ -69,6 +69,7 @@
       "cloudflare-tunnel": "Cloudflare Tunnel",
       "vps-jump-host-setup": "Set up a Jump Host",
       "vps-jump-host": "Jump Host in depth",
+      "herdr-core": "herdr-core",
       "host-routes": "Multiple routes",
       "windows-setup": "Windows setup",
       "selinux": "Fedora/RHEL SELinux",
@@ -87,6 +88,7 @@
       "cloudflare-tunnel": "Cloudflare Tunnel",
       "vps-jump-host-setup": "配置 Jump Host",
       "vps-jump-host": "Jump Host 详解",
+      "herdr-core": "herdr-core",
       "host-routes": "多条路由",
       "windows-setup": "Windows 配置",
       "selinux": "SELinux（Fedora/RHEL）",
@@ -106,6 +108,7 @@
     "cloudflare-tunnel": "Cloud",
     "vps-jump-host-setup": "ListChecks",
     "vps-jump-host": "ShieldCheck",
+    "herdr-core": "Server",
     "host-routes": "Route",
     "windows-setup": "MonitorCog",
     "selinux": "ShieldAlert",
