@@ -12,6 +12,8 @@ make testflight VERSION=0.2.1           # explicitly start the next version
 make release-status TAG=builds/0.2.0/39
 make testflight-retry TAG=builds/0.2.0/39
 make release-check VERSION=0.2.0        # signing/validation rehearsal only
+make testflight-notes TAG=builds/0.2.0/39  # changelog entries external testers have not had
+make testflight-beta TAG=builds/0.2.0/39 NOTES=notes.txt  # release to external testers
 ```
 
 Numbers are illustrative; migration must establish the real counter first.
@@ -81,6 +83,7 @@ release cutter did. Its tag must identify exactly the tested source and settings
 | Push ordinary `main` or a historical `v*` tag | No distribution workflow |
 | `make release-check VERSION=X.Y.Z` | Manual dispatch from `main`, explicit version, next unreserved build as an override; archive and validate, never upload or reserve a number |
 | `make testflight-retry TAG=...` | Re-run failed jobs of the original tag's run after reporting the recovery action |
+| A tag's run fails because GitHub gave a job no runner | [release-retry.yml](../../.github/workflows/release-retry.yml) re-runs its failed jobs as `make testflight-retry` would, until the run's third attempt |
 | Select a build in App Store Connect | No GitHub Action or new tag |
 
 `meta` validates the immutable source and creates a draft prerelease checkpoint.
@@ -126,6 +129,7 @@ stays frozen so reruns do not change the manifest identity.
 
 | Outcome | Recovery |
 | --- | --- |
+| A job never got a runner, as when GitHub runs short of macOS capacity | Retried automatically until the run's third attempt. After that, check GitHub's status and run `make testflight-retry`. |
 | Test, signing, archive, validation, or pre-upload check fails | Retry a transient failure on the same tag. A code change needs a new build number; the failed tag remains. |
 | dSYM validation or retention fails | No Apple upload starts. Fix a transient storage failure and retry; conflicting/incomplete assets require reconciliation, never overwrite. |
 | Upload response is lost, or Apple has not exposed it yet | Retry observation only. An empty Apple response does not prove the upload failed. The candidate remains unresolved. |
@@ -139,7 +143,10 @@ stays frozen so reruns do not change the manifest identity.
 
 Recovery deliberately uses `gh run rerun --failed`, not a new dispatch from
 `main`: the original run keeps the candidate's SHA and its completed full-test
-evidence. Manual dispatch remains rehearsal-only. GitHub allows reruns for
+evidence. The automatic retry takes the same path and checks, but only when
+every failed job either carries GitHub's "not acquired by Runner" annotation or
+is the test gate's summary, so a test failure or a run cancelled by hand waits
+for a person. Manual dispatch remains rehearsal-only. GitHub allows reruns for
 30 days; after that, operator reconciliation is required. A failed candidate
 proved not to have uploaded can be superseded with a new number, but a known
 or possible upload must be reconciled first. Never delete/re-cut a tag as recovery.
@@ -149,6 +156,37 @@ run's steps and App Store Connect inventory with an authorized maintainer.
 Any manual repair must preserve the exact source, version/build, original run,
 and evidence of whether upload started. Do not change `upload_started` back to
 `reserved` merely because a query returns no build.
+
+## External testing
+
+A processed build reaches external testers only after it joins the **Public
+Beta** group and passes Beta App Review. The
+[testflight-beta skill](../../.claude/skills/testflight-beta/SKILL.md) drafts
+each build's What to Test from the changelog. The maintainer tests the build and
+approves the notes before the skill releases it.
+
+`make testflight-notes TAG=...` lists the changelog entries that are new since
+the group's newest build, by upload date. `SINCE=<commit>` replaces that
+lookup. `make testflight-beta TAG=... NOTES=notes.txt` does four things:
+
+- requires a `valid` record and an Apple `VALID` build;
+- sets What to Test to the text in NOTES, at most 4000 characters, in every
+  Test Information locale. The app has only `en-US`, so the notes carry the
+  English and then the Chinese;
+- adds the build to `GROUP` (default `Public Beta`);
+- submits the build for Beta App Review, unless adding it already did.
+
+A rerun changes only what differs.
+
+Both commands run on the maintainer's Mac. Environment variables override the
+login Keychain, which holds the Team API key from the `release` environment as
+one generic password per variable. The `.p8` is base64-encoded:
+
+```sh
+security add-generic-password -U -s heeler-app-store-connect -a ASC_API_KEY_ID -w <key id>
+security add-generic-password -U -s heeler-app-store-connect -a ASC_API_ISSUER_ID -w <issuer id>
+security add-generic-password -U -s heeler-app-store-connect -a ASC_API_KEY_P8 -w "$(base64 -i AuthKey_<key id>.p8)"
+```
 
 ## Signing and credentials
 
