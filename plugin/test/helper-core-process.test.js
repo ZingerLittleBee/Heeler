@@ -42,6 +42,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   child?.kill("SIGKILL");
+  child = undefined;
   while (cores.length > 0) await cores.pop().stop().catch(() => {});
   rmSync(root, { recursive: true, force: true });
 });
@@ -51,16 +52,18 @@ function startHelper(sessions, { devices = sessions.map((session) => ({ session 
   cpSync(HELPER, join(directory, "app"), { recursive: true });
   writeFileSync(join(directory, "notifications.json"), JSON.stringify({ v: 1, devices }));
   if (config !== null) writeFileSync(join(directory, "notify.json"), JSON.stringify(config));
-  child = spawn(process.execPath, [join(directory, "app", "main.js")], {
+  const helper = spawn(process.execPath, [join(directory, "app", "main.js")], {
     env: { HOME: home, XDG_RUNTIME_DIR: join(root, "r"), PATH: join(root, "bin") },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  child.stdout.on("data", (chunk) => {
-    stdout += chunk;
-  });
-  child.stderr.on("data", (chunk) => {
-    stdout += chunk;
-  });
+  child = helper;
+  // A killed test's Helper can still deliver output after the next test
+  // starts, so only the current Helper's output counts.
+  const keep = (chunk) => {
+    if (child === helper) stdout += chunk;
+  };
+  helper.stdout.on("data", keep);
+  helper.stderr.on("data", keep);
 }
 
 const socketFor = (session) => join(root, "r", "herdr-core", `${session}.sock`);
