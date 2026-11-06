@@ -11,9 +11,7 @@ struct VoiceInputSettingsView: View {
     let settings: VoiceInputSettings
     /// The mic's sheet has Cancel; pushed from Settings, Back does it.
     var isSheet = false
-    @State private var service: VoiceInputService?
-    @State private var custom: VoiceInputCustomService
-    @State private var apiKey = ""
+    @State private var connection: VoiceInputServiceDraft
     @State private var keywords: String
     @State private var prompt: String
     @State private var consentRequest: VoiceInputEndpoint?
@@ -23,8 +21,7 @@ struct VoiceInputSettingsView: View {
     init(settings: VoiceInputSettings, isSheet: Bool = false) {
         self.settings = settings
         self.isSheet = isSheet
-        _service = State(initialValue: settings.service)
-        _custom = State(initialValue: settings.custom)
+        _connection = State(initialValue: VoiceInputServiceDraft(service: settings.service, custom: settings.custom))
         _keywords = State(initialValue: settings.keywords.joined(separator: ", "))
         _prompt = State(initialValue: settings.prompt)
     }
@@ -32,7 +29,7 @@ struct VoiceInputSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Picker("Service", selection: $service) {
+                Picker("Service", selection: $connection.service) {
                     Text("Off").tag(VoiceInputService?.none)
                     ForEach(VoiceInputService.allCases) { @Sendable service in
                         Text(service.displayName).tag(VoiceInputService?.some(service))
@@ -41,7 +38,7 @@ struct VoiceInputSettingsView: View {
             } footer: {
                 Text(serviceFooter)
             }
-            switch service {
+            switch connection.service {
             case .preset(let preset):
                 Section {
                     LabeledContent("Model", value: preset.model)
@@ -53,7 +50,7 @@ struct VoiceInputSettingsView: View {
             case nil:
                 EmptyView()
             }
-            if service != nil {
+            if connection.service != nil {
                 keywordsSection
                 promptSection
                 if #available(iOS 26.0, *) {
@@ -62,7 +59,7 @@ struct VoiceInputSettingsView: View {
             }
         }
         .onChange(of: keywords) { syncVocabulary() }
-        .onChange(of: service) { syncVocabulary() }
+        .onChange(of: connection.service) { syncVocabulary() }
         .navigationTitle("Voice Input")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -89,7 +86,7 @@ struct VoiceInputSettingsView: View {
             Text(Self.consentMessage(endpoint))
         }
         .alert(
-            "Could not save Voice Input",
+            "Could not update Voice Input",
             isPresented: Binding(
                 get: { saveError != nil },
                 set: { if !$0 { saveError = nil } })
@@ -103,10 +100,10 @@ struct VoiceInputSettingsView: View {
     private var customSection: some View {
         Section {
             VoiceInputFormField(
-                title: "Base URL", prompt: "https://api.example.com/v1", text: $custom.baseURL,
+                title: "Base URL", prompt: "https://api.example.com/v1", text: $connection.custom.baseURL,
                 keyboard: .URL)
-            VoiceInputFormField(title: "Model", prompt: "Required", text: $custom.model)
-            Toggle("Send Language", isOn: $custom.sendsLanguage)
+            VoiceInputFormField(title: "Model", prompt: "Required", text: $connection.custom.model)
+            Toggle("Send Language", isOn: $connection.custom.sendsLanguage)
         } footer: {
             Text(
                 "For services that take OpenAI's audio/transcriptions request. Send Language adds "
@@ -116,17 +113,14 @@ struct VoiceInputSettingsView: View {
 
     private var keySection: some View {
         Section {
-            SecureField(hasStoredKey ? "Saved; enter a new key to replace it" : "Required", text: $apiKey)
+            SecureField(hasStoredKey ? "Saved; enter a new key to replace it" : "Required", text: $connection.apiKey)
                 .font(.body.monospaced())
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .accessibilityLabel("API Key")
             if let endpoint = draftEndpoint, hasStoredKey {
                 Button("Remove Key", role: .destructive) {
-                    settings.removeKey(for: endpoint)
-                    if settings.service == service, !settings.hasKey(for: endpoint) {
-                        settings.turnOff()
-                    }
+                    removeKey(for: endpoint)
                 }
             }
         } header: {
@@ -160,7 +154,7 @@ struct VoiceInputSettingsView: View {
         } header: {
             Text("Prompt")
         } footer: {
-            if service?.takesKeywords == false {
+            if connection.service?.takesKeywords == false {
                 Text(
                     "What you talk about, sent as written. This service doesn't read Keywords, "
                         + "so they're added here.")
@@ -171,7 +165,7 @@ struct VoiceInputSettingsView: View {
     }
 
     private func syncVocabulary() {
-        guard let service else { return }
+        guard let service = connection.service else { return }
         prompt = service.prompt(prompt, keywords: VoiceInputSettings.keywords(in: keywords))
     }
 
@@ -191,7 +185,7 @@ struct VoiceInputSettingsView: View {
     }
 
     private var serviceFooter: String {
-        switch service {
+        switch connection.service {
         case .preset(let preset):
             "Recordings go to \(preset.operatorName) under its terms, billed to your key. "
                 + "Heeler's developer receives none of them."
@@ -204,7 +198,7 @@ struct VoiceInputSettingsView: View {
     }
 
     private var draftEndpoint: VoiceInputEndpoint? {
-        service.flatMap { settings.endpoint(for: $0, custom: custom) }
+        connection.service.flatMap { settings.endpoint(for: $0, custom: connection.custom) }
     }
 
     private var draftHost: String {
@@ -215,21 +209,32 @@ struct VoiceInputSettingsView: View {
         draftEndpoint.map(settings.hasKey(for:)) ?? false
     }
 
+    private func removeKey(for endpoint: VoiceInputEndpoint) {
+        do {
+            try settings.removeKey(for: endpoint)
+            if settings.service == connection.service, !settings.hasKey(for: endpoint) {
+                settings.turnOff()
+            }
+        } catch {
+            saveError = error.message
+        }
+    }
+
     private var canSave: Bool {
-        guard let service else { return settings.service != nil }
-        if case .success = settings.validate(service: service, custom: custom, apiKey: apiKey) {
+        guard let service = connection.service else { return settings.service != nil }
+        if case .success = settings.validate(service: service, custom: connection.custom, apiKey: connection.apiKey) {
             return true
         }
         return false
     }
 
     private func requestSave() {
-        guard let service else {
+        guard let service = connection.service else {
             settings.turnOff()
             dismiss()
             return
         }
-        switch settings.validate(service: service, custom: custom, apiKey: apiKey) {
+        switch settings.validate(service: service, custom: connection.custom, apiKey: connection.apiKey) {
         case .failure(let error):
             saveError = error.message
         case .success(let endpoint):
@@ -242,12 +247,12 @@ struct VoiceInputSettingsView: View {
     }
 
     private func save(consented: Bool) {
-        guard let service else { return }
+        guard let service = connection.service else { return }
         do {
-            try settings.save(service: service, custom: custom, apiKey: apiKey, consented: consented)
+            try settings.save(service: service, custom: connection.custom, apiKey: connection.apiKey, consented: consented)
             settings.setKeywords(from: keywords)
             settings.setPrompt(prompt)
-            apiKey = ""
+            connection.apiKey = ""
             dismiss()
         } catch {
             saveError = error.message

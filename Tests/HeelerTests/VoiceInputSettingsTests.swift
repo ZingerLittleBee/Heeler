@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import Heeler
@@ -105,7 +106,7 @@ struct VoiceInputSettingsTests {
             let settings = VoiceInputSettings(defaults: defaults, secrets: InMemorySecretStore())
             try settings.save(service: .preset(.openAI), custom: .init(), apiKey: "sk", consented: true)
             let endpoint = try #require(settings.endpoint)
-            settings.removeKey(for: endpoint)
+            try settings.removeKey(for: endpoint)
             #expect(!settings.hasKey(for: endpoint))
             #expect(!settings.hasConsent(for: endpoint))
             #expect(!settings.isReady)
@@ -117,6 +118,101 @@ struct VoiceInputSettingsTests {
             VoiceInputSettings.keywords(in: " herdr, Heeler，SwiftUI\n<PR>;git\r\n\nherdr、worktree ")
                 == ["herdr", "Heeler", "SwiftUI", "PR", "git", "worktree"])
         #expect(VoiceInputSettings.keywords(in: " ,\n ").isEmpty)
+    }
+
+    @Test func aTypedKeyCannotFollowAServiceChangeIntoSave() throws {
+        try withDefaults { defaults in
+            let settings = VoiceInputSettings(defaults: defaults, secrets: InMemorySecretStore())
+            var draft = VoiceInputServiceDraft(service: .preset(.openAI), custom: .init())
+            draft.apiKey = "openai-key"
+            draft.service = .preset(.deepInfra)
+            #expect(draft.apiKey.isEmpty)
+            #expect(throws: VoiceInputSettings.SaveError.missingKey) {
+                try settings.save(
+                    service: .preset(.deepInfra), custom: draft.custom, apiKey: draft.apiKey, consented: true)
+            }
+            draft.apiKey = "deepinfra-key"
+            draft.service = nil
+            draft.service = .preset(.deepInfra)
+            #expect(draft.apiKey.isEmpty, "Off cannot carry a typed key back to a service")
+        }
+    }
+
+    @Test func customURLEditsClearTheTypedKeyEvenBeforeTheURLIsValid() {
+        var draft = VoiceInputServiceDraft(
+            service: .custom,
+            custom: .init(baseURL: "https://a.example.com/v1", model: "first"))
+        draft.apiKey = "key-a"
+        draft.custom.model = "second"
+        draft.custom.sendsLanguage = true
+        #expect(draft.apiKey == "key-a", "model and language share the destination's key")
+        draft.custom.baseURL = "https://"
+        #expect(draft.apiKey.isEmpty)
+        draft.custom.baseURL = "https://b.example.com/v1"
+        #expect(draft.apiKey.isEmpty)
+    }
+
+    @Test func switchingServicesKeepsEachSavedKeyAtItsOwnDestination() throws {
+        try withDefaults { defaults in
+            let settings = VoiceInputSettings(defaults: defaults, secrets: InMemorySecretStore())
+            try settings.save(service: .preset(.deepInfra), custom: .init(), apiKey: "di-key", consented: true)
+            var draft = VoiceInputServiceDraft(service: .preset(.openAI), custom: .init())
+            draft.apiKey = "openai-key"
+            draft.service = .preset(.deepInfra)
+            try settings.save(
+                service: .preset(.deepInfra), custom: draft.custom, apiKey: draft.apiKey, consented: false)
+            #expect(settings.apiKey(for: try #require(settings.endpoint)) == "di-key")
+        }
+    }
+
+    @Test func aFailedKeyRemovalPreservesTheKeyAndAgreementUntilRetry() throws {
+        try withDefaults { defaults in
+            let secrets = RemovalFailingVoiceSecrets()
+            let settings = VoiceInputSettings(defaults: defaults, secrets: secrets)
+            try settings.save(service: .preset(.openAI), custom: .init(), apiKey: "sk", consented: true)
+            let endpoint = try #require(settings.endpoint)
+            let revision = settings.keyRevision
+            #expect(throws: VoiceInputSettings.SaveError.keyRemoval) {
+                try settings.removeKey(for: endpoint)
+            }
+            let reopened = VoiceInputSettings(defaults: defaults, secrets: secrets)
+            #expect(reopened.apiKey(for: endpoint) == "sk")
+            #expect(reopened.hasConsent(for: endpoint))
+            #expect(reopened.isReady)
+            #expect(settings.keyRevision == revision)
+
+            secrets.allowRemoval()
+            try settings.removeKey(for: endpoint)
+            #expect(!settings.hasKey(for: endpoint))
+            #expect(!settings.hasConsent(for: endpoint))
+        }
+    }
+
+    @Test func aCustomMoveWithFailedCleanupKeepsTheSavedDestinationUntilRetry() throws {
+        try withDefaults { defaults in
+            let secrets = RemovalFailingVoiceSecrets()
+            let settings = VoiceInputSettings(defaults: defaults, secrets: secrets)
+            let first = VoiceInputCustomService(baseURL: "https://a.example.com/v1", model: "asr")
+            let moved = VoiceInputCustomService(baseURL: "https://b.example.com/v1", model: "asr")
+            try settings.save(service: .custom, custom: first, apiKey: "key-a", consented: true)
+            let firstEndpoint = try #require(settings.endpoint)
+            let movedEndpoint = try #require(settings.endpoint(for: .custom, custom: moved))
+            #expect(throws: VoiceInputSettings.SaveError.keyRemoval) {
+                try settings.save(service: .custom, custom: moved, apiKey: "key-b", consented: true)
+            }
+            let reopened = VoiceInputSettings(defaults: defaults, secrets: secrets)
+            #expect(reopened.endpoint == firstEndpoint)
+            #expect(reopened.apiKey(for: firstEndpoint) == "key-a")
+            #expect(reopened.hasConsent(for: firstEndpoint))
+            #expect(!reopened.hasConsent(for: movedEndpoint))
+
+            secrets.allowRemoval()
+            try settings.save(service: .custom, custom: moved, apiKey: "", consented: true)
+            #expect(settings.endpoint == movedEndpoint)
+            #expect(settings.apiKey(for: firstEndpoint) == nil)
+            #expect(settings.apiKey(for: movedEndpoint) == "key-b")
+            #expect(settings.isReady)
+        }
     }
 
     @Test func onlyServicesThatDoNotReadKeywordsKeepThemInThePrompt() {
@@ -164,5 +260,19 @@ struct VoiceInputSettingsTests {
             settings.turnOff()
             #expect(VoiceInputSettings(defaults: defaults, secrets: secrets).alwaysUsesBuiltInMicrophone)
         }
+    }
+}
+
+private final class RemovalFailingVoiceSecrets: SecretStore {
+    private let stored = InMemorySecretStore()
+    private let rejectsRemoval = Mutex(true)
+
+    func allowRemoval() { rejectsRemoval.withLock { $0 = false } }
+    func read(account: String) throws -> Data? { try stored.read(account: account) }
+    func readAll() throws -> [String: Data] { try stored.readAll() }
+    func write(_ secret: Data, account: String) throws { try stored.write(secret, account: account) }
+    func removeSecret(account: String) throws {
+        if rejectsRemoval.withLock({ $0 }) { throw KeychainError.unexpectedStatus(-1) }
+        try stored.removeSecret(account: account)
     }
 }

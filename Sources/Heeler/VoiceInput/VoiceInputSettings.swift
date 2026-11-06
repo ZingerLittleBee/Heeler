@@ -80,6 +80,22 @@ struct VoiceInputCustomService: Equatable, Sendable {
     var sendsLanguage = false
 }
 
+/// Unsaved connection fields. A typed key belongs only to the destination
+/// being edited, including while a Custom URL is incomplete.
+struct VoiceInputServiceDraft {
+    var service: VoiceInputService? {
+        didSet {
+            if service != oldValue { apiKey = "" }
+        }
+    }
+    var custom: VoiceInputCustomService {
+        didSet {
+            if custom.baseURL != oldValue.baseURL { apiKey = "" }
+        }
+    }
+    var apiKey = ""
+}
+
 /// Voice Input's service, its keys, and what the user agreed to (ADR 0036).
 /// Keys live in the Keychain, one per preset and one per Custom URL; the
 /// rest is in user defaults. Voice Input stays off until a service is saved
@@ -96,6 +112,7 @@ final class VoiceInputSettings {
         case invalidKey
         case notConsented
         case keychain
+        case keyRemoval
 
         var message: String {
             switch self {
@@ -105,6 +122,7 @@ final class VoiceInputSettings {
             case .invalidKey: "Remove the spaces or line breaks from the key."
             case .notConsented: "Voice Input needs your agreement to send recordings."
             case .keychain: "The key could not be saved in the Keychain."
+            case .keyRemoval: "The key could not be removed from the Keychain. Try again."
             }
         }
     }
@@ -248,7 +266,13 @@ final class VoiceInputSettings {
         if case .custom = service, let previous = self.endpoint(for: .custom, custom: self.custom),
             previous.keyAccount != endpoint.keyAccount
         {
-            try? secrets.removeSecret(account: previous.keyAccount)
+            do {
+                try secrets.removeSecret(account: previous.keyAccount)
+            } catch {
+                // Keep the saved destination and its agreement unchanged.
+                // The new key remains available in the form for a retry.
+                throw .keyRemoval
+            }
         }
         if consented { consents.insert(endpoint.consentID) }
         self.service = service
@@ -297,8 +321,12 @@ final class VoiceInputSettings {
     }
 
     /// Deletes the key and the agreement for `endpoint`.
-    func removeKey(for endpoint: VoiceInputEndpoint) {
-        try? secrets.removeSecret(account: endpoint.keyAccount)
+    func removeKey(for endpoint: VoiceInputEndpoint) throws(SaveError) {
+        do {
+            try secrets.removeSecret(account: endpoint.keyAccount)
+        } catch {
+            throw .keyRemoval
+        }
         consents.remove(endpoint.consentID)
         keyRevision += 1
         persist()

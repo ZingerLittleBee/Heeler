@@ -7,6 +7,10 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+### Fixed
+
+- Clear an unsaved Voice Input API key when its service or Custom URL changes, and report Keychain deletion failures without switching the saved destination or withdrawing its agreement. (PR pending)
+
 ## [0.1.18]
 
 ### Added
