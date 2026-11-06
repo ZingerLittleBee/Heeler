@@ -340,6 +340,9 @@ struct AgentSessionSettingsLabel: View {
             }
             if let model = settings.model, !model.isEmpty {
                 modelLabel(model)
+            } else if controls != nil {
+                // Before the first reply nothing records a model; set one anyway.
+                modelLabel("")
             }
         }
         .help([settings.notablePermissionMode, settings.modelLine].compactMap { $0 }.joined(separator: " · "))
@@ -388,7 +391,7 @@ struct AgentSessionSettingsLabel: View {
 
     @ViewBuilder
     private func modelLabel(_ model: String) -> some View {
-        let text = Text(verbatim: settings.modelLine ?? AgentSessionSettings.modelTitle(model))
+        let text = Text(verbatim: settings.modelLine ?? (model.isEmpty ? "Model" : AgentSessionSettings.modelTitle(model)))
             .font(.caption2)
             .foregroundStyle(.secondary)
             .fixedSize()

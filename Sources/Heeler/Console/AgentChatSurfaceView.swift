@@ -1029,6 +1029,9 @@ struct AgentChatSurfaceView: View {
         .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
         .frame(maxWidth: .infinity)
         .onChange(of: chat?.conversation.transcript.permissionMode) { permissionModeOverride = nil }
+        // The transcript records the mode as snapshots, and not every change
+        // (plan approval moves to auto unrecorded); the footer shows it live.
+        .task(id: agent.agent.status) { await readPermissionModeFromFooter() }
         .onChange(of: chat?.conversation.transcript.model) { modelOverride = nil }
         .onChange(of: chat?.conversation.transcript.effort) { effortOverride = nil }
     }
@@ -1068,6 +1071,15 @@ struct AgentChatSurfaceView: View {
             await work()
             isSwitchingSetting = false
         }
+    }
+
+    /// The footer's mode while the Agent waits, over the transcript's snapshot.
+    private func readPermissionModeFromFooter() async {
+        let status = agent.agent.status
+        guard program == .claude, status == .idle || status == .done, !isSwitchingSetting,
+            let screen = try? await readAgentScreen()
+        else { return }
+        permissionModeOverride = AgentSessionSettings.permissionMode(onScreen: screen)
     }
 
     /// Presses Shift+Tab, as the terminal would, until the footer shows `target`.

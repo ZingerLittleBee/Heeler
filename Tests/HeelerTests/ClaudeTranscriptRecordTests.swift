@@ -302,13 +302,15 @@ struct AgentSessionSettingsTests {
     }
 
     @Test("The permission mode is read off Claude Code's footer, not the conversation above it")
-    func permissionModeOnScreen() {
+    func permissionModeOnScreen() throws {
         func screen(_ rows: [String]) -> ANSIScreen { ANSIScreenDecoder.decode(rows.joined(separator: "\r\n")) }
         let filler = Array(repeating: "", count: 6)
         #expect(AgentSessionSettings.permissionMode(onScreen: screen(["> hi", "", "  ⏵⏵ bypass permissions on (shift+tab to cycle)"])) == "bypassPermissions")
         #expect(AgentSessionSettings.permissionMode(onScreen: screen(["  ⏸ plan mode on (shift+tab to cycle)"])) == "plan")
         #expect(AgentSessionSettings.permissionMode(onScreen: screen(["  ⏵⏵ accept edits on"])) == "acceptEdits")
         #expect(AgentSessionSettings.permissionMode(onScreen: screen(["plan mode on, said the reply"] + filler + ["  ? for shortcuts"])) == "default")
+        // Claude Code 2.1.291 after a plan approval: four footer lines below the box.
+        #expect(AgentSessionSettings.permissionMode(onScreen: try ScreenFixture.screen("claude-21-c6-after")) == "auto")
         let rule = String(repeating: "─", count: 40)
         #expect(AgentSessionSettings.permissionMode(onScreen: screen(["⏺ It printed bypass permissions on", rule, "> ", rule, "  ⏸ plan mode on (shift+tab to cycle)"])) == "plan")
         #expect(AgentSessionSettings.permissionMode(onScreen: screen(["⏺ bypass permissions on", rule, "> ", rule, "  ? for shortcuts"])) == "default")
