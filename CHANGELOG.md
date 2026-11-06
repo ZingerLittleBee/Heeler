@@ -7,6 +7,8 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+- Rename an Agent's conversation from its existing More menu or the Agents list's long-press menu on Herdr TUI Hosts. Save a manual title for Claude Code, Codex, Pi, Oh My Pi, Grok Build, or OpenCode; generate and apply a new title with Claude Code, Codex, or Oh My Pi. Busy Agents, existing terminal drafts, changed conversations, and unconfirmed results are reported without retrying the command. (#645)
+
 ## [0.1.18]
 
 ### Added

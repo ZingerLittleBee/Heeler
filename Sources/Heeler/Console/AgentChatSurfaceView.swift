@@ -68,6 +68,7 @@ struct AgentChatSurfaceView: View {
     @State private var viewingSkill: AgentSkill?
     @State private var agentKeys: ChatAgentKeysStore
     @State private var isRenamingAgent = false
+    @State private var titleRename: AgentTitleRenameStore?
     @State private var isRenamingWorkspace = false
     @State private var closeErrorMessage: String?
     /// The Workspace drawer's panel, while the back header's menu owns it.
@@ -180,7 +181,7 @@ struct AgentChatSurfaceView: View {
             isFocused: false,
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
                 || isStartingAgent || isManagingSnippets || isShowingSkillsPicker
-                || viewingSkill != nil || isRenamingAgent || isRenamingWorkspace
+                || viewingSkill != nil || isRenamingAgent || titleRename != nil || isRenamingWorkspace
                 || closeErrorMessage != nil || isShowingBackgroundWork,
             isOnStage: { @MainActor in isOnStage() },
             toggleInputMode: nil,
@@ -253,6 +254,11 @@ struct AgentChatSurfaceView: View {
             }
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
+        }
+        .sheet(item: $titleRename) { store in
+            AgentTitleRenameSheet(store: store)
+                .modifier(ConsoleSheetPresentationModifier(
+                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
@@ -1245,6 +1251,11 @@ struct AgentChatSurfaceView: View {
         if let showChanges {
             actions.append(AgentDetailHeaderAction(
                 title: "Changes", systemImage: "arrow.triangle.branch", perform: showChanges))
+        }
+        if console.offersTitleRename(for: agent) {
+            actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {
+                titleRename = console.titleRenameStore(for: agent)
+            })
         }
         return actions
     }
