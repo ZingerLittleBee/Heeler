@@ -125,7 +125,7 @@ struct HostProcessReaderTests {
         }
     }
 
-    @Test(arguments: ["", "A B", "A=B", "1A", "A;B", "$(id)", "A'B", "A\"B", "A\nB", "路径"])
+    @Test(arguments: ["", "A B", "A=B", "1A", "A;B", "$(id)", "A'B", "A\"B", "NEW\nLINE", "路径"])
     func aVariableNameThatIsNotAnIdentifierIsRefused(name: String) {
         for request in [
             HostProcessReader.Request(pids: ["77"], valuesOf: [name]),
@@ -390,7 +390,7 @@ struct HostProcessReaderTests {
         }
     }
 
-    @Test(arguments: ["", "a b", "a'b", "$(id)", "a;b", "a\nb", "路径", "a=b"])
+    @Test(arguments: ["", "a b", "a'b", "$(id)", "a;b", "new\nline", "路径", "a=b"])
     func anArgumentThatIsNotAPlainWordIsRefused(word: String) {
         #expect(throws: HostProcessReader.Refusal.argument(word)) {
             _ = try HostProcessReader.script(
