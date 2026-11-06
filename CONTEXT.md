@@ -252,6 +252,13 @@ Ring shows the status. Heeler Pin remains independent chrome; choosing
 status as a field shows it as text in the row.
 _Avoid_: card template, sidebar format
 
+**Conversation Title**:
+The name owned and persisted by the Agent's current conversation, reported through
+its terminal title. Rename in the More menu or Agent list edits this title through
+the Agent's native controls. It is separate from herdr's restricted Agent alias.
+Native generation is offered only for programs with a supported generation flow.
+See [ADR 0040](docs/adr/0040-conversation-titles-use-native-agent-commands.md).
+
 **Agent Mark**:
 The mark of the program an Agent runs (its kind), which leads the Agent's row
 in the Console: the program's own logo where Heeler ships one, else the first
