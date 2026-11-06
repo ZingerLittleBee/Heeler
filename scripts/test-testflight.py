@@ -217,6 +217,13 @@ Path('Heeler.xcodeproj/project.pbxproj').write_text(
         path.write_text(text)
         path.chmod(0o755)
 
+    def commit_change(self, note):
+        """Merge a change with a note into main."""
+        notes = self.repo / "CHANGELOG.md"
+        notes.write_text(notes.read_text().replace("### Fixed\n\n", f"### Fixed\n\n- {note} (#8)\n", 1))
+        self.command("git", "commit", "--quiet", "-am", "add notes")
+        self.command("git", "push", "--quiet", "origin", "main")
+
     def cli(self, *args, check=True, **env):
         return self.command(sys.executable, "scripts/testflight.py", *args, check=check, **env)
 
@@ -325,22 +332,19 @@ sys.exit(9)
         self.assertEqual(self.command("git", "status", "--porcelain").stdout, "")
         self.assertEqual(self.command("git", "ls-remote", "--tags", "origin").stdout, "")
 
-    def test_candidate_freezes_notes_versions_and_blocks_an_unstarted_reservation(self):
-        self.cli("cut", VERSION="0.2.0")
-        tag = "builds/0.2.0/38"
+    def test_candidate_tags_main_unchanged_and_blocks_an_unstarted_reservation(self):
         source = self.command("git", "rev-parse", "HEAD").stdout.strip()
+        files = {name: (self.repo / name).read_text() for name in ("project.yml", "CHANGELOG.md")}
+        result = self.cli("cut", VERSION="0.2.0")
+        self.assertIn("- Repair SSH. (#7)", result.stdout)
+        tag = "builds/0.2.0/38"
+        self.assertEqual(self.command("git", "rev-parse", "HEAD").stdout.strip(), source)
         self.assertEqual(self.command("git", "rev-parse", tag + "^{commit}").stdout.strip(), source)
-        self.assertIn(source, self.command("git", "ls-remote", "origin", "refs/heads/main").stdout)
+        self.assertEqual(self.command("git", "ls-remote", "origin", "refs/heads/main").stdout.split()[0], source)
         annotation = json.loads(self.command("git", "for-each-ref", "--format=%(contents)", "refs/tags/" + tag).stdout)
-        self.assertEqual(annotation["source"], source)
-        self.assertEqual(annotation["build"], 38)
-        project = (self.repo / "project.yml").read_text()
-        self.assertEqual(project.count('MARKETING_VERSION: "0.2.0"'), 3)
-        self.assertEqual(project.count('CURRENT_PROJECT_VERSION: "38"'), 3)
-        notes = (self.repo / "CHANGELOG.md").read_text()
-        self.assertIn('## [Unreleased]\n\n## [0.2.0]\n', notes)
-        self.assertIn('- Repair SSH. (#7)', notes)
-        self.assertIn('## [0.1.16] - 2026-10-01', notes)
+        self.assertEqual((annotation["source"], annotation["version"], annotation["build"]), (source, "0.2.0", 38))
+        self.assertEqual({name: (self.repo / name).read_text() for name in files}, files)
+        self.assertEqual(self.command("git", "status", "--porcelain").stdout, "")
         result = self.cli("cut", check=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unresolved", result.stderr)
@@ -522,13 +526,14 @@ sys.exit(9)
         state = json.loads(self.external.read_text())
         state["runs"] = [{"id": 123, "head_sha": source, "status": "completed", "conclusion": "failure", "event": "push"}]
         self.external.write_text(json.dumps(state))
+        self.commit_change("Add shell tabs.")
         # Another run starts an upload after the cutter's final read, before push.
         # GitHub serializes workflows, but not the local cutter and a workflow.
         git = shutil.which("git")
         self.executable("git", f'''#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
-if sys.argv[1:3] == ['push', '--atomic']:
+if sys.argv[1] == 'push' and any(arg.startswith('refs/tags/') for arg in sys.argv[2:]):
     path = Path(os.environ['EXTERNAL_STATE'])
     state = json.loads(path.read_text())
     release = state['releases']['builds/0.2.0/38']
@@ -559,7 +564,7 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
         self.assertIn("upload_started", result.stderr)
         self.assertNotIn("builds/0.2.0/40", self.command("git", "ls-remote", "--tags", "origin").stdout)
 
-    def test_failed_candidate_allows_same_version_empty_notes_and_blocks_stale_retry(self):
+    def test_failed_candidate_is_retried_unless_main_moved_and_blocks_stale_retry(self):
         self.cli("cut", VERSION="0.2.0")
         absent = Inventory(None, 37, False)
         self.assertEqual(self.ci("ci-init", absent)[0], 0)
@@ -567,10 +572,18 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
         state = json.loads(self.external.read_text())
         state["runs"] = [{"id": 123, "head_sha": source, "status": "completed", "conclusion": "failure", "event": "push"}]
         self.external.write_text(json.dumps(state))
-        frozen = self.command("git", "show", "builds/0.2.0/38:CHANGELOG.md").stdout
-        self.cli("cut")
-        self.assertIn('CURRENT_PROJECT_VERSION: "39"', (self.repo / "project.yml").read_text())
-        self.assertEqual((self.repo / "CHANGELOG.md").read_text(), frozen)
+        # Rebuilding the same commit under a new number would only burn it.
+        result = self.cli("cut", check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("make testflight-retry TAG=builds/0.2.0/38", result.stderr)
+        self.assertNotEqual(self.cli("cut", VERSION="0.3.0", check=False).returncode, 0)
+        # A change without notes still builds the same version.
+        (self.repo / "README.md").write_text("Heeler\n")
+        self.command("git", "add", "README.md")
+        self.command("git", "commit", "--quiet", "-m", "docs: add readme")
+        self.command("git", "push", "--quiet", "origin", "main")
+        self.assertIn("- Repair SSH. (#7)", self.cli("cut").stdout)
+        self.assertIn("builds/0.2.0/39", self.command("git", "ls-remote", "--tags", "origin").stdout)
         result = self.cli("retry", TAG="builds/0.2.0/38", DRY_RUN="1", check=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("newer candidate", result.stderr)
@@ -626,7 +639,6 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
         tags = self.command("git", "ls-remote", "--tags", "origin").stdout
         self.assertIn("refs/tags/builds/0.2.0/39", tags)
         self.assertIn("refs/tags/" + tag, tags)
-        self.assertIn('CURRENT_PROJECT_VERSION: "39"', (self.repo / "project.yml").read_text())
         env = dict(GITHUB_REF_NAME="builds/0.2.0/39", GITHUB_RUN_ID="300")
         absent = Inventory(None, 37, False)
         self.assertEqual(self.ci("ci-init", absent, **env)[0], 0)
@@ -662,10 +674,9 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
                      {"annotation_level": "notice", "message": "Due to capacity constraints, jobs targeting "
                                                                "macOS arm64 runners may experience longer queue times."}]
         candidate = job(1, "Resolve the candidate", "success", ("Checkout", "success"))
-        starved = job(2, "Test gate / HeelerSSH package E2E (iOS Simulator)", "cancelled")
-        summary = job(3, "Test gate / Build & test (iOS Simulator)", "failure",
-                      ("Set up job", "success"), ("Require every worker to succeed", "failure"))
-        shortage = [candidate, starved, summary, job(4, "Upload or observe the candidate", "skipped")]
+        starved = job(2, "Upload or observe the candidate", "cancelled")
+        record = job(3, "Record the processed TestFlight build", "skipped")
+        shortage = [candidate, starved, record]
 
         def retry(jobs, attempt=1, latest=None, annotations=None):
             state = json.loads(self.external.read_text())
@@ -686,23 +697,24 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
         for jobs, options, reason in (
             (shortage, {"attempt": 3}, "Attempt 3 was the last automatic one"),
             (shortage, {"latest": 2}, "Attempt 2 has already started"),
-            (shortage, {"annotations": {}}, "package E2E (iOS Simulator) ended cancelled for another reason"),
-            ([*shortage, job(5, "Test gate / App tests (ordinary)", "failure", ("Run tests", "failure"))], {},
-             "App tests (ordinary) ended failure for another reason"),
-            ([candidate, summary], {}, "every job got a runner"),
+            (shortage, {"annotations": {}}, "Upload or observe the candidate ended cancelled for another reason"),
+            ([candidate, job(2, "Upload or observe the candidate", "failure", ("Archive", "failure")), record], {},
+             "Upload or observe the candidate ended failure for another reason"),
+            ([candidate, record], {}, "every job got a runner"),
         ):
             with self.subTest(reason=reason):
                 output, reruns = retry(jobs, **options)
                 self.assertEqual(reruns, [])
                 self.assertIn(reason, output)
 
-    def test_automatic_retry_follows_the_release_and_summary_jobs(self):
-        module = script_module("testflight_retry")
+    def test_release_archives_the_tag_versions_without_tests_and_retries_follow_it(self):
         workflows = SCRIPTS.parent / ".github/workflows"
-        self.assertIn("\nname: Release\n", (workflows / "release.yml").read_text())
+        release = (workflows / "release.yml").read_text()
+        self.assertIn("\nname: Release\n", release)
         self.assertIn("\n    workflows: [Release]\n", (workflows / "release-retry.yml").read_text())
-        summary = (workflows / "ci-full.yml").read_text().split("\n  build-test:\n", 1)[1]
-        self.assertEqual(re.search(r"(?m)^      - name: (.+)$", summary)[1], module.WORKER_CHECK)
+        self.assertIn('MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD"', release)
+        self.assertNotIn("ci-full", release)
+        self.assertNotIn("make test", release)
 
     def test_the_record_folds_above_the_notes_and_older_records_still_read(self):
         self.cli("cut", VERSION="0.2.0")
@@ -849,29 +861,38 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
                 self.assertIn(message, output)
                 self.assertEqual(self.record()[1]["state"], "reserved")
 
-    def test_cumulative_notes_freeze_per_build_and_version_advances_only_explicitly(self):
-        self.cli("cut", VERSION="0.2.0")
-        first = self.command("git", "show", "builds/0.2.0/38:CHANGELOG.md").stdout
-        for run_id, tag, version, note in ((123, "builds/0.2.0/38", "", "Fix notifications."),
-                                           (124, "builds/0.2.0/39", "0.3.0", "Add shell tabs.")):
+    def test_cumulative_notes_and_a_new_version_needs_the_last_one_folded(self):
+        def reserve(tag, run_id):
             self.assertEqual(self.ci("ci-init", Inventory(None, 37, False), GITHUB_REF_NAME=tag,
                                      GITHUB_RUN_ID=str(run_id))[0], 0)
-            source = self.command("git", "rev-parse", "HEAD").stdout.strip()
             state = json.loads(self.external.read_text())
-            state["runs"].append({"id": run_id, "head_sha": source, "status": "completed", "conclusion": "failure", "event": "push"})
+            state["runs"].append({"id": run_id, "head_sha": self.command("git", "rev-parse", "HEAD").stdout.strip(),
+                                  "status": "completed", "conclusion": "failure", "event": "push"})
             self.external.write_text(json.dumps(state))
-            notes = self.repo / "CHANGELOG.md"
-            notes.write_text(notes.read_text().replace("## [Unreleased]\n", f"## [Unreleased]\n\n### Fixed\n\n- {note} (#8)\n", 1))
-            self.command("git", "commit", "--quiet", "-am", "add notes")
-            self.command("git", "push", "--quiet", "origin", "main")
-            self.cli("cut", VERSION=version)
-        second = self.command("git", "show", "builds/0.2.0/39:CHANGELOG.md").stdout
+            return json.loads(self.external.read_text())["releases"][tag]["body"]
+
+        self.cli("cut", VERSION="0.2.0")
+        self.assertIn("Repair SSH.", reserve("builds/0.2.0/38", 123))
+        self.commit_change("Fix notifications.")
+        self.cli("cut")
+        second = reserve("builds/0.2.0/39", 124)
         self.assertIn("Repair SSH.", second)
         self.assertIn("Fix notifications.", second)
-        self.assertNotIn("Add shell tabs.", second)
-        self.assertEqual(self.command("git", "show", "builds/0.2.0/38:CHANGELOG.md").stdout, first)
-        self.assertIn('MARKETING_VERSION: "0.3.0"', (self.repo / "project.yml").read_text())
-        self.assertIn('CURRENT_PROJECT_VERSION: "40"', (self.repo / "project.yml").read_text())
+
+        self.commit_change("Add shell tabs.")
+        result = self.cli("cut", VERSION="0.3.0", check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("[Unreleased] still has 2 of builds/0.2.0/39's entries; move them under ## [0.2.0]",
+                      result.stderr)
+        notes = self.repo / "CHANGELOG.md"
+        notes.write_text(notes.read_text().replace(
+            "- Add shell tabs. (#8)\n", "- Add shell tabs. (#8)\n\n## [0.2.0]\n\n### Fixed\n\n", 1))
+        self.command("git", "commit", "--quiet", "-am", "fold 0.2.0")
+        self.command("git", "push", "--quiet", "origin", "main")
+        self.cli("cut", VERSION="0.3.0")
+        third = reserve("builds/0.3.0/40", 125)
+        self.assertIn("Add shell tabs.", third)
+        self.assertNotIn("Repair SSH.", third)
         self.assertEqual(self.command("git", "tag", "--list", "v*").stdout, "")
 
     def test_rehearsal_cannot_upload_or_create_a_record(self):
@@ -894,17 +915,63 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
         self.assertEqual(json.loads(self.external.read_text())["releases"], {})
         self.assertEqual(self.command("git", "tag", "--list").stdout.strip(), "builds/0.2.0/38")
 
-    def test_atomic_push_race_preserves_remote_winner_and_local_candidate(self):
-        tree = self.command("git", "rev-parse", "HEAD^{tree}").stdout.strip()
-        winner = self.command("git", "commit-tree", tree, "-p", "HEAD", "-m", "competing change").stdout.strip()
-        generator = (self.bin / "xcodegen").read_text()
-        self.executable("xcodegen", generator + f"\nimport subprocess\nsubprocess.run(['git', 'push', 'origin', '{winner}:refs/heads/main'], check=True)\n")
+    def test_a_failed_tag_push_keeps_the_local_tag_and_never_reuses_the_number(self):
+        hook = self.remote / "hooks/pre-receive"
+        hook.write_text("#!/bin/sh\necho 'refusing tags' >&2\nexit 1\n")
+        hook.chmod(0o755)
+        main = self.command("git", "ls-remote", "origin", "refs/heads/main").stdout
         result = self.cli("cut", VERSION="0.2.0", check=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Push outcome may be unknown", result.stderr)
         self.assertEqual(self.command("git", "ls-remote", "--tags", "origin").stdout, "")
-        self.assertIn(winner, self.command("git", "ls-remote", "origin", "refs/heads/main").stdout)
+        self.assertEqual(self.command("git", "ls-remote", "origin", "refs/heads/main").stdout, main)
         self.assertEqual(self.command("git", "cat-file", "-t", "builds/0.2.0/38").stdout.strip(), "tag")
+        hook.unlink()
+        result = self.cli("cut", VERSION="0.2.0", check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Local builds/0.2.0/38 already exists", result.stderr)
+
+    def test_a_promoted_record_settles_and_its_source_needs_a_change_or_new_version(self):
+        self.cli("cut", VERSION="0.2.0")
+        absent = Inventory(None, 37, False)
+        self.assertEqual(self.ci("ci-init", absent)[0], 0)
+        _, ipa = self.signed_fixture()
+        self.ci("ci-upload", absent, IPA=str(ipa), ASC_API_KEY_ID="key", ASC_API_ISSUER_ID="issuer")
+        valid = Inventory(AppleBuild("apple-38", "0.2.0", 38, "VALID"), 38, False)
+        self.assertEqual(self.ci("ci-observe", valid)[0], 0)
+        self.assertEqual(self.ci("ci-publish", valid)[0], 0)
+        # Saving the release on github.com promotes it and rewrites its body
+        # with CRLF endings.
+        state = json.loads(self.external.read_text())
+        release = state["releases"]["builds/0.2.0/38"]
+        release.update(prerelease=False, body=release["body"].replace("\n", "\r\n"))
+        state["runs"] = [{"id": 123, "head_sha": self.command("git", "rev-parse", "HEAD").stdout.strip(),
+                          "status": "completed", "conclusion": "success", "event": "push"}]
+        self.external.write_text(json.dumps(state))
+        self.assertIn('"state": "valid"', self.cli("status", TAG="builds/0.2.0/38").stdout)
+        result = self.cli("cut", DRY_RUN="1", check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("main is still builds/0.2.0/38's source; merge a change or pass a new VERSION", result.stderr)
+        self.commit_change("Fix notifications.")
+        result = self.cli("cut", DRY_RUN="1")
+        self.assertIn("TestFlight 0.2.0 (39)", result.stdout)
+        self.assertIn("- Fix notifications. (#8)\n- Repair SSH. (#7)", result.stdout)
+
+    def test_the_tag_names_the_versions_and_its_annotation_must_agree(self):
+        self.cli("cut", VERSION="0.2.0")
+        code, output = self.ci("ci-init", Inventory(None, 37, False))
+        self.assertEqual(code, 0, output)
+        self.assertIn("version=0.2.0\nbuild=38", output)
+        self.assertIn('MARKETING_VERSION: "0.1.16"', (self.repo / "project.yml").read_text())
+        source = self.command("git", "rev-parse", "HEAD").stdout.strip()
+        annotation = json.loads(self.command("git", "for-each-ref", "--format=%(contents)",
+                                             "refs/tags/builds/0.2.0/38").stdout)
+        tag = "builds/0.2.1/39"
+        self.command("git", "tag", "-a", tag, "-m", json.dumps(dict(annotation, tag=tag, build=39)), source)
+        self.command("git", "push", "--quiet", "origin", "refs/tags/" + tag)
+        code, output = self.ci("ci-init", Inventory(None, 38, False), GITHUB_REF_NAME=tag, GITHUB_RUN_ID="124")
+        self.assertNotEqual(code, 0)
+        self.assertIn("Tag and annotation disagree", output)
 
     def test_unaccepted_versions_and_target_mismatch_do_not_reserve(self):
         for version in ("0.1.15", "v0.2.0", "0.2.0-beta.1"):

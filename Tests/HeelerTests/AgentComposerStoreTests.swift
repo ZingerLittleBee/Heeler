@@ -781,7 +781,7 @@ struct AgentComposerStoreTests {
         #expect(store.draftSelection == NSRange(location: (store.draft as NSString).length, length: 0))
     }
 
-    @Test(arguments: ["", "keep 15 ", "keep 15\n"])
+    @Test(arguments: ["", "ends in a space ", "ends in a newline\n"])
     func aStagedPathAfterWhitespaceOrNothingGetsNoSecondSpace(draft: String) {
         let store = Self.draftOnlyStore()
         store.replaceDraft(with: draft)

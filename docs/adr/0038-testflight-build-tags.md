@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; cutting and the test gate superseded by ADR 0039
 ---
 
 # Tag TestFlight candidates, not App Store publication
