@@ -301,6 +301,19 @@ struct AgentSessionSettingsTests {
             .answered(since: before) == false)
     }
 
+    @Test("A confirmed switch stands until the transcript records other values")
+    @MainActor func overridesStandOverTheirTranscript() {
+        let overrides = AgentSettingOverrides()
+        let before: [String?] = ["default", "claude-opus-5-5", "high"]
+        overrides.set(.model, "sonnet", over: before)
+        overrides.set(.effort, "low", over: before)
+        #expect(overrides.value(.model, over: before) == "sonnet")
+        #expect(overrides.value(.effort, over: before) == "low")
+        #expect(overrides.value(.permissionMode, over: before) == nil)
+        // A newer reply records its own; the switch no longer stands over it.
+        #expect(overrides.value(.model, over: ["default", "claude-sonnet-5-5", "low"]) == nil)
+    }
+
     @Test("The permission mode is read off Claude Code's footer, not the conversation above it")
     func permissionModeOnScreen() throws {
         func screen(_ rows: [String]) -> ANSIScreen { ANSIScreenDecoder.decode(rows.joined(separator: "\r\n")) }

@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// One Agent's Composer and the staging its picks and drops upload through.
 ///
@@ -14,10 +15,9 @@ final class AgentComposerSession {
     let staging: ComposerStagingStore
     /// The core this Composer's Agent runs on, which the details showing it keep to.
     let corePin: TerminalCorePin
-    /// Chat's confirmed status-line switches (mode, model, effort), with the
-    /// transcript's values they were made over, so a rebuilt Chat keeps them
-    /// until a newer reply records its own.
-    var settingOverrides: (values: [String?], recorded: [String?])?
+    /// Chat's confirmed status-line switches, which every Chat showing this
+    /// Agent reads, and a rebuilt one keeps.
+    let settingOverrides = AgentSettingOverrides()
     /// The details showing this Agent, one key per window.
     private var presence: Set<UUID> = []
     private var leaveTask: Task<Void, Never>?
@@ -77,5 +77,26 @@ final class AgentComposerSession {
     /// out of sight.
     func didSuspend() {
         staging.didEnterBackground()
+    }
+}
+
+/// The mode, model and effort a status-line switch confirmed, over the
+/// transcript's values when it was made: once a newer reply records others,
+/// the transcript's stand again.
+@MainActor
+@Observable
+final class AgentSettingOverrides {
+    enum Setting: Int { case permissionMode, model, effort }
+
+    private var values: [String?] = [nil, nil, nil]
+    private var recorded: [String?] = []
+
+    func value(_ setting: Setting, over now: [String?]) -> String? {
+        recorded == now ? values[setting.rawValue] : nil
+    }
+
+    func set(_ setting: Setting, _ value: String?, over now: [String?]) {
+        if recorded != now { (values, recorded) = ([nil, nil, nil], now) }
+        values[setting.rawValue] = value
     }
 }

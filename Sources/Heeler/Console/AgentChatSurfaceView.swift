@@ -67,10 +67,6 @@ struct AgentChatSurfaceView: View {
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
     @State private var agentKeys: ChatAgentKeysStore
-    /// What a switch from the status line set, shown until the transcript records its own.
-    @State private var permissionModeOverride: String?
-    @State private var modelOverride: String?
-    @State private var effortOverride: String?
     /// Claude Code's "Switch model?" question, asked again on the phone.
     @State private var switchQuestion: SwitchQuestion?
     /// A status-line switch under way; the controls wait for it, since two
@@ -1002,8 +998,8 @@ struct AgentChatSurfaceView: View {
             changes: AgentDetailChanges(rows: console.rowChanges, agent: agent, open: showChanges),
             session: (chat?.conversation.transcript).map {
                 AgentSessionSettings(
-                    model: modelOverride ?? $0.model, permissionMode: permissionModeOverride ?? $0.permissionMode,
-                    effort: effortOverride ?? $0.effort)
+                    model: override(.model) ?? $0.model, permissionMode: override(.permissionMode) ?? $0.permissionMode,
+                    effort: override(.effort) ?? $0.effort)
             },
             sessionControls: sessionControls,
             chromeColorScheme: colorScheme,
@@ -1028,19 +1024,17 @@ struct AgentChatSurfaceView: View {
             interrupt: stopInterrupt)
         .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
         .frame(maxWidth: .infinity)
-        .onChange(of: chat?.conversation.transcript.permissionMode) { permissionModeOverride = nil }
         // The transcript records the mode as snapshots, and not every change
         // (plan approval moves to auto unrecorded); the footer shows it live.
         .task(id: agent.agent.status) { await readPermissionModeFromFooter() }
-        .onChange(of: chat?.conversation.transcript.model) { modelOverride = nil }
-        .onChange(of: chat?.conversation.transcript.effort) { effortOverride = nil }
-        .onChange(of: [permissionModeOverride, modelOverride, effortOverride]) { _, values in
-            session.settingOverrides = (values, recordedSettings)
-        }
-        .onAppear {
-            guard let kept = session.settingOverrides, kept.recorded == recordedSettings else { return }
-            (permissionModeOverride, modelOverride, effortOverride) = (kept.values[0], kept.values[1], kept.values[2])
-        }
+    }
+
+    private func override(_ setting: AgentSettingOverrides.Setting) -> String? {
+        session.settingOverrides.value(setting, over: recordedSettings)
+    }
+
+    private func setOverride(_ setting: AgentSettingOverrides.Setting, _ value: String?) {
+        session.settingOverrides.set(setting, value, over: recordedSettings)
     }
 
     /// The transcript's mode, model and effort, which the overrides stand over.
@@ -1058,13 +1052,13 @@ struct AgentChatSurfaceView: View {
             setPermissionMode: { target in switchSetting { await switchPermissionMode(to: target) } },
             setModel: { id in
                 switchSetting {
-                    if await typeCommand("/model \(id)", done: "Set model to", kept: "Kept model as") { modelOverride = id }
+                    if await typeCommand("/model \(id)", done: "Set model to", kept: "Kept model as") { setOverride(.model, id) }
                 }
             },
             setEffort: { level in
                 switchSetting {
                     if await typeCommand("/effort \(level)", done: "Set effort level to", kept: "Kept effort level as") {
-                        effortOverride = level
+                        setOverride(.effort, level)
                     }
                 }
             })
@@ -1078,7 +1072,8 @@ struct AgentChatSurfaceView: View {
 
     /// Runs one status-line switch at a time, and none while a Send types.
     private func switchSetting(_ work: @escaping @MainActor () async -> Void) {
-        guard !isSwitchingSetting, !isComposerSending else { return }
+        // A confirmation may close after a turn began; the menu's state is older.
+        guard !isSwitchingSetting, !isComposerSending, agentActivity() == .idle else { return }
         isSwitchingSetting = true
         Task {
             await work()
@@ -1092,7 +1087,7 @@ struct AgentChatSurfaceView: View {
         guard program == .claude, status == .idle || status == .done, !isSwitchingSetting,
             let screen = try? await readAgentScreen()
         else { return }
-        permissionModeOverride = AgentSessionSettings.permissionMode(onScreen: screen)
+        setOverride(.permissionMode, AgentSessionSettings.permissionMode(onScreen: screen))
     }
 
     /// Presses Shift+Tab, as the terminal would, until the footer shows `target`.
@@ -1107,12 +1102,13 @@ struct AgentChatSurfaceView: View {
             let mode = AgentSessionSettings.permissionMode(onScreen: screen)
             shown = mode
             if mode == target || attempt == AgentSessionSettings.permissionChoices.count + 1 { break }
+            guard agentActivity() == .idle else { break }
             do {
                 try await io.type(.keys(["shift+tab"]), whileShowing: { AgentSessionSettings.permissionMode(onScreen: $0) == mode })
             } catch { break }
             try? await Task.sleep(for: .milliseconds(300))
         }
-        if let shown { permissionModeOverride = shown }
+        if let shown { setOverride(.permissionMode, shown) }
         if shown != target { UINotificationFeedbackGenerator().notificationOccurred(.error) }
     }
 
