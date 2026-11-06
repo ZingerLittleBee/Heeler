@@ -45,6 +45,15 @@ its contract.
 
 ## Connection, input, and terminals
 
+- **Conversation title Rename:** [AgentTitleRenameStore](../../Sources/Heeler/Console/AgentTitleRenameStore.swift)
+  and [AgentTitleRenameSheet](../../Sources/Heeler/Console/AgentTitleRenameSheet.swift), created by
+  `ConsoleStore.titleRenameStore(for:)` from the list, Chat, and terminal's existing menus.
+  This is separate from `RenameStore` and `agent.rename` (the management alias).
+  [ADR 0040](../adr/0040-conversation-titles-use-native-agent-commands.md) records native commands,
+  generation capabilities, same-session checks and one-shot delivery. Focused tests:
+  [AgentTitleRenameTests](../../Tests/HeelerTests/AgentTitleRenameTests.swift) and opt-in
+  [AgentTitleRenameLiveTests](../../Tests/HeelerTests/AgentTitleRenameLiveTests.swift).
+
 | Task | Follow these owners | Contract and focused coverage |
 | --- | --- | --- |
 | Host setup, preflight, credentials | [HostOnboardingStore](../../Sources/Heeler/Hosts/HostOnboardingStore.swift), [Preflight](../../Sources/Heeler/Hosts/Preflight.swift), [TransportConnector](../../Sources/Heeler/Hosts/TransportConnector.swift) | [HostOnboardingStoreTests](../../Tests/HeelerTests/HostOnboardingStoreTests.swift), [PreflightReportTests](../../Tests/HeelerTests/PreflightReportTests.swift); [RSA ADR 0019](../adr/0019-rsa-sha2-key-authentication.md), [Herdr Endpoint ADR 0023](../adr/0023-herdr-endpoint-in-pairing-code-v2.md), [plugin launcher ADR 0029](../adr/0029-plugin-generates-the-herdr-endpoint-launcher.md) |
