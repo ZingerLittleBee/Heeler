@@ -921,8 +921,10 @@ struct AgentChatSurfaceView: View {
         // A status-line switch types into the same input line.
         let preflight = policy.preflight
         let isSwitching = { isSwitchingSetting }
+        let settle = settleUnansweredSwitch
         policy.preflight = { text in
             if isSwitching() { return .inputNotReady("Claude Code is switching a setting. Try again in a moment.") }
+            if let reason = await settle() { return .inputNotReady(reason) }
             return await preflight?(text)
         }
         return policy
@@ -1075,9 +1077,46 @@ struct AgentChatSurfaceView: View {
         // A confirmation may close after a turn began; the menu's state is older.
         guard !isSwitchingSetting, !isComposerSending, agentActivity() == .idle else { return }
         isSwitchingSetting = true
+        let settle = settleUnansweredSwitch
         Task {
-            await work()
+            if await settle() != nil {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            } else {
+                await work()
+            }
             isSwitchingSetting = false
+        }
+    }
+
+    /// After a switch whose paste or key got no answer: nothing goes until
+    /// the Host answers a read, and then the user hears once that the
+    /// command may still be in the Agent's input, as a Composer Send does.
+    private var settleUnansweredSwitch: @MainActor () async -> String? {
+        let overrides = session.settingOverrides
+        let io = chat?.screenIO
+        return {
+            guard overrides.lastSwitchHasNoAnswer else { return nil }
+            guard let io, (try? await io.readScreen()) != nil else {
+                return "The Host has not answered the last setting change."
+            }
+            overrides.lastSwitchHasNoAnswer = false
+            return "The last setting command may still be in the Agent's input. Check the terminal."
+        }
+    }
+
+    /// Types one step of a switch. A refusal typed nothing; any other failure
+    /// may still arrive, so it is kept until settled.
+    private func typeSwitchStep(
+        _ io: BlockedScreenIO, _ typing: BlockedScreenIO.Typing,
+        whileShowing check: @escaping @Sendable (ANSIScreen) -> Bool
+    ) async throws {
+        do {
+            try await io.type(typing, whileShowing: check)
+        } catch let refusal as HerdrCoreChatTyping.Refusal {
+            throw refusal
+        } catch {
+            session.settingOverrides.lastSwitchHasNoAnswer = true
+            throw error
         }
     }
 
@@ -1104,7 +1143,7 @@ struct AgentChatSurfaceView: View {
             if mode == target || attempt == AgentSessionSettings.permissionChoices.count + 1 { break }
             guard agentActivity() == .idle else { break }
             do {
-                try await io.type(.keys(["shift+tab"]), whileShowing: { AgentSessionSettings.permissionMode(onScreen: $0) == mode })
+                try await typeSwitchStep(io, .keys(["shift+tab"]), whileShowing: { AgentSessionSettings.permissionMode(onScreen: $0) == mode })
             } catch { break }
             try? await Task.sleep(for: .milliseconds(300))
         }
@@ -1131,9 +1170,12 @@ struct AgentChatSurfaceView: View {
                 throw CancellationError()
             }
             let was = AgentSessionSettings.Outcome(of: command, done: done, kept: kept, on: before)
-            try await io.type(.paste(command + " "), whileShowing: { PreSendGate.check($0, program: .claude, activity: .idle) == .send })
+            // A turn may have begun while the screen was read.
+            guard activity() == .idle else { throw CancellationError() }
+            try await typeSwitchStep(io, .paste(command + " "), whileShowing: { PreSendGate.check($0, program: .claude, activity: .idle) == .send })
             try await Task.sleep(for: .milliseconds(150))
-            try await io.type(.keys(["enter"]), whileShowing: { screen in
+            guard activity() == .idle else { throw CancellationError() }
+            try await typeSwitchStep(io, .keys(["enter"]), whileShowing: { screen in
                 guard case .text(let typed) = InputBoxStateDetector.detect(screen, program: .claude) else { return false }
                 return typed.contains(command)
             })
@@ -1155,7 +1197,7 @@ struct AgentChatSurfaceView: View {
                     _ = try await io.readScreen()
                     // Yes is the highlighted first option; Esc is the TUI's go back.
                     // Enter picks Yes only while the selection is still on it.
-                    try await io.type(.keys([yes ? "enter" : "esc"]), whileShowing: { screen in
+                    try await typeSwitchStep(io, .keys([yes ? "enter" : "esc"]), whileShowing: { screen in
                         guard let now = SwitchQuestion(screen) else { return false }
                         return now == question && (!yes || now.yesIsFocused)
                     })

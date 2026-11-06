@@ -80,23 +80,26 @@ final class AgentComposerSession {
     }
 }
 
-/// The mode, model and effort a status-line switch confirmed, over the
-/// transcript's values when it was made: once a newer reply records others,
-/// the transcript's stand again.
+/// The mode, model and effort a status-line switch confirmed, each over the
+/// transcript's value for it when it was made: once the transcript records
+/// another, the transcript's stands again.
 @MainActor
 @Observable
 final class AgentSettingOverrides {
     enum Setting: Int { case permissionMode, model, effort }
 
     private var values: [String?] = [nil, nil, nil]
-    private var recorded: [String?] = []
+    private var recorded: [String?] = [nil, nil, nil]
+    /// A switch's paste or key got no answer, so it may still reach the
+    /// Agent's input; the next input waits until the Host answers a read.
+    var lastSwitchHasNoAnswer = false
 
     func value(_ setting: Setting, over now: [String?]) -> String? {
-        recorded == now ? values[setting.rawValue] : nil
+        recorded[setting.rawValue] == now[setting.rawValue] ? values[setting.rawValue] : nil
     }
 
     func set(_ setting: Setting, _ value: String?, over now: [String?]) {
-        if recorded != now { (values, recorded) = ([nil, nil, nil], now) }
         values[setting.rawValue] = value
+        recorded[setting.rawValue] = now[setting.rawValue]
     }
 }

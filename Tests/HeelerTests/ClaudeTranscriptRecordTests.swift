@@ -312,6 +312,9 @@ struct AgentSessionSettingsTests {
         #expect(overrides.value(.permissionMode, over: before) == nil)
         // A newer reply records its own; the switch no longer stands over it.
         #expect(overrides.value(.model, over: ["default", "claude-sonnet-5-5", "low"]) == nil)
+        // The footer's mode is not the reply's to replace.
+        overrides.set(.permissionMode, "auto", over: before)
+        #expect(overrides.value(.permissionMode, over: ["default", "claude-sonnet-5-5", "low"]) == "auto")
     }
 
     @Test("The permission mode is read off Claude Code's footer, not the conversation above it")
