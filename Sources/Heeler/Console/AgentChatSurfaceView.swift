@@ -1034,6 +1034,19 @@ struct AgentChatSurfaceView: View {
         .task(id: agent.agent.status) { await readPermissionModeFromFooter() }
         .onChange(of: chat?.conversation.transcript.model) { modelOverride = nil }
         .onChange(of: chat?.conversation.transcript.effort) { effortOverride = nil }
+        .onChange(of: [permissionModeOverride, modelOverride, effortOverride]) { _, values in
+            session.settingOverrides = (values, recordedSettings)
+        }
+        .onAppear {
+            guard let kept = session.settingOverrides, kept.recorded == recordedSettings else { return }
+            (permissionModeOverride, modelOverride, effortOverride) = (kept.values[0], kept.values[1], kept.values[2])
+        }
+    }
+
+    /// The transcript's mode, model and effort, which the overrides stand over.
+    private var recordedSettings: [String?] {
+        let transcript = chat?.conversation.transcript
+        return [transcript?.permissionMode, transcript?.model, transcript?.effort]
     }
 
     /// Claude Code's permission mode and model, switched from the status line.
@@ -1107,21 +1120,27 @@ struct AgentChatSurfaceView: View {
     /// still shows. True only once `done` answers this command; `kept`, a No,
     /// or neither is not.
     private func typeCommand(_ command: String, done: String, kept: String) async -> Bool {
-        let read = readAgentScreen
+        // A Blocked card's way in: on a herdr-core Host each step types only
+        // while the process read last still holds the terminal and its check
+        // passes on the screen it types over.
+        guard let io = chat?.screenIO else { return false }
         let activity = agentActivity
         do {
-            let before = try await read()
+            let before = try await io.readScreen()
             guard PreSendGate.check(before, program: .claude, activity: activity()) == .send else {
                 throw CancellationError()
             }
             let was = AgentSessionSettings.Outcome(of: command, done: done, kept: kept, on: before)
-            try await console.pasteIntoAgent(command + " ", paneID: agent.agent.paneID, on: agent.hostID)
+            try await io.type(.paste(command + " "), whileShowing: { PreSendGate.check($0, program: .claude, activity: .idle) == .send })
             try await Task.sleep(for: .milliseconds(150))
-            guard await agentKeys.deliver(["enter"]) == .sent else { throw CancellationError() }
+            try await io.type(.keys(["enter"]), whileShowing: { screen in
+                guard case .text(let typed) = InputBoxStateDetector.detect(screen, program: .claude) else { return false }
+                return typed.contains(command)
+            })
             var asked = false
             for _ in 0..<12 {
                 try await Task.sleep(for: .milliseconds(250))
-                let screen = try await read()
+                let screen = try await io.readScreen()
                 if let answered = AgentSessionSettings.Outcome(of: command, done: done, kept: kept, on: screen)
                     .answered(since: was)
                 {
@@ -1133,9 +1152,10 @@ struct AgentChatSurfaceView: View {
                     let yes = await withCheckedContinuation { switchQuestion = question.answering(with: $0) }
                     // Another client may have answered it meanwhile; keys
                     // then would land on whatever replaced it.
-                    guard SwitchQuestion(try await read()) == question else { break }
+                    _ = try await io.readScreen()
                     // Yes is the highlighted first option; Esc is the TUI's go back.
-                    guard await agentKeys.deliver([yes ? "enter" : "esc"]) == .sent, yes else { return false }
+                    try await io.type(.keys([yes ? "enter" : "esc"]), whileShowing: { SwitchQuestion($0) == question })
+                    guard yes else { return false }
                 }
             }
         } catch {}
@@ -1494,7 +1514,7 @@ enum ChatStageExit {
 }
 
 /// Claude Code's "Switch model?" dialog as the screen shows it (2.1.319).
-private struct SwitchQuestion: Equatable {
+private struct SwitchQuestion: Equatable, Sendable {
     let title: String
     let detail: String
     let yes: String

@@ -246,6 +246,9 @@ final class AgentChatStore {
     /// overdue when Chat opens is the check opening makes anyway.
     @ObservationIgnored private var lateEvidenceCheckAt: Date?
     @ObservationIgnored private let source: AgentChatSource
+    /// The pane as a Blocked card types into it: on a herdr-core Host, each
+    /// step only while the process read last still holds the terminal.
+    var screenIO: BlockedScreenIO { source.screen }
     /// The pictures image rows show, read over the same Host connection.
     @ObservationIgnored let thumbnails: ChatImageThumbnails
     @ObservationIgnored private let timing: Timing

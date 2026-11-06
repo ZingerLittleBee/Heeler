@@ -14,6 +14,10 @@ final class AgentComposerSession {
     let staging: ComposerStagingStore
     /// The core this Composer's Agent runs on, which the details showing it keep to.
     let corePin: TerminalCorePin
+    /// Chat's confirmed status-line switches (mode, model, effort), with the
+    /// transcript's values they were made over, so a rebuilt Chat keeps them
+    /// until a newer reply records its own.
+    var settingOverrides: (values: [String?], recorded: [String?])?
     /// The details showing this Agent, one key per window.
     private var presence: Set<UUID> = []
     private var leaveTask: Task<Void, Never>?
