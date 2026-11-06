@@ -6,7 +6,7 @@ create another tag, or run another repository command.
 
 ```sh
 make testflight VERSION=0.2.0 DRY_RUN=1 # inspect the first candidate plan
-make testflight VERSION=0.2.0           # set the intended version and push a build tag
+make testflight VERSION=0.2.0           # tag main as a build of the intended version
 make testflight                         # another build of the same version
 make testflight VERSION=0.2.1           # explicitly start the next version
 make release-status TAG=builds/0.2.0/39
@@ -18,9 +18,9 @@ make testflight-beta TAG=builds/0.2.0/39 NOTES=notes.txt  # release to external 
 
 Numbers are illustrative; migration must establish the real counter first.
 Mutating commands print their plan and ask for confirmation. `YES=1` skips
-only the prompt; `DRY_RUN=1` creates no commit, tag, push, dispatch, or upload.
+only the prompt; `DRY_RUN=1` creates no tag, push, dispatch, or upload.
 Options are make variables, not `--dry-run` (which make interprets as `-n`).
-Requires Git, authenticated `gh`, Python 3.9+, and XcodeGen for candidate cuts.
+Requires Git, authenticated `gh` and Python 3.9+.
 
 `make publish`, `make bump`, and `make upload` are retired and fail with an
 explanation. They are not aliases: `make testflight` now pushes a tag and starts
@@ -29,8 +29,9 @@ for local inspection, and `make plugin` remains independent.
 
 The implementation is [testflight.py](../../scripts/testflight.py) and
 [release.yml](../../.github/workflows/release.yml). The rationale is
-[ADR 0038](../adr/0038-testflight-build-tags.md); the earlier
-[research](../research/app-store-build-tags.md) preserves the alternatives.
+[ADR 0038](../adr/0038-testflight-build-tags.md), with builds that tag `main`
+and run no tests from [ADR 0039](../adr/0039-release-builds-tag-main-without-tests.md);
+the earlier [research](../research/app-store-build-tags.md) preserves the alternatives.
 
 ## Candidate identity and notes
 
@@ -40,22 +41,28 @@ annotation records bundle ID, platform, version, build, source commit, and
 bundled plugin version. Historical `v*` tags retain their old meaning and stay
 unchanged. A tag reserves a build; it does not prove an upload or store release.
 
-All three signed targets agree in `project.yml` and the committed Xcode project.
+The tag, not the committed project, names the version and build. The archive
+passes both to all three signed targets, and the IPA check verifies each bundle.
+`project.yml` and the Xcode project keep the values of the last build cut before
+ADR 0039; they set local builds and stay a floor for the version and counter.
 Heeler uses a global increasing build counter even though iOS allows different
 marketing versions to have their own number sequences. Failed reservations
 consume numbers. Never reuse a number or move a tag, including before upload.
 
-`CHANGELOG.md` remains the notes source. Each cut merges `[Unreleased]` into
-one cumulative `## [X.Y.Z]` section, with no claimed App Store date. Existing
-dated historical sections are not rewritten. A rebuild may have no new notes;
-a new version needs notes. Duplicate categories/entries or a historical section
-collision require explicit reconciliation. Each tag freezes its own notes, so
-store metadata uses the selected build's snapshot, not newer notes on `main`.
+`CHANGELOG.md` remains the notes source, and a cut never rewrites it. A build's
+notes are its commit's `[Unreleased]` folded into one cumulative, undated
+`## [X.Y.Z]` section for its version; its build record carries them. A rebuild
+may have no new notes; a new version needs notes. Before starting a new version,
+move the entries the newest build included from `[Unreleased]` under its
+`## [X.Y.Z]` heading; the cut refuses until then. Duplicate categories/entries
+or a historical section collision require explicit reconciliation. Each tag's
+commit fixes its notes, so store metadata uses the selected build's notes, not
+newer notes on `main`.
 
 ## Cutting a build
 
-1. Require a clean `main` equal to freshly fetched `origin/main`, matching target
-   settings, and the plugin version already published on the `plugin` branch.
+1. Require a clean `main` equal to freshly fetched `origin/main` and the plugin
+   version already published on the `plugin` branch.
 2. Require explicit `VERSION=X.Y.Z` for the first candidate. Thereafter an omitted
    version keeps the current one. Version downgrades and `BUILD` overrides fail.
 3. Require preceding reservations to be settled. A running workflow, missing
@@ -64,22 +71,25 @@ store metadata uses the selected build's snapshot, not newer notes on `main`.
    provided it does not hide an older unresolved upload. So does a tag whose
    push run ended without its first job ever succeeding: that job saves the
    checkpoint and every later job needs it, so the tag is void.
-4. Allocate one above the maximum committed counter and all well-formed remote
-   build-tag numbers. Print the files, notes, tag, commit and atomic push plan.
-5. After confirmation, merge notes, update all target versions, regenerate the
-   project, commit those files, annotate the tag, and atomically push `main` and
-   the tag without force. A competing push fails rather than rebasing an already
-   allocated number. Preserve the local commit/tag and inspect remote refs if
-   the push response is lost; do not assume that nothing reached GitHub.
+4. Refuse the commit the newest build already has, unless that tag is void or
+   its binary was rejected. A pre-upload failure is retried with
+   `make testflight-retry`; otherwise merge a change or pass a new `VERSION`.
+5. Allocate one above the maximum committed counter and all well-formed remote
+   build-tag numbers. Print the tag, commit, plugin version and notes.
+6. After confirmation, recheck settlement, annotate the tag on the `main` commit
+   and push only the tag, without force. Nothing is committed. Preserve the
+   local tag and inspect remote tags if the push response is lost; do not
+   assume that nothing reached GitHub.
 
-The generated commit intentionally goes directly to `main`, just as the previous
-release cutter did. Its tag must identify exactly the tested source and settings.
+No tests run when cutting or in the release workflow, and neither reads CI
+status. Run [ci-full.yml](../../.github/workflows/ci-full.yml) by hand first
+when a change needs full coverage.
 
 ## GitHub Actions triggers and gates
 
 | Entry | Result |
 | --- | --- |
-| Push `builds/**` | Exact tag/annotation/source validation, full same-commit tests, signed archive, Apple validation and a single upload |
+| Push `builds/**` | Exact tag/annotation/source validation, a signed archive with the tag's version and build, Apple validation and a single upload. No tests |
 | Push ordinary `main` or a historical `v*` tag | No distribution workflow |
 | `make release-check VERSION=X.Y.Z` | Manual dispatch from `main`, explicit version, next unreserved build as an override; archive and validate, never upload or reserve a number |
 | `make testflight-retry TAG=...` | Re-run failed jobs of the original tag's run after reporting the recovery action |
@@ -87,18 +97,17 @@ release cutter did. Its tag must identify exactly the tested source and settings
 | Select a build in App Store Connect | No GitHub Action or new tag |
 
 `meta` validates the immutable source and creates a draft prerelease checkpoint.
-`test` still calls the complete `ci-full.yml` app and SSH package lanes, with
-read-only permissions and no signing secrets. `archive` requires that gate,
-except for an explicitly requested rehearsal. It uses the committed project,
-pinned packages without a restored cache, manual signing, and the existing IPA
-version/bundle/entitlement checks in [release-signing.py](../../scripts/release-signing.py).
+`archive` follows it directly. It uses the committed project with the tag's
+version and build, pinned packages without a restored cache, manual signing,
+and the existing IPA version/bundle/entitlement checks in
+[release-signing.py](../../scripts/release-signing.py).
 Export keeps `manageAppVersionAndBuildNumber=false`.
 
 The signing job queries Apple before building and again immediately before
 upload. An unexpectedly occupied/higher build or closed version stops it;
 it never silently rewrites the candidate. App-wide concurrency serializes
 distribution workflows, but is not a FIFO queue or a lock on local commands.
-The cutter rechecks settlement after confirmation and generation. A retry can
+The cutter rechecks settlement after confirmation. A retry can
 still start between its final read and push, leaving a newer reserved tag while
 the older upload is unresolved. CI checks predecessor settlement again inside
 the workflow concurrency lock, before archive and upload. The newer tag remains
@@ -130,7 +139,7 @@ stays frozen so reruns do not change the manifest identity.
 | Outcome | Recovery |
 | --- | --- |
 | A job never got a runner, as when GitHub runs short of macOS capacity | Retried automatically until the run's third attempt. After that, check GitHub's status and run `make testflight-retry`. |
-| Test, signing, archive, validation, or pre-upload check fails | Retry a transient failure on the same tag. A code change needs a new build number; the failed tag remains. |
+| Signing, archive, validation, or pre-upload check fails | Retry a transient failure on the same tag; a cut from the same commit refuses. A code fix needs a new build number; the failed tag remains. |
 | dSYM validation or retention fails | No Apple upload starts. Fix a transient storage failure and retry; conflicting/incomplete assets require reconciliation, never overwrite. |
 | Upload response is lost, or Apple has not exposed it yet | Retry observation only. An empty Apple response does not prove the upload failed. The candidate remains unresolved. |
 | Apple is processing | Retry observation, without building or uploading. CI polls for up to 15 minutes per attempt. |
@@ -142,11 +151,10 @@ stays frozen so reruns do not change the manifest identity.
 | No checkpoint otherwise, conflicting identity, or ambiguous side effect | Stop for operator reconciliation; do not recreate a checkpoint by guessing. |
 
 Recovery deliberately uses `gh run rerun --failed`, not a new dispatch from
-`main`: the original run keeps the candidate's SHA and its completed full-test
-evidence. The automatic retry takes the same path and checks, but only when
-every failed job either carries GitHub's "not acquired by Runner" annotation or
-is the test gate's summary, so a test failure or a run cancelled by hand waits
-for a person. Manual dispatch remains rehearsal-only. GitHub allows reruns for
+`main`: the original run keeps the candidate's SHA and its checkpoint. The
+automatic retry takes the same path and checks, but only when every failed job
+carries GitHub's "not acquired by Runner" annotation, so a build failure or a
+run cancelled by hand waits for a person. Manual dispatch remains rehearsal-only. GitHub allows reruns for
 30 days; after that, operator reconciliation is required. A failed candidate
 proved not to have uploaded can be superseded with a new number, but a known
 or possible upload must be reconciled first. Never delete/re-cut a tag as recovery.
@@ -260,7 +268,7 @@ Shared settings, dispatches and uploads require maintainer authorization.
    inventory, signing, export, IPA validation and dSYM matching/packaging.
    Rehearsal does not prove tag environment access or asset/upload behavior.
 6. Review the first `make testflight VERSION=<intended-version> DRY_RUN=1`, then
-   authorize the real cut. Verify tag/annotation, full tests, Apple `VALID`, the
+   authorize the real cut. Verify tag/annotation, Apple `VALID`, the
    prerelease/manifest and matching dSYM ZIP, and absence of a new `v*` tag.
    Verify one subsequent build retains the marketing version and advances the
    global build number.

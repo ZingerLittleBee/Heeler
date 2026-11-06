@@ -1,4 +1,6 @@
 # Immutable TestFlight candidates. Store submission stays in App Store Connect.
+# A build tag names a main commit; this workflow archives it with the tag's
+# version and build and uploads it, without running the test suites (ADR 0039).
 # See docs/guides/releasing.md for numbering, recovery and migration policy.
 name: Release
 
@@ -46,29 +48,14 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: python3 scripts/testflight.py ci-init
 
-  test:
-    name: Test gate
-    needs: meta
-    if: needs.meta.outputs.mode == 'candidate'
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/ci-full.yml
-
   archive:
     name: Upload or observe the candidate
-    needs: [meta, test]
-    # A rehearsal skips tests. A candidate always needs the full same-SHA gate.
-    if: >-
-      ${{ !cancelled() && needs.meta.result == 'success' &&
-      (needs.test.result == 'success' ||
-      (needs.meta.outputs.mode == 'rehearsal' && needs.test.result == 'skipped')) }}
+    needs: meta
     # iPhone Duo fills its inner display only for apps built with the iOS
     # 27.1 SDK or later; an iOS 26 SDK build sits centered with empty space
     # around it (#625, developer.apple.com/iphone-duo/prepare). The Duo
     # controls also sit behind `#if compiler(>=6.4)`. `Xcode_27.2.app` is the
-    # image's alias for its 27.2 install, release candidate or final. The
-    # test gate stays on Xcode 26.6.
+    # image's alias for its 27.2 install, release candidate or final.
     runs-on: xcode-27
     timeout-minutes: 90
     environment: release
@@ -126,19 +113,18 @@ jobs:
 
       - name: Archive
         if: steps.plan.outputs.action == 'archive'
+        # The tag, not the committed project, names the version and build.
+        # Command-line settings apply to every target, so the app and its
+        # extensions agree; verify-ipa checks each bundle.
         run: |
           set -euo pipefail
-          overrides=()
-          if [[ "$MODE" == rehearsal ]]; then
-            overrides=(MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD")
-          fi
           xcodebuild -project Heeler.xcodeproj -scheme Heeler -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Heeler.xcarchive" \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/spm" \
             -onlyUsePackageVersionsFromResolvedFile \
             -xcconfig "$RUNNER_TEMP/signing/signing.xcconfig" \
-            ${overrides[@]+"${overrides[@]}"} \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
             DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
             HEELER_SOURCE_REVISION="$(git rev-parse HEAD)" \
             archive
