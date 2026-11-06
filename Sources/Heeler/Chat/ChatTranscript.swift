@@ -810,6 +810,8 @@ struct ChatNotice: Equatable, Codable, Sendable {
         case review
         /// Answers to questions asked outside a tool.
         case answered
+        /// A scheduled task fired and started a turn of its own.
+        case scheduledTask
         /// Anything else worth a line.
         case system
     }

@@ -224,6 +224,9 @@ enum ClaudeTranscriptProjection {
         case .system("local_command"):
             guard case .command(let typed) = ClaudeUserText.classify(record.system?.content ?? "") else { return nil }
             return (record.system?.commandRun ?? typed).displayText
+        case .system("scheduled_task_fire"):
+            // Delivers the enqueue Claude Code wrote for the task's prompt.
+            return record.system?.scheduledPrompt.flatMap(promptText)
         default:
             return nil
         }
@@ -884,6 +887,12 @@ private struct Builder {
             add(
                 "notice:\(record.uuid)", at: record,
                 .notice(ChatNotice(kind: .stopped, title: "All background agents stopped")))
+        case "scheduled_task_fire":
+            // Its prompt follows as a meta record; the line stands for both,
+            // not a bubble, since nobody typed it.
+            add(
+                "notice:\(record.uuid)", at: record,
+                .notice(ChatNotice(kind: .scheduledTask, title: "Scheduled task", detail: record.system?.scheduledPrompt)))
         case "informational" where ClaudeTranscriptProjection.unknownCommand(record) != nil:
             addUnknownCommand(record, content: content)
         default:
@@ -1125,7 +1134,7 @@ private struct Builder {
     /// before one of them never gets one.
     private static func isTurnBoundary(_ record: ClaudeRecord) -> Bool {
         switch record.kind {
-        case .system("turn_duration"):
+        case .system("turn_duration"), .system("scheduled_task_fire"):
             return true
         case .user:
             guard record.toolResults.isEmpty, !record.isMeta, !record.isCompactSummary,
@@ -1147,6 +1156,9 @@ private struct Builder {
     /// origin open one too: what follows them is not the turn before.
     private static func opensTurn(_ record: ClaudeRecord, whileOpen: Bool) -> Bool {
         switch record.kind {
+        case .system("scheduled_task_fire"):
+            // Fired between turns; its reply is not the turn before's.
+            return true
         case .system("local_command"):
             guard !whileOpen, case .command = ClaudeUserText.classify(record.system?.content ?? "") else { return false }
             return true

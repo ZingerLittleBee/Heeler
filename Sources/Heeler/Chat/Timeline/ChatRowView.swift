@@ -1108,6 +1108,7 @@ private struct ChatNoticeRow: View {
         case .hook: "link"
         case .review: "eye"
         case .answered: "checkmark.bubble"
+        case .scheduledTask: "clock.arrow.circlepath"
         case .system: "info.circle"
         }
     }

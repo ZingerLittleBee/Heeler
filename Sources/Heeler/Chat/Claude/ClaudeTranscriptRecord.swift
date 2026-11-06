@@ -270,6 +270,8 @@ struct ClaudeSystemDetails: Sendable, Equatable {
     var fallbackModel: String?
     /// `commandRun` on a local command record.
     var commandRun: ChatCommandInvocation?
+    /// `prompt` on a `scheduled_task_fire`: what the scheduled task asks.
+    var scheduledPrompt: String?
 }
 
 /// `compactMetadata` of a `compact_boundary`.
@@ -413,7 +415,8 @@ extension ClaudeRecord {
                         ChatCommandInvocation(
                             name: $0.hasPrefix("/") ? String($0.dropFirst()) : $0, arguments: run.args ?? "")
                     }
-                })
+                },
+                scheduledPrompt: raw.prompt.map { String($0.prefix(Self.systemContentCap)) })
         case .attachment(let attachmentType):
             guard let rawAttachment = raw.attachment else { break }
             var details = ClaudeAttachmentDetails(planFilePath: rawAttachment.planFilePath)
@@ -616,6 +619,7 @@ private struct RawLine: Decodable {
     var retractedMessageUuids: [String]?
     var originalModel: String?
     var fallbackModel: String?
+    var prompt: String?
     var commandRun: RawCommandRun?
     var attachment: RawAttachment?
     var customTitle: String?
@@ -634,7 +638,7 @@ private struct RawLine: Decodable {
         case promptSource, origin, sourceToolUseID, isCompactSummary, isVisibleInTranscriptOnly
         case interruptedMessageId
         case toolUseResult, toolDenialKind, userFeedback, toolDenialUnanswered, content
-        case compactMetadata, retractedMessageUuids, originalModel, fallbackModel, commandRun
+        case compactMetadata, retractedMessageUuids, originalModel, fallbackModel, commandRun, prompt
         case attachment, customTitle, aiTitle, summary, permissionMode, relocatedCwd
         case continuedInSessionId, operation, cwd, timestamp
     }
@@ -675,6 +679,7 @@ private struct RawLine: Decodable {
         retractedMessageUuids = c.lenient([String].self, .retractedMessageUuids)
         originalModel = c.lenient(String.self, .originalModel)
         fallbackModel = c.lenient(String.self, .fallbackModel)
+        prompt = c.lenient(String.self, .prompt)
         commandRun = c.lenient(RawCommandRun.self, .commandRun)
         attachment = c.lenient(RawAttachment.self, .attachment)
         customTitle = c.lenient(String.self, .customTitle)
