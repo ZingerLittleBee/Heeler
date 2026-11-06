@@ -28,7 +28,7 @@ enum ClaudeTranscriptProjection {
             chain: chain, index: index, role: role, activity: context.activity, transcriptPath: transcriptPath)
         builder.build()
         let waiting = role == .main ? builder.addWaitingPrompts(waitingEnqueues(index)) : [:]
-        return ChatTranscript(
+        var transcript = ChatTranscript(
             entries: builder.entries, title: index.title,
             needsOlderHistory: context.windowStart > 0,
             pendingRequests: builder.pendingRequests,
@@ -42,6 +42,12 @@ enum ClaudeTranscriptProjection {
             turns: role == .main ? builder.turns : [],
             precedingTurnEnd: role == .main ? builder.precedingTurnEnd : nil,
             unrecordedEntryIDs: Set(waiting.values))
+        if role == .main {
+            transcript.model = index.model
+            transcript.effort = index.effort
+            transcript.permissionMode = index.permissionMode
+        }
+        return transcript
     }
 
     /// The output `record` holds for the call `use`, as its row's preview

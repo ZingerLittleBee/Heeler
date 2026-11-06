@@ -241,6 +241,9 @@ struct AgentComposerView: View {
     let hostTelemetry: HostTelemetryPresentation?
     /// The Agent's Checkout totals for the status row.
     var changes: AgentDetailChanges? = nil
+    /// The conversation's model and permission mode for the status row.
+    var session: AgentSessionSettings? = nil
+    var sessionControls: AgentSessionControls? = nil
     /// The terminal theme's luminance, not the system appearance. The status
     /// row sits directly on the themed terminal surface, so hierarchical
     /// styles and the status inks must resolve against that background — a
@@ -325,6 +328,8 @@ struct AgentComposerView: View {
                     status: status,
                     hostTelemetry: hostTelemetry,
                     changes: changes,
+                    session: session,
+                    sessionControls: sessionControls,
                     chromeColorScheme: chromeColorScheme)
 
                 VStack(spacing: 0) {

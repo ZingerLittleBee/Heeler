@@ -67,6 +67,12 @@ struct AgentChatSurfaceView: View {
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
     @State private var agentKeys: ChatAgentKeysStore
+    /// What a switch from the status line set, shown until the transcript records its own.
+    @State private var permissionModeOverride: String?
+    @State private var modelOverride: String?
+    @State private var effortOverride: String?
+    /// Claude Code's "Switch model?" question, asked again on the phone.
+    @State private var switchQuestion: SwitchQuestion?
     @State private var isRenamingAgent = false
     @State private var isRenamingWorkspace = false
     @State private var closeErrorMessage: String?
@@ -168,6 +174,15 @@ struct AgentChatSurfaceView: View {
         GeometryReader { proxy in
             presentedSurface
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+        }
+        .confirmationDialog(
+            switchQuestion?.title ?? "", isPresented: switchQuestionShown, titleVisibility: .visible,
+            presenting: switchQuestion
+        ) { question in
+            Button(question.yes) { answerSwitch(true) }
+            Button("No, go back", role: .cancel) { answerSwitch(false) }
+        } message: { question in
+            Text(verbatim: question.detail)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { surfaceHeight = $0 }
         // Keyboard avoidance is `TerminalKeyboardInset`'s, as on the
@@ -971,6 +986,12 @@ struct AgentChatSurfaceView: View {
                 status: console.hostStatuses[agent.hostID],
                 latency: console.hostLatencies[agent.hostID]),
             changes: AgentDetailChanges(rows: console.rowChanges, agent: agent, open: showChanges),
+            session: (chat?.conversation.transcript).map {
+                AgentSessionSettings(
+                    model: modelOverride ?? $0.model, permissionMode: permissionModeOverride ?? $0.permissionMode,
+                    effort: effortOverride ?? $0.effort)
+            },
+            sessionControls: sessionControls,
             chromeColorScheme: colorScheme,
             switcher: agentSwitcher,
             keyboardHandoff: keyboardHandoff,
@@ -993,6 +1014,91 @@ struct AgentChatSurfaceView: View {
             interrupt: stopInterrupt)
         .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
         .frame(maxWidth: .infinity)
+        .onChange(of: chat?.conversation.transcript.permissionMode) { permissionModeOverride = nil }
+        .onChange(of: chat?.conversation.transcript.model) { modelOverride = nil }
+        .onChange(of: chat?.conversation.transcript.effort) { effortOverride = nil }
+    }
+
+    /// Claude Code's permission mode and model, switched from the status line.
+    private var sessionControls: AgentSessionControls? {
+        guard program == .claude else { return nil }
+        let status = agent.agent.status
+        return AgentSessionControls(
+            isEnabled: status == .idle || status == .done,
+            setPermissionMode: { target in Task { await switchPermissionMode(to: target) } },
+            setModel: { id in
+                Task {
+                    if await typeCommand("/model \(id)", done: "Set model to", kept: "Kept model as") { modelOverride = id }
+                }
+            },
+            setEffort: { level in
+                Task {
+                    if await typeCommand("/effort \(level)", done: "Set effort level to", kept: "Kept effort level as") {
+                        effortOverride = level
+                    }
+                }
+            })
+    }
+
+    /// Presses Shift+Tab, as the terminal would, until the footer shows `target`.
+    /// A mode the session cannot reach (bypass without its launch flag) stops
+    /// after one full cycle, on whatever the footer then shows.
+    private func switchPermissionMode(to target: String) async {
+        let read = readAgentScreen
+        var shown: String?
+        for attempt in 0...AgentSessionSettings.permissionChoices.count + 1 {
+            guard let screen = try? await read() else { break }
+            shown = AgentSessionSettings.permissionMode(onScreen: screen)
+            if shown == target || attempt == AgentSessionSettings.permissionChoices.count + 1 { break }
+            guard await agentKeys.deliver(["shift+tab"]) == .sent else { break }
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        if let shown { permissionModeOverride = shown }
+        if shown != target { UINotificationFeedbackGenerator().notificationOccurred(.error) }
+    }
+
+    /// Types `command` and Enter into the Agent, as the terminal would, then
+    /// watches the screen. Claude Code may ask "Switch model?" (the cache is
+    /// lost); the same question is put to the user here, and their answer
+    /// pressed there. True only once a new `done` line shows; a new `kept`
+    /// line, a No, or neither is not.
+    private func typeCommand(_ command: String, done: String, kept: String) async -> Bool {
+        let read = readAgentScreen
+        func count(_ needle: String, in screen: ANSIScreen) -> Int {
+            screen.rows.reduce(0) { $0 + $1.text.components(separatedBy: needle).count - 1 }
+        }
+        do {
+            let before = try await read()
+            let (doneBefore, keptBefore) = (count(done, in: before), count(kept, in: before))
+            try await console.pasteIntoAgent(command + " ", paneID: agent.agent.paneID, on: agent.hostID)
+            try await Task.sleep(for: .milliseconds(150))
+            guard await agentKeys.deliver(["enter"]) == .sent else { throw CancellationError() }
+            var asked = false
+            for _ in 0..<12 {
+                try await Task.sleep(for: .milliseconds(250))
+                let screen = try await read()
+                if count(done, in: screen) > doneBefore { return true }
+                if count(kept, in: screen) > keptBefore { break }
+                if !asked, let question = SwitchQuestion(screen) {
+                    asked = true
+                    let yes = await withCheckedContinuation { switchQuestion = question.answering(with: $0) }
+                    // Yes is the highlighted first option; Esc is the TUI's go back.
+                    guard await agentKeys.deliver([yes ? "enter" : "esc"]) == .sent, yes else { return false }
+                }
+            }
+        } catch {}
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        return false
+    }
+
+    private var switchQuestionShown: Binding<Bool> {
+        Binding(get: { switchQuestion != nil }, set: { if !$0 { answerSwitch(false) } })
+    }
+
+    private func answerSwitch(_ yes: Bool) {
+        guard let question = switchQuestion else { return }
+        switchQuestion = nil
+        question.answer?.resume(returning: yes)
     }
 
     /// Chat's Stop: the program's Stop plan, in line with the Agent page's
@@ -1332,5 +1438,30 @@ enum ChatStageExit {
                 try? await Task.sleep(for: interval)
             }
         }
+    }
+}
+
+/// Claude Code's "Switch model?" dialog as the screen shows it (2.1.319).
+private struct SwitchQuestion {
+    let title: String
+    let detail: String
+    let yes: String
+    var answer: CheckedContinuation<Bool, Never>?
+
+    init?(_ screen: ANSIScreen) {
+        let rows = screen.rows.map { $0.text.trimmingCharacters(in: .whitespaces) }
+        guard let top = rows.lastIndex(where: { $0.hasSuffix("?") && $0.hasPrefix("Switch ") }),
+            let option = rows[top...].firstIndex(where: { $0.contains("Yes, switch to") })
+        else { return nil }
+        title = rows[top]
+        detail = rows[(top + 1)..<option].filter { !$0.isEmpty }.joined(separator: " ")
+        // "❯ 1. Yes, switch to Sonnet 5.5" → "Yes, switch to Sonnet 5.5"
+        yes = rows[option].range(of: "Yes, switch to").map { String(rows[option][$0.lowerBound...]) } ?? "Yes"
+    }
+
+    func answering(with continuation: CheckedContinuation<Bool, Never>) -> SwitchQuestion {
+        var copy = self
+        copy.answer = continuation
+        return copy
     }
 }

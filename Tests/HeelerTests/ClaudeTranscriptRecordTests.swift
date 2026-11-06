@@ -42,7 +42,25 @@ struct ClaudeTranscriptRecordTests {
         #expect(reducer.index.records.count == 119)
         #expect(reducer.index.title == "create-and-verify-probe-file")
         #expect(reducer.index.permissionMode == "default")
+        #expect(reducer.index.model == "claude-sonnet-5-5")
         #expect(reducer.index.diagnostics == ChatTranscriptDiagnostics())
+    }
+
+    @Test("The newest main reply's effort is the session's; a sidechain's is not")
+    func effortOfNewestReply() throws {
+        func reply(_ uuid: String, effort: String, sidechain: Bool = false) -> String {
+            #"{"type":"assistant","uuid":"\#(uuid)","parentUuid":null,"isSidechain":\#(sidechain),"effort":"\#(effort)","message":{"id":"m-\#(uuid)","model":"claude-fable-5-1","content":[{"type":"text","text":"ok"}]}}"#
+        }
+        #expect(try Self.record(reply("a1", effort: "high")).effort == "high")
+        var reducer = ClaudeTranscriptReducer()
+        reducer.append([
+            ChatLine(offset: 0, data: Data(reply("a1", effort: "medium").utf8)),
+            ChatLine(offset: 300, data: Data(reply("a2", effort: "high").utf8)),
+            ChatLine(offset: 600, data: Data(reply("s1", effort: "low", sidechain: true).utf8)),
+        ])
+        #expect(reducer.index.effort == "high")
+        #expect(AgentSessionSettings(model: "claude-fable-5-1", permissionMode: nil, effort: "high").modelLine == "Fable 5.1 · high")
+        #expect(AgentSessionSettings(model: "claude-fable-5-1", permissionMode: nil).modelLine == "Fable 5.1")
     }
 
     @Test("Metadata is last-wins by file position, whatever order lines arrive in")
@@ -225,5 +243,46 @@ struct ClaudeTranscriptRecordTests {
     private static func quoted(_ text: String) -> String {
         let data = (try? JSONEncoder().encode(text)) ?? Data()
         return String(decoding: data, as: UTF8.self)
+    }
+}
+
+@Suite("Agent session settings")
+struct AgentSessionSettingsTests {
+    @Test("Default mode and an empty model show nothing")
+    func quietWhenDefault() {
+        #expect(!AgentSessionSettings(model: nil, permissionMode: "default").showsAnything)
+        #expect(!AgentSessionSettings(model: "", permissionMode: nil).showsAnything)
+        #expect(AgentSessionSettings(model: nil, permissionMode: "bypassPermissions").notablePermissionMode == "bypassPermissions")
+        #expect(AgentSessionSettings.permissionTitle("bypassPermissions") == "bypass")
+        #expect(AgentSessionSettings.permissionTitle("weird") == "weird")
+    }
+
+    @Test("Claude model ids shorten to the footer's name; others stay")
+    func modelTitle() {
+        #expect(AgentSessionSettings.modelTitle("claude-opus-5-5") == "Opus 5.5")
+        #expect(AgentSessionSettings.modelTitle("claude-opus-5-5[1m]") == "Opus 5.5")
+        #expect(AgentSessionSettings.modelTitle("claude-sonnet-4-5-20250929") == "Sonnet 4.5")
+        #expect(AgentSessionSettings.modelTitle("claude-3-5-sonnet-20241022") == "claude-3-5-sonnet-20241022")
+        #expect(AgentSessionSettings.modelTitle("deepseek-v4.1-flash") == "deepseek-v4.1-flash")
+        #expect(AgentSessionSettings.modelTitle("mystery-1") == "mystery-1")
+    }
+
+    @Test("The model menu ticks the choice the recorded model is")
+    func modelChoiceMatch() {
+        #expect(AgentSessionSettings.model("claude-opus-5-5", is: "opus"))
+        #expect(!AgentSessionSettings.model("claude-opus-5-5", is: "sonnet"))
+        #expect(AgentSessionSettings.model("claude-sonnet-5-5[1m]", is: "sonnet"))
+        #expect(AgentSessionSettings.model("opus", is: "opus"))
+        #expect(!AgentSessionSettings.model(nil, is: "opus"))
+    }
+
+    @Test("The permission mode is read off Claude Code's footer, not the conversation above it")
+    func permissionModeOnScreen() {
+        func screen(_ rows: [String]) -> ANSIScreen { ANSIScreenDecoder.decode(rows.joined(separator: "\r\n")) }
+        let filler = Array(repeating: "", count: 6)
+        #expect(AgentSessionSettings.permissionMode(onScreen: screen(["> hi", "", "  ⏵⏵ bypass permissions on (shift+tab to cycle)"])) == "bypassPermissions")
+        #expect(AgentSessionSettings.permissionMode(onScreen: screen(["  ⏸ plan mode on (shift+tab to cycle)"])) == "plan")
+        #expect(AgentSessionSettings.permissionMode(onScreen: screen(["  ⏵⏵ accept edits on"])) == "acceptEdits")
+        #expect(AgentSessionSettings.permissionMode(onScreen: screen(["plan mode on, said the reply"] + filler + ["  ? for shortcuts"])) == "default")
     }
 }
