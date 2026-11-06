@@ -1632,6 +1632,17 @@ struct ConsoleView: View {
                         .hoverEffect(.highlight)
                         .accessibilityIdentifier("agents.status-filter.clear-empty")
                 }
+            } else if !listPresentation.statusFilter.isEmpty {
+                // The filter may be what hides the match, and it outlives the search.
+                ContentUnavailableView {
+                    Label("No Results for \u{201C}\(agentSearchText)\u{201D}", systemImage: "magnifyingglass")
+                } description: {
+                    Text("The status filter is on.")
+                } actions: {
+                    Button("Show All Statuses") { listPresentation.clearStatusFilter() }
+                        .hoverEffect(.highlight)
+                        .accessibilityIdentifier("agents.status-filter.clear-search")
+                }
             } else {
                 ContentUnavailableView.search(text: agentSearchText)
             }
