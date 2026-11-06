@@ -1986,6 +1986,13 @@ final class AgentChatStore {
                     return paths.isEmpty || paths.contains(path)
                 }?.candidate
             }
+            // Claude Code drops the space after a pasted image path
+            // (`[Image #1]what…`), so the text restored from the record
+            // differs from the send only in whitespace.
+            if match == nil {
+                let text = String(Self.squeezed(send.text))
+                match = recorded.first { !text.isEmpty && $0.text == text && isOpen($0.candidate) }?.candidate
+            }
             if match == nil, extendedSends.contains(send.id) {
                 let text = String(Self.squeezed(send.text))
                 match = recorded.first { !text.isEmpty && $0.text.contains(text) && isOpen($0.candidate) }?.candidate
