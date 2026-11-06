@@ -76,6 +76,7 @@ enum ClaudeTranscriptProjection {
         waiting: [UInt64: ChatEntryID] = [:]
     ) -> [ChatRecordedPrompt] {
         var prompts: [(prompt: ChatRecordedPrompt, rawKey: String)] = []
+        var fires: [(offset: UInt64, key: String)] = []
         let byPosition = index.recordsByPosition
         let imageSources = imageSources(byPosition, indexed: index.records)
         for (position, record) in byPosition.enumerated() where !record.isSidechain && record.teamName == nil {
@@ -88,6 +89,13 @@ enum ClaudeTranscriptProjection {
                         ChatRecordedPrompt(offset: record.byteOffset, text: text, entryID: entryByRecord[record.uuid]),
                         ClaudeTranscriptReducer.echoKey(text)
                     ))
+                continue
+            }
+            // A scheduled fire settles its enqueue, but nobody sent it.
+            if record.kind == .system("scheduled_task_fire") {
+                if let prompt = record.system?.scheduledPrompt.flatMap(promptText) {
+                    fires.append((record.byteOffset, ClaudeTranscriptReducer.echoKey(prompt)))
+                }
                 continue
             }
             guard let raw = typedText(of: record, indexed: index.records) else { continue }
@@ -110,6 +118,12 @@ enum ClaudeTranscriptProjection {
             guard let content = operation.content, let text = promptText(content) else { continue }
             let key = ClaudeTranscriptReducer.echoKey(text)
             let delivery = prompts.first { $0.prompt.offset > operation.offset && $0.rawKey == key }?.prompt
+            // The task's own enqueue, which its fire delivers before any Send could.
+            if let fire = fires.first(where: { $0.offset > operation.offset && $0.key == key }),
+                fire.offset < delivery?.offset ?? .max
+            {
+                continue
+            }
             enqueued.append(
                 ChatRecordedPrompt(
                     offset: operation.offset, text: text, entryID: delivery?.entryID ?? waiting[operation.offset],

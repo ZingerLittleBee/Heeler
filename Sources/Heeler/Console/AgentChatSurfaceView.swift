@@ -1099,13 +1099,17 @@ struct AgentChatSurfaceView: View {
     /// A mode the session cannot reach (bypass without its launch flag) stops
     /// after one full cycle, on whatever the footer then shows.
     private func switchPermissionMode(to target: String) async {
-        let read = readAgentScreen
+        // Each key through the pane's checked typing, over the footer just read.
+        guard let io = chat?.screenIO else { return }
         var shown: String?
         for attempt in 0...AgentSessionSettings.permissionChoices.count + 1 {
-            guard let screen = try? await read() else { break }
-            shown = AgentSessionSettings.permissionMode(onScreen: screen)
-            if shown == target || attempt == AgentSessionSettings.permissionChoices.count + 1 { break }
-            guard await agentKeys.deliver(["shift+tab"]) == .sent else { break }
+            guard let screen = try? await io.readScreen() else { break }
+            let mode = AgentSessionSettings.permissionMode(onScreen: screen)
+            shown = mode
+            if mode == target || attempt == AgentSessionSettings.permissionChoices.count + 1 { break }
+            do {
+                try await io.type(.keys(["shift+tab"]), whileShowing: { AgentSessionSettings.permissionMode(onScreen: $0) == mode })
+            } catch { break }
             try? await Task.sleep(for: .milliseconds(300))
         }
         if let shown { permissionModeOverride = shown }
@@ -1154,7 +1158,11 @@ struct AgentChatSurfaceView: View {
                     // then would land on whatever replaced it.
                     _ = try await io.readScreen()
                     // Yes is the highlighted first option; Esc is the TUI's go back.
-                    try await io.type(.keys([yes ? "enter" : "esc"]), whileShowing: { SwitchQuestion($0) == question })
+                    // Enter picks Yes only while the selection is still on it.
+                    try await io.type(.keys([yes ? "enter" : "esc"]), whileShowing: { screen in
+                        guard let now = SwitchQuestion(screen) else { return false }
+                        return now == question && (!yes || now.yesIsFocused)
+                    })
                     guard yes else { return false }
                 }
             }
@@ -1518,6 +1526,8 @@ private struct SwitchQuestion: Equatable, Sendable {
     let title: String
     let detail: String
     let yes: String
+    /// Whether the selection (`❯`) is on Yes, which Enter then picks.
+    let yesIsFocused: Bool
     var answer: CheckedContinuation<Bool, Never>?
 
     init?(_ screen: ANSIScreen) {
@@ -1529,10 +1539,11 @@ private struct SwitchQuestion: Equatable, Sendable {
         detail = rows[(top + 1)..<option].filter { !$0.isEmpty }.joined(separator: " ")
         // "❯ 1. Yes, switch to Sonnet 5.5" → "Yes, switch to Sonnet 5.5"
         yes = rows[option].range(of: "Yes, switch to").map { String(rows[option][$0.lowerBound...]) } ?? "Yes"
+        yesIsFocused = rows[option].hasPrefix("❯")
     }
 
     static func == (a: SwitchQuestion, b: SwitchQuestion) -> Bool {
-        (a.title, a.detail, a.yes) == (b.title, b.detail, b.yes)
+        (a.title, a.detail, a.yes, a.yesIsFocused) == (b.title, b.detail, b.yes, b.yesIsFocused)
     }
 
     func answering(with continuation: CheckedContinuation<Bool, Never>) -> SwitchQuestion {

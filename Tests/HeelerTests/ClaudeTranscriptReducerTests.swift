@@ -484,6 +484,8 @@ struct ClaudeTranscriptReducerTests {
         #expect(notice.detail == "[cron] report the pool")
         #expect(ClaudeSample.entry("user:p2", in: transcript) == nil)
         #expect(ClaudeTranscriptProjection.waitingEnqueues(reducer.index).isEmpty)
+        // Nobody sent it, so it is no evidence for a Send of the same words.
+        #expect(transcript.recordedPrompts.map(\.text) == ["turn it on"])
     }
 
     @Test("An image's source is found after any number of attachments, and one record can name several")
