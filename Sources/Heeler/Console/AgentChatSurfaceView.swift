@@ -68,6 +68,9 @@ struct AgentChatSurfaceView: View {
     @State private var viewingSkill: AgentSkill?
     @State private var agentKeys: ChatAgentKeysStore
     @State private var isRenamingAgent = false
+    #if DEBUG && targetEnvironment(simulator)
+        @State private var showsTitlePrototype = false
+    #endif
     @State private var isRenamingWorkspace = false
     @State private var closeErrorMessage: String?
     /// The Workspace drawer's panel, while the back header's menu owns it.
@@ -254,6 +257,13 @@ struct AgentChatSurfaceView: View {
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
+        #if DEBUG && targetEnvironment(simulator)
+        .sheet(isPresented: $showsTitlePrototype) {
+            DemoTitleRenameSheet(currentTitle: title)
+                .modifier(ConsoleSheetPresentationModifier(
+                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
+        }
+        #endif
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
                 title: "Rename Agent",
@@ -1246,6 +1256,13 @@ struct AgentChatSurfaceView: View {
             actions.append(AgentDetailHeaderAction(
                 title: "Changes", systemImage: "arrow.triangle.branch", perform: showChanges))
         }
+        #if DEBUG && targetEnvironment(simulator)
+            if DemoScreenshotMode.showsTitlePrototype {
+                actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {
+                    showsTitlePrototype = true
+                })
+            }
+        #endif
         return actions
     }
 

@@ -6,6 +6,10 @@
     /// The only entry point for deterministic product screenshots. The
     /// entire implementation is excluded from device and Release builds.
     enum DemoScreenshotMode {
+        /// Throwaway title UI prototype. No remote title mutation is connected.
+        static var showsTitlePrototype: Bool {
+            isEnabled && ProcessInfo.processInfo.arguments.contains("--demo-title-prototype")
+        }
         static let launchArgument = "--demo-screenshots"
         /// Adds Hosts that reconnect, cannot connect, or cannot sync, so the
         /// Host problem surfaces can be seen without a failing server.
@@ -41,6 +45,46 @@
 
         static func isEnabled(arguments: [String]) -> Bool {
             arguments.contains(launchArgument)
+        }
+    }
+
+    /// Review-only form shared by the demo's two Rename entry points.
+    /// Save dismisses without persistence; Generate substitutes a fixture title.
+    struct DemoTitleRenameSheet: View {
+        @State private var title: String
+        @Environment(\.dismiss) private var dismiss
+
+        init(currentTitle: String) {
+            _title = State(initialValue: currentTitle)
+        }
+
+        var body: some View {
+            NavigationStack {
+                Form {
+                    Section {
+                        TextField("Title", text: $title)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                    Section {
+                        Button("Generate Automatically", systemImage: "sparkles") {
+                            title = "Update the setup guide"
+                        }
+                    }
+                }
+                .navigationTitle("Rename")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") { dismiss() }
+                            .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
         }
     }
 
@@ -125,6 +169,12 @@
                 console.setHosts(hosts.hosts)
                 notificationPreferences.setHosts(hosts.hosts)
                 await console.resume()
+                if DemoScreenshotMode.showsTitlePrototype,
+                   !ProcessInfo.processInfo.arguments.contains("--demo-title-list") {
+                    try? await Task.sleep(for: .seconds(2))
+                    notificationRouter.path = [AgentNotificationTarget(
+                        hostID: DemoScreenshotFixture.studioHostID, paneID: "docs:p2").agentID]
+                }
                 if DemoScreenshotMode.showsPluginStates {
                     await notificationPreferences.refresh()
                     for host in DemoScreenshotFixture.pluginStateHosts {

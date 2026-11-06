@@ -34,6 +34,9 @@ struct ConsoleView: View {
     /// drawer. It shares the detail column with the router's Agent path;
     /// only one is ever set.
     @State private var selectedTerminal: ConsoleTerminal?
+    #if DEBUG && targetEnvironment(simulator)
+        @State private var titlePrototypeAgent: ConsoleAgent?
+    #endif
     /// Agents or Terminals, per window; empty until this window picks one.
     /// Hosts and Settings are tracked apart so neither is the tab a window
     /// comes back to.
@@ -219,6 +222,13 @@ struct ConsoleView: View {
             if listTab == nil { listTab = shownListTab }
         }
         // The detail's actions can present these even while the sidebar is hidden.
+        #if DEBUG && targetEnvironment(simulator)
+        .sheet(item: $titlePrototypeAgent) { agent in
+            DemoTitleRenameSheet(currentTitle: AgentTerminalView.displayTitle(for: agent))
+                .modifier(ConsoleSheetPresentationModifier(
+                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
+        }
+        #endif
         .sheet(item: $startAgentRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
@@ -1987,6 +1997,13 @@ struct ConsoleView: View {
                     console.togglePin(
                         hostID: agent.hostID, paneID: agent.agent.paneID)
                 }
+                #if DEBUG && targetEnvironment(simulator)
+                    if DemoScreenshotMode.showsTitlePrototype {
+                        Button("Rename", systemImage: "pencil") {
+                            titlePrototypeAgent = agent
+                        }
+                    }
+                #endif
                 // Never on iPhone, and not for the Agent this window already shows.
                 if offers.opensInNewWindow, notificationRouter.path.last != agent.id {
                     Button("Open in New Window", systemImage: "plus.rectangle.on.rectangle") {
