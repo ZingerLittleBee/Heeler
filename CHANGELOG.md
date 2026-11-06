@@ -9,6 +9,17 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Choose Voice Input languages independently of the device language, with automatic detection by default, multiple OpenAI hints and one optional DeepInfra language. Custom services gain per-URL/model request fields with multiple values, validation and migration of the previous Send Language setting. (PR #643)
+- Rename an Agent's conversation from its existing More menu or the Agents list's long-press menu on Herdr TUI Hosts. Save a manual title for Claude Code, Codex, Pi, Oh My Pi, Grok Build, or OpenCode; generate and apply a new title with Claude Code, Codex, or Oh My Pi. Busy Agents, existing terminal drafts, changed conversations, and unconfirmed results are reported without retrying the command. (#645)
+
+### Fixed
+
+- Clear an unsaved Voice Input API key when its service or Custom URL changes, and report Keychain deletion failures without switching the saved destination or withdrawing its agreement. (PR #643)
+
+## [0.1.18]
+
+### Added
+
 - Connect to herdr-core Hosts over SSH. Adding a Host by hand detects what the machine runs and offers herdr-core to confirm, without starting anything; a Linux Host whose core is not running offers Start herdr-core after a confirmation. The Console follows the Herdr desktop app's spaces and tabs, read-only, and places other Terminals by launch directory. Known coding programs, also when `npx` or `npm exec` starts them, and programs that report a status are Agents with their Program Status, and Pins are kept per Host. Live terminals share one connection, reach any number of viewers and pass every key to the program. A kept Terminal that loses its program shows Restarting and reattaches to the restored shell by itself, a program that exits shows ended with its exit code and no reattach, New Agent stays open and says so when an agent's program has already ended, another core answering at the same socket ends an open terminal rather than joining its Terminal at the same address and refuses what a detail still open on the old core sends by address, through a reconnect until its row is opened again, and Host detail names variables leaked into the core. Staged Images and Files work on macOS and Linux core Hosts. Agents cannot be renamed on these Hosts. (#535; PR #538)
 - Agent List Fields on a herdr-core Host starts from the terminal's title, then its directory, and offers the Terminals' labels as fields, with no Sync from plugin. (#555; PR #538)
 - Read a Claude Code Agent's conversation in Chat on a Linux herdr-core Host. Heeler finds the conversation from the Agent's own process when Chat opens and when its status, turn or foreground program changes, never on a timer and never by guessing, follows `/clear` and `/resume`, and reads from the `CLAUDE_CONFIG_DIR` the Agent itself runs with. Without that evidence Chat says it can't tell, and an Agent that keeps no conversation says which variable stops it. A Chat open when its Agent ends or restarts stays on the conversation, says what became of the Agent, and follows the next Claude Code at that address. (#579; PR #538)
@@ -96,8 +107,6 @@ Entries reference the pull request that made the change.
   now names, and the Workspace New Agent last chose there, and stop writing
   an empty Live Activity list for a Host that never had one. (#541; PR #538)
 - Offer Refresh on an empty Skills list. (#558; PR #538)
-
-### Fixed
 
 - Launch Presets read the Host's current Account variables before starting;
   an unreadable Account file blocks the launch and shows the error. Accounts

@@ -1,4 +1,5 @@
-# Full native verification, run daily, manually or by release.yml (refs #23).
+# Full native verification, run daily or manually (refs #23). Releases do not
+# wait for it (ADR 0039).
 #
 # Runs the complete app and SSH package suites on isolated iOS simulators.
 # No signing certificates, archive, or xcodegen. Simulator builds use free
@@ -26,7 +27,7 @@
 # self-tests these scripts on macOS, and isolated repetitions live in
 # ci-diagnostics.yml. None of them claims the complete coverage produced
 # here. ci-full-alert.yml tracks failed scheduled runs, because this workflow
-# stays read-only for release.yml.
+# stays read-only.
 
 name: iOS full verification
 run-name: ${{ format('iOS full verification ({0}, {1})', inputs.layout || 'sharded', inputs.cache_mode || 'warm') }}
@@ -54,11 +55,8 @@ on:
         description: Optional completed same-SHA serial run for coverage comparison
         type: string
         default: ''
-  # release.yml runs both lanes against the release tag before anything is
-  # signed. A release cannot select a diagnostic or build-only mode.
-  workflow_call:
 
-# Scheduled, manual and release runs never cancel each other, even on the
+# Scheduled and manual runs never cancel each other, even on the
 # same ref. Only a newer run of the same kind replaces an older one. The fast
 # build and diagnostics use their own groups.
 concurrency:
@@ -89,9 +87,6 @@ jobs:
       # match across jobs/runs. Never restore DerivedData or test results.
       HEELER_CI_APP_DERIVED_DATA_PATH: ${{ github.workspace }}/.ci/app-derived
       HEELER_CI_COMPILATION_CACHE_DIR: ${{ github.workspace }}/.ci/app-compilation-cache
-      # Tags are release candidates. They compile without cross-run compiler
-      # objects, as the release gate did before the cache existed.
-      HEELER_CI_DISABLE_COMPILATION_CACHE: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '0' }}
       HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
       # Hosted compilation can exceed 20 minutes even with restored sources.
       # Leave room for runner variance without treating this safety deadline
@@ -161,14 +156,13 @@ jobs:
 
       - name: Compute compilation cache key
         id: cache-key
-        if: ${{ env.HEELER_CI_DISABLE_COMPILATION_CACHE != '1' }}
         run: scripts/ci-compilation-cache-prefix.sh ios-full-cas-v1
 
       # Only content-addressed compiler objects cross runs. Source changes
       # remain eligible for reuse; the compiler validates their dependencies.
       - name: Restore app compilation cache
         id: compilation-cache
-        if: ${{ env.HEELER_CI_DISABLE_COMPILATION_CACHE != '1' && (github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm') }}
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm' }}
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.HEELER_CI_COMPILATION_CACHE_DIR }}
@@ -194,11 +188,7 @@ jobs:
             printf 'image_version=%s\n' "${ImageVersion:-unknown}"
             printf 'build_deadline_seconds=%s\n' "$HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS"
             printf 'debug_symbols=disabled\n'
-            if [[ "$HEELER_CI_DISABLE_COMPILATION_CACHE" == 1 ]]; then
-              printf 'compilation_cache=disabled\n'
-            else
-              printf 'compilation_cache=enabled\ncompilation_cache_key=%s\ncompilation_cache_exact_hit=%s\n' "$COMPILATION_CACHE_KEY" "$COMPILATION_CACHE_HIT"
-            fi
+            printf 'compilation_cache=enabled\ncompilation_cache_key=%s\ncompilation_cache_exact_hit=%s\n' "$COMPILATION_CACHE_KEY" "$COMPILATION_CACHE_HIT"
             printf 'app_derived_data=%s\n' "$HEELER_CI_APP_DERIVED_DATA_PATH"
           } > "$HEELER_CI_EVIDENCE_DIR/run-settings.txt"
 
@@ -292,7 +282,7 @@ jobs:
 
       # These checks exercise the same shipped helpers and process behavior on
       # macOS. ci-scripts.yml runs them on every PR that touches scripts;
-      # repeating them in this mandatory worker keeps the release gate
+      # repeating them in this mandatory worker keeps full verification
       # self-contained while app builds start immediately. Only macOS has the
       # /bin/bash 3.2 that this workflow executes.
       - name: Test CI watchdog

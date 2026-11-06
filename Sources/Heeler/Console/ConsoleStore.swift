@@ -730,7 +730,8 @@ final class ConsoleStore {
     /// Console connection rather than dialing a parallel connection or holding
     /// an RPC open for Agent completion.
     func promptAgent(_ params: AgentPromptParams, on hostID: Host.ID) async throws -> Agent {
-        try await projection(for: hostID).promptAgent(params)
+        try requireNoTitleRename(.init(hostID: hostID, paneID: params.target))
+        return try await projection(for: hostID).promptAgent(params)
     }
 
     /// The Agent's screen as herdr renders it now, colors kept
@@ -748,6 +749,7 @@ final class ConsoleStore {
     func sendAgentKeys(
         _ keys: [String], to paneID: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws {
+        try requireNoTitleRename(.init(hostID: hostID, paneID: paneID))
         guard !hasLeftCore(corePin, on: hostID) else {
             throw HerdrCoreChatTyping.Refusal(message: TransportError.herdrCoreTerminalGone.presentation.message)
         }
@@ -758,6 +760,7 @@ final class ConsoleStore {
     /// Types one line of text into the Agent's pane (`pane.send_input`): a
     /// Blocked card's note or typed answer.
     func pasteIntoAgent(_ text: String, paneID: String, on hostID: Host.ID) async throws {
+        try requireNoTitleRename(.init(hostID: hostID, paneID: paneID))
         try requireReadyForInput(hostID)
         try await projection(for: hostID).pasteIntoAgent(text, paneID: paneID)
     }
@@ -1344,6 +1347,44 @@ final class ConsoleStore {
 
     private func shownAgents(on hostID: Host.ID) -> Set<String> {
         Set(agentViewers.values.lazy.filter { $0.agent.hostID == hostID }.map(\.agent.paneID))
+    }
+
+    private var titleRenamesInFlight: Set<ConsoleAgent.ID> = []
+
+    private func requireNoTitleRename(_ id: ConsoleAgent.ID) throws {
+        guard !titleRenamesInFlight.contains(id) else {
+            throw AgentTitleRenameError(message: "Wait for the title rename to finish before sending input.")
+        }
+    }
+
+    func offersTitleRename(for agent: ConsoleAgent) -> Bool {
+        capabilities(for: agent.hostID).renameAgent && ChatProgram(rawValue: agent.agent.kind) != nil
+    }
+
+    func titleRenameStore(for agent: ConsoleAgent) -> AgentTitleRenameStore? {
+        guard offersTitleRename(for: agent), let program = ChatProgram(rawValue: agent.agent.kind),
+            let origin = try? projection(for: agent.hostID) else { return nil }
+        let generation = origin.transportGeneration
+        func connection() throws -> any ConsoleHostProjection {
+            try requireReadyForInput(agent.hostID)
+            let current = try projection(for: agent.hostID)
+            guard current === origin, current.transportGeneration == generation else {
+                throw AgentTitleRenameError(message: "The Host connection changed. Reopen Rename.")
+            }
+            return current
+        }
+        return AgentTitleRenameStore(agent: agent.agent, program: program, io: AgentTitleRenameIO(
+            agent: { try await connection().agentInfo(paneID: agent.agent.paneID) },
+            screen: { try await connection().readAgentScreen(agent.agent.paneID) },
+            prompt: { text in
+                _ = try await connection().promptAgent(AgentPromptParams(
+                    target: agent.agent.paneID, text: text))
+            },
+            keys: { try await connection().sendAgentKeys($0, to: agent.agent.paneID) },
+            paste: { try await connection().pasteIntoAgent($0, paneID: agent.agent.paneID) },
+            refresh: { await origin.refreshSidebarMetadata() },
+            acquire: { self.titleRenamesInFlight.insert(agent.id).inserted },
+            release: { self.titleRenamesInFlight.remove(agent.id) }))
     }
 
     func renameAgent(

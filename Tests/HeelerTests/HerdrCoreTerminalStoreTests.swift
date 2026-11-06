@@ -138,7 +138,10 @@ struct HerdrCoreTerminalStoreTests {
                         onClosed: {},
                         onSelectTerminal: { _ in },
                         changesPresentation: changes)
-                })
+                }
+                // The header's fold state is a stored preference; the test
+                // host's own defaults must not decide it.
+                .defaultAppStorage(defaults))
             controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
@@ -158,6 +161,7 @@ struct HerdrCoreTerminalStoreTests {
             let activity = AppActivityCoordinator()
             let routing = AgentSceneRouting(directory: directory, sceneID: sceneID)
             let corePin = console.corePin(on: terminal.hostID)
+            let defaults = try #require(UserDefaults(suiteName: "core-shell-\(UUID().uuidString)"))
             let controller = UIHostingController(
                 rootView: NavigationStack {
                     WorkspaceTerminalDetailView(
@@ -171,7 +175,9 @@ struct HerdrCoreTerminalStoreTests {
                         isSelected: { [selection] in selection.showsDetail },
                         onBack: {})
                 }
-                .environment(\.agentSceneRouting, routing))
+                .environment(\.agentSceneRouting, routing)
+                // As in showDetail: the header's fold state is the fixture's own.
+                .defaultAppStorage(defaults))
             controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
@@ -1677,17 +1683,18 @@ struct HerdrCoreTerminalStoreTests {
 
     // MARK: What a core Agent's detail offers
 
-    /// The header's More, and the Composer's, whose Add has a button of its own.
+    /// The header's More, which starts folded, and the Composer's, whose Add has a
+    /// button of its own.
     private static let coreAgentMenus: Set<[String]> = [
-        ["Terminals", "Changes", "Collapse"],
+        ["Terminals", "Changes", "Expand"],
         ["Back to Console", "Show Chat", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets", "Close Agent"],
     ]
-    /// Direct Input has no Add of its own: its More carries the same two items.
+    /// Direct Input has no Add of its own: its More carries Add's three items.
     private static let coreDirectInputMenus: Set<[String]> = [
-        ["Terminals", "Changes", "Collapse"],
+        ["Terminals", "Changes", "Expand"],
         [
-            "Back to Console", "Add Image", "Add File", "Show Chat", "Open Terminal", "Changes", "New Agent", "Skills",
-            "Snippets", "Close Agent",
+            "Back to Console", "Add Image", "Paste Image", "Add File", "Show Chat", "Open Terminal", "Changes",
+            "New Agent", "Skills", "Snippets", "Close Agent",
         ],
     ]
     /// On screen for a Host that has them; none are built for a core Host yet.
@@ -2519,7 +2526,7 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("the terminal's menu") { screen.offers("More") }
 
         let menus = try await HostedMenu.items(labeled: "More", in: screen.window)
-        #expect(menus == [["Terminals", "Collapse"], ["Back to Console", "Close Terminal"]], "\(menus)")
+        #expect(menus == [["Terminals", "Expand"], ["Back to Console", "Close Terminal"]], "\(menus)")
 
         try await HostedMenu.select("Terminals", labeled: "More", in: screen.window)
         try await Self.until("the drawer") { screen.offers("Hide Workspace terminals") }

@@ -37,12 +37,16 @@ struct VoiceInputSessionTests {
         if ready {
             try settings.save(service: .preset(.openAI), custom: .init(), apiKey: "sk-test", consented: true)
         }
+        if let endpoint = settings.endpoint {
+            try settings.save(service: .preset(.openAI), custom: .init(), apiKey: "", consented: false,
+                              options: .init(languages: ["zh", "en"]))
+            #expect(settings.options(for: endpoint).languages == ["zh", "en"])
+        }
         let recorder = FakeVoiceRecorder()
         let transcriber = ScriptedTranscriber(results: results)
         let session = VoiceInputSession(
             settings: settings, recorder: recorder,
             transcribe: { try await transcriber.transcribe($0) },
-            primaryLanguage: { "zh" },
             sleep: { _ in try await Task.sleep(for: .milliseconds(1)) })
         return Fixture(
             session: session, recorder: recorder, transcriber: transcriber, settings: settings,
@@ -92,7 +96,7 @@ struct VoiceInputSessionTests {
         #expect(requests.first?.endpoint == VoiceInputEndpoint.preset(.openAI))
         #expect(requests.first?.apiKey == "sk-test")
         #expect(requests.first?.audio == fixture.recorder.nextRecording.audio)
-        #expect(requests.first?.primaryLanguage == "zh")
+        #expect(requests.first?.options.languages == ["zh", "en"])
     }
 
     @Test func textWaitsUntilTheInputMethodFinishesComposing() async throws {
