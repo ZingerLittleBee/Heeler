@@ -161,6 +161,7 @@ struct HerdrCoreTerminalStoreTests {
             let activity = AppActivityCoordinator()
             let routing = AgentSceneRouting(directory: directory, sceneID: sceneID)
             let corePin = console.corePin(on: terminal.hostID)
+            let defaults = try #require(UserDefaults(suiteName: "core-shell-\(UUID().uuidString)"))
             let controller = UIHostingController(
                 rootView: NavigationStack {
                     WorkspaceTerminalDetailView(
@@ -174,7 +175,9 @@ struct HerdrCoreTerminalStoreTests {
                         isSelected: { [selection] in selection.showsDetail },
                         onBack: {})
                 }
-                .environment(\.agentSceneRouting, routing))
+                .environment(\.agentSceneRouting, routing)
+                // As in showDetail: the header's fold state is the fixture's own.
+                .defaultAppStorage(defaults))
             controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
@@ -2523,7 +2526,7 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("the terminal's menu") { screen.offers("More") }
 
         let menus = try await HostedMenu.items(labeled: "More", in: screen.window)
-        #expect(menus == [["Terminals", "Collapse"], ["Back to Console", "Close Terminal"]], "\(menus)")
+        #expect(menus == [["Terminals", "Expand"], ["Back to Console", "Close Terminal"]], "\(menus)")
 
         try await HostedMenu.select("Terminals", labeled: "More", in: screen.window)
         try await Self.until("the drawer") { screen.offers("Hide Workspace terminals") }
