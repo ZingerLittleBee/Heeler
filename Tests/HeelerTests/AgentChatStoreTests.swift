@@ -1811,6 +1811,12 @@ struct AgentChatStoreTests {
         #expect(fixture.store.sendStatuses[send] == .recorded)
     }
 
+    @Test func onlyTheSpaceAfterAnImagePathMayBeMissingFromTheRecord() {
+        #expect(AgentChatStore.withoutSpaceAfterImagePaths("/tmp/d.png what changed ") == "/tmp/d.pngwhat changed")
+        #expect(AgentChatStore.withoutSpaceAfterImagePaths(#"print("a b")"#) == nil)
+        #expect(AgentChatStore.withoutSpaceAfterImagePaths("/tmp/d.png") == nil)
+    }
+
     @Test func aCodexUndoIsFollowedOnAStatusChangeAndOnAnOverdueSend() async throws {
         let thread = "01a10f87-e025-7fb1-8974-8dd09937767a"
         let directory = "/home/dev/.codex/sessions/2026/10/06"
