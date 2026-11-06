@@ -329,6 +329,41 @@ struct ConsoleHostAgentStatusCounts: Equatable {
     }
 }
 
+/// One button of the Agents list's status filter. Blocked carries Error:
+/// both ask for the user, and the list already sorts them together.
+enum ConsoleAgentStatusFilter: String, CaseIterable, Identifiable, Sendable {
+    case blocked, working, done, idle
+
+    var id: String { rawValue }
+
+    init?(_ status: AgentStatus) {
+        switch status {
+        case .blocked, .error: self = .blocked
+        case .working: self = .working
+        case .done: self = .done
+        case .idle: self = .idle
+        default: return nil
+        }
+    }
+
+    /// The status whose ink and wash the button wears.
+    var status: AgentStatus {
+        switch self {
+        case .blocked: .blocked
+        case .working: .working
+        case .done: .done
+        case .idle: .idle
+        }
+    }
+}
+
+extension Set<ConsoleAgentStatusFilter> {
+    /// Empty admits everything; an unknown status shows only unfiltered.
+    func admits(_ agent: ConsoleAgent) -> Bool {
+        isEmpty || ConsoleAgentStatusFilter(agent.agent.status).map(contains) == true
+    }
+}
+
 struct ConsoleHostAgentStatusCount: Identifiable, Equatable {
     let status: AgentStatus
     let count: Int
@@ -355,6 +390,7 @@ final class ConsoleListPresentationStore {
         filteredHostID: Host.ID? = nil, searchQuery: String = ""
     ) -> [ConsoleWorkspaceSection] {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !statusFilter.isEmpty
         let collapsedIDs = collapsedWorkspaceIDs
         return sections(
             hosts: hosts, agents: agents, filteredHostID: filteredHostID, searchQuery: searchQuery
@@ -467,6 +503,20 @@ final class ConsoleListPresentationStore {
     private static let modeDefaultsKey = "console-list.presentation-mode"
     private static let collapsedHostsDefaultsKey = "console-list.collapsed-hosts"
     private static let collapsedWorkspacesDefaultsKey = "console-list.collapsed-workspaces"
+    private static let statusFilterDefaultsKey = "console-list.status-filter"
+
+    /// The statuses the Agents list shows; empty shows every Agent.
+    private(set) var statusFilter: Set<ConsoleAgentStatusFilter>
+
+    func toggleStatusFilter(_ filter: ConsoleAgentStatusFilter) {
+        if !statusFilter.insert(filter).inserted { statusFilter.remove(filter) }
+        defaults.set(statusFilter.map(\.rawValue).sorted(), forKey: Self.statusFilterDefaultsKey)
+    }
+
+    func clearStatusFilter() {
+        statusFilter = []
+        defaults.removeObject(forKey: Self.statusFilterDefaultsKey)
+    }
 
     private(set) var mode: ConsoleListPresentationMode
     private var collapsedHostIDs: Set<Host.ID>
@@ -485,6 +535,9 @@ final class ConsoleListPresentationStore {
         collapsedWorkspaceIDs = Set(
             defaults.data(forKey: Self.collapsedWorkspacesDefaultsKey)
                 .flatMap { try? JSONDecoder().decode([ConsoleWorkspaceSection.ID].self, from: $0) } ?? [])
+        statusFilter = Set(
+            (defaults.stringArray(forKey: Self.statusFilterDefaultsKey) ?? [])
+                .compactMap(ConsoleAgentStatusFilter.init(rawValue:)))
     }
 
     func select(_ mode: ConsoleListPresentationMode) {
@@ -560,7 +613,11 @@ final class ConsoleListPresentationStore {
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
         let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        let searchedAgents = trimmedQuery.isEmpty ? agents : agents.filter { $0.matchesAgentSearch(trimmedQuery) }
+        let searchedAgents = agents.filter {
+            (trimmedQuery.isEmpty || $0.matchesAgentSearch(trimmedQuery)) && statusFilter.admits($0)
+        }
+        // A status filter narrows like a query: only matches, never folded away.
+        let isNarrowed = !trimmedQuery.isEmpty || !statusFilter.isEmpty
         let agentsByHost = Dictionary(grouping: searchedAgents, by: \.hostID)
         var projectedHostIDs: Set<Host.ID> = []
 
@@ -580,7 +637,7 @@ final class ConsoleListPresentationStore {
             // whatever its Host's state (#292, #316): a query asks for Agents,
             // and Hosts that cannot answer only bury the matches. Without a
             // query every catalog Host stays visible, including empty ones.
-            if !trimmedQuery.isEmpty && hostAgents.isEmpty { return nil }
+            if isNarrowed && hostAgents.isEmpty { return nil }
             return ConsoleHostSection(
                 hostID: host.id,
                 hostDisplayName: host.displayName,
@@ -589,7 +646,7 @@ final class ConsoleListPresentationStore {
                 statusPresentation: statusPresentation,
                 agents: hostAgents,
                 // A match is never hidden behind a collapsed Host.
-                isCollapsed: trimmedQuery.isEmpty && isCollapsed(host.id),
+                isCollapsed: !isNarrowed && isCollapsed(host.id),
                 statusCounts: ConsoleHostAgentStatusCounts(agents: hostAgents))
         }
     }

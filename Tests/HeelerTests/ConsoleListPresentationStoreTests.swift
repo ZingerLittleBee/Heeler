@@ -16,6 +16,39 @@ struct ConsoleListPresentationStoreTests {
         #expect(ConsoleListPresentationStore(defaults: defaults).mode == mode)
     }
 
+    @Test func statusFilterNarrowsBothGroupingsUnfoldsAndPersists() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture()
+        let quiet = Host.fixture(name: "Quiet")
+        let agents = [
+            consoleAgent(host: host, paneID: "p1", status: .working),
+            consoleAgent(host: host, paneID: "p2", status: .error, workspaceID: "w2"),
+            consoleAgent(host: host, paneID: "p3", status: .idle, workspaceID: "w2"),
+            consoleAgent(host: quiet, paneID: "p1", status: .idle),
+        ]
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        store.setCollapsed(true, for: host.id)
+        store.toggleStatusFilter(.blocked)
+        store.toggleStatusFilter(.working)
+        // Error rides with Blocked; a Host with no match leaves the list.
+        let sections = store.sections(hosts: [host, quiet], agents: agents)
+        #expect(sections.map(\.hostID) == [host.id])
+        #expect(sections.first?.agents.map(\.id) == [agents[0].id, agents[1].id])
+        #expect(sections.first?.isCollapsed == false)
+        #expect(store.workspaceSections(hosts: [host, quiet], agents: agents)
+            .flatMap { $0.agents.map(\.id) } == [agents[0].id, agents[1].id])
+        #expect(ConsoleListPresentationStore(defaults: defaults).statusFilter == [.blocked, .working])
+        store.toggleStatusFilter(.working)
+        #expect(store.statusFilter == [.blocked])
+        store.clearStatusFilter()
+        #expect(ConsoleListPresentationStore(defaults: defaults).statusFilter.isEmpty)
+        #expect(store.sections(hosts: [host, quiet], agents: agents).count == 2)
+        #expect(ConsoleAgentsSurface(
+            hostCount: 1, filteredHostName: nil, filteredAgentCount: 0, visibleIssueCount: 0,
+            isStatusFiltered: true) == .noSearchResults)
+    }
+
     private func makeDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
         let suiteName = "hm-console-list-presentation-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

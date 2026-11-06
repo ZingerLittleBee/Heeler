@@ -1624,9 +1624,29 @@ struct ConsoleView: View {
                     .hoverEffect(.highlight)
             }
         case .noSearchResults:
-            ContentUnavailableView.search(text: agentSearchText)
+            if agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ContentUnavailableView {
+                    Label("No Matching Agents", systemImage: "line.3.horizontal.decrease.circle")
+                } actions: {
+                    Button("Show All") { listPresentation.clearStatusFilter() }
+                        .hoverEffect(.highlight)
+                        .accessibilityIdentifier("agents.status-filter.clear-empty")
+                }
+            } else {
+                ContentUnavailableView.search(text: agentSearchText)
+            }
         case .rows:
             List(selection: selectedItem) {
+                // A row, not a safe-area inset: an inset stays put while the
+                // search drawer above grows and shrinks with the scroll, and
+                // the two overlap.
+                ConsoleAgentStatusFilterBar(
+                    counts: statusFilterCounts,
+                    selection: listPresentation.statusFilter,
+                    toggle: toggleStatusFilter)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 switch listPresentation.mode {
                 case .flat: flatAgentListRows
                 case .grouped: groupedAgentListRows
@@ -2168,7 +2188,8 @@ struct ConsoleView: View {
             visibleIssueCount: visibleHostIssues.count,
             presentationMode: listPresentation.mode,
             projectedSectionCount: hostSections.count,
-            searchQuery: agentSearchText)
+            searchQuery: agentSearchText,
+            isStatusFiltered: !listPresentation.statusFilter.isEmpty)
     }
 
     private var hostSections: [ConsoleHostSection] {
@@ -2221,11 +2242,31 @@ struct ConsoleView: View {
         return console.chatDisplayAgents.filter { $0.hostID == hostFilter }
     }
 
-    private var filteredAgents: [ConsoleAgent] {
+    /// After the Host filter and the search, before the status filter: what
+    /// the status buttons count.
+    private var searchedAgents: [ConsoleAgent] {
         let hostFiltered = hostFilteredAgents
         let needle = agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return hostFiltered }
         return hostFiltered.filter { $0.matchesAgentSearch(needle) }
+    }
+
+    private var filteredAgents: [ConsoleAgent] {
+        let statusFilter = listPresentation.statusFilter
+        return searchedAgents.filter { statusFilter.admits($0) }
+    }
+
+    private var statusFilterCounts: [ConsoleAgentStatusFilter: Int] {
+        Dictionary(grouping: searchedAgents.compactMap { ConsoleAgentStatusFilter($0.agent.status) }) { $0 }
+            .mapValues(\.count)
+    }
+
+    private func toggleStatusFilter(_ filter: ConsoleAgentStatusFilter) {
+        if reduceMotion {
+            listPresentation.toggleStatusFilter(filter)
+        } else {
+            withAnimation(.snappy) { listPresentation.toggleStatusFilter(filter) }
+        }
     }
 
     /// Program names for rows whose cards would otherwise read the same.
@@ -2940,6 +2981,60 @@ extension AgentDetailStage {
                 console.capabilities(for: hostID)
                     .terminalAccess(sceneRouting?.terminalAccess(for: hostID))
             })
+    }
+}
+
+/// The Agents list's status filter: one button per status, its dot and its
+/// count, in the inks the rows use. Several can be on; none shows every Agent.
+struct ConsoleAgentStatusFilterBar: View {
+    let counts: [ConsoleAgentStatusFilter: Int]
+    let selection: Set<ConsoleAgentStatusFilter>
+    /// Tapping a lit status again turns it off; no separate Clear, so the four fill the row.
+    let toggle: (ConsoleAgentStatusFilter) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // Spelled out: four fixed buttons, and a Sendable ForEach could not call `button`.
+            button(.blocked)
+            button(.working)
+            button(.done)
+            button(.idle)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+    }
+
+    private func button(_ filter: ConsoleAgentStatusFilter) -> some View {
+        let count = counts[filter] ?? 0
+        let isOn = selection.contains(filter)
+        let ink = Color(filter.status.inkUIColor)
+        let title = filter.status.displayTitle ?? filter.rawValue
+        return Button { toggle(filter) } label: {
+            HStack(spacing: 5) {
+                Circle().fill(ink).frame(width: 8, height: 8)
+                Text(verbatim: "\(count)")
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(isOn ? ink : Color.primary)
+            }
+            .padding(.horizontal, 10)
+            // The four share the row equally instead of bunching at the leading edge.
+            .frame(maxWidth: .infinity, minHeight: 32)
+            .background(
+                isOn ? Color(filter.status.tintUIColor).opacity(0.22) : Color(uiColor: .tertiarySystemFill),
+                in: Capsule())
+            .overlay(Capsule().strokeBorder(isOn ? ink : .clear, lineWidth: 1.5))
+            .contentShape(Capsule())
+            // An empty status stays in place, faded, so the buttons never move.
+            .opacity(count == 0 && !isOn ? 0.45 : 1)
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .help(title)
+        .accessibilityLabel(title)
+        .accessibilityValue(count == 1 ? "1 Agent" : "\(count) Agents")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+        .accessibilityIdentifier("agents.status-filter.\(filter.rawValue)")
     }
 }
 
