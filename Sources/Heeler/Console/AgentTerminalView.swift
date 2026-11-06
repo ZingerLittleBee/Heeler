@@ -254,7 +254,7 @@ struct AgentTerminalView: View {
     /// Survives same-screen terminal replacement so a raised Direct Input
     /// keyboard is reclaimed without raising one that was down.
     @State private var directKeyboardIntent = DirectInputKeyboardIntent()
-    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
     @State private var isConfirmingClose = false
@@ -580,7 +580,9 @@ struct AgentTerminalView: View {
         terminalSurface
         .photosPicker(
             isPresented: $isSelectingPhoto,
-            selection: $selectedPhoto,
+            selection: $selectedPhotos,
+            maxSelectionCount: 10,
+            selectionBehavior: .ordered,
             matching: .images)
         .fileImporter(
             isPresented: $isSelectingFile,
@@ -739,10 +741,11 @@ struct AgentTerminalView: View {
 
     private var lifecycleSurface: some View {
         alertSurface
-        .onChange(of: selectedPhoto) { _, item in
-            guard let item else { return }
-            selectedPhoto = nil
-            session.staging.begin(.photo(PhotosPickerImageSelection(item: item)))
+        .onChange(of: selectedPhotos) { _, items in
+            guard !items.isEmpty else { return }
+            selectedPhotos = []
+            let staging = session.staging
+            Task { await staging.beginAll(items.map { .photo(PhotosPickerImageSelection(item: $0)) }) }
         }
         // Not the phase: a background→foreground round trip the grace period
         // absorbs never leaves `.active`, so the return that has to prove the

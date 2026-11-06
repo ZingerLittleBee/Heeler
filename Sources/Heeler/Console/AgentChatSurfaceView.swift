@@ -61,7 +61,7 @@ struct AgentChatSurfaceView: View {
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
-    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
@@ -212,7 +212,9 @@ struct AgentChatSurfaceView: View {
         lifecycleSurface
         .photosPicker(
             isPresented: $isSelectingPhoto,
-            selection: $selectedPhoto,
+            selection: $selectedPhotos,
+            maxSelectionCount: 10,
+            selectionBehavior: .ordered,
             matching: .images)
         .fileImporter(
             isPresented: $isSelectingFile,
@@ -373,10 +375,11 @@ struct AgentChatSurfaceView: View {
             prepareComposerKeyboardPresentation(.hidden)
             composerKeyboardPresentation = .hidden
         }
-        .onChange(of: selectedPhoto) { _, item in
-            guard let item else { return }
-            selectedPhoto = nil
-            session.staging.begin(.photo(PhotosPickerImageSelection(item: item)))
+        .onChange(of: selectedPhotos) { _, items in
+            guard !items.isEmpty else { return }
+            selectedPhotos = []
+            let staging = session.staging
+            Task { await staging.beginAll(items.map { .photo(PhotosPickerImageSelection(item: $0)) }) }
         }
         .onChange(of: composer.draft.hasPrefix("/"), initial: true) { _, opensMenu in
             guard opensMenu, let skills else { return }
