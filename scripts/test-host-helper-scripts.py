@@ -4,11 +4,11 @@
 Compiles Sources/Heeler/Transport/HostHelperScript.swift with
 NodeToolchainProbe.swift and a small driver, then feeds each script to every
 POSIX shell found here (/bin/sh, dash, bash, ksh, busybox), as the bounded exec
-does. The Host is a temporary HOME with stand-ins for `uname`, `systemctl`,
-`loginctl`, `launchctl` and `node` on PATH; the stand-ins log how they were
-called, so a test can see XDG_RUNTIME_DIR arrive. Needs swiftc (agent-tools CI
-uses the Ubuntu image's, whose /bin/sh is dash); uses only Python's standard
-library.
+does. The Host is a temporary HOME with a shell function for `uname` and PATH
+stand-ins for `systemctl`, `loginctl`, `launchctl` and `node`; the stand-ins log
+how they were called, so a test can see XDG_RUNTIME_DIR arrive. Needs swiftc
+(agent-tools CI uses the Ubuntu image's, whose /bin/sh is dash); uses only
+Python's standard library.
 """
 
 import hashlib
@@ -149,7 +149,7 @@ default:
 }
 """
 
-# The node probe's fixed system locations. Tests move them under the fake root,
+# The probe's fixed system locations. Tests move them under the fake root,
 # so what this machine has installed cannot answer for a layout.
 SYSTEM_PREFIXES = (
     "/opt/homebrew/",
@@ -160,6 +160,7 @@ SYSTEM_PREFIXES = (
     "/nix/var/",
     "/snap/bin",
     "/opt/local/bin",
+    "/var/lib/systemd/linger/",
 )
 
 SYSTEMCTL = """#!/bin/sh
@@ -219,8 +220,9 @@ def shells() -> list[str]:
         path = shutil.which(name)
         if path:
             found.append(path)
-    if shutil.which("busybox"):
-        found.append("busybox sh")
+    busybox = shutil.which("busybox")
+    if busybox:
+        found.append(f"{busybox} sh")
     return found
 
 
@@ -250,8 +252,6 @@ class HelperScriptCase(unittest.TestCase):
         self.bin.mkdir()
         self.log = self.root / "calls.log"
         self.log.write_text("")
-        # These tests run on Linux and on a Mac, so the real answer cannot decide a layout.
-        self.tool("uname", '#!/bin/sh\necho "${FAKE_KERNEL:-Linux}"\n')
         self.tool("systemctl", SYSTEMCTL)
         self.tool("loginctl", LOGINCTL)
         self.tool("launchctl", LAUNCHCTL)
@@ -276,9 +276,12 @@ class HelperScriptCase(unittest.TestCase):
         ).stdout
 
     def run_script(self, shell: str = "/bin/sh", **step) -> subprocess.CompletedProcess:
-        text = self.script(**step)
-        for prefix in SYSTEM_PREFIXES:
-            text = text.replace(prefix, f"{self.root}/abs{prefix}")
+        # A shell function overrides BusyBox's built-in uname; a PATH shim does not.
+        text = 'uname() { printf "%s\\n" "${FAKE_KERNEL:-Linux}"; }\n' + self.script(**step)
+        # Only the probe discovers system paths; other steps receive real paths.
+        if step["step"] == "probe":
+            for prefix in SYSTEM_PREFIXES:
+                text = text.replace(prefix, f"{self.root}/abs{prefix}")
         return subprocess.run(
             shell.split(), input=text, env=self.env, capture_output=True, text=True, timeout=60,
         )
@@ -354,7 +357,7 @@ class ProbeTests(HelperScriptCase):
         self.env["PATH"] = str(self.bin) + ":" + str(self.root / "tools")
         tools = self.root / "tools"
         tools.mkdir()
-        for name in ("uname", "id", "od", "tr", "find", "sed", "tail", "mktemp", "rm", "sleep", "cat"):
+        for name in ("id", "od", "tr", "find", "sed", "tail", "mktemp", "rm", "sleep", "cat"):
             found = shutil.which(name)
             if found:
                 (tools / name).symlink_to(found)
@@ -366,6 +369,13 @@ class ProbeTests(HelperScriptCase):
         self.env["FAKE_LINGER"] = "no"
         self.assertFalse(self.probe()["linger"])
         self.env["FAKE_LINGER"] = "missing"
+        self.assertFalse(self.probe()["linger"])
+        user = subprocess.run(["id", "-un"], capture_output=True, text=True, check=True).stdout.strip()
+        linger = self.root / "abs/var/lib/systemd/linger" / user
+        linger.parent.mkdir(parents=True)
+        linger.touch()
+        self.assertTrue(self.probe()["linger"])
+        self.env["FAKE_LINGER"] = "no"
         self.assertFalse(self.probe()["linger"])
 
     def test_node_missing_and_too_old(self) -> None:
