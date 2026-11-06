@@ -289,6 +289,31 @@ extension AgentSessionSettings {
         ("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"), ("fable", "Fable"),
     ]
 
+    /// What the screen says to a typed `/model` or `/effort`: the first
+    /// `done` or `kept` line below the newest echo of the command. Read
+    /// against the echo rather than by counting confirmations, which a full
+    /// screen scrolls away as new ones arrive.
+    struct Outcome: Equatable {
+        var echoes = 0
+        var result: Bool?
+
+        init(of command: String, done: String, kept: String, on screen: ANSIScreen) {
+            let rows = screen.rows.map(\.text)
+            let echoRows = rows.indices.filter { rows[$0].contains(command) }
+            echoes = echoRows.count
+            guard let last = echoRows.last else { return }
+            for row in rows[(last + 1)...] {
+                if row.contains(done) { result = true; return }
+                if row.contains(kept) { result = false; return }
+            }
+        }
+
+        /// The answer to a command typed since `before`, once there is one.
+        func answered(since before: Outcome) -> Bool? {
+            echoes > before.echoes ? result : nil
+        }
+    }
+
     /// The levels `/effort` takes (2.1.319); a model without one refuses it on screen.
     static let effortChoices = ["low", "medium", "high", "xhigh", "max"]
 

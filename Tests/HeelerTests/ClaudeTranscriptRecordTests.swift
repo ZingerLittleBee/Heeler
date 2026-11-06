@@ -276,6 +276,25 @@ struct AgentSessionSettingsTests {
         #expect(!AgentSessionSettings.model(nil, is: "opus"))
     }
 
+    @Test("A switch's answer is the line below the newest echo of its command, not a recount")
+    func switchOutcome() {
+        func outcome(_ rows: [String]) -> AgentSessionSettings.Outcome {
+            .init(of: "/model sonnet", done: "Set model to", kept: "Kept model as",
+                  on: ANSIScreenDecoder.decode(rows.joined(separator: "\r\n")))
+        }
+        let before = outcome(["> /model sonnet", "  ⎿  Kept model as Opus 5.5", "> /model opus", "  ⎿  Set model to Opus 5.5", "> "])
+        #expect(before.echoes == 1 && before.result == false)
+        // Typed, not answered yet: the old Kept is not this command's.
+        #expect(outcome(["> /model sonnet", "  ⎿  Kept model as Opus 5.5", "> "]).answered(since: before) == nil)
+        // A full screen dropped both old lines, so no count of Set grows.
+        let scrolled = outcome(["  ⎿  Set model to Opus 5.5", "> /model sonnet", "  ⎿  Set model to Sonnet 5.5", "> "])
+        #expect(scrolled.answered(since: AgentSessionSettings.Outcome(
+            of: "/model sonnet", done: "Set model to", kept: "Kept model as",
+            on: ANSIScreenDecoder.decode("  ⎿  Set model to Opus 5.5\r\n> "))) == true)
+        #expect(outcome(["> /model sonnet", "  ⎿  Kept model as Opus 5.5", "> /model sonnet", "  ⎿  Kept model as Opus 5.5"])
+            .answered(since: before) == false)
+    }
+
     @Test("The permission mode is read off Claude Code's footer, not the conversation above it")
     func permissionModeOnScreen() {
         func screen(_ rows: [String]) -> ANSIScreen { ANSIScreenDecoder.decode(rows.joined(separator: "\r\n")) }

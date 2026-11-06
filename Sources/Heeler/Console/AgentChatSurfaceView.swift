@@ -73,6 +73,9 @@ struct AgentChatSurfaceView: View {
     @State private var effortOverride: String?
     /// Claude Code's "Switch model?" question, asked again on the phone.
     @State private var switchQuestion: SwitchQuestion?
+    /// A status-line switch under way; the controls wait for it, since two
+    /// at once would type into one input line.
+    @State private var isSwitchingSetting = false
     @State private var isRenamingAgent = false
     @State private var isRenamingWorkspace = false
     @State private var closeErrorMessage: String?
@@ -1027,20 +1030,30 @@ struct AgentChatSurfaceView: View {
         guard program == .claude else { return nil }
         let status = agent.agent.status
         return AgentSessionControls(
-            isEnabled: status == .idle || status == .done,
-            setPermissionMode: { target in Task { await switchPermissionMode(to: target) } },
+            isEnabled: (status == .idle || status == .done) && !isSwitchingSetting,
+            setPermissionMode: { target in switchSetting { await switchPermissionMode(to: target) } },
             setModel: { id in
-                Task {
+                switchSetting {
                     if await typeCommand("/model \(id)", done: "Set model to", kept: "Kept model as") { modelOverride = id }
                 }
             },
             setEffort: { level in
-                Task {
+                switchSetting {
                     if await typeCommand("/effort \(level)", done: "Set effort level to", kept: "Kept effort level as") {
                         effortOverride = level
                     }
                 }
             })
+    }
+
+    /// Runs one status-line switch at a time.
+    private func switchSetting(_ work: @escaping @MainActor () async -> Void) {
+        guard !isSwitchingSetting else { return }
+        isSwitchingSetting = true
+        Task {
+            await work()
+            isSwitchingSetting = false
+        }
     }
 
     /// Presses Shift+Tab, as the terminal would, until the footer shows `target`.
@@ -1061,18 +1074,21 @@ struct AgentChatSurfaceView: View {
     }
 
     /// Types `command` and Enter into the Agent, as the terminal would, then
-    /// watches the screen. Claude Code may ask "Switch model?" (the cache is
-    /// lost); the same question is put to the user here, and their answer
-    /// pressed there. True only once a new `done` line shows; a new `kept`
-    /// line, a No, or neither is not.
+    /// watches the screen. Only an input box read as empty gets the command,
+    /// so a draft typed elsewhere is never submitted with it. Claude Code may
+    /// ask "Switch model?" (the cache is lost); the same question is put to
+    /// the user here, and their answer pressed there only while that question
+    /// still shows. True only once `done` answers this command; `kept`, a No,
+    /// or neither is not.
     private func typeCommand(_ command: String, done: String, kept: String) async -> Bool {
         let read = readAgentScreen
-        func count(_ needle: String, in screen: ANSIScreen) -> Int {
-            screen.rows.reduce(0) { $0 + $1.text.components(separatedBy: needle).count - 1 }
-        }
+        let activity = agentActivity
         do {
             let before = try await read()
-            let (doneBefore, keptBefore) = (count(done, in: before), count(kept, in: before))
+            guard PreSendGate.check(before, program: .claude, activity: activity()) == .send else {
+                throw CancellationError()
+            }
+            let was = AgentSessionSettings.Outcome(of: command, done: done, kept: kept, on: before)
             try await console.pasteIntoAgent(command + " ", paneID: agent.agent.paneID, on: agent.hostID)
             try await Task.sleep(for: .milliseconds(150))
             guard await agentKeys.deliver(["enter"]) == .sent else { throw CancellationError() }
@@ -1080,11 +1096,18 @@ struct AgentChatSurfaceView: View {
             for _ in 0..<12 {
                 try await Task.sleep(for: .milliseconds(250))
                 let screen = try await read()
-                if count(done, in: screen) > doneBefore { return true }
-                if count(kept, in: screen) > keptBefore { break }
+                if let answered = AgentSessionSettings.Outcome(of: command, done: done, kept: kept, on: screen)
+                    .answered(since: was)
+                {
+                    if answered { return true }
+                    break
+                }
                 if !asked, let question = SwitchQuestion(screen) {
                     asked = true
                     let yes = await withCheckedContinuation { switchQuestion = question.answering(with: $0) }
+                    // Another client may have answered it meanwhile; keys
+                    // then would land on whatever replaced it.
+                    guard SwitchQuestion(try await read()) == question else { break }
                     // Yes is the highlighted first option; Esc is the TUI's go back.
                     guard await agentKeys.deliver([yes ? "enter" : "esc"]) == .sent, yes else { return false }
                 }
@@ -1445,7 +1468,7 @@ enum ChatStageExit {
 }
 
 /// Claude Code's "Switch model?" dialog as the screen shows it (2.1.319).
-private struct SwitchQuestion {
+private struct SwitchQuestion: Equatable {
     let title: String
     let detail: String
     let yes: String
@@ -1460,6 +1483,10 @@ private struct SwitchQuestion {
         detail = rows[(top + 1)..<option].filter { !$0.isEmpty }.joined(separator: " ")
         // "❯ 1. Yes, switch to Sonnet 5.5" → "Yes, switch to Sonnet 5.5"
         yes = rows[option].range(of: "Yes, switch to").map { String(rows[option][$0.lowerBound...]) } ?? "Yes"
+    }
+
+    static func == (a: SwitchQuestion, b: SwitchQuestion) -> Bool {
+        (a.title, a.detail, a.yes) == (b.title, b.detail, b.yes)
     }
 
     func answering(with continuation: CheckedContinuation<Bool, Never>) -> SwitchQuestion {
