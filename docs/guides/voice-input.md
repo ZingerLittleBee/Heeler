@@ -11,7 +11,7 @@ You need your own API key for OpenAI, DeepInfra, SiliconFlow (China), or a compa
 3. For **Custom**, fill in:
    - **Base URL**: an `https://` URL compatible with OpenAI's `audio/transcriptions` endpoint.
    - **Model**: the model name the service expects.
-   - **Send Language**: sends your first preferred language when on. Leave it off if the service rejects the language setting.
+   - Optional **Advanced Request Fields**: language hints and other form fields your service documents.
 4. Enter your **API Key** and tap **Save**.
 5. On the first save for a service, Heeler asks **Send Recordings to …?**. Tap **Send Recordings** to confirm.
 
@@ -28,6 +28,40 @@ Tap the microphone beside **Send** to speak, then tap it again to stop. The text
 - While transcribing, the microphone shows a spinner; tap **✕** to cancel.
 - Each recording lasts up to 2 minutes, then stops and transcribes automatically.
 - Backgrounding Heeler or leaving the Composer ends the recording and transcribes it into that draft. Entering Direct Input, leaving the Agent, or a Blocked Card replacing the Composer in Chat cancels it.
+
+## Languages
+
+Languages start at **Automatic**, regardless of the device's preferred language.
+With **OpenAI**, open **Languages** and select the languages you speak, such as
+Chinese and English. With **DeepInfra**, choose one **Language**, or keep
+**Automatic** for mixed speech. Its API documents a single language parameter;
+its effect on hosted Qwen3-ASR has not been verified with a real key. SiliconFlow
+stays automatic because its API does not document a language parameter.
+Selections belong to each service and take effect on **Save**.
+
+## Custom request fields
+
+After entering a valid Custom URL and model, use **Advanced Request Fields** to
+add a field, open its row, and edit its name and values. Swipe a field or value
+to delete it. For example, add `languages[]` with two values, `zh` and `en`, or
+`language` with one value, `zh`, according to the service's documentation.
+
+Names are sent exactly as entered. Several values repeat the same multipart
+field name; Heeler does not add `[]`. Numbers and booleans are entered as text.
+`file` and `model` are reserved. Duplicate field entries, invalid names, and
+conflicting `language` / `languages` fields prevent Save and show a reason.
+
+A Custom `prompt` replaces the shared Prompt, and `response_format` replaces
+the default `json`. Empty string values are allowed. The response still needs
+to be JSON with a `text` field, or `text/plain`; streaming responses are not
+supported. These are form fields, not HTTP headers. Keep authentication in
+**API Key**. The service decides which fields it accepts and uses.
+
+Fields are saved per normalized URL and model. Editing the URL or model opens
+that destination's own fields; a new destination starts empty. Back or Cancel
+without Save leaves the saved configuration unchanged. On upgrade, an enabled
+legacy **Send Language** becomes a `language` field containing the device's
+then-current first language. Later system language changes do not change it.
 
 ## Keywords and Prompt
 
@@ -56,4 +90,4 @@ When a recording produces no text, the Composer shows the reason with **Retry** 
 
 Recordings are uploaded to your chosen service under its terms and billed to your key. Heeler's developer receives none of them. See the [Voice Input section of the Privacy Policy](../../PRIVACY.md#voice-input).
 
-Last checked on 2026-11-05.
+Last checked on 2026-11-06.

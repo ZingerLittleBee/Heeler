@@ -21,7 +21,8 @@ struct VoiceInputSettingsView: View {
     init(settings: VoiceInputSettings, isSheet: Bool = false) {
         self.settings = settings
         self.isSheet = isSheet
-        _connection = State(initialValue: VoiceInputServiceDraft(service: settings.service, custom: settings.custom))
+        _connection = State(initialValue: VoiceInputServiceDraft(
+            service: settings.service, custom: settings.custom, requestOptions: settings.requestOptions))
         _keywords = State(initialValue: settings.keywords.joined(separator: ", "))
         _prompt = State(initialValue: settings.prompt)
     }
@@ -43,6 +44,7 @@ struct VoiceInputSettingsView: View {
                 Section {
                     LabeledContent("Model", value: preset.model)
                 }
+                VoiceInputLanguagesSection(preset: preset, languages: $connection.options.languages)
                 keySection
             case .custom:
                 customSection
@@ -53,6 +55,12 @@ struct VoiceInputSettingsView: View {
             if connection.service != nil {
                 keywordsSection
                 promptSection
+                if connection.service == .custom, connection.endpoint != nil {
+                    VoiceInputCustomFieldsSection(fields: $connection.options.fields)
+                    if let problem = optionsProblem {
+                        Section { Text(problem.message).foregroundStyle(.red) }
+                    }
+                }
                 if #available(iOS 26.0, *) {
                     microphoneSection
                 }
@@ -103,11 +111,10 @@ struct VoiceInputSettingsView: View {
                 title: "Base URL", prompt: "https://api.example.com/v1", text: $connection.custom.baseURL,
                 keyboard: .URL)
             VoiceInputFormField(title: "Model", prompt: "Required", text: $connection.custom.model)
-            Toggle("Send Language", isOn: $connection.custom.sendsLanguage)
         } footer: {
             Text(
-                "For services that take OpenAI's audio/transcriptions request. Send Language adds "
-                    + "your first preferred language; leave it off if the service rejects it.")
+                "For services that take OpenAI's audio/transcriptions request. Language and other options "
+                    + "can be set in Advanced Request Fields after entering the URL and model.")
         }
     }
 
@@ -154,7 +161,9 @@ struct VoiceInputSettingsView: View {
         } header: {
             Text("Prompt")
         } footer: {
-            if connection.service?.takesKeywords == false {
+            if connection.service == .custom, connection.options.fields.contains(where: { $0.name == "prompt" }) {
+                Text("The prompt in Advanced Request Fields replaces this Prompt for this Custom model.")
+            } else if connection.service?.takesKeywords == false {
                 Text(
                     "What you talk about, sent as written. This service doesn't read Keywords, "
                         + "so they're added here.")
@@ -198,7 +207,7 @@ struct VoiceInputSettingsView: View {
     }
 
     private var draftEndpoint: VoiceInputEndpoint? {
-        connection.service.flatMap { settings.endpoint(for: $0, custom: connection.custom) }
+        connection.endpoint
     }
 
     private var draftHost: String {
@@ -220,9 +229,15 @@ struct VoiceInputSettingsView: View {
         }
     }
 
+    private var optionsProblem: VoiceInputRequestOptions.Problem? {
+        guard let endpoint = connection.endpoint else { return nil }
+        do { try connection.options.validate(for: endpoint) } catch { return error }
+        return nil
+    }
+
     private var canSave: Bool {
         guard let service = connection.service else { return settings.service != nil }
-        if case .success = settings.validate(service: service, custom: connection.custom, apiKey: connection.apiKey) {
+        if case .success = settings.validate(service: service, custom: connection.custom, apiKey: connection.apiKey, options: connection.options) {
             return true
         }
         return false
@@ -234,7 +249,7 @@ struct VoiceInputSettingsView: View {
             dismiss()
             return
         }
-        switch settings.validate(service: service, custom: connection.custom, apiKey: connection.apiKey) {
+        switch settings.validate(service: service, custom: connection.custom, apiKey: connection.apiKey, options: connection.options) {
         case .failure(let error):
             saveError = error.message
         case .success(let endpoint):
@@ -249,7 +264,7 @@ struct VoiceInputSettingsView: View {
     private func save(consented: Bool) {
         guard let service = connection.service else { return }
         do {
-            try settings.save(service: service, custom: connection.custom, apiKey: connection.apiKey, consented: consented)
+            try settings.save(service: service, custom: connection.custom, apiKey: connection.apiKey, consented: consented, options: connection.options)
             settings.setKeywords(from: keywords)
             settings.setPrompt(prompt)
             connection.apiKey = ""

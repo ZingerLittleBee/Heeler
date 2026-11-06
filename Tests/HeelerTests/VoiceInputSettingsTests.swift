@@ -144,8 +144,7 @@ struct VoiceInputSettingsTests {
             custom: .init(baseURL: "https://a.example.com/v1", model: "first"))
         draft.apiKey = "key-a"
         draft.custom.model = "second"
-        draft.custom.sendsLanguage = true
-        #expect(draft.apiKey == "key-a", "model and language share the destination's key")
+        #expect(draft.apiKey == "key-a", "models share the destination's key")
         draft.custom.baseURL = "https://"
         #expect(draft.apiKey.isEmpty)
         draft.custom.baseURL = "https://b.example.com/v1"
@@ -196,7 +195,7 @@ struct VoiceInputSettingsTests {
             let moved = VoiceInputCustomService(baseURL: "https://b.example.com/v1", model: "asr")
             try settings.save(service: .custom, custom: first, apiKey: "key-a", consented: true)
             let firstEndpoint = try #require(settings.endpoint)
-            let movedEndpoint = try #require(settings.endpoint(for: .custom, custom: moved))
+            let movedEndpoint = try #require(VoiceInputService.custom.endpoint(custom: moved))
             #expect(throws: VoiceInputSettings.SaveError.keyRemoval) {
                 try settings.save(service: .custom, custom: moved, apiKey: "key-b", consented: true)
             }
@@ -259,6 +258,118 @@ struct VoiceInputSettingsTests {
             try settings.save(service: .preset(.openAI), custom: .init(), apiKey: "sk", consented: true)
             settings.turnOff()
             #expect(VoiceInputSettings(defaults: defaults, secrets: secrets).alwaysUsesBuiltInMicrophone)
+        }
+    }
+
+    @Test func languagesAreSavedPerServiceAndDraftEditsDoNotPersistUntilSave() throws {
+        try withDefaults { defaults in
+            let secrets = InMemorySecretStore()
+            let settings = VoiceInputSettings(defaults: defaults, secrets: secrets, preferredLanguages: ["en-US"])
+            try settings.save(service: .preset(.openAI), custom: .init(), apiKey: "sk", consented: true,
+                              options: .init(languages: ["zh", "en"]))
+            var draft = VoiceInputServiceDraft(
+                service: settings.service, custom: settings.custom, requestOptions: settings.requestOptions)
+            draft.options.languages = ["ja"]
+            let openAI = try #require(settings.endpoint)
+            #expect(settings.options(for: openAI).languages == ["zh", "en"], "Cancel leaves the saved languages alone")
+            draft.service = .preset(.deepInfra)
+            #expect(draft.options.languages.isEmpty)
+            draft.options.languages = ["fr"]
+            draft.service = .preset(.openAI)
+            #expect(draft.options.languages == ["ja"])
+            try settings.save(service: .preset(.deepInfra), custom: .init(), apiKey: "di", consented: true,
+                              options: .init(languages: ["fr"]))
+            let reopened = VoiceInputSettings(defaults: defaults, secrets: secrets, preferredLanguages: ["de"])
+            #expect(reopened.options(for: openAI).languages == ["zh", "en"])
+            #expect(reopened.options(for: try #require(reopened.endpoint)).languages == ["fr"])
+        }
+    }
+
+    @Test func customFieldsFollowOnlyTheirNormalizedURLAndModel() throws {
+        try withDefaults { defaults in
+            let secrets = InMemorySecretStore()
+            let settings = VoiceInputSettings(defaults: defaults, secrets: secrets)
+            let custom = VoiceInputCustomService(baseURL: "https://a.example.com/v1", model: "asr")
+            let options = VoiceInputRequestOptions(fields: [.init(name: "languages[]", values: ["zh", "en"])])
+            try settings.save(service: .custom, custom: custom, apiKey: "key-a", consented: true, options: options)
+            let reopened = VoiceInputSettings(defaults: defaults, secrets: secrets)
+            var draft = VoiceInputServiceDraft(service: .custom, custom: custom, requestOptions: reopened.requestOptions)
+            #expect(draft.options == options)
+            draft.custom.baseURL = "https://A.example.com/v1/audio/transcriptions/"
+            #expect(draft.options == options)
+            draft.custom.model = "other"
+            #expect(draft.options.fields.isEmpty)
+            draft.custom.model = "asr"
+            draft.custom.baseURL = "https://b.example.com/v1"
+            #expect(draft.options.fields.isEmpty)
+            draft.custom.baseURL = custom.baseURL
+            #expect(draft.options == options)
+        }
+    }
+
+    @Test func theLegacyCustomLanguageMigratesOnceEvenWhileOff() throws {
+        try withDefaults { defaults in
+            defaults.set("https://a.example.com/v1", forKey: "voice-input-custom-url")
+            defaults.set("asr", forKey: "voice-input-custom-model")
+            defaults.set(true, forKey: "voice-input-custom-language")
+            let secrets = InMemorySecretStore()
+            let settings = VoiceInputSettings(defaults: defaults, secrets: secrets, preferredLanguages: ["zh-Hans-CN"])
+            let endpoint = try #require(VoiceInputService.custom.endpoint(custom: settings.custom))
+            #expect(settings.service == nil)
+            #expect(settings.options(for: endpoint).fields.map(\.name) == ["language"])
+            #expect(settings.options(for: endpoint).fields.map(\.values) == [["zh"]])
+            #expect(defaults.object(forKey: "voice-input-custom-language") == nil)
+            let reopened = VoiceInputSettings(defaults: defaults, secrets: secrets, preferredLanguages: ["en-US"])
+            #expect(reopened.options(for: endpoint).fields.map(\.values) == [["zh"]])
+            try reopened.save(service: .custom, custom: reopened.custom, apiKey: "key", consented: true, options: .init())
+            let cleared = VoiceInputSettings(defaults: defaults, secrets: secrets, preferredLanguages: ["fr"])
+            #expect(cleared.options(for: endpoint).fields.isEmpty, "clearing the migration is permanent")
+        }
+    }
+
+    @Test func invalidFieldsCannotSaveAKeyOrAgreement() throws {
+        try withDefaults { defaults in
+            let settings = VoiceInputSettings(defaults: defaults, secrets: InMemorySecretStore())
+            let custom = VoiceInputCustomService(baseURL: "https://a.example.com", model: "asr")
+            let endpoint = try #require(VoiceInputService.custom.endpoint(custom: custom))
+            #expect(throws: VoiceInputSettings.SaveError.options(.reservedName)) {
+                try settings.save(service: .custom, custom: custom, apiKey: "key", consented: true,
+                                  options: .init(fields: [.init(name: "file", values: ["override"])]))
+            }
+            #expect(!settings.hasKey(for: endpoint))
+            #expect(!settings.hasConsent(for: endpoint))
+            #expect(settings.service == nil)
+        }
+    }
+
+    @Test func requestValidationRejectsAmbiguousAndUnsafeFieldShapes() throws {
+        let endpoint = VoiceInputEndpoint.custom(baseURL: try #require(URL(string: "https://a.example.com")), model: "asr")
+        let cases: [([VoiceInputCustomField], VoiceInputRequestOptions.Problem)] = [
+            ([.init(name: "model[]", values: ["other"])], .reservedName),
+            ([.init(name: "file", values: ["other"])], .reservedName),
+            ([.init(name: "name\n", values: ["x"])], .invalidName),
+            ([.init(name: "name\"", values: ["x"])], .invalidName),
+            ([.init(name: "", values: ["x"])], .invalidName),
+            ([.init(name: "language", values: ["zh", "en"])], .singleValue),
+            ([.init(name: "prompt[]", values: ["x"])], .singleValue),
+            ([.init(name: "x", values: [])], .missingValues),
+            ([.init(name: "x", values: ["a"]), .init(name: "x[]", values: ["b"])], .duplicateName),
+            ([.init(name: "language", values: ["zh"]), .init(name: "languages[]", values: ["en"])], .conflictingLanguages),
+        ]
+        for (fields, problem) in cases {
+            #expect(throws: problem) { try VoiceInputRequestOptions(fields: fields).validate(for: endpoint) }
+        }
+        try VoiceInputRequestOptions(fields: [.init(name: "prompt", values: [""])]).validate(for: endpoint)
+        let openAI = try #require(VoiceInputEndpoint.preset(.openAI))
+        #expect(throws: VoiceInputRequestOptions.Problem.invalidLanguage) {
+            try VoiceInputRequestOptions(languages: ["en\n"]).validate(for: openAI)
+        }
+        #expect(throws: VoiceInputRequestOptions.Problem.customOnly) {
+            try VoiceInputRequestOptions(fields: [.init(name: "x", values: ["y"])]).validate(for: openAI)
+        }
+        let siliconFlow = try #require(VoiceInputEndpoint.preset(.siliconFlowCN))
+        #expect(throws: VoiceInputRequestOptions.Problem.languagesUnavailable) {
+            try VoiceInputRequestOptions(languages: ["zh"]).validate(for: siliconFlow)
         }
     }
 }

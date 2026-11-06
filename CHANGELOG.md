@@ -7,6 +7,10 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+### Added
+
+- Choose Voice Input languages independently of the device language, with automatic detection by default, multiple OpenAI hints and one optional DeepInfra language. Custom services gain per-URL/model request fields with multiple values, validation and migration of the previous Send Language setting. (PR pending)
+
 ### Fixed
 
 - Clear an unsaved Voice Input API key when its service or Custom URL changes, and report Keychain deletion failures without switching the saved destination or withdrawing its agreement. (PR pending)

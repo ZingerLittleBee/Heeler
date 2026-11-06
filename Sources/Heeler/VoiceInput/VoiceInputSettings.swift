@@ -26,6 +26,18 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
         }
     }
 
+    func endpoint(custom: VoiceInputCustomService) -> VoiceInputEndpoint? {
+        switch self {
+        case .preset(let preset): return .preset(preset)
+        case .custom:
+            if case .success(let url) = VoiceInputCustomURL.normalize(custom.baseURL) {
+                let model = custom.model.trimmingCharacters(in: .whitespacesAndNewlines)
+                return model.isEmpty ? nil : .custom(baseURL: url, model: model)
+            }
+            return nil
+        }
+    }
+
     /// Whether the service reads Keywords on their own. The others hear
     /// them only through the Prompt.
     var takesKeywords: Bool {
@@ -75,9 +87,6 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
 struct VoiceInputCustomService: Equatable, Sendable {
     var baseURL = ""
     var model = ""
-    /// Off by default: servers that reject an unknown `language` are more
-    /// common than ones that need it.
-    var sendsLanguage = false
 }
 
 /// Unsaved connection fields. A typed key belongs only to the destination
@@ -94,6 +103,17 @@ struct VoiceInputServiceDraft {
         }
     }
     var apiKey = ""
+    var requestOptions: [String: VoiceInputRequestOptions] = [:]
+
+    var endpoint: VoiceInputEndpoint? { service?.endpoint(custom: custom) }
+
+    var options: VoiceInputRequestOptions {
+        get { endpoint.flatMap { requestOptions[$0.consentID] } ?? .init() }
+        set {
+            guard let endpoint else { return }
+            requestOptions[endpoint.consentID] = newValue
+        }
+    }
 }
 
 /// Voice Input's service, its keys, and what the user agreed to (ADR 0036).
@@ -113,9 +133,13 @@ final class VoiceInputSettings {
         case notConsented
         case keychain
         case keyRemoval
+        case options(VoiceInputRequestOptions.Problem)
+        case optionsStorage
 
         var message: String {
             switch self {
+            case .options(let problem): problem.message
+            case .optionsStorage: "The request settings could not be saved."
             case .invalidURL(let problem): problem.message
             case .missingModel: "Enter the model name the service expects."
             case .missingKey: "Enter the service's API key."
@@ -132,6 +156,7 @@ final class VoiceInputSettings {
         static let customURL = "voice-input-custom-url"
         static let customModel = "voice-input-custom-model"
         static let customLanguage = "voice-input-custom-language"
+        static let requestOptions = "voice-input-request-options-v1"
         static let consents = "voice-input-consents"
         static let builtInMicrophone = "voice-input-built-in-microphone"
         static let keywords = "voice-input-keywords"
@@ -142,6 +167,7 @@ final class VoiceInputSettings {
     private(set) var service: VoiceInputService?
     private(set) var custom: VoiceInputCustomService
     private(set) var consents: Set<String>
+    private(set) var requestOptions: [String: VoiceInputRequestOptions]
     /// Bumped by every key write, so views re-read `hasKey(for:)`.
     private(set) var keyRevision = 0
     /// Records from this device's own microphone even while AirPods that
@@ -160,24 +186,38 @@ final class VoiceInputSettings {
 
     init(
         defaults: UserDefaults = .standard,
-        secrets: any SecretStore = KeychainSecretStore(service: VoiceInputSettings.keychainService)
+        secrets: any SecretStore = KeychainSecretStore(service: VoiceInputSettings.keychainService),
+        preferredLanguages: [String] = Locale.preferredLanguages
     ) {
         self.defaults = defaults
         self.secrets = secrets
         service = defaults.string(forKey: Key.service).flatMap(VoiceInputService.init(storageValue:))
         custom = VoiceInputCustomService(
             baseURL: defaults.string(forKey: Key.customURL) ?? "",
-            model: defaults.string(forKey: Key.customModel) ?? "",
-            sendsLanguage: defaults.bool(forKey: Key.customLanguage))
+            model: defaults.string(forKey: Key.customModel) ?? "")
+        requestOptions = defaults.data(forKey: Key.requestOptions)
+            .flatMap { try? JSONDecoder().decode([String: VoiceInputRequestOptions].self, from: $0) } ?? [:]
         consents = Set(defaults.stringArray(forKey: Key.consents) ?? [])
         alwaysUsesBuiltInMicrophone = defaults.bool(forKey: Key.builtInMicrophone)
         keywords = defaults.stringArray(forKey: Key.keywords) ?? []
         prompt = defaults.string(forKey: Key.prompt) ?? ""
+        // Migrate the legacy toggle once, even while the Custom service is off.
+        if defaults.object(forKey: Key.requestOptions) == nil {
+            if defaults.bool(forKey: Key.customLanguage), let endpoint = VoiceInputService.custom.endpoint(custom: custom) {
+                requestOptions[endpoint.consentID] = .init(fields: [
+                    .init(name: "language", values: [VoiceInputLanguage.legacyPrimary(preferredLanguages: preferredLanguages)])
+                ])
+            }
+            if let data = try? JSONEncoder().encode(requestOptions) {
+                defaults.set(data, forKey: Key.requestOptions)
+                defaults.removeObject(forKey: Key.customLanguage)
+            }
+        }
     }
 
     /// The saved destination; nil while Voice Input is off.
     var endpoint: VoiceInputEndpoint? {
-        service.flatMap { endpoint(for: $0, custom: custom) }
+        service?.endpoint(custom: custom)
     }
 
     /// Whether a recording can go out now.
@@ -186,19 +226,8 @@ final class VoiceInputSettings {
         return hasKey(for: endpoint) && hasConsent(for: endpoint)
     }
 
-    func endpoint(
-        for service: VoiceInputService, custom: VoiceInputCustomService
-    ) -> VoiceInputEndpoint? {
-        switch service {
-        case .preset(let preset):
-            return .preset(preset)
-        case .custom:
-            let model = custom.model.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard case .success(let url) = VoiceInputCustomURL.normalize(custom.baseURL),
-                !model.isEmpty
-            else { return nil }
-            return .custom(baseURL: url, model: model, sendsLanguage: custom.sendsLanguage)
-        }
+    func options(for endpoint: VoiceInputEndpoint) -> VoiceInputRequestOptions {
+        requestOptions[endpoint.consentID] ?? .init()
     }
 
     func hasKey(for endpoint: VoiceInputEndpoint) -> Bool {
@@ -219,7 +248,8 @@ final class VoiceInputSettings {
 
     /// Checks the form without saving it. A blank key keeps the stored one.
     func validate(
-        service: VoiceInputService, custom: VoiceInputCustomService, apiKey: String
+        service: VoiceInputService, custom: VoiceInputCustomService, apiKey: String,
+        options: VoiceInputRequestOptions? = nil
     ) -> Result<VoiceInputEndpoint, SaveError> {
         if case .custom = service {
             if case .failure(let problem) = VoiceInputCustomURL.normalize(custom.baseURL) {
@@ -229,8 +259,13 @@ final class VoiceInputSettings {
                 return .failure(.missingModel)
             }
         }
-        guard let endpoint = endpoint(for: service, custom: custom) else {
+        guard let endpoint = service.endpoint(custom: custom) else {
             return .failure(.invalidURL(.invalid))
+        }
+        do {
+            try (options ?? self.options(for: endpoint)).validate(for: endpoint)
+        } catch {
+            return .failure(.options(error))
         }
         let key = Self.trimmedKey(apiKey)
         if key.isEmpty {
@@ -247,14 +282,19 @@ final class VoiceInputSettings {
         service: VoiceInputService,
         custom: VoiceInputCustomService,
         apiKey: String,
-        consented: Bool
+        consented: Bool,
+        options: VoiceInputRequestOptions? = nil
     ) throws(SaveError) {
         let endpoint: VoiceInputEndpoint
-        switch validate(service: service, custom: custom, apiKey: apiKey) {
+        switch validate(service: service, custom: custom, apiKey: apiKey, options: options) {
         case .success(let validated): endpoint = validated
         case .failure(let error): throw error
         }
         guard consented || hasConsent(for: endpoint) else { throw .notConsented }
+        var updatedOptions = requestOptions
+        updatedOptions[endpoint.consentID] = options ?? self.options(for: endpoint)
+        let optionsData: Data
+        do { optionsData = try JSONEncoder().encode(updatedOptions) } catch { throw .optionsStorage }
         let key = Self.trimmedKey(apiKey)
         if !key.isEmpty {
             do {
@@ -263,7 +303,7 @@ final class VoiceInputSettings {
                 throw .keychain
             }
         }
-        if case .custom = service, let previous = self.endpoint(for: .custom, custom: self.custom),
+        if case .custom = service, let previous = VoiceInputService.custom.endpoint(custom: self.custom),
             previous.keyAccount != endpoint.keyAccount
         {
             do {
@@ -278,9 +318,10 @@ final class VoiceInputSettings {
         self.service = service
         if case .custom = service {
             self.custom = VoiceInputCustomService(
-                baseURL: endpoint.baseURL.absoluteString, model: endpoint.model,
-                sendsLanguage: custom.sendsLanguage)
+                baseURL: endpoint.baseURL.absoluteString, model: endpoint.model)
         }
+        requestOptions = updatedOptions
+        defaults.set(optionsData, forKey: Key.requestOptions)
         keyRevision += 1
         persist()
     }
@@ -336,7 +377,6 @@ final class VoiceInputSettings {
         defaults.set(service?.storageValue, forKey: Key.service)
         defaults.set(custom.baseURL, forKey: Key.customURL)
         defaults.set(custom.model, forKey: Key.customModel)
-        defaults.set(custom.sendsLanguage, forKey: Key.customLanguage)
         defaults.set(consents.sorted(), forKey: Key.consents)
     }
 
