@@ -59,6 +59,12 @@ struct ClaudeTranscriptRecordTests {
             ChatLine(offset: 600, data: Data(reply("s1", effort: "low", sidechain: true).utf8)),
         ])
         #expect(reducer.index.effort == "high")
+        // A newer reply without an effort clears it; a teammate's reply is not the session's.
+        let haiku = #"{"type":"assistant","uuid":"h1","parentUuid":null,"message":{"id":"m-h1","model":"claude-haiku-5-5","content":[{"type":"text","text":"ok"}]}}"#
+        let teammate = #"{"type":"assistant","uuid":"t1","parentUuid":null,"teamName":"crew","effort":"max","message":{"id":"m-t1","model":"claude-opus-5-5","content":[{"type":"text","text":"ok"}]}}"#
+        reducer.append([ChatLine(offset: 900, data: Data(haiku.utf8)), ChatLine(offset: 1200, data: Data(teammate.utf8))])
+        #expect(reducer.index.model == "claude-haiku-5-5")
+        #expect(reducer.index.effort == nil)
         #expect(AgentSessionSettings(model: "claude-fable-5-1", permissionMode: nil, effort: "high").modelLine == "Fable 5.1 · high")
         #expect(AgentSessionSettings(model: "claude-fable-5-1", permissionMode: nil).modelLine == "Fable 5.1")
     }
@@ -303,5 +309,8 @@ struct AgentSessionSettingsTests {
         #expect(AgentSessionSettings.permissionMode(onScreen: screen(["  ⏸ plan mode on (shift+tab to cycle)"])) == "plan")
         #expect(AgentSessionSettings.permissionMode(onScreen: screen(["  ⏵⏵ accept edits on"])) == "acceptEdits")
         #expect(AgentSessionSettings.permissionMode(onScreen: screen(["plan mode on, said the reply"] + filler + ["  ? for shortcuts"])) == "default")
+        let rule = String(repeating: "─", count: 40)
+        #expect(AgentSessionSettings.permissionMode(onScreen: screen(["⏺ It printed bypass permissions on", rule, "> ", rule, "  ⏸ plan mode on (shift+tab to cycle)"])) == "plan")
+        #expect(AgentSessionSettings.permissionMode(onScreen: screen(["⏺ bypass permissions on", rule, "> ", rule, "  ? for shortcuts"])) == "default")
     }
 }

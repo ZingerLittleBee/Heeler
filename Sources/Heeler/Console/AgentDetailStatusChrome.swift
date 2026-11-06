@@ -454,10 +454,18 @@ struct AgentSessionSettingsLabel: View {
 
 extension AgentSessionSettings {
     /// The mode Claude Code's footer shows (`⏵⏵ bypass permissions on`,
-    /// `⏸ plan mode on`, …; 2.1.319); none shown is `default`. Only the
-    /// bottom rows are read, so a transcript quoting the words does not count.
+    /// `⏸ plan mode on`, …; 2.1.319); none shown is `default`. The footer is
+    /// what lies below the input box's last rule, or without one the last
+    /// line, so a reply quoting the words does not count.
     static func permissionMode(onScreen screen: ANSIScreen) -> String {
-        let footer = screen.rows.suffix(6).map(\.text).joined(separator: "\n").lowercased()
+        let rows = screen.rows.map(\.text)
+        let isRule = { (row: String) in
+            let trimmed = row.trimmingCharacters(in: .whitespaces)
+            return trimmed.count >= 10 && trimmed.allSatisfy { $0 == "─" || $0 == "━" }
+        }
+        let below = rows.lastIndex(where: isRule).map { Array(rows[($0 + 1)...]) }
+            ?? rows.last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }).map { [$0] } ?? []
+        let footer = below.joined(separator: "\n").lowercased()
         if footer.contains("bypass permissions on") { return "bypassPermissions" }
         if footer.contains("accept edits on") { return "acceptEdits" }
         if footer.contains("plan mode on") { return "plan" }

@@ -23,7 +23,8 @@ struct ClaudeTranscriptIndex: Sendable {
     private var summaryTitle = Latest<String>()
     private var permissionModeValue = Latest<String>()
     private var modelValue = Latest<String>()
-    private var effortValue = Latest<String>()
+    /// The newest model reply's effort, nil when that reply records none.
+    private var effortValue = Latest<String?>()
     private var relocatedCwd = Latest<String>()
     private var continuedIn = Latest<String>()
     /// Where the newest assistant record of the session itself starts.
@@ -68,9 +69,10 @@ struct ClaudeTranscriptIndex: Sendable {
         if record.kind == .assistant, !record.isSidechain {
             lastAssistantOffset = max(lastAssistantOffset ?? 0, record.byteOffset)
             // `<synthetic>` marks a reply Claude Code wrote itself (an API error), not a model.
-            if let model = record.model, !model.isEmpty, model != "<synthetic>" {
+            // A teammate's reply is not the conversation Chat shows (`ClaudeChainResolver`).
+            if record.teamName == nil, let model = record.model, !model.isEmpty, model != "<synthetic>" {
                 modelValue.offer(model, at: record.byteOffset)
-                if let effort = record.effort, !effort.isEmpty { effortValue.offer(effort, at: record.byteOffset) }
+                effortValue.offer(record.effort.flatMap { $0.isEmpty ? nil : $0 }, at: record.byteOffset)
             }
         }
         switch record.kind {
@@ -110,7 +112,7 @@ struct ClaudeTranscriptIndex: Sendable {
     var model: String? { modelValue.value }
 
     /// The effort of the session's newest model reply.
-    var effort: String? { effortValue.value }
+    var effort: String? { effortValue.value ?? nil }
 
     /// The newest `relocated` and `continued-in`. A hand-off the session
     /// wrote assistant messages after is history, not where the
