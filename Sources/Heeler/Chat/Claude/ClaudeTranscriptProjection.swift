@@ -809,14 +809,14 @@ private struct Builder {
                             wasQueued: wasQueued)))
             }
         case .localCommandOutput(let output):
-            addOutputNotice(kind: .command, output: output, at: record)
+            addOutputNotice(output: output, at: record)
         case .bashInput(let command):
             let output = takeOutput(below: record, as: Self.bashOutput)
             add(
                 "notice:\(record.uuid)", at: record,
                 .notice(ChatNotice(kind: .shellCommand, title: command, detail: output?.nonEmpty)))
         case .bashOutput(let output):
-            addOutputNotice(kind: .shellCommand, output: output, at: record)
+            addOutputNotice(output: output, at: record)
         case .taskNotification(let notification):
             add("notice:\(record.uuid)", at: record, .notice(Self.notice(for: notification)))
         case .external(let messages):
@@ -919,10 +919,10 @@ private struct Builder {
                             kind: .command, title: invocation.displayText,
                             detail: ChatToolPreview(capping: output).text.nonEmpty)))
             } else {
-                addOutputNotice(kind: .command, output: output, at: record)
+                addOutputNotice(output: output, at: record)
             }
         case .prompt(let text):
-            addOutputNotice(kind: .command, output: text, at: record)
+            addOutputNotice(output: text, at: record)
         default:
             break
         }
@@ -1026,10 +1026,10 @@ private struct Builder {
     }
 
     /// Output whose command is not on the branch.
-    private mutating func addOutputNotice(kind: ChatNotice.Kind, output: String, at record: ClaudeRecord) {
+    private mutating func addOutputNotice(output: String, at record: ClaudeRecord) {
         let parts = ClaudeText.noticeParts(output)
         guard !parts.title.isEmpty else { return }
-        add("notice:\(record.uuid)", at: record, .notice(ChatNotice(kind: kind, title: parts.title, detail: parts.detail)))
+        add("notice:\(record.uuid)", at: record, .notice(ChatNotice(kind: .system, title: parts.title, detail: parts.detail)))
     }
 
     /// The capped output a child of `record` holds, marking that child as
