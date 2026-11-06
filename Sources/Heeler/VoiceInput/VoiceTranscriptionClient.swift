@@ -6,7 +6,7 @@ struct VoiceTranscriptionRequest: Sendable {
     let apiKey: String
     /// 16 kHz mono 16-bit WAV.
     let audio: Data
-    let primaryLanguage: String
+    let options: VoiceInputRequestOptions
     /// Names and terms to spell, already split and cleaned.
     let keywords: [String]
     /// The Prompt as the user saved it, sent as written; empty when unset.
@@ -15,6 +15,7 @@ struct VoiceTranscriptionRequest: Sendable {
 
 /// Why a transcription produced no text, in words the Composer can show.
 enum VoiceTranscriptionError: Error, Equatable, Sendable {
+    case invalidSettings(String)
     case unauthorized(String?)
     case rejected(status: Int, message: String?)
     case unavailable(status: Int, message: String?)
@@ -28,6 +29,8 @@ enum VoiceTranscriptionError: Error, Equatable, Sendable {
 
     var message: String {
         switch self {
+        case .invalidSettings(let detail):
+            detail
         case .unauthorized(let detail):
             Self.joined("The speech service rejected the API key.", detail)
         case .rejected(let status, let detail):
@@ -54,7 +57,7 @@ enum VoiceTranscriptionError: Error, Equatable, Sendable {
     /// Whether the fix is in Voice Input's settings.
     var suggestsSettings: Bool {
         switch self {
-        case .unauthorized, .redirected:
+        case .invalidSettings, .unauthorized, .redirected:
             true
         case .rejected(let status, _):
             status == 404
@@ -123,7 +126,7 @@ struct VoiceTranscriptionClient: Sendable {
     }
 
     func transcribe(_ request: VoiceTranscriptionRequest) async throws -> String {
-        let (urlRequest, body) = Self.makeRequest(request)
+        let (urlRequest, body) = try Self.makeRequest(request)
         let data: Data
         let response: HTTPURLResponse
         do {
@@ -141,7 +144,7 @@ struct VoiceTranscriptionClient: Sendable {
     static func makeRequest(
         _ request: VoiceTranscriptionRequest,
         boundary: String = "heeler-\(UUID().uuidString)"
-    ) -> (URLRequest, Data) {
+    ) throws -> (URLRequest, Data) {
         var urlRequest = URLRequest(url: request.endpoint.transcriptionURL)
         urlRequest.httpMethod = "POST"
         urlRequest.timeoutInterval = 90
@@ -150,20 +153,23 @@ struct VoiceTranscriptionClient: Sendable {
             "multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         let body = multipartBody(
-            boundary: boundary, fields: fields(for: request), audio: request.audio)
+            boundary: boundary, fields: try fields(for: request), audio: request.audio)
         return (urlRequest, body)
     }
 
     /// Form fields besides the file, in order.
-    static func fields(for request: VoiceTranscriptionRequest) -> [(name: String, value: String)] {
+    static func fields(for request: VoiceTranscriptionRequest) throws -> [(name: String, value: String)] {
+        do { try request.options.validate(for: request.endpoint) } catch {
+            throw VoiceTranscriptionError.invalidSettings(error.message)
+        }
         var fields: [(name: String, value: String)] = [("model", request.endpoint.model)]
         switch request.endpoint.languageField {
         case .none:
             break
         case .primary:
-            fields.append(("language", request.primaryLanguage))
+            if let language = request.options.languages.first { fields.append(("language", language)) }
         case .candidates:
-            for language in VoiceInputLanguage.candidates(primary: request.primaryLanguage) {
+            for language in request.options.languages {
                 fields.append(("languages[]", language))
             }
         }
@@ -175,6 +181,12 @@ struct VoiceTranscriptionClient: Sendable {
         }
         if request.endpoint.sendsResponseFormat {
             fields.append(("response_format", "json"))
+        }
+        // A Custom override replaces the generated field, never appends a
+        // second prompt or response_format. Validation fences file/model.
+        for field in request.options.fields {
+            fields.removeAll { $0.name == field.name }
+            fields += field.values.map { (field.name, $0) }
         }
         return fields
     }

@@ -55,9 +55,9 @@ struct VoiceInputEndpointTests {
     @Test func aCustomKeyBelongsToItsURLAndConsentToItsModel() throws {
         let first = try #require(try? VoiceInputCustomURL.normalize("https://a.example.com/v1").get())
         let second = try #require(try? VoiceInputCustomURL.normalize("https://b.example.com/v1").get())
-        let a = VoiceInputEndpoint.custom(baseURL: first, model: "whisper-1", sendsLanguage: false)
-        let aOtherModel = VoiceInputEndpoint.custom(baseURL: first, model: "large-v3", sendsLanguage: false)
-        let b = VoiceInputEndpoint.custom(baseURL: second, model: "whisper-1", sendsLanguage: false)
+        let a = VoiceInputEndpoint.custom(baseURL: first, model: "whisper-1")
+        let aOtherModel = VoiceInputEndpoint.custom(baseURL: first, model: "large-v3")
+        let b = VoiceInputEndpoint.custom(baseURL: second, model: "whisper-1")
 
         #expect(a.keyAccount == aOtherModel.keyAccount)
         #expect(a.keyAccount != b.keyAccount)
@@ -66,13 +66,7 @@ struct VoiceInputEndpointTests {
         #expect(!a.keyAccount.contains("example"), "the account does not spell out the URL")
     }
 
-    @Test func languagesPutTheSystemsFirstLanguageBeforeEnglish() {
-        #expect(VoiceInputLanguage.primary(preferredLanguages: ["zh-Hans-CN", "en-US"]) == "zh")
-        #expect(VoiceInputLanguage.primary(preferredLanguages: ["ja-JP"]) == "ja")
-        #expect(VoiceInputLanguage.primary(preferredLanguages: []) == "en")
-        #expect(VoiceInputLanguage.candidates(primary: "zh") == ["zh", "en"])
-        #expect(VoiceInputLanguage.candidates(primary: "en") == ["en"])
-    }
+
 }
 
 @Suite("Voice transcription client")
@@ -80,29 +74,35 @@ struct VoiceTranscriptionClientTests {
     private let audio = Data("RIFF-audio".utf8)
 
     private func request(
-        _ endpoint: VoiceInputEndpoint, language: String = "zh", keywords: [String] = [],
+        _ endpoint: VoiceInputEndpoint, options: VoiceInputRequestOptions? = nil, keywords: [String] = [],
         prompt: String = ""
     ) -> VoiceTranscriptionRequest {
-        VoiceTranscriptionRequest(
-            endpoint: endpoint, apiKey: "sk-test", audio: audio, primaryLanguage: language,
+        let languages: [String]
+        switch endpoint.languageField {
+        case .none: languages = []
+        case .primary: languages = ["zh"]
+        case .candidates: languages = ["zh", "en"]
+        }
+        return VoiceTranscriptionRequest(
+            endpoint: endpoint, apiKey: "sk-test", audio: audio, options: options ?? .init(languages: languages),
             keywords: keywords, prompt: prompt)
     }
 
     private func fieldNames(
         _ endpoint: VoiceInputEndpoint, keywords: [String] = [], prompt: String = ""
-    ) -> [String] {
-        VoiceTranscriptionClient.fields(for: request(endpoint, keywords: keywords, prompt: prompt))
+    ) throws -> [String] {
+        try VoiceTranscriptionClient.fields(for: request(endpoint, keywords: keywords, prompt: prompt))
             .map { "\($0.name)=\($0.value)" }
     }
 
     @Test func eachPresetNamesItsLanguagesTheWayItsServiceAccepts() throws {
         // gpt-transcribe answers 400 when `language` comes with `languages`.
         #expect(
-            fieldNames(try #require(VoiceInputEndpoint.preset(.openAI)))
+            try fieldNames(try #require(VoiceInputEndpoint.preset(.openAI)))
                 == ["model=gpt-transcribe", "languages[]=zh", "languages[]=en"])
         #expect(
-            fieldNames(try #require(VoiceInputEndpoint.preset(.deepInfra))) == ["model=Qwen/Qwen3-ASR-1.7B", "language=zh"])
-        #expect(fieldNames(try #require(VoiceInputEndpoint.preset(.siliconFlowCN))) == ["model=Qwen/Qwen3-ASR-1.7B"])
+            try fieldNames(try #require(VoiceInputEndpoint.preset(.deepInfra))) == ["model=Qwen/Qwen3-ASR-1.7B", "language=zh"])
+        #expect(try fieldNames(try #require(VoiceInputEndpoint.preset(.siliconFlowCN))) == ["model=Qwen/Qwen3-ASR-1.7B"])
     }
 
     @Test func keywordsGoOnlyWhereTheServiceReadsThemAndThePromptAsWritten() throws {
@@ -110,38 +110,100 @@ struct VoiceTranscriptionClientTests {
         let about = "Instructions to a coding agent\nVocabulary: herdr"
         let openAI = try #require(VoiceInputEndpoint.preset(.openAI))
         #expect(
-            fieldNames(openAI, keywords: terms, prompt: about)
+            try fieldNames(openAI, keywords: terms, prompt: about)
                 == [
                     "model=gpt-transcribe", "languages[]=zh", "languages[]=en",
                     "keywords[]=herdr", "keywords[]=Heeler", "prompt=\(about)",
                 ])
         #expect(
-            fieldNames(try #require(VoiceInputEndpoint.preset(.deepInfra)), keywords: terms, prompt: about)
+            try fieldNames(try #require(VoiceInputEndpoint.preset(.deepInfra)), keywords: terms, prompt: about)
                 == ["model=Qwen/Qwen3-ASR-1.7B", "language=zh", "prompt=\(about)"])
         #expect(
-            fieldNames(try #require(VoiceInputEndpoint.preset(.siliconFlowCN)), keywords: terms, prompt: about)
+            try fieldNames(try #require(VoiceInputEndpoint.preset(.siliconFlowCN)), keywords: terms, prompt: about)
                 == ["model=Qwen/Qwen3-ASR-1.7B", "prompt=\(about)"])
         let base = try #require(try? VoiceInputCustomURL.normalize("https://asr.example.com/v1").get())
-        let custom = VoiceInputEndpoint.custom(baseURL: base, model: "whisper-1", sendsLanguage: false)
+        let custom = VoiceInputEndpoint.custom(baseURL: base, model: "whisper-1")
         #expect(
-            fieldNames(custom, keywords: terms, prompt: about)
+            try fieldNames(custom, keywords: terms, prompt: about)
                 == ["model=whisper-1", "prompt=\(about)", "response_format=json"])
-        #expect(fieldNames(custom, keywords: terms) == ["model=whisper-1", "response_format=json"])
+        #expect(try fieldNames(custom, keywords: terms) == ["model=whisper-1", "response_format=json"])
     }
 
-    @Test func customAsksForJSONAndSendsLanguageOnlyWhenOn() throws {
-        let base = try #require(try? VoiceInputCustomURL.normalize("https://asr.example.com/v1").get())
-        #expect(
-            fieldNames(.custom(baseURL: base, model: "whisper-1", sendsLanguage: false))
-                == ["model=whisper-1", "response_format=json"])
-        #expect(
-            fieldNames(.custom(baseURL: base, model: "whisper-1", sendsLanguage: true))
-                == ["model=whisper-1", "language=zh", "response_format=json"])
+    @Test func automaticDetectionSendsNoDeviceLanguageForAnyPreset() throws {
+        for preset in VoiceInputPreset.allCases {
+            let endpoint = try #require(VoiceInputEndpoint.preset(preset))
+            let fields = try VoiceTranscriptionClient.fields(for: request(endpoint, options: .init()))
+            #expect(fields.map(\.name) == ["model"])
+        }
+    }
+
+    @Test func chosenLanguagesAreSentExactlyWithoutAddingEnglish() throws {
+        let endpoint = try #require(VoiceInputEndpoint.preset(.openAI))
+        let fields = try VoiceTranscriptionClient.fields(for: request(endpoint, options: .init(languages: ["ja", "zh-tw"])))
+        #expect(fields.map { "\($0.name)=\($0.value)" } == [
+            "model=gpt-transcribe", "languages[]=ja", "languages[]=zh-tw",
+        ])
+        let single = try #require(VoiceInputEndpoint.preset(.deepInfra))
+        let one = try VoiceTranscriptionClient.fields(for: request(single, options: .init(languages: ["fr"])))
+        #expect(one.map { "\($0.name)=\($0.value)" } == ["model=Qwen/Qwen3-ASR-1.7B", "language=fr"])
+        #expect(throws: VoiceTranscriptionError.invalidSettings(VoiceInputRequestOptions.Problem.singleLanguage.message)) {
+            try VoiceTranscriptionClient.fields(for: request(single, options: .init(languages: ["zh", "en"])))
+        }
+    }
+
+    @Test(arguments: [VoiceInputPreset.openAI, .deepInfra])
+    func selectableLanguagesUseProviderCodesInRequests(_ preset: VoiceInputPreset) throws {
+        let endpoint = try #require(VoiceInputEndpoint.preset(preset))
+        let choices = VoiceInputLanguage.choices(for: preset)
+        #expect(choices.contains("tl"), "Both providers use tl for Filipino/Tagalog")
+        #expect(!choices.contains("fil"), "Do not offer fil as the request language code")
+        let fieldName = preset == .openAI ? "languages[]" : "language"
+        for code in choices {
+            let (_, body) = try VoiceTranscriptionClient.makeRequest(
+                request(endpoint, options: .init(languages: [code])), boundary: "B")
+            let multipart = String(decoding: body, as: UTF8.self)
+            #expect(multipart.contains("name=\"\(fieldName)\"\r\n\r\n\(code)\r\n"))
+        }
+    }
+
+    @Test func customOverridesReplaceDefaultsAndArraysRepeatTheExactName() throws {
+        let base = try #require(URL(string: "https://asr.example.com/v1"))
+        let endpoint = VoiceInputEndpoint.custom(baseURL: base, model: "asr")
+        let options = VoiceInputRequestOptions(fields: [
+            .init(name: "languages[]", values: ["zh", "en"]),
+            .init(name: "prompt", values: ["Vocabulary: Heeler"]),
+            .init(name: "response_format", values: ["text"]),
+            .init(name: "temperature", values: ["0"]),
+            .init(name: "context", values: ["one", "two"]),
+        ])
+        let recording = request(endpoint, options: options, prompt: "shared prompt")
+        let (http, body) = try VoiceTranscriptionClient.makeRequest(recording, boundary: "B")
+        #expect(http.value(forHTTPHeaderField: "Authorization") == "Bearer sk-test")
+        let multipart = String(decoding: body, as: UTF8.self)
+        #expect(!multipart.contains("shared prompt"))
+        #expect(multipart.components(separatedBy: "name=\"prompt\"").count == 2)
+        #expect(multipart.components(separatedBy: "name=\"response_format\"").count == 2)
+        #expect(multipart.contains("name=\"languages[]\"\r\n\r\nzh\r\n"))
+        #expect(multipart.contains("name=\"languages[]\"\r\n\r\nen\r\n"))
+        #expect(multipart.components(separatedBy: "name=\"context\"").count == 3)
+        #expect(!multipart.contains("context[]"))
+        #expect(multipart.contains("name=\"file\"; filename=\"voice.wav\""))
+        #expect(multipart.contains("RIFF-audio"))
+    }
+
+    @Test func invalidCustomFieldsNeverReachTheNetwork() async throws {
+        let endpoint = VoiceInputEndpoint.custom(baseURL: try #require(URL(string: "https://asr.example.com")), model: "asr")
+        let client = VoiceTranscriptionClient(http: ThrowingHTTP(error: URLError(.timedOut)))
+        await #expect(throws: VoiceTranscriptionError.invalidSettings(VoiceInputRequestOptions.Problem.invalidName.message)) {
+            try await client.transcribe(request(endpoint, options: .init(fields: [
+                .init(name: "bad\"\r\nInjected", values: ["value"])
+            ])))
+        }
     }
 
     @Test func theRequestCarriesTheKeyAndTheRecordingAsOneMultipartBody() throws {
         let endpoint = try #require(VoiceInputEndpoint.preset(.openAI))
-        let (urlRequest, body) = VoiceTranscriptionClient.makeRequest(request(endpoint), boundary: "B")
+        let (urlRequest, body) = try VoiceTranscriptionClient.makeRequest(request(endpoint), boundary: "B")
 
         #expect(urlRequest.httpMethod == "POST")
         #expect(urlRequest.url?.absoluteString == "https://api.openai.com/v1/audio/transcriptions")
@@ -225,7 +287,7 @@ struct VoiceTranscriptionClientTests {
 
         await #expect(throws: VoiceTranscriptionError.redirected(to: "elsewhere.heeler-test.invalid")) {
             try await client.transcribe(
-                request(.custom(baseURL: base, model: "whisper-1", sendsLanguage: false)))
+                request(.custom(baseURL: base, model: "whisper-1")))
         }
         #expect(RedirectingProtocol.requestedHosts.withLock { $0 } == ["asr.heeler-test.invalid"])
     }

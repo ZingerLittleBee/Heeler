@@ -213,7 +213,6 @@ final class VoiceInputSession {
     let settings: VoiceInputSettings
     @ObservationIgnored private let recorder: any VoiceRecorder
     @ObservationIgnored private let transcribe: @Sendable (VoiceTranscriptionRequest) async throws -> String
-    @ObservationIgnored private let primaryLanguage: @MainActor () -> String
     @ObservationIgnored private let now: @MainActor () -> Date
     @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
     /// The input whose recording holds the microphone.
@@ -236,14 +235,12 @@ final class VoiceInputSession {
         settings: VoiceInputSettings,
         recorder: any VoiceRecorder,
         transcribe: @escaping @Sendable (VoiceTranscriptionRequest) async throws -> String,
-        primaryLanguage: @escaping @MainActor () -> String = { VoiceInputLanguage.primary() },
         now: @escaping @MainActor () -> Date = { Date() },
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
         self.settings = settings
         self.recorder = recorder
         self.transcribe = transcribe
-        self.primaryLanguage = primaryLanguage
         self.now = now
         self.sleep = sleep
         recorder.onEnded = { [weak self] in self?.stopRecording() }
@@ -378,7 +375,7 @@ final class VoiceInputSession {
         let generation = input.begin(.transcribing)
         let request = VoiceTranscriptionRequest(
             endpoint: endpoint, apiKey: apiKey, audio: recording.audio,
-            primaryLanguage: primaryLanguage(), keywords: settings.keywords,
+            options: settings.options(for: endpoint), keywords: settings.keywords,
             prompt: settings.prompt)
         let transcribe = transcribe
         input.task = Task { [weak input] in

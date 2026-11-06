@@ -127,8 +127,8 @@ again, for at most two minutes, and uploads the recording over HTTPS to the
 service you chose: OpenAI (`api.openai.com`), DeepInfra (`api.deepinfra.com`),
 SiliconFlow (`api.siliconflow.cn`), or a Custom URL you enter. The upload
 carries the audio, the model name, your API key, the Keywords and Prompt you
-enter in Settings and, for some services, the first language your device
-lists. The service returns the text, and Heeler puts it in the Composer draft;
+enter in Settings, any language hints you select, and any Custom request
+fields you configure. The service returns the text, and Heeler puts it in the Composer draft;
 nothing reaches your Agent until you send it. The service processes the
 recording, and bills your key, under its own privacy terms. A Custom URL sends
 the recording wherever that URL points, under the terms of whoever runs it.
