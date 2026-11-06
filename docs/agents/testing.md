@@ -38,10 +38,10 @@ A failed scheduled run opens or comments on the issue "Scheduled full iOS
 verification is failing" ([the alert workflow](../../.github/workflows/ci-full-alert.yml));
 the next passing scheduled run closes it. Run it manually for broader
 acceptance of a candidate branch; manual runs default to warm caches, and
-`cache_mode=cold` measures a first build. `release.yml` still requires it
-against the release tag before signing a release; tag runs compile without the
-cross-run compiler cache. A scheduled run or fast build cannot substitute for
-verifying a different candidate.
+`cache_mode=cold` measures a first build. Releases neither run it nor wait
+for it ([ADR 0039](../adr/0039-release-builds-tag-main-without-tests.md)). A
+scheduled run or fast build cannot substitute for verifying a different
+candidate.
 
 ```sh
 gh workflow run ci-full.yml --ref <candidate-branch>

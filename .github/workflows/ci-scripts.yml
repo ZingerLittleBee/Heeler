@@ -3,7 +3,7 @@
 # Agent tooling covers the workflow contracts on Ubuntu for every PR, but only
 # macOS has the /bin/bash 3.2 that ci-full.yml executes. These checks build
 # nothing; only the two scripts ci.yml executes also start the app build.
-# ci-full.yml repeats them so the release gate stays self-contained.
+# ci-full.yml repeats them so full verification stays self-contained.
 
 name: iOS CI scripts
 

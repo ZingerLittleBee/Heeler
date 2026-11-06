@@ -8,7 +8,8 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-diagnostic-controls.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
 # Fast builds and manual diagnostics must not publish full-coverage check
-# names or artifacts, even as skipped jobs. Releases always call full CI.
+# names or artifacts, even as skipped jobs. Releases never wait for full CI
+# (ADR 0039).
 python3 - "$repo_root/.github/workflows/ci-full.yml" "$repo_root/.github/workflows/ci-diagnostics.yml" <<'PYWORKFLOW'
 from pathlib import Path
 import re
@@ -37,21 +38,22 @@ def events(source):
     return set(re.findall(r"(?m)^  ([\w_]+):", block.group(1)))
 
 require_line(workflow, "workflow_dispatch:")
-require_line(workflow, "workflow_call:")
 release = workflows.joinpath("release.yml").read_text()
-release_test = job("test", release)
-require_line(release_test, "uses: ./.github/workflows/ci-full.yml")
-require_line(release_test, "contents: read")
-require_line(release_test, "actions: read")
-if events(workflow) != {"schedule", "workflow_dispatch", "workflow_call"}:
-    raise SystemExit("Full native verification must run daily, manually or before release")
+if "ci-full" in release:
+    raise SystemExit("release.yml must not call or wait for full verification")
+if events(workflow) != {"schedule", "workflow_dispatch"}:
+    raise SystemExit("Full native verification must run only daily or manually")
 require_line(workflow, "- cron: '17 20 * * *'")
 # A manual run must not cancel the scheduled run on the same ref.
 require_line(workflow, "group: ci-ios-full-${{ github.ref }}-${{ github.event_name }}")
-# Release tags compile without cross-run compiler objects.
+# Only a cold manual benchmark skips the compiler object cache.
 app_tests = job("app-tests")
-require_line(app_tests, "HEELER_CI_DISABLE_COMPILATION_CACHE: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '0' }}")
-require_line(app_tests, "if: ${{ env.HEELER_CI_DISABLE_COMPILATION_CACHE != '1' && (github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm') }}")
+if "HEELER_CI_DISABLE_COMPILATION_CACHE" in app_tests:
+    raise SystemExit("App tests must not disable the compilation cache")
+restore = re.search(r"(?m)^      - name: Restore app compilation cache\n(.*?)(?=^      - |\Z)", app_tests, re.DOTALL)
+if restore is None:
+    raise SystemExit("Missing app compilation cache restore")
+require_line(restore.group(1), "if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm' }}")
 names = {
     "app-tests": "App tests (${{ matrix.shard }})",
     "heelerssh-package-e2e": "HeelerSSH package E2E (iOS Simulator)",
@@ -65,13 +67,13 @@ for name, display in names.items():
 require_line(job("build-test"), "if: ${{ always() }}")
 require_line(job("build-test"), "needs: [app-tests, heelerssh-package-e2e]")
 
-# release.yml grants read-only permissions, so only the listener may write.
+# Full verification stays read-only, so only the listener may write.
 alert = workflows.joinpath("ci-full-alert.yml").read_text()
 full_name = re.search(r"(?m)^name: (.+)$", workflow).group(1)
 require_line(alert, f"workflows: [{full_name}]")
 require_line(alert, "if: ${{ github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion != 'cancelled' }}")
 if re.search(r"(?m)^\s+[\w-]+: write\s*$", workflow):
-    raise SystemExit("ci-full.yml must stay read-only for release.yml")
+    raise SystemExit("ci-full.yml must stay read-only")
 
 def trigger_paths(source, name):
     block = re.search(r"(?m)^on:\n(.*?)(?=^[^\s#]|\Z)", source, re.DOTALL).group(1)
