@@ -7,6 +7,17 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+### Added
+
+- Switch Claude Code's permission mode, model and effort from Chat's status line, which shows them for the newest reply. Each opens a menu while the Agent is Idle or Done: the mode is cycled with Shift+Tab until the footer shows it, bypass asking first, and a model or effort is set with `/model` or `/effort`, asking on the phone when Claude Code asks "Switch model?". The label changes only once the terminal confirms. (PR #647)
+- Filter the Agents list by status with one button per status and its count. The filter is kept across launches, and a list it empties offers Show All. (PR #647)
+- Pick up to 10 images at once in the Composer, staged one after another. The note that an image path was inserted and copied goes by itself after 2 seconds. (PR #647)
+
+### Fixed
+
+- A Send of an image path followed by text settles once Claude Code records it, rather than staying as not yet in the conversation. (PR #647)
+- A Claude Code scheduled task shows as a small notice opening its own turn, rather than its reply folding into the turn before, and no longer waits as an unsent message. (PR #647)
+
 ## [0.1.18]
 
 ### Added
