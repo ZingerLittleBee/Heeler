@@ -918,10 +918,18 @@ struct AgentChatSurfaceView: View {
     }
 
     private var sendPolicy: ComposerDeliveryPolicy {
-        .chat(
+        var policy = ComposerDeliveryPolicy.chat(
             rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, confirmSession: confirmSession,
             sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
+        // A status-line switch types into the same input line.
+        let preflight = policy.preflight
+        let isSwitching = { isSwitchingSetting }
+        policy.preflight = { text in
+            if isSwitching() { return .inputNotReady("Claude Code is switching a setting. Try again in a moment.") }
+            return await preflight?(text)
+        }
+        return policy
     }
 
     /// Which conversation Chat follows, noted with a refusal.
@@ -1030,7 +1038,7 @@ struct AgentChatSurfaceView: View {
         guard program == .claude else { return nil }
         let status = agent.agent.status
         return AgentSessionControls(
-            isEnabled: (status == .idle || status == .done) && !isSwitchingSetting,
+            isEnabled: (status == .idle || status == .done) && !isSwitchingSetting && !isComposerSending,
             setPermissionMode: { target in switchSetting { await switchPermissionMode(to: target) } },
             setModel: { id in
                 switchSetting {
@@ -1046,9 +1054,15 @@ struct AgentChatSurfaceView: View {
             })
     }
 
-    /// Runs one status-line switch at a time.
+    /// A Composer Send between its first check and its last key, which a
+    /// switch would type into.
+    private var isComposerSending: Bool {
+        composer.messages.contains { $0.state == .sending }
+    }
+
+    /// Runs one status-line switch at a time, and none while a Send types.
     private func switchSetting(_ work: @escaping @MainActor () async -> Void) {
-        guard !isSwitchingSetting else { return }
+        guard !isSwitchingSetting, !isComposerSending else { return }
         isSwitchingSetting = true
         Task {
             await work()
