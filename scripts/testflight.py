@@ -281,7 +281,8 @@ class BuildRecord:
 
     @classmethod
     def read(cls, release: dict) -> BuildRecord:
-        match = RECORD_BODY.match(release.get("body", ""))
+        # Saving a release on github.com rewrites its body with CRLF endings.
+        match = RECORD_BODY.match((release.get("body") or "").replace("\r\n", "\n"))
         if not match:
             raise ReleaseError("Missing build checkpoint; reconcile before retrying")
         try:
@@ -311,7 +312,7 @@ class BuildRecord:
                     and github.has_asset(release, self.dsym_asset, self.dsym_sha256))
 
     def save(self, github: GitHub, release: dict | None) -> dict:
-        notes = notes_for(run("git", "show", f"{self.candidate.source}:CHANGELOG.md"), self.candidate.version)
+        notes = build_notes(run("git", "show", f"{self.candidate.source}:CHANGELOG.md"), self.candidate.version)
         notes = run(sys.executable, "scripts/format-release-notes.py", input=notes)
         body = (f"{RECORD_MARKER}\n<details><summary>Build record</summary>\n\n```json\n"
                 + json.dumps(asdict(self), indent=2) + "\n```\n\n</details>\n\n" + notes)
@@ -356,16 +357,15 @@ def unreserved_problem(github: GitHub, tag: str, source: str) -> str | None:
 
 
 # GitHub's annotation on a job it never gave a runner, as when macOS arm64
-# capacity runs out. ci-full.yml's summary job then fails in its first step.
+# capacity runs out.
 NO_RUNNER = "The job was not acquired by Runner"
-WORKER_CHECK = "Require every worker to succeed"
 # The push run and at most two automatic retries; later ones need a person.
 AUTOMATIC_ATTEMPTS = 3
 
 
 def runner_shortage_problem(github: GitHub, run_id: str, attempt: int) -> str | None:
     """Why an attempt's failure needs a person, or None when every failed job
-    either never got a runner or only reports that a worker did not succeed."""
+    never got a runner."""
     page = github.api(f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
     jobs = page["jobs"]
     if page["total_count"] != len(jobs):
@@ -374,12 +374,11 @@ def runner_shortage_problem(github: GitHub, run_id: str, attempt: int) -> str | 
     for job in jobs:
         if job["conclusion"] in ("success", "skipped"):
             continue
-        failed_steps = [step["name"] for step in job["steps"] if step["conclusion"] == "failure"]
         if not job["steps"] and any(
                 annotation["annotation_level"] == "failure" and annotation["message"].startswith(NO_RUNNER)
                 for annotation in github.api(f"check-runs/{job['id']}/annotations")):
             starved = True
-        elif failed_steps != [WORKER_CHECK]:
+        else:
             return f"{job['name']} ended {job['conclusion']} for another reason"
     return None if starved else "every job got a runner"
 
@@ -414,7 +413,9 @@ def require_settled(github: GitHub, tags: dict[str, str]) -> None:
         record = BuildRecord.read(release)
         if record.candidate.tag != tag or record.candidate.source != tags[tag]:
             raise ReleaseError("Checkpoint identity does not match the immutable tag")
-        if (record.state == "valid" and not release["draft"] and release["prerelease"]
+        # Promoting the published record on github.com, to Latest or out of
+        # prerelease, changes nothing about its upload.
+        if (record.state == "valid" and not release["draft"]
                 and record.has_manifest(github, release) and record.has_symbols(github, release)):
             # This upload passed the same predecessor gate. Its durable record
             # remains sufficient after GitHub expires the workflow run.
@@ -442,15 +443,17 @@ def candidate_from_tag(tag: str) -> Candidate:
         raise ReleaseError("Build tag must be annotated")
     source = run("git", "rev-parse", ref + "^{commit}")
     run("git", "merge-base", "--is-ancestor", source, "origin/main")
-    version, build = versions(source)
+    # The tag names the version and build. The archive sets both in every
+    # target, whatever the source's project files say (ADR 0039).
+    version, build = match[1], int(match[2])
     plugin_text = run("git", "show", f"{source}:plugin/herdr-plugin.toml")
     plugin = re.search(r'(?m)^version = "([^"]+)"$', plugin_text)
     if plugin is None:
         raise ReleaseError("Candidate has no plugin version")
     candidate = Candidate(tag, version, build, source, plugin[1])
     annotation = run("git", "cat-file", "-p", ref).split("\n\n", 1)[1]
-    if (version, build) != (match[1], int(match[2])) or json.loads(annotation) != asdict(candidate):
-        raise ReleaseError("Tag, annotation, and committed target versions disagree")
+    if json.loads(annotation) != asdict(candidate):
+        raise ReleaseError("Tag and annotation disagree")
     if remote_tags().get(tag) != source:
         raise ReleaseError("Remote tag identity changed")
     return candidate
@@ -470,12 +473,11 @@ def initialize() -> None:
     if os.environ.get("GITHUB_EVENT_NAME") != "push":
         if os.environ.get("GITHUB_REF") != "refs/heads/main":
             raise ReleaseError("Rehearsals run from main only")
-        current, counter = versions()
         version = os.environ.get("VERSION", "")
-        if version_tuple(version) < version_tuple(current):
+        version_tuple(version)
+        _, floor, build = next_build(latest_tag(remote_tags()))
+        if version_tuple(version) < version_tuple(floor):
             raise ReleaseError("Rehearsal VERSION cannot decrease")
-        tag = latest_tag(remote_tags())
-        build = max(counter, int(tag.rsplit("/", 1)[1]) if tag else 0) + 1
         output(mode="rehearsal", version=version, build=build)
         return
     candidate = candidate_from_tag(os.environ.get("GITHUB_REF_NAME", ""))
@@ -671,7 +673,7 @@ def status(retry=False, run_id: str | None = None) -> None:
     if record.state in ("reserved", "prepared"):
         if latest_tag(remote_tags()) != candidate.tag:
             raise ReleaseError("A newer candidate is reserved; this retry cannot upload")
-        print("Resume failed tests/building of the original tag; Apple is checked again before upload.")
+        print("Resume building the original tag; Apple is checked again before upload.")
     else:
         print("Resume Apple observation / record repair only; no rebuild or upload.")
     print(f"gh run rerun {record.run_id} --failed --repo {github.repo}")
@@ -721,7 +723,7 @@ def local_apple() -> AppStoreConnect:
 
 def changelog_entries(text: str) -> list[tuple[str, str]]:
     """(category, entry) for every entry, each on one line. [Unreleased] counts:
-    a build from that commit has those changes. A cut leaves it empty."""
+    a build from that commit has those changes."""
     entries, category, entry = [], None, None
     for line in text.splitlines():
         if line.startswith("## "):
@@ -847,6 +849,12 @@ def notes_for(text: str, version: str) -> str:
     return re.split(r"(?m)^## ", rest, maxsplit=1)[0].strip()
 
 
+def build_notes(text: str, version: str) -> str:
+    """A build's cumulative notes: [Unreleased] folded into its version's
+    section. The file itself is never rewritten for a build (ADR 0039)."""
+    return notes_for(cut_notes(text, version), version)
+
+
 def cut_notes(text: str, version: str) -> str:
     headings = list(re.finditer(r"(?m)^## \[([^\]]+)\]([^\n]*)$", text))
     if not headings or headings[0][1] != "Unreleased":
@@ -880,10 +888,49 @@ def cut_notes(text: str, version: str) -> str:
     return text[:headings[0].start()] + f"## [Unreleased]\n\n## [{version}]\n\n{merged}\n\n" + text[stop:]
 
 
+def next_build(latest: str) -> tuple[str, str, int]:
+    """The version a cut continues (the newest build tag's, empty before the
+    first), the lowest version it may take, and the next build number. Builds
+    cut before ADR 0039 committed their version and number, so the committed
+    values stay floors."""
+    committed, counter = versions()
+    if not latest:
+        return "", committed, counter + 1
+    current = latest.split("/")[1]
+    return current, current, max(counter, int(latest.rsplit("/", 1)[1])) + 1
+
+
+def require_new_source(github: GitHub, latest: str, latest_source: str, source: str, version: str) -> None:
+    """Refuse to spend a number on the source the newest build already has.
+
+    A void tag or a rejected binary may be built again from the same commit."""
+    if latest_source != source:
+        return
+    release = github.release(latest)
+    if release is None:
+        return
+    record = BuildRecord.read(release)
+    if record.state in ("reserved", "prepared"):
+        raise ReleaseError(f"main is still {latest}'s source, which failed before upload; "
+                           f"run make testflight-retry TAG={latest} instead of spending a new number")
+    if record.state != "rejected" and record.candidate.version == version:
+        raise ReleaseError(f"main is still {latest}'s source; merge a change or pass a new VERSION")
+
+
+def require_folded(notes: str, latest: str, latest_source: str, version: str) -> None:
+    """A new version's notes must not repeat what the newest build included."""
+    previous = latest.split("/")[1]
+    included = set(changelog_entries(build_notes(run("git", "show", f"{latest_source}:CHANGELOG.md"), previous)))
+    carried = [entry for entry in changelog_entries(notes) if entry in included]
+    if carried:
+        raise ReleaseError(f"[Unreleased] still has {len(carried)} of {latest}'s entries; "
+                           f"move them under ## [{previous}] before cutting {version}")
+
+
 def cut() -> None:
     if os.environ.get("BUILD"):
         raise ReleaseError("BUILD overrides are not supported; the command allocates the next build")
-    for tool in ("git", "gh", "xcodegen"):
+    for tool in ("git", "gh"):
         if not shutil.which(tool):
             raise ReleaseError(f"{tool} is required")
     run("gh", "auth", "status")
@@ -892,60 +939,47 @@ def cut() -> None:
     if run("git", "branch", "--show-current") != "main":
         raise ReleaseError("Cut candidates from main")
     run("git", "fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main")
-    if run("git", "rev-parse", "HEAD") != run("git", "rev-parse", "origin/main"):
+    source = run("git", "rev-parse", "HEAD")
+    if source != run("git", "rev-parse", "origin/main"):
         raise ReleaseError("main differs from origin/main; reconcile it before cutting")
-    current, counter = versions()
     tags = remote_tags()
     latest = latest_tag(tags)
-    version = os.environ.get("VERSION", "")
-    if not version and (not latest or latest.split("/")[1] != current):
-        raise ReleaseError("Pass VERSION=X.Y.Z for the first candidate of a version")
-    version = version or current
-    if version_tuple(version) < version_tuple(current):
+    current, floor, build = next_build(latest)
+    version = os.environ.get("VERSION", "") or current
+    if not version:
+        raise ReleaseError("Pass VERSION=X.Y.Z for the first candidate")
+    if version_tuple(version) < version_tuple(floor):
         raise ReleaseError("VERSION cannot decrease")
+    github = GitHub()
     if latest:
-        require_settled(GitHub(), tags)
-    build = max(counter, int(latest.rsplit("/", 1)[1]) if latest else 0) + 1
+        require_settled(github, tags)
+        require_new_source(github, latest, tags[latest], source, version)
     tag = f"builds/{version}/{build}"
     if subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/tags/{tag}"]).returncode == 0:
         raise ReleaseError(f"Local {tag} already exists; inspect the previous push before proceeding")
     plugin = run("bash", "scripts/check-plugin-published.sh")
-    changelog = cut_notes(Path("CHANGELOG.md").read_text(), version)
-    print(f"TestFlight {version} ({build})\nTag: {tag}\nPlugin: {plugin}\n"
-          f"Versions: {current} ({counter}) -> {version} ({build}) in all targets\n"
-          "Files: project.yml, Heeler.xcodeproj/project.pbxproj, CHANGELOG.md\n"
-          "Regenerate: xcodegen generate\n"
-          f"Commit, then git push --atomic origin main refs/tags/{tag}\n"
-          "GitHub Actions runs the full test gate, archives and uploads.\n\n"
-          + notes_for(changelog, version))
+    notes = build_notes(Path("CHANGELOG.md").read_text(), version)
+    if latest and version != current:
+        require_folded(notes, latest, tags[latest], version)
+    print(f"TestFlight {version} ({build})\nTag: {tag} on {source[:12]}, main\nPlugin: {plugin}\n"
+          f"Push: git push origin refs/tags/{tag}\n"
+          f"GitHub Actions archives it as {version} ({build}) and uploads it. No tests run.\n\n" + notes)
     if not confirm():
         return
-    # The confirmation prompt may have been open while somebody retried the
-    # previous candidate. Recheck before beginning a new reservation.
+    # The prompt may have been open while somebody retried the previous
+    # candidate or cut another. Recheck before reserving the number.
+    tags = remote_tags()
+    if latest_tag(tags) != latest:
+        raise ReleaseError("Another candidate was reserved meanwhile; cut again")
     if latest:
-        require_settled(GitHub(), remote_tags())
-    Path("CHANGELOG.md").write_text(changelog)
-    project = Path("project.yml")
-    text = re.sub(r'(?m)^(\s*MARKETING_VERSION: )"[^"\n]+"$', rf'\g<1>"{version}"', project.read_text())
-    text = re.sub(r'(?m)^(\s*CURRENT_PROJECT_VERSION: )"[^"\n]+"$', rf'\g<1>"{build}"', text)
-    project.write_text(text)
-    run("xcodegen", "generate")
-    if versions() != (version, build):
-        raise ReleaseError("Generated project versions do not match the plan")
-    changed = set(run("git", "diff", "--name-only").splitlines())
-    if not changed <= {*VERSION_FILES, "CHANGELOG.md"}:
-        raise ReleaseError("Generation changed unexpected files; inspect local changes, nothing was committed")
-    if latest:
-        require_settled(GitHub(), remote_tags())
-    run("git", "add", *VERSION_FILES, "CHANGELOG.md")
-    run("git", "commit", "-m", f"chore: prepare testflight {version} ({build})")
-    candidate = Candidate(tag, version, build, run("git", "rev-parse", "HEAD"), plugin)
+        require_settled(GitHub(), tags)
+    candidate = Candidate(tag, version, build, source, plugin)
     run("git", "tag", "-a", tag, "-m", json.dumps(asdict(candidate), sort_keys=True))
     try:
-        run("git", "push", "--atomic", "origin", "main", f"refs/tags/{tag}")
+        run("git", "push", "origin", f"refs/tags/{tag}")
     except ReleaseError as error:
-        raise ReleaseError(f"{error}\nPush outcome may be unknown. Preserve the local commit/tag, "
-                           "inspect remote main and tag before retrying. Never force or reuse the number.") from error
+        raise ReleaseError(f"{error}\nPush outcome may be unknown. Preserve the local tag and inspect "
+                           "the remote tags before retrying. Never force or reuse the number.") from error
     print(f"Pushed {tag}; follow .github/workflows/release.yml. No App Store submission was made.")
 
 
