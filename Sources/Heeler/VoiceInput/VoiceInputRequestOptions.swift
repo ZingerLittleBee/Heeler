@@ -76,16 +76,16 @@ struct VoiceInputRequestOptions: Codable, Equatable, Sendable {
 }
 
 enum VoiceInputLanguage {
-    // Qwen3-ASR's model card lists these languages. Hosted parameter behavior
-    // still needs vendor smoke tests; it is not established by that card.
+    // Languages shared with Qwen3-ASR, using provider API codes (tl, not fil).
+    // Hosted parameter behavior still needs vendor smoke tests.
     static let commonCodes = [
         "en", "zh", "yue", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th", "vi",
-        "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "fil", "fa", "el", "hu", "mk", "ro",
+        "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "tl", "fa", "el", "hu", "mk", "ro",
     ]
 
     static func choices(for preset: VoiceInputPreset) -> [String] {
         switch preset {
-        case .openAI: commonCodes.map { $0 == "fil" ? "tl" : $0 } + ["zh-cn", "zh-tw", "zh-hk"]
+        case .openAI: commonCodes + ["zh-cn", "zh-tw", "zh-hk"]
         case .deepInfra: commonCodes
         case .siliconFlowCN: []
         }

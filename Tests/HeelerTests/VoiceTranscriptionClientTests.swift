@@ -151,6 +151,21 @@ struct VoiceTranscriptionClientTests {
         }
     }
 
+    @Test(arguments: [VoiceInputPreset.openAI, .deepInfra])
+    func selectableLanguagesUseProviderCodesInRequests(_ preset: VoiceInputPreset) throws {
+        let endpoint = try #require(VoiceInputEndpoint.preset(preset))
+        let choices = VoiceInputLanguage.choices(for: preset)
+        #expect(choices.contains("tl"), "Both providers use tl for Filipino/Tagalog")
+        #expect(!choices.contains("fil"), "Do not offer fil as the request language code")
+        let fieldName = preset == .openAI ? "languages[]" : "language"
+        for code in choices {
+            let (_, body) = try VoiceTranscriptionClient.makeRequest(
+                request(endpoint, options: .init(languages: [code])), boundary: "B")
+            let multipart = String(decoding: body, as: UTF8.self)
+            #expect(multipart.contains("name=\"\(fieldName)\"\r\n\r\n\(code)\r\n"))
+        }
+    }
+
     @Test func customOverridesReplaceDefaultsAndArraysRepeatTheExactName() throws {
         let base = try #require(URL(string: "https://asr.example.com/v1"))
         let endpoint = VoiceInputEndpoint.custom(baseURL: base, model: "asr")
