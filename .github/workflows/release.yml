@@ -55,8 +55,9 @@ jobs:
     # 27.1 SDK or later; an iOS 26 SDK build sits centered with empty space
     # around it (#625, developer.apple.com/iphone-duo/prepare). The Duo
     # controls also sit behind `#if compiler(>=6.4)`. `Xcode_27.2.app` is the
-    # image's alias for its 27.2 install, release candidate or final. The
-    # fast builds and full verification (ci-full.yml) use the same toolchain.
+    # image's alias for its 27.2 install, release candidate or final. Every
+    # macOS CI job uses the same runner and Xcode, and nothing here waits
+    # for them (ADR 0039).
     runs-on: xcode-27
     timeout-minutes: 90
     environment: release
