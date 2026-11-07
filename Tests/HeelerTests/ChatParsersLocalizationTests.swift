@@ -76,6 +76,7 @@ struct ChatParsersLocalizationTests {
         #expect(title("completed") == "Background task completed")
         #expect(title("failed") == "Background task failed")
         #expect(title("stopped") == "Background task stopped")
+        #expect(title("blocked") == "Background task blocked")
         #expect(title("timed_out") == "Background task ended")
         #expect(ClaudeTaskNotification(summary: "Build finished", status: "failed").title == "Build finished")
     }

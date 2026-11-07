@@ -542,6 +542,6 @@ enum ChatTimelineProjection {
                 ? (n == 1 ? String(localized: "Used \(n) tool") : String(localized: "Used \(n) tools"))
                 : (n == 1 ? String(localized: "\(n) other tool") : String(localized: "\(n) other tools")))
         }
-        return parts.joined(separator: String(localized: ", ", comment: "Separates the clauses of a tool group's summary, as in “Ran 2 commands, Edited 2 files”."))
+        return parts.joined(separator: String(localized: ", ", comment: "Separates the phrases of a list, as in “Ran 2 commands, Edited 2 files”."))
     }
 }

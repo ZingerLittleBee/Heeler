@@ -32,7 +32,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : " launchd はこれへの答えを複数理由で返すことがあります。すでに別のコピーが読み込まれている場合などです。"
+            "value" : " launchd は、別のコピーがすでに読み込まれている場合など、複数の原因でこの応答を返します。"
           }
         }
       }
@@ -344,7 +344,7 @@
       }
     },
     "%@ est." : {
-      "comment" : "An estimated API cost figure. Currently shouldTranslate=false in the catalog; it must be translatable",
+      "comment" : "An estimated API cost figure, as in “$4.20 est.”.",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
@@ -1867,7 +1867,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "実行中 %1$lld 件、%2$@、%4$lld 件中 %3$lld 個のエージェントが完了"
+            "value" : "実行中 %1$lld、%2$@、エージェント %4$lld 件中 %3$lld 件が完了"
           }
         }
       }
@@ -2005,7 +2005,7 @@
       }
     },
     ", " : {
-      "comment" : "Separates the clauses of a tool group's summary, as in “Ran 2 commands, Edited 2 files”.",
+      "comment" : "Separates the phrases of a list, as in “Ran 2 commands, Edited 2 files”.",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
@@ -4639,6 +4639,16 @@
         }
       }
     },
+    "Background task blocked" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックグラウンドタスクが対応待ちです"
+          }
+        }
+      }
+    },
     "Background task completed" : {
       "comment" : "Notice title for Claude Code's task status completed",
       "localizations" : {
@@ -4732,6 +4742,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "バックスペース"
+          }
+        }
+      }
+    },
+    "Band end" : {
+      "comment" : "Chart value: a band's upper edge",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "End"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了"
+          }
+        }
+      }
+    },
+    "Band start" : {
+      "comment" : "Chart value: a band's lower edge",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Start"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始"
           }
         }
       }
@@ -5464,7 +5510,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "チャットはこのエージェントがどの会話にいるかを特定できず、推測もしません。%@ は拡張機能をオフにして（--no-extensions）起動したため、会話を特定する Heeler の拡張機能がこのセッションで動作していません。--no-extensions を使わずにエージェントを再起動してください。これがなければ、チャットは最初のメッセージのあとに会話を追跡します。"
+            "value" : "チャットはこのエージェントがどの会話にいるかを特定できず、推測もしません。%@ は拡張機能をオフにして（--no-extensions）起動したため、会話を特定する Heeler の拡張機能がこのセッションで動作していません。--no-extensions を使わずにエージェントを再起動してください。拡張機能がない場合、チャットは最初のメッセージのあとから会話を追跡します。"
           }
         }
       }
@@ -5496,7 +5542,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "チャットはこのエージェントがどの会話にいるかを特定できず、推測もしません。会話を特定する Heeler の拡張機能はインストールされていますが、この %@ はそれを読み込んでいません。Helper のインストール前に起動したか、拡張機能をオフ（--no-extensions）にして起動した可能性があります。拡張機能をオンにしてエージェントを再起動してください。これがなければ、チャットは最初のメッセージのあとに会話を追跡します。"
+            "value" : "チャットはこのエージェントがどの会話にいるかを特定できず、推測もしません。会話を特定する Heeler の拡張機能はインストールされていますが、この %@ はそれを読み込んでいません。Helper のインストール前に起動したか、拡張機能をオフ（--no-extensions）にして起動した可能性があります。拡張機能をオンにしてエージェントを再起動してください。拡張機能がない場合、チャットは最初のメッセージのあとから会話を追跡します。"
           }
         }
       }
@@ -5506,7 +5552,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "チャットはこのエージェントがどの会話にいるかを特定できず、推測もしません。Oh My Pi は Host Helper に同梱の Heeler 拡張機能を通じて会話を特定します。このホストの詳細から Helper をインストールし、エージェントを再起動してください。これがなければ、チャットは最初のメッセージのあとに会話を追跡します。"
+            "value" : "チャットはこのエージェントがどの会話にいるかを特定できず、推測もしません。Oh My Pi は Host Helper に同梱の Heeler 拡張機能を通じて会話を特定します。このホストの詳細から Helper をインストールし、エージェントを再起動してください。拡張機能がない場合、チャットは最初のメッセージのあとから会話を追跡します。"
           }
         }
       }
@@ -7985,7 +8031,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "テイルネット管理コンソールの「設定 › Keys」で作成してください。Heeler はそれをキーチェーンに保存し、サインアウト後もそれを使って再サインインします。"
+            "value" : "テイルネット管理コンソールの「Settings › Keys」で作成してください。Heeler はそれをキーチェーンに保存し、サインアウト後もそれを使って再サインインします。"
           }
         }
       }
@@ -9284,17 +9330,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "暗号化必須"
-          }
-        }
-      }
-    },
-    "End" : {
-      "comment" : "End key cap on the terminal keyboard",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "End"
           }
         }
       }
@@ -11002,7 +11037,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Grok Build の /fork がこれを尋ねており、どの回答でもフォークします。「常にワークツリー」と「決してワークツリーなし」は恒久的な選択として保存されます。ターミナルまたはこれらのキーで回答してください。"
+            "value" : "Grok Build の /fork がこれを尋ねており、どの回答でもフォークします。「Always worktree」と「Never worktree」は恒久的な選択として保存されます。ターミナルまたはこれらのキーで回答してください。"
           }
         }
       }
@@ -11012,7 +11047,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Grok Build の /fork がこれを尋ねており、どの回答でもフォークします。「常にワークツリー」と「決してワークツリーなし」（この幅では隠れます）は恒久的な選択として保存されます。ターミナルまたはこれらのキーで回答してください。"
+            "value" : "Grok Build の /fork がこれを尋ねており、どの回答でもフォークします。「Always worktree」と「Never worktree」（この幅では隠れます）は恒久的な選択として保存されます。ターミナルまたはこれらのキーで回答してください。"
           }
         }
       }
@@ -11650,7 +11685,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler はクリップボードを読み取れませんでした。求められたら「貼り付けを許可」をタップするか、「設定」内の「他のアプリからの貼り付け」を確認してください。"
+            "value" : "Heeler はクリップボードを読み取れませんでした。求められたら「ペーストを許可」をタップするか、「設定」で「他のAppからペースト」を確認してください。"
           }
         }
       }
@@ -12315,6 +12350,24 @@
         }
       }
     },
+    "Home key" : {
+      "comment" : "VoiceOver label of the Home key",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Home"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Home キー"
+          }
+        }
+      }
+    },
     "Hook" : {
       "localizations" : {
         "ja" : {
@@ -12895,6 +12948,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "行参照を挿入（削除側）"
+          }
+        }
+      }
+    },
+    "Insert key" : {
+      "comment" : "VoiceOver label of the Insert key",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Insert"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Insert キー"
           }
         }
       }
@@ -14664,7 +14735,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "プログラムのステータスで指定"
+            "value" : "プログラムのステータスが示す会話"
           }
         }
       }
@@ -15042,6 +15113,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "選択したホストにエージェントはいません"
+          }
+        }
+      }
+    },
+    "No Agents on this Host" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストにエージェントはいません"
           }
         }
       }
@@ -17016,13 +17097,34 @@
       }
     },
     "OpenCode's store answered a read with an unchanged counter" : {
-      "shouldTranslate" : false
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenCode のストアが、カウンターが変わらないまま読み取りに応答しました"
+          }
+        }
+      }
     },
     "OpenCode's store query printed no exit status (exit status %d)" : {
-      "shouldTranslate" : false
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenCode のストアのクエリが終了ステータスを出力しませんでした（終了ステータス %d）"
+          }
+        }
+      }
     },
     "OpenCode's store query stopped before its end (exit status %d)" : {
-      "shouldTranslate" : false
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenCode のストアのクエリが途中で停止しました（終了ステータス %d）"
+          }
+        }
+      }
     },
     "OpenCode's subagent panel covers its request. Close the panel in the terminal to answer it." : {
       "localizations" : {
@@ -21325,7 +21427,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "変更されたファイル %2$@ 件のうち %1$@ 件を表示しています。"
+            "value" : "変更されたファイル %2$@ 個のうち %1$@ 個を表示しています。"
           }
         }
       }
@@ -21335,7 +21437,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ファイル %2$@ 件のうち %1$@ 件を表示しています。"
+            "value" : "ファイル %2$@ 個のうち %1$@ 個を表示しています。"
           }
         }
       }
@@ -21345,7 +21447,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "変更されたファイル %2$@ 件超のうち %1$@ 件を表示しています。"
+            "value" : "変更されたファイル %2$@ 個超のうち %1$@ 個を表示しています。"
           }
         }
       }
@@ -21355,7 +21457,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ファイル %2$@ 件超のうち %1$@ 件を表示しています。"
+            "value" : "ファイル %2$@ 個超のうち %1$@ 個を表示しています。"
           }
         }
       }
@@ -21843,7 +21945,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "待機"
+            "value" : "スリープ"
           }
         }
       }
@@ -21853,7 +21955,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld ミリ秒待機"
+            "value" : "%lld ミリ秒スリープ"
           }
         }
       }
@@ -21863,7 +21965,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld 秒待機"
+            "value" : "%lld 秒スリープ"
           }
         }
       }
@@ -22779,6 +22881,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "タブ名"
+          }
+        }
+      }
+    },
+    "Tab key" : {
+      "comment" : "VoiceOver label of the Tab key",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Tab"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab キー"
           }
         }
       }
@@ -23798,7 +23918,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Host Helper は、このコンピュータ上の Claude Code にプラン上限を尋ねます。Helper も Heeler もサインインの処理には関与しません。この自動的な利用は公式にはサポートされていません。"
+            "value" : "Host Helper は、このコンピューター上の Claude Code にプラン上限を尋ねます。Helper も Heeler もサインインの処理には関与しません。この自動的な利用は公式にはサポートされていません。"
           }
         }
       }
@@ -24116,7 +24236,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストは操作を確認しませんでした"
+            "value" : "ホストから操作の完了応答がありませんでした"
           }
         }
       }
@@ -24126,7 +24246,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストは操作を確認しませんでした。状態を確認してから再試行してください。"
+            "value" : "ホストから操作の完了応答がありませんでした。状態を確認してから再試行してください。"
           }
         }
       }
@@ -24136,7 +24256,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストは閉じる操作を確認しませんでした。ターミナルはすでに終了している可能性があるため、再試行の前に確認してください。"
+            "value" : "ホストから閉じる操作の完了応答がありませんでした。ターミナルはすでに終了している可能性があるため、再試行の前に確認してください。"
           }
         }
       }
@@ -24146,7 +24266,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストはファイルの受信を確認しませんでした。再試行するともう 1 部送信します。"
+            "value" : "ホストからファイルの受信応答がありませんでした。再試行するともう 1 部送信します。"
           }
         }
       }
@@ -24156,7 +24276,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストは画像の受信を確認しませんでした。再試行するともう 1 部送信します。"
+            "value" : "ホストから画像の受信応答がありませんでした。再試行するともう 1 部送信します。"
           }
         }
       }
@@ -24166,7 +24286,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストは起動を確認しませんでした。エージェントは起動している可能性があるため、再試行の前にホストを確認してください。"
+            "value" : "ホストから起動の完了応答がありませんでした。エージェントは起動している可能性があるため、再試行の前にホストを確認してください。"
           }
         }
       }
@@ -24176,7 +24296,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストは名前変更を確認しませんでした。"
+            "value" : "ホストから名前変更の完了応答がありませんでした。"
           }
         }
       }
@@ -24186,7 +24306,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストは名前変更を確認しませんでした。適用されている可能性があるため、再試行の前にデスクトップアプリを確認してください。"
+            "value" : "ホストから名前変更の完了応答がありませんでした。適用されている可能性があるため、再試行の前にデスクトップアプリを確認してください。"
           }
         }
       }
@@ -24196,7 +24316,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストはワークツリーを確認しませんでした。再試行の前に、%@ がホスト上にあるか確認してください。"
+            "value" : "ホストからワークツリー作成の完了応答がありませんでした。再試行の前に、%@ がホスト上にあるか確認してください。"
           }
         }
       }
@@ -24206,7 +24326,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストは削除が完了したかどうかを確認しませんでした。このシートを閉じ、コンソールの更新を待ってから、ワークツリー詳細を開き直してください。"
+            "value" : "削除が完了したかどうか、ホストから応答がありませんでした。このシートを閉じ、コンソールの更新を待ってから、ワークツリー詳細を開き直してください。"
           }
         }
       }
@@ -26079,7 +26199,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "プラグインは、このコンピュータ上の Claude Code にプラン上限を尋ねます。プラグインも Heeler もサインインの処理には関与しません。この自動的な利用は公式にはサポートされていません。"
+            "value" : "プラグインは、このコンピューター上の Claude Code にプラン上限を尋ねます。プラグインも Heeler もサインインの処理には関与しません。この自動的な利用は公式にはサポートされていません。"
           }
         }
       }
@@ -26742,7 +26862,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ターミナルは変更を確認しませんでした。現在のモードを確認してから再試行してください。"
+            "value" : "ターミナルから変更の完了応答がありませんでした。現在のモードを確認してから再試行してください。"
           }
         }
       }
@@ -27040,7 +27160,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ワークツリーのターミナルは終了しましたが、ホストは削除を確認しませんでした。再試行の前に、%@ がまだホスト上にあるか確認してください。"
+            "value" : "ワークツリーのターミナルは終了しましたが、ホストから削除の完了応答がありませんでした。再試行の前に、%@ がまだホスト上にあるか確認してください。"
           }
         }
       }
@@ -28528,7 +28648,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "試行中"
+            "value" : "接続中"
           }
         }
       }
@@ -29412,7 +29532,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このコンピュータでいずれかのエージェントを一度使用するか、herdr を再起動してから、使用量を更新してください。"
+            "value" : "このコンピューターでいずれかのエージェントを一度使用するか、herdr を再起動してから、使用量を更新してください。"
           }
         }
       }
@@ -29483,7 +29603,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "サービスの正確なフォームフィールド名を書いてください（例: language や languages[]）。複数の値は同じ名前を繰り返します。これらのフィールドは Prompt と既定の response_format=json を上書きします。File と model はここでは変更できません。認証には API Key を使用してください。"
+            "value" : "サービスの正確なフォームフィールド名を書いてください（例: language や languages[]）。複数の値は同じ名前を繰り返します。これらのフィールドは「プロンプト」と既定の response_format=json を上書きします。File と model はここでは変更できません。認証には「APIキー」を使用してください。"
           }
         }
       }
@@ -30883,7 +31003,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr はプラグインの manifest を読み取れなかったため、バージョンが古い可能性があります。リンクされたチェックアウトを確認してください。"
+            "value" : "herdr はプラグインのマニフェストを読み取れなかったため、バージョンが古い可能性があります。リンクされたチェックアウトを確認してください。"
           }
         }
       }
@@ -30894,7 +31014,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr はプラグインの manifest を読み取れなかったため、バージョンが古い可能性があります。再インストールしてください。"
+            "value" : "herdr はプラグインのマニフェストを読み取れなかったため、バージョンが古い可能性があります。再インストールしてください。"
           }
         }
       }
@@ -32068,7 +32188,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ でリセット"
+            "value" : "%@後にリセット"
           }
         }
       }
@@ -32079,7 +32199,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ でリセット · %2$@"
+            "value" : "%1$@後にリセット · %2$@"
           }
         }
       }

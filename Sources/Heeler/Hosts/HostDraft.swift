@@ -130,18 +130,21 @@ struct HostDraft: Equatable, Sendable {
     }
 
     /// `box` for `box copy` and `box copy 3`; any other name is its own stem.
+    /// The English suffix counts too, so a copy named before the language
+    /// changed still continues its series.
     private static func copyStem(of name: String) -> String {
-        let suffix = String(localized: " copy")
+        let suffixes = [String(localized: " copy"), " copy"]
         var stem = Substring(name)
         if let space = stem.lastIndex(of: " ") {
             let number = stem[stem.index(after: space)...]
+            let head = stem[..<space]
             if !number.isEmpty, number.allSatisfy({ ("0"..."9").contains($0) }),
-               stem[..<space].hasSuffix(suffix)
+               suffixes.contains(where: { head.hasSuffix($0) })
             {
-                stem = stem[..<space]
+                stem = head
             }
         }
-        if stem.hasSuffix(suffix) {
+        if let suffix = suffixes.first(where: { stem.hasSuffix($0) }) {
             stem = stem.dropLast(suffix.count)
         }
         return String(stem)

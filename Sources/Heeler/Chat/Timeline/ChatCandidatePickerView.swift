@@ -98,7 +98,7 @@ extension ChatSessionCandidate {
             parts.append(String(localized: "In this directory"))
         }
         if let modified { parts.append(modified.formatted(.relative(presentation: .named))) }
-        return parts.joined(separator: ", ")
+        return parts.joined(separator: String(localized: ", ", comment: "Separates the phrases of a list, as in “Ran 2 commands, Edited 2 files”."))
     }
 }
 

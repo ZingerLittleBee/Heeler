@@ -1654,9 +1654,11 @@ struct ConsoleView: View {
         case .noAgentsOnHost(let hostName):
             ContentUnavailableView {
                 Label(
-                    hostName.isEmpty
-                        ? String(localized: "No Agents on the Selected Hosts")
-                        : String(localized: "No Agents on \(hostName)"),
+                    !hostName.isEmpty
+                        ? String(localized: "No Agents on \(hostName)")
+                        : hostFilter.count == 1
+                            ? String(localized: "No Agents on this Host")
+                            : String(localized: "No Agents on the Selected Hosts"),
                     systemImage: "line.3.horizontal.decrease.circle")
             } actions: {
                 Button("Show All Hosts") { hostFilter.removeAll() }
@@ -2347,7 +2349,7 @@ struct ConsoleView: View {
     }
 
     /// The one selected Host's name, which the empty state names; empty for
-    /// several Hosts, or one no longer listed, which it calls the selection.
+    /// several Hosts, or one no longer listed.
     private var filteredHostName: String {
         guard hostFilter.count == 1 else { return "" }
         return hosts.consoleHosts.first(where: { hostFilter.contains($0.id) })?.displayName ?? ""

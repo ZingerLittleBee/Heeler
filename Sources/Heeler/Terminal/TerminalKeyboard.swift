@@ -106,7 +106,9 @@ enum AgentQuickKey: Hashable {
     var accessibilityLabel: String {
         switch self {
         case .escape: String(localized: "Escape")
-        case .tab: String(localized: "Tab")
+        // Tab, Home, Insert and End also name other things; the keys get
+        // their own entries.
+        case .tab: String(localized: "Tab key", defaultValue: "Tab", comment: "VoiceOver label of the Tab key")
         case .shiftTab: String(localized: "Shift Tab")
         case .shiftEnter: String(localized: "Shift Enter")
         case .left: String(localized: "Left Arrow")
@@ -115,10 +117,9 @@ enum AgentQuickKey: Hashable {
         case .right: String(localized: "Right Arrow")
         case .enter: String(localized: "Enter")
         case .backspace: String(localized: "Backspace")
-        case .home: String(localized: "Home")
-        // "End" alone is also a chart label; the key gets its own entry.
+        case .home: String(localized: "Home key", defaultValue: "Home", comment: "VoiceOver label of the Home key")
         case .end: String(localized: "End key", defaultValue: "End", comment: "VoiceOver label of the End key")
-        case .insert: String(localized: "Insert")
+        case .insert: String(localized: "Insert key", defaultValue: "Insert", comment: "VoiceOver label of the Insert key")
         case .forwardDelete: String(localized: "Forward Delete")
         case .function(let key): key.title
         case .character(let character): character == " " ? String(localized: "Space") : String(character)

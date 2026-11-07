@@ -1233,8 +1233,14 @@ struct UsageAreaChart: View {
         Chart {
             ForEach(bands) { band in
                 AreaMark(
-                    x: .value("Day", band.index), yStart: .value("Start", band.lower),
-                    yEnd: .value("End", band.upper), series: .value("Program", band.program))
+                    x: .value("Day", band.index),
+                    yStart: .value(
+                        String(localized: "Band start", defaultValue: "Start", comment: "Chart value: a band's lower edge"),
+                        band.lower),
+                    yEnd: .value(
+                        String(localized: "Band end", defaultValue: "End", comment: "Chart value: a band's upper edge"),
+                        band.upper),
+                    series: .value("Program", band.program))
                     .interpolationMethod(.monotone)
                     .foregroundStyle(UsageWidgetColor.program(band.program, mode: renderingMode).opacity(0.16))
             }

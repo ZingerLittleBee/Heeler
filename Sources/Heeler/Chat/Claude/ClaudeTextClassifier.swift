@@ -284,6 +284,8 @@ struct ClaudeTaskNotification: Sendable, Equatable {
         case "failed": return String(localized: "Background task failed")
         case "killed": return String(localized: "Background task killed")
         case "stopped": return String(localized: "Background task stopped")
+        // Still running: the projection reads it as awaiting approval.
+        case "blocked": return String(localized: "Background task blocked")
         default: return String(localized: "Background task ended")
         }
     }
