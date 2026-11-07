@@ -111,7 +111,8 @@ struct PreSendGateTests {
             "agy-87-perm-after-ctrlc-120x40", "agy-89-warning-notice-bad-model-120x40",
             "agy-90-first-screen-welcome-40x30", "agy-90-first-screen-welcome-62x20",
             "agy-90-first-screen-welcome-62x41", "agy-94-working-nodraft-40x30", "agy-96-working-queued-40x30",
-            "agy-98-working-nodraft-62x20",
+            "agy-98-working-nodraft-62x20", "agy-103-ask-question-multiselect-after-enter-62x41",
+            "agy-107-ask-question-multi-q2-after-digit2-62x41", "agy-115-ask-question-single-after-esc-62x41",
         ]
         let screen = try ScreenFixture.screen(stem)
         let state = InputBoxStateDetector.detect(screen, program: .agy)
