@@ -27,6 +27,13 @@ every PR, pins each fast workflow's trigger paths and commands.
 Documentation-only edits get the Ubuntu tooling checks; Node and site checks
 keep their own path filters.
 
+Every macOS job runs on the `xcode-27` runner with Xcode 27.2, the toolchain
+that archives releases, and `make test-ci-diagnostic-controls` fails when one
+leaves it. The full and diagnostic lanes test an iPhone 17 on the iOS 27.2
+runtime, which `HEELER_CI_SIMULATOR_OS` pins because the image also has one
+on iOS 27.0. Without it, a local `make test-ci-app` or `make test-ci-package`
+takes any available iPhone 17; pin one with `SIMULATOR_UDID=<UDID>`.
+
 Run focused behavior tests for the feature being changed. The
 [full native workflow](../../.github/workflows/ci-full.yml) retains all app,
 UI, real-SSH and weak-network tests, package E2E and coverage checks. It runs
