@@ -58,7 +58,7 @@ struct ChatDeliveryPolicyTests {
     private static let readyScreens: [ChatProgram: String] = [
         .claude: "claude-01-ready", .codex: "codex-00-ready", .pi: "pi-06-empty-editor-119",
         .omp: "omp-08-empty-120-after-first", .grok: "grok-01-idle-empty",
-        .opencode: "opencode-02-session-empty-180",
+        .opencode: "opencode-02-session-empty-180", .agy: "agy-02-idle-empty-120x40",
     ]
 
     /// Without a session check, a send reads the screen once and goes into

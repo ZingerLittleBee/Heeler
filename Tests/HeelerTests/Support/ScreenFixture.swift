@@ -97,9 +97,55 @@ enum ScreenFixture {
         "opencode-41-subagent-panel-62", "opencode-42-reject-feedback-62", "opencode-43-queued-dock-62",
     ]
 
+    static let agy = [
+        "agy-00-trust-prompt-191x49", "agy-01-welcome-after-attach-120x40", "agy-02-idle-empty-120x40",
+        "agy-03-ctrlc-idle-once-120x40", "agy-04-typed-after-ctrlc-120x40", "agy-05-esc-idle-draft-120x40",
+        "agy-06-esc-esc-idle-draft-120x40", "agy-07-ctrlc-idle-draft-120x40",
+        "agy-09-welcome-after-trust-answered-elsewhere-190x49", "agy-10-trust-prompt-no-selected-190x49",
+        "agy-11-trust-prompt-no-selected-62x41", "agy-12-trust-prompt-no-selected-40x30",
+        "agy-13-first-screen-welcome-120x40", "agy-14-idle-draft-oneline-120x40",
+        "agy-15-idle-draft-wrapped-120x40", "agy-16-idle-draft-multiline-120x40",
+        "agy-17-prompt-newline-just-sent-120x40", "agy-18-idle-after-reply-120x40", "agy-19-help-shortcuts-120x40",
+        "agy-20-help-commands-tab-120x40", "agy-25-slash-popup-120x40", "agy-26-slash-popup-filtered-co-120x40",
+        "agy-27-slash-popup-after-esc-120x40", "agy-28-at-popup-120x40", "agy-29-at-popup-120x40",
+        "agy-30-perm-run-command-default-120x40", "agy-31-perm-run-command-default-40x30",
+        "agy-31-perm-run-command-default-62x20", "agy-31-perm-run-command-default-62x41",
+        "agy-32-perm-after-digit2-120x40", "agy-33-working-with-draft-120x40",
+        "agy-34-working-submitted-while-working-120x40", "agy-35-done-after-queued-120x40",
+        "agy-36-done-final-120x40", "agy-38-esc-while-working-120x40", "agy-39-ctrlc-while-working-120x40",
+        "agy-41-ask-question-single-120x40", "agy-42-ask-question-single-40x30", "agy-42-ask-question-single-62x20",
+        "agy-42-ask-question-single-62x41", "agy-43-ask-question-after-digit2-120x40",
+        "agy-44-ask-question-multi-120x40", "agy-45-ask-question-multi-q2-120x40",
+        "agy-46-ask-question-multi-after-esc-120x40", "agy-47-perm-file-edit-default-120x40",
+        "agy-48-perm-file-edit-default-40x30", "agy-48-perm-file-edit-default-62x20",
+        "agy-48-perm-file-edit-default-62x41", "agy-49-prompt-sent-into-edit-dialog-120x40",
+        "agy-50-after-edit-accepted-by-prompt-120x40", "agy-51-perm-run-command-after-esc-120x40",
+        "agy-52-perm-run-command-amend-120x40", "agy-54-idle-after-esc-amend-heeler-client-59x41",
+        "agy-55-perm-run-command-190x49", "agy-56-perm-run-command-after-digit4-190x49", "agy-57-idle-empty-62x41",
+        "agy-58-idle-draft-oneline-62x41", "agy-59-idle-draft-wrapped-62x41", "agy-60-slash-popup-62x41",
+        "agy-61-at-popup-62x41", "agy-62-help-shortcuts-62x41", "agy-63-idle-empty-40x30",
+        "agy-63-idle-empty-62x20", "agy-64-idle-draft-wrapped-40x30", "agy-64-idle-draft-wrapped-62x20",
+        "agy-65-slash-popup-40x30", "agy-65-slash-popup-62x20", "agy-66-working-nodraft-62x41",
+        "agy-67-working-tool-running-62x41", "agy-68-working-with-draft-62x41",
+        "agy-69-working-draft-entered-then-perm-dialog-62x41", "agy-70-working-queued-after-approve-62x41",
+        "agy-71-working-queued-edit-up-62x41", "agy-72-working-altm-send-now-62x41", "agy-73-done-after-altm-62x41",
+        "agy-74-compacting-or-after-62x41", "agy-75-after-compact-62x41", "agy-76-mode-cycle-1-120x40",
+        "agy-76-mode-cycle-2-120x40", "agy-76-mode-cycle-3-120x40", "agy-76-mode-cycle-4-120x40",
+        "agy-77-accept-edits-run-command-120x40", "agy-78-auto-mode-result-120x40",
+        "agy-79-plan-mode-result-120x40", "agy-80-artifact-review-ctrl-r-120x40",
+        "agy-81-artifact-review-after-y-120x40", "agy-82-plan-approved-result-120x40",
+        "agy-83-plan-edit-rejected-120x40", "agy-84-footer-modes-40x30-40x30", "agy-84-footer-modes-62x20-62x20",
+        "agy-84-footer-modes-62x41-62x41", "agy-85-model-picker-120x40", "agy-87-perm-after-ctrlc-120x40",
+        "agy-88-exit-with-conversation-120x40", "agy-89-warning-notice-bad-model-120x40",
+        "agy-90-first-screen-welcome-40x30", "agy-90-first-screen-welcome-62x20",
+        "agy-90-first-screen-welcome-62x41", "agy-91-bang-typed-62x41", "agy-92-up-on-empty-box-62x41",
+        "agy-93-bash-mode-with-text-62x41", "agy-94-working-nodraft-40x30", "agy-95-working-with-draft-40x30",
+        "agy-96-working-queued-40x30", "agy-97-esc-with-queued-40x30", "agy-98-working-nodraft-62x20",
+    ]
+
     /// The Claude and Codex captures that the dialog and input-box suites walk.
-    /// Pi, Oh My Pi, Grok Build and OpenCode captures stay out so those
-    /// suites keep their expectations.
+    /// Pi, Oh My Pi, Grok Build, OpenCode and Antigravity CLI captures stay
+    /// out so those suites keep their expectations.
     static let all = claude + codex
 
     static func path(_ stem: String) -> String {

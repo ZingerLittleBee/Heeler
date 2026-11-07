@@ -406,6 +406,50 @@ under the stores' scrubbing cover `screens/opencode/` as well. Together the
 files are about 570 KB. These screens are not part of `ScreenFixture.all`
 either.
 
+### Antigravity CLI screens
+
+`screens/agy/agy-*.ansi` are visible-screen reads of Antigravity CLI 1.5.3 on
+herdr 0.9.5 (2026-11-07), kept as herdr returned them apart from the
+scrubbing below: CRLF rows, SGR styling only. Stems keep the capture's
+number, state and grid. Agents ran in a scratch git repository with
+`README.md`, `calc.py` and `fruits.txt` and answered scratch prompts; a
+holder attached to each Agent at the grid the stem names, 120×40 or the
+phone's 62×41, 62×20 and 40×30. Two grids came from other clients: `agy-54`
+is the Heeler app's own 59×41 attach, and `agy-00`, `agy-09`, `agy-10`,
+`agy-55` and `agy-56` are the desktop's unsized pane, 190 or 191 by 49.
+
+| Fixtures | Captures |
+|---|---|
+| `agy-00` to `agy-12` | The trust prompt at 191×49 and, in another scratch repository, with `No, exit` selected at 190×49, 62×41 and 40×30, where its question wraps; the welcome screen after another client answered it; the idle box empty, after one Ctrl+C (`press ctrl+c again to exit`), after a key typed then, and with a draft after Esc, Esc Esc and Ctrl+C |
+| `agy-13` to `agy-20` | The first screen, drafts on one row, wrapped and on four lines, the box just after a two-line prompt went, idle after a reply, and the `?` help's shortcuts and commands tabs |
+| `agy-25` to `agy-29` | The `/` popup, filtered by `/co`, the `/co` draft after Esc closed it, and the `@` popup with no matches after `/co@` and with its list |
+| `agy-30` to `agy-36`, `agy-38`, `agy-39` | A command's permission dialog at every grid and after `2` answered it; a turn running with a draft, the draft queued, the queued prompt's turn and the final reply; a turn stopped with Esc and with Ctrl+C |
+| `agy-41` to `agy-46` | `ask_question` with one question at every grid and after `2` answered it, and with two questions on each page and after Esc skipped them |
+| `agy-47` to `agy-52`, `agy-54` to `agy-56` | The file edit dialog at every grid, which herdr reports idle; the box after `agent prompt` sent into it, whose Enter accepted the edit; a command's dialog after Esc, its Amend field, the box after Esc from it at the app's grid, and the dialog at the desktop's grid and after `4` declined it |
+| `agy-57` to `agy-65` | The phone's grids: the idle box empty and with drafts, the `/` and `@` popups and the help |
+| `agy-66` to `agy-75` | A turn at 62×41: running, a command running, a draft, the draft entered, then a permission dialog, queued after the approval, back in the box with Up, sent at once with Alt+M with a background task listed under the box, done, compacting and compacted |
+| `agy-76` to `agy-85` | The empty box in each mode Shift+Tab cycles through, with the mode's grey hint; a command's dialog in accept-edits mode; auto and plan mode results; the artifact review panel Ctrl+R opens and the box after `y`; the plan's file edit dialog after its approval; a rejected edit; the plan mode footer at the phone's grids; the `/model` picker |
+| `agy-87` to `agy-98` | The box after Ctrl+C left a permission dialog; agy after it exited, with its resume line and the shell's prompt; a warning above the box for an unknown `--model`; the first screen at the phone's grids; `!` and a command in bash mode; Up on an empty box; a turn at 40×30 running, with a draft, with it queued, and after Esc put it back; a turn at 62×20 |
+
+Help's general tab (it shows the conversation id and the log's path), its
+command pages and a 200-row scrollback read are not kept.
+
+Scrubbing replaced the account's email with `developer`, the scratch
+repository's path with `/Users/developer/projects/fruits` (`fruits2` and
+`fruits3` for the trust tests' repositories) and the two conversation ids
+with `00000000-0000-4000-8000-000000000002` and `…005`. A dialog's file row
+names its file under that path, and the `@` popup's descriptions the file's
+full path, cut with `...` as agy cuts one that does not fit. These rows are
+shorter than captured. At 62×41 and 40×30 the trust prompt's path wrapped
+over several rows; the scrubbed path keeps the first and drops the rest.
+
+The tests also build synthetic screens for states no capture shows: a
+footer agy's strings hold (code search mode, a Vim badge, a background
+command's double press, `press ctrl+d again to exit`), the background-task
+panel without a queue, the full-width `Conversation compacted` rule a live
+`/compact` left above the box, and past prompts with no box. These screens
+are not part of `ScreenFixture.all` either.
+
 ## OpenCode stores
 
 `opencode/` holds OpenCode session stores for the store query tests

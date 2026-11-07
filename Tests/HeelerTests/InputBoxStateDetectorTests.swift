@@ -71,6 +71,20 @@ struct InputBoxStateDetectorTests {
         #expect(try state(stem) == .dialog(title: nil))
     }
 
+    /// No dialog parser reads Antigravity CLI's dialogs, so the box's reader
+    /// does: herdr 0.9.5 reports the file edit dialog idle, and Enter there
+    /// accepts the edit.
+    @Test("Antigravity CLI: a dialog in the box's place is a dialog", arguments: [
+        "agy-30-perm-run-command-default-120x40", "agy-41-ask-question-single-120x40",
+        "agy-44-ask-question-multi-120x40", "agy-47-perm-file-edit-default-120x40",
+        "agy-48-perm-file-edit-default-40x30", "agy-52-perm-run-command-amend-120x40",
+        "agy-12-trust-prompt-no-selected-40x30",
+    ])
+    func agyDialogsReadAsDialogs(stem: String) throws {
+        #expect(BlockedDialogParser.parse(try ScreenFixture.screen(stem), program: .agy) == .none)
+        #expect(try state(stem) == .dialog(title: nil))
+    }
+
     // MARK: Claude, synthetic until captured
 
     /// Claude's box between its rules, with the mode line under it.
