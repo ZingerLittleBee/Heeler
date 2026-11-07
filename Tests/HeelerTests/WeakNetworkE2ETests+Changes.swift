@@ -10,8 +10,9 @@ extension WeakNetworkE2ETests {
     /// A Checkout whose status overflows the status cap, and one file whose
     /// patch overflows the Load More cap, read over loopback for reference and
     /// then over the cellular-like profile, directly and behind the Jump Host.
-    /// Every read must finish inside the production git deadline: a read that
-    /// overruns it shows no Changes at all.
+    /// The link's part of every read must finish inside the production git
+    /// deadline: a read that overruns it shows no Changes at all. The Host's
+    /// own git time is the runner's, not the link's, so it is left out.
     @Test("a status past its cap and a 1 MiB patch read inside the git deadline over the cellular-like profile")
     func largeChangesReadsFitTheGitDeadlineOverACellularLink() async throws {
         let rawIterations = ProcessInfo.processInfo.environment["HEELER_WEAK_CHANGES_ITERATIONS"] ?? "1"
@@ -171,8 +172,9 @@ extension WeakNetworkE2ETests {
 
     /// The reads run with headroom past the git deadline, so a slow read is
     /// measured rather than cut off, and the production deadline is then
-    /// asserted on the measured time. Admission and the exec are timed from
-    /// the caller's side, exactly what the deadline bounds.
+    /// asserted on the measured time less the Host's own run of the script.
+    /// Admission and the exec are timed from the caller's side, exactly what
+    /// the deadline bounds.
     private func readLargeChanges(
         over route: LinkRoute, fixture: WeakNetworkFixture, topLevel: String
     ) async throws {
@@ -199,19 +201,23 @@ extension WeakNetworkE2ETests {
         let isImpaired = route.profile != nil
 
         let beforeChanges = try await fixture.control.stats()
-        let (read, changesElapsed) = try await ChangesFieldCheckout.timed {
-            try await transport.readChanges(ChangesReadRequest(directory: topLevel))
+        let changes = try await Self.hostTimedRead(on: transport) { nonce in
+            GitProbe.changesScript(directory: topLevel, nonce: nonce)
+        } parse: { stdout, stderr, nonce in
+            try GitProbe.parseChanges(stdout: stdout, stderr: stderr, nonce: nonce)
         }
+        let read = changes.value
         let changesWire = try await fixture.control.stats().bytesToClient
             - beforeChanges.bytesToClient
         #expect(read.changes.isStatusTruncated, "\(route.label): the status should hit its cap")
         #expect(read.changes.listedFiles.count == CheckoutChanges.displayLimit, "\(route.label)")
         #expect(
-            changesElapsed < deadline,
-            "\(route.label): the Changes read took \(changesElapsed), past the \(deadline) git deadline")
+            changes.elapsed - changes.host < deadline,
+            "\(route.label): the Changes read took \(changes.elapsed), \(changes.host) of it the Host's own run, leaving more than the \(deadline) git deadline")
         print(
             "[changes-field] route=\(route.label) read=changes"
-                + " elapsed=\(ChangesFieldCheckout.milliseconds(changesElapsed))"
+                + " elapsed=\(ChangesFieldCheckout.milliseconds(changes.elapsed))"
+                + " host=\(ChangesFieldCheckout.milliseconds(changes.host))"
                 + " wire-bytes=\(isImpaired ? String(changesWire) : "-")"
                 + " files=\(read.changes.files.count)")
 
@@ -219,20 +225,69 @@ extension WeakNetworkE2ETests {
             topLevel: Data(topLevel.utf8), path: Data("large.txt".utf8),
             isUntracked: false, limit: .extended)
         let beforePatch = try await fixture.control.stats()
-        let (patch, patchElapsed) = try await ChangesFieldCheckout.timed {
-            try await transport.readFilePatch(request)
+        let patchRead = try await Self.hostTimedRead(on: transport) { nonce in
+            GitProbe.patchScript(request, nonce: nonce)
+        } parse: { stdout, stderr, nonce in
+            try GitProbe.parsePatch(stdout: stdout, stderr: stderr, nonce: nonce, request: request)
         }
+        let patch = patchRead.value
         let patchWire = try await fixture.control.stats().bytesToClient - beforePatch.bytesToClient
         #expect(patch.isTruncated, "\(route.label): the patch should hit the Load More cap")
         #expect(
-            patchElapsed < deadline,
-            "\(route.label): the patch read took \(patchElapsed), past the \(deadline) git deadline")
+            patchRead.elapsed - patchRead.host < deadline,
+            "\(route.label): the patch read took \(patchRead.elapsed), \(patchRead.host) of it the Host's own run, leaving more than the \(deadline) git deadline")
         print(
             "[changes-field] route=\(route.label) read=patch-extended"
-                + " elapsed=\(ChangesFieldCheckout.milliseconds(patchElapsed))"
+                + " elapsed=\(ChangesFieldCheckout.milliseconds(patchRead.elapsed))"
+                + " host=\(ChangesFieldCheckout.milliseconds(patchRead.host))"
                 + " wire-bytes=\(isImpaired ? String(patchWire) : "-")"
                 + " lines=\(patch.files.flatMap(\.hunks).flatMap(\.lines).count)")
     }
+
+    /// One read made the way `readChanges` and `readFilePatch` make it, a
+    /// GitProbe script in one bounded git exec parsed under its nonce, with
+    /// the Host's clock read around the script inside that same exec. On a
+    /// loaded runner the Host's process for one loopback Changes exec lived
+    /// about 15 s, past the deadline with no link at all (#634). That share
+    /// is the runner's; the rest is what the link and the transport added.
+    ///
+    /// The split holds while the script never waits on the link: its output
+    /// (under 1.1 MB at today's GitProbe caps) fits the 2 MiB receive window
+    /// the exec channel opens with. Output past that window would block the
+    /// script on the link and count the wait as the Host's.
+    private static func hostTimedRead<Value>(
+        on transport: HeelerSSHTransport,
+        script: (_ nonce: String) -> Data,
+        parse: (_ stdout: Data, _ stderr: Data, _ nonce: String) throws -> Value
+    ) async throws -> (value: Value, elapsed: Duration, host: Duration) {
+        let nonce = GitProbe.makeNonce()
+        let timed = Data("__heeler_field_t0=$(\(hostClock))\n".utf8)
+            + script(nonce)
+            + Data("""
+                __heeler_field_t1=$(\(hostClock))
+                printf '\\n%s%s,%s\\n' '\(hostTimeMarker)' "$__heeler_field_t0" "$__heeler_field_t1" >&2
+
+                """.utf8)
+        let (result, elapsed) = try await ChangesFieldCheckout.timed {
+            try await transport.runGitScript(timed)
+        }
+        let marker = try #require(
+            result.stderr.range(of: Data("\n\(hostTimeMarker)".utf8), options: .backwards),
+            "the Host reported no run time")
+        let clocks = String(decoding: result.stderr[marker.upperBound...], as: UTF8.self)
+            .split(separator: "\n").first?.split(separator: ",").compactMap { Int64($0) } ?? []
+        let started = try #require(clocks.first, "the Host's start clock was unreadable")
+        let ended = try #require(clocks.dropFirst().first, "the Host's end clock was unreadable")
+        let host = Duration.milliseconds(ended - started)
+        let stderr = result.stderr[..<marker.lowerBound]
+        return (try parse(result.stdout, Data(stderr), nonce), elapsed, host)
+    }
+
+    /// Milliseconds since the epoch. The fixture Host is macOS, whose sh has
+    /// no sub-second clock of its own.
+    private static let hostClock =
+        "/usr/bin/perl -MTime::HiRes=time -e 'printf \"%d\", time * 1000'"
+    private static let hostTimeMarker = "__FIELD_HOST_CLOCKS__="
 
     /// The bytes each read's script prints, which is what crosses the link.
     private static func reportOutputSizes(
