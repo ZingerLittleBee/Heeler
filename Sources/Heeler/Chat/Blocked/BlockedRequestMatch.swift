@@ -143,6 +143,34 @@ enum BlockedRequestMatch {
         return disagrees ? shown : call
     }
 
+    /// A file call's change as Antigravity CLI's dialog draws it, for a
+    /// card the screen cut short: each line's number in the file, its
+    /// mark and its text, `N  -  old` and `N  +  new`; a context line has
+    /// no mark.
+    static func agyChangeRows(_ changes: ChatFileChanges) -> [String] {
+        var rows: [String] = []
+        for hunk in changes.files.flatMap(\.hunks) {
+            var old = hunk.oldStart
+            var new = hunk.newStart
+            for line in hunk.lines where !ChatDiffHunk.isNewlineMarker(line) {
+                let text = line.dropFirst()
+                switch line.first {
+                case "-":
+                    rows.append("\(old)  -  \(text)")
+                    old += 1
+                case "+":
+                    rows.append("\(new)  +  \(text)")
+                    new += 1
+                default:
+                    rows.append("\(new)     \(text)")
+                    old += 1
+                    new += 1
+                }
+            }
+        }
+        return rows
+    }
+
     /// `text` without a leading `12.` or `12)`.
     private static func droppingListNumber(_ text: String) -> Substring {
         let trimmed = text.drop(while: \.isWhitespace)

@@ -899,11 +899,14 @@ struct ChatPendingRequest: Equatable, Sendable {
     var detail: String?
     var questions: [ChatQuestion]
     var planFilePath: String?
+    /// The change a file call would make, for a card whose dialog the
+    /// screen cuts short: Antigravity CLI's edit and write calls.
+    var fileChanges: ChatFileChanges?
 
     init(
         entryID: ChatEntryID, callID: String?, kind: ChatToolActivity.Kind, toolName: String,
         summary: String, detail: String? = nil, questions: [ChatQuestion] = [],
-        planFilePath: String? = nil
+        planFilePath: String? = nil, fileChanges: ChatFileChanges? = nil
     ) {
         self.entryID = entryID
         self.callID = callID
@@ -913,6 +916,7 @@ struct ChatPendingRequest: Equatable, Sendable {
         self.detail = detail
         self.questions = questions
         self.planFilePath = planFilePath
+        self.fileChanges = fileChanges
     }
 }
 

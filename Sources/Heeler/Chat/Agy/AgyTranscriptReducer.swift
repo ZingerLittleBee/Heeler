@@ -350,8 +350,10 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
 
         // MARK: Tools
 
-        /// Builds each call's row in its placeholder's place, and offers a
-        /// call that waits for approval to the Blocked card.
+        /// Builds each call's row in its placeholder's place, and offers
+        /// every open call to the Blocked card, whatever herdr reports: an
+        /// idle agy can be asking about a command, whose row reads `no
+        /// result`, and a card's answer waits on its call to resolve.
         private mutating func resolveTools() {
             guard !calls.isEmpty else { return }
             var positions: [ChatEntryID: Int] = [:]
@@ -362,7 +364,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 guard let index = positions[call.entryID] else { continue }
                 let tool = call.activity(agent: activity)
                 transcript.entries[index].content = .tool(tool)
-                if tool.status == .awaitingApproval {
+                if call.isOpen {
                     transcript.pendingRequests.append(call.pendingRequest(for: tool))
                 }
             }

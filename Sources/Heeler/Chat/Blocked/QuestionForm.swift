@@ -8,7 +8,7 @@ enum QuestionFormAnswer: Hashable, Sendable {
     /// A multi-select question's options, by index.
     case options(Set<Int>)
     /// An answer the user typed: Claude's `Type something.` row, Codex's
-    /// `None of the above` with notes.
+    /// `None of the above` with notes, Antigravity CLI's `Write-in...`.
     case text(String)
 }
 
@@ -46,10 +46,14 @@ struct QuestionForm: Equatable, Sendable {
         case .claudeQuestion:
             let headers = dialog.subject.questionHeaders
             guard headers.count == questions.count, dialog.progress == headers[index],
-                Self.isMultiSelect(dialog) == question.isMultiSelect
+                dialog.isMultiSelect == question.isMultiSelect
             else { return false }
         case .codexQuestion:
             guard dialog.progress == "Question \(index + 1)/\(questions.count)" else { return false }
+        case .agyQuestion:
+            guard dialog.progress == "Question \(index + 1)/\(questions.count)",
+                dialog.isMultiSelect == question.isMultiSelect
+            else { return false }
         default:
             return false
         }
@@ -67,7 +71,7 @@ struct QuestionForm: Equatable, Sendable {
             throw .unsupported("Question \(index + 1) on screen isn't the one the card showed.")
         }
         let answers = dialog.options.filter { $0.role == .answer }
-        let isMultiSelect = Self.isMultiSelect(dialog)
+        let isMultiSelect = dialog.isMultiSelect
         switch answer {
         case .option(let choice) where !isMultiSelect && answers.indices.contains(choice):
             return .choose(ordinal: answers[choice].ordinal)
@@ -106,11 +110,6 @@ struct QuestionForm: Equatable, Sendable {
         case .text(let text):
             return text.trimmingCharacters(in: .whitespaces)
         }
-    }
-
-    /// Matches the planner: a multi-select page has a `Next` button.
-    private static func isMultiSelect(_ dialog: BlockedDialog) -> Bool {
-        dialog.options.contains { $0.role == .next }
     }
 
     /// The comma-separated parts in any order, since Heeler doesn't rely on

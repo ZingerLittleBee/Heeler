@@ -1486,6 +1486,187 @@ struct BlockedCardStoreTests {
         #expect(await pane.keys == [["esc"]])
     }
 
+    // MARK: Antigravity CLI
+
+    /// herdr 0.9.5 reports agy idle under its file dialogs, a command's
+    /// note field and a question's answer field; an open call that asks
+    /// the user stands in for Blocked there.
+    @Test(arguments: [
+        ("agy-47-perm-file-edit-default-120x40", BlockedDialogKind.agyFileEdit, "agy:5:tool:0"),
+        ("agy-99-perm-file-create-default-62x41", .agyFileCreate, "agy:6:tool:0"),
+        ("agy-109-perm-run-command-amend-62x41", .agyCommand, "agy:7:tool:0"),
+        ("agy-104-ask-question-writein-after-digit-62x41", .agyQuestion, "agy:8:tool:0"),
+    ])
+    func anIdleAgyWithAnOpenCallThatAsksShowsItsDialog(stem: String, kind: BlockedDialogKind, callID: String)
+        async throws
+    {
+        let pane = FakePane(try ScreenFixture.screen(stem))
+        let store = Self.store(.agy, pane: pane)
+        let requests = [
+            Self.agyCall("agy:5:tool:0", "replace_file_content", .fileEdit, "/Users/developer/projects/fruits/fruits.txt"),
+            Self.agyCall("agy:6:tool:0", "write_to_file", .fileWrite, "/Users/developer/projects/fruits2/a3note.txt"),
+            Self.agyCall("agy:7:tool:0", "run_command", .command, "echo a3-hi"),
+            Self.agyCall("agy:8:tool:0", "ask_question", .question, "Which pet do you prefer?"),
+        ]
+        // An idle agy's command row reads `no result`, its call still open.
+        store.update(transcript: Self.agyTranscript(open: requests, status: .noResult))
+        store.update(activity: .idle)
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == kind)
+        #expect(card.request?.callID == callID)
+    }
+
+    /// Without an open call that asks, an idle agy isn't read: a read or a
+    /// command sent to the background has no dialog.
+    @Test func anIdleAgyWithoutAnOpenCallThatAsksIsNotRead() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(
+            transcript: Self.agyTranscript(
+                open: [Self.agyCall("agy:3:tool:0", "view_file", .fileRead, "/Users/developer/projects/fruits/a.txt")],
+                status: .noResult))
+        store.update(activity: .idle)
+        await store.refresh()
+        #expect(store.content == .none)
+        #expect(await pane.reads == 0)
+
+        // A command in the background has its result, so the reducer offers
+        // no request for it.
+        let background = Self.agyCall("agy:4:tool:0", "run_command", .command, "sleep 40")
+        var transcript = Self.agyTranscript(open: [background], status: .started)
+        transcript.pendingRequests = []
+        store.update(transcript: transcript)
+        await store.refresh()
+        #expect(store.content == .none)
+        #expect(await pane.reads == 0)
+
+        // Another program's idle open call reads nothing either.
+        let grok = Self.store(.grok, pane: pane)
+        grok.update(transcript: Self.agyTranscript(open: [background], status: .noResult))
+        grok.update(activity: .idle)
+        await grok.refresh()
+        #expect(await pane.reads == 0)
+    }
+
+    /// The card's answer waits on the call: a re-read in which the idle
+    /// command's row reads `no result` releases nothing, its result does.
+    @Test func anAgyAnswerThatShowedNoEffectWaitsForItsCallsResult() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-108-perm-run-command-62x41"))
+        let clock = ManualClock()
+        let store = Self.store(.agy, pane: pane, clock: clock)
+        let command = Self.agyCall("agy:7:tool:0", "run_command", .command, "echo a3-hi")
+        store.update(transcript: Self.agyTranscript(open: [command], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys == [["1"]])
+        #expect(store.progress == .unconfirmed)
+        store.update(activity: .idle)
+        store.update(transcript: Self.agyTranscript(open: [command], status: .noResult))
+        #expect(store.progress == .unconfirmed)
+
+        var resolved = Self.agyTranscript(open: [command], status: .succeeded)
+        resolved.pendingRequests = []
+        store.update(transcript: resolved)
+        #expect(store.progress == .ready)
+        #expect(store.content == .none)
+    }
+
+    /// Esc on a permission stops the turn and agy records nothing, so the
+    /// card keeps the stop; Esc on a question skips it, which agy records.
+    @Test func anAgyStopIsKeptAndASkipIsNot() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-108-perm-run-command-62x41"))
+        await pane.react(to: ["esc"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        let command = Self.agyCall("agy:7:tool:0", "run_command", .command, "echo a3-hi")
+        store.update(transcript: Self.agyTranscript(open: [command], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+
+        await store.perform(.dismiss)
+
+        #expect(await pane.keys == [["esc"]])
+        #expect(store.progress == .ready)
+        #expect(store.composerFocusRequest == 1)
+        #expect(store.history.calls == ["agy:7:tool:0": .stopped])
+
+        await pane.show(try ScreenFixture.screen("agy-41-ask-question-single-120x40"))
+        let question = Self.agyCall("agy:9:tool:0", "ask_question", .question, "Which fruit do you prefer?")
+        let asker = Self.store(.agy, pane: pane)
+        asker.update(transcript: Self.agyTranscript(open: [question], status: .awaitingApproval))
+        asker.update(activity: .blocked)
+        await asker.refresh()
+
+        await asker.perform(.dismiss)
+
+        #expect(await pane.keys.suffix(1) == [["esc"]])
+        #expect(asker.progress == .ready)
+        #expect(asker.composerFocusRequest == 0)
+        #expect(asker.history.isEmpty)
+    }
+
+    /// Two questions filled in on the card: the first page's digit turns
+    /// to the second, whose digit answers both.
+    @Test func anAgyTwoQuestionFormAnswersEachPage() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-44-ask-question-multi-120x40"))
+        await pane.react(to: ["2"], with: try ScreenFixture.screen("agy-45-ask-question-multi-q2-120x40"))
+        await pane.react(to: ["1"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        var ask = Self.agyCall("agy:9:tool:0", "ask_question", .question, "What is your favorite color?")
+        ask.questions = [
+            ChatQuestion(text: "What is your favorite color?", options: ["Red", "Blue"].map { .init(label: $0) }),
+            ChatQuestion(text: "What is your favorite season?", options: ["Summer", "Winter"].map { .init(label: $0) }),
+        ]
+        store.update(transcript: Self.agyTranscript(open: [ask], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+        guard case .card(let card) = store.content, QuestionForm(card: card) != nil else {
+            Issue.record("Expected a form, got \(store.content)")
+            return
+        }
+
+        await store.submit([.option(1), .option(0)])
+
+        #expect(await pane.keys == [["2"], ["1"]])
+        #expect(store.progress == .ready)
+        #expect(store.notice == nil)
+        #expect(store.content == .none)
+    }
+
+    /// herdr reports agy's trust prompt idle at 40 columns, before agy
+    /// reports a session; nothing else on such a screen is read as a dialog.
+    @Test func anIdleAgyAwaitingItsSessionShowsOnlyTheTrustPrompt() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-12-trust-prompt-no-selected-40x30"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .idle)
+        store.update(awaitingSession: true)
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+
+        await pane.show(try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40"))
+        await store.refresh()
+        #expect(store.content == .none)
+
+        store.update(awaitingSession: false)
+        let reads = await pane.reads
+        await store.refresh()
+        #expect(await pane.reads == reads)
+    }
+
     // MARK: Helpers
 
     private static let openCodeBlockedNote =
@@ -1542,6 +1723,26 @@ struct BlockedCardStoreTests {
                 sendKeys: { await pane.send($0) },
                 paste: { await pane.paste($0) }),
             clock: clock.clock)
+    }
+
+    private static func agyCall(
+        _ id: String, _ tool: String, _ kind: ChatToolActivity.Kind, _ summary: String
+    ) -> ChatPendingRequest {
+        ChatPendingRequest(entryID: ChatEntryID(id), callID: id, kind: kind, toolName: tool, summary: summary)
+    }
+
+    /// agy's calls in one open turn, every row with `status`, each offered
+    /// to the card as the reducer offers open calls.
+    private static func agyTranscript(open: [ChatPendingRequest], status: ChatToolActivity.Status) -> ChatTranscript {
+        let entries = open.enumerated().map { index, request in
+            ChatEntry(
+                id: request.entryID, sourceOffset: UInt64(index),
+                content: .tool(
+                    ChatToolActivity(
+                        kind: request.kind, name: request.toolName, title: request.summary, status: status,
+                        callID: request.callID)))
+        }
+        return ChatTranscript(entries: entries, pendingRequests: open)
     }
 
     private static func question(_ id: String) -> ChatPendingRequest {
@@ -1922,5 +2123,67 @@ struct BlockedRequestMatchTests {
         let script = request("x", "exec", "await tools.exec_command({cmd: \"touch x1.txt\"})")
         #expect(BlockedRequestMatch.request(for: try dialog("codex-01-x1-exec"), in: [script])?.callID == "x")
         #expect(BlockedRequestMatch.request(for: try dialog("codex-01-x1-exec"), in: [request("y", "exec", "ls")]) == nil)
+    }
+
+    @Test func agyCommandsMatchByTheirStartAndFilesByTheirPath() throws {
+        let command = try dialog("agy-30-perm-run-command-default-120x40")
+        let narrow = try dialog("agy-31-perm-run-command-default-40x30")
+        let run = request("r", "run_command", "sleep 40; echo probe-done")
+        for shown in [command, narrow] {
+            #expect(BlockedRequestMatch.request(for: shown, in: [request("o", "run_command", "ls"), run])?.callID == "r")
+        }
+        #expect(BlockedRequestMatch.request(for: command, in: [request("v", "view_file", "sleep 40; echo probe-done")]) == nil)
+
+        let path = "/Users/developer/projects/fruits/fruits.txt"
+        let edit = try dialog("agy-47-perm-file-edit-default-120x40")
+        // A write over a file asks as an edit.
+        for tool in ["replace_file_content", "edit_file", "write_to_file"] {
+            #expect(BlockedRequestMatch.request(for: edit, in: [request("e", tool, path, kind: .fileEdit)])?.callID == "e")
+        }
+        let other = request("x", "replace_file_content", "/Users/developer/projects/fruits/calc.py", kind: .fileEdit)
+        #expect(BlockedRequestMatch.request(for: edit, in: [other]) == nil)
+
+        // At 40 columns agy cuts the path at the screen's edge.
+        let created = "/Users/developer/projects/fruits2/a3note.txt"
+        let create = try dialog("agy-99-perm-file-create-default-40x30")
+        #expect(BlockedRequestMatch.request(for: create, in: [request("w", "write_to_file", created, kind: .fileWrite)])?.callID == "w")
+        #expect(BlockedRequestMatch.request(for: create, in: [request("e", "replace_file_content", created, kind: .fileEdit)]) == nil)
+    }
+
+    @Test func agyQuestionsMatchByTheirTextAndTrustByNothing() throws {
+        let question = try dialog("agy-41-ask-question-single-120x40")
+        let asked = request(
+            "q", "ask_question", "Which fruit do you prefer?", kind: .question,
+            questions: [ChatQuestion(text: "Which fruit do you prefer?", options: ["Apple", "Banana"])])
+        let other = request("o", "ask_question", "Which pet?", kind: .question, questions: [ChatQuestion(text: "Which pet?")])
+        #expect(BlockedRequestMatch.request(for: question, in: [other, asked])?.callID == "q")
+
+        let trust = try dialog("agy-00-trust-prompt-191x49")
+        #expect(BlockedRequestMatch.request(for: trust, in: [asked, request("r", "run_command", "ls")]) == nil)
+    }
+
+    /// The call's change, drawn as agy's dialog draws its rows, fills in
+    /// what a narrow screen cut.
+    @Test func agyChangeRowsReadLikeTheDialogs() throws {
+        let edit = ChatFileChanges(files: [
+            ChatFileChange(
+                path: "/Users/developer/projects/fruits/fruits.txt", kind: .updated,
+                recorded: [ChatDiffHunk(oldStart: 1, oldLines: 1, newStart: 1, newLines: 2, lines: ["-cherry", "+cherry", "+date"])])
+        ])
+        let shown = try dialog("agy-47-perm-file-edit-default-120x40")
+        #expect(BlockedRequestMatch.agyChangeRows(edit) == Array(shown.body.dropFirst()))
+
+        let write = ChatFileChanges(files: [
+            .allAdded(path: "/Users/developer/projects/fruits2/a3note.txt", content: "hello a3\n", kind: .written)
+        ])
+        let create = try dialog("agy-99-perm-file-create-default-120x40")
+        #expect(BlockedRequestMatch.agyChangeRows(write) == Array(create.body.dropFirst()))
+
+        let context = ChatFileChanges(files: [
+            ChatFileChange(
+                path: "a.txt", kind: .updated,
+                recorded: [ChatDiffHunk(oldStart: 4, oldLines: 2, newStart: 4, newLines: 2, lines: [" keep", "-old", "+new"])])
+        ])
+        #expect(BlockedRequestMatch.agyChangeRows(context) == ["4     keep", "5  -  old", "5  +  new"])
     }
 }

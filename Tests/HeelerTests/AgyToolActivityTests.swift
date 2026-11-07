@@ -236,6 +236,8 @@ struct AgyToolActivityTests {
         #expect(running.status == .started)
         #expect(running.note == "Sent to the background")
         #expect(running.preview == nil)
+        // It has its result, so no card waits on it.
+        #expect(!started.pendingRequests.contains { $0.callID == "agy:33:tool:0" })
 
         let transcript = AgyTranscriptReducerTests.transcript(lines, windowStart: 1)
         let ended = try #require(Self.tool("agy:33:tool:0", in: transcript))
@@ -269,7 +271,8 @@ struct AgyToolActivityTests {
     // MARK: Calls without a result
 
     /// A call without a result follows what herdr reports while its turn
-    /// is open, and offers the Blocked card its command.
+    /// is open, and offers the Blocked card its command whatever herdr
+    /// reports: an idle agy can be asking about it under its note field.
     @Test(arguments: [
         (ChatAgentActivity.blocked, ChatToolActivity.Status.awaitingApproval),
         (.working, .running),
@@ -282,12 +285,8 @@ struct AgyToolActivityTests {
         let tool = try #require(Self.tool("agy:68:tool:0", in: transcript))
         #expect(tool.status == status)
         #expect(transcript.turns.first?.ending == nil)
-        if status == .awaitingApproval {
-            #expect(transcript.pendingRequests.map(\.summary) == ["echo probe-cc"])
-            #expect(transcript.pendingRequests.first?.entryID.rawValue == "agy:68:tool:0")
-        } else {
-            #expect(transcript.pendingRequests.isEmpty)
-        }
+        #expect(transcript.pendingRequests.map(\.summary) == ["echo probe-cc"])
+        #expect(transcript.pendingRequests.first?.callID == "agy:68:tool:0")
     }
 
     /// herdr 0.9.5 reports agy idle under its file-edit dialog, so an edit
@@ -299,6 +298,8 @@ struct AgyToolActivityTests {
         #expect(edit.status == .awaitingApproval)
         #expect(edit.fileChanges?.files.first?.kind == .updated)
         #expect(transcript.pendingRequests.map(\.summary) == ["/Users/developer/projects/demo/notes.txt"])
+        // The card shows the change the screen may cut.
+        #expect(transcript.pendingRequests.first?.fileChanges == edit.fileChanges)
     }
 
     /// The edit declined after the plan ends its turn.

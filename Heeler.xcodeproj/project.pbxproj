@@ -788,6 +788,7 @@
 		C1B2B4664800E7E80FB02EBD /* TerminalFontSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB08528C0328AA9AFE358CE /* TerminalFontSettings.swift */; };
 		C1B5D5204EE37B50D3D42984 /* TerminalZoomSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1187933BD5FAA5064BBF856F /* TerminalZoomSettingsTests.swift */; };
 		C1DF8525317E02A30B73CED0 /* HeelerSSHTransportBehaviorE2ETests+Usage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3825C2BAB7FA5205341073 /* HeelerSSHTransportBehaviorE2ETests+Usage.swift */; };
+		C1F5D8A8563AA09C29DE9850 /* AgyDialogPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9697C438D82B97C38E78903 /* AgyDialogPlannerTests.swift */; };
 		C200B60773A2E4E079E08ECF /* DiffPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30E56DB306F9C1F8C537EF3D /* DiffPalette.swift */; };
 		C20F68B0734D7CD413EBB70E /* OverlayPeerChoiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2853DC5E61CF2FC065B82335 /* OverlayPeerChoiceTests.swift */; };
 		C2EA9FA43A1F9CC42357F081 /* HerdrCoreOpenCodeEditTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D104F98E5A7D928BCDDAF5AD /* HerdrCoreOpenCodeEditTests.swift */; };
@@ -1018,6 +1019,7 @@
 		F535E4AC8B2336CAE3E053FC /* ChatToolOutputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AD370B497667F5284DC86E1 /* ChatToolOutputTests.swift */; };
 		F61261FF8A17C9C754B99ED9 /* ConsoleHostStatusPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 512561E4D83FFB6575A1A8A5 /* ConsoleHostStatusPresentationTests.swift */; };
 		F6579EF4995DE0571E316F11 /* LocalMachinePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF9F5CA9E64945ABEBD6DF26 /* LocalMachinePickerView.swift */; };
+		F6814974ED116F3287E97B1D /* AgyDialogPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D75B3EB8EB065650676070 /* AgyDialogPlanner.swift */; };
 		F68B599F159AD5082B919176 /* ChatRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FBA22E3DC0E6C9B5D713C5D /* ChatRowView.swift */; };
 		F6A1A833DFFB748716D13EA9 /* PairingScanStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D026719294E631141C3A59F9 /* PairingScanStoreTests.swift */; };
 		F7140E9E09D6FE6096FD4F2B /* NotificationSessionVectorFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 277D66B22B73144FF5ADAED0 /* NotificationSessionVectorFile.swift */; };
@@ -1806,6 +1808,7 @@
 		B18F70A5EBC79510351A79B1 /* ChatFollowLatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatFollowLatch.swift; sourceTree = "<group>"; };
 		B1AEA55D1F06B12005DEEE5F /* HeelerSSHSessionE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHSessionE2ETests.swift; sourceTree = "<group>"; };
 		B1C571B3E9F9EA66518BCB79 /* InputBoxStateDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBoxStateDetectorTests.swift; sourceTree = "<group>"; };
+		B1D75B3EB8EB065650676070 /* AgyDialogPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgyDialogPlanner.swift; sourceTree = "<group>"; };
 		B2437B1D6B97638031514C0F /* PinnedAgentsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedAgentsStore.swift; sourceTree = "<group>"; };
 		B24EF5EA39899292A1907226 /* StartAgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartAgentStore.swift; sourceTree = "<group>"; };
 		B2627DBEB9BFBDC600F211A1 /* NotificationPrivacyCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPrivacyCopy.swift; sourceTree = "<group>"; };
@@ -2031,6 +2034,7 @@
 		E7F93F9925E94FF2C2B0254B /* AgentDirectInputChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDirectInputChrome.swift; sourceTree = "<group>"; };
 		E7FBB007454263EB02E92BBB /* ChatConversationEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatConversationEngineTests.swift; sourceTree = "<group>"; };
 		E8433871E25335E926C52F4F /* HerdrCoreWindowsLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreWindowsLocator.swift; sourceTree = "<group>"; };
+		E9697C438D82B97C38E78903 /* AgyDialogPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgyDialogPlannerTests.swift; sourceTree = "<group>"; };
 		E98ACE560E5E71FC03C67703 /* AgentChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentChatStore.swift; sourceTree = "<group>"; };
 		E9B02C82B59FFA986258EBA9 /* ChatImagePreviewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatImagePreviewController.swift; sourceTree = "<group>"; };
 		E9B93EC423746B334EF06419 /* AgentSurfaceReplacementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSurfaceReplacementTests.swift; sourceTree = "<group>"; };
@@ -2245,6 +2249,7 @@
 				E767CF47B2336598C36C5D45 /* AgentUsageWidgetRefreshTests.swift */,
 				25C3FE1962A7DCAD36DAB4A4 /* AgentUsageWidgetTests.swift */,
 				BFB9887828E1532687B4E56B /* AgyDialogParserTests.swift */,
+				E9697C438D82B97C38E78903 /* AgyDialogPlannerTests.swift */,
 				DD5FFC61FCFABE53F589116B /* AgyInputBoxDetectorTests.swift */,
 				21F628ADBD5C56632A59B1AE /* AgyPromptHistoryWitnessTests.swift */,
 				35D5A8FB4E280735BDB8627C /* AgyToolActivityTests.swift */,
@@ -3110,6 +3115,7 @@
 			children = (
 				A68E83AC3539EDA921E98953 /* AgentQuickKey+HerdrKeyName.swift */,
 				90C5971A0BB08B11CEACF9D0 /* AgyDialogParser.swift */,
+				B1D75B3EB8EB065650676070 /* AgyDialogPlanner.swift */,
 				7B0CD085F5EC85BFB1DE381E /* BlockedCardStore.swift */,
 				CFB629793CE953F400295B96 /* BlockedCardView.swift */,
 				36D2DB5DF18A67A00C6DD9D6 /* BlockedDialog.swift */,
@@ -3922,6 +3928,7 @@
 				1A160820CAA7EC1D8F987602 /* AgentWindowDrag.swift in Sources */,
 				8034B5827C6A0E0808972749 /* AgentsAndAccountsSettingsView.swift in Sources */,
 				D0A284068CBC6B53D4DBDDD7 /* AgyDialogParser.swift in Sources */,
+				F6814974ED116F3287E97B1D /* AgyDialogPlanner.swift in Sources */,
 				FAE0A146BA645B872E898B49 /* AgyInputBoxDetector.swift in Sources */,
 				837E0ECA45085E6EC52D22CA /* AgyPromptHistoryWitness.swift in Sources */,
 				BC818C4BFAE21D0206EDF393 /* AgyScreen.swift in Sources */,
@@ -4460,6 +4467,7 @@
 				783D5072E630CC6892111ED1 /* AgentUsageWidgetRefreshTests.swift in Sources */,
 				47535DD6B2D1765EF254CFDC /* AgentUsageWidgetTests.swift in Sources */,
 				3ECDC98A0455300DCE624E49 /* AgyDialogParserTests.swift in Sources */,
+				C1F5D8A8563AA09C29DE9850 /* AgyDialogPlannerTests.swift in Sources */,
 				C83A50EEE2D253794CB4F4E9 /* AgyInputBoxDetectorTests.swift in Sources */,
 				4F7640BFEBE281C9796F08A4 /* AgyPromptHistoryWitnessTests.swift in Sources */,
 				129B429808DB034DD48F5527 /* AgyToolActivityTests.swift in Sources */,

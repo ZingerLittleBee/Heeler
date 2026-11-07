@@ -59,6 +59,29 @@ struct QuestionFormTests {
                 == .respond(ordinal: 3, text: "Medium please"))
     }
 
+    /// Antigravity CLI's pages read `Question i/n`; a multi-select page
+    /// draws check boxes and takes a set.
+    @Test func agyPagesTakeTheAnswersTheirQuestionsDo() throws {
+        let request = ChatPendingRequest(
+            entryID: ChatEntryID("agy:9:tool:0"), callID: "agy:9:tool:0", kind: .question, toolName: "ask_question",
+            summary: "Which fruits do you like?",
+            questions: [
+                ChatQuestion(text: "Which fruits do you like?", options: ["apple", "pear", "plum"], isMultiSelect: true),
+                ChatQuestion(text: "What is your favorite season?", options: ["summer", "winter"]),
+            ])
+        let form = try #require(QuestionForm(card: try Self.card("agy-113-ask-question-multiselect-q1-of-2-62x41", request)))
+        let fruits = try Self.dialog("agy-113-ask-question-multiselect-q1-of-2-62x41")
+        #expect(try form.action(.options([0, 2]), forQuestion: 0, on: fruits) == .submitSelection([1, 3]))
+        #expect(throws: DialogPlanError.self) { try form.action(.option(0), forQuestion: 0, on: fruits) }
+        let season = try Self.dialog("agy-114-ask-question-multiselect-q1-after-enter-62x41")
+        #expect(try form.action(.option(1), forQuestion: 1, on: season) == .choose(ordinal: 2))
+        #expect(try form.action(.text("spring"), forQuestion: 1, on: season) == .respond(ordinal: 3, text: "spring"))
+
+        var singleSelect = request
+        singleSelect.questions[0].isMultiSelect = false
+        #expect(QuestionForm(card: try Self.card("agy-113-ask-question-multiselect-q1-of-2-62x41", singleSelect)) == nil)
+    }
+
     @Test func theReviewMustListTheAnswersGiven() throws {
         let form = try #require(QuestionForm(card: try Self.card("claude-08-c4-auq-q1", Self.claudeRequest)))
         let review = try Self.dialog("claude-14-c4-review")

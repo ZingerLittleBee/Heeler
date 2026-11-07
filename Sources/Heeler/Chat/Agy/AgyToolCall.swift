@@ -422,11 +422,18 @@ struct AgyToolCall: Sendable {
 
     // MARK: Blocked card
 
+    /// Whether the call may still be waiting on a dialog or running: no
+    /// result, no end of its task, and its turn still open. A command sent
+    /// to the background has its result.
+    var isOpen: Bool { result == nil && taskEnd == nil && !stoppedByRestart && turnEnd == nil }
+
     /// What a Blocked card matches the call on: its command, its file or
-    /// its row's title, with the questions it asks.
+    /// its row's title, with the questions it asks and the change a file
+    /// call would make.
     func pendingRequest(for tool: ChatToolActivity) -> ChatPendingRequest {
         ChatPendingRequest(
             entryID: entryID, callID: entryID.rawValue, kind: tool.kind, toolName: name,
-            summary: command ?? filePath ?? tool.title, detail: string("toolSummary"), questions: tool.questions)
+            summary: command ?? filePath ?? tool.title, detail: string("toolSummary"), questions: tool.questions,
+            fileChanges: fileChanges(isDone: false))
     }
 }

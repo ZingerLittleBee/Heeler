@@ -255,9 +255,12 @@ private struct BlockedDialogCard: View {
             BlockedCodeBox(text: card.request?.summary ?? subject.command ?? "")
         case .agyFileEdit, .agyFileCreate:
             BlockedCodeBox(text: card.request?.summary ?? subject.filePath ?? "")
-            // The changed lines as the screen shows them, cut at its edge.
-            if dialog.body.count > 1 {
-                BlockedChangeBox(lines: Array(dialog.body.dropFirst()), marksChanges: true)
+            // The call's change, or else the changed lines as the screen
+            // shows them, cut at its edge.
+            let recorded = card.request?.fileChanges.map(BlockedRequestMatch.agyChangeRows) ?? []
+            let lines = recorded.isEmpty ? Array(dialog.body.dropFirst()) : recorded
+            if !lines.isEmpty {
+                BlockedChangeBox(lines: lines, marksChanges: true)
             }
         case .codexNetwork:
             EmptyView()

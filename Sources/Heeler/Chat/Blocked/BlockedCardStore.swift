@@ -61,8 +61,10 @@ struct BlockedCard: Equatable, Sendable {
 ///
 /// The screen decides everything a card offers. While Chat shows a Blocked
 /// Agent the store reads it every second, and also an idle Claude whose
-/// AskUserQuestion call is open (see `readsIdleQuestion`) and an idle Codex
-/// that has reported no session (`readsIdleTrust`). An action reads it
+/// AskUserQuestion call is open (see `readsIdleQuestion`), an idle
+/// Antigravity CLI with a call that asks the user open
+/// (`readsIdleGatedCall`), and an idle Codex or Antigravity CLI that has
+/// reported no session (`readsIdleTrust`). An action reads it
 /// again first and sends nothing if the dialog changed, waits until the
 /// dialog has shown for a moment, sends the plan's keys while checking
 /// each of its expectations, then watches for the effect. Nothing is ever
@@ -179,8 +181,9 @@ final class BlockedCardStore {
     // MARK: Inputs
 
     /// A Chat view shows the Agent: watch it while it is Blocked, while an
-    /// idle Claude has an open AskUserQuestion call, or while an idle Codex
-    /// awaits its session.
+    /// idle Claude has an open AskUserQuestion call or an idle Antigravity
+    /// CLI an open call that asks the user, or while an idle Codex or
+    /// Antigravity CLI awaits its session.
     func show() {
         isVisible = true
         updateWatching()
@@ -210,7 +213,8 @@ final class BlockedCardStore {
 
     /// herdr's latest status. Leaving Blocked clears the card unless an
     /// action is still checking its effect, or an idle Claude still has an
-    /// open AskUserQuestion call.
+    /// open AskUserQuestion call (an idle Antigravity CLI a call that asks
+    /// the user).
     func update(activity: ChatAgentActivity) {
         guard activity != self.activity else { return }
         self.activity = activity
@@ -239,6 +243,10 @@ final class BlockedCardStore {
                 break
             }
         }
+        // A request is open whatever its row says: Antigravity CLI offers
+        // every call without a result, and an idle agy's command row reads
+        // `no result` while its dialog may still be on screen.
+        resolved.subtract(pendingRequests.compactMap(\.callID))
         startedToolUseIDs = started
         releaseIfAWaitingCallStarted()
         // Two identical dialogs in a row look unchanged on screen, so an
@@ -276,14 +284,31 @@ final class BlockedCardStore {
         program == .claude && activity == .idle && pendingRequests.contains { $0.toolName == "AskUserQuestion" }
     }
 
+    /// herdr 0.9.5 reports Antigravity CLI 1.5.3 idle, not Blocked, on its
+    /// file edit and file creation dialogs, on a command's note field, on a
+    /// question's `Your answer:` field, and on a multi-select page whose
+    /// hint row the screen cuts. agy writes a call that asks the user as
+    /// its dialog opens and its result only once answered, so an open one
+    /// stands in for Blocked there. A command sent to the background has
+    /// its result and keeps no card.
+    private var readsIdleGatedCall: Bool {
+        program == .agy && activity == .idle
+            && pendingRequests.contains { AgyToolCall.userGatedTools.contains($0.toolName) }
+    }
+
     /// herdr 0.9.5 reports Codex 0.165.0's folder-trust screen idle, not
-    /// Blocked, once its question wraps, as on a phone's grid. The screen
-    /// shows before Codex reports a session, so an idle Codex without one
-    /// is read for that screen alone (`observe`).
-    private var readsIdleTrust: Bool { program == .codex && activity == .idle && awaitingSession }
+    /// Blocked, once its question wraps, as on a phone's grid, and
+    /// Antigravity CLI 1.5.3's at 40 columns. The screen shows before the
+    /// program reports a session, so an idle Agent without one is read for
+    /// that screen alone (`observe`).
+    private var readsIdleTrust: Bool {
+        (program == .codex || program == .agy) && activity == .idle && awaitingSession
+    }
 
     /// Whether the screen may show a dialog the card answers.
-    private var readsScreen: Bool { activity == .blocked || readsIdleQuestion || readsIdleTrust }
+    private var readsScreen: Bool {
+        activity == .blocked || readsIdleQuestion || readsIdleGatedCall || readsIdleTrust
+    }
 
     // MARK: Actions
 
@@ -326,10 +351,13 @@ final class BlockedCardStore {
             history.record(.allowed, forCall: id)
         case .dismiss:
             // Oh My Pi's Esc denies the call and goes on, Grok Build's
-            // reject row ends the turn, and OpenCode's rejects a permission
-            // or dismisses a question, as their transcripts record.
+            // reject row ends the turn, OpenCode's rejects a permission or
+            // dismisses a question, and Antigravity CLI's skips a question,
+            // as their transcripts record. Esc on Antigravity CLI's
+            // permission records nothing, so the card keeps the stop.
             guard let id = card.request?.callID,
-                ![.ompApproval, .grokPermission, .openCodePermission, .openCodeQuestion].contains(dialog.kind)
+                ![.ompApproval, .grokPermission, .openCodePermission, .openCodeQuestion, .agyQuestion].contains(
+                    dialog.kind)
             else {
                 return
             }
@@ -394,8 +422,9 @@ final class BlockedCardStore {
             else {
                 return
             }
-            // Codex submits every answer with the last one.
-            if index == form.questions.count - 1, program == .codex {
+            // Codex and Antigravity CLI submit every answer with the last
+            // one.
+            if index == form.questions.count - 1, program == .codex || program == .agy {
                 await confirm(plan, on: page.fingerprint)
                 return
             }
@@ -722,15 +751,18 @@ final class BlockedCardStore {
         }
     }
 
-    /// A fresh read. While an idle Codex awaits its session, anything but
-    /// the trust screen reads as no dialog: its start screen and lists are
-    /// no prompt to answer.
+    /// A fresh read. While an idle Codex or Antigravity CLI awaits its
+    /// session, anything but the trust screen reads as no dialog: its
+    /// start screen and lists are no prompt to answer.
     private func observe() async -> DialogObservation? {
         guard let screen = try? await io.readScreen() else { return nil }
         let observation = DialogObservation(
             screen: screen, program: program, activity: activity, resolvedToolUseIDs: resolvedToolUseIDs)
-        guard readsIdleTrust, observation.result.dialog?.kind != .codexWorkspaceTrust else { return observation }
-        return observation.withoutDialog
+        guard readsIdleTrust else { return observation }
+        switch observation.result.dialog?.kind {
+        case .codexWorkspaceTrust, .agyWorkspaceTrust: return observation
+        default: return observation.withoutDialog
+        }
     }
 
     // MARK: Presenting
