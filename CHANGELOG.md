@@ -9,6 +9,8 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Read Heeler in Japanese. On a Japanese device, or with Japanese chosen in the app's per-app language setting, the Console's tabs and lists, Chat, Changes, Settings, Alerts, permission prompts, and Live Activities present in Japanese, while Terminal theme and font names, program names, commands, and content Agents write keep their original form. Translations live in String Catalogs (`Localizable.xcstrings` and `InfoPlist.xcstrings`) and keep current as code changes through build-time string extraction. (PR #___)
+
 - Choose Voice Input languages independently of the device language, with automatic detection by default, multiple OpenAI hints and one optional DeepInfra language. Custom services gain per-URL/model request fields with multiple values, validation and migration of the previous Send Language setting. (PR #643)
 - Rename an Agent's conversation from its existing More menu or the Agents list's long-press menu on Herdr TUI Hosts. Save a manual title for Claude Code, Codex, Pi, Oh My Pi, Grok Build, or OpenCode; generate and apply a new title with Claude Code, Codex, or Oh My Pi. Busy Agents, existing terminal drafts, changed conversations, and unconfirmed results are reported without retrying the command. (#645)
 
