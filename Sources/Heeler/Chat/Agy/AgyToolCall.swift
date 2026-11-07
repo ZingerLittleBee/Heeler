@@ -32,6 +32,8 @@ struct AgyToolCall: Sendable {
     /// Antigravity CLI restarted while the task ran, which stops it.
     var stoppedByRestart = false
     var turnEnd: TurnEnd?
+    /// Another step of the call's turn came after its result.
+    var isFollowed = false
 
     init(entryID: ChatEntryID, call: AgyStep.Call) {
         self.entryID = entryID
@@ -77,6 +79,18 @@ struct AgyToolCall: Sendable {
     /// The tools that need no answer are written with their results.
     static let userGatedTools: Set<String> = editTools.union(writeTools).union(["run_command", "ask_question"])
 
+    /// The tools that wait in the background without a task of their own
+    /// to follow: a `schedule` wait's result reads as sent to the
+    /// background, but no end of its task ever comes (13 of 13 in the
+    /// census, where all 44 commands sent there got one). agy writes the
+    /// wait's prompt to the agent when it fires, which Chat can't tell
+    /// from other context.
+    static let waitTools: Set<String> = ["schedule"]
+
+    /// A result agy sent to the background: a command's task, which ends
+    /// with a system message, or a wait (`waitTools`), which never does.
+    var isInTheBackground: Bool { result?.status == .running }
+
     // MARK: Status
 
     /// The row's status and the note under it. While the call's turn is
@@ -96,6 +110,11 @@ struct AgyToolCall: Sendable {
                 if isDeclined { return (.declined, turnEnd == .interrupted ? "Declining ended the turn" : nil) }
                 return (.failed, nil)
             case .running:
+                // A wait's call is done once agy goes on past it: nothing
+                // will end it.
+                if Self.waitTools.contains(name), isFollowed || turnEnd != nil {
+                    return (.succeeded, "Sent to the background")
+                }
                 return (.started, "Sent to the background")
             case .done, .other:
                 if kind == .command, let code = Self.exitCode(in: result.resultBody), code != 0 { return (.failed, nil) }
@@ -155,9 +174,12 @@ struct AgyToolCall: Sendable {
         tool.exitCode = taskEnd.flatMap { Self.exitCode(in: $0.result) } ?? result.flatMap { result in
             kind == .command ? Self.exitCode(in: result.resultBody) : nil
         }
+        // A result agy sent to the background is its instructions to the
+        // model, not output: a command's row reads its task's end instead,
+        // and a wait's reads none.
         if let taskEnd {
             tool.output = taskEnd.line
-        } else if let result {
+        } else if let result, !isInTheBackground {
             tool.output = ChatOutputReference(offset: result.offset, length: result.length)
             if result.isTruncated {
                 tool.preview?.isTruncated = true

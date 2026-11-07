@@ -60,6 +60,9 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         guard !line.isTruncated, let step = AgyStep.decode(line) else { return nil }
         switch step.kind {
         case .toolResult:
+            // A result sent to the background tells the model how to follow
+            // its task; it is no output (`AgyToolCall.activity`).
+            guard step.status != .running else { return nil }
             return .preview(AgyToolCall.preview(of: step, kind: tool.kind))
         case .systemMessage:
             guard let end = Self.taskEnd(in: step) else { return nil }
@@ -130,6 +133,9 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         /// first in line first.
         var pending: [Int] = []
         var tasks: [String: Int] = [:]
+        /// Waits sent to the background (`AgyToolCall.waitTools`) no step
+        /// has come after yet.
+        var waits: [Int] = []
         /// The steps read so far, for a step agy wrote twice.
         var seenSteps: Set<Int> = []
 
@@ -271,7 +277,11 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             note(step)
             let index = pending.removeFirst()
             calls[index].result = step
-            if step.status == .running, let taskID = Self.backgroundTaskID(in: step.resultBody) {
+            guard step.status == .running else { return }
+            // A wait gets no task end, so it is no task a restart stops.
+            if AgyToolCall.waitTools.contains(calls[index].name) {
+                waits.append(index)
+            } else if let taskID = Self.backgroundTaskID(in: step.resultBody) {
                 calls[index].taskID = taskID
                 tasks[taskID] = index
             }
@@ -387,8 +397,13 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         }
 
         /// Notes the open turn's latest step, and its start when nothing
-        /// opened it yet.
+        /// opened it yet. A wait sent to the background before it is then
+        /// followed.
         private mutating func note(_ step: AgyStep) {
+            for index in waits {
+                calls[index].isFollowed = true
+            }
+            waits.removeAll()
             guard var open else { return }
             open.lastStep = step
             if !open.isAboveWindow, open.startedAt == nil { open.startedAt = step.createdAt }

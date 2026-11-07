@@ -236,6 +236,12 @@ struct AgyToolActivityTests {
         #expect(running.status == .started)
         #expect(running.note == "Sent to the background")
         #expect(running.preview == nil)
+        // agy's result tells the model how to follow the task, so
+        // expanding the row reads no output from it.
+        #expect(running.output == nil)
+        let result = try #require(lines.first { AgyStep.decode($0)?.stepIndex == 34 })
+        #expect(AgyStep.decode(result)?.status == .running)
+        #expect(AgyTranscriptReducer().output(of: result, for: running) == nil)
         // It has its result, so no card waits on it.
         #expect(!started.pendingRequests.contains { $0.callID == "agy:33:tool:0" })
 
@@ -248,6 +254,88 @@ struct AgyToolActivityTests {
         let notification = try #require(lines.first { AgyStep.decode($0)?.stepIndex == 37 })
         #expect(ended.output == ChatOutputReference(offset: notification.offset, length: notification.length))
         #expect(AgyTranscriptReducer().output(of: notification, for: ended) == .preview(ended.preview))
+    }
+
+    /// A `schedule` wait reads as sent to the background but never gets
+    /// a task end. Once agy goes on past it the call is done, and agy's
+    /// restart notice on a resumed conversation neither stops it nor says
+    /// anything.
+    @Test func aScheduledWaitIsNoTaskARestartStops() throws {
+        let conversation = "00000000-0000-4000-8000-000000000009"
+        let wait = Self.step(
+            3, "MODEL", "PLANNER_RESPONSE",
+            calls: [
+                "schedule": .object([
+                    "DurationSeconds": .number(60), "Prompt": .string("check task-2"),
+                    "TimerCondition": .string("\(conversation)/task-2"),
+                ])
+            ])
+        let lines = Self.lines([
+            Self.step(0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nBuild, then check it\n</USER_REQUEST>"),
+            Self.step(1, "MODEL", "PLANNER_RESPONSE", calls: ["run_command": .object(["CommandLine": .string("make")])]),
+            Self.step(2, "MODEL", "GENERIC", status: "RUNNING", content: Self.background(conversation, task: 2, "make")),
+            wait,
+            Self.step(4, "MODEL", "GENERIC", status: "RUNNING", content: Self.background(conversation, task: 4, "Timer")),
+            Self.step(5, "MODEL", "PLANNER_RESPONSE", content: "Waiting for the build."),
+            Self.step(6, "SYSTEM", "SYSTEM_MESSAGE", content: Self.system("Task id \"\(conversation)/task-2\" finished with result:\nCommand exited with code 0.")),
+            Self.step(7, "MODEL", "PLANNER_RESPONSE", content: "The build passed."),
+            Self.step(8, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nAnything else?\n</USER_REQUEST>"),
+            Self.step(9, "SYSTEM", "SYSTEM_MESSAGE", content: Self.system(AgyTranscriptReducer.restartNotice + ".")),
+            Self.step(10, "MODEL", "PLANNER_RESPONSE", content: "No."),
+        ])
+
+        let sent = AgyTranscriptReducerTests.transcript(Array(lines.prefix(5)), activity: .working)
+        let waiting = try #require(Self.tool("agy:3:tool:0", in: sent))
+        #expect(waiting.title == "Wait up to 60s")
+        #expect(waiting.status == .started)
+        #expect(waiting.output == nil)
+
+        let transcript = AgyTranscriptReducerTests.transcript(lines)
+        let waited = try #require(Self.tool("agy:3:tool:0", in: transcript))
+        #expect(waited.status == .succeeded)
+        #expect(waited.note == "Sent to the background")
+        #expect(waited.output == nil)
+        let build = try #require(Self.tool("agy:1:tool:0", in: transcript))
+        #expect(build.note == "Finished in the background")
+        let notices = transcript.entries.compactMap { entry -> String? in
+            if case .notice(let notice) = entry.content { notice.title } else { nil }
+        }
+        #expect(notices == ["Background command finished"])
+    }
+
+    /// One agy step as `transcript_full.jsonl` writes it.
+    private static func step(
+        _ index: Int, _ source: String, _ type: String, status: String = "DONE", content: String? = nil,
+        calls: KeyValuePairs<String, JSONValue> = [:]
+    ) -> JSONValue {
+        var fields: [String: JSONValue] = [
+            "step_index": .number(Double(index)), "source": .string(source), "type": .string(type),
+            "status": .string(status), "created_at": .string("2026-11-07T16:\(String(format: "%02d", 20 + index)):00Z"),
+        ]
+        if let content { fields["content"] = .string(content) }
+        if !calls.isEmpty {
+            fields["tool_calls"] = .array(calls.map { .object(["name": .string($0.key), "args": $0.value]) })
+        }
+        return .object(fields)
+    }
+
+    private static func background(_ conversation: String, task: Int, _ description: String) -> String {
+        "Created At: 2026-11-08T00:20:30+08:00\nTool is running as a background task with task id: "
+            + "\(conversation)/task-\(task)\nTask Description: \(description)\n"
+    }
+
+    private static func system(_ content: String) -> String {
+        "The following is a <SYSTEM_MESSAGE> not actually sent by the user.\n\n<SYSTEM_MESSAGE>\n"
+            + "[Message] timestamp=2026-11-07T16:25:00Z sender=system priority=MESSAGE_PRIORITY_HIGH content="
+            + content + "\n</SYSTEM_MESSAGE>"
+    }
+
+    private static func lines(_ steps: [JSONValue]) -> [ChatLine] {
+        let text = steps.compactMap { step -> String? in
+            guard let data = try? JSONEncoder().encode(step) else { return nil }
+            return String(decoding: data, as: UTF8.self)
+        }.joined(separator: "\n") + "\n"
+        return JSONLLineFramer.lines(in: Data(text.utf8))
     }
 
     @Test func aCanceledTaskReadsAsInterrupted() throws {

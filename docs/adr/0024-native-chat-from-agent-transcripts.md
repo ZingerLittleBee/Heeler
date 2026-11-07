@@ -213,7 +213,11 @@ reply ends that turn as interrupted, along with a call it left open. A
 step's `created_at` is when it started, so agy turns show no time worked. A
 command sent to the background writes one `RUNNING` result and ends with a
 later system message from its task, and the notice agy adds when a
-conversation resumes marks a task still running as stopped. agy writes a
+conversation resumes marks a task still running as stopped. That result is
+agy's instructions to the model, so the row reads no output from it. A
+`schedule` wait's result reads the same, but no end ever comes, so a wait
+is no task: its row reads done once agy goes on past it, and a restart
+neither stops it nor adds a notice. agy writes a
 prompt sent while it works only when it takes that prompt, so a sent
 message's 10 seconds count only while herdr reports the Agent neither
 Working nor Blocked, as for Grok Build. After a send, Chat reads what agy

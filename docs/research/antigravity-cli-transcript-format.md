@@ -179,8 +179,11 @@ That line is never followed by a `DONE` for the step. The end comes as a
 `SYSTEM_MESSAGE` from `<conversation>/task-<N>`: `Task id "…/task-N"
 finished with result:` or `was canceled with result:`, then the result.
 All 44 census commands sent to the background got one (41 finished, 3
-canceled); the 13 `schedule` waits that ran in the background got none. A
-`manage_task` call can report the status too. When the turn has already
+canceled); the 13 `schedule` waits that ran in the background got none, so
+Chat tracks no task for a wait and shows its call done once agy goes on
+past it. The `RUNNING` body tells the model how to follow the task (`YOU
+MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS …` on a command), so Chat shows
+none of it as output. A `manage_task` call can report the status too. When the turn has already
 ended, agy starts one on its own: the system message, then a planner
 response, with no `USER_INPUT` and no history line.
 
