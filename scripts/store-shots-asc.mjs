@@ -29,13 +29,30 @@ async function api(path, options) {
 const write = (method, path, data) =>
   api(path, { method, headers: HEADERS, body: data === undefined ? undefined : JSON.stringify({ data }) });
 
-async function goto(url, ready) {
-  await page.goto(url);
+async function waitFor(ready, url = /./) {
   for (let i = 0; i < 60; i++) {
     await pause(1000);
-    if (ready.test(await page.evaluate(() => document.body.innerText))) return;
+    const here = await page.evaluate(() => [location.href, document.body.innerText]);
+    if (url.test(here[0]) && ready.test(here[1])) return;
   }
-  throw new Error(`Page never showed ${ready}: ${url}`);
+  throw new Error(`Page never showed ${ready} at ${url}`);
+}
+
+async function goto(url, ready) {
+  await page.goto(url);
+  await waitFor(ready);
+}
+
+// A direct media-manager URL lands on the version page, so follow the page's own links.
+async function openMediaManager(slot) {
+  await goto(BASE, /App Previews and Screenshots/);
+  await page.evaluate(() => [...document.querySelectorAll("[role=tab]")].find((e) => e.innerText.trim() === "App Previews and Screenshots").click());
+  await waitFor(/View All Sizes in Media Manager/);
+  await page.evaluate(() => [...document.querySelectorAll("a")].find((e) => /View All Sizes in Media Manager/.test(e.innerText)).click());
+  await waitFor(/of 10 App Screenshots/, /media-manager\/iphone/);
+  if (slot.page === "iphone") return;
+  await page.evaluate((tab) => [...document.querySelectorAll("[role=tab], a, button")].find((e) => e.innerText.trim() === tab).click(), "iPad");
+  await waitFor(/of 10 App Screenshots/, new RegExp(`media-manager/${slot.page}`));
 }
 
 async function findVersion() {
@@ -103,10 +120,21 @@ async function replaceScreenshots({ localization }) {
     (added.length ? ` at position ${at}` : ""));
   if (!ARGS.apply) return console.log("Plan only; pass --apply.");
 
+  // Reach the upload page before deleting anything, then reopen it so its count is current.
+  await openMediaManager(slot);
   for (const old of [...replaced, ...removed]) await write("DELETE", `appScreenshots/${old.id}`);
-  await goto(`${BASE}/media-manager/${slot.page}`, /of 10 App Screenshots/);
-  await page.evaluate((index) => document.querySelectorAll("input[type=file]")[index].setAttribute("data-store-shots", "1"), slot.input);
-  await page.setInputFiles('input[data-store-shots="1"]', ARGS.files.map((f) => f.path));
+  await openMediaManager(slot);
+  // The page can re-render and drop the mark between the two calls.
+  for (let attempt = 1; ; attempt++) {
+    await page.evaluate((index) => document.querySelectorAll("input[type=file]")[index].setAttribute("data-store-shots", "1"), slot.input);
+    try {
+      await page.setInputFiles('input[data-store-shots="1"]', ARGS.files.map((f) => f.path));
+      break;
+    } catch (error) {
+      if (attempt === 3) throw error;
+      await pause(2000);
+    }
+  }
 
   const previous = new Set(before.map((s) => s.id));
   let fresh = [];
