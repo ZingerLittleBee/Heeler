@@ -1,11 +1,11 @@
-<!-- Translated from docs/guides/chat-troubleshooting.md at ed1e9e66 -->
+<!-- Translated from docs/guides/chat-troubleshooting.md at d56d0c0f -->
 # Chat 疑难排解
 
 这里是 [Chat](chat.md) 中最常见问题的处理方法。Chat 里的其他提示大多会直接说明该怎么做。如果 Chat 做不到某件事，轻点 **Show Agent Terminal**，在终端中继续。
 
 ## 没有 Show Chat
 
-使用 herdr 时，Chat 只支持 macOS 和 Linux Host 上的 Claude Code、Codex、Pi、Oh My Pi、Grok Build 和 OpenCode。herdr-core Host（包括原生 Windows 上的）在各系统上为哪些程序打开 Chat，请参阅 [herdr-core](herdr-core.md#chat)。此外，Heeler 启动后，在 Host 连接上之前，**Show Chat** 也不会出现。
+使用 herdr 时，Chat 只支持 macOS 和 Linux Host 上的 Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode 和 Antigravity CLI。herdr-core Host（包括原生 Windows 上的）在各系统上为哪些程序打开 Chat，请参阅 [herdr-core](herdr-core.md#chat)。此外，Heeler 启动后，在 Host 连接上之前，**Show Chat** 也不会出现。
 
 ## Waiting for Conversation
 
