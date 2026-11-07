@@ -2273,9 +2273,11 @@ final class AgentChatStore {
             || row.contains(/Retrying \(\d+\/\d+\) in \d+s\.\.\./)
     }
 
-    private static let compactingSpinner = String(localized: "Compacting context...")
+    /// Pi's and Oh My Pi's English row text; it is matched, never shown.
+    private static let compactingSpinner = "Compacting context..."
     private static let grokCompactingStatus = "Compacting…"
-    private static let grokCompactionCancelled = String(localized: "Compaction cancelled.")
+    /// Grok Build's own English text; it is matched, never shown.
+    private static let grokCompactionCancelled = "Compaction cancelled."
 
     /// The last "Compaction failed:" row (Grok Build's "Compaction
     /// cancelled."), when nothing but blank rows, the message's own wrapped

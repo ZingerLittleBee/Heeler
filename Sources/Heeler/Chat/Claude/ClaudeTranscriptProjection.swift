@@ -248,9 +248,10 @@ enum ClaudeTranscriptProjection {
     }
 
     /// Claude Code's fixed opening of a compaction summary (2.1.301), which
-    /// would fill the divider's few preview lines.
+    /// would fill the divider's few preview lines. It is matched against the
+    /// Agent's own English transcript, so it must stay untranslated.
     static let compactionPreamble =
-        String(localized: "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.")
+        "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation."
 
     /// A summary without its fixed opening, its `Summary:` line and the
     /// first section's heading, so the preview starts with what the

@@ -347,7 +347,7 @@ struct AgentListFieldsHostDetailView: View {
                 confirmingApply = true
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: String(localized: "square.on.square"))
+                    Image(systemName: "square.on.square")
                         .font(.subheadline.weight(.medium))
                     Text("Apply to All Hosts")
                 }

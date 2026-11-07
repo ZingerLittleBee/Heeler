@@ -362,7 +362,7 @@ enum CodexToolSummary {
             if let code = line.trimmedPrefix("Exit code: ").flatMap({ Int($0) }) {
                 exitCode = code
                 sawHeader = true
-            } else if let code = line.trimmedPrefix(String(localized: "Process exited with code ")).flatMap({ Int($0) }) {
+            } else if let code = line.trimmedPrefix("Process exited with code ").flatMap({ Int($0) }) {
                 exitCode = code
                 sawHeader = true
             } else if line.hasPrefix("Wall time: ") || line.hasPrefix("Chunk ID: ")

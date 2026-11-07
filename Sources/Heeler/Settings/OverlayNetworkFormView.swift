@@ -204,7 +204,7 @@ struct OverlayNetworkFormView: View {
                     } label: {
                         Text("Copy Node ID")
                         Text(nodeID)
-                        Image(systemName: String(localized: "doc.on.doc"))
+                        Image(systemName: "doc.on.doc")
                     }
                     if store.hasUnusedZeroTierIdentity {
                         Button(role: .destructive) {
@@ -583,7 +583,7 @@ private struct ZeroTierAdvancedForm: View {
             } label: {
                 Label(
                     draft.planet == nil ? "Import Planet File…" : "Replace Planet File…",
-                    systemImage: String(localized: "square.and.arrow.down"))
+                    systemImage: "square.and.arrow.down")
             }
             if draft.planet != nil {
                 Button(role: .destructive) {

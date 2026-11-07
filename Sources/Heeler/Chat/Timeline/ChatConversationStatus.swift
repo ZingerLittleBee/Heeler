@@ -23,7 +23,7 @@ extension ChatUnavailableReason {
 
     var systemImage: String {
         switch self {
-        case .noSession, .awaitingFirstMessage: String(localized: "bubble.left.and.bubble.right")
+        case .noSession, .awaitingFirstMessage: "bubble.left.and.bubble.right"
         case .notFound, .mismatched, .sessionStore(_, .sessionMissing): "doc.text.magnifyingglass"
         default: "exclamationmark.bubble"
         }

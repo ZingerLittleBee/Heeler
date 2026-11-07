@@ -320,7 +320,7 @@ struct GrokScreen: Sendable {
     /// A dock item's marker: the dot spinner's frames, or `◆` once it stops
     /// (`views/dock`).
     private static let dockMarkers: Set<Unicode.Scalar> = ["⋅", ":", "⸬", "⁙", "◆"]
-    private static let interruptHint = String(localized: "send a message to interrupt")
+    private static let interruptHint = "send a message to interrupt"
 
     /// A queued message (`#1 …`) or a dock item (`⋅ Subagent …`).
     private static func isDockItem(_ text: String) -> Bool {

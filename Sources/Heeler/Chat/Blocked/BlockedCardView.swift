@@ -244,7 +244,7 @@ private struct BlockedDialogCard: View {
                 }
             }
             if let focused = dialog.focus.focusedOrdinal, focused != 1, let option = dialog.option(focused) {
-                BlockedCardText("Selected in the terminal: \(option.label)")
+                BlockedCardText(String(localized: "Selected in the terminal: \(option.label)"))
             }
         case .codexNetwork:
             EmptyView()
@@ -601,7 +601,7 @@ extension DialogOption {
         let folded = DialogRowScanner.comparable(label.lowercased())
         switch program {
         case .omp:
-            let prefix = "Approve ", suffix = String(localized: " for this session")
+            let prefix = "Approve ", suffix = " for this session"
             let subject =
                 label.hasPrefix(prefix) && label.hasSuffix(suffix) && label.count > prefix.count + suffix.count
                 ? String(label.dropFirst(prefix.count).dropLast(suffix.count)) : String(localized: "this tool")
@@ -624,10 +624,10 @@ private extension BlockedDialog {
     var cardTitle: String {
         switch kind {
         case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion:
-            "Question"
-        case .codexAsyncCollapsed: "Questions"
-        case .ompApproval: "Allow \(subject.toolName ?? "Tool")"
-        case .grokCancelTurn: "Subagents Still Running"
+            String(localized: "Question")
+        case .codexAsyncCollapsed: String(localized: "Questions")
+        case .ompApproval: String(localized: "Allow \(subject.toolName ?? String(localized: "Tool"))")
+        case .grokCancelTurn: String(localized: "Subagents Still Running")
         default: title.hasSuffix(":") ? String(title.dropLast()) : title
         }
     }
@@ -646,10 +646,10 @@ private extension BlockedDialog {
     /// dismisses an OpenCode question, as OpenCode's `esc dismiss` says.
     var stopTitle: String {
         switch kind {
-        case .claudeWorkspaceTrust: "Exit Claude Code"
+        case .claudeWorkspaceTrust: String(localized: "Exit Claude Code")
         case .codexWorkspaceTrust: options.first { $0.role == .decline }?.label ?? String(localized: "Quit Codex")
-        case .ompApproval, .grokPermission: "Deny"
-        case .openCodePermission: "Reject"
+        case .ompApproval, .grokPermission: String(localized: "Deny")
+        case .openCodePermission: String(localized: "Reject")
         case .openCodeQuestion: String(localized: "Dismiss")
         default: String(localized: "Stop")
         }

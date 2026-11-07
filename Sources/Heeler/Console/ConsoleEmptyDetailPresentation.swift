@@ -57,7 +57,7 @@ struct ConsoleEmptyDetailPresentation: Equatable {
                 : String(localized: "Add a Host to open its terminals.")
         } else {
             title = String(localized: "No Agent Selected")
-            systemImage = String(localized: "rectangle.on.rectangle")
+            systemImage = "rectangle.on.rectangle"
             message = hasHosts
                 ? (offersNewItem
                     ? String(localized: "Choose an Agent or start a new one to view its live terminal.")

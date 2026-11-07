@@ -121,7 +121,7 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
         case .followSystem: isDark ? "Afterglow" : "Alabaster"
         case .vesper: "Vesper"
         case .appleSystemColors:
-            isDark ? String(localized: "Apple System Colors") : String(localized: "Apple System Colors Light")
+            isDark ? "Apple System Colors" : "Apple System Colors Light"
         case .dracula: "Dracula"
         case .solarized: isDark ? String(localized: "iTerm2 Solarized Dark") : String(localized: "iTerm2 Solarized Light")
         case .catppuccin: isDark ? String(localized: "Catppuccin Mocha") : String(localized: "Catppuccin Latte")

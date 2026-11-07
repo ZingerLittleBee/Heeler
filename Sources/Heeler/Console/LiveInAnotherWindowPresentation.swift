@@ -16,7 +16,7 @@ struct LiveInAnotherWindowPresentation: Equatable {
     init?(access: HostTerminalAccess) {
         guard case .liveInAnotherWindow(let canTakeOver) = access else { return nil }
         title = String(localized: "Live in Another Window")
-        systemImage = String(localized: "rectangle.on.rectangle")
+        systemImage = "rectangle.on.rectangle"
         showsTakeOver = canTakeOver
         message =
             canTakeOver

@@ -63,7 +63,7 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
                 (tone, self.status) = Self.cannotConnect
             } else {
                 message = "Connecting to \(host.displayName)…"
-                systemImage = String(localized: "dot.radiowaves.left.and.right")
+                systemImage = "dot.radiowaves.left.and.right"
                 severity = .informational
                 navigates = false
                 (tone, self.status) = (.pending, "Connecting…")

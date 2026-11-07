@@ -1057,7 +1057,7 @@ private enum ClaudeTrustDialogReader {
             return unrecognized(String(localized: "The trust dialog's options are not where Heeler expects them."))
         }
         if let rebinding = footer.rebinding {
-            return unrecognized("The footer shows \u{201C}\(rebinding)\u{201D}; Heeler only sends Claude's default keys.")
+            return unrecognized(String(localized: "The footer shows \u{201C}\(rebinding)\u{201D}; Heeler only sends Claude's default keys."))
         }
         var options: [DialogOption] = []
         for (index, row) in optionRows.enumerated() {
@@ -1073,7 +1073,7 @@ private enum ClaudeTrustDialogReader {
                     nil
                 }
             guard let role else {
-                return unrecognized("The trust dialog offers \u{201C}\(label)\u{201D}, which Heeler does not know.")
+                return unrecognized(String(localized: "The trust dialog offers \u{201C}\(label)\u{201D}, which Heeler does not know."))
             }
             options.append(DialogOption(ordinal: index + 1, number: nil, label: label, role: role, isFocused: isFocused))
         }

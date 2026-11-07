@@ -227,7 +227,7 @@ struct VoiceTranscriptionClient: Sendable {
             guard !trimmed.isEmpty else { throw VoiceTranscriptionError.emptyTranscript }
             return trimmed
         case 300..<400:
-            let location = response.value(forHTTPHeaderField: String(localized: "Location"))
+            let location = response.value(forHTTPHeaderField: "Location")
                 .flatMap { URL(string: $0, relativeTo: response.url)?.host() }
             throw VoiceTranscriptionError.redirected(to: location)
         case 401, 403:

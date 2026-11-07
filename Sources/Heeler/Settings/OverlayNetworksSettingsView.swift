@@ -389,7 +389,7 @@ enum OverlayWaitReason: Equatable {
     case configServerAssignment
 
     /// What `EasyTierNode` reports while it reaches the config server.
-    static let configServerConnectionDetail = String(localized: "Connecting to the config server")
+    static let configServerConnectionDetail = "Connecting to the config server"
 
     init?(network: OverlayNetwork, status: OverlayNodeStatus, failure: TransportError?) {
         let detail: String
@@ -736,7 +736,7 @@ struct OverlayCopyableRow: View {
                         .multilineTextAlignment(.trailing)
                         .lineLimit(isCompact ? 1 : nil)
                         .truncationMode(.middle)
-                    Image(systemName: copied ? "checkmark" : String(localized: "doc.on.doc"))
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         .font(.footnote)
                         .contentTransition(.symbolEffect(.replace))
                         .foregroundStyle(copied ? Color.green : Color.accentColor)

@@ -639,7 +639,7 @@ struct HostOnboardingView: View {
                         Text(didCopyFingerprintCommand ? "Copied" : "Copy Command")
                     } icon: {
                         // The tall two-page glyph otherwise outgrows the text.
-                        Image(systemName: didCopyFingerprintCommand ? "checkmark" : String(localized: "doc.on.doc"))
+                        Image(systemName: didCopyFingerprintCommand ? "checkmark" : "doc.on.doc")
                             .font(.footnote)
                     }
                 }

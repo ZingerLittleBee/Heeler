@@ -319,7 +319,7 @@ struct HostFormView: View {
                     Text(didCopyKeyLine ? "Copied" : "Copy authorized_keys Line")
                 } icon: {
                     // The tall two-page glyph otherwise outgrows the text.
-                    Image(systemName: didCopyKeyLine ? "checkmark" : String(localized: "doc.on.doc"))
+                    Image(systemName: didCopyKeyLine ? "checkmark" : "doc.on.doc")
                         .font(.footnote)
                 }
             }
@@ -354,7 +354,7 @@ struct HostFormView: View {
                     Text(didCopyKeyLine ? "Copied" : "Copy RSA Public Key")
                 } icon: {
                     // The tall two-page glyph otherwise outgrows the text.
-                    Image(systemName: didCopyKeyLine ? "checkmark" : String(localized: "doc.on.doc"))
+                    Image(systemName: didCopyKeyLine ? "checkmark" : "doc.on.doc")
                         .font(.footnote)
                 }
             }

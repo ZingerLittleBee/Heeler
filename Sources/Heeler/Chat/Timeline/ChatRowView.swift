@@ -830,7 +830,7 @@ private struct ChatToolRow: View {
         case .todo: Image(systemName: "checklist")
         case .mcp: Image(systemName: "puzzlepiece.extension")
         case .image: Image(systemName: "photo")
-        case .other: Image(systemName: String(localized: "wrench.and.screwdriver"))
+        case .other: Image(systemName: "wrench.and.screwdriver")
         }
     }
 }
@@ -966,7 +966,7 @@ private struct ChatToolStatusBadge: View {
         case .interrupted: return "stop.circle"
         case .notCompleted, .noResult: return "minus.circle"
         case .started: return "arrow.up.forward.circle"
-        case .chatInstead: return String(localized: "bubble.left.and.bubble.right")
+        case .chatInstead: return "bubble.left.and.bubble.right"
         case .running: return ""
         }
     }

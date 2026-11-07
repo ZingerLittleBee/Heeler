@@ -25,7 +25,7 @@ enum OMPDialogParser {
         if title == "Ask" {
             return ask(panel, on: screen)
         }
-        return unrecognized(panel, on: screen, "Heeler does not know Oh My Pi's \u{201C}\(title)\u{201D} panel.")
+        return unrecognized(panel, on: screen, String(localized: "Heeler does not know Oh My Pi's \u{201C}\(title)\u{201D} panel."))
     }
 
     private static let approvalPrefix = "Allow tool:"
@@ -49,7 +49,7 @@ enum OMPDialogParser {
         let body = details.dropLast(choices?.rows ?? 0).map(\.text)
         var subject = DialogSubject()
         subject.toolName = String(title.dropFirst(approvalPrefix.count)).trimmingCharacters(in: .whitespaces)
-        subject.command = value(of: String(localized: "Command:"), in: body).map { command in
+        subject.command = value(of: "Command:", in: body).map { command in
             // A command too long for its row ends in `…`.
             command.hasSuffix("…") ? String(command.dropLast()).trimmingCharacters(in: .whitespaces) : command
         }

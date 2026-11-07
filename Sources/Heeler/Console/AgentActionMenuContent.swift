@@ -45,7 +45,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         switch self {
         case .backToConsole: .symbol("chevron.left")
         case .addImage: .symbol("photo")
-        case .pasteImage: .symbol(String(localized: "doc.on.clipboard"))
+        case .pasteImage: .symbol("doc.on.clipboard")
         case .addFile: .symbol("doc")
         case .showChat: AgentDetailSurface.chat.showGlyph
         case .showAgentTerminal: AgentDetailSurface.terminal.showGlyph

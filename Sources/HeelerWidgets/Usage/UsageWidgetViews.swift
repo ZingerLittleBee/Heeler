@@ -239,11 +239,11 @@ struct UsageWidgetView: View {
     // MARK: States
 
     private var metricName: String {
-        entry.metric == .cost ? "Estimated API cost" : "Token Usage"
+        entry.metric == .cost ? String(localized: "Estimated API cost") : String(localized: "Token Usage")
     }
 
     private func header(_ scope: UsageWidgetScope?) -> (String, String?) {
-        guard let scope else { return ("Usage", nil) }
+        guard let scope else { return (String(localized: "Usage"), nil) }
         return (UsageWidgetText.range(entry.range), scope.title)
     }
 
@@ -253,12 +253,12 @@ struct UsageWidgetView: View {
     }
 
     private func message(_ scope: UsageWidgetScope?) -> String {
-        guard let scope else { return "Open Heeler to load Usage." }
+        guard let scope else { return String(localized: "Open Heeler to load Usage.") }
         if let reason = scope.excluded.first?.excludedReason,
             scope.hostID != nil || reason == UsageWidgetSnapshot.usageOffReason {
-            return reason == "Not read yet" ? "Open Heeler to load Usage." : reason
+            return reason == "Not read yet" ? String(localized: "Open Heeler to load Usage.") : reason
         }
-        return "Open Heeler to load Usage."
+        return String(localized: "Open Heeler to load Usage.")
     }
 }
 
@@ -297,7 +297,7 @@ struct UsageLimitsWidgetView: View {
                 symbol: host?.excludedReason == "Not connected" ? "wifi.slash" : "gauge.with.dots.needle.50percent",
                 title: (host?.name ?? "Usage Limits", nil),
                 message: host?.excludedReason.flatMap { $0 == "Not read yet" ? nil : $0 }
-                    ?? "Open Heeler to read Usage Limits.")
+                    ?? String(localized: "Open Heeler to read Usage Limits."))
         }
     }
 

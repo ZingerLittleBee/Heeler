@@ -312,7 +312,8 @@ enum GrokDialogParser {
             focus: card.focus(of: options), subject: DialogSubject())
     }
 
-    private static let forkQuestion = String(localized: "Run this fork in an isolated git worktree?")
+    /// Grok Build's own English question; it is matched, never shown.
+    private static let forkQuestion = "Run this fork in an isolated git worktree?"
     private static let forkRows: [(key: String, label: String, offered: Bool)] = [
         ("1", "Yes", true), ("2", "No", true), ("3", "Always worktree", false), ("4", "Never worktree", false),
     ]
@@ -386,9 +387,12 @@ enum GrokDialogParser {
             guard let number = Int(option.key) else { return nil }
             let choice: (label: String, detail: String, role: DialogOptionRole)
             if option.names("Stop running") {
-                choice = ("Stop running", String(localized: "Stops the turn and its subagents"), .cancel)
-            } else if option.names(String(localized: "Continue to run")) {
-                choice = (String(localized: "Continue to run"), "Ends the turn; subagents keep running", .answer)
+                choice = (
+                    String(localized: "Stop running"), String(localized: "Stops the turn and its subagents"), .cancel)
+            } else if option.names("Continue to run") {
+                choice = (
+                    String(localized: "Continue to run"), String(localized: "Ends the turn; subagents keep running"),
+                    .answer)
             } else if option.names("Always stop") || option.names("Always continue") {
                 continue
             } else {

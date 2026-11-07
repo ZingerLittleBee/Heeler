@@ -672,7 +672,7 @@ struct TerminalAgentSwitcherRow: View {
             if isKeyboardUp, let switchKeyboard {
                 trailingIconButton(
                     systemImage: isToolsKeyboardPresented
-                        ? "keyboard" : String(localized: "wrench.and.screwdriver"),
+                        ? "keyboard" : "wrench.and.screwdriver",
                     pointSize: Self.glyphPointSize,
                     horizontalOffset: 0,
                     accessibilityLabel: isToolsKeyboardPresented

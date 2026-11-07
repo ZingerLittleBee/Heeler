@@ -17,127 +17,7 @@
       "extractionState": "manual",
       "shouldTranslate": false
     },
-    "       await markFailed(event, response.status)": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "       return": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "      case $t in /*) printf '%s\\000' \"$t\" ;; esac": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "     }": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "    \"$py\" -I -c '": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "    \"$sq\" -init /dev/null -readonly -batch -bail -noheader -list \"$db\"": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "    [ -r \"$d\" ] && echo ok": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "    case $2 in ''|*[!0-9]*) continue ;; esac": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "    case $c in *[!0-9]*) continue ;; esac": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "    case $n in ''|*[!A-Za-z0-9._-]*) n=- ;; esac": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "    done | od -An -v -tx1": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "    { read -r l <\"$d/stat\"; } || continue": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "   %@2. %@Yes, and don't ask again for %@swift test%@ commands in %@/workspace/storefront%@": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "   %@3. %@No": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "   }": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "  *) case \"$XDG_CONFIG_HOME\" in /*) __h_config=\"$XDG_CONFIG_HOME\";; *) __h_config=\"$HOME/.config\";; esac": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "  case \"$__h_result\" in 126|127) ;; *) return \"$__h_result\" ;; esac": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "  case \"$b\" in *[!A-Za-z0-9._-]*) continue ;; esac": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "  case $k in": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "  case $v in": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "  else": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "  mkdir -p -- \"$__h_session\" || return 1": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "  names=\"$names $b\"": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "  { od -An -v -tx1 <\"$R/$1/cmdline\" && echo ok; } | awk -v p=\"$1\" '": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "  { od -An -v -tx1 <\"$R/$1/environ\" && echo ok; } | awk -v p=\"$1\" '": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    " ## Pair your phone": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     " %@": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    " %@%@Bash command%@": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    " %@Esc to cancel · Tab to amend%@": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    " %@Run the declined card UI test%@": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    " %@❯ %@%@1. %@%@Yes%@": {
       "extractionState": "manual",
       "shouldTranslate": false
     },
@@ -174,22 +54,6 @@
         }
       }
     },
-    " -- /dev/null ": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    " --find-renames --submodule=short -- ": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    " 1. Open **Settings → Devices** on the computer and choose **Show Pairing Code**.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    " 3. Check that the fingerprint matches on both screens, then tap **Trust**.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     " An administrator can run: sudo loginctl enable-linger %@": {
       "extractionState": "manual",
       "localizations": {
@@ -223,17 +87,6 @@
         }
       }
     },
-    " Do you want to proceed?": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": " 続行しますか？"
-          }
-        }
-      }
-    },
     " Edit the network to fix it.": {
       "extractionState": "manual",
       "localizations": {
@@ -252,17 +105,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "管理者がこのデバイスの承認を必要とする場合は、ネットワークの管理コンソールで承認してください。"
-          }
-        }
-      }
-    },
-    " If pairing fails, check that both devices share a network.": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": " ペアリングに失敗した場合は、両方のデバイスが同じネットワーク上にあることを確認してください。"
           }
         }
       }
@@ -317,22 +159,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": " 個"
-          }
-        }
-      }
-    },
-    " export async function deliver(event: WebhookEvent, endpoint: Endpoint) {": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    " for this session": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": " をこのセッション中"
+            "value": " のコピー"
           }
         }
       }
@@ -359,15 +186,7 @@
         }
       }
     },
-    " swift test --filter CheckoutUITests/testDeclinedPaymentKeepsTheCart": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     " tokens": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    " }": {
       "extractionState": "manual",
       "shouldTranslate": false
     },
@@ -387,10 +206,6 @@
       }
     },
     "#": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "## My request for Codex:": {
       "extractionState": "manual",
       "shouldTranslate": false
     },
@@ -472,7 +287,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 個"
+            "value": "%@ のコピー"
           }
         }
       }
@@ -811,10 +626,6 @@
         }
       }
     },
-    "%@ server start": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "%@ started with its extensions turned off (--no-extensions), so Heeler's extension, which names the conversation, isn't running in this session. Start the Agent again without --no-extensions.": {
       "extractionState": "manual",
       "localizations": {
@@ -877,17 +688,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "単価未設定の %@ トークン"
-          }
-        }
-      }
-    },
-    "%@ update": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ update"
           }
         }
       }
@@ -1490,78 +1290,6 @@
         }
       }
     },
-    "' \"$db\"": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "'$.time.completed', json_extract(msg.data, '$.time.completed')": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "'$.time.created', json_extract(msg.data, '$.time.created'), ": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "(exit \"$__h_bootout\")": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "(exit \"$__h_print_status\")": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+      await markFailed(event, response.status)": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+      headers: { \"Idempotency-Key\": event.id },": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+      return": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+      timeout: 5_000,": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+    await sleep(Math.min(asked ?? backoff(attempt), RETRY_WINDOW))": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+    await sleep(backoff(attempt))": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+    const asked = retryAfter(response)": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+    const response = await post(endpoint.url, event.body, {": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+    if (response.ok) return": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+    }": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+    })": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+  for (let attempt = 1; ; attempt++) {": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+  }": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "+%@ −%@ lines": {
       "extractionState": "manual",
       "shouldTranslate": false
@@ -1580,34 +1308,6 @@
           }
         }
       }
-    },
-    "+1. Open **Settings → Devices** on the computer and choose **Show Pairing Code**.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+2. In the app, tap **Add Host** and point the camera at the code.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+2. In the app, tap **Scan Code** and point the camera at the code.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+3. Check that the fingerprint matches on both screens, then tap **Trust**.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+> **Advanced:** to pair without a camera, open **Settings → Devices → Add Manually**": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+> and type the host's address and port.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "+See [Troubleshooting](troubleshooting.md) for other pairing problems.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     ", default style": {
       "extractionState": "manual",
@@ -1631,51 +1331,7 @@
         }
       }
     },
-    "-    await markFailed(event, response.status)": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "-    await sleep(backoff(attempt))": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "-    timeout: 5_000,": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "-  const response = await post(endpoint.url, event.body, {": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "-  if (!response.ok) {": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "-  }": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "-  })": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "--model \"gpt 5\" --continue": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "-1. Find the host's address in **Settings → Network**.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "-2. In the app, tap **Add Host** and point the camera at the code.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "-2. Type the address and port into the app.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "-3. Confirm the fingerprint shown on both screens.": {
       "extractionState": "manual",
       "shouldTranslate": false
     },
@@ -1689,14 +1345,6 @@
           }
         }
       }
-    },
-    ". You can now continue with the user's answers in mind.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    ".timeout 1000": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "/%@": {
       "extractionState": "manual",
@@ -1834,10 +1482,6 @@
         }
       }
     },
-    "1. Primary Request and Intent:": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "16 hex digits, from ZeroTier Central or your controller.": {
       "extractionState": "manual",
       "localizations": {
@@ -1871,10 +1515,6 @@
         }
       }
     },
-    "; exit $LASTEXITCODE": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "< %@": {
       "extractionState": "manual",
       "shouldTranslate": false
@@ -1891,10 +1531,6 @@
       }
     },
     "=": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "@@ -%lld,%lld +%lld,%lld @@ %@": {
       "extractionState": "manual",
       "shouldTranslate": false
     },
@@ -2159,7 +1795,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": " ! で始まるメッセージはシェルコマンドを実行します。ターミナルで実行してください。"
+            "value": "! で始まるメッセージはシェルコマンドを実行します。ターミナルで実行してください。"
           }
         }
       }
@@ -2227,17 +1863,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "より新しいバージョンの Heeler がこのホストのアカウントを保存しています。Heeler を更新すると変更できます。"
-          }
-        }
-      }
-    },
-    "A peer session sent a message while you were working:": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ピアーセッションが作業中にメッセージを送信しました:"
           }
         }
       }
@@ -2362,10 +1987,6 @@
           }
         }
       }
-    },
-    "Accessing workspace:": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "Account": {
       "extractionState": "manual",
@@ -3504,17 +3125,6 @@
         }
       }
     },
-    "Another Claude session sent a message while you were working:": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "別の Claude セッションが作業中にメッセージを送信しました:"
-          }
-        }
-      }
-    },
     "Another command ran in this repository at the same time; a change made by either may show under either result.": {
       "extractionState": "manual",
       "localizations": {
@@ -3822,17 +3432,6 @@
         }
       }
     },
-    "Args from unknown skill: ": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "不明なスキルからの引数: "
-          }
-        }
-      }
-    },
     "Arguments": {
       "extractionState": "manual",
       "localizations": {
@@ -3909,10 +3508,6 @@
           }
         }
       }
-    },
-    "Ask tool was cancelled by the user": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "Assign one to this device in the EasyTier console.": {
       "extractionState": "manual",
@@ -4315,10 +3910,6 @@
           }
         }
       }
-    },
-    "Binary files ": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "Blank keeps current": {
       "extractionState": "manual",
@@ -5425,10 +5016,6 @@
         }
       }
     },
-    "Claude has written up a plan": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "Claude's input box is not on screen.": {
       "comment": "Error message when Claude's input box is not visible on the screen.",
       "isCommentAutoGenerated": true,
@@ -5949,17 +5536,6 @@
         }
       }
     },
-    "Command:": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "コマンド:"
-          }
-        }
-      }
-    },
     "Commands": {
       "extractionState": "manual",
       "localizations": {
@@ -5971,17 +5547,6 @@
         }
       }
     },
-    "Compacting context...": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "コンテキストを圧縮中..."
-          }
-        }
-      }
-    },
     "Compaction cancelled": {
       "extractionState": "manual",
       "localizations": {
@@ -5989,17 +5554,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "圧縮をキャンセルしました"
-          }
-        }
-      }
-    },
-    "Compaction cancelled.": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "圧縮をキャンセルしました。"
           }
         }
       }
@@ -7679,21 +7233,6 @@
         }
       }
     },
-    "Deny and send message": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "Destination": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "移動先"
-          }
-        }
-      }
-    },
     "Detached HEAD": {
       "extractionState": "manual",
       "localizations": {
@@ -8060,18 +7599,6 @@
           }
         }
       }
-    },
-    "END{if(!NR){print \"W\",r,\"-\";exit}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "END{if(k){printf \"%s\",o;print \"O\",p,\"ok\"}else print \"O\",p,\"-\"}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "END{t();if(k&&c){printf \"%s\",o;print \"B\",p,\"ok\"}else print \"B\",p,\"-\"}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them.": {
       "extractionState": "manual",
@@ -8478,6 +8005,17 @@
         }
       }
     },
+    "Ends the turn; subagents keep running": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターンを終了します。サブエージェントは実行を続けます"
+          }
+        }
+      }
+    },
     "Enroll this device": {
       "extractionState": "manual",
       "localizations": {
@@ -8706,7 +8244,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Esc を 2 回押しましたが、OpenCode はまだ作業中と表示しています。このターン中に待っていたメッセージがあれば、OpenCode は停止後にそれを実行するため、Stop をもう一度押してそれも止めてください。ターミナルでは Ctrl+C ではなく Esc を使ってください。Ctrl+C は入力欄が空のときに OpenCode を終了させます。"
+            "value": "Esc を 2 回押しましたが、OpenCode はまだ作業中と表示しています。このターン中に待っていたメッセージがあれば、OpenCode は停止後にそれを実行するため、「停止」をもう一度押してそれも止めてください。ターミナルでは Ctrl+C ではなく Esc を使ってください。Ctrl+C は入力欄が空のときに OpenCode を終了させます。"
           }
         }
       }
@@ -8902,6 +8440,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "終了コード %lld"
+          }
+        }
+      }
+    },
+    "Exit Claude Code": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code を終了"
           }
         }
       }
@@ -9197,7 +8746,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Host Helper のファイルが無いか変わったため、修復で再度セットアップします。"
+            "value": "Host Helper のファイルが見つからないか変更されています。修復すると元に戻ります。"
           }
         }
       }
@@ -9256,10 +8805,6 @@
           }
         }
       }
-    },
-    "Finish or clear the current prompt to answer": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "Finished": {
       "extractionState": "manual",
@@ -9570,10 +9115,6 @@
         }
       }
     },
-    "GIT binary patch": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "Generate Automatically": {
       "extractionState": "manual",
       "localizations": {
@@ -9768,7 +9309,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grok Build が何かを尋ねているため、Stop は何も入力しませんでした。チャットまたはターミナルで回答してください。"
+            "value": "Grok Build が何かを尋ねているため、「停止」を押しても何も入力されませんでした。チャットまたはターミナルで回答してください。"
           }
         }
       }
@@ -9791,7 +9332,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grok Build は /multiline モードで、Enter は送信ではなく改行を追加します。ターミナルで /multiline をoff にしてください。"
+            "value": "Grok Build は /multiline モードで、Enter は送信ではなく改行を追加します。ターミナルで /multiline をオフにしてください。"
           }
         }
       }
@@ -9824,7 +9365,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grok Build はメニューまたは別の表示を開いているため、Stop は何も入力しませんでした。まずターミナルで閉じてください。"
+            "value": "Grok Build はメニューまたは別の表示を開いているため、「停止」を押しても何も入力されませんでした。まずターミナルで閉じてください。"
           }
         }
       }
@@ -9835,7 +9376,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grok Build はダッシュボードからエージェントを表示しているため、Stop は何も入力しませんでした。ターミナルで Ctrl+C を押して止めてください。"
+            "value": "Grok Build はダッシュボードからエージェントを表示しているため、「停止」を押しても何も入力されませんでした。ターミナルで Ctrl+C を押して止めてください。"
           }
         }
       }
@@ -9890,7 +9431,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grok Build は終了のための 2 番目のキー入力を待っているため、Stop は何も入力しませんでした。"
+            "value": "Grok Build は終了のための 2 番目のキー入力を待っているため、「停止」を押しても何も入力されませんでした。"
           }
         }
       }
@@ -9901,7 +9442,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grok Build は 2 番目のキー入力待ちのため、Stop は何も押しませんでした。"
+            "value": "Grok Build は 2 番目のキー入力待ちのため、「停止」を押しても何も入力されませんでした。"
           }
         }
       }
@@ -10057,7 +9598,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grok Build の自動チェックで状態がオフのままです。設定を1つ変更するとオンになり、"
+            "value": "Grok Build の自動チェックで状態がオフのままです。設定を1つ変更するとオンになり、変更内容が先に表示されます。"
           }
         }
       }
@@ -10090,7 +9631,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grok Build の入力欄には既にテキスト（下書きや Stop が戻したメッセージなど）が入っています。まずターミナルで送信またはクリアしてください。"
+            "value": "Grok Build の入力欄には既にテキスト（下書きや「停止」で戻されたメッセージなど）が入っています。まずターミナルで送信またはクリアしてください。"
           }
         }
       }
@@ -10101,7 +9642,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grok Build の入力欄にフォーカスがないため、Stop は何も入力しませんでした。ターミナルで止めてください。"
+            "value": "Grok Build の入力欄にフォーカスがないため、「停止」を押しても何も入力されませんでした。ターミナルで止めてください。"
           }
         }
       }
@@ -10351,7 +9892,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Heeler は Grok Build が作業しているのを確認できないため、Stop は何も入力しませんでした。ターミナルで Ctrl+C を押して止めてください。"
+            "value": "Heeler は Grok Build が作業しているのを確認できないため、「停止」を押しても何も入力されませんでした。ターミナルで Ctrl+C を押して止めてください。"
           }
         }
       }
@@ -10582,7 +10123,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Heeler はエージェントの画面を確認できなかったため、Stop は何も押しませんでした。"
+            "value": "Heeler はエージェントの画面を確認できなかったため、「停止」を押しても何も入力されませんでした。"
           }
         }
       }
@@ -10770,6 +10311,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Heeler はプレビュー付きの質問にまだ対応していません。"
+          }
+        }
+      }
+    },
+    "Heeler does not know Oh My Pi's “%@” panel.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heeler は Oh My Pi の「%@」パネルを認識できません。"
+          }
+        }
+      }
+    },
+    "Heeler does not know the approval “%@”.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heeler はこの承認（「%@」）を認識できません。"
           }
         }
       }
@@ -11655,10 +11218,6 @@
           }
         }
       }
-    },
-    "Implement this plan?": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "Import Planet File…": {
       "extractionState": "manual",
@@ -13176,10 +12735,6 @@
         }
       }
     },
-    "Messages to be submitted after next tool call": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "Messages you and the Agent send show here.": {
       "extractionState": "manual",
       "localizations": {
@@ -13591,10 +13146,6 @@
           }
         }
       }
-    },
-    "Never allow:": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "New Agent": {
       "extractionState": "manual",
@@ -14275,28 +13826,6 @@
         }
       }
     },
-    "No sample diff for this file.": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "このファイルのサンプル差分はありません。"
-          }
-        }
-      }
-    },
-    "No sample listing for this directory.": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "このディレクトリのサンプル一覧はありません。"
-          }
-        }
-      }
-    },
     "No skills found for this agent.": {
       "extractionState": "manual",
       "localizations": {
@@ -14329,10 +13858,6 @@
           }
         }
       }
-    },
-    "No, reject (type to add feedback)": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "Node ID": {
       "extractionState": "manual",
@@ -15036,7 +14561,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oh My Pi は -> や => で始まるメッセージを後用に並べ替えます。ターミナルを開いて並べ替えてください。"
+            "value": "Oh My Pi は -> や => で始まるメッセージを後で送信するために並べ替えます。ターミナルを開いて並べ替えてください。"
           }
         }
       }
@@ -15299,6 +14824,17 @@
         }
       }
     },
+    "Open Heeler to load Usage.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heeler を開くと使用量を読み込めます。"
+          }
+        }
+      }
+    },
     "Open Heeler to read Usage Limits.": {
       "extractionState": "manual",
       "localizations": {
@@ -15537,7 +15073,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "OpenCode はこの会話のプロンプトを表示していないため、Stop は何も入力しませんでした。ターミナルで止めてください。"
+            "value": "OpenCode はこの会話のプロンプトを表示していないため、「停止」を押しても何も入力されませんでした。ターミナルで止めてください。"
           }
         }
       }
@@ -15996,10 +15532,6 @@
         }
       }
     },
-    "Other (type your own)": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "Other Folder…": {
       "extractionState": "manual",
       "localizations": {
@@ -16206,17 +15738,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライトモードでは Owlish Light、ダークモードでは Night Owl"
-          }
-        }
-      }
-    },
-    "PATH=\"$__h_npm:$PATH\"; export PATH": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "PATH=\"$__h_npm:$PATH\"; export PATH"
           }
         }
       }
@@ -16540,17 +16061,6 @@
         }
       }
     },
-    "Permission for this tool use was denied": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "このツール使用の許可が拒否されました"
-          }
-        }
-      }
-    },
     "Pi's footer is not recognized. Continue in the Agent terminal.": {
       "comment": "Error message displayed when the Pi input box cannot be detected.",
       "isCommentAutoGenerated": true,
@@ -16649,10 +16159,6 @@
           }
         }
       }
-    },
-    "Plan ready for review.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "Planet": {
       "extractionState": "manual",
@@ -16786,14 +16292,6 @@
         }
       }
     },
-    "Press Enter to edit the selected message": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "Press enter to confirm or esc to cancel": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "Presses Ctrl+C to cancel the turn": {
       "extractionState": "manual",
       "localizations": {
@@ -16911,17 +16409,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "プライバシーポリシー"
-          }
-        }
-      }
-    },
-    "Process exited with code ": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "プロセスが終了しました。コード "
           }
         }
       }
@@ -17074,6 +16561,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "質問は閉じられました"
+          }
+        }
+      }
+    },
+    "Questions": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "質問"
           }
         }
       }
@@ -17435,21 +16933,6 @@
         }
       }
     },
-    "Reason": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "理由"
-          }
-        }
-      }
-    },
-    "Reason:": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "Reattach": {
       "extractionState": "manual",
       "localizations": {
@@ -17610,7 +17093,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "この公開鍵を、ホストが SSH のIDを受け付ける場所に登録してください。秘密鍵はこのデバイスから決して出ません。"
+            "value": "この公開鍵を、ホストが SSH の ID を受け付ける場所に登録してください。秘密鍵はこのデバイスから決して出ません。"
           }
         }
       }
@@ -17622,6 +17105,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Apple に登録中"
+          }
+        }
+      }
+    },
+    "Reject": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "却下"
           }
         }
       }
@@ -18544,7 +18038,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Row 1 と Row 2 は herdr のサイドバーフィールドから始まり、Sync from plugin で再設定できます。Row 3 は Heeler 自身の行です。どの行も herdr と Heeler のフィールドを使えます。"
+            "value": "行 1 と行 2 は herdr のサイドバーフィールドから始まり、「プラグインから同期」で再設定できます。行 3 は Heeler 自身の行です。どの行も herdr と Heeler のフィールドを使えます。行の右側のフィールドはその行を終わらせ、「プラグインから同期」でも保持されます。"
           }
         }
       }
@@ -18555,7 +18049,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Row 1 はターミナルのタイトルから、Row 2 はそのディレクトリから始まります。どの行もこれらのフィールドとあなたのターミナルのラベルを使えます。"
+            "value": "行 1 はターミナルのタイトルから、行 2 はそのディレクトリから始まります。どの行もこれらのフィールドとあなたのターミナルのラベルを使えます。行の右側のフィールドはその行を終わらせます。"
           }
         }
       }
@@ -18622,17 +18116,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "このマシンでこれらのコマンドを実行してください。2 つ目のコマンドは QR コードを表示します。"
-          }
-        }
-      }
-    },
-    "Run this fork in an isolated git worktree?": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "このフォークを独立した git ワークツリーで実行しますか？"
           }
         }
       }
@@ -19082,6 +18565,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "選択済み"
+          }
+        }
+      }
+    },
+    "Selected in the terminal: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナルで選択済み：%@"
           }
         }
       }
@@ -20611,7 +20105,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stop は質問をキャンセルし、Oh My Pi のターンを終了します。"
+            "value": "停止すると質問がキャンセルされ、Oh My Pi のターンが終了します。"
           }
         }
       }
@@ -20623,6 +20117,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ への接続を停止"
+          }
+        }
+      }
+    },
+    "Stop running": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "実行を停止"
           }
         }
       }
@@ -20644,7 +20149,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stop を送信しましたが、ホストはエージェントがまだ動いているかを答えませんでした。ターミナルを確認してください。"
+            "value": "停止を送信しましたが、ホストはエージェントがまだ動いているかを答えませんでした。ターミナルを確認してください。"
           }
         }
       }
@@ -20826,6 +20331,17 @@
         }
       }
     },
+    "Subagents Still Running": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サブエージェントが実行中です"
+          }
+        }
+      }
+    },
     "Subagents are still running.": {
       "extractionState": "manual",
       "localizations": {
@@ -20836,10 +20352,6 @@
           }
         }
       }
-    },
-    "Subagents are still running. Stop them?": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "Submit Answers": {
       "extractionState": "manual",
@@ -21783,7 +21295,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エージェントの入力欄には既にテキスト（下書きや Stop が戻したメッセージなど）が入っています。まずターミナルで送信またはクリアしてください。"
+            "value": "エージェントの入力欄には既にテキスト（下書きや「停止」で戻されたメッセージなど）が入っています。まずターミナルで送信またはクリアしてください。"
           }
         }
       }
@@ -21794,7 +21306,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エージェントの入力欄には既にテキスト（下書きや Stop が戻したステアなど）が入っています。まずターミナルで送信またはクリアしてください。"
+            "value": "エージェントの入力欄には既にテキスト（下書きや「停止」で戻されたステアなど）が入っています。まずターミナルで送信またはクリアしてください。"
           }
         }
       }
@@ -21937,7 +21449,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Heeler プラグインはオフで且つ旧版です: %@ → %@。更新してからオンにしてください:"
+            "value": "Heeler プラグインはオフで旧版です: %@ → %@。更新してからオンにしてください:"
           }
         }
       }
@@ -22256,7 +21768,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ホストは応答しなかったため、Stop がエージェントに届いたかどうか分かりません。ターミナルを確認してください。"
+            "value": "ホストは応答しなかったため、「停止」がエージェントに届いたかどうか分かりません。ターミナルを確認してください。"
           }
         }
       }
@@ -22432,7 +21944,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ホストは時間内に Stop を受け取らなかったため、送信されませんでした。"
+            "value": "ホストは時間内に「停止」を受け取らなかったため、送信されませんでした。"
           }
         }
       }
@@ -22498,7 +22010,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ホストは接続されていないため、Stop は送信されませんでした。"
+            "value": "ホストが接続されていないため、「停止」は送信されませんでした。"
           }
         }
       }
@@ -22575,7 +22087,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ホストは Stop を拒否しました: %@"
+            "value": "ホストは「停止」を拒否しました: %@"
           }
         }
       }
@@ -22597,7 +22109,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ホストは RSA 鍵を拒否しました。「ホストを編集」から公開鍵をコピーし、そのホストが SSH のIDを受け付ける場所に登録してください。"
+            "value": "ホストは RSA 鍵を拒否しました。「ホストを編集」から公開鍵をコピーし、そのホストが SSH の ID を受け付ける場所に登録してください。"
           }
         }
       }
@@ -23016,7 +22528,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "RSA 键が破損しているため、ジャンプホストに到達できませんでした。このホストを編集し、「RSA 鍵を置き換える」を選んでください。"
+            "value": "RSA 鍵が破損しているため、ジャンプホストに到達できませんでした。このホストを編集し、「RSA 鍵を置き換える」を選んでください。"
           }
         }
       }
@@ -23517,6 +23029,17 @@
         }
       }
     },
+    "The footer shows “%@”; Heeler only sends Claude's default keys.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フッターに「%@」と表示されています。Heeler は Claude の既定のキーのみ送信します。"
+          }
+        }
+      }
+    },
     "The full URL from the server's operator, ending in your user name. %@": {
       "extractionState": "manual",
       "localizations": {
@@ -23534,7 +23057,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "生成されたIDの形式が不正です"
+            "value": "生成された ID の形式が不正です"
           }
         }
       }
@@ -23666,7 +23189,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "読み込み中に変化したため、画像を再試行してください。"
+            "value": "読み込み中に画像が変わったため、もう一度お試しください。"
           }
         }
       }
@@ -24079,6 +23602,17 @@
         }
       }
     },
+    "The question has no answers Heeler can read.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この質問には Heeler が読み取れる回答がありません。"
+          }
+        }
+      }
+    },
     "The question is not on screen.": {
       "extractionState": "manual",
       "localizations": {
@@ -24228,7 +23762,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "各エージェントマークの周围的なリングがステータスを表示します。status_badge はカプセル形で追加します。マークがプログラムを示す場合、Agent フィールドは他のフィールドのある行を残します。"
+            "value": "各エージェントマークの周囲のリングがステータスを表示します。status_badge はカプセル形で追加します。マークがプログラムを示す場合、Agent フィールドは他のフィールドのある行を残します。"
           }
         }
       }
@@ -24651,6 +24185,17 @@
         }
       }
     },
+    "The trust dialog offers “%@”, which Heeler does not know.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "信頼ダイアルに Heeler の知らない選択肢（「%@」）が表示されています。"
+          }
+        }
+      }
+    },
     "The trust dialog's options are not a Yes and a No.": {
       "extractionState": "manual",
       "localizations": {
@@ -24669,6 +24214,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "信頼ダイアログの選択肢は Heeler の想定位置にありません。"
+          }
+        }
+      }
+    },
+    "The trust screen offers “%@”, which Heeler does not know.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "信頼設定の画面に Heeler の知らない選択肢（「%@」）が表示されています。"
           }
         }
       }
@@ -24735,47 +24291,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "読めなくなった保存フィールドは削除されました。すべてのホストが herdr のフィールドに戻り、再編集できます。"
-          }
-        }
-      }
-    },
-    "The user declined this tool call": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "The user dismissed this question": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "The user doesn't want to proceed with this tool use.": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "このユーザーはこのツールの使用を進めたくないと考えています。"
-          }
-        }
-      }
-    },
-    "The user doesn't want to take this action right now.": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ユーザーは今この操作を望んでいません。"
-          }
-        }
-      }
-    },
-    "The user wants to clarify these questions.": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "このユーザーはこれらの質問を確認したいと考えています。"
           }
         }
       }
@@ -24863,7 +24378,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "これらのフィールドは行の右側を終わらせる Heeler 専用のもので、「プラグインから同期」でも保持されます。"
+            "value": "これらのフィールドは行の右端で行を終了させます。Heeler 専用のフィールドで、「プラグインから同期」でも保持されます。"
           }
         }
       }
@@ -25814,10 +25329,6 @@
         }
       }
     },
-    "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "This session name can't be used": {
       "extractionState": "manual",
       "localizations": {
@@ -26302,10 +25813,6 @@
         }
       }
     },
-    "Type your answer here": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "Type your own answer": {
       "extractionState": "manual",
       "localizations": {
@@ -26390,17 +25897,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "不明なワークスペース"
-          }
-        }
-      }
-    },
-    "Unknown command: ": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "不明なコマンド: "
           }
         }
       }
@@ -27063,17 +26559,6 @@
         }
       }
     },
-    "User has answered your questions: ": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ユーザーが質問に回答しました: "
-          }
-        }
-      }
-    },
     "Uses %@ as the address": {
       "extractionState": "manual",
       "localizations": {
@@ -27458,10 +26943,6 @@
         }
       }
     },
-    "Waiting on answers for ": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "Waiting to retry": {
       "extractionState": "manual",
       "localizations": {
@@ -27845,14 +27326,6 @@
         }
       }
     },
-    "Yes, allow all edits during this session": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "Yes, and don't ask again for anything (always-approve mode)": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "You can add this folder as a %@ Account.": {
       "extractionState": "manual",
       "localizations": {
@@ -27971,38 +27444,6 @@
         }
       }
     },
-    "aborted by user": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "again to quit": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "arrow.down.and.line.horizontal.and.arrow.up": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "bubble.left.and.bubble.right": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "case \"$XDG_CONFIG_HOME\" in /*) __h_config=\"$XDG_CONFIG_HOME\";; *) __h_config=\"$HOME/.config\";; esac": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "case $d in /*) ;; *) d=$HOME/.local/share ;; esac": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "chat.jump-to-latest": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "command $argv[2..]; exec $argv[1] -i": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "commit ahead": {
       "extractionState": "manual",
       "localizations": {
@@ -28097,18 +27538,6 @@
       "extractionState": "manual",
       "shouldTranslate": false
     },
-    "doc.on.clipboard": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "doc.on.doc": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "dot.radiowaves.left.and.right": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "duplicate component id %@": {
       "extractionState": "manual",
       "shouldTranslate": false
@@ -28124,27 +27553,7 @@
         }
       }
     },
-    "editing queued #": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "else if(b==\"3d\"){e=1;m=d(n)}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "else if(e){z=1;if(m in W)v=v b}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "events line exceeds %lld bytes": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "exec $argv[2..]": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "exit 0": {
       "extractionState": "manual",
       "shouldTranslate": false
     },
@@ -28180,22 +27589,6 @@
           }
         }
       }
-    },
-    "for my $x(@a){last if $x eq \"\";$n++;my($k,$v)=split(/=/,$x,2);": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "for(i=1;i<=u;i++)if(!(A[i] in S)&&A[i]!=r){S[A[i]]=1;Q[++e]=A[i]}}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "for(i=2;i<=e;i++){y=Q[i];print \"T\",y,P[y],N[y]}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "for(i=2;i<=e;i++){y=Q[i];print \"T\",y,P[y]}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "generation rate %@": {
       "extractionState": "manual",
@@ -28511,7 +27904,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "herdr は OpenCode のセッション ID でないセッション名を報告しているため、チャットはどの会話がthisエージェントのものか特定できません。"
+            "value": "herdr は OpenCode のセッション ID でないセッション名を報告しているため、チャットはどの会話がこのエージェントのものか特定できません。"
           }
         }
       }
@@ -28708,22 +28101,6 @@
       "extractionState": "manual",
       "shouldTranslate": false
     },
-    "if([IntPtr]::Size -ne 8){exit 1}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "if(e-1>m){print \"W\",r,\"-\";exit}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "if(r in N)print \"T\",r,P[r],N[r];": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "if(r in P)print \"T\",r,P[r];": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "in %@": {
       "extractionState": "manual",
       "localizations": {
@@ -28831,34 +28208,6 @@
         }
       }
     },
-    "my $d=substr($b,0,unpack(\"Q\",$l));my $c=unpack(\"i\",$d);": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "my $m=pack(\"i3\",1,49,$p);my $b=\"\\0\"x1048576;my $l=pack(\"Q\",1048576);": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "my $o=\"\";my $n=0;my %G;": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "my $r=substr($d,4);$r=~s/^[^\\0]*\\0+//;": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "my @a=split(/\\0/,$r,-1);$c++ while $c<@a&&$a[$c] eq \"\";": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "my @a=split(/\\0/,$r,-1);my %G;my $o=\"\";": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "n=0; names=": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "newer than this app was built against, so features added ": {
       "extractionState": "manual",
       "localizations": {
@@ -28869,10 +28218,6 @@
           }
         }
       }
-    },
-    "next if !defined $v||$G{$k}++;": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "no Notification Key for this Host": {
       "extractionState": "manual",
@@ -29017,10 +28362,6 @@
         }
       }
     },
-    "print \"W\",r,\"ok\"}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "protocol compatible": {
       "extractionState": "manual",
       "localizations": {
@@ -29031,14 +28372,6 @@
           }
         }
       }
-    },
-    "rectangle.on.rectangle": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "rectangle.on.rectangle.slash": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "remote environment": {
       "extractionState": "manual",
@@ -29051,14 +28384,6 @@
         }
       }
     },
-    "rename to ": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "request_user_input was cancelled before receiving a response": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "resets in %@": {
       "extractionState": "manual",
       "localizations": {
@@ -29070,32 +28395,9 @@
         }
       }
     },
-    "s=0; [ -e \"$db-shm\" ] && s=1": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "say '%@'": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "say ''": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "sealing the update failed": {
       "extractionState": "manual",
       "shouldTranslate": false
-    },
-    "send a message to interrupt": {
-      "extractionState": "manual",
-      "localizations": {
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "メッセージを送信して中断できます"
-          }
-        }
-      }
     },
     "session cost %@": {
       "extractionState": "manual",
@@ -29119,27 +28421,7 @@
         }
       }
     },
-    "square.and.arrow.down": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "square.and.pencil": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "square.on.square": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "ssh-keygen -lf /etc/ssh/ssh_host_%@_key.pub": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "sub l{my $k=shift;$N{$k}||grep{index($k,$_)==0}@P}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "syscall(202,$m,3,$b,$l,0,0)==0 or exit 1;": {
       "extractionState": "manual",
       "shouldTranslate": false
     },
@@ -29330,10 +28612,6 @@
         }
       }
     },
-    "to edit previous message": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "tokens": {
       "extractionState": "manual",
       "localizations": {
@@ -29386,19 +28664,7 @@
         }
       }
     },
-    "use strict;my $p=shift;": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "value": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "voice-input-built-in-microphone": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "w=0; [ -e \"$db-wal\" ] && w=1": {
       "extractionState": "manual",
       "shouldTranslate": false
     },
@@ -29412,10 +28678,6 @@
           }
         }
       }
-    },
-    "while(h<=e){x=Q[h++];u=split(K[x],A,\" \");": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "with a copy of Heeler's plugin in a folder of that name beside the file": {
       "extractionState": "manual",
@@ -29458,10 +28720,6 @@
       "extractionState": "manual",
       "shouldTranslate": false
     },
-    "wrench.and.screwdriver": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
     "ws:// sends the user name (the server's token) in clear text when it connects, and nothing verifies the server. Prefer wss://.": {
       "extractionState": "manual",
       "localizations": {
@@ -29472,10 +28730,6 @@
           }
         }
       }
-    },
-    "{for(i=1;i<=NF;i++){c=1;if($i==\"00\")t();else v=v $i}}": {
-      "extractionState": "manual",
-      "shouldTranslate": false
     },
     "~/.%@-work": {
       "extractionState": "manual",
@@ -29523,14 +28777,6 @@
       }
     },
     "−%lld": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "█▀▀█ █▀▀█ █▀▀█ █▀▀▄": {
-      "extractionState": "manual",
-      "shouldTranslate": false
-    },
-    "建议先检查这两项：\n\n| 检查 | 预期结果 |\n| --- | --- |\n| 小屏幕与大字体 | **表格**保持列对齐，长文本在单元格内换行。 |\n| 断线后返回 | 已读内容保留，恢复连接后继续更新；`restoreVisibleAnchor()` 仍保持格式。 |\n\n然后检查长工具输出，展开和收起后阅读位置应保持稳定。": {
       "extractionState": "manual",
       "shouldTranslate": false
     }

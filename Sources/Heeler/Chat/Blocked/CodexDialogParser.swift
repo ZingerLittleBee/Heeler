@@ -141,14 +141,14 @@ private struct CodexDialogReader {
             kind = .codexNetwork
             subject.host = text.split(separator: "\"").dropFirst().first.map(String.init)
         default:
-            return fail("Heeler does not know the approval \u{201C}\(title.text)\u{201D}.")
+            return fail(String(localized: "Heeler does not know the approval \u{201C}\(title.text)\u{201D}."))
         }
 
         var options: [DialogOption] = []
         for (index, draft) in drafts.enumerated() {
             let (label, shortcut) = DialogRowScanner.splitShortcut(draft.label)
             guard let role = DialogRowScanner.permissionRole(for: label, shortcut: shortcut) else {
-                return fail("Option \(draft.number) reads \u{201C}\(label)\u{201D}, which is not a label Heeler knows.")
+                return fail(String(localized: "Option \(draft.number) reads \u{201C}\(label)\u{201D}, which is not a label Heeler knows."))
             }
             options.append(
                 DialogOption(
@@ -164,9 +164,9 @@ private struct CodexDialogReader {
                 subject.command = String(entry.dropFirst(2))
             } else if let value = value(of: "Reason", in: entry) {
                 subject.reason = value
-            } else if let value = value(of: String(localized: "Environment"), in: entry) {
+            } else if let value = value(of: "Environment", in: entry) {
                 subject.environment = value
-            } else if let value = value(of: String(localized: "Destination"), in: entry) {
+            } else if let value = value(of: "Destination", in: entry) {
                 subject.destinations.append(value)
             }
         }
@@ -227,7 +227,7 @@ private struct CodexDialogReader {
                 role: draft.label == "None of the above" ? .otherText : .answer, isFocused: draft.isFocused)
         }
         guard options.contains(where: { $0.role == .answer }) else {
-            return fail("The question has no answers Heeler can read.")
+            return fail(String(localized: "The question has no answers Heeler can read."))
         }
         var subject = DialogSubject()
         subject.question = title
@@ -301,7 +301,7 @@ private struct CodexDialogReader {
             case "Quit": role = .exitProgram
             case "Back to Agent Command Center": role = .decline
             default:
-                return fail("The trust screen offers \u{201C}\(draft.label)\u{201D}, which Heeler does not know.")
+                return fail(String(localized: "The trust screen offers \u{201C}\(draft.label)\u{201D}, which Heeler does not know."))
             }
             options.append(
                 DialogOption(

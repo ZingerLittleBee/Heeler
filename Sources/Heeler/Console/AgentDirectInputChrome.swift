@@ -81,7 +81,7 @@ struct AgentDirectInputChrome: View {
 
     private var modeControl: TerminalAgentSwitcherModeControl {
         .button(
-            systemImage: String(localized: "square.and.pencil"),
+            systemImage: "square.and.pencil",
             accessibilityLabel: AgentDirectInputPresentation.showComposerAccessibilityLabel,
             accessibilityHint: AgentDirectInputPresentation.showComposerAccessibilityHint,
             action: interactions.showComposer)

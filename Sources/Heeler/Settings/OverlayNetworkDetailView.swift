@@ -893,7 +893,7 @@ private struct OverlayCardCopyButton: View {
             Self.copy(value)
             copied = true
         } label: {
-            Image(systemName: copied ? "checkmark" : String(localized: "doc.on.doc"))
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .font((size < 36 ? Font.footnote : .body).weight(.semibold))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: size, height: size)
@@ -926,7 +926,7 @@ private struct OverlayCopyAddressButton: View {
         Button(action: action) {
             Text("Copy \(OverlayStatusCopy.addressTitle(address, among: among))")
             Text(address)
-            Image(systemName: String(localized: "doc.on.doc"))
+            Image(systemName: "doc.on.doc")
         }
     }
 }
@@ -1075,7 +1075,7 @@ private struct ZeroTierMemberRow: View {
         } label: {
             Text(title)
             Text(value)
-            Image(systemName: String(localized: "doc.on.doc"))
+            Image(systemName: "doc.on.doc")
         }
     }
 }

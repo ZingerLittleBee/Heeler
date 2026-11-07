@@ -2752,7 +2752,7 @@ struct MissingAgentPresentation: Equatable {
             } else {
                 cause = .hostConnecting
                 title = String(localized: "Connecting…")
-                systemImage = String(localized: "dot.radiowaves.left.and.right")
+                systemImage = "dot.radiowaves.left.and.right"
                 message = named(String(localized: "Opening the connection."))
             }
         case .reconnecting(_, _, let failure):
@@ -2771,7 +2771,7 @@ struct MissingAgentPresentation: Equatable {
             } else {
                 cause = .paneGone
                 title = String(localized: "Agent Gone")
-                systemImage = String(localized: "rectangle.on.rectangle.slash")
+                systemImage = "rectangle.on.rectangle.slash"
                 message = Self.paneGoneMessage
             }
         case .ended, nil:
@@ -2779,7 +2779,7 @@ struct MissingAgentPresentation: Equatable {
             // Host whose projection is gone, where no Agent comes back.
             cause = .paneGone
             title = String(localized: "Agent Gone")
-            systemImage = String(localized: "rectangle.on.rectangle.slash")
+            systemImage = "rectangle.on.rectangle.slash"
             message = Self.unreportedMessage
         }
     }

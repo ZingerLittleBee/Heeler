@@ -570,9 +570,10 @@ enum ClaudeToolOutcome: Sendable, Equatable {
     case notCompleted
     case failed
 
-    /// The decline texts (CLI `lC`/`R0` and `lB`/`JQ`).
-    static let userDeclinePrefix = String(localized: "The user doesn't want to proceed with this tool use.")
-    static let permissionDeniedPrefix = String(localized: "Permission for this tool use was denied")
+    /// The decline texts (CLI `lC`/`R0` and `lB`/`JQ`). These match Claude
+    /// Code's own English transcript, so they must stay untranslated.
+    static let userDeclinePrefix = "The user doesn't want to proceed with this tool use."
+    static let permissionDeniedPrefix = "Permission for this tool use was denied"
 
     init(result: ClaudeToolResult, details: ClaudeToolResultDetails?, trailingTexts: [String]) {
         let text = result.content.text
@@ -606,7 +607,8 @@ enum ClaudeToolOutcome: Sendable, Equatable {
 
     /// Claude Code's own text for a question's `Chat about this` (2.1.301),
     /// recorded as the user's feedback although the user typed none.
-    static let clarifyRequestPrefix = String(localized: "The user wants to clarify these questions.")
+    /// Claude Code's own English text; it is matched, never shown.
+    static let clarifyRequestPrefix = "The user wants to clarify these questions."
 
     static func isClarifyRequest(_ feedback: String) -> Bool {
         feedback.hasPrefix(clarifyRequestPrefix)
