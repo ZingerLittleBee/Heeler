@@ -34,11 +34,17 @@ struct ChatStopPlan: Sendable {
     /// Chat's Stop in each program.
     static func standard(for program: ChatProgram) -> ChatStopPlan {
         switch program {
-        // Antigravity CLI's Esc stops the turn, from a dialog too, and puts
-        // a queued message back in the box. Alone it leaves a draft at idle
-        // as it is, so it needs no guard; Ctrl+C would arm an exit at idle
-        // that a second press carries out (1.5.3, live).
-        case .claude, .codex, .pi, .omp, .agy: .escape
+        case .claude, .codex, .pi, .omp: .escape
+        case .agy:
+            // Antigravity CLI's Esc stops the turn, from a dialog too, and
+            // puts a queued message back in the box. At an idle box it
+            // leaves a draft as it is, but in bash mode it drops the command
+            // typed there, so the guard reads the screen first. Ctrl+C would
+            // arm an exit at idle that a second press carries out (1.5.3,
+            // live).
+            ChatStopPlan(
+                keys: ["esc"], screenGuard: AgyStopGuard.verdict, wait: .escape,
+                accessibilityHint: AgentComposerInterrupt.escapeHint)
         case .grok:
             // Ctrl+C cancels Grok Build's turn; Esc only shows a toast. Ctrl+C
             // can also clear a draft, answer a card or quit, so the guard

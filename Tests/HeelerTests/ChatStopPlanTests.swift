@@ -14,7 +14,8 @@ struct ChatStopPlanTests {
         let plan = ChatStopPlan.standard(for: program)
 
         #expect(plan.keys == ["esc"])
-        #expect(plan.screenGuard == nil)
+        // Only Antigravity CLI's Esc reads the screen first (below).
+        #expect((plan.screenGuard == nil) == (program != .agy))
         #expect(plan.wait == AgentStopWait.escape)
         #expect(plan.wait.window == .seconds(3))
         #expect(plan.wait.unconfirmedNotice == "Esc went, but the Agent still shows Working.")
@@ -284,6 +285,46 @@ struct ChatStopPlanTests {
         #expect(!keys.isEmpty)
         #expect(keys.allSatisfy { $0 == "esc" }, "\(keys)")
         #expect(!keys.contains { $0.lowercased().hasPrefix("ctrl") || $0.lowercased().hasPrefix("c-") })
+    }
+
+    // MARK: Antigravity CLI
+
+    /// One Esc in bash mode leaves it and drops the command typed there
+    /// (agy-93), so Stop presses nothing then and says why.
+    @Test func agyStopRefusesABashCommandItWouldDrop() async throws {
+        let recorder = StopRecorder()
+        let interrupt = ChatStopPlan.standard(for: .agy).composerInterrupt(
+            context: Self.context(recorder, screen: try ScreenFixture.screen("agy-93-bash-mode-with-text-62x41")),
+            agentKeys: Self.agentKeys(recorder))
+
+        let outcome = await interrupt.perform()
+
+        #expect(
+            outcome
+                == .failed(
+                    "Antigravity CLI's input box is in bash mode with a command typed, and Esc would drop it. Stop it in the terminal."
+                ))
+        #expect(recorder.contextCalls == 1)
+        #expect(recorder.sent.isEmpty, "a refused Stop presses nothing")
+    }
+
+    /// Anywhere else one Esc goes: on a running turn, with a draft or a
+    /// message queued, on a dialog, and in bash mode with nothing typed.
+    @Test(arguments: [
+        "agy-66-working-nodraft-62x41", "agy-67-working-tool-running-62x41", "agy-68-working-with-draft-62x41",
+        "agy-70-working-queued-after-approve-62x41", "agy-96-working-queued-40x30",
+        "agy-69-working-draft-entered-then-perm-dialog-62x41", "agy-91-bang-typed-62x41",
+    ])
+    func agyStopPressesOneEsc(stem: String) async throws {
+        let recorder = StopRecorder()
+        let interrupt = ChatStopPlan.standard(for: .agy).composerInterrupt(
+            context: Self.context(recorder, screen: try ScreenFixture.screen(stem)),
+            agentKeys: Self.agentKeys(recorder))
+
+        let outcome = await interrupt.perform()
+
+        #expect(outcome == .sent)
+        #expect(recorder.events == ["read", "esc"])
     }
 
     // MARK: Helpers

@@ -385,7 +385,9 @@ client, or the turn agy starts by itself when a background command ends
 (Background tasks, above). No probe caught either race; both follow from
 the timings above.
 
-Stop sends one Esc, never Ctrl+C.
+Stop sends one Esc, never Ctrl+C. It reads the screen first and sends
+nothing while bash mode holds a command, which Esc would drop (93); what
+Esc does to a turn from bash mode was not captured.
 
 Chat's `/` menu offers agy's skills as `/name`, except one named like a
 built-in command and one whose frontmatter says

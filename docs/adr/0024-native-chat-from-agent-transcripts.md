@@ -253,7 +253,9 @@ runs is not known, and one whose `SKILL.md` frontmatter says
 `disable-slash-command: true`, which agy hides from `/` and `/name`.
 `/compact` goes with its trailing space, which agy trims. Stop presses one
 Esc, which stops a running turn and puts a queued message back in the box;
-Ctrl+C is never sent, since on an idle box it arms exit.
+Ctrl+C is never sent, since on an idle box it arms exit. Esc in bash mode
+leaves it and drops the command typed there (captured idle), so Stop reads
+the screen first and presses nothing while bash mode holds a command.
 
 ## Entry and the terminal
 
@@ -477,7 +479,8 @@ system red. In Chat, Stop presses the program's Stop keys in one
 Grok Build (below), or Esc twice for OpenCode, whose first Esc only arms its
 interrupt. Before OpenCode's, Chat reads the screen and presses nothing unless
 it shows the conversation's prompt with a turn running and no dialog, menu or
-shell mode over it, where Esc would do something else. The terminal's
+shell mode over it, where Esc would do something else; before Antigravity
+CLI's, it presses nothing while bash mode holds a command. The terminal's
 Composer sends one Esc on the Attach PTY (ADR 0013). Then Stop waits. The
 acknowledgement means only that the keys reached the PTY, and an Esc that
 lands after the turn ended can open the program's own history menus, so Stop
