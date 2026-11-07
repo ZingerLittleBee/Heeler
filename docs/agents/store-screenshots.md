@@ -21,10 +21,12 @@ python3 scripts/store-shots.py up
 ```
 
 This takes a few minutes. It creates `~/workspace` (the app shortens paths only
-under the Host user's home), starts two herdr sessions, and runs five Agents:
+under the Host user's home), starts two herdr sessions, and runs eleven Agents:
 Storefront (left Blocked), Docs, Search, Inventory (a Chat reply with a code
-block and bullets), and Payments API on the second session (the richest Changes
-page, with three staged files). It refuses a `~/workspace` it did not create;
+block and bullets), Mobile App, Analytics, Notifications and Admin Dashboard,
+plus Payments API (the richest Changes page, with three staged files), Auth
+Service and Release CLI on the second session. Eleven rows fill an iPhone
+Console. It refuses a `~/workspace` it did not create;
 pass `--workspace` to use another directory.
 
 ## 2. Connect a simulator

@@ -333,3 +333,147 @@ test("adds deltas per sku", () => {
 """,
   }),
 ]
+
+def node_package(name, version):
+    return (f'{{\n  "name": "{name}",\n  "version": "{version}",\n  "private": true,\n'
+            '  "type": "module",\n  "scripts": { "test": "node --test" }\n}\n')
+
+REPOS["mobile-app"] = [
+  ("chore: start the mobile app", {
+    "package.json": node_package("mobile-app", "3.0.2"),
+    "CLAUDE.md": GUIDE, "AGENTS.md": GUIDE,
+    "src/settings.js": """
+export const defaults = { notifications: true, language: "en" };
+
+export function loadSettings(stored = {}) {
+  return { ...defaults, ...stored };
+}
+""",
+    "test/settings.test.js": """
+import test from "node:test";
+import assert from "node:assert/strict";
+import { loadSettings } from "../src/settings.js";
+
+test("keeps stored values over defaults", () => {
+  assert.equal(loadSettings({ language: "de" }).language, "de");
+});
+""",
+  }),
+]
+
+REPOS["analytics"] = [
+  ("chore: start analytics", {
+    "package.json": node_package("analytics", "0.9.0"),
+    "CLAUDE.md": GUIDE, "AGENTS.md": GUIDE,
+    "src/events.js": """
+export function byUser(events) {
+  const users = new Map();
+  for (const event of events) {
+    if (!users.has(event.user)) users.set(event.user, []);
+    users.get(event.user).push(event);
+  }
+  return users;
+}
+""",
+    "test/events.test.js": """
+import test from "node:test";
+import assert from "node:assert/strict";
+import { byUser } from "../src/events.js";
+
+test("groups events per user", () => {
+  assert.equal(byUser([{ user: "a" }, { user: "a" }, { user: "b" }]).get("a").length, 2);
+});
+""",
+  }),
+]
+
+REPOS["auth-service"] = [
+  ("chore: start the auth service", {
+    "package.json": node_package("auth-service", "1.6.1"),
+    "CLAUDE.md": GUIDE, "AGENTS.md": GUIDE,
+    "src/login.js": """
+export function login(users, name, password) {
+  const user = users.get(name);
+  if (!user || user.password !== password) return { ok: false };
+  return { ok: true, user: name };
+}
+""",
+    "test/login.test.js": """
+import test from "node:test";
+import assert from "node:assert/strict";
+import { login } from "../src/login.js";
+
+const users = new Map([["ada", { password: "secret" }]]);
+
+test("accepts the right password", () => {
+  assert.equal(login(users, "ada", "secret").ok, true);
+});
+""",
+  }),
+]
+
+REPOS["notifications"] = [
+  ("chore: start notifications", {
+    "package.json": node_package("notifications", "2.2.0"),
+    "CLAUDE.md": GUIDE, "AGENTS.md": GUIDE,
+    "src/schedule.js": """
+export function shouldSend(user, now) {
+  return user.enabled !== false;
+}
+""",
+    "test/schedule.test.js": """
+import test from "node:test";
+import assert from "node:assert/strict";
+import { shouldSend } from "../src/schedule.js";
+
+test("respects a disabled user", () => {
+  assert.equal(shouldSend({ enabled: false }, new Date()), false);
+});
+""",
+  }),
+]
+
+REPOS["admin-dashboard"] = [
+  ("chore: start the admin dashboard", {
+    "package.json": node_package("admin-dashboard", "1.1.0"),
+    "CLAUDE.md": GUIDE, "AGENTS.md": GUIDE,
+    "src/orders.js": """
+export function totals(orders) {
+  return orders.reduce((sum, order) => sum + order.total, 0);
+}
+""",
+    "test/orders.test.js": """
+import test from "node:test";
+import assert from "node:assert/strict";
+import { totals } from "../src/orders.js";
+
+test("sums order totals", () => {
+  assert.equal(totals([{ total: 5 }, { total: 7 }]), 12);
+});
+""",
+  }),
+]
+
+REPOS["release-cli"] = [
+  ("chore: start the release cli", {
+    "package.json": node_package("release-cli", "0.4.0"),
+    "CLAUDE.md": GUIDE, "AGENTS.md": GUIDE,
+    "src/release.js": """
+export function nextVersion(version, bump) {
+  const [major, minor, patch] = version.split(".").map(Number);
+  if (bump === "major") return `${major + 1}.0.0`;
+  if (bump === "minor") return `${major}.${minor + 1}.0`;
+  return `${major}.${minor}.${patch + 1}`;
+}
+""",
+    "test/release.test.js": """
+import test from "node:test";
+import assert from "node:assert/strict";
+import { nextVersion } from "../src/release.js";
+
+test("bumps the patch by default", () => {
+  assert.equal(nextVersion("1.2.3"), "1.2.4");
+});
+""",
+  }),
+]
