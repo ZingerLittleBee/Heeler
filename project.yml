@@ -368,6 +368,11 @@ schemes:
       # shell has not exported it, and would shadow the launchd value.
       environmentVariables:
         HEELER_SSH_E2E_REQUIRED: $(HEELER_SSH_E2E_REQUIRED)
+      # Tests assert English copy. Pin the language so a Simulator set to
+      # another language (Japanese is localized) runs the same suite;
+      # `xcodebuild -testLanguage` still overrides it for a localized run.
+      language: en
+      region: US
     run:
       config: Debug
   HeelerLiveTests:
@@ -377,3 +382,5 @@ schemes:
     test:
       targets:
         - HeelerLiveTests
+      language: en
+      region: US
