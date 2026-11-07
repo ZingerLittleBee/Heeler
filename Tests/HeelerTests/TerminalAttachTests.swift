@@ -2889,13 +2889,15 @@ struct TerminalAttachTests {
 
     /// A presentation moves the ride at once and the height only after its
     /// coalesce. A handoff that begins inside that window drops the
-    /// coalesce, so the ride returns to the height the freeze holds. An exit
+    /// coalesce, so the ride returns to the height the freeze holds. An end
     /// that measures that same height then moves nothing; a ride left on the
     /// dropped frame kept the Agent switcher off the keyboard by the
-    /// difference, 27pt above it (#634).
+    /// difference, 27pt above it (#634). A cancel lands the presentation the
+    /// freeze cut short instead, ride and height together, as it would have
+    /// landed without the handoff.
     @MainActor
     @Test(arguments: ["end", "cancel"])
-    func aHandoffInsideAPresentationCoalesceKeepsTheRideOnTheFrozenHeight(
+    func aHandoffInsideAPresentationCoalesceKeepsTheRideWithTheHeight(
         exit: String
     ) async throws {
         let center = NotificationCenter()
@@ -2921,20 +2923,23 @@ struct TerminalAttachTests {
         #expect(inset.keyboardRideRaise == 267)
         #expect(inset.height == 294)
         try #require(await clock.parks(for: TerminalKeyboardInset.coalesceDelay))
-        let handoffID = inset.beginResponderHandoff(currentHeight: { 294 })
+        // An end measures the destination's keyboard, here the frozen
+        // height; a cancel leaves the outgoing responder's.
+        let settled: CGFloat = exit == "end" ? 294 : 267
+        let handoffID = inset.beginResponderHandoff(currentHeight: { settled })
         if exit == "end" {
-            inset.endResponderHandoff(handoffID, currentHeight: { 294 })
+            inset.endResponderHandoff(handoffID, currentHeight: { settled })
         } else {
-            inset.cancelResponderHandoff(handoffID, currentHeight: { 294 })
+            inset.cancelResponderHandoff(handoffID, currentHeight: { settled })
         }
 
         #expect(!inset.isHoldingHandoffHeight)
-        #expect(inset.height == 294)
-        #expect(inset.keyboardRideRaise == 294)
+        #expect(inset.height == settled)
+        #expect(inset.keyboardRideRaise == settled)
         // The dropped coalesce does not land later either.
         #expect(clock.advance(TerminalKeyboardInset.coalesceDelay) == 0)
-        #expect(inset.height == 294)
-        #expect(inset.keyboardRideRaise == 294)
+        #expect(inset.height == settled)
+        #expect(inset.keyboardRideRaise == settled)
     }
 
     @MainActor

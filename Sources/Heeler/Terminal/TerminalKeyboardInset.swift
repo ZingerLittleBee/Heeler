@@ -72,6 +72,8 @@ final class TerminalKeyboardInset {
     /// short enough to stay inside the keyboard's own animation.
     static let coalesceDelay = Duration.milliseconds(60)
     @ObservationIgnored private var coalesceTask: Task<Void, Never>?
+    /// The height ``coalesceTask`` applies, while it is pending.
+    @ObservationIgnored private var coalescingHeight: CGFloat = 0
     /// Waits out the keyboard's own timing: a presentation's coalesce, a
     /// will-hide's confirmation, and the tools-dock exit. These measure gaps
     /// between UIKit's keyboard notifications.
@@ -111,6 +113,10 @@ final class TerminalKeyboardInset {
     /// hardware keyboard attached just before a mode switch cannot leave the
     /// inset pinned with nothing left to confirm it.
     @ObservationIgnored private var owesDismissalAfterResponderHandoff = false
+    /// A presentation from before the freeze whose coalesce the freeze cut
+    /// short. Only a cancel lands it; see
+    /// ``cancelResponderHandoff(_:currentHeight:)``.
+    @ObservationIgnored private var presentationCutShortByResponderHandoff: CGFloat?
     /// How long a handoff waits, from the switch, for its destination to
     /// accept first responder. It only has to catch a destination that never
     /// receives the request: until one accepts, the outgoing responder keeps
@@ -250,6 +256,7 @@ final class TerminalKeyboardInset {
         isSoftwareKeyboardDismissed = false
         rideKeyboard(height: height, animates: animates)
         coalesceTask?.cancel()
+        coalescingHeight = height
         let sleep = sleep
         coalesceTask = Task { [weak self] in
             try? await sleep(Self.coalesceDelay)
@@ -439,6 +446,12 @@ final class TerminalKeyboardInset {
 
     private func prepareResponderHandoff() -> UUID {
         let id = UUID()
+        // Carried across a replaced freeze, like an owed dismissal: no
+        // presentation coalesces inside one.
+        presentationCutShortByResponderHandoff =
+            coalesceTask != nil
+            ? coalescingHeight
+            : isHoldingHandoffHeight ? presentationCutShortByResponderHandoff : nil
         coalesceTask?.cancel()
         coalesceTask = nil
         // A presentation moves the ride at once and the height only after
@@ -483,20 +496,31 @@ final class TerminalKeyboardInset {
         responderHandoffFallbackTask = nil
         responderHandoffFallback = nil
         activeResponderHandoffID = nil
+        presentationCutShortByResponderHandoff = nil
         let owesDismissal = owesDismissalAfterResponderHandoff
         owesDismissalAfterResponderHandoff = false
         return owesDismissal
     }
 
     /// Cancels a transfer without committing any frame emitted while neither
-    /// responder had stable ownership.
+    /// responder had stable ownership. A presentation from before the freeze
+    /// that it cut short still lands, as it would have without the handoff,
+    /// before the exit reconciles a dismissal it owes: the freeze returned
+    /// the ride to the frozen height, so leaving that height would hold the
+    /// input chrome off the keyboard by the difference. An end measures the
+    /// destination's keyboard instead.
     func cancelResponderHandoff(
         _ id: UUID,
         currentHeight: @escaping @MainActor () -> CGFloat? = { nil }
     ) {
         guard activeResponderHandoffID == id else { return }
+        let cutShortPresentation = presentationCutShortByResponderHandoff
+        let owesDismissal = releaseResponderHandoff()
+        if let cutShortPresentation {
+            apply(cutShortPresentation)
+        }
         reconcileResponderHandoffExit(
-            owesDismissal: releaseResponderHandoff(),
+            owesDismissal: owesDismissal,
             measuredHeight: currentHeight())
     }
 
