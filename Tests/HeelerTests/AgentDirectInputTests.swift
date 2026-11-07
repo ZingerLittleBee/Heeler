@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Synchronization
 import Testing
 import UIKit
 
@@ -464,7 +465,9 @@ struct AgentDirectInputTests {
 
     @Test func composerAndDirectInputTransferVisibleKeyboardWithoutReloading() async throws {
         let center = NotificationCenter.default
-        let inset = TerminalKeyboardInset(notificationCenter: center)
+        let handoffGuards = HandoffGuardRecorder()
+        let inset = TerminalKeyboardInset(
+            notificationCenter: center, handoffSleep: handoffGuards.sleep(for:))
         let keyboardTransitions = KeyboardTransitionProbe(
             notificationCenter: center,
             insetHeight: { inset.height })
@@ -526,6 +529,7 @@ struct AgentDirectInputTests {
         keyboardTransitions.reset()
         try #require(await Self.eventually { keyboardTransitions.hasStableTail() })
         keyboardTransitions.reset()
+        handoffGuards.reset()
 
         try #require(try await Self.activateControl(
             labeled: AgentDirectInputPresentation.hideComposerAccessibilityLabel,
@@ -577,8 +581,20 @@ struct AgentDirectInputTests {
             await transport.attachInputs.allSatisfy {
                 if case .keystrokes = $0 { false } else { true }
             })
+        // The terminal's acceptance replaced the switch's guard with one
+        // past its own leash.
+        let terminalGuard =
+            Duration.seconds(terminal.keyboardTransitionFallbackDelay)
+            + TerminalKeyboardInset.destinationResponderHandoffGrace
+        #expect(
+            try await Self.eventually {
+                handoffGuards.armed.contains(TerminalKeyboardInset.responderHandoffAcceptanceDelay)
+                    && handoffGuards.armed.contains(terminalGuard)
+            },
+            "Composer→Direct Input guards: \(handoffGuards.armed)")
 
         keyboardTransitions.reset()
+        handoffGuards.reset()
         try #require(try await Self.activateControl(
             labeled: AgentDirectInputPresentation.showComposerAccessibilityLabel,
             in: controller.view,
@@ -613,6 +629,15 @@ struct AgentDirectInputTests {
         #expect(restoredComposerInput.autocapitalizationType == terminal.autocapitalizationType)
         #expect(!terminal.isFirstResponder)
         #expect(inset.height == keyboardHeight)
+        // The Composer's acceptance replaced the switch's guard with its
+        // timeout.
+        #expect(
+            try await Self.eventually {
+                handoffGuards.armed.contains(TerminalKeyboardInset.responderHandoffAcceptanceDelay)
+                    && handoffGuards.armed.contains(
+                        TerminalKeyboardInset.responderHandoffFallbackDelay)
+            },
+            "Direct Input→Composer guards: \(handoffGuards.armed)")
         Self.expectSingleInsetSettle(
             keyboardTransitions,
             from: directKeyboardHeight, to: keyboardHeight,
@@ -2415,6 +2440,24 @@ struct AgentDirectInputTests {
             budget.charge()
         }
         return await condition()
+    }
+}
+
+/// Records each responder-handoff guard the inset arms, then waits it out
+/// for real, so a hosted handoff keeps its timing while the test can tell
+/// which guards the Agent's acceptance wiring armed.
+private final class HandoffGuardRecorder: Sendable {
+    private let delays = Mutex<[Duration]>([])
+
+    var armed: [Duration] { delays.withLock { $0 } }
+
+    func reset() {
+        delays.withLock { $0.removeAll() }
+    }
+
+    @Sendable func sleep(for delay: Duration) async throws {
+        delays.withLock { $0.append(delay) }
+        try await Task.sleep(for: delay)
     }
 }
 
