@@ -40,7 +40,12 @@ When herdr has the id:
 - A launch with `--conversation <id>` or `-c` has none until the next
   prompt, though agy holds that conversation's presence lock from launch.
 - After `/clear` herdr keeps the old id until the next prompt, while agy has
-  already created and locked the new conversation. `/fork` behaves the same.
+  already created and locked the new conversation.
+- `/fork` was run only outside herdr. There agy locked the fork at once and
+  reported only `idle` until the next prompt, which suggests no model call,
+  and so no `PreInvocation` hook, came between. That herdr keeps the old id
+  until the next prompt, as after `/clear`, is inferred from this, not
+  observed.
 - After `/exit` the pane's agent and session go.
 
 Files, under the data root `~/.gemini/antigravity-cli`:
@@ -435,6 +440,9 @@ its `/` popup and from `/name` (agy's changelog, 1.1.12).
   a new prompt while a background command ran, rather than at the turn's end;
   where its turn should start is not settled.
 - `/rewind` and an `EPHEMERAL_MESSAGE` were not captured.
+- What herdr reports after `/fork` and `/resume` before the next prompt.
+  Only `/clear` was run under herdr; the old id after `/fork` is inferred
+  (see [Identity and location](#identity-and-location)).
 - Screens not captured: two queued messages, code search mode, Vim mode,
   and the background prompt `press %s again to send command to background`.
   If they show as agy's strings suggest, Chat holds code search mode, Vim's
