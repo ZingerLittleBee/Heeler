@@ -64,8 +64,9 @@ enum AgyDialogParser {
         guard !command.isEmpty, let options = permissionOptions(sheet) else { return nil }
         var subject = DialogSubject()
         // A command too long for its rows ends in `…`.
+        subject.isRequestCut = command.hasSuffix("…")
         subject.command =
-            command.hasSuffix("…") ? String(command.dropLast()).trimmingCharacters(in: .whitespaces) : command
+            subject.isRequestCut ? String(command.dropLast()).trimmingCharacters(in: .whitespaces) : command
         return dialog(
             .agyCommand, title: commandQuestion, body: [command], progress: nil, options: options,
             focus: sheet.focus, frame: frame, subject: subject)
@@ -75,9 +76,14 @@ enum AgyDialogParser {
 
     /// The file's path, cut at the screen's edge, with agy's `+N -N` count
     /// beside it when it fits; the changed lines, `N  -  old` and `N  +
-    /// new` on red and green; on an edit `shift+tab to auto-approve file
-    /// edits`, which switches the mode and is no option; the question; then
-    /// `Yes` and `No`. A creation lists the new file's lines as added.
+    /// new` on red and green, padded to the edge, where a long one is cut;
+    /// on an edit `shift+tab to auto-approve file edits`, which switches
+    /// the mode and is no option; the question; then `Yes` and `No`. A
+    /// creation lists the new file's lines as added. In both edits
+    /// captured, agy draws the whole target as removed and the whole
+    /// replacement as added, numbered from 1: 47 draws `1  -  cherry`, `1
+    /// +  cherry`, `2  +  date` for `cherry` becoming `cherry` and `date`,
+    /// though `cherry` is the file's line 3.
     private static func fileChange(_ frame: AgyDialogFrame, _ rows: [ScreenRow], kind: BlockedDialogKind)
         -> BlockedDialog?
     {
@@ -90,13 +96,18 @@ enum AgyDialogParser {
             let options = permissionOptions(sheet)
         else { return nil }
         // The path is the bold run; the counts follow in their own colors.
-        let path = rows[pathRow].visibleRuns.filter { $0.style.isBold }.map(\.text).joined()
-            .trimmingCharacters(in: .whitespaces)
-        guard !path.isEmpty else { return nil }
-        let changes = rows[(pathRow + 1)..<question].map(\.trimmedText)
-            .filter { !$0.isEmpty && !$0.hasPrefix(autoApproveHint) }
+        let bold = rows[pathRow].visibleRuns.filter { $0.style.isBold }
+        let path = bold.map(\.text).joined().trimmingCharacters(in: .whitespaces)
+        guard !path.isEmpty, let last = bold.last else { return nil }
+        let changeRows = rows[(pathRow + 1)..<question].filter {
+            !$0.isBlank && !$0.trimmedText.hasPrefix(autoApproveHint)
+        }
+        let changes = changeRows.map(\.trimmedText)
         var subject = DialogSubject()
         subject.filePath = path
+        let pathEnd = last.endColumn - last.text.reversed().prefix(while: ScreenRow.isBlank).count
+        subject.isRequestCut = pathEnd >= frame.edge
+        subject.changesAreCut = changeRows.contains { $0.contentWidth >= frame.edge }
         return dialog(
             kind, title: asked, body: [path] + changes, progress: nil, options: options, focus: sheet.focus,
             frame: frame, subject: subject)
@@ -278,6 +289,9 @@ private struct AgyDialogFrame {
     /// The first row of the request, past the rule.
     let contentStart: Int
     let hintRow: Int
+    /// The dialog's right edge: where its rule ends, the pane's width. The
+    /// trust prompt has no rule, so it takes the widest row.
+    let edge: Int
 
     var content: Range<Int> { contentStart..<hintRow }
 
@@ -293,21 +307,26 @@ private struct AgyDialogFrame {
             else { continue }
             let title = row.trimmedText
             if title == AgyDialogParser.trustTitle {
-                self.init(title: title, titleRow: index, contentStart: index + 1, hintRow: hint)
+                self.init(
+                    title: title, titleRow: index, contentStart: index + 1, hintRow: hint,
+                    edge: rows.map(\.contentWidth).max() ?? 0)
                 return
             }
             guard index + 1 < hint, AgyScreen.isRule(rows[index + 1], width: 8) else { continue }
-            self.init(title: title, titleRow: index, contentStart: index + 2, hintRow: hint)
+            self.init(
+                title: title, titleRow: index, contentStart: index + 2, hintRow: hint,
+                edge: rows[index + 1].contentWidth)
             return
         }
         return nil
     }
 
-    private init(title: String, titleRow: Int, contentStart: Int, hintRow: Int) {
+    private init(title: String, titleRow: Int, contentStart: Int, hintRow: Int, edge: Int) {
         self.title = title
         self.titleRow = titleRow
         self.contentStart = contentStart
         self.hintRow = hintRow
+        self.edge = edge
     }
 
     /// A dialog's hint row: `↑/↓ Navigate · …`, or `enter Submit` while one

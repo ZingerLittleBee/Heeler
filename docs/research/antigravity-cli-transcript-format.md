@@ -355,10 +355,23 @@ reports, since an idle agy's command row reads `no result` while its Amend
 field shows. A command sent to the background has its result and keeps no
 card. Claude Code's idle-question rule and Grok Build's release on a call's
 start do not apply: agy has neither an idle question tool of its own nor a
-start record. The card matches a command by its start, a file by its path
-(cut at the screen's edge), and a question by its text; an edit or a write
-shows the call's change as the dialog draws it, since a narrow screen cuts
-the rows.
+start record. The card matches a command or a file by the whole command or
+path the screen shows, or by its start where the screen cut it (a command
+then ends in `…`; a path is cut at the screen's edge without a mark, as at
+40 columns in 99), and a question by its text. It shows what the screen
+draws and takes from the call only what the screen cut. For a changed line
+cut at the edge that is the call's change, a line diff of its target and
+replacement, which draws differently from agy: for step 24 of
+`approvals.jsonl` (`cherry` becoming `cherry` and `date`) agy draws `1  -
+cherry`, `1  +  cherry`, `2  +  date` (47, 48) and the diff `1     cherry`,
+`2  +  date`. Both edits captured (47 and probe-a's `hello notes`) draw the
+whole target as removed and the whole replacement as added, numbered from
+1 though `cherry` is the file's line 3. No capture shows a changed line
+long enough to be cut, or a diff taller than the dialog. A call a
+confirmed answer went to matches no later card until the transcript
+resolves it: agy writes the result only after the call ran, so with two
+calls in one response the second's dialog can show before Chat reads the
+first's result.
 
 ### What Chat sends into
 

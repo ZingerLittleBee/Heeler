@@ -1641,6 +1641,49 @@ struct BlockedCardStoreTests {
         #expect(store.content == .none)
     }
 
+    /// agy writes a call's result only once it has run, and can draw the
+    /// next dialog first: a second edit of the same file. The answered call
+    /// stays out of that card's match until the transcript resolves it.
+    @Test func anAnsweredAgyCallNeverStandsInForTheNextDialog() async throws {
+        let first = try ScreenFixture.text("agy-47-perm-file-edit-default-120x40")
+        let padded = "date" + String(repeating: " ", count: 108)
+        try #require(first.contains(padded))
+        let second = first.replacingOccurrences(of: padded, with: "fig" + String(repeating: " ", count: 109))
+        let pane = FakePane(ANSIScreenDecoder.decode(first))
+        await pane.react(to: ["1"], with: ANSIScreenDecoder.decode(second))
+        let store = Self.store(.agy, pane: pane)
+        let path = "/Users/developer/projects/fruits/fruits.txt"
+        let date = Self.agyCall("agy:24:tool:0", "edit_file", .fileEdit, path)
+        let fig = Self.agyCall("agy:24:tool:1", "edit_file", .fileEdit, path)
+        store.update(transcript: Self.agyTranscript(open: [date, fig], status: .awaitingApproval))
+        store.update(activity: .idle)
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        #expect(card.request?.callID == "agy:24:tool:0")
+
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys == [["1"]])
+        guard case .card(let next) = store.content else {
+            Issue.record("Expected the next card, got \(store.content)")
+            return
+        }
+        #expect(next.dialog.body.last == "2  +  fig")
+        #expect(next.request?.callID == "agy:24:tool:1")
+        await store.refresh()
+        guard case .card(let refreshed) = store.content else { return }
+        #expect(refreshed.request?.callID == "agy:24:tool:1")
+
+        // Once the transcript resolves it, the call no longer waits at all.
+        store.update(transcript: Self.agyTranscript(open: [fig], status: .awaitingApproval))
+        await store.refresh()
+        guard case .card(let resolved) = store.content else { return }
+        #expect(resolved.request?.callID == "agy:24:tool:1")
+    }
+
     /// Skip on the form's second page goes out on the second page: the
     /// first question gets its digit, never Esc, and Esc on the last page
     /// submits the set (agy-46 records the season `(skipped)`).
@@ -2176,53 +2219,87 @@ struct BlockedRequestMatchTests {
         #expect(BlockedRequestMatch.request(for: try dialog("codex-01-x1-exec"), in: [request("y", "exec", "ls")]) == nil)
     }
 
-    @Test func agyCommandsMatchByTheirStartAndFilesByTheirPath() throws {
+    /// A whole command or path matches only the call with that command or
+    /// path; one the screen cut matches the call it starts.
+    @Test func agyCommandsAndFilesMatchWholeOrByTheirCutStart() throws {
         let command = try dialog("agy-30-perm-run-command-default-120x40")
         let narrow = try dialog("agy-31-perm-run-command-default-40x30")
+        let longer = request("l", "run_command", "sleep 40; echo probe-done; rm -rf build")
         let run = request("r", "run_command", "sleep 40; echo probe-done")
         for shown in [command, narrow] {
-            #expect(BlockedRequestMatch.request(for: shown, in: [request("o", "run_command", "ls"), run])?.callID == "r")
+            #expect(!shown.subject.isRequestCut)
+            #expect(BlockedRequestMatch.request(for: shown, in: [request("o", "run_command", "ls"), longer, run])?.callID == "r")
+            #expect(BlockedRequestMatch.request(for: shown, in: [longer]) == nil)
         }
         #expect(BlockedRequestMatch.request(for: command, in: [request("v", "view_file", "sleep 40; echo probe-done")]) == nil)
+        let cut = try agyDialog(
+            "agy-30-perm-run-command-default-120x40", replacing: "   sleep 40; echo probe-done", with: "   sleep 40; echo pro…")
+        #expect(cut.subject.isRequestCut)
+        #expect(cut.subject.command == "sleep 40; echo pro")
+        #expect(BlockedRequestMatch.request(for: cut, in: [request("o", "run_command", "ls"), run])?.callID == "r")
 
         let path = "/Users/developer/projects/fruits/fruits.txt"
         let edit = try dialog("agy-47-perm-file-edit-default-120x40")
+        #expect(!edit.subject.isRequestCut && !edit.subject.changesAreCut)
         // A write over a file asks as an edit.
         for tool in ["replace_file_content", "edit_file", "write_to_file"] {
             #expect(BlockedRequestMatch.request(for: edit, in: [request("e", tool, path, kind: .fileEdit)])?.callID == "e")
         }
         let other = request("x", "replace_file_content", "/Users/developer/projects/fruits/calc.py", kind: .fileEdit)
         #expect(BlockedRequestMatch.request(for: edit, in: [other]) == nil)
+        let backup = request("b", "edit_file", path + ".bak", kind: .fileEdit)
+        #expect(BlockedRequestMatch.request(for: edit, in: [backup]) == nil)
 
         // At 40 columns agy cuts the path at the screen's edge.
         let created = "/Users/developer/projects/fruits2/a3note.txt"
         let create = try dialog("agy-99-perm-file-create-default-40x30")
+        #expect(create.subject.isRequestCut && !create.subject.changesAreCut)
         #expect(BlockedRequestMatch.request(for: create, in: [request("w", "write_to_file", created, kind: .fileWrite)])?.callID == "w")
         #expect(BlockedRequestMatch.request(for: create, in: [request("e", "replace_file_content", created, kind: .fileEdit)]) == nil)
+        #expect(!(try dialog("agy-99-perm-file-create-default-120x40")).subject.isRequestCut)
     }
 
-    @Test func agyQuestionsMatchByTheirTextAndTrustByNothing() throws {
-        let question = try dialog("agy-41-ask-question-single-120x40")
-        let asked = request(
-            "q", "ask_question", "Which fruit do you prefer?", kind: .question,
-            questions: [ChatQuestion(text: "Which fruit do you prefer?", options: ["Apple", "Banana"])])
-        let other = request("o", "ask_question", "Which pet?", kind: .question, questions: [ChatQuestion(text: "Which pet?")])
-        #expect(BlockedRequestMatch.request(for: question, in: [other, asked])?.callID == "q")
+    /// The card shows the screen's command, path and changed lines, and
+    /// takes from the call only what the screen cut: another call's
+    /// command or diff never stands in for what the screen shows whole.
+    @Test func anAgyCardShowsTheScreenAndFillsInOnlyWhatItCut() throws {
+        let command = try dialog("agy-30-perm-run-command-default-120x40")
+        let other = request("t", "run_command", "sleep 40; echo probe-done; rm -rf build/tmp")
+        #expect(BlockedRequestMatch.agyRequest(on: command, call: other) == "sleep 40; echo probe-done")
+        let cut = try agyDialog(
+            "agy-30-perm-run-command-default-120x40", replacing: "   sleep 40; echo probe-done", with: "   sleep 40; echo pro…")
+        #expect(BlockedRequestMatch.agyRequest(on: cut, call: other) == "sleep 40; echo probe-done; rm -rf build/tmp")
+        #expect(BlockedRequestMatch.agyRequest(on: cut, call: nil) == "sleep 40; echo pro…")
 
-        let trust = try dialog("agy-00-trust-prompt-191x49")
-        #expect(BlockedRequestMatch.request(for: trust, in: [asked, request("r", "run_command", "ls")]) == nil)
+        let created = "/Users/developer/projects/fruits2/a3note.txt"
+        let write = request("w", "write_to_file", created, kind: .fileWrite)
+        #expect(BlockedRequestMatch.agyRequest(on: try dialog("agy-99-perm-file-create-default-40x30"), call: write) == created)
+
+        // agy's dialog for approvals.jsonl step 24, with that call: the
+        // screen's rows, not the call's line diff.
+        let edit = try dialog("agy-47-perm-file-edit-default-120x40")
+        let call = try Self.agyEditCall()
+        #expect(BlockedRequestMatch.agyChanges(on: edit, call: call) == ["1  -  cherry", "1  +  cherry", "2  +  date"])
+        #expect(BlockedRequestMatch.agyRequest(on: edit, call: call) == "/Users/developer/projects/fruits/fruits.txt")
+
+        // A changed line cut at the edge: the call's change stands in.
+        let long = try agyDialog(
+            "agy-47-perm-file-edit-default-120x40", replacing: "date" + String(repeating: " ", count: 108),
+            with: "date " + String(repeating: "x", count: 107))
+        #expect(long.subject.changesAreCut)
+        #expect(BlockedRequestMatch.agyChanges(on: long, call: call) == ["1     cherry", "2  +  date"])
+        #expect(BlockedRequestMatch.agyChanges(on: long, call: nil) == Array(long.body.dropFirst()))
     }
 
-    /// The call's change, drawn as agy's dialog draws its rows, fills in
-    /// what a narrow screen cut.
-    @Test func agyChangeRowsReadLikeTheDialogs() throws {
-        let edit = ChatFileChanges(files: [
-            ChatFileChange(
-                path: "/Users/developer/projects/fruits/fruits.txt", kind: .updated,
-                recorded: [ChatDiffHunk(oldStart: 1, oldLines: 1, newStart: 1, newLines: 2, lines: ["-cherry", "+cherry", "+date"])])
-        ])
+    /// The call's change in the dialog's row format, from the real
+    /// pending call: a line diff of its target and replacement, which keeps
+    /// `cherry` as context where agy draws it removed and added again.
+    @Test func agyChangeRowsAreTheCallsLineDiff() throws {
+        let call = try Self.agyEditCall()
+        let changes = try #require(call.fileChanges)
+        #expect(BlockedRequestMatch.agyChangeRows(changes) == ["1     cherry", "2  +  date"])
         let shown = try dialog("agy-47-perm-file-edit-default-120x40")
-        #expect(BlockedRequestMatch.agyChangeRows(edit) == Array(shown.body.dropFirst()))
+        #expect(BlockedRequestMatch.agyChangeRows(changes) != Array(shown.body.dropFirst()))
 
         let write = ChatFileChanges(files: [
             .allAdded(path: "/Users/developer/projects/fruits2/a3note.txt", content: "hello a3\n", kind: .written)
@@ -2236,5 +2313,32 @@ struct BlockedRequestMatchTests {
                 recorded: [ChatDiffHunk(oldStart: 4, oldLines: 2, newStart: 4, newLines: 2, lines: [" keep", "-old", "+new"])])
         ])
         #expect(BlockedRequestMatch.agyChangeRows(context) == ["4     keep", "5  -  old", "5  +  new"])
+    }
+
+    /// approvals.jsonl's edit_file call at step 24 while it waits on its
+    /// dialog (agy-47): `cherry` becomes `cherry` and `date`.
+    private static func agyEditCall() throws -> ChatPendingRequest {
+        let transcript = try AgyTranscriptReducerTests.fixture("approvals.jsonl", steps: 21...24)
+        return try #require(transcript.pendingRequests.first { $0.callID == "agy:24:tool:0" })
+    }
+
+    /// A capture with `old` replaced by `new`, which must occur in it.
+    private func agyDialog(_ stem: String, replacing old: String, with new: String) throws -> BlockedDialog {
+        let text = try ScreenFixture.text(stem)
+        try #require(text.contains(old))
+        let result = AgyDialogParser.parse(ANSIScreenDecoder.decode(text.replacingOccurrences(of: old, with: new)))
+        return try #require(result.dialog, "\(stem) edited parsed as \(result)")
+    }
+
+    @Test func agyQuestionsMatchByTheirTextAndTrustByNothing() throws {
+        let question = try dialog("agy-41-ask-question-single-120x40")
+        let asked = request(
+            "q", "ask_question", "Which fruit do you prefer?", kind: .question,
+            questions: [ChatQuestion(text: "Which fruit do you prefer?", options: ["Apple", "Banana"])])
+        let other = request("o", "ask_question", "Which pet?", kind: .question, questions: [ChatQuestion(text: "Which pet?")])
+        #expect(BlockedRequestMatch.request(for: question, in: [other, asked])?.callID == "q")
+
+        let trust = try dialog("agy-00-trust-prompt-191x49")
+        #expect(BlockedRequestMatch.request(for: trust, in: [asked, request("r", "run_command", "ls")]) == nil)
     }
 }

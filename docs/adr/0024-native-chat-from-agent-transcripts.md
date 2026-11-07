@@ -682,13 +682,21 @@ The reducer offers every open call to the card whatever herdr reports,
 since an idle command row reads as without a result while its Amend field
 shows; a command sent to the background has its result and keeps no card.
 An idle agy that has reported no session is read for the trust prompt
-alone, as Codex is. The card matches a command by its start, a file by its
-path, cut at the screen's edge, and a question by its text, and an edit or
-a write shows the call's change as the dialog draws it, since a narrow
-screen cuts the rows. A permission's option presses its digit, which picks
-and confirms at once; the two `always allow` rows carry captions saying
-whether the rule lasts for the conversation or is saved in agy's settings,
-and No ends the turn, so the card then focuses the Composer. A note with
+alone, as Codex is. The card matches a command or a file by the whole
+command or path the screen shows, or by its start where the screen cut it
+(a command then ends in `…`, a path reaches the screen's edge), and a
+question by its text. It shows the command, the path and the changed lines
+as the screen draws them, and takes from the call only what the screen cut:
+the command or path, and for a changed line cut at the edge the call's
+change, a line diff of its target and replacement that can draw
+differently (agy draws the whole target removed and the whole replacement
+added). A call a confirmed answer went to matches no later card until the
+transcript resolves it, since agy can draw the next dialog, such as a
+second edit of the same file, before Chat reads the first call's result.
+Whether agy shortens a tall diff is not captured. A permission's option
+presses its digit, which picks and confirms at once; the two `always
+allow` rows carry captions saying whether the rule lasts for the
+conversation or is saved in agy's settings, and No ends the turn, so the card then focuses the Composer. A note with
 the command's Yes or No moves to that row, opens Amend with Tab, pastes the
 note and presses Enter, checking the screen after each step. Stop on a
 permission presses Esc, which stops the whole turn and joins the history

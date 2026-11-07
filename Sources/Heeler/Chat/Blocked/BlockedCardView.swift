@@ -252,13 +252,11 @@ private struct BlockedDialogCard: View {
             if let summary = card.request?.detail {
                 BlockedCardText(summary)
             }
-            BlockedCodeBox(text: card.request?.summary ?? subject.command ?? "")
+            // What the screen shows; the call fills in only what it cut.
+            BlockedCodeBox(text: BlockedRequestMatch.agyRequest(on: dialog, call: card.request))
         case .agyFileEdit, .agyFileCreate:
-            BlockedCodeBox(text: card.request?.summary ?? subject.filePath ?? "")
-            // The call's change, or else the changed lines as the screen
-            // shows them, cut at its edge.
-            let recorded = card.request?.fileChanges.map(BlockedRequestMatch.agyChangeRows) ?? []
-            let lines = recorded.isEmpty ? Array(dialog.body.dropFirst()) : recorded
+            BlockedCodeBox(text: BlockedRequestMatch.agyRequest(on: dialog, call: card.request))
+            let lines = BlockedRequestMatch.agyChanges(on: dialog, call: card.request)
             if !lines.isEmpty {
                 BlockedChangeBox(lines: lines, marksChanges: true)
             }

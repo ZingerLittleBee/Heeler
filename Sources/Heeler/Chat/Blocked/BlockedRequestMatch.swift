@@ -67,14 +67,14 @@ enum BlockedRequestMatch {
         case .openCodeQuestion:
             return request.kind == .question && asks(request, subject.question ?? dialog.title)
         case .agyCommand:
-            return request.toolName == "run_command" && begins(request.summary, with: subject.command)
+            return request.toolName == "run_command" && agyShows(request.summary, subject.command, subject)
         case .agyFileEdit:
-            // agy cuts a long path at the screen's edge. A write over a file
-            // may ask as an edit.
-            return (AgyToolCall.editTools.contains(request.toolName) || AgyToolCall.writeTools.contains(request.toolName))
-                && begins(request.summary, with: subject.filePath)
+            // A write over a file may ask as an edit.
+            let tools = AgyToolCall.editTools.union(AgyToolCall.writeTools)
+            return tools.contains(request.toolName) && agyShows(request.summary, subject.filePath, subject)
         case .agyFileCreate:
-            return AgyToolCall.writeTools.contains(request.toolName) && begins(request.summary, with: subject.filePath)
+            return AgyToolCall.writeTools.contains(request.toolName)
+                && agyShows(request.summary, subject.filePath, subject)
         case .agyQuestion:
             return request.toolName == "ask_question" && asks(request, subject.question ?? dialog.title)
         case .claudeWorkspaceTrust, .codexWorkspaceTrust, .codexNetwork, .grokCancelTurn, .grokFork,
@@ -143,10 +143,33 @@ enum BlockedRequestMatch {
         return disagrees ? shown : call
     }
 
-    /// A file call's change as Antigravity CLI's dialog draws it, for a
-    /// card the screen cut short: each line's number in the file, its
+    /// The command or path an Antigravity CLI permission card shows: the
+    /// screen's, or where the screen cut it, the matched call's, which
+    /// starts with it.
+    static func agyRequest(on dialog: BlockedDialog, call: ChatPendingRequest?) -> String {
+        let shown = dialog.subject.command ?? dialog.subject.filePath ?? ""
+        guard dialog.subject.isRequestCut else { return shown }
+        return call?.summary ?? dialog.body.first ?? shown
+    }
+
+    /// The changed lines an Antigravity CLI file card shows: the screen's,
+    /// unless the screen cut one at its edge and the matched call records
+    /// the change, whose rows then stand in (`agyChangeRows`).
+    static func agyChanges(on dialog: BlockedDialog, call: ChatPendingRequest?) -> [String] {
+        let shown = Array(dialog.body.dropFirst())
+        guard dialog.subject.changesAreCut, let changes = call?.fileChanges else { return shown }
+        let rows = agyChangeRows(changes)
+        return rows.isEmpty ? shown : rows
+    }
+
+    /// A file call's change in the row format of Antigravity CLI's dialog,
+    /// for a card whose screen cut a changed line: the line's number, its
     /// mark and its text, `N  -  old` and `N  +  new`; a context line has
-    /// no mark.
+    /// no mark. The rows come from a line diff of the call's target and
+    /// replacement, numbered from the line the call names or else 1, so
+    /// they can differ from the dialog's: for `cherry` becoming `cherry`
+    /// and `date`, agy draws `1  -  cherry`, `1  +  cherry`, `2  +  date`
+    /// and the diff `1     cherry`, `2  +  date`.
     static func agyChangeRows(_ changes: ChatFileChanges) -> [String] {
         var rows: [String] = []
         for hunk in changes.files.flatMap(\.hunks) {
@@ -183,6 +206,16 @@ enum BlockedRequestMatch {
 
     private static func lettersAndDigits(_ text: String) -> String {
         String(String.UnicodeScalarView(text.lowercased().unicodeScalars.filter(CharacterSet.alphanumerics.contains)))
+    }
+
+    /// An Antigravity CLI dialog shows the call's whole command or path,
+    /// or its start where the screen cut it. Another call that only starts
+    /// the same way, `rm -rf build/tmp` for `rm -rf build`, is another
+    /// call. Wrapping moves spaces, so they do not count.
+    private static func agyShows(_ full: String, _ shown: String?, _ subject: DialogSubject) -> Bool {
+        guard !subject.isRequestCut else { return begins(full, with: shown) }
+        let screen = DialogRowScanner.comparable(shown ?? "")
+        return !screen.isEmpty && DialogRowScanner.comparable(full) == screen
     }
 
     /// The screen's text is the request's, or its start where the dialog

@@ -147,6 +147,12 @@ final class BlockedCardStore {
     @ObservationIgnored private var activity: ChatAgentActivity = .unknown
     @ObservationIgnored private var awaitingSession = false
     @ObservationIgnored private var pendingRequests: [ChatPendingRequest] = []
+    /// Antigravity CLI permission calls a confirmed answer went to, until
+    /// the transcript resolves them. agy writes a call's result only once
+    /// it has run, and can draw the next dialog before Chat reads that
+    /// result: a second edit of the same file would match the answered
+    /// call first.
+    @ObservationIgnored private var answeredCalls: Set<String> = []
     /// Why the newest turn failed, for a program whose card explains a
     /// block without a dialog.
     @ObservationIgnored private var latestFailure: String?
@@ -229,6 +235,7 @@ final class BlockedCardStore {
     func update(transcript: ChatTranscript) {
         let waiting = Set(pendingRequests.compactMap(\.callID))
         pendingRequests = transcript.pendingRequests
+        answeredCalls.formIntersection(pendingRequests.compactMap(\.callID))
         if !program.offersKeysWhenBlockedWithoutDialog { latestFailure = Self.latestFailure(in: transcript) }
         var resolved: Set<String> = []
         var started: Set<String> = []
@@ -317,7 +324,7 @@ final class BlockedCardStore {
     /// resend.
     func perform(_ action: DialogAction) async {
         guard progress == .ready || (action == .dismiss && canStop), case .card(let shown) = content else { return }
-        let requests = pendingRequests
+        let requests = matchableRequests
         var answered: BlockedCard?
         let isConfirmed = await act(on: shown.dialog.fingerprint) { observation throws(DialogPlanError) in
             guard let dialog = observation.result.dialog else { throw .unsupported(Self.changedMessage) }
@@ -700,9 +707,24 @@ final class BlockedCardStore {
         progress = .ready
         unconfirmedFingerprint = nil
         quietSince = clock.now()
+        if case .card(let card) = content, card.dialog.fingerprint.matches(fingerprint),
+            Self.answersOneCall.contains(card.dialog.kind), let id = card.request?.callID
+        {
+            answeredCalls.insert(id)
+        }
         present(confirmed)
         if plan.focusesComposer { composerFocusRequest += 1 }
         return true
+    }
+
+    /// Antigravity CLI's permissions, each the only dialog its call shows.
+    /// A question's call shows a page per question.
+    private static let answersOneCall: Set<BlockedDialogKind> = [.agyCommand, .agyFileEdit, .agyFileCreate]
+
+    /// The open calls a dialog on screen can be asking about.
+    private var matchableRequests: [ChatPendingRequest] {
+        guard !answeredCalls.isEmpty else { return pendingRequests }
+        return pendingRequests.filter { request in request.callID.map { !answeredCalls.contains($0) } ?? true }
     }
 
     private func finish(notice: String) {
@@ -786,8 +808,8 @@ final class BlockedCardStore {
             if let degraded, degraded.fingerprint.matches(dialog.fingerprint) {
                 next = .generic(Self.excerpt(of: dialog, on: observation.screen, reason: degraded.reason))
             } else {
-                next = .card(
-                    BlockedCard(dialog: dialog, request: BlockedRequestMatch.request(for: dialog, in: pendingRequests)))
+                let request = BlockedRequestMatch.request(for: dialog, in: matchableRequests)
+                next = .card(BlockedCard(dialog: dialog, request: request))
             }
         case .unrecognized(let excerpt):
             next = .generic(excerpt)

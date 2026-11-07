@@ -256,6 +256,13 @@ struct DialogSubject: Sendable, Hashable {
     /// rule would allow while `Always allow` has focus, so the fingerprint
     /// carries them apart from the body (`DialogFingerprint.matches`).
     var notes: [String] = []
+    /// Antigravity CLI permission: the screen cut the command (it ends in
+    /// `…`) or the file's path (it reaches the dialog's right edge), so the
+    /// call it asks about only starts with it.
+    var isRequestCut = false
+    /// Antigravity CLI file permission: a changed line reaches the dialog's
+    /// right edge, where agy cuts it without a mark.
+    var changesAreCut = false
 
     struct ReviewAnswer: Sendable, Hashable {
         var question: String
