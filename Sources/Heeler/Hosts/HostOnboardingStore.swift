@@ -210,7 +210,7 @@ final class HostOnboardingStore {
         if pluginStatus == .checking { pluginStatus = .unavailable }
         guard hostHelperConfirmation == nil else { return }
         hostHelper?.checkEnded(
-            unreadBecause: report?.failureHint ?? "The checks ended before reading this Host.")
+            unreadBecause: report?.failureHint ?? String(localized: "The checks ended before reading this Host."))
     }
 
     private func cancelHostHelperConfirmation() {
@@ -248,7 +248,7 @@ final class HostOnboardingStore {
         } catch HostCredentialsError.passwordNotSet {
             report = .failure(
                 check: .connection,
-                hint: "No password is saved for this Host. Edit the Host and enter one.")
+                hint: String(localized: "No password is saved for this Host. Edit the Host and enter one."))
             return
         } catch DeviceKeyStoreError.storedKeyCorrupt {
             report = .failure(.deviceKeyCorrupt, authMethod: host.authMethod)
@@ -294,7 +294,7 @@ final class HostOnboardingStore {
                     if !Task.isCancelled { availableSessions = sessions }
                 } catch {
                     if !Task.isCancelled {
-                        sessionDiscoveryError = "Could not discover herdr sessions. You can still enter a session name manually."
+                        sessionDiscoveryError = String(localized: "Could not discover herdr sessions. You can still enter a session name manually.")
                     }
                 }
             }
@@ -445,18 +445,17 @@ final class HostOnboardingStore {
     /// What the confirmation adds to the findings it lists, if anything.
     var confirmationNote: String? {
         if let detectionFailure {
-            return "Heeler could not read what this Host runs, so the choice is yours. \(detectionFailure)"
+            return String(localized: "Heeler could not read what this Host runs, so the choice is yours. \(detectionFailure)")
         }
         guard let detection else { return nil }
         if case .sessionRefused(let reason) = detection.herdrCore {
             return reason
         }
         if detection.foundKinds.count > 1 {
-            return "This machine runs both. A Host is one kind: confirm one here, then add the "
-                + "machine again for the other."
+            return String(localized: "This machine runs both. A Host is one kind: confirm one here, then add the machine again for the other.")
         }
         return detection.foundKinds.isEmpty
-            ? "Neither was found. Choose the one you will use, and its checks say how to set it up."
+            ? String(localized: "Neither was found. Choose the one you will use, and its checks say how to set it up.")
             : nil
     }
 
@@ -482,7 +481,7 @@ final class HostOnboardingStore {
             return
         } catch HostStoreError.catalogUnreadable where catalog.coreCatalogLoadError != nil {
             confirmationRefusal =
-                "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added."
+                String(localized: "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added.")
             return
         } catch {
             confirmationRefusal = "The Server Kind could not be saved. (\(error))"
@@ -554,12 +553,12 @@ final class HostOnboardingStore {
     /// preflight already settled the Host key, so a key that still needs
     /// trusting is declined rather than asked about.
     private func performCoreStart() async -> CoreStartResult {
-        let summary = "herdr-core did not start"
+        let summary = String(localized: "herdr-core did not start")
         let resolved: SSHCredentials
         do {
             resolved = try credentials.credentials(for: host)
         } catch {
-            return .failed(message: "\(summary): Could not load this Host's credentials. (\(error))")
+            return .failed(message: String(localized: "\(summary): Could not load this Host's credentials. (\(String(describing: error)))"))
         }
         let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
         let settings = SSHTransportSettings(
@@ -568,7 +567,7 @@ final class HostOnboardingStore {
         do {
             transport = try await connector.connectCore(settings: settings)
         } catch {
-            return .failed(message: "\(summary): \(Self.reason(error))")
+            return .failed(message: String(localized: "\(summary): \(Self.reason(error))"))
         }
         let outcome: Result<HerdrCoreStart.Outcome, any Error>
         do {
@@ -583,15 +582,14 @@ final class HostOnboardingStore {
         case .success(.alreadyRunning):
             return .alreadyRunning
         case .success(.failed(let detail?)):
-            return .failed(message: "\(summary): \(detail).")
+            return .failed(message: String(localized: "\(summary): \(detail)."))
         case .success(.failed(nil)):
             return .failed(message: "\(summary).")
         case .failure(TransportError.timedOut):
             return .failed(
-                message: "The start did not finish in time, and a startup file in your shell may be "
-                    + "waiting for input. Run the checks again to see whether the core came up.")
+                message: String(localized: "The start did not finish in time, and a startup file in your shell may be waiting for input. Run the checks again to see whether the core came up."))
         case .failure(let error):
-            return .failed(message: "\(summary): \(Self.reason(error))")
+            return .failed(message: String(localized: "\(summary): \(Self.reason(error))"))
         }
     }
 
@@ -644,7 +642,7 @@ final class HostOnboardingStore {
             transport = try await connector.connect(settings: settings)
         } catch {
             return HeelerPluginActionFailure(
-                message: "Heeler could not connect to the Host, so nothing changed.",
+                message: String(localized: "Heeler could not connect to the Host, so nothing changed."),
                 detail: (error as? TransportError)?.presentation.message ?? "\(error)")
         }
         var steps = action.steps
@@ -687,13 +685,11 @@ final class HostOnboardingStore {
             // whose connection dropped may have finished all the same.
             guard let stepError else {
                 return HeelerPluginActionFailure(
-                    message: "The change finished, but the plugin could not be read back. "
-                        + "Run the checks again.")
+                    message: String(localized: "The change finished, but the plugin could not be read back. Run the checks again."))
             }
             if let error = stepError as? TransportError, error != .timedOut {
                 return HeelerPluginActionFailure(
-                    message: "The connection ended during the change, which may still "
-                        + "finish on the Host. Run the checks again.",
+                    message: String(localized: "The connection ended during the change, which may still finish on the Host. Run the checks again."),
                     detail: error.presentation.message)
             }
             return HeelerPluginActionFailure(stepError)
@@ -704,12 +700,10 @@ final class HostOnboardingStore {
         let bundled = HeelerPluginCompatibility.bundled
         if let version = pluginStatus.confirmedVersion, version < bundled {
             return HeelerPluginActionFailure(
-                message: "herdr installed plugin \(version), the newest published, but this "
-                    + "app expects \(bundled).")
+                message: String(localized: "herdr installed plugin \(String(describing: version)), the newest published, but this app expects \(String(describing: bundled))."))
         }
         return HeelerPluginActionFailure(
-            message: "The change finished, but the plugin still needs the attention "
-                + "described above.")
+            message: String(localized: "The change finished, but the plugin still needs the attention described above."))
     }
 
     /// Whether an action's install may run. herdr installs whatever the
@@ -736,14 +730,12 @@ final class HostOnboardingStore {
                 let version = installation.parsedVersion
             else {
                 return .refused(HeelerPluginActionFailure(
-                    message: "The plugin on the Host changed since the checks, so nothing "
-                        + "changed. Run the checks again."))
+                    message: String(localized: "The plugin on the Host changed since the checks, so nothing changed. Run the checks again.")))
             }
             installed = version
         case .checking, .unsupportedPlatform, .unsupportedServerKind, .unavailable:
             return .refused(HeelerPluginActionFailure(
-                message: "Heeler could not read the Host's plugin before changing it, so "
-                    + "nothing changed. Run the checks again."))
+                message: String(localized: "Heeler could not read the Host's plugin before changing it, so nothing changed. Run the checks again.")))
         }
         let published: PluginVersion
         do {
@@ -756,14 +748,12 @@ final class HostOnboardingStore {
                 default: "\(error)"
                 }
             return .refused(HeelerPluginActionFailure(
-                message: "Heeler could not check which plugin version the Host would install, "
-                    + "so nothing changed. Check that the Host can reach github.com.",
+                message: String(localized: "Heeler could not check which plugin version the Host would install, so nothing changed. Check that the Host can reach github.com."),
                 detail: detail))
         }
         guard published >= installed else {
             return .nothingNewer(HeelerPluginActionFailure(
-                message: "The Host has plugin \(installed), newer than the published "
-                    + "\(published), so Heeler did not update it."))
+                message: String(localized: "The Host has plugin \(String(describing: installed)), newer than the published \(String(describing: published)), so Heeler did not update it.")))
         }
         return .clear
     }

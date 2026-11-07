@@ -461,7 +461,7 @@ enum CodexToolSummary {
         case "find_in_page", "findInPage":
             return [action?.pattern, action?.url].compactMap { $0 }.joined(separator: " in ")
         default:
-            return "Web search"
+            return String(localized: "Web search")
         }
     }
 }

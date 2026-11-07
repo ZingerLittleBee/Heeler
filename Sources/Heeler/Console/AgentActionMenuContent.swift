@@ -23,21 +23,21 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
 
     var title: String {
         switch self {
-        case .backToConsole: "Back to Console"
-        case .addImage: "Add Image"
-        case .pasteImage: "Paste Image"
-        case .addFile: "Add File"
+        case .backToConsole: String(localized: "Back to Console")
+        case .addImage: String(localized: "Add Image")
+        case .pasteImage: String(localized: "Paste Image")
+        case .addFile: String(localized: "Add File")
         case .showChat: AgentDetailSurface.chat.showTitle
         case .showAgentTerminal: AgentDetailSurface.terminal.showTitle
-        case .openTerminal: "Open Terminal"
-        case .changes: "Changes"
-        case .newAgent: "New Agent"
-        case .skills: "Skills"
-        case .snippets: "Snippets"
-        case .worktreeDetails: "Worktree Details"
-        case .renameAgent: "Rename Agent"
-        case .renameWorkspace: "Rename Workspace"
-        case .closeAgent: "Close Agent"
+        case .openTerminal: String(localized: "Open Terminal")
+        case .changes: String(localized: "Changes")
+        case .newAgent: String(localized: "New Agent")
+        case .skills: String(localized: "Skills")
+        case .snippets: String(localized: "Snippets")
+        case .worktreeDetails: String(localized: "Worktree Details")
+        case .renameAgent: String(localized: "Rename Agent")
+        case .renameWorkspace: String(localized: "Rename Workspace")
+        case .closeAgent: String(localized: "Close Agent")
         }
     }
 

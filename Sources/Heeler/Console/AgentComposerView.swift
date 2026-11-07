@@ -134,13 +134,12 @@ struct AgentComposerActions {
 
 /// What removing a saved Chat entry says, from its row or its detail.
 enum SavedChatRemovalCopy {
-    static let action = "Remove Saved Chat"
-    static let question = "Remove Saved Chat?"
+    static let action = String(localized: "Remove Saved Chat")
+    static let question = String(localized: "Remove Saved Chat?")
     static let confirm = "Remove"
 
     static func message(naming name: String) -> String {
-        "Removes \u{201C}\(name)\u{201D} and its saved messages from this device. "
-            + "If the Agent is still running, it returns when the Host connects."
+        String(localized: "Removes \u{201C}\(name)\u{201D} and its saved messages from this device. If the Agent is still running, it returns when the Host connects.")
     }
 }
 
@@ -164,14 +163,14 @@ struct AgentCloseConfirmation {
 
     var question: String {
         switch request {
-        case .closeAgent: "Close \(title)?"
+        case .closeAgent: String(localized: "Close \(title)?")
         case .removeSavedChat: SavedChatRemovalCopy.question
         }
     }
 
     var confirmLabel: String {
         switch request {
-        case .closeAgent: "Close Agent"
+        case .closeAgent: String(localized: "Close Agent")
         case .removeSavedChat: SavedChatRemovalCopy.confirm
         }
     }
@@ -179,8 +178,7 @@ struct AgentCloseConfirmation {
     var message: String {
         switch request {
         case .closeAgent:
-            "This closes the pane on the Host and removes the agent everywhere. "
-                + "This can't be undone."
+            String(localized: "This closes the pane on the Host and removes the agent everywhere. This can't be undone.")
         case .removeSavedChat:
             SavedChatRemovalCopy.message(naming: title)
         }
@@ -223,7 +221,7 @@ struct AgentComposerLinkPresentation: Equatable {
     }
 
     var accessibilityValue: String {
-        count == 1 ? "1 distinct link" : "\(count) distinct links"
+        count == 1 ? String(localized: "1 distinct link") : String(localized: "\(count) distinct links")
     }
 }
 
@@ -596,7 +594,7 @@ struct AgentComposerView: View {
     private func outcomeUnknownRow(_ id: AgentComposerStore.Message.ID) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             noticeLabel(
-                "The Host did not answer, so the message may or may not have reached the Agent. Check the terminal. It will not be sent again.")
+                String(localized: "The Host did not answer, so the message may or may not have reached the Agent. Check the terminal. It will not be sent again."))
             Button("Edit Draft") {
                 store.withdrawToDraft(id)
                 isInputFocused = true
@@ -1087,7 +1085,7 @@ private struct AgentComposerSkillSuggestions: View {
 
 struct AgentComposerSendButton: View {
     let isEnabled: Bool
-    var accessibilityHint: String = "Delivers the complete draft to the Agent"
+    var accessibilityHint: String = String(localized: "Delivers the complete draft to the Agent")
     let action: () -> Void
 
     var body: some View {
@@ -1225,7 +1223,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         textView.adjustsFontForContentSizeCategory = true
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         textView.textContainer.lineFragmentPadding = 0
-        textView.accessibilityLabel = "Message the Agent"
+        textView.accessibilityLabel = String(localized: "Message the Agent")
         textView.onKeyboardHandoffSettled = onKeyboardHandoffSettled
         textView.onHardwareReturn = onHardwareReturn
         textView.onPasteImage = onPasteImage

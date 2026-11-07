@@ -42,12 +42,12 @@ enum AgentTitleNaming {
 
     static func validation(_ title: String) -> String? {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return "Enter a title."
+            return String(localized: "Enter a title.")
         }
-        guard title.count <= 120 else { return "Use 120 characters or fewer." }
+        guard title.count <= 120 else { return String(localized: "Use 120 characters or fewer.") }
         let forbidden = CharacterSet.controlCharacters.union(.newlines)
         guard !title.unicodeScalars.contains(where: { forbidden.contains($0) }) else {
-            return "Use a single line without control characters."
+            return String(localized: "Use a single line without control characters.")
         }
         return nil
     }
@@ -111,7 +111,7 @@ final class AgentTitleRenameStore: Identifiable {
     var canGenerate: Bool { !isBusy && !outcomeUncertain && AgentTitleNaming.supportsGeneration(program) }
     var generationUnavailable: String? {
         AgentTitleNaming.supportsGeneration(program) ? nil
-            : "Automatic title generation isn't available for \(program.chatName) here."
+            : String(localized: "Automatic title generation isn't available for \(program.chatName) here.")
     }
 
     func save() async {
@@ -126,7 +126,7 @@ final class AgentTitleRenameStore: Identifiable {
 
     private func perform(generating: Bool) async {
         guard io.acquire() else {
-            state = .failed("A rename is already in progress for this Agent.")
+            state = .failed(String(localized: "A rename is already in progress for this Agent."))
             return
         }
         state = generating ? .generating : .saving
@@ -135,14 +135,14 @@ final class AgentTitleRenameStore: Identifiable {
         do {
             let initial = try await checkedAgent()
             guard initial.status == .idle || initial.status == .done else {
-                throw failure("Wait until the Agent is idle before renaming.")
+                throw failure(String(localized: "Wait until the Agent is idle before renaming."))
             }
             guard initial.agentSession != nil else {
-                throw failure("The Agent hasn't reported its conversation. Open Chat and check its session before renaming.")
+                throw failure(String(localized: "The Agent hasn't reported its conversation. Open Chat and check its session before renaming."))
             }
             let screen = try await io.screen()
             guard InputBoxStateDetector.detect(screen, program: program).isSendable else {
-                throw failure("The Agent's input is not empty or ready. Finish the draft or dialog in Terminal first.")
+                throw failure(String(localized: "The Agent's input is not empty or ready. Finish the draft or dialog in Terminal first."))
             }
             let target = input.trimmingCharacters(in: .whitespacesAndNewlines)
             var resultTarget: String? = generating ? nil : target
@@ -170,9 +170,9 @@ final class AgentTitleRenameStore: Identifiable {
         } catch {
             outcomeUncertain = dispatched && (error as? AgentTitleRenameError)?.confirmedFailure != true
             let reason = (error as? AgentTitleRenameError)?.message
-                ?? "The Host did not confirm the rename."
+                ?? String(localized: "The Host did not confirm the rename.")
             state = .failed(outcomeUncertain
-                ? reason + " Check the title in Terminal before trying again."
+                ? reason + String(localized: " Check the title in Terminal before trying again.")
                 : reason)
             if dispatched { await io.refresh() }
         }
@@ -186,10 +186,10 @@ final class AgentTitleRenameStore: Identifiable {
             fresh.tabID == expected.tabID,
             expected.agentSession == nil || fresh.agentSession == expected.agentSession,
             session == nil || fresh.agentSession == session else {
-            throw failure("The Agent or conversation changed. Reopen Rename for the current conversation.")
+            throw failure(String(localized: "The Agent or conversation changed. Reopen Rename for the current conversation."))
         }
         if idle, fresh.status != .idle && fresh.status != .done {
-            throw failure("The Agent is no longer idle.")
+            throw failure(String(localized: "The Agent is no longer idle."))
         }
         return fresh
     }
@@ -207,7 +207,7 @@ final class AgentTitleRenameStore: Identifiable {
         }
         guard let dialog, let field = Self.openCodeField(dialog),
             AgentTitleNaming.matches(initial, program: .opencode, title: field) else {
-            throw failure("OpenCode did not show the expected Rename session dialog.")
+            throw failure(String(localized: "OpenCode did not show the expected Rename session dialog."))
         }
         _ = try await checkedAgent(session: initial.agentSession)
         guard Self.openCodeField(try await io.screen()) == field else {
@@ -217,13 +217,13 @@ final class AgentTitleRenameStore: Identifiable {
         try await io.sleep(.milliseconds(150))
         _ = try await checkedAgent(session: initial.agentSession)
         guard Self.openCodeField(try await io.screen()) == "" else {
-            throw failure("OpenCode's title field could not be cleared.")
+            throw failure(String(localized: "OpenCode's title field could not be cleared."))
         }
         try await io.paste(title)
         try await io.sleep(.milliseconds(150))
         _ = try await checkedAgent(session: initial.agentSession)
         guard Self.openCodeField(try await io.screen()) == title else {
-            throw failure("OpenCode did not receive the complete title.")
+            throw failure(String(localized: "OpenCode did not receive the complete title."))
         }
         try await io.keys(["enter"])
     }
@@ -236,12 +236,12 @@ final class AgentTitleRenameStore: Identifiable {
             guard let suggestion = Self.codexSuggestion(screen) else { continue }
             _ = try await checkedAgent(session: initial.agentSession)
             guard Self.codexSuggestion(try await io.screen()) == suggestion else {
-                throw failure("Codex's title suggestion changed before confirmation.")
+                throw failure(String(localized: "Codex's title suggestion changed before confirmation."))
             }
             try await io.keys(["enter"])
             return suggestion
         }
-        throw failure("Codex did not produce a title suggestion in time.")
+        throw failure(String(localized: "Codex did not produce a title suggestion in time."))
     }
 
     private func awaitResult(initial: Agent, target: String?, before: ANSIScreen) async throws {
@@ -265,19 +265,19 @@ final class AgentTitleRenameStore: Identifiable {
             if ["Could not generate a session title", "Rename failed:"].contains(where: {
                 text.contains($0) && !oldText.contains($0)
             }) {
-                throw AgentTitleRenameError(message: "The Agent could not generate or save the title.", confirmedFailure: true)
+                throw AgentTitleRenameError(message: String(localized: "The Agent could not generate or save the title."), confirmedFailure: true)
             }
         }
-        throw failure("The Agent did not confirm the new title in time.")
+        throw failure(String(localized: "The Agent did not confirm the new title in time."))
     }
 
     private func nativeAcknowledgement(for agent: Agent) -> String? {
         switch program {
         case .claude:
-            return "Session renamed to: " + agent.title
+            return String(localized: "Session renamed to: \(agent.title)")
         case .omp:
             let card = agent.title.hasPrefix("π > ") ? String(agent.title.dropFirst(4)) : agent.title
-            return "Session renamed to \"" + card + "\"."
+            return String(localized: "Session renamed to \"\(card)\".")
         default: return nil
         }
     }

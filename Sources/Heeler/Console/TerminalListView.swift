@@ -385,7 +385,7 @@ struct TerminalListView: View {
                 guard let terminal = await console.waitForTerminal(identity, on: id.hostID)
                 else {
                     createFailure =
-                        "The terminal was created, but its Workspace hasn't refreshed yet."
+                        String(localized: "The terminal was created, but its Workspace hasn't refreshed yet.")
                     return
                 }
                 onOpen(terminal)
@@ -403,7 +403,7 @@ struct TerminalListView: View {
     }
 
     private func closeLabel(for terminal: ConsoleTerminal) -> String {
-        "Close \(closeScope(for: terminal).rawValue)"
+        String(localized: "Close \(closeScope(for: terminal).rawValue)")
     }
 
     private var closeTitle: String {
@@ -665,8 +665,8 @@ private struct TerminalHostHeader: View {
             group.opensConnectionDetail ? "" : group.isCollapsed ? "Collapsed" : "Expanded")
         .accessibilityHint(
             group.opensConnectionDetail
-                ? "Shows why this Host can't connect."
-                : group.isCollapsed ? "Expands this Host." : "Collapses this Host.")
+                ? String(localized: "Shows why this Host can't connect.")
+                : group.isCollapsed ? String(localized: "Expands this Host.") : String(localized: "Collapses this Host."))
         .accessibilityAddTraits(.isHeader)
     }
 

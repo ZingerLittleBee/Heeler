@@ -18,7 +18,7 @@ enum HerdrWire {
             data = try JSONEncoder().encode(request)
         } catch {
             throw TransportError.malformedResponse(
-                "failed to encode request for \(method): \(error)")
+                String(localized: "failed to encode request for \(method): \(String(describing: error))"))
         }
         return String(decoding: data, as: UTF8.self) + "\n"
     }

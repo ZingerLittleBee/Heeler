@@ -15,7 +15,7 @@ struct HostTelemetryPresentation: Equatable {
     let title: String
     let accessibilityValue: String
 
-    var accessibilityLabel: String { "Host API connection latency" }
+    var accessibilityLabel: String { String(localized: "Host API connection latency") }
 
     init?(status: EventsSessionStatus?, latency: Duration?) {
         guard status == .connected, let latency else { return nil }

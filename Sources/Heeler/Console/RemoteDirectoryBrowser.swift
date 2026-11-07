@@ -150,7 +150,7 @@ final class RemoteDirectoryBrowser: Identifiable {
         if let transportError = error as? TransportError {
             return transportError.presentation.message
         }
-        return "Loading directories failed: \(error)"
+        return String(localized: "Loading directories failed: \(String(describing: error))")
     }
 }
 

@@ -77,7 +77,7 @@ final class HarnessConfigEditStore {
             } catch let error as HarnessConfigEditError {
                 let outcome =
                     error == .folderChangedDuringUndo
-                    ? "The Host Helper is gone. " : "The Host Helper is gone, but its OpenCode edit stays in \(edit.path). "
+                    ? String(localized: "The Host Helper is gone. ") : String(localized: "The Host Helper is gone, but its OpenCode edit stays in \(edit.path). ")
                 refusal = outcome + (error.errorDescription ?? "")
             }
         }
@@ -282,7 +282,7 @@ enum HarnessConfigEditMessage {
         case let error as TransportError:
             error.presentation.message
         default:
-            "Heeler couldn't reach the file, so nothing was written."
+            String(localized: "Heeler couldn't reach the file, so nothing was written.")
         }
     }
 }

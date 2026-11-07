@@ -12,11 +12,11 @@ struct VoiceInputFailure: Equatable, Sendable {
     var opensMicrophoneSettings = false
 
     static let microphoneDenied = VoiceInputFailure(
-        message: "Heeler can't use the microphone. Turn it on in Settings.",
+        message: String(localized: "Heeler can't use the microphone. Turn it on in Settings."),
         opensMicrophoneSettings: true)
-    static let tooShort = VoiceInputFailure(message: "The recording was too short.")
+    static let tooShort = VoiceInputFailure(message: String(localized: "The recording was too short."))
     static let notSetUp = VoiceInputFailure(
-        message: "Set up Voice Input to transcribe this recording.",
+        message: String(localized: "Set up Voice Input to transcribe this recording."),
         canRetry: true, opensVoiceInputSettings: true)
 
     init(

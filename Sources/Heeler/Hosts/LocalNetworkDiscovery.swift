@@ -34,15 +34,15 @@ enum LocalDiscoveryError: Error, Equatable, Sendable {
     var message: String {
         switch self {
         case .permissionDenied:
-            "Heeler may not use the local network. Turn on Local Network for Heeler in Settings."
+            String(localized: "Heeler may not use the local network. Turn on Local Network for Heeler in Settings.")
         case .noAddress:
-            "The machine did not give an IP address. Type its address instead."
+            String(localized: "The machine did not give an IP address. Type its address instead.")
         case .linkLocalOnly:
-            "This machine only gave a link-local IPv6 address. Enter its IPv4 address by hand."
+            String(localized: "This machine only gave a link-local IPv6 address. Enter its IPv4 address by hand.")
         case .timedOut:
-            "The machine did not answer. Check that it is on and on this network."
+            String(localized: "The machine did not answer. Check that it is on and on this network.")
         case .failed(let detail):
-            "Could not search the local network: \(detail)"
+            String(localized: "Could not search the local network: \(detail)")
         }
     }
 }
@@ -381,7 +381,7 @@ final class LocalMachinePickerModel {
             machines = found
             waitingHint = nil
         case .waiting(let permissionDenied):
-            waitingHint = permissionDenied ? .permissionDenied : .failed("waiting for the network")
+            waitingHint = permissionDenied ? .permissionDenied : .failed(String(localized: "waiting for the network"))
         case .ready:
             waitingHint = nil
         }

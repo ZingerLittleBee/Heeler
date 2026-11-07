@@ -15,11 +15,11 @@ enum ConsoleTab: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .agents: "Agents"
-        case .terminals: "Terminals"
-        case .usage: "Usage"
-        case .hosts: "Hosts"
-        case .settings: "Settings"
+        case .agents: String(localized: "Agents")
+        case .terminals: String(localized: "Terminals")
+        case .usage: String(localized: "Usage")
+        case .hosts: String(localized: "Hosts")
+        case .settings: String(localized: "Settings")
         }
     }
 
@@ -39,8 +39,8 @@ enum TerminalListPresentationMode: String, CaseIterable, Identifiable, Sendable 
 
     var title: String {
         switch self {
-        case .byWorkspace: "By Workspace"
-        case .byHost: "By Host"
+        case .byWorkspace: String(localized: "By Workspace")
+        case .byHost: String(localized: "By Host")
         }
     }
 
@@ -86,7 +86,7 @@ struct TerminalWorkspaceGroup: Identifiable, Equatable {
 /// A count of shells as the Terminals list words it.
 enum TerminalCount {
     static func text(_ count: Int) -> String {
-        count == 1 ? "1 terminal" : "\(count) terminals"
+        count == 1 ? String(localized: "1 terminal") : String(localized: "\(count) terminals")
     }
 }
 
@@ -125,8 +125,8 @@ struct TerminalRowPresentation: Equatable {
         var parts: [String] = []
         if showsWorkspace { parts.append(terminal.workspaceLabel ?? terminal.hostName) }
         if showsTab, let tab { parts.append(tab) }
-        if terminal.isRestarting { parts.append("Restarting") }
-        parts.append(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd)
+        if terminal.isRestarting { parts.append(String(localized: "Restarting")) }
+        parts.append(terminal.displayCwd.isEmpty ? String(localized: "Path unavailable") : terminal.displayCwd)
         subtitle = parts.joined(separator: " · ")
     }
 }
@@ -140,14 +140,14 @@ enum TerminalCloseScope: String, Equatable {
     /// Names the Tab and Workspace being closed, since rows in one directory
     /// can share a title.
     func message(for terminal: ConsoleTerminal) -> String {
-        let workspace = terminal.workspaceLabel ?? "this Workspace"
+        let workspace = terminal.workspaceLabel ?? String(localized: "this Workspace")
         switch self {
         case .workspace:
-            return "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab."
+            return String(localized: "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab.")
         case .tab:
-            return "Closes \(terminal.displayTabTitle) in \(workspace)."
+            return String(localized: "Closes \(terminal.displayTabTitle) in \(workspace).")
         case .pane:
-            return "Closes this pane of \(terminal.displayTabTitle) in \(workspace). The tab's other panes stay open."
+            return String(localized: "Closes this pane of \(terminal.displayTabTitle) in \(workspace). The tab's other panes stay open.")
         }
     }
 }

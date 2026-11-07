@@ -229,7 +229,7 @@ final class ChatImageThumbnails {
         } catch let error as ChatImagePreviewError {
             return .failed(error.thumbnailMessage, reachedHost: true)
         } catch {
-            return .failed("Couldn't load this image", reachedHost: false)
+            return .failed(String(localized: "Couldn't load this image"), reachedHost: false)
         }
     }
 }

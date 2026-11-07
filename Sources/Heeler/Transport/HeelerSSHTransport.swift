@@ -801,7 +801,7 @@ actor HeelerSSHTransport: Transport {
             SkillProbe.readFileCommand(quotedPath: quoted))
         guard let content = SkillProbe.documentContent(in: output) else {
             throw TransportError.malformedResponse(
-                "The skill file is gone or unreadable on the Host.")
+                String(localized: "The skill file is gone or unreadable on the Host."))
         }
         return content
     }
@@ -2115,12 +2115,12 @@ actor HeelerSSHTransport: Transport {
         if let error = error as? SSHError,
             case .sftpFailure(let status) = error
         {
-            return "SFTP failed with status \(status)."
+            return String(localized: "SFTP failed with status \(status).")
         }
         if error as? SSHError == .sftpUnavailable {
-            return "SFTP is unavailable."
+            return String(localized: "SFTP is unavailable.")
         }
-        return "The SSH file operation failed."
+        return String(localized: "The SSH file operation failed.")
     }
 
     // MARK: Attachment staging
@@ -3312,7 +3312,7 @@ actor HeelerSSHTransport: Transport {
                 pending.append(chunk)
                 guard pending.count <= Self.maximumResponseBytes else {
                     throw TransportError.malformedResponse(
-                        "events line exceeds \(Self.maximumResponseBytes) bytes")
+                        String(localized: "events line exceeds \(Self.maximumResponseBytes) bytes"))
                 }
                 while let line = Self.takeLine(from: &pending) {
                     if !sawAck {

@@ -32,26 +32,26 @@ final class ChangesStore {
             case .loading, .loaded:
                 nil
             case .notAGitWorkingTree:
-                ("Not a Git Working Tree", ChangesReadError.notAGitWorkingTree.message, "folder.badge.questionmark")
+                (String(localized: "Not a Git Working Tree"), ChangesReadError.notAGitWorkingTree.message, "folder.badge.questionmark")
             case .failed(let message):
-                ("Couldn't Read Changes", message, "exclamationmark.triangle")
+                (String(localized: "Couldn't Read Changes"), message, "exclamationmark.triangle")
             case .gitMissing:
-                ("Git Not Found", ChangesReadError.gitMissing.message, "folder.badge.questionmark")
+                (String(localized: "Git Not Found"), ChangesReadError.gitMissing.message, "folder.badge.questionmark")
             case .gitTooOld(let version):
-                ("Git Version Too Old", ChangesReadError.gitTooOld(version).message, "arrow.up.circle")
+                (String(localized: "Git Version Too Old"), ChangesReadError.gitTooOld(version).message, "arrow.up.circle")
             case .notOwnedByAccount:
-                ("Checkout Ownership Protected", ChangesReadError.notOwnedByAccount.message, "lock.shield")
+                (String(localized: "Checkout Ownership Protected"), ChangesReadError.notOwnedByAccount.message, "lock.shield")
             case .directoryMissing:
-                ("Directory No Longer Exists", ChangesReadError.directoryMissing.message, "folder.badge.questionmark")
+                (String(localized: "Directory No Longer Exists"), ChangesReadError.directoryMissing.message, "folder.badge.questionmark")
             case .incomplete:
-                ("Incomplete Changes", ChangesReadError.incomplete.message, "exclamationmark.triangle")
+                (String(localized: "Incomplete Changes"), ChangesReadError.incomplete.message, "exclamationmark.triangle")
             case .timedOut:
-                ("Reading Changes Timed Out", "The Host took too long to read Changes. Pull to try again.", "clock")
+                ("Reading Changes Timed Out", String(localized: "The Host took too long to read Changes. Pull to try again."), "clock")
             }
         }
     }
 
-    static let cleanMessage = "No uncommitted changes"
+    static let cleanMessage = String(localized: "No uncommitted changes")
 
     private(set) var phase: Phase = .loading
     /// A read is running while content from an earlier read stays on screen.

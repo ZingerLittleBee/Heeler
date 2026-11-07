@@ -21,7 +21,7 @@ extension TransportConnector {
     func connectForDetection(
         settings: SSHTransportSettings
     ) async throws -> any ServerKindDetectionConnection {
-        throw TransportError.hostFeatureUnavailable(feature: "Server Kind detection")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Server Kind detection"))
     }
 
     /// A connector that serves only Herdr TUI Hosts says so.

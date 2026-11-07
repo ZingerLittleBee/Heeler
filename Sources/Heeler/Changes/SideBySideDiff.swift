@@ -22,7 +22,7 @@ struct SideBySideRow: Sendable, Equatable, Identifiable {
         case let (nil, right?):
             right.accessibilityLabel
         case (nil, nil):
-            ""
+            String(localized: "")
         }
     }
 }

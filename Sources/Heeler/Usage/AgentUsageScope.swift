@@ -75,7 +75,7 @@ struct AgentUsageScope: Equatable {
                     isRetryingRefresh: reading.isRetryingRefresh,
                     last30Days: Self.sum((report.programs ?? []).compactMap(\.okTotals?.last30Days))))
             case _ where !reading.isConnected:
-                excluded.append(ExcludedHost(id: reading.id, name: reading.name, reason: "Not connected"))
+                excluded.append(ExcludedHost(id: reading.id, name: reading.name, reason: String(localized: "Not connected")))
             case .idle, .loading:
                 loading.append(reading)
             default:
@@ -105,9 +105,9 @@ struct AgentUsageScope: Equatable {
     var dayNote: String? {
         let zones = timeZones
         if zones.count > 1 {
-            return "Days follow each Host’s time zone (\(zones.joined(separator: ", ")))."
+            return String(localized: "Days follow each Host’s time zone (\(zones.joined(separator: ", "))).")
         }
-        return zones.first.map { "Days shown in \($0)." }
+        return zones.first.map { String(localized: "Days shown in \($0).") }
     }
 
     /// Every program's totals for a range.
@@ -162,12 +162,12 @@ struct AgentUsageScope: Equatable {
     static func reason(for state: AgentUsageStore.State) -> String {
         switch state {
         case .idle, .loading: "Loading…"
-        case .requirement: "Needs the Heeler plugin"
-        case .unsupportedPlatform: "Not supported on Windows"
+        case .requirement: String(localized: "Needs the Heeler plugin")
+        case .unsupportedPlatform: String(localized: "Not supported on Windows")
         case .hostHelper(let need): need.reason
-        case .runtimeMissing: "No Agent activity yet"
-        case .updateRequired: "Update Heeler"
-        case .failed: "Could not read Usage"
+        case .runtimeMissing: String(localized: "No Agent activity yet")
+        case .updateRequired: String(localized: "Update Heeler")
+        case .failed: String(localized: "Could not read Usage")
         case .available: ""
         }
     }

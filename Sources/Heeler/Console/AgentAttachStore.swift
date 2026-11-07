@@ -47,7 +47,7 @@ struct AttachLinkOpenFailure: Identifiable, Equatable {
 
     var id: String { link.id }
     var message: String {
-        "The link to \(link.host) couldn't be opened. You can copy it instead."
+        String(localized: "The link to \(link.host) couldn't be opened. You can copy it instead.")
     }
 }
 

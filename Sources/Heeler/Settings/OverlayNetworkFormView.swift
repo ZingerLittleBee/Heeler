@@ -43,8 +43,8 @@ struct OverlayNetworkFormView: View {
 
     /// The add button's title: what saving starts.
     private var addTitle: String {
-        guard draft.kind == .tailscale else { return "Add and Connect" }
-        return draft.secretUpdate == nil ? "Continue to Sign In" : "Add and Connect"
+        guard draft.kind == .tailscale else { return String(localized: "Add and Connect") }
+        return draft.secretUpdate == nil ? String(localized: "Continue to Sign In") : String(localized: "Add and Connect")
     }
 
     var body: some View {
@@ -59,7 +59,7 @@ struct OverlayNetworkFormView: View {
                 identitySection
                 kindSection
             }
-            .navigationTitle(editing == nil ? "Add Network" : "Edit Network")
+            .navigationTitle(editing == nil ? String(localized: "Add Network") : String(localized: "Edit Network"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -106,13 +106,13 @@ struct OverlayNetworkFormView: View {
             if let editing {
                 LabeledContent("Type", value: editing.kind.displayName)
             }
-            OverlayFormField(title: "Name", prompt: "Optional", text: $draft.name)
+            OverlayFormField(title: String(localized: "Name"), prompt: String(localized: "Optional"), text: $draft.name)
             switch draft.kind {
             case .tailscale, .easytier:
-                OverlayFormField(title: "Device name", prompt: "heeler", text: $draft.hostname)
+                OverlayFormField(title: String(localized: "Device name"), prompt: "heeler", text: $draft.hostname)
             case .zerotier:
                 OverlayFormField(
-                    title: "Network ID", prompt: "Required", text: $draft.networkID,
+                    title: String(localized: "Network ID"), prompt: "Required", text: $draft.networkID,
                     isMonospaced: true)
             }
         } header: {
@@ -155,7 +155,7 @@ struct OverlayNetworkFormView: View {
             }
             if let editing, let nodeID = store.details[editing.id]?.nodeID {
                 Section {
-                    OverlayCopyableRow(title: "Node ID", value: nodeID)
+                    OverlayCopyableRow(title: String(localized: "Node ID"), value: nodeID)
                 } header: {
                     Text("This Device")
                 } footer: {
@@ -180,8 +180,7 @@ struct OverlayNetworkFormView: View {
                         .foregroundStyle(.red)
                 } else if store.zeroTierNodeID == nil {
                     Text(
-                        "Heeler creates this device's node ID when it connects. The network's "
-                            + "screen then shows it, ready to authorize.")
+                        String(localized: "Heeler creates this device's node ID when it connects. The network's screen then shows it, ready to authorize."))
                 }
             }
         case .easytier:
@@ -197,7 +196,7 @@ struct OverlayNetworkFormView: View {
     /// network. Touch and hold forgets it while no network uses it.
     private func zeroTierNodeIDSection(_ nodeID: String) -> some View {
         Section {
-            OverlayCopyableRow(title: "Node ID", value: nodeID)
+            OverlayCopyableRow(title: String(localized: "Node ID"), value: nodeID)
                 .contextMenu {
                     // Text, Text, Image: the menu shows the value as a subtitle.
                     Button {
@@ -219,8 +218,7 @@ struct OverlayNetworkFormView: View {
             Text("This Device")
         } footer: {
             Text(
-                "Authorize it on the network so this device can join. Every ZeroTier network on "
-                    + "this device shares it.")
+                String(localized: "Authorize it on the network so this device can join. Every ZeroTier network on this device shares it."))
         }
         .confirmationDialog(
             "Forget node ID \(nodeID)?", isPresented: $isConfirmingNodeIDForget,
@@ -230,14 +228,13 @@ struct OverlayNetworkFormView: View {
                 do {
                     try store.removeUnusedZeroTierIdentity()
                 } catch {
-                    nodeIDForgetError = "The node ID could not be removed from the Keychain."
+                    nodeIDForgetError = String(localized: "The node ID could not be removed from the Keychain.")
                 }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "This device gets a new one when it next connects a ZeroTier network. An admin "
-                    + "who authorized this one has to authorize the new one.")
+                String(localized: "This device gets a new one when it next connects a ZeroTier network. An admin who authorized this one has to authorize the new one."))
         }
         .alert(
             "Could not forget the node ID",
@@ -254,7 +251,7 @@ struct OverlayNetworkFormView: View {
     @ViewBuilder
     private var easyTierConfigServerSections: some View {
         Section {
-            OverlayFormField(title: "Server", prompt: "Server URL", text: $draft.configServer)
+            OverlayFormField(title: String(localized: "Server"), prompt: "Server URL", text: $draft.configServer)
                 .keyboardType(.URL)
         } header: {
             Text("Config Server")
@@ -269,8 +266,7 @@ struct OverlayNetworkFormView: View {
                     }
                 } else if !draft.configServer.trimmingCharacters(in: .whitespaces).isEmpty {
                     Text(
-                        "Enter a udp://, tcp://, ws://, or wss:// URL ending in your user "
-                            + "name, such as wss://host/user.")
+                        String(localized: "Enter a udp://, tcp://, ws://, or wss:// URL ending in your user name, such as wss://host/user."))
                         .foregroundStyle(.red)
                 } else {
                     Text(EasyTierConfigServerCopy.serverNote)
@@ -279,7 +275,7 @@ struct OverlayNetworkFormView: View {
         }
         Section {
             OverlayCopyableRow(
-                title: "Machine ID", value: draft.machineID.uuidString.lowercased(), isCompact: true)
+                title: String(localized: "Machine ID"), value: draft.machineID.uuidString.lowercased(), isCompact: true)
         } header: {
             Text("This Device")
         } footer: {
@@ -291,7 +287,7 @@ struct OverlayNetworkFormView: View {
             } label: {
                 LabeledContent(
                     "Advanced",
-                    value: draft.requireEncryption ? "Encryption required" : "Encryption not required")
+                    value: draft.requireEncryption ? String(localized: "Encryption required") : String(localized: "Encryption not required"))
             }
         }
     }
@@ -299,7 +295,7 @@ struct OverlayNetworkFormView: View {
     @ViewBuilder
     private var easyTierNetworkSections: some View {
         Section {
-            OverlayFormField(title: "Network name", prompt: "Required", text: $draft.networkName)
+            OverlayFormField(title: String(localized: "Network name"), prompt: "Required", text: $draft.networkName)
             secretField("Secret", prompt: "Required")
             VStack(alignment: .leading, spacing: 4) {
                 Text("Peers")
@@ -322,8 +318,7 @@ struct OverlayNetworkFormView: View {
                     .foregroundStyle(.red)
             } else {
                 Text(
-                    "The same name and secret as on your Mac. Peers are how the two find each "
-                        + "other, such as tcp://public.easytier.top:11010, one per line.")
+                    String(localized: "The same name and secret as on your Mac. Peers are how the two find each other, such as tcp://public.easytier.top:11010, one per line."))
             }
         }
         Section {
@@ -344,12 +339,12 @@ struct OverlayNetworkFormView: View {
     private var tailscaleAdvancedSummary: String {
         var parts: [String] = []
         if !draft.controlURL.trimmingCharacters(in: .whitespaces).isEmpty {
-            parts.append(draft.controlURLValue?.host() ?? "Invalid server")
+            parts.append(draft.controlURLValue?.host() ?? String(localized: "Invalid server"))
         }
         if draft.secretUpdate != nil {
-            parts.append("Auth key")
+            parts.append(String(localized: "Auth key"))
         } else if hasStoredSecret {
-            parts.append("Auth key saved")
+            parts.append(String(localized: "Auth key saved"))
         }
         return parts.isEmpty ? "Optional" : parts.joined(separator: ", ")
     }
@@ -359,10 +354,10 @@ struct OverlayNetworkFormView: View {
         var parts: [String] = []
         let moons = draft.moons.filter { !$0.isBlank }.count
         if moons > 0 {
-            parts.append(moons == 1 ? "1 moon" : "\(moons) moons")
+            parts.append(moons == 1 ? String(localized: "1 moon") : String(localized: "\(moons) moons"))
         }
         if draft.planet != nil {
-            parts.append("Custom planet")
+            parts.append(String(localized: "Custom planet"))
         }
         return parts.isEmpty ? "Optional" : parts.joined(separator: ", ")
     }
@@ -413,7 +408,7 @@ struct OverlayNetworkFormView: View {
             }
         } catch {
             saveError = (error as? OverlayNetworkStoreError)?.message
-                ?? "The network or its secret could not be saved."
+                ?? String(localized: "The network or its secret could not be saved.")
             return
         }
         dismiss()
@@ -422,32 +417,25 @@ struct OverlayNetworkFormView: View {
 
 enum EasyTierConfigServerCopy {
     static let serverNote =
-        "The full URL from the server's operator, ending in your user name. \(trustNote)"
+        String(localized: "The full URL from the server's operator, ending in your user name. \(trustNote)")
 
     static let trustNote =
-        "The server knows the network secrets and decides which peers this device connects to."
+        String(localized: "The server knows the network secrets and decides which peers this device connects to.")
 
     static let machineIDNote =
-        "Assign up to 8 networks to it in the EasyTier console, with different subnets: a Host "
-        + "reaches the one its address or name is on. Heeler only connects out and drops their "
-        + "listeners."
+                String(localized: "Assign up to 8 networks to it in the EasyTier console, with different subnets: a Host reaches the one its address or name is on. Heeler only connects out and drops their listeners.")
 
     static let encryptionOffWarning =
-        "Without it, a server that offers no encryption gets the user name and network secret "
-        + "in clear text: anyone on the network path can read them, change the network the "
-        + "server sends, or pose as the server."
+                String(localized: "Without it, a server that offers no encryption gets the user name and network secret in clear text: anyone on the network path can read them, change the network the server sends, or pose as the server.")
 
     /// The risk of a config server URL's transport, or nil for wss://, the
     /// only one that authenticates the server.
     static func transportWarning(for url: String) -> String? {
         switch URLComponents(string: url)?.scheme?.lowercased() {
         case "ws":
-            return "ws:// sends the user name (the server's token) in clear text when it connects, "
-                + "and nothing verifies the server. Prefer wss://."
+            return String(localized: "ws:// sends the user name (the server's token) in clear text when it connects, and nothing verifies the server. Prefer wss://.")
         case "udp", "tcp":
-            return "udp:// and tcp:// encrypt the session but do not verify the server: someone who "
-                + "can intercept the connection could pose as it and learn the network secret. "
-                + "Prefer wss:// on networks you do not trust."
+                        return String(localized: "udp:// and tcp:// encrypt the session but do not verify the server: someone who can intercept the connection could pose as it and learn the network secret. Prefer wss:// on networks you do not trust.")
         default:
             return nil
         }
@@ -508,9 +496,9 @@ private struct OverlayKindPicker: View {
 
     private static func blurb(_ kind: OverlayKind) -> String {
         switch kind {
-        case .tailscale: "Sign in with your account"
-        case .zerotier: "Join by network ID"
-        case .easytier: "Peers or a config server"
+        case .tailscale: String(localized: "Sign in with your account")
+        case .zerotier: String(localized: "Join by network ID")
+        case .easytier: String(localized: "Peers or a config server")
         }
     }
 }
@@ -553,10 +541,10 @@ private struct ZeroTierAdvancedForm: View {
                     MainActorContent {
                         VStack(alignment: .leading) {
                             OverlayFormField(
-                                title: "World ID", prompt: "10–16 hex digits", text: $moon.worldID,
+                                title: String(localized: "World ID"), prompt: "10–16 hex digits", text: $moon.worldID,
                                 isMonospaced: true)
                             OverlayFormField(
-                                title: "Seed", prompt: "Root node ID", text: $moon.seed,
+                                title: String(localized: "Seed"), prompt: String(localized: "Root node ID"), text: $moon.seed,
                                 isMonospaced: true)
                         }
                     }
@@ -572,13 +560,11 @@ private struct ZeroTierAdvancedForm: View {
             } footer: {
                 if !draft.invalidMoons.isEmpty {
                     Text(
-                        "A moon's world ID is 10 to 16 hexadecimal digits and its seed is a "
-                            + "10-digit node ID; neither may be zero.")
+                        String(localized: "A moon's world ID is 10 to 16 hexadecimal digits and its seed is a 10-digit node ID; neither may be zero."))
                         .foregroundStyle(.red)
                 } else {
                     Text(
-                        "Extra roots, as in zerotier-cli orbit: the moon's world ID and the node ID "
-                            + "of one of its roots.")
+                        String(localized: "Extra roots, as in zerotier-cli orbit: the moon's world ID and the node ID of one of its roots."))
                 }
             }
             planetSection
@@ -615,8 +601,7 @@ private struct ZeroTierAdvancedForm: View {
                     .foregroundStyle(.red)
             } else {
                 Text(
-                    "For a controller on self-hosted roots: the planet file its operator made with "
-                        + "mkworld. Only this network uses it.")
+                    String(localized: "For a controller on self-hosted roots: the planet file its operator made with mkworld. Only this network uses it."))
             }
         }
         .fileImporter(isPresented: $isImportingPlanet, allowedContentTypes: [.data]) { result in
@@ -643,22 +628,19 @@ private struct EasyTierAdvancedForm: View {
     var body: some View {
         Form {
             Section {
-                OverlayFormField(title: "Fixed IPv4", prompt: "DHCP", text: $draft.ipv4)
+                OverlayFormField(title: String(localized: "Fixed IPv4"), prompt: "DHCP", text: $draft.ipv4)
                     .keyboardType(.numbersAndPunctuation)
             } footer: {
                 if !draft.ipv4IsValid {
                     Text(
-                        "A fixed address is a private IPv4 address with a prefix, such as "
-                            + "10.144.144.7/24 (not 0.x, 127.x, or 224 and up).")
+                        String(localized: "A fixed address is a private IPv4 address with a prefix, such as 10.144.144.7/24 (not 0.x, 127.x, or 224 and up)."))
                         .foregroundStyle(.red)
                 } else if draft.ipv4IsHostPrefix {
                     Text(
-                        "EasyTier treats a /32 address as part of its /24. Use the network's own "
-                            + "prefix.")
+                        String(localized: "EasyTier treats a /32 address as part of its /24. Use the network's own prefix."))
                 } else {
                     Text(
-                        "Leave blank to get an address from the network, or enter one with its "
-                            + "prefix, such as 10.144.144.7/24.")
+                        String(localized: "Leave blank to get an address from the network, or enter one with its prefix, such as 10.144.144.7/24."))
                 }
             }
         }
@@ -708,8 +690,7 @@ private struct TailscaleAdvancedForm: View {
             } footer: {
                 if draft.controlURLIsValid {
                     Text(
-                        "Leave blank for a Tailscale account. Enter an https URL to use your own "
-                            + "Headscale server.")
+                        String(localized: "Leave blank for a Tailscale account. Enter an https URL to use your own Headscale server."))
                 } else {
                     Text("Enter an https URL, such as https://headscale.example.com.")
                         .foregroundStyle(.red)

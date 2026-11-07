@@ -262,7 +262,7 @@ struct AgentChatSurfaceView: View {
         }
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
-                title: "Rename Agent",
+                title: String(localized: "Rename Agent"),
                 store: RenameStore(
                     subject: .agent(detectedKind: agent.agent.kind),
                     currentValue: agent.agent.name ?? ""
@@ -274,7 +274,7 @@ struct AgentChatSurfaceView: View {
         }
         .sheet(isPresented: $isRenamingWorkspace) {
             RenameSheetView(
-                title: "Rename Workspace",
+                title: String(localized: "Rename Workspace"),
                 store: RenameStore.workspace(
                     currentLabel: agent.workspaceLabel ?? ""
                 ) { [console, agent] label in
@@ -319,7 +319,7 @@ struct AgentChatSurfaceView: View {
         .onDisappear {
             closer.didLeaveScreen(
                 reportingTo: console.outcomeReporter(
-                    on: agent.hostID, title: "Couldn't Close Agent"))
+                    on: agent.hostID, title: String(localized: "Couldn't Close Agent")))
             // SwiftUI also hands out disappears nobody caused; the router
             // says whether Chat really left.
             stageExit?.cancel()
@@ -866,9 +866,9 @@ struct AgentChatSurfaceView: View {
     /// be: saved entries keep no tool output, and a row expanded before the
     /// transcript opens is read once it does.
     private var missingOutputText: String {
-        guard console.hostStatuses[agent.hostID] == .connected else { return "Output is available when connected." }
+        guard console.hostStatuses[agent.hostID] == .connected else { return String(localized: "Output is available when connected.") }
         if case .unavailable = chat?.conversation.phase { return ChatToolOutputFailure.gone.message }
-        return "Loading output…"
+        return String(localized: "Loading output…")
     }
 
     private var pendingEchoes: [ChatPendingEcho] {

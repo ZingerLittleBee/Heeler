@@ -224,14 +224,13 @@ private struct BlockedDialogCard: View {
         case .grokPermission:
             grokPermission
         case .grokCancelTurn:
-            BlockedCardText("Subagents are still running.")
+            BlockedCardText(String(localized: "Subagents are still running."))
             if let count = dialog.body.first {
                 BlockedCardText(count)
             }
         case .grokFork:
             BlockedCardText(
-                "Either answer forks this conversation and moves Grok Build to the fork. Chat stays here and holds "
-                    + "messages until you switch back with /resume in the terminal.")
+                String(localized: "Either answer forks this conversation and moves Grok Build to the fork. Chat stays here and holds messages until you switch back with /resume in the terminal."))
         case .openCodePermission:
             // The action and its target, then OpenCode's lines about it; a
             // command has only its `$` line, shown as the target instead.
@@ -245,7 +244,7 @@ private struct BlockedDialogCard: View {
                 }
             }
             if let focused = dialog.focus.focusedOrdinal, focused != 1, let option = dialog.option(focused) {
-                BlockedCardText("Selected in the terminal: \(option.label)")
+                BlockedCardText(String(localized: "Selected in the terminal: \(option.label)"))
             }
         case .codexNetwork:
             EmptyView()
@@ -295,7 +294,7 @@ private struct BlockedDialogCard: View {
             Button {
                 perform(.submitSelection(selection))
             } label: {
-                Text(verbatim: dialog.options.first { $0.role == .next }?.label ?? "Next")
+                Text(verbatim: dialog.options.first { $0.role == .next }?.label ?? String(localized: "Next"))
                     .font(.body.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 28)
             }
@@ -404,7 +403,7 @@ private struct BlockedDialogCard: View {
         switch option.role {
         case .decline, .exitProgram: .destructive
         case .approvePersistent: .caution(option.persistenceNote(program: dialog.program))
-        case .approveModeSwitch: .caution("Switches the permission mode.")
+        case .approveModeSwitch: .caution(String(localized: "Switches the permission mode."))
         default: leads ? .primary : .plain
         }
     }
@@ -433,7 +432,7 @@ private struct BlockedDialogCard: View {
             // `None of the above` answers as it is, or with notes.
             if let field = dialog.options.first(where: { $0.role == .otherText }) {
                 VStack(alignment: .leading, spacing: 8) {
-                    BlockedTextField(placeholder: "Add details", text: $text, isFocused: $isTextFocused)
+                    BlockedTextField(placeholder: String(localized: "Add details"), text: $text, isFocused: $isTextFocused)
                     Button {
                         perform(hasText ? .respond(ordinal: field.ordinal, text: text) : .choose(ordinal: field.ordinal))
                     } label: {
@@ -452,7 +451,7 @@ private struct BlockedDialogCard: View {
     private var noteEntry: some View {
         if isAddingNote {
             VStack(alignment: .leading, spacing: 8) {
-                BlockedTextField(placeholder: "Tell Claude what to do", text: $text, isFocused: $isTextFocused)
+                BlockedTextField(placeholder: String(localized: "Tell Claude what to do"), text: $text, isFocused: $isTextFocused)
                 HStack(spacing: 8) {
                     if let allow = dialog.options.first(where: { $0.role == .approve }) {
                         Button("Allow with Note") { perform(.amend(ordinal: allow.ordinal, note: text)) }
@@ -567,7 +566,7 @@ private struct BlockedCollapsedBar: View {
     }
 
     private var title: some View {
-        Text(verbatim: dialog?.cardTitle ?? "Waiting for Input")
+        Text(verbatim: dialog?.cardTitle ?? String(localized: "Waiting for Input"))
             .font(.subheadline.weight(.semibold))
     }
 
@@ -605,18 +604,18 @@ extension DialogOption {
             let prefix = "Approve ", suffix = " for this session"
             let subject =
                 label.hasPrefix(prefix) && label.hasSuffix(suffix) && label.count > prefix.count + suffix.count
-                ? String(label.dropFirst(prefix.count).dropLast(suffix.count)) : "this tool"
-            return "Oh My Pi won't ask again for \(subject) in this session."
+                ? String(label.dropFirst(prefix.count).dropLast(suffix.count)) : String(localized: "this tool")
+            return String(localized: "Oh My Pi won't ask again for \(subject) in this session.")
         case .claude where folded.contains(DialogRowScanner.comparable("always allow access to")):
-            return "Lets Claude work in this folder for the session."
+            return String(localized: "Lets Claude work in this folder for the session.")
         case .grok where folded.contains(DialogRowScanner.comparable("all edits during this session")):
-            return "Grok Build won't ask about edits again in this session."
+            return String(localized: "Grok Build won't ask about edits again in this session.")
         case .grok:
-            return "Grok Build saves this rule for the project and won't ask again."
+            return String(localized: "Grok Build saves this rule for the project and won't ask again.")
         case .claude, .codex, .pi:
-            return "Saves a rule, so this isn't asked again."
+            return String(localized: "Saves a rule, so this isn't asked again.")
         case .opencode:
-            return "Saves an OpenCode rule for this project that can allow more than this request."
+            return String(localized: "Saves an OpenCode rule for this project that can allow more than this request.")
         }
     }
 }
@@ -625,10 +624,10 @@ private extension BlockedDialog {
     var cardTitle: String {
         switch kind {
         case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion:
-            "Question"
-        case .codexAsyncCollapsed: "Questions"
-        case .ompApproval: "Allow \(subject.toolName ?? "Tool")"
-        case .grokCancelTurn: "Subagents Still Running"
+            String(localized: "Question")
+        case .codexAsyncCollapsed: String(localized: "Questions")
+        case .ompApproval: String(localized: "Allow \(subject.toolName ?? String(localized: "Tool"))")
+        case .grokCancelTurn: String(localized: "Subagents Still Running")
         default: title.hasSuffix(":") ? String(title.dropLast()) : title
         }
     }
@@ -647,12 +646,12 @@ private extension BlockedDialog {
     /// dismisses an OpenCode question, as OpenCode's `esc dismiss` says.
     var stopTitle: String {
         switch kind {
-        case .claudeWorkspaceTrust: "Exit Claude Code"
-        case .codexWorkspaceTrust: options.first { $0.role == .decline }?.label ?? "Quit Codex"
-        case .ompApproval, .grokPermission: "Deny"
-        case .openCodePermission: "Reject"
-        case .openCodeQuestion: "Dismiss"
-        default: "Stop"
+        case .claudeWorkspaceTrust: String(localized: "Exit Claude Code")
+        case .codexWorkspaceTrust: options.first { $0.role == .decline }?.label ?? String(localized: "Quit Codex")
+        case .ompApproval, .grokPermission: String(localized: "Deny")
+        case .openCodePermission: String(localized: "Reject")
+        case .openCodeQuestion: String(localized: "Dismiss")
+        default: String(localized: "Stop")
         }
     }
 

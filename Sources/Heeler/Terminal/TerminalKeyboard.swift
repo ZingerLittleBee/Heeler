@@ -74,15 +74,15 @@ enum AgentQuickKey: Hashable {
     var title: String? {
         switch self {
         case .escape: "Esc"
-        case .tab: "Tab"
+        case .tab: String(localized: "Tab")
         case .shiftTab: "⇧Tab"
         case .shiftEnter: "⇧Enter"
         case .enter: "Enter"
         case .backspace: "Backspace"
-        case .home: "Home"
-        case .end: "End"
-        case .insert: "Insert"
-        case .forwardDelete: "Forward Delete"
+        case .home: String(localized: "Home")
+        case .end: String(localized: "End")
+        case .insert: String(localized: "Insert")
+        case .forwardDelete: String(localized: "Forward Delete")
         case .function(let key): key.title
         case .character(let character): character == " " ? "Space" : String(character)
         case .pageUp: "PgUp"
@@ -104,23 +104,23 @@ enum AgentQuickKey: Hashable {
     var accessibilityLabel: String {
         switch self {
         case .escape: "Escape"
-        case .tab: "Tab"
-        case .shiftTab: "Shift Tab"
-        case .shiftEnter: "Shift Enter"
-        case .left: "Left Arrow"
-        case .up: "Up Arrow"
-        case .down: "Down Arrow"
-        case .right: "Right Arrow"
+        case .tab: String(localized: "Tab")
+        case .shiftTab: String(localized: "Shift Tab")
+        case .shiftEnter: String(localized: "Shift Enter")
+        case .left: String(localized: "Left Arrow")
+        case .up: String(localized: "Up Arrow")
+        case .down: String(localized: "Down Arrow")
+        case .right: String(localized: "Right Arrow")
         case .enter: "Enter"
         case .backspace: "Backspace"
-        case .home: "Home"
-        case .end: "End"
-        case .insert: "Insert"
-        case .forwardDelete: "Forward Delete"
+        case .home: String(localized: "Home")
+        case .end: String(localized: "End")
+        case .insert: String(localized: "Insert")
+        case .forwardDelete: String(localized: "Forward Delete")
         case .function(let key): key.title
         case .character(let character): character == " " ? "Space" : String(character)
-        case .pageUp: "Page Up"
-        case .pageDown: "Page Down"
+        case .pageUp: String(localized: "Page Up")
+        case .pageDown: String(localized: "Page Down")
         }
     }
 }

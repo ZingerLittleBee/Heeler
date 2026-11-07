@@ -254,12 +254,12 @@ final class AgentListFieldsEditor {
         case .loaded(let snapshot?):
             drafts[hostID] = kept(snapshot.layout.withHeelerRow(thirdRow))
             syncStates[hostID] = .filled(snapshot.diagnostics.isEmpty
-                ? "Replaced with plugin fields."
+                ? String(localized: "Replaced with plugin fields.")
                 : AgentListFieldsCopy.syncDiagnostics)
         case .loaded(nil):
             drafts[hostID] = kept(AgentRowLayout.heelerDefault.withHeelerRow(thirdRow))
             syncStates[hostID] = .filled(
-                "This Host has no plugin fields snapshot, so Heeler's fallback fields were used.")
+                String(localized: "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
         case .unavailable:
             syncStates[hostID] = .failed("Couldn't reach \(hostName). Rows unchanged.")
         case .loading, nil:
@@ -297,6 +297,6 @@ final class AgentListFieldsEditor {
     private func report(_ error: any Error) {
         errorMessage = error is AgentRowLayoutStoreError
             ? AgentListFieldsCopy.unreadableCatalogEdit
-            : "This layout could not be saved. Use at most 3 rows and 16 fields per row, with valid field names."
+            : String(localized: "This layout could not be saved. Use at most 3 rows and 16 fields per row, with valid field names.")
     }
 }

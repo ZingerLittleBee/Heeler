@@ -16,24 +16,24 @@ enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
 
     var message: String {
         switch self {
-        case .notInstalled: "Usage needs the Host Helper. See this Host's details."
-        case .outdated: "Usage needs a newer Host Helper. Update it from this Host's details."
+        case .notInstalled: String(localized: "Usage needs the Host Helper. See this Host's details.")
+        case .outdated: String(localized: "Usage needs a newer Host Helper. Update it from this Host's details.")
         case .waitingForCore:
-            "The Host Helper has not reached this session's core yet. Start the core if it is not running."
+            String(localized: "The Host Helper has not reached this session's core yet. Start the core if it is not running.")
         case .nodeGone:
-            "The Node.js the Host Helper was set up with has gone from this Host. Repair it from this Host's details."
-        case .notOnWindows: "Usage comes with the Host Helper, which is not available on native Windows yet."
+            String(localized: "The Node.js the Host Helper was set up with has gone from this Host. Repair it from this Host's details.")
+        case .notOnWindows: String(localized: "Usage comes with the Host Helper, which is not available on native Windows yet.")
         }
     }
 
     /// The short line a Host left out of the totals shows.
     var reason: String {
         switch self {
-        case .notInstalled: "Needs the Host Helper"
-        case .outdated: "Update the Host Helper"
-        case .waitingForCore: "Waiting for the core"
-        case .nodeGone: "Repair the Host Helper"
-        case .notOnWindows: "Comes with the Host Helper, not available yet"
+        case .notInstalled: String(localized: "Needs the Host Helper")
+        case .outdated: String(localized: "Update the Host Helper")
+        case .waitingForCore: String(localized: "Waiting for the core")
+        case .nodeGone: String(localized: "Repair the Host Helper")
+        case .notOnWindows: String(localized: "Comes with the Host Helper, not available yet")
         }
     }
 }
@@ -263,18 +263,18 @@ final class AgentUsageStore {
         // it resolved.
         guard let plugin = try await transport.readHeelerPlugin() else {
             return Reading(
-                state: .requirement("Usage needs the Heeler plugin 0.7.0 or newer on this Host."), pluginVersion: nil)
+                state: .requirement(String(localized: "Usage needs the Heeler plugin 0.7.0 or newer on this Host.")), pluginVersion: nil)
         }
         guard let version = plugin.parsedVersion else {
             return Reading(
-                state: .requirement("Could not verify the plugin version. Usage needs plugin 0.7.0 or newer."),
+                state: .requirement(String(localized: "Could not verify the plugin version. Usage needs plugin 0.7.0 or newer.")),
                 pluginVersion: nil)
         }
         let state: State
         if !HeelerPluginFeature.usage.isSupported(by: version) {
             state = .requirement(HeelerPluginFeature.usage.requirementNote(installed: version))
         } else if !plugin.isEnabled {
-            state = .requirement("Enable the Heeler plugin on this Host to read Usage.")
+            state = .requirement(String(localized: "Enable the Heeler plugin on this Host to read Usage."))
         } else if let pluginRoot = plugin.pluginRoot {
             let report = try await transport.readAgentUsage(
                 timeZone: timeZone, claudeLimits: claudeLimits, pluginRoot: pluginRoot)
@@ -325,13 +325,13 @@ final class AgentUsageStore {
     }
 
     nonisolated static let connectionFailureMessage =
-        "Could not read Usage. Check the Host connection and try again."
+        String(localized: "Could not read Usage. Check the Host connection and try again.")
     nonisolated static let pluginFailureMessage =
-        "The Heeler plugin on this Host could not report Usage. Try again, or update the plugin."
+        String(localized: "The Heeler plugin on this Host could not report Usage. Try again, or update the plugin.")
     nonisolated static let helperFailureMessage =
-        "The Host Helper on this Host could not report Usage. Try again, or see this Host's details."
+        String(localized: "The Host Helper on this Host could not report Usage. Try again, or see this Host's details.")
     nonisolated static let timeoutMessage =
-        "The Host took too long to report Usage. Try again in a moment."
+        String(localized: "The Host took too long to report Usage. Try again in a moment.")
 
     /// Polling continues while the shown report is refreshing; a failed
     /// refresh backs off. A Helper that has yet to reach a core is read again

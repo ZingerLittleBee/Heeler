@@ -6,7 +6,7 @@ enum AgentLayoutTokenStyle: Equatable {
 
     var label: String {
         switch self {
-        case .default: "Default"
+        case .default: String(localized: "Default")
         case .secondary: "Secondary"
         }
     }
@@ -22,8 +22,8 @@ enum AgentLayoutTokenStyle: Equatable {
     /// Menu action that switches to the other style.
     var toggleActionTitle: String {
         switch self {
-        case .default: "Secondary Style"
-        case .secondary: "Default Style"
+        case .default: String(localized: "Secondary Style")
+        case .secondary: String(localized: "Default Style")
         }
     }
 
@@ -154,13 +154,13 @@ enum AgentLayoutTokensEditing {
     static func addFieldFooter(rowIndex: Int, side: AgentRowSide = .leading) -> String {
         switch (AgentRowSlot.forRow(rowIndex), side) {
         case (nil, _):
-            ""
+            String(localized: "")
         case (_, .trailing):
-            "These fields end the row on the right. They are Heeler's own; Sync from plugin keeps them."
+            String(localized: "These fields end the row on the right. They are Heeler's own; Sync from plugin keeps them.")
         case (.herdr?, .leading):
-            "This row starts from herdr's sidebar fields; Sync from plugin refills it. Heeler fields are welcome here too."
+            String(localized: "This row starts from herdr's sidebar fields; Sync from plugin refills it. Heeler fields are welcome here too.")
         case (.heeler?, .leading):
-            "This is Heeler's row. Sync from plugin keeps it."
+            String(localized: "This is Heeler's row. Sync from plugin keeps it.")
         }
     }
 
@@ -187,36 +187,35 @@ enum AgentLayoutTokensEditing {
     static func description(for token: AgentRowToken) -> String {
         switch token {
         case .stateIcon:
-            "Status icon. The status_badge field or the Status Ring shows it; it is not offered as a field."
+            String(localized: "Status icon. The status_badge field or the Status Ring shows it; it is not offered as a field.")
         case .stateText:
-            "herdr's status text. Heeler shows the status with the status_badge field or the Status Ring, "
-                + "not in this row; add status to show it as text."
+            String(localized: "herdr's status text. Heeler shows the status with the status_badge field or the Status Ring, not in this row; add status to show it as text.")
         case .workspace:
-            "Workspace or repo folder name"
+            String(localized: "Workspace or repo folder name")
         case .tab:
-            "Tab title"
+            String(localized: "Tab title")
         case .pane:
-            "Pane title"
+            String(localized: "Pane title")
         case .agent:
-            "Agent name"
+            String(localized: "Agent name")
         case .terminalTitle:
-            "Current terminal window title"
+            String(localized: "Current terminal window title")
         case .terminalTitleStripped:
-            "Terminal title without the Agent prefix"
+            String(localized: "Terminal title without the Agent prefix")
         case .host:
-            "Host name"
+            String(localized: "Host name")
         case .status:
-            "Agent Status as text"
+            String(localized: "Agent Status as text")
         case .directory:
-            "Working directory"
+            String(localized: "Working directory")
         case .statusBadge:
-            "Agent Status in its colored capsule"
+            String(localized: "Agent Status in its colored capsule")
         case .changes:
-            "Changes totals of the Agent's Checkout"
+            String(localized: "Changes totals of the Agent's Checkout")
         case .custom:
-            "Plugin field. Values come from herdr plugins and display as plain text."
+            String(localized: "Plugin field. Values come from herdr plugins and display as plain text.")
         case .label:
-            "Terminal label"
+            String(localized: "Terminal label")
         }
     }
 

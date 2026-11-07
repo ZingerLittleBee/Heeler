@@ -14,9 +14,9 @@ enum ConsoleListPresentationMode: String, CaseIterable, Identifiable, Sendable {
     /// Toolbar / picker label for the presentation switcher.
     var title: String {
         switch self {
-        case .flat: "All Agents"
-        case .grouped: "By Host"
-        case .byWorkspace: "By Workspace"
+        case .flat: String(localized: "All Agents")
+        case .grouped: String(localized: "By Host")
+        case .byWorkspace: String(localized: "By Workspace")
         }
     }
 
@@ -55,7 +55,7 @@ struct ConsoleWorkspaceSection: Identifiable, Equatable, Sendable {
     var isNested: Bool { parentID != nil }
     var statusCounts: ConsoleHostAgentStatusCounts { .init(agents: agents) }
     var accessibilityValue: String {
-        let count = agents.count == 1 ? "1 Agent" : "\(agents.count) Agents"
+        let count = agents.count == 1 ? String(localized: "1 Agent") : String(localized: "\(agents.count) Agents")
         return [count, isCollapsed ? "Collapsed" : "Expanded",
                 ConsoleHostSectionHeaderPresentation.statusText(items: statusCounts.items)]
             .compactMap { $0 }.joined(separator: ", ")
@@ -180,7 +180,7 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
     }
 
     var accessibilityValue: String {
-        let count = agents.count == 1 ? "1 Agent" : "\(agents.count) Agents"
+        let count = agents.count == 1 ? String(localized: "1 Agent") : String(localized: "\(agents.count) Agents")
         return [count, isCollapsed ? "Collapsed" : "Expanded",
                 ConsoleHostSectionHeaderPresentation.statusText(
                     items: ConsoleHostAgentStatusCounts(agents: agents).items)]
@@ -426,7 +426,7 @@ final class ConsoleListPresentationStore {
                     ConsoleWorkspaceSection.ID(hostID: host.id, workspaceID: $0)
                 }
                 var section = ConsoleWorkspaceSection(
-                    id: id, title: label ?? (workspaceID.isEmpty ? "Unknown Workspace" : workspaceID),
+                    id: id, title: label ?? (workspaceID.isEmpty ? String(localized: "Unknown Workspace") : workspaceID),
                     hostName: host.hostDisplayName, agents: members(workspaceID),
                     isCollapsed: !isSearching && collapsedIDs.contains(id),
                     parentID: parentID)

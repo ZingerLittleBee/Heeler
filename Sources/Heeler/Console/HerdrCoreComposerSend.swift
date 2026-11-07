@@ -459,31 +459,31 @@ final class HerdrCoreComposerSend {
     // MARK: What the Composer says
 
     private static let coreGone = TransportError.herdrCoreTerminalGone.presentation.message
-    private static let notConnected = "The message could not be sent. Check the connection and retry."
-    private static let noLiveAttach = "The terminal did not connect in time, so nothing was sent. Retry when it shows."
-    private static let noChatViewer = "Heeler couldn't reach the Agent's terminal in time, so nothing was sent. Retry."
+    private static let notConnected = String(localized: "The message could not be sent. Check the connection and retry.")
+    private static let noLiveAttach = String(localized: "The terminal did not connect in time, so nothing was sent. Retry when it shows.")
+    private static let noChatViewer = String(localized: "Heeler couldn't reach the Agent's terminal in time, so nothing was sent. Retry.")
     private static let becameBlocked =
-        "The Agent started asking something before the message was submitted, so nothing was submitted. The text may still be in the Agent's input."
-    private static let noAnswerBeforePaste = "The Host did not answer, so nothing was sent. Check the connection and retry."
+        String(localized: "The Agent started asking something before the message was submitted, so nothing was submitted. The text may still be in the Agent's input.")
+    private static let noAnswerBeforePaste = String(localized: "The Host did not answer, so nothing was sent. Check the connection and retry.")
     private static let lastSendMayRemain =
-        "The last message may still be in the Agent's input, so nothing was sent. Check the terminal, then send again."
-    private static let agentLeft = "The Agent no longer holds this terminal, so nothing was sent."
-    private static let agentEnded = "The Agent has ended, so nothing was sent."
+        String(localized: "The last message may still be in the Agent's input, so nothing was sent. Check the terminal, then send again.")
+    private static let agentLeft = String(localized: "The Agent no longer holds this terminal, so nothing was sent.")
+    private static let agentEnded = String(localized: "The Agent has ended, so nothing was sent.")
     private static let answerTheQuestionFirst =
-        "The Agent is waiting on its question on screen, so nothing was sent. Answer it with the tools keyboard first, then send again."
+        String(localized: "The Agent is waiting on its question on screen, so nothing was sent. Answer it with the tools keyboard first, then send again.")
     private static let holderChangedWhileOpening =
-        "Another process took over the terminal as Heeler reached it, so nothing was sent."
-    private static let notSampledYet = "The Agent is still starting, so nothing was sent. Try again in a moment."
+        String(localized: "Another process took over the terminal as Heeler reached it, so nothing was sent.")
+    private static let notSampledYet = String(localized: "The Agent is still starting, so nothing was sent. Try again in a moment.")
     private static let shellStaysOpen =
-        "This terminal keeps a shell open after the Agent exits, so Send can't tell which would get your message, and nothing was sent. Type it with Direct Input."
-    private static let unknownSubmitKey = "This Terminal's Template names a submit key Heeler cannot press, so nothing was sent."
+        String(localized: "This terminal keeps a shell open after the Agent exits, so Send can't tell which would get your message, and nothing was sent. Type it with Direct Input.")
+    private static let unknownSubmitKey = String(localized: "This Terminal's Template names a submit key Heeler cannot press, so nothing was sent.")
     private static let windowPassed =
-        "The Host answered too slowly to submit safely, so the text stayed in the Agent's input unsubmitted. Finish it in the terminal, or clear it there before sending again."
-    private static let programEnded = "The Agent ended before the message was submitted, so nothing was submitted."
+        String(localized: "The Host answered too slowly to submit safely, so the text stayed in the Agent's input unsubmitted. Finish it in the terminal, or clear it there before sending again.")
+    private static let programEnded = String(localized: "The Agent ended before the message was submitted, so nothing was submitted.")
     private static let submitKeyLost =
-        "The connection changed before the message was submitted, so nothing was submitted. The text may still be in the Agent's input."
+        String(localized: "The connection changed before the message was submitted, so nothing was submitted. The text may still be in the Agent's input.")
     private static let mayRemain =
-        "The Agent left the terminal before the message was submitted, so nothing was submitted. The text may still be in the terminal."
+        String(localized: "The Agent left the terminal before the message was submitted, so nothing was submitted. The text may still be in the terminal.")
     private static let dropped =
-        "The Agent left the terminal before the message was submitted, so nothing was submitted, and the text is no longer in the terminal."
+        String(localized: "The Agent left the terminal before the message was submitted, so nothing was submitted, and the text is no longer in the terminal.")
 }

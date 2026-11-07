@@ -114,7 +114,7 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         _ failure: TransportError, hostName: String, usesHerdrEndpoint: Bool
     ) -> (String, String, Severity, Bool) {
         (
-            "\(hostName): \(failure.presentation(usesHerdrEndpoint: usesHerdrEndpoint).message)",
+            String(localized: "\(hostName): \(failure.presentation(usesHerdrEndpoint: usesHerdrEndpoint).message)"),
             failure.isHostKeySecurityFailure
                 ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill",
             failure.isHostKeySecurityFailure ? .critical : .warning,
@@ -126,7 +126,7 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         _ syncError: String, hostName: String
     ) -> (String, String, Severity, Bool) {
         (
-            "\(hostName): \(syncError)",
+            String(localized: "\(hostName): \(syncError)"),
             "arrow.trianglehead.2.clockwise",
             .warning,
             true
@@ -158,7 +158,7 @@ struct ConsoleHostIssueSummary: Equatable {
         // Loading or out of sync is not "not connected"; say less then.
         title =
             issues.contains(where: \.isConnected)
-            ? "\(issues.count) Hosts not ready" : "\(issues.count) Hosts not connected"
+            ? String(localized: "\(issues.count) Hosts not ready") : String(localized: "\(issues.count) Hosts not connected")
         // One count per status, in the order the worst first appears.
         let ranked = issues.sorted { Self.rank($0.tone) > Self.rank($1.tone) }
         var grouped: [(tone: HostConnectionTone, status: String, count: Int)] = []

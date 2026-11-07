@@ -182,7 +182,7 @@ enum OpenCodeProbe {
                 in: begin.upperBound..<stdout.endIndex)
         else {
             throw TransportError.malformedResponse(
-                "OpenCode's store query stopped before its end (exit status \(exitStatus))")
+                String(localized: "OpenCode's store query stopped before its end (exit status \(exitStatus))"))
         }
         let output = Output(Data(stdout[begin.upperBound..<end.lowerBound]))
 
@@ -219,7 +219,7 @@ enum OpenCodeProbe {
             // wrong, not a conversation too large to read.
             guard output.readerBytes >= outputCap else {
                 throw TransportError.malformedResponse(
-                    "OpenCode's store query printed no exit status (exit status \(exitStatus))")
+                    String(localized: "OpenCode's store query printed no exit status (exit status \(exitStatus))"))
             }
             return .records(output.records(overflow: true))
         }
@@ -396,17 +396,17 @@ enum OpenCodeProbe {
             return .unavailable(.noReader)
         }
         if line.contains("database is locked") || line.contains("database is busy") {
-            throw TransportError.hostStoreUnreadable(detail: "OpenCode's database is busy.")
+            throw TransportError.hostStoreUnreadable(detail: String(localized: "OpenCode's database is busy."))
         }
         if line.contains("unable to open") {
             if walPresent == false {
                 return .unavailable(.storeClosed)
             }
-            throw TransportError.hostStoreUnreadable(detail: "OpenCode's database couldn't be opened.")
+            throw TransportError.hostStoreUnreadable(detail: String(localized: "OpenCode's database couldn't be opened."))
         }
         if line.contains("not a database") {
             throw TransportError.hostStoreUnreadable(
-                detail: "OpenCode's database file isn't one Chat can read.")
+                detail: String(localized: "OpenCode's database file isn't one Chat can read."))
         }
         for prefix in ["no such table: ", "no such column: "] {
             guard let range = line.range(of: prefix) else { continue }

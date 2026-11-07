@@ -96,9 +96,7 @@ struct VoiceInputCustomFieldsSection: View {
         } header: {
             Text("Advanced Request Fields")
         } footer: {
-            Text("Use the service's exact form field names, such as language or languages[]. "
-                + "Multiple values repeat that name. These fields override Prompt and the default response_format=json. "
-                + "File and model cannot be changed here. Use API Key for authentication.")
+            Text(String(localized: "Use the service's exact form field names, such as language or languages[]. Multiple values repeat that name. These fields override Prompt and the default response_format=json. File and model cannot be changed here. Use API Key for authentication."))
         }
     }
 }

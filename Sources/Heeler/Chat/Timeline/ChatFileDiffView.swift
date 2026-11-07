@@ -96,12 +96,12 @@ extension ChatFileChanges {
     /// What shows instead of files when Claude Code says only one thing: it
     /// skipped the diff, or took none and names no file.
     var soleNote: String? {
-        if isSkipped { return "File diff skipped for this git command." }
+        if isSkipped { return String(localized: "File diff skipped for this git command.") }
         guard files.isEmpty, isUnavailable || isShared else { return nil }
         guard isUnavailable else { return Self.sharedNote }
         return moreFiles > 0
-            ? "File diff unavailable for this command; \(Self.count(moreFiles)) changed."
-            : "File diff unavailable for this command."
+            ? String(localized: "File diff unavailable for this command; \(Self.count(moreFiles)) changed.")
+            : String(localized: "File diff unavailable for this command.")
     }
 
     /// The lines under the files: how many more changed, then why the
@@ -112,22 +112,24 @@ extension ChatFileChanges {
         if moreFiles > 0 {
             let more =
                 files.isEmpty
-                ? "\(Self.count(moreFiles)) changed (binary, mode only or too large to show)"
-                : "… \(moreFiles) more \(moreFiles == 1 ? "file" : "files") changed"
-            notes.append(isUnavailable ? more + " (part of the diff is unavailable)" : more)
+                ? String(localized: "\(Self.count(moreFiles)) changed (binary, mode only or too large to show)")
+                : (moreFiles == 1
+                   ? String(localized: "… \(moreFiles) more file changed")
+                   : String(localized: "… \(moreFiles) more files changed"))
+            notes.append(isUnavailable ? more + String(localized: " (part of the diff is unavailable)") : more)
         }
         if movesWorkingTree {
-            notes.append("A git step in this command can move the working tree, so these may be its changes, not edits.")
+            notes.append(String(localized: "A git step in this command can move the working tree, so these may be its changes, not edits."))
         }
         if isShared { notes.append(Self.sharedNote) }
         return notes
     }
 
     static let sharedNote =
-        "Another command ran in this repository at the same time; a change made by either may show under either result."
+        String(localized: "Another command ran in this repository at the same time; a change made by either may show under either result.")
 
     private static func count(_ files: Int) -> String {
-        "\(files) \(files == 1 ? "file" : "files")"
+        files == 1 ? String(localized: "\(files) file") : String(localized: "\(files) files")
     }
 }
 
@@ -239,7 +241,7 @@ private struct ChatFileChangeLine: View {
             }
             .buttonStyle(.plain)
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-            .accessibilityHint(isExpanded ? "Hides the diff" : "Shows the diff")
+            .accessibilityHint(isExpanded ? String(localized: "Hides the diff") : String(localized: "Shows the diff"))
         } else {
             label
                 .accessibilityElement(children: .combine)

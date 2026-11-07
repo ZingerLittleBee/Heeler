@@ -6,7 +6,7 @@ import Foundation
 struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
     static let currentVersion = 1
     /// What a Host's widget says while Usage is off in the app.
-    static let usageOffReason = "Usage is off in Settings."
+    static let usageOffReason = String(localized: "Usage is off in Settings.")
 
     var version = Self.currentVersion
     /// In catalog order.
@@ -175,7 +175,7 @@ struct UsageWidgetScope: Equatable, Sendable {
             title = host.name
         } else {
             hosts = snapshot.hosts
-            title = "All Hosts"
+            title = String(localized: "All Hosts")
         }
         self.hostID = hostID
         included = hosts.filter(\.reports)
@@ -206,13 +206,13 @@ struct UsageWidgetScope: Equatable, Sendable {
     var coverage: String? {
         guard hostID == nil else { return nil }
         let count = included.count + excluded.count
-        return "\(included.count) of \(count) \(count == 1 ? "Host" : "Hosts")"
+        return String(localized: "\(included.count) of \(count) \(count == 1 ? String(localized: "Host") : String(localized: "Hosts"))")
     }
 
     /// The Hosts left out, as All Hosts' large widget names them.
     var excludedNote: String? {
         guard hostID == nil, !excluded.isEmpty else { return nil }
-        return "Not included: \(excluded.map(\.name).formatted(.list(type: .and)))"
+        return String(localized: "Not included: \(excluded.map(\.name).formatted(.list(type: .and)))")
     }
 
     private static func programs(in hosts: [UsageWidgetSnapshot.Host]) -> [Program] {

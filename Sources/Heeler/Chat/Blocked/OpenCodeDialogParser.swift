@@ -22,7 +22,7 @@ enum OpenCodeDialogParser {
             return permission(block, on: screen)
         case "△ Reject permission":
             return unrecognized(
-                block, on: screen, "OpenCode asks what to do differently before it rejects. Answer it in the terminal.")
+                block, on: screen, String(localized: "OpenCode asks what to do differently before it rejects. Answer it in the terminal."))
         case "Questions":
             return question(block, on: screen)
         default:
@@ -50,7 +50,7 @@ enum OpenCodeDialogParser {
     /// `$ git status` or `◉ <description>` line tells one request from the
     /// next.
     private static func permission(_ block: OpenCodeBlock, on screen: ANSIScreen) -> DialogParseResult {
-        let layout = "Heeler doesn't know this permission's layout. Answer it with these keys or in the terminal."
+        let layout = String(localized: "Heeler doesn't know this permission's layout. Answer it with these keys or in the terminal.")
         let sections = block.sections
         guard let optionsIndex = sections.firstIndex(where: { $0.first?.text.hasPrefix(allowOnce) == true }),
             optionsIndex > 0, let optionsLine = sections[optionsIndex].first,
@@ -155,7 +155,7 @@ enum OpenCodeDialogParser {
     /// question `enter toggle`, and typing an answer `esc close`; those
     /// stay in the terminal.
     private static func question(_ block: OpenCodeBlock, on screen: ANSIScreen) -> DialogParseResult {
-        let layout = "Heeler answers only OpenCode's single questions. Answer this one in the terminal."
+        let layout = String(localized: "Heeler answers only OpenCode's single questions. Answer this one in the terminal.")
         let sections = block.sections
         guard sections.count >= 4, let footer = sections.last, footer.count == 1,
             DialogRowScanner.comparable(footer[0].text) == DialogRowScanner.comparable(singleQuestionFooter),

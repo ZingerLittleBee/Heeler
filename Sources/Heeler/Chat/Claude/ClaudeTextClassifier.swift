@@ -52,6 +52,7 @@ enum ClaudeUserText: Sendable, Equatable {
         "[Tool call did not complete:",
         "[Tool call interrupted:",
         "[Tool call result not in this copy:",
+        // Claude Code's own English transcripts; these are matched, never shown.
         "The user doesn't want to take this action right now.",
         "[Tool call skipped:",
         "[Tool call not completed:",
@@ -66,6 +67,7 @@ enum ClaudeUserText: Sendable, Equatable {
     /// captured live). The tagged blocks follow, then advice to the model.
     static let peerMessageHeaders = [
         "Another Claude session sent a message:",
+        // Claude Code's own English transcripts; these are matched, never shown.
         "Another Claude session sent a message while you were working:",
         "A peer session sent a message while you were working:",
     ]

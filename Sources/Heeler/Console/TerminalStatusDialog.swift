@@ -38,13 +38,13 @@ struct TerminalStatusPresentation: Equatable {
 
     static let connecting = TerminalStatusPresentation(
         kind: .connecting,
-        title: "Connecting…",
+        title: String(localized: "Connecting…"),
         message: nil,
         dimsBackground: false)
 
     static let reconnecting = TerminalStatusPresentation(
         kind: .connecting,
-        title: "Reconnecting…",
+        title: String(localized: "Reconnecting…"),
         message: nil,
         dimsBackground: false)
 
@@ -52,27 +52,27 @@ struct TerminalStatusPresentation: Equatable {
     /// comes back on its own.
     static let restarting = TerminalStatusPresentation(
         kind: .connecting,
-        title: "Restarting…",
-        message: "The program was lost. A new shell takes its place in a moment.",
+        title: String(localized: "Restarting…"),
+        message: String(localized: "The program was lost. A new shell takes its place in a moment."),
         dimsBackground: false)
 
     static let finished = TerminalStatusPresentation(
         kind: .finished,
-        title: "Terminal Ended",
-        message: "Its program exited, so it will not come back.",
+        title: String(localized: "Terminal Ended"),
+        message: String(localized: "Its program exited, so it will not come back."),
         dimsBackground: true)
 
     static func finishedMessage(exitCode: Int) -> String {
-        "Its program exited with code \(exitCode), so it will not come back."
+        String(localized: "Its program exited with code \(exitCode), so it will not come back.")
     }
 
     /// Why a terminal ended when the Host moved on to another core.
-    static let coreGoneMessage = "This Terminal belongs to a core that is gone. Open it again from the list."
+    static let coreGoneMessage = String(localized: "This Terminal belongs to a core that is gone. Open it again from the list.")
 
     static func ended(message: String) -> TerminalStatusPresentation {
         TerminalStatusPresentation(
             kind: .ended,
-            title: "Session Ended",
+            title: String(localized: "Session Ended"),
             message: message,
             dimsBackground: true)
     }
@@ -249,8 +249,8 @@ extension TerminalStatusDialog where Actions == EmptyView {
         palette.background
         TerminalStatusDialog(
             glyph: .symbol("cable.connector.slash"),
-            title: "Session Ended",
-            message: "The session ended.",
+            title: String(localized: "Session Ended"),
+            message: String(localized: "The session ended."),
             palette: palette
         ) {
             Button("Reattach") {}
@@ -264,6 +264,6 @@ extension TerminalStatusDialog where Actions == EmptyView {
     ZStack {
         palette.background
         TerminalStatusDialog(
-            glyph: .progress, title: "Connecting…", palette: palette, dimsBackground: false)
+            glyph: .progress, title: String(localized: "Connecting…"), palette: palette, dimsBackground: false)
     }
 }

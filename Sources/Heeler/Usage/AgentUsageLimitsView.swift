@@ -232,8 +232,8 @@ struct AgentUsageLimitsView: View {
     }
 
     private var retrySummary: String {
-        guard let retry = date(limits.retryAt) else { return "Waiting to retry" }
-        return "Retry after \(timestamp(retry))"
+        guard let retry = date(limits.retryAt) else { return String(localized: "Waiting to retry") }
+        return String(localized: "Retry after \(timestamp(retry))")
     }
 
     private var programName: String { AgentUsageReport.Program.displayName(for: program) }
@@ -252,11 +252,10 @@ struct AgentUsageLimitsView: View {
         case "notSignedIn": return "Sign in to \(programName) on this Host to read Usage Limits."
         case "noPlanLimits": return "This sign-in has no plan Usage Limits."
         case "keychainUnavailable":
-            return "\(programName) could not use this Mac’s keychain. Start herdr from a terminal on the Mac, then refresh."
+            return String(localized: "\(programName) could not use this Mac’s keychain. Start herdr from a terminal on the Mac, then refresh.")
         case AgentUsageReport.Program.UsageLimits.keychainNeedsUserLogin:
-            return "\(programName)’s Usage Limits need your own login on this Mac. "
-                + "The Host Helper and SSH cannot reach its login keychain."
-        default: return "Usage Limits could not be read. Try refreshing."
+            return String(localized: "\(programName)’s Usage Limits need your own login on this Mac. The Host Helper and SSH cannot reach its login keychain.")
+        default: return String(localized: "Usage Limits could not be read. Try refreshing.")
         }
     }
 
@@ -267,9 +266,9 @@ struct AgentUsageLimitsView: View {
         relative.unitsStyle = .full
         let age = relative.localizedString(for: observed, relativeTo: now)
         if limits.source == "lastSession" {
-            return "Last session · as of \(timestamp(observed)) (\(age))"
+            return String(localized: "Last session · as of \(timestamp(observed)) (\(age))")
         }
-        return "From \(programName) · updated \(age)"
+        return String(localized: "From \(programName) · updated \(age)")
     }
 
     private func timestamp(_ value: Date) -> String {

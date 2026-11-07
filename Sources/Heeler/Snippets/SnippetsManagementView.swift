@@ -14,7 +14,7 @@ struct SnippetsManagementView: View {
             list
                 .navigationTitle("Snippets")
                 .navigationBarTitleDisplayMode(.inline)
-                .searchable(text: $query, prompt: "Search Snippets")
+                .searchable(text: $query, prompt: String(localized: "Search Snippets"))
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button("New Snippet", systemImage: "plus") {
@@ -36,8 +36,7 @@ struct SnippetsManagementView: View {
                 Label("Snippets Unavailable", systemImage: "exclamationmark.triangle")
             } description: {
                 Text(
-                    "The saved Snippets could not be read. They have been left untouched "
-                        + "rather than overwritten, so nothing is lost.")
+                    String(localized: "The saved Snippets could not be read. They have been left untouched rather than overwritten, so nothing is lost."))
             }
         } else if store.snippets.isEmpty {
             ContentUnavailableView {
@@ -158,7 +157,7 @@ struct SnippetEditorView: View {
                 }
             }
         }
-        .navigationTitle(isNew ? "New Snippet" : "Edit Snippet")
+        .navigationTitle(isNew ? String(localized: "New Snippet") : String(localized: "Edit Snippet"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -197,18 +196,17 @@ struct SnippetEditorView: View {
     private static func message(for error: any Error) -> String {
         switch error {
         case SnippetValidationError.emptyBody:
-            "A Snippet needs some text."
+            String(localized: "A Snippet needs some text.")
         case SnippetValidationError.bodyTooLong(let limit):
-            "A Snippet can hold at most \(limit) characters."
+            String(localized: "A Snippet can hold at most \(limit) characters.")
         case SnippetValidationError.unsupportedControlCharacters:
             // Refused here rather than at send time, where the user could no
             // longer do anything about it.
-            "This text contains control characters a terminal would read as "
-                + "commands. Remove them and try again."
+            String(localized: "This text contains control characters a terminal would read as commands. Remove them and try again.")
         case SnippetStoreError.catalogUnreadable:
-            "The saved Snippets could not be read, so nothing was changed."
+            String(localized: "The saved Snippets could not be read, so nothing was changed.")
         default:
-            "The Snippet could not be saved."
+            String(localized: "The Snippet could not be saved.")
         }
     }
 }

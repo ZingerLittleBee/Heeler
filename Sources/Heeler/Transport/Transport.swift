@@ -360,8 +360,8 @@ enum SupportedAgentKind: String, CaseIterable, Identifiable, Sendable, Equatable
     var displayName: String {
         switch self {
         case .pi: "Pi"
-        case .claude: "Claude Code"
-        case .codex: "Codex"
+        case .claude: String(localized: "Claude Code")
+        case .codex: String(localized: "Codex")
         case .gemini: "Gemini CLI"
         case .cursor: "Cursor Agent"
         case .devin: "Devin CLI"
@@ -369,13 +369,13 @@ enum SupportedAgentKind: String, CaseIterable, Identifiable, Sendable, Equatable
         case .cline: "Cline"
         case .omp: "OMP"
         case .mastracode: "Mastra Code"
-        case .opencode: "OpenCode"
+        case .opencode: String(localized: "OpenCode")
         case .copilot: "GitHub Copilot CLI"
         case .kimi: "Kimi CLI"
         case .kiro: "Kiro CLI"
         case .droid: "Droid"
         case .amp: "Amp"
-        case .grok: "Grok Build"
+        case .grok: String(localized: "Grok Build")
         case .hermes: "Hermes Agent"
         case .kilo: "Kilo Code"
         case .qodercli: "Qoder CLI"

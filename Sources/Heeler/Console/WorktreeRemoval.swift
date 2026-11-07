@@ -90,25 +90,25 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
     var message: String {
         switch self {
         case .staleIdentity:
-            "This is no longer the same linked worktree. Nothing was removed."
+            String(localized: "This is no longer the same linked worktree. Nothing was removed.")
         case .alreadyInProgress:
-            "This worktree already has a removal in progress."
+            String(localized: "This worktree already has a removal in progress.")
         case .outcomeUnconfirmed:
-            "The Host did not confirm whether removal completed. Close this sheet, wait for the Console to refresh, then reopen Worktree Details."
+            String(localized: "The Host did not confirm whether removal completed. Close this sheet, wait for the Console to refresh, then reopen Worktree Details.")
         case .terminalsNotEnded:
-            "A Terminal in this worktree could not be confirmed ended, so the checkout was not removed. Others may have ended. Check the Host, then try again."
+            String(localized: "A Terminal in this worktree could not be confirmed ended, so the checkout was not removed. Others may have ended. Check the Host, then try again.")
         case .changedSinceConfirmation:
-            "This worktree changed since you confirmed, and nothing was removed. Removing it again deletes what it holds now."
+            String(localized: "This worktree changed since you confirmed, and nothing was removed. Removing it again deletes what it holds now.")
         case .changedWhileTerminalsEnded:
-            "The worktree's Terminals have ended, but it changed since you confirmed, so the checkout was not removed. Removing it again deletes what it holds now."
+            String(localized: "The worktree's Terminals have ended, but it changed since you confirmed, so the checkout was not removed. Removing it again deletes what it holds now.")
         case .riskUnread(let reason):
-            "git could not read this worktree, so this attempt ended no Terminal and did not remove the checkout: \(reason)"
+            String(localized: "git could not read this worktree, so this attempt ended no Terminal and did not remove the checkout: \(reason)")
         case .connectionFailedBeforeEnding:
-            "The connection to the Host failed before any Terminal ended, so nothing was removed. Try again once the Host is connected."
+            String(localized: "The connection to the Host failed before any Terminal ended, so nothing was removed. Try again once the Host is connected.")
         case .removeRefused(let reason):
-            "The worktree's Terminals have ended, but git did not remove the checkout: \(reason)"
+            String(localized: "The worktree's Terminals have ended, but git did not remove the checkout: \(reason)")
         case .removeUnconfirmed(let path):
-            "The worktree's Terminals have ended, but the Host did not confirm the removal. Check whether \(path) is still on the Host before trying again."
+            String(localized: "The worktree's Terminals have ended, but the Host did not confirm the removal. Check whether \(path) is still on the Host before trying again.")
         }
     }
 }
@@ -147,7 +147,7 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         otherWorkspaces: [String] = []
     ) -> WorktreeRemovalConfirmation {
         var sentences = [
-            "This deletes \(request.identity.checkoutPath) and closes the whole workspace, ending every Agent and closing every Pane in it."
+            String(localized: "This deletes \(request.identity.checkoutPath) and closes the whole workspace, ending every Agent and closing every Pane in it.")
         ]
         switch branch {
         case .named(let name):
@@ -155,25 +155,25 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         case .detached:
             break
         case .unavailable:
-            sentences.append("Any local branch is kept.")
+            sentences.append(String(localized: "Any local branch is kept."))
         }
         if hasWorkingAgent {
-            sentences.append("An Agent is still working in this worktree.")
+            sentences.append(String(localized: "An Agent is still working in this worktree."))
         }
         if risk?.hasChanges == true {
-            sentences.append("Its uncommitted changes will be lost.")
+            sentences.append(String(localized: "Its uncommitted changes will be lost."))
         }
         if risk?.hasSubmodules == true {
-            sentences.append("Its submodules go with it, with any commits in them that were not pushed.")
+            sentences.append(String(localized: "Its submodules go with it, with any commits in them that were not pushed."))
         }
         if let names = otherWorkspaces.first.map({ _ in otherWorkspaces.joined(separator: ", ") }) {
             sentences.append(
                 otherWorkspaces.count == 1
-                    ? "The workspace \(names) also uses this checkout. Its Terminals keep running in the deleted folder, so close them first."
-                    : "The workspaces \(names) also use this checkout. Their Terminals keep running in the deleted folder, so close them first."
+                    ? String(localized: "The workspace \(names) also uses this checkout. Its Terminals keep running in the deleted folder, so close them first.")
+                    : String(localized: "The workspaces \(names) also use this checkout. Their Terminals keep running in the deleted folder, so close them first.")
             )
         }
-        sentences.append("This can't be undone.")
+        sentences.append(String(localized: "This can't be undone."))
         return WorktreeRemovalConfirmation(
             request: WorktreeRemovalRequest(
                 id: request.id, identity: request.identity, toldRisk: risk),
@@ -198,7 +198,7 @@ struct WorktreeRemovalRefusal {
     /// git's message ignoring case (`is_dirty_worktree_remove_error`), and so
     /// does this.
     private static let submodulesRefusal =
-        "working trees containing submodules cannot be moved or removed"
+        String(localized: "working trees containing submodules cannot be moved or removed")
 
     /// The endpoint overrides the Host's session, as it does for API requests.
     init(
@@ -218,17 +218,17 @@ struct WorktreeRemovalRefusal {
                 code: code, serverMessage: message,
                 request: request, sessionName: sessionName, endpoint: endpoint)
         case TransportError.sshUnreachable:
-            self.init(message: "The Host is not connected.")
+            self.init(message: String(localized: "The Host is not connected."))
         case TransportError.timedOut:
-            self.init(message: "The Host did not answer in time.")
+            self.init(message: String(localized: "The Host did not answer in time."))
         case TransportError.cancelled:
-            self.init(message: "Worktree removal was cancelled.")
+            self.init(message: String(localized: "Worktree removal was cancelled."))
         case TransportError.herdrCoreTerminalGone:
             self.init(message: TransportError.herdrCoreTerminalGone.presentation.message)
         case let transport as TransportError:
-            self.init(message: "Removing the worktree failed. \(transport.presentation.message)")
+            self.init(message: String(localized: "Removing the worktree failed. \(transport.presentation.message)"))
         default:
-            self.init(message: "Removing the worktree failed. \(error.localizedDescription)")
+            self.init(message: String(localized: "Removing the worktree failed. \(error.localizedDescription)"))
         }
     }
 
@@ -263,12 +263,12 @@ struct WorktreeRemovalRefusal {
             }
         case Self.forceRequiredCode:
             self.init(
-                message: "herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry.",
+                message: String(localized: "herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry."),
                 offersChanges: true)
         case "not_linked_worktree":
-            self.init(message: "herdr couldn't remove this worktree because the workspace is not a linked worktree.")
+            self.init(message: String(localized: "herdr couldn't remove this worktree because the workspace is not a linked worktree."))
         case "workspace_not_found":
-            self.init(message: "herdr couldn't remove this worktree because the workspace is no longer on the Host.")
+            self.init(message: String(localized: "herdr couldn't remove this worktree because the workspace is no longer on the Host."))
         default:
             self.init(message: "herdr couldn't remove this worktree: \(serverMessage)")
         }

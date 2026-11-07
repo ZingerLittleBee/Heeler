@@ -41,7 +41,7 @@ struct TerminalThemePickerView: View {
             }
         }
         .readableColumnPage()
-        .navigationTitle(scheme == .dark ? "Dark Mode Theme" : "Light Mode Theme")
+        .navigationTitle(scheme == .dark ? String(localized: "Dark Mode Theme") : String(localized: "Light Mode Theme"))
         .navigationBarTitleDisplayMode(.inline)
     }
 

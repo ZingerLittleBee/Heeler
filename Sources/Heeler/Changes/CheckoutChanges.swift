@@ -57,7 +57,7 @@ enum ChangesFileGroup: CaseIterable, Sendable {
         switch self {
         case .conflicts: "Conflicts"
         case .staged: "Staged"
-        case .changes: "Changes"
+        case .changes: String(localized: "Changes")
         case .untracked: "Untracked"
         }
     }
@@ -121,7 +121,7 @@ struct LatestCommit: Sendable, Equatable {
     /// A relative age computed on the device. A timestamp ahead of the
     /// device clock reads as "just now" rather than as a future time.
     func age(relativeTo now: Date, locale: Locale = .current) -> String {
-        guard committedAt < now.addingTimeInterval(-59) else { return "just now" }
+        guard committedAt < now.addingTimeInterval(-59) else { return String(localized: "just now") }
         let formatter = RelativeDateTimeFormatter()
         formatter.locale = locale
         formatter.unitsStyle = .full
@@ -179,7 +179,7 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
             switch self {
             case .staged: "Staged"
             case .unstaged: "Unstaged"
-            case .both: "Staged and unstaged"
+            case .both: String(localized: "Staged and unstaged")
             }
         }
     }
@@ -244,7 +244,7 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
         guard let displayOriginalPath else { return directory.isEmpty ? nil : directory }
         let original = Self.split(displayOriginalPath)
         if original.name == fileName, !original.directory.isEmpty, !directory.isEmpty {
-            return "\(original.directory) → \(directory)"
+            return String(localized: "\(original.directory) → \(directory)")
         }
         let source = original.directory == directory ? original.name : displayOriginalPath
         return (["From \(source)"] + (directory.isEmpty ? [] : [directory]))
@@ -298,21 +298,21 @@ enum ChangesReadError: Error, Sendable, Equatable {
     var message: String {
         switch self {
         case .unavailable:
-            "This connection can't read Changes."
+            String(localized: "This connection can't read Changes.")
         case .notAGitWorkingTree:
-            "This directory isn't inside a git working tree."
+            String(localized: "This directory isn't inside a git working tree.")
         case .incomplete:
-            "The Host's reply ended early, so these Changes may be incomplete."
+            String(localized: "The Host's reply ended early, so these Changes may be incomplete.")
         case .gitFailed(let line):
             line
         case .gitMissing:
-            "Git couldn't be run on this Host. Install git and make it available to the SSH account."
+            String(localized: "Git couldn't be run on this Host. Install git and make it available to the SSH account.")
         case .gitTooOld(let version):
-            "This Host has git \(version). Changes requires git 2.17 or later."
+            String(localized: "This Host has git \(version). Changes requires git 2.17 or later.")
         case .notOwnedByAccount:
-            "Git's ownership protection refused this Checkout because it belongs to another user account on the Host. Heeler doesn't bypass that protection."
+            String(localized: "Git's ownership protection refused this Checkout because it belongs to another user account on the Host. Heeler doesn't bypass that protection.")
         case .directoryMissing:
-            "This directory no longer exists on the Host."
+            String(localized: "This directory no longer exists on the Host.")
         }
     }
 }
@@ -325,8 +325,8 @@ extension CheckoutChanges {
     func accessibilitySummary(relativeTo now: Date, locale: Locale = .current) -> String {
         var sentences = [
             checkout.isLinkedWorktree
-                ? "Checkout \(checkout.displayPath), linked Worktree"
-                : "Checkout \(checkout.displayPath)"
+                ? String(localized: "Checkout \(checkout.displayPath), linked Worktree")
+                : String(localized: "Checkout \(checkout.displayPath)")
         ]
         switch head.branch {
         case .named(let name):
@@ -336,9 +336,9 @@ extension CheckoutChanges {
         }
         if let latest = head.latestCommit {
             sentences.append(
-                "Latest commit: \(latest.subject), \(latest.age(relativeTo: now, locale: locale))")
+                String(localized: "Latest commit: \(latest.subject), \(latest.age(relativeTo: now, locale: locale))"))
         }
-        if head.isUnborn { sentences.append("No commits yet") }
+        if head.isUnborn { sentences.append(String(localized: "No commits yet")) }
         if let upstream = head.upstream { sentences.append(upstream.accessibilitySummary) }
         sentences.append(totals.accessibilitySummary(statusTruncated: isStatusTruncated))
         return sentences.map { "\($0)." }.joined(separator: " ")
@@ -353,8 +353,8 @@ enum LineCounts: Sendable, Equatable {
     /// Also used by the too-large diff state, without depending on a diff model.
     var summary: String {
         switch self {
-        case .lines(let added, let removed): "+\(added.formatted()) −\(removed.formatted()) lines"
-        case .binary: "Binary"
+        case .lines(let added, let removed): String(localized: "+\(added.formatted()) −\(removed.formatted()) lines")
+        case .binary: String(localized: "Binary")
         }
     }
 
@@ -391,9 +391,9 @@ struct ChangesTotals: Sendable, Equatable {
     func accessibilitySummary(statusTruncated: Bool) -> String {
         let lines = linesAreAvailable
             ? (linesAreComplete ? "" : "At least ")
-                + LineCounts.lines(added: added, removed: removed).accessibilityLabel + " in tracked files"
-            : "Line counts unavailable"
-        return "\(spokenFiles(statusTruncated: statusTruncated)). \(lines). "
+                + LineCounts.lines(added: added, removed: removed).accessibilityLabel + String(localized: " in tracked files")
+            : String(localized: "Line counts unavailable")
+        return String(localized: "\(spokenFiles(statusTruncated: statusTruncated)). \(lines). ")
             + spokenUntracked(statusTruncated: statusTruncated)
     }
 
@@ -408,7 +408,7 @@ struct ChangesTotals: Sendable, Equatable {
 
     func spokenUntracked(statusTruncated: Bool) -> String {
         guard statusTruncated else { return untrackedSummary }
-        return untrackedItems > 0 ? "more than " + untrackedSummary : "untracked items not counted"
+        return untrackedItems > 0 ? "more than " + untrackedSummary : String(localized: "untracked items not counted")
     }
 }
 
@@ -426,9 +426,9 @@ struct CheckoutUpstream: Sendable, Equatable {
     var summary: String {
         switch state {
         case .tracking(let ahead, let behind):
-            "\(name): \(ahead.formatted()) ahead, \(behind.formatted()) behind"
-        case .deleted: "Upstream \(name) was deleted"
-        case .unknown: "Upstream \(name), comparison unavailable"
+            String(localized: "\(name): \(ahead.formatted()) ahead, \(behind.formatted()) behind")
+        case .deleted: String(localized: "Upstream \(name) was deleted")
+        case .unknown: String(localized: "Upstream \(name), comparison unavailable")
         }
     }
 

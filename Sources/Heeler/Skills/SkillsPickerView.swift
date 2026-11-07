@@ -22,7 +22,7 @@ struct SkillsPickerView: View {
             content
                 .navigationTitle("Skills")
                 .navigationBarTitleDisplayMode(.inline)
-                .searchable(text: $query, prompt: "Search Skills")
+                .searchable(text: $query, prompt: String(localized: "Search Skills"))
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") { dismiss() }

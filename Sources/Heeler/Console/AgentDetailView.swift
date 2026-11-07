@@ -684,7 +684,7 @@ struct AgentDetailView: View {
                 shellRoute?.terminal.id == route.terminal.id && isVisible()
             },
             keyboardHandoff: keyboardHandoff,
-            backTitle: "Back to Agent",
+            backTitle: String(localized: "Back to Agent"),
             onBack: { shellRoute = nil })
         // A pushed screen takes the stack's environment, not this detail's,
         // and the Console sets Back inside the stack: without this the
@@ -730,7 +730,7 @@ struct AgentDetailView: View {
                 }
                 guard let target = createdTerminal.resolve(in: console.terminals, hostID: agent.hostID) else {
                     keyboardHandoff.cancelShellTerminal()
-                    terminalOpenFailure = "The terminal was created, but its Workspace hasn't refreshed yet. Try Open Terminal again to refresh it."
+                    terminalOpenFailure = String(localized: "The terminal was created, but its Workspace hasn't refreshed yet. Try Open Terminal again to refresh it.")
                     return
                 }
                 if isVisible() { showWorkspaceTerminal(target) }

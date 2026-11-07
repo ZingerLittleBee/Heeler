@@ -7,9 +7,9 @@ struct ConsoleEmptyDetailPresentation: Equatable {
         var id: Self { self }
         var title: String {
             switch self {
-            case .showAgents: "Show Agents"
-            case .newAgent: "New Agent"
-            case .hosts: "Add Host"
+            case .showAgents: String(localized: "Show Agents")
+            case .newAgent: String(localized: "New Agent")
+            case .hosts: String(localized: "Add Host")
             }
         }
         var systemImage: String {
@@ -50,28 +50,28 @@ struct ConsoleEmptyDetailPresentation: Equatable {
         canStartAgent = hasHosts
         self.listsTerminals = listsTerminals
         if listsTerminals {
-            title = "No Terminal Selected"
+            title = String(localized: "No Terminal Selected")
             systemImage = "terminal"
             message = hasHosts
-                ? (offersNewItem ? "Choose a terminal or open a new one." : "Choose a terminal.")
-                : "Add a Host to open its terminals."
+                ? (offersNewItem ? String(localized: "Choose a terminal or open a new one.") : String(localized: "Choose a terminal."))
+                : String(localized: "Add a Host to open its terminals.")
         } else {
-            title = "No Agent Selected"
+            title = String(localized: "No Agent Selected")
             systemImage = "rectangle.on.rectangle"
             message = hasHosts
                 ? (offersNewItem
-                    ? "Choose an Agent or start a new one to view its live terminal."
-                    : "Choose an Agent to view its live terminal.")
-                : "Add a Host to start an Agent and view its live terminal."
+                    ? String(localized: "Choose an Agent or start a new one to view its live terminal.")
+                    : String(localized: "Choose an Agent to view its live terminal."))
+                : String(localized: "Add a Host to start an Agent and view its live terminal.")
         }
     }
 
     func title(for action: Action) -> String {
         guard listsTerminals else { return action.title }
         switch action {
-        case .showAgents: return "Show Terminals"
-        case .newAgent: return "New Terminal"
-        case .hosts: return "Add Host"
+        case .showAgents: return String(localized: "Show Terminals")
+        case .newAgent: return String(localized: "New Terminal")
+        case .hosts: return String(localized: "Add Host")
         }
     }
 

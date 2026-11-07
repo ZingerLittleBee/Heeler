@@ -83,15 +83,13 @@ struct HostRouteFields: View {
         let credentialRequirement =
             switch authMethod {
             case .deviceKey:
-                "Both machines must authorize the Device Key."
+                String(localized: "Both machines must authorize the Device Key.")
             case .rsaKey:
-                "Both machines must authorize the RSA Key."
+                String(localized: "Both machines must authorize the RSA Key.")
             case .password:
-                "Both machines must accept the same password; separate passwords are not supported."
+                String(localized: "Both machines must accept the same password; separate passwords are not supported.")
             }
-        return "The Host's Address and Port are resolved from the Jump Host, usually through "
-            + "a loopback-only reverse tunnel. \(credentialRequirement) You confirm each "
-            + "machine's host key fingerprint independently on first connect."
+                return String(localized: "The Host's Address and Port are resolved from the Jump Host, usually through a loopback-only reverse tunnel. \(credentialRequirement) You confirm each machine's host key fingerprint independently on first connect.")
     }
 
     /// Under the network: pick the first hop's address (the Host's, or the
@@ -164,21 +162,19 @@ struct HostRouteFields: View {
 
     private func networkFooter(hasNetworks: Bool, selectionIsMissing: Bool) -> String {
         if selectionIsMissing {
-            return "This route's overlay network was removed. Choose another network or Direct."
+            return String(localized: "This route's overlay network was removed. Choose another network or Direct.")
         }
         guard route.overlayNetworkID != nil else {
             return hasNetworks
-                ? "Direct uses this device's own network connection."
-                : "Direct uses this device's own network connection. Add Tailscale, ZeroTier, "
-                    + "or EasyTier networks in Settings › Overlay Networks."
+                ? String(localized: "Direct uses this device's own network connection.")
+                                : String(localized: "Direct uses this device's own network connection. Add Tailscale, ZeroTier, or EasyTier networks in Settings › Overlay Networks.")
         }
-        let target = route.usesJumpHost ? "the Jump Host" : "this Host"
-        let base = "Heeler reaches \(target) through this network without turning on a VPN."
+        let target = route.usesJumpHost ? String(localized: "the Jump Host") : String(localized: "this Host")
+        let base = String(localized: "Heeler reaches \(target) through this network without turning on a VPN.")
         guard let network = selectedOverlayNetwork, !OverlayPeerList.offersPeers(network.kind) else {
             return base
         }
-        return base + " ZeroTier does not report member addresses; copy \(target)'s managed IP "
-            + "from ZeroTier Central or your controller."
+        return base + String(localized: " ZeroTier does not report member addresses; copy \(target)'s managed IP from ZeroTier Central or your controller.")
     }
 }
 
@@ -384,7 +380,7 @@ struct HostRouteRow: View {
     }
 
     private var title: String {
-        guard !address.isEmpty else { return "No address" }
+        guard !address.isEmpty else { return String(localized: "No address") }
         return route.port == "22" ? address : "\(address):\(route.port)"
     }
 

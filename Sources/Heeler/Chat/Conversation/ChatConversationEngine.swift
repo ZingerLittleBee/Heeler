@@ -154,10 +154,10 @@ enum ChatToolOutputFailure: Error, Equatable, Sendable {
     /// What the row says.
     var message: String {
         switch self {
-        case .notFollowing: "Output is available when connected."
-        case .tooLong: "This output is too long to show here."
-        case .gone: "Output is no longer available."
-        case .unreadable(let reason): "Couldn't load output: \(reason)"
+        case .notFollowing: String(localized: "Output is available when connected.")
+        case .tooLong: String(localized: "This output is too long to show here.")
+        case .gone: String(localized: "Output is no longer available.")
+        case .unreadable(let reason): String(localized: "Couldn't load output: \(reason)")
         }
     }
 
@@ -590,7 +590,7 @@ actor ChatConversationEngine {
             recordFailure(error)
             let message =
                 (error as? TransportError)?.presentation.summary
-                ?? "Earlier messages could not be read"
+                ?? String(localized: "Earlier messages could not be read")
             olderSearch = nil
             update { $0.older = .failed(message) }
             projectIfNeeded()
@@ -775,7 +775,7 @@ actor ChatConversationEngine {
             return .failure(failure)
         } catch {
             return .failure(
-                .unreadable((error as? TransportError)?.presentation.summary ?? "The Host could not be read."))
+                .unreadable((error as? TransportError)?.presentation.summary ?? String(localized: "The Host could not be read.")))
         }
     }
 

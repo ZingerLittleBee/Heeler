@@ -19,7 +19,7 @@ enum ChatLaunchNotice: Equatable, Sendable {
     /// server ("This conversation is open in another app", codex-cli
     /// 0.165.0 on a 0.166.0 daemon, until `codex app-server daemon stop`).
     static let stopSharedServer =
-        "If Codex says the conversation is open in another app, run codex app\u{2011}server daemon stop, which also ends any other Codex on that server, then resume again."
+        String(localized: "If Codex says the conversation is open in another app, run codex app\u{2011}server daemon stop, which also ends any other Codex on that server, then resume again.")
 
     /// The user guide's section for the notice.
     var guideURL: URL? {

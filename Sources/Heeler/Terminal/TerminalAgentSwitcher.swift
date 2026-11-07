@@ -170,7 +170,7 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) is unavailable")
+        fatalError(String(localized: "init(coder:) is unavailable"))
     }
 
     /// Takes SwiftUI's latest items from `updateUIView`, which runs inside
@@ -377,7 +377,7 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
 
     /// The chip long-press: one item, Pin or Unpin, matching the Console row.
     func pinMenu(for item: TerminalAgentSwitcherItem) -> UIMenu {
-        let title = item.isPinned ? "Unpin" : "Pin"
+        let title = item.isPinned ? String(localized: "Unpin") : "Pin"
         let image = UIImage(systemName: item.isPinned ? "pin.slash" : "pin")
         return UIMenu(children: [
             UIAction(title: title, image: image) { [weak self] _ in
@@ -505,7 +505,7 @@ final class TerminalAgentChip: UIControl {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) is unavailable")
+        fatalError(String(localized: "init(coder:) is unavailable"))
     }
 
     override func didMoveToWindow() {
@@ -545,10 +545,10 @@ final class TerminalAgentChip: UIControl {
         updatePulse()
 
         accessibilityLabel = item.qualifier.map { "\(item.title), \($0)" } ?? item.title
-        let value = [item.isPinned ? "Pinned" : nil, item.status.displayTitle].compactMap { $0 }
+        let value = [item.isPinned ? String(localized: "Pinned") : nil, item.status.displayTitle].compactMap { $0 }
         accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
         accessibilityTraits = selected ? [.button, .selected] : .button
-        accessibilityHint = selected ? nil : "Switches to that Agent"
+        accessibilityHint = selected ? nil : String(localized: "Switches to that Agent")
     }
 
     private func configureContent() {
@@ -676,7 +676,7 @@ struct TerminalAgentSwitcherRow: View {
                     pointSize: Self.glyphPointSize,
                     horizontalOffset: 0,
                     accessibilityLabel: isToolsKeyboardPresented
-                        ? "Show iOS keyboard" : "Show tools keyboard",
+                        ? String(localized: "Show iOS keyboard") : String(localized: "Show tools keyboard"),
                     action: switchKeyboard)
             }
             trailingIconButton(
@@ -684,7 +684,7 @@ struct TerminalAgentSwitcherRow: View {
                     ? "keyboard.chevron.compact.down" : "keyboard",
                 pointSize: Self.glyphPointSize,
                 horizontalOffset: -Self.groupedGlyphOffset,
-                accessibilityLabel: isKeyboardUp ? "Dismiss keyboard" : "Show keyboard",
+                accessibilityLabel: isKeyboardUp ? String(localized: "Dismiss keyboard") : String(localized: "Show keyboard"),
                 action: toggleKeyboard)
             .padding(.trailing, 8)
         }

@@ -267,14 +267,14 @@ struct OpenCodeRecordSource: ChatTranscriptSource {
     private static let attempts = 3
 
     private static let tooLarge = TransportError.hostStoreUnreadable(
-        detail: "OpenCode's conversation is too large to read in one query.")
+        detail: String(localized: "OpenCode's conversation is too large to read in one query."))
 
     private static let unexpectedUnchanged = TransportError.malformedResponse(
-        "OpenCode's store answered a read with an unchanged counter")
+        String(localized: "OpenCode's store answered a read with an unchanged counter"))
 
     private func query(_ files: ChatHostFiles, _ kind: OpenCodeQuery.Kind) async throws -> OpenCodeQueryResponse {
         guard let queryOpenCode = files.queryOpenCode else {
-            throw TransportError.hostFeatureUnavailable(feature: "Chat")
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
         }
         return try await queryOpenCode(OpenCodeQuery(session: session, kind: kind, tables: tables))
     }

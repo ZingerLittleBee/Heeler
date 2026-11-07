@@ -484,7 +484,7 @@ private struct AgentListFieldsRowEditor: View {
                 Image(systemName: "plus")
                     .font(.system(.caption2, design: .rounded).weight(.semibold))
                 if isEmpty {
-                    Text(side == .leading ? "Add field" : "Right side")
+                    Text(side == .leading ? String(localized: "Add field") : String(localized: "Right side"))
                         .font(.caption2)
                 }
             }
@@ -594,67 +594,57 @@ enum AgentListFieldsSourceCaption {
     /// Provenance only. Callers must pass `underlyingSource`, never `.draft`.
     static func text(_ source: AgentListFieldsEditor.LayoutSource) -> String {
         switch source {
-        case .draft, .saved: "Your fields"
-        case .plugin: "Following herdr plugin"
+        case .draft, .saved: String(localized: "Your fields")
+        case .plugin: String(localized: "Following herdr plugin")
         case .pluginDefaults: "herdr default fields (plugin reported a problem)"
-        case .loading: "Reading herdr fields…"
-        case .missing: "No herdr fields snapshot"
+        case .loading: String(localized: "Reading herdr fields…")
+        case .missing: String(localized: "No herdr fields snapshot")
         case .unavailable: "herdr fields unavailable"
-        case .heeler: "Heeler's fields"
+        case .heeler: String(localized: "Heeler's fields")
         }
     }
 }
 
 enum AgentListFieldsCopy {
-    static let noHosts = "Add a Host to configure its Agent rows."
+    static let noHosts = String(localized: "Add a Host to configure its Agent rows.")
     static let listIntro =
-        "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them."
+        String(localized: "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them.")
     static let detailIntro =
-        "Tap a field to change its style, move it, or remove it. Tap + to add one. Changes save right away."
+        String(localized: "Tap a field to change its style, move it, or remove it. Tap + to add one. Changes save right away.")
     static let syncConfirmation =
-        "Row 1 and Row 2 are replaced with this Host's herdr fields and saved right away. "
-        + "Row 3 and every row's right side stay as they are."
+        String(localized: "Row 1 and Row 2 are replaced with this Host's herdr fields and saved right away. Row 3 and every row's right side stay as they are.")
     static func applyConfirmation(hostName: String, otherHosts: Int) -> String {
-        let others = otherHosts == 1 ? "The other Host's rows" : "The other \(otherHosts) Hosts' rows"
-        return "\(others), right sides included, are replaced with \(hostName)'s and saved right away. "
-            + "Changes you make here later stay on \(hostName)."
+        let others = otherHosts == 1 ? String(localized: "The other Host's rows") : String(localized: "The other \(otherHosts) Hosts' rows")
+        return String(localized: "\(others), right sides included, are replaced with \(hostName)'s and saved right away. Changes you make here later stay on \(hostName).")
     }
 
     /// Apply to All Hosts' result: how many Hosts it changed.
     static func applied(_ changed: Int) -> String {
         switch changed {
-        case 0: "Every other Host already uses these fields."
-        case 1: "Applied to 1 other Host."
-        default: "Applied to \(changed) other Hosts."
+        case 0: String(localized: "Every other Host already uses these fields.")
+        case 1: String(localized: "Applied to 1 other Host.")
+        default: String(localized: "Applied to \(changed) other Hosts.")
         }
     }
 
     /// Sync's result when the plugin snapshot carries diagnostics.
     static let syncDiagnostics =
-        "The Heeler plugin couldn't read this Host's herdr sidebar settings, so herdr's "
-        + "default fields were used. Update the plugin, or run herdr config check."
-    static let unreadableCatalogTitle = "Saved fields can’t be read"
+        String(localized: "The Heeler plugin couldn't read this Host's herdr sidebar settings, so herdr's default fields were used. Update the plugin, or run herdr config check.")
+    static let unreadableCatalogTitle = String(localized: "Saved fields can’t be read")
     static let unreadableCatalog =
-        "Heeler kept the saved data untouched. Every Host follows its herdr fields, and editing "
-        + "is paused until you reset."
+        String(localized: "Heeler kept the saved data untouched. Every Host follows its herdr fields, and editing is paused until you reset.")
     static let unreadableCatalogEdit =
-        "The saved Agent List Fields could not be read. Nothing was changed. Reset Saved Fields to start over."
+        String(localized: "The saved Agent List Fields could not be read. Nothing was changed. Reset Saved Fields to start over.")
     static let resetConfirmation =
-        "The unreadable saved fields are deleted. Every Host returns to its herdr fields and can be edited again."
+        String(localized: "The unreadable saved fields are deleted. Every Host returns to its herdr fields and can be edited again.")
     static let rowSlots =
-        "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. "
-        + "Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. "
-        + "Fields on a row's right side end its line, and Sync from plugin keeps them. "
-        + "The ring around each Agent's mark shows its status; status_badge adds it in a capsule. "
-        + "Where the mark names the program, the Agent field leaves rows with other fields."
+                String(localized: "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. Fields on a row's right side end its line, and Sync from plugin keeps them. ")
+        + String(localized: "The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
 
     static func rowSlots(followsPlugin: Bool) -> String {
         guard !followsPlugin else { return rowSlots }
-        return "Row 1 starts from the terminal's title and Row 2 from its directory. "
-            + "Any row can use these fields and your Terminals' labels. "
-            + "Fields on a row's right side end its line. "
-            + "The ring around each Agent's mark shows its status; status_badge adds it in a capsule. "
-            + "Where the mark names the program, the Agent field leaves rows with other fields."
+                return String(localized: "Row 1 starts from the terminal's title and Row 2 from its directory. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. ")
+            + String(localized: "The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
     }
 }
 
@@ -663,15 +653,15 @@ enum AgentListFieldsChipLabel {
         index: Int, count: Int, token: AgentRowStyledToken, side: AgentRowSide = .leading
     ) -> String {
         let field = side == .leading ? "Field" : "Right side field"
-        let label = "\(field) \(index + 1) of \(count): \(token.token.rawValue)"
+        let label = String(localized: "\(field) \(index + 1) of \(count): \(token.token.rawValue)")
         guard AgentLayoutTokensEditing.hasStyle(token.token, on: side) else { return label }
-        return label + (token.dim == true ? ", secondary style" : ", default style")
+        return label + (token.dim == true ? String(localized: ", secondary style") : String(localized: ", default style"))
     }
 }
 
 enum AgentListFieldsRowLabel {
     static func emptyText(slot: AgentRowSlot?) -> String {
-        slot == .heeler ? "Not configured" : "No fields"
+        slot == .heeler ? String(localized: "Not configured") : String(localized: "No fields")
     }
 
     static func accessibilityLabel(

@@ -153,7 +153,7 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                 record,
                 .notice(
                     ChatNotice(
-                        kind: .hook, title: value["customType"]?.stringValue ?? "Extension",
+                        kind: .hook, title: value["customType"]?.stringValue ?? String(localized: "Extension"),
                         detail: Self.text(value["content"]))))
         }
         // The last assistant's stop reason says whether the branch's latest
@@ -189,10 +189,10 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                     record,
                     .notice(
                         ChatNotice(
-                            kind: .system, title: "Branch summary", detail: plain,
+                            kind: .system, title: String(localized: "Branch summary"), detail: plain,
                             rawDetail: plain == summary ? nil : summary)))
             case "reset_boundary":
-                add(record, .notice(ChatNotice(kind: .system, title: "Conversation context cleared")))
+                add(record, .notice(ChatNotice(kind: .system, title: String(localized: "Conversation context cleared"))))
             case "custom_message":
                 // Oh My Pi records `/skill:name` as the expanded skill, with
                 // the prompt as submitted in its details.
@@ -232,7 +232,7 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                     let content: ChatEntry.Content
                     let prompt: String
                     if record.isTruncated, text.isEmpty, images == 0 {
-                        content = .notice(ChatNotice(kind: .system, title: "Message exceeds the preview limit"))
+                        content = .notice(ChatNotice(kind: .system, title: String(localized: "Message exceeds the preview limit")))
                         prompt = text
                     } else if let skill = Self.piSkill(text) {
                         // Pi records `/skill:name args` as the skill's block
@@ -322,22 +322,22 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                         // Oh My Pi ends a turn this way when it hands over to
                         // its own screen, such as a plan to review.
                         if planProposed {
-                            add(record, .notice(ChatNotice(kind: .system, title: "Plan ready for review")), ":end")
+                            add(record, .notice(ChatNotice(kind: .system, title: String(localized: "Plan ready for review"))), ":end")
                         }
                         finish(.completed, at: record)
                     case "aborted":
-                        add(record, .notice(ChatNotice(kind: .interrupted, title: "Interrupted")), ":end")
+                        add(record, .notice(ChatNotice(kind: .interrupted, title: String(localized: "Interrupted"))), ":end")
                         finish(.interrupted, at: record)
                     case "error" where errorMessage == Self.piAbort:
                         // Pi records Esc during a tool as an error.
-                        add(record, .notice(ChatNotice(kind: .interrupted, title: "Interrupted")), ":end")
+                        add(record, .notice(ChatNotice(kind: .interrupted, title: String(localized: "Interrupted"))), ":end")
                         finish(.interrupted, at: record)
                     case "error":
                         add(
                             record,
                             .notice(
                                 ChatNotice(
-                                    kind: .error, title: "Agent error", detail: message["errorMessage"]?.stringValue)),
+                                    kind: .error, title: String(localized: "Agent error"), detail: message["errorMessage"]?.stringValue)),
                             ":end")
                         // Pi retries a provider error on its own and records
                         // the retry as the error's reply. Until that is
@@ -369,7 +369,7 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                         tool = existing
                     } else {
                         tool = Self.tool(
-                            name: device ?? message["toolName"]?.stringValue ?? "Tool", arguments: nil, callID: callID,
+                            name: device ?? message["toolName"]?.stringValue ?? String(localized: "Tool"), arguments: nil, callID: callID,
                             activity: context.activity, directory: directory)
                     }
                     // The write call whose text the row shows as its output.
@@ -405,7 +405,7 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                     tool.preview = Self.preview(message)
                     if record.isTruncated {
                         tool.preview?.isTruncated = true
-                        tool.note = "Output exceeds the preview limit."
+                        tool.note = String(localized: "Output exceeds the preview limit.")
                     }
                     if tool.kind == .fileRead, tool.status == .succeeded {
                         tool.imagePath = Self.imagePath(
@@ -433,7 +433,7 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                         record,
                         .notice(
                             ChatNotice(
-                                kind: .shellCommand, title: message["command"]?.stringValue ?? "Shell command",
+                                kind: .shellCommand, title: message["command"]?.stringValue ?? String(localized: "Shell command"),
                                 detail: ChatToolPreview(capping: message["output"]?.stringValue ?? "").text)))
                 case "pythonExecution":
                     // Oh My Pi's `$ code`, recorded as `!` is.
@@ -441,7 +441,7 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                         record,
                         .notice(
                             ChatNotice(
-                                kind: .pythonCommand, title: message["code"]?.stringValue ?? "Python",
+                                kind: .pythonCommand, title: message["code"]?.stringValue ?? String(localized: "Python"),
                                 detail: ChatToolPreview(capping: message["output"]?.stringValue ?? "").text)))
                 default: transcript.diagnostics.unknownRecordTypes.insert("message:\(role)")
                 }

@@ -400,8 +400,8 @@ struct HostHelperNotificationStanding: Sendable, Equatable {
     init(_ reading: HostHelperReading) {
         let status = reading.status
         let presentation = reading.presentation
-        let action = "See this Host's page in Hosts."
-        let asRequirement = "Host Helper: \(presentation.value). \(presentation.detail) \(action)"
+        let action = String(localized: "See this Host's page in Hosts.")
+        let asRequirement = String(localized: "Host Helper: \(presentation.value). \(presentation.detail) \(action)")
         var installedVersion: PluginVersion?
         if case .intact(let version) = reading.integrity { installedVersion = version }
         if let installedVersion, installedVersion < HostHelperCompatibility.firstWithNotifications {
@@ -416,7 +416,7 @@ struct HostHelperNotificationStanding: Sendable, Equatable {
             canRegister = true
             requirement =
                 lacksLiveActivity
-                ? "Host Helper: \(presentation.value). Live Activity needs a newer Host Helper. \(action)" : nil
+                ? String(localized: "Host Helper: \(presentation.value). Live Activity needs a newer Host Helper. \(action)") : nil
             drivesLiveActivity = !lacksLiveActivity
         case .lingerOff, .serviceNodeGone:
             // It runs now, so it notifies, only not once the last login has ended
@@ -445,85 +445,79 @@ struct HostHelperPresentation: Sendable, Equatable {
     let needsAttention: Bool
 
     static let featuresSentence =
-        "Agent Notifications, Live Activity and Usage on this Host come with the Host Helper."
+        String(localized: "Agent Notifications, Live Activity and Usage on this Host come with the Host Helper.")
 
     /// `canRepair` is false when this device offers no Repair for that status,
     /// so the copy names what does change it.
     init(_ status: HostHelperStatus, canRepair: Bool = true) {
         switch status {
         case .notInstalled:
-            value = "Not Installed"
+            value = String(localized: "Not Installed")
             detail = Self.featuresSentence
             needsAttention = false
         case .installed(let version, let updateAvailable):
             value = "\(version)"
             detail = updateAvailable
-                ? "This app carries a newer Host Helper."
-                : "The Host Helper is running."
+                ? String(localized: "This app carries a newer Host Helper.")
+                : String(localized: "The Host Helper is running.")
             needsAttention = updateAvailable
         case .newer(let version):
             value = "\(version)"
-            detail = "A newer version of Heeler installed this Host Helper. "
-                + "Update the app to change it."
+            detail = String(localized: "A newer version of Heeler installed this Host Helper. Update the app to change it.")
             needsAttention = false
         case .damaged:
-            value = "Damaged"
-            detail = "Files of the Host Helper are missing or changed. Repair puts them back."
+            value = String(localized: "Damaged")
+            detail = String(localized: "Files of the Host Helper are missing or changed. Repair puts them back.")
             needsAttention = true
         case .nodeMissing(let tooOld):
-            value = "Node.js Missing"
-            let required = "The Host Helper needs Node.js \(NodeToolchainProbe.minimumMajorVersion) or newer"
+            value = String(localized: "Node.js Missing")
+            let required = String(localized: "The Host Helper needs Node.js \(NodeToolchainProbe.minimumMajorVersion) or newer")
             detail = tooOld.map { "\(required), and this Host has \($0)." }
-                ?? "\(required), and Heeler could not find it on this Host."
+                ?? String(localized: "\(required), and Heeler could not find it on this Host.")
             needsAttention = true
         case .lingerOff:
-            value = "Linger Off"
-            detail = "The Host Helper stops about ten seconds after your last login to this Host ends, "
-                + "unless systemd linger is on."
+            value = String(localized: "Linger Off")
+            detail = String(localized: "The Host Helper stops about ten seconds after your last login to this Host ends, unless systemd linger is on.")
             needsAttention = true
         case .serviceNodeGone:
-            value = "Node.js Moved"
-            detail = "The Host Helper is running, but the Node.js it was set up with has gone from this Host, "
-                + "so Usage cannot read and the Helper would not start again. "
-                + "Repair sets it up again with the Node.js this Host has now."
+            value = String(localized: "Node.js Moved")
+            detail = String(localized: "The Host Helper is running, but the Node.js it was set up with has gone from this Host, so Usage cannot read and the Helper would not start again. Repair sets it up again with the Node.js this Host has now.")
             needsAttention = true
         case .serviceFailed(let health):
-            value = "Service Failed"
+            value = String(localized: "Service Failed")
             detail = Self.failure(health, canRepair: canRepair)
             needsAttention = true
         case .unsupportedPlatform(.nativeWindows):
-            value = "Not Available"
-            detail = "Agent Notifications (in-app banners included), Live Activity and Usage are not "
-                + "available on native Windows yet because they come with the Host Helper."
+            value = String(localized: "Not Available")
+            detail = String(localized: "Agent Notifications (in-app banners included), Live Activity and Usage are not available on native Windows yet because they come with the Host Helper.")
             needsAttention = false
         case .unsupportedPlatform(.other(let kernel)):
-            value = "Not Available"
+            value = String(localized: "Not Available")
             detail = "The Host Helper does not run on \(kernel)."
             needsAttention = false
         case .unsupportedPlatform(.noSystemd):
-            value = "Not Available"
-            detail = "The Host Helper runs as a systemd user service, and this Host has no systemd."
+            value = String(localized: "Not Available")
+            detail = String(localized: "The Host Helper runs as a systemd user service, and this Host has no systemd.")
             needsAttention = false
         }
     }
 
     private static func failure(_ health: HostHelperHealth?, canRepair: Bool) -> String {
         let remedy = canRepair
-            ? "Repair sets it up again with the Node.js this Host has now."
-            : "A newer version of Heeler installed this Host Helper. Update the app to change it."
+            ? String(localized: "Repair sets it up again with the Node.js this Host has now.")
+            : String(localized: "A newer version of Heeler installed this Host Helper. Update the app to change it.")
         guard let health else {
-            return "Heeler could not reach this Host's systemd user manager to ask about the service. \(remedy)"
+            return String(localized: "Heeler could not reach this Host's systemd user manager to ask about the service. \(remedy)")
         }
-        let restarts = health.restarts == 1 ? "1 restart" : "\(health.restarts) restarts"
+        let restarts = health.restarts == 1 ? String(localized: "1 restart") : String(localized: "\(health.restarts) restarts")
         guard health.launchd != nil else {
-            return "The service stopped and will not start again by itself "
-                + "(\(health.activeState), result \(health.result), \(restarts)). \(remedy)"
+            return String(localized: "The service stopped and will not start again by itself (\(health.activeState), result \(health.result), \(restarts)). \(remedy)")
         }
         if health.loadState == HostHelperHealth.launchdNotFound {
-            return "launchd does not have the service loaded. \(remedy)"
+            return String(localized: "launchd does not have the service loaded. \(remedy)")
         }
         if !health.isLoaded {
-            return "launchd did not say how the service is (\(health.result)). \(remedy)"
+            return String(localized: "launchd did not say how the service is (\(health.result)). \(remedy)")
         }
         let facts = [health.activeState, health.result, restarts].filter { !$0.isEmpty }
         return "The service is not staying up (\(facts.joined(separator: ", "))). \(remedy)"
@@ -545,27 +539,27 @@ enum HostHelperError: Error, Equatable {
     var message: String {
         switch self {
         case .bundleUnavailable:
-            "This build of Heeler does not carry the Host Helper."
+            String(localized: "This build of Heeler does not carry the Host Helper.")
         case .newerInstalled(let version):
-            "This Host has Host Helper \(version), newer than this app's. Update the app to change it."
+            String(localized: "This Host has Host Helper \(String(describing: version)), newer than this app's. Update the app to change it.")
         case .nodeMissing:
-            "The Host Helper needs Node.js \(NodeToolchainProbe.minimumMajorVersion) or newer on this Host."
+            String(localized: "The Host Helper needs Node.js \(NodeToolchainProbe.minimumMajorVersion) or newer on this Host.")
         case .unsupportedPlatform:
-            "This Host cannot run the Host Helper yet."
+            String(localized: "This Host cannot run the Host Helper yet.")
         case .unreadableHost:
-            "Could not read this Host's answer about the Host Helper."
+            String(localized: "Could not read this Host's answer about the Host Helper.")
         case .extensionFoldersUnreadable:
-            "Heeler could not find where this Host's Pi and Oh My Pi load extensions from."
+            String(localized: "Heeler could not find where this Host's Pi and Oh My Pi load extensions from.")
         case .noHashTool:
-            "This Host has neither sha256sum nor shasum, so Heeler cannot check the Host Helper's files."
+            String(localized: "This Host has neither sha256sum nor shasum, so Heeler cannot check the Host Helper's files.")
         case .verificationFailed:
-            "The Host Helper's files did not match after the upload, so it was not put in place."
+            String(localized: "The Host Helper's files did not match after the upload, so it was not put in place.")
         case .stepFailed(let step, let detail):
-            detail.isEmpty ? "\(step) failed." : "\(step) failed: \(detail)"
+            detail.isEmpty ? String(localized: "\(step) failed.") : String(localized: "\(step) failed: \(detail)")
         case .lingerRefused(let user, let detail):
-            "This Host did not let Heeler turn on linger"
+            String(localized: "This Host did not let Heeler turn on linger")
                 + (detail.isEmpty ? "." : ": \(detail)")
-                + " An administrator can run: sudo loginctl enable-linger \(user)"
+                + String(localized: " An administrator can run: sudo loginctl enable-linger \(user)")
         }
     }
 }

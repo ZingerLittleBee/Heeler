@@ -9,10 +9,10 @@ import Foundation
 /// the user never gets a configuration Grok Build cannot read.
 enum GrokBuildProgramStatusEdit {
     static let id = "grok-build.program-status"
-    static let harness = "Grok Build"
+    static let harness = String(localized: "Grok Build")
 
     /// The line this edit asks for, to say what to do by hand.
-    static let manualInstruction = #"Add program_status = "on" under [ui.notifications] in Grok Build's config.toml."#
+    static let manualInstruction = String(localized: #"Add program_status = "on" under [ui.notifications] in Grok Build's config.toml."#)
 
     static func edit(path: String) -> HarnessConfigEdit {
         HarnessConfigEdit(
@@ -36,9 +36,9 @@ enum GrokBuildProgramStatusEdit {
     }
 
     private static let unreadableReason =
-        "Heeler can't tell where this file's settings belong, so it won't change it."
+        String(localized: "Heeler can't tell where this file's settings belong, so it won't change it.")
     private static let mixedFormReason =
-        "This file sets Grok Build's notifications in a form Heeler won't change."
+        String(localized: "This file sets Grok Build's notifications in a form Heeler won't change.")
 
     private static let notifications = ["ui", "notifications"]
     private static let setting = notifications + ["program_status"]

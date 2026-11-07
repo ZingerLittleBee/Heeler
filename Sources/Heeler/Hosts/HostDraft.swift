@@ -120,7 +120,7 @@ struct HostDraft: Equatable, Sendable {
     /// (`box copy copy`).
     static func duplicateName(of name: String, existingNames: [String]) -> String {
         let taken = Set(existingNames.map { $0.trimmingCharacters(in: .whitespaces) })
-        let first = "\(copyStem(of: name.trimmingCharacters(in: .whitespaces))) copy"
+        let first = String(localized: "\(copyStem(of: name.trimmingCharacters(in: .whitespaces))) copy")
         guard taken.contains(first) else { return first }
         var count = 2
         while taken.contains("\(first) \(count)") {
@@ -131,7 +131,7 @@ struct HostDraft: Equatable, Sendable {
 
     /// `box` for `box copy` and `box copy 3`; any other name is its own stem.
     private static func copyStem(of name: String) -> String {
-        let suffix = " copy"
+        let suffix = String(localized: " copy")
         var stem = Substring(name)
         if let space = stem.lastIndex(of: " ") {
             let number = stem[stem.index(after: space)...]

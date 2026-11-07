@@ -39,7 +39,7 @@ struct QuestionFormCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                title: "Question", detail: "\(page + 1) of \(form.questions.count)",
+                title: String(localized: "Question"), detail: "\(page + 1) of \(form.questions.count)",
                 isActing: store.progress == .acting, collapse: { store.isCollapsed = true })
             BlockedScrollingContent(maxHeight: maxHeight) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -111,7 +111,7 @@ struct QuestionFormCard: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !question.isMultiSelect {
-                BlockedTextField(placeholder: "Type your own answer", text: $texts[page], isFocused: $isTextFocused)
+                BlockedTextField(placeholder: String(localized: "Type your own answer"), text: $texts[page], isFocused: $isTextFocused)
             }
             HStack(spacing: 8) {
                 if page > 0 {

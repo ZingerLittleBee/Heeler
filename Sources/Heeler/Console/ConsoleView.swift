@@ -558,7 +558,7 @@ struct ConsoleView: View {
                         allowsColumns: true)
                         .navigationTitle(
                             usageScopeHostID.flatMap { id in hosts.consoleHosts.first { $0.id == id }?.displayName }
-                                ?? "All Hosts")
+                                ?? String(localized: "All Hosts"))
                         .toolbarTitleDisplayMode(.inlineLarge)
                 }
             }
@@ -945,7 +945,7 @@ struct ConsoleView: View {
                 isPresented: tab == .terminals
                     ? $isTerminalSearchPresented : $isAgentSearchPresented,
                 placement: .navigationBarDrawer(displayMode: .automatic),
-                prompt: tab == .terminals ? "Search Terminals" : "Search Agents")
+                prompt: tab == .terminals ? String(localized: "Search Terminals") : String(localized: "Search Agents"))
             .searchFocused($focusedSearch, equals: tab)
             .sidebarSearchDrawer(following: tab)
             // The title's list menu opens from here rather than from the
@@ -2144,13 +2144,13 @@ struct ConsoleView: View {
             agent: agent, layout: console.rowLayout(for: agent.hostID)
         ).switcherTitle
         if console.closesWorkspaceWithTab(of: agent) {
-            let workspace = agent.workspaceLabel ?? "this workspace"
-            return "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab."
+            let workspace = agent.workspaceLabel ?? String(localized: "this workspace")
+            return String(localized: "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab.")
         }
         if console.closesTab(of: agent) {
-            return "Closes the tab running \u{201C}\(name)\u{201D}."
+            return String(localized: "Closes the tab running \u{201C}\(name)\u{201D}.")
         }
-        return "Closes the pane running \u{201C}\(name)\u{201D}. The tab's other panes stay open."
+        return String(localized: "Closes the pane running \u{201C}\(name)\u{201D}. The tab's other panes stay open.")
     }
 
     /// A window already showing this Agent comes forward instead of a second
@@ -2732,7 +2732,7 @@ struct MissingAgentPresentation: Equatable {
         ) {
             (
                 .hostFailed,
-                "Host Unavailable",
+                String(localized: "Host Unavailable"),
                 failure.isHostKeySecurityFailure
                     ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill",
                 named(failure.presentation(usesHerdrEndpoint: usesHerdrEndpoint).message)
@@ -2743,21 +2743,21 @@ struct MissingAgentPresentation: Equatable {
         switch hostStatus {
         case .suspended:
             cause = .hostSuspended
-            title = "Connection Paused"
+            title = String(localized: "Connection Paused")
             systemImage = "pause.circle"
-            message = named("The connection is paused until Heeler becomes active.")
+            message = named(String(localized: "The connection is paused until Heeler becomes active."))
         case .connecting:
             if let standingFailure {
                 (cause, title, systemImage, message) = applyFailed(standingFailure)
             } else {
                 cause = .hostConnecting
-                title = "Connecting…"
+                title = String(localized: "Connecting…")
                 systemImage = "dot.radiowaves.left.and.right"
-                message = named("Opening the connection.")
+                message = named(String(localized: "Opening the connection."))
             }
         case .reconnecting(_, _, let failure):
             cause = .hostReconnecting
-            title = "Reconnecting…"
+            title = String(localized: "Reconnecting…")
             systemImage = "arrow.trianglehead.2.clockwise"
             message = named(failure.presentation.summary)
         case .failed(let failure):
@@ -2765,12 +2765,12 @@ struct MissingAgentPresentation: Equatable {
         case .connected:
             if hostsAwaitingSnapshot.contains(agentID.hostID) {
                 cause = .hostLoadingAgents
-                title = "Loading Agents…"
+                title = String(localized: "Loading Agents…")
                 systemImage = "hourglass"
-                message = named("Fetching the latest Agents.")
+                message = named(String(localized: "Fetching the latest Agents."))
             } else {
                 cause = .paneGone
-                title = "Agent Gone"
+                title = String(localized: "Agent Gone")
                 systemImage = "rectangle.on.rectangle.slash"
                 message = Self.paneGoneMessage
             }
@@ -2778,7 +2778,7 @@ struct MissingAgentPresentation: Equatable {
             // No live inventory says why: an ended session, or a deleted
             // Host whose projection is gone, where no Agent comes back.
             cause = .paneGone
-            title = "Agent Gone"
+            title = String(localized: "Agent Gone")
             systemImage = "rectangle.on.rectangle.slash"
             message = Self.unreportedMessage
         }
@@ -2788,9 +2788,9 @@ struct MissingAgentPresentation: Equatable {
     /// it does one whose pane closed; the same pane rebinds when an Agent
     /// starts in it again.
     static let paneGoneMessage =
-        "The Agent in this pane has exited, or the pane was closed. It shows here again if an Agent starts in the pane."
+        String(localized: "The Agent in this pane has exited, or the pane was closed. It shows here again if an Agent starts in the pane.")
 
-    static let unreportedMessage = "This Agent's pane is no longer reported."
+    static let unreportedMessage = String(localized: "This Agent's pane is no longer reported.")
 
     /// What the Console's detail column shows when the selected Agent is not
     /// in the list.
@@ -3147,7 +3147,7 @@ private struct NavigationBarTopReader: UIViewRepresentable {
 
         @available(*, unavailable)
         required init?(coder: NSCoder) {
-            fatalError("init(coder:) is unavailable")
+            fatalError(String(localized: "init(coder:) is unavailable"))
         }
 
         override func didMoveToWindow() {

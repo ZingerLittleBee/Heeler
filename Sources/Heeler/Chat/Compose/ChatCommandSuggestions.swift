@@ -65,7 +65,7 @@ struct ChatCommandSuggestions: View {
                     .fontDesign(.monospaced)
                     .foregroundStyle(command.isEnabled ? .primary : .secondary)
                     .lineLimit(1)
-                if let summary = command.isEnabled ? command.summary : "Available once the Agent is idle" {
+                if let summary = command.isEnabled ? command.summary : String(localized: "Available once the Agent is idle") {
                     Text(summary)
                         .font(.caption)
                         .foregroundStyle(.secondary)

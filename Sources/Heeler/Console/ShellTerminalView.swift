@@ -31,8 +31,8 @@ struct ShellTerminalView: View {
     /// False on a Host whose terminals have no Take Over: any viewer may type.
     var offersTakeOver = true
     var surfaceRetention: TerminalSurfaceRetention?
-    var title = "Terminal"
-    var backTitle = "Back to Agent"
+    var title = String(localized: "Terminal")
+    var backTitle = String(localized: "Back to Agent")
     /// Edge-docked Workspace navigation; nil on surfaces with nowhere to route.
     var workspaceDrawer: WorkspaceTerminalDrawer?
     /// Carries the keyboard state in from the screen that opened this
@@ -221,7 +221,7 @@ struct ShellTerminalView: View {
             if showsShortcutRow {
                 InputShortcutStripRow(
                     strip: InputShortcutStripPresentation(surface: .shellTerminal),
-                    keyAccessibilityHint: "Sends this key to the terminal",
+                    keyAccessibilityHint: String(localized: "Sends this key to the terminal"),
                     sendKey: keyboardControl.sendTerminalKey
                 ) { _ in EmptyView() }
                 .transition(
@@ -733,8 +733,7 @@ struct ShellTerminalMoreMenu: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "This closes the pane on the Host, ending anything running in it. "
-                    + "Going Back instead leaves it for desktop handoff.")
+                String(localized: "This closes the pane on the Host, ending anything running in it. Going Back instead leaves it for desktop handoff."))
         }
     }
 }
@@ -828,7 +827,7 @@ struct ShellTerminalInputRow: View {
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isShortcutRowEnabled ? "Hide shortcut row" : "Show shortcut row")
+        .accessibilityLabel(isShortcutRowEnabled ? String(localized: "Hide shortcut row") : String(localized: "Show shortcut row"))
         .accessibilityHint("Puts Esc, Tab and arrow keys above the input row")
     }
 
@@ -850,7 +849,7 @@ struct ShellTerminalInputRow: View {
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isKeyboardUp ? "Dismiss keyboard" : "Show keyboard")
+        .accessibilityLabel(isKeyboardUp ? String(localized: "Dismiss keyboard") : String(localized: "Show keyboard"))
     }
 }
 

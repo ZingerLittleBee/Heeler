@@ -318,8 +318,8 @@ private struct FileDiffDocumentView<Footer: View & SendableMetatype>: View {
             else if patch.isTruncated { nil }
             else { diffFile.lineCounts }
         return FileDiffFileBar(
-            path: diffFile.newPath ?? diffFile.oldPath ?? "File", kind: kind, detail: detail,
-            summary: diffFile.summary ?? (diffFile.isBinary ? "Binary file." : nil),
+            path: diffFile.newPath ?? diffFile.oldPath ?? String(localized: "File"), kind: kind, detail: detail,
+            summary: diffFile.summary ?? (diffFile.isBinary ? String(localized: "Binary file.") : nil),
             lineCounts: counts, showsPath: !isWholePatch)
     }
 

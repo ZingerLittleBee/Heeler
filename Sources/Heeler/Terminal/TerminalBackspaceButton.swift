@@ -42,7 +42,7 @@ final class TerminalRepeatingBackspaceButton: UIButton {
             configuration.image = UIImage(systemName: "delete.left")
             configuration.preferredSymbolConfigurationForImage = .init(pointSize: 13, weight: .medium)
         } else {
-            configuration.title = "Backspace"
+            configuration.title = String(localized: "Backspace")
         }
         configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
             var result = attributes
@@ -60,7 +60,7 @@ final class TerminalRepeatingBackspaceButton: UIButton {
             configuration?.background.backgroundColor = button.isHighlighted ? .systemGray3 : .secondarySystemFill
             button.configuration = configuration
         }
-        accessibilityLabel = "Backspace"
+        accessibilityLabel = String(localized: "Backspace")
         accessibilityHint = "Tap to delete once; hold to keep deleting"
         isExclusiveTouch = true
         let touchObserver = TerminalBackspaceTouchRecognizer()
@@ -75,7 +75,7 @@ final class TerminalRepeatingBackspaceButton: UIButton {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+    required init?(coder: NSCoder) { fatalError(String(localized: "init(coder:) is unavailable")) }
 
     override var isEnabled: Bool {
         didSet { if !isEnabled { cancelHold() } }

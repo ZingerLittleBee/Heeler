@@ -39,7 +39,7 @@ struct ConsoleTerminal: Identifiable, Equatable, Sendable {
         nonempty(pane.terminalTitleStripped) ?? nonempty(pane.title)
     }
     var displayTitle: String {
-        nonempty(paneLabel) ?? title ?? nonempty(tabLabel) ?? "Terminal"
+        nonempty(paneLabel) ?? title ?? nonempty(tabLabel) ?? String(localized: "Terminal")
     }
     /// The Tab's label when the user named it. herdr's default label is the
     /// Tab's position, which it renumbers as Tabs close, so a label equal to

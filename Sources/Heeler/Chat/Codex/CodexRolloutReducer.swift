@@ -91,9 +91,9 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
     var unsupportedFormat: String? {
         guard case .unsupported(let reason) = support else { return nil }
         return switch reason {
-        case .preEnvelope: "a rollout from Codex 0.30 or earlier"
-        case .noSessionMeta: "a rollout that does not start with its session record"
-        case .unknownHistoryMode: "a rollout with a history mode Chat does not know"
+        case .preEnvelope: String(localized: "a rollout from Codex 0.30 or earlier")
+        case .noSessionMeta: String(localized: "a rollout that does not start with its session record")
+        case .unknownHistoryMode: String(localized: "a rollout with a history mode Chat does not know")
         }
     }
 

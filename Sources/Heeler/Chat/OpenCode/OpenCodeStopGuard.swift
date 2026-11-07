@@ -16,21 +16,21 @@ enum OpenCodeStopGuard {
         switch OpenCodeDialogParser.parse(context.screen) {
         case .dialog, .unrecognized:
             return .refuse(
-                "OpenCode is asking for an answer, and Esc would reject it. Answer the card, or stop in the terminal.")
+                String(localized: "OpenCode is asking for an answer, and Esc would reject it. Answer the card, or stop in the terminal."))
         case .none:
             break
         }
         let screen = OpenCodeScreenReader.read(context.screen)
         guard screen.route == .session else {
             return .refuse(
-                "OpenCode isn't showing this conversation's prompt, so Stop pressed nothing. Stop it in the terminal.")
+                String(localized: "OpenCode isn't showing this conversation's prompt, so Stop pressed nothing. Stop it in the terminal."))
         }
         guard screen.overlayTitle == nil else {
             return .refuse(
-                "A menu is open over OpenCode's prompt, and Esc would only close it. Close it in the terminal first.")
+                String(localized: "A menu is open over OpenCode's prompt, and Esc would only close it. Close it in the terminal first."))
         }
         if case .shellMode = screen.state {
-            return .refuse("OpenCode's prompt is in shell mode, where Esc only leaves it. Stop it in the terminal.")
+            return .refuse(String(localized: "OpenCode's prompt is in shell mode, where Esc only leaves it. Stop it in the terminal."))
         }
         guard screen.isRunning else {
             return .refuse("OpenCode's screen shows no running turn, so Stop pressed nothing.")

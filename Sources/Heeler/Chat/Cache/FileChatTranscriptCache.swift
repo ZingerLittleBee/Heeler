@@ -298,7 +298,7 @@ actor FileChatTranscriptCache: ChatTranscriptCache {
     private static func logFailure(_ operation: String, _ error: any Error) {
         let error = error as NSError
         log.error(
-            "Chat cache \(operation, privacy: .public) failed: \(error.domain, privacy: .public) \(error.code, privacy: .public)"
+        "Chat cache \(operation, privacy: .public) failed: \(error.domain, privacy: .public) \(error.code, privacy: .public)"
         )
     }
 }

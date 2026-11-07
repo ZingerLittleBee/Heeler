@@ -24,10 +24,10 @@ enum TerminalKeysTab: Int, CaseIterable, Identifiable {
 
     var accessibilityLabel: String {
         switch self {
-        case .controls: "Control Keys"
-        case .snippets: "Snippets"
-        case .skills: "Skills"
-        case .appearance: "Terminal Appearance"
+        case .controls: String(localized: "Control Keys")
+        case .snippets: String(localized: "Snippets")
+        case .skills: String(localized: "Skills")
+        case .appearance: String(localized: "Terminal Appearance")
         }
     }
 }

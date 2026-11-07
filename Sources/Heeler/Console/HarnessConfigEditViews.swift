@@ -61,7 +61,7 @@ struct HarnessConfigFolderLines: View {
             .font(.footnote.monospaced())
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityLabel(added ? "Added: \(file)" : "Already there: \(file)")
+            .accessibilityLabel(added ? String(localized: "Added: \(file)") : String(localized: "Already there: \(file)"))
     }
 }
 
@@ -109,9 +109,9 @@ struct HarnessConfigEditOffer: View {
                 Button("Cancel", role: .cancel) { flow.cancel() }
             } header: {
                 if !change.writesFolderFiles {
-                    Text(change.createsFile ? "Creates This File" : "Changes This File")
+                    Text(change.createsFile ? String(localized: "Creates This File") : String(localized: "Changes This File"))
                 } else {
-                    Text(change.createsFile ? "Creates These Files" : "Changes These Files")
+                    Text(change.createsFile ? String(localized: "Creates These Files") : String(localized: "Changes These Files"))
                 }
             }
         case .alreadyApplied(let path):
@@ -164,9 +164,9 @@ struct HerdrCoreStatusExplanationSheet: View {
                 if let flow {
                     HarnessConfigEditOffer(
                         flow: flow,
-                        offer: "Grok Build's automatic check left its status off. One change to its configuration turns it on, and you see the change first.",
+                        offer: String(localized: "Grok Build's automatic check left its status off. One change to its configuration turns it on, and you see the change first."),
                         actionTitle: "Turn On Grok Build's Status",
-                        afterApplying: "Start Grok Build again to see its status.")
+                        afterApplying: String(localized: "Start Grok Build again to see its status."))
                 }
             }
             .task { await flow?.locate() }
@@ -201,9 +201,9 @@ struct OpenCodePluginEditSheet: View {
                 HarnessConfigEditOffer(
                     flow: flow,
                     offer:
-                        "OpenCode says which conversation it shows through Heeler's plugin. Loading the plugin takes one change to OpenCode's configuration and a folder beside it. You see both first, and you can undo them.",
-                    actionTitle: "Review the Change",
-                    afterApplying: "Start OpenCode again to load the plugin. Chat then follows its conversation.")
+                        String(localized: "OpenCode says which conversation it shows through Heeler's plugin. Loading the plugin takes one change to OpenCode's configuration and a folder beside it. You see both first, and you can undo them."),
+                    actionTitle: String(localized: "Review the Change"),
+                    afterApplying: String(localized: "Start OpenCode again to load the plugin. Chat then follows its conversation."))
             }
             .task { await flow.locate() }
             .navigationTitle("Follow OpenCode")

@@ -85,7 +85,7 @@ struct OpenCodeTranscriptReducer: ChatTranscriptReducer {
                     id: ChatEntryID("oc:revert:\(message)"), sourceOffset: Self.offset(boundary),
                     content: .notice(
                         ChatNotice(
-                            kind: .system, title: "Undone in the terminal",
+                            kind: .system, title: String(localized: "Undone in the terminal"),
                             detail: "The next message removes these messages; /redo brings them back."))))
         }
         // Prompts OpenCode holds until the running step ends keep the id
@@ -227,14 +227,14 @@ private struct Projection {
                 default: .completed
                 }
             // A step that failed has already said why.
-            let message = idle.error?.message ?? "The turn failed"
+            let message = idle.error?.message ?? String(localized: "The turn failed")
             let isSaid = !run.isEnded && run.failure == message
             end(ending, at: OpenCodeTranscriptReducer.date(row.created))
             if ending == .failed, !isSaid {
                 add(row, .notice(ChatNotice(kind: .error, title: message)))
             } else if ending == .interrupted {
                 // A stop says so, as OpenCode's own screen does.
-                add(row, .notice(ChatNotice(kind: .interrupted, title: "Interrupted")))
+                add(row, .notice(ChatNotice(kind: .interrupted, title: String(localized: "Interrupted"))))
             }
         case .compaction(let compaction):
             if compaction.reason == "manual" {
@@ -258,21 +258,21 @@ private struct Projection {
                 row,
                 .notice(
                     ChatNotice(
-                        kind: .shellCommand, title: shell.command ?? "Shell command",
+                        kind: .shellCommand, title: shell.command ?? String(localized: "Shell command"),
                         detail: shell.output.map { ChatToolPreview(capping: $0).text })))
         case .agentSwitched(let agent?):
-            add(row, .notice(ChatNotice(kind: .modelChange, title: "Agent: \(agent)")))
+            add(row, .notice(ChatNotice(kind: .modelChange, title: String(localized: "Agent: \(agent)"))))
         case .modelSwitched(let model?):
-            add(row, .notice(ChatNotice(kind: .modelChange, title: "Model: \(model)")))
+            add(row, .notice(ChatNotice(kind: .modelChange, title: String(localized: "Model: \(model)"))))
         case .locationSwitched(let directory?, _):
-            add(row, .notice(ChatNotice(kind: .system, title: "Moved to \(directory)")))
+            add(row, .notice(ChatNotice(kind: .system, title: String(localized: "Moved to \(directory)"))))
         case .oversized where row.type == "user":
             open(row, id: entryID(row))
-            add(row, .notice(ChatNotice(kind: .system, title: "This message is too large to show in Chat.")))
+            add(row, .notice(ChatNotice(kind: .system, title: String(localized: "This message is too large to show in Chat."))))
             transcript.latestPromptOffset = OpenCodeTranscriptReducer.offset(row.seq)
         case .oversized:
             if row.type == "assistant" { resume() }
-            add(row, .notice(ChatNotice(kind: .system, title: "This step is too large to show in Chat.")))
+            add(row, .notice(ChatNotice(kind: .system, title: String(localized: "This step is too large to show in Chat."))))
         case .agentSwitched, .modelSwitched, .locationSwitched, .unknown, .invalid:
             break
         }
@@ -370,20 +370,20 @@ private struct Projection {
             }
         }
         if !row.isFinal, let retry = step.retry {
-            let attempt = retry.attempt.map { " (attempt \($0))" } ?? ""
+            let attempt = retry.attempt.map { String(localized: " (attempt \($0))") } ?? ""
             let reason = retry.error?.message.map { ": \($0)" } ?? ""
-            add(row, .notice(ChatNotice(kind: .system, title: "Retrying\(attempt)\(reason)")), ":retry")
+            add(row, .notice(ChatNotice(kind: .system, title: String(localized: "Retrying") + attempt + reason)), ":retry")
         }
         switch step.finish {
         case "length":
-            add(row, .notice(ChatNotice(kind: .system, title: "The model stopped at its output limit.")), ":finish")
+            add(row, .notice(ChatNotice(kind: .system, title: String(localized: "The model stopped at its output limit."))), ":finish")
         case "content-filter":
-            add(row, .notice(ChatNotice(kind: .system, title: "The provider filtered the reply.")), ":finish")
+            add(row, .notice(ChatNotice(kind: .system, title: String(localized: "The provider filtered the reply."))), ":finish")
         default:
             break
         }
         if let error = step.error, error.type != "aborted" {
-            let message = error.message ?? "The step failed"
+            let message = error.message ?? String(localized: "The step failed")
             add(row, .notice(ChatNotice(kind: .error, title: message)), ":error")
             run.failure = message
         }
@@ -413,22 +413,22 @@ private struct Projection {
             if !note.hasMetadata, Self.trimmed(note.description ?? "").isEmpty { return }
             resume()
             if note.notice == "restart" {
-                add(row, .notice(ChatNotice(kind: .system, title: "Continuing after a restart")))
+                add(row, .notice(ChatNotice(kind: .system, title: String(localized: "Continuing after a restart"))))
             } else if note.source == "subagent" || note.source == "shell" {
                 add(
                     row,
                     .notice(
                         ChatNotice(
-                            kind: .taskNotification, title: note.description ?? "Background work finished",
+                            kind: .taskNotification, title: note.description ?? String(localized: "Background work finished"),
                             detail: note.text)))
             } else {
-                add(row, .notice(ChatNotice(kind: .system, title: note.description ?? "Note", detail: note.text)))
+                add(row, .notice(ChatNotice(kind: .system, title: note.description ?? String(localized: "Note"), detail: note.text)))
             }
         case "skill":
-            let name = (note.name ?? note.skill).map { "Skill \($0)" } ?? "Skill"
+            let name = (note.name ?? note.skill).map { "Skill \($0)" } ?? String(localized: "Skill")
             add(row, .notice(ChatNotice(kind: .command, title: name)))
         default:
-            add(row, .notice(ChatNotice(kind: .system, title: note.description ?? "Instructions updated")))
+            add(row, .notice(ChatNotice(kind: .system, title: note.description ?? String(localized: "Instructions updated"))))
         }
     }
 
@@ -442,11 +442,11 @@ private struct Projection {
     private mutating func addFailedCompaction(_ row: OpenCodeRow, _ error: OpenCodeError?) {
         let message = error?.message.flatMap { Self.trimmed($0).isEmpty ? nil : $0 }
         if error?.type == "aborted" {
-            add(row, .notice(ChatNotice(kind: .system, title: message ?? "Compaction cancelled")), ":notice")
+            add(row, .notice(ChatNotice(kind: .system, title: message ?? String(localized: "Compaction cancelled"))), ":notice")
         } else if error?.type == "compaction.unavailable", let message {
             add(row, .notice(ChatNotice(kind: .system, title: message)), ":notice")
         } else {
-            add(row, .notice(ChatNotice(kind: .error, title: "Compaction failed", detail: message)), ":error")
+            add(row, .notice(ChatNotice(kind: .error, title: String(localized: "Compaction failed"), detail: message)), ":error")
         }
     }
 

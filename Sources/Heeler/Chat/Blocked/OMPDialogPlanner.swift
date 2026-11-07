@@ -17,7 +17,7 @@ struct OMPDialogPlanner {
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .codexExec, .codexPatch, .codexNetwork,
             .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .codexWorkspaceTrust, .grokPermission,
             .grokQuestion, .grokCancelTurn, .grokFork, .openCodePermission, .openCodeQuestion:
-            throw .unsupported("Not an Oh My Pi dialog.")
+            throw .unsupported(String(localized: "Not an Oh My Pi dialog."))
         }
     }
 
@@ -48,7 +48,7 @@ struct OMPDialogPlanner {
         case .dismiss:
             return Self.deny
         case .amend, .respond, .approvePlan:
-            throw .unsupported("Oh My Pi takes no note with an approval.")
+            throw .unsupported(String(localized: "Oh My Pi takes no note with an approval."))
         case .submitSelection, .expandQuestions, .skipQuestion:
             throw .unsupported("The approval has no such action.")
         }
@@ -57,8 +57,7 @@ struct OMPDialogPlanner {
     private static let deny = DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChangeOrUnblocked)
 
     private static let sessionUnderDraft = DialogPlanError.unsupported(
-        "Oh My Pi's input box holds a draft, which would take the arrow keys. Clear it in the terminal "
-            + "to approve for the session.")
+        String(localized: "Oh My Pi's input box holds a draft, which would take the arrow keys. Clear it in the terminal to approve for the session."))
 
     private var confirmation: ConfirmationRule {
         toolUseID.map { .toolResult(id: $0) } ?? .fingerprintChangeOrUnblocked
@@ -95,7 +94,7 @@ struct OMPDialogPlanner {
     }
 
     private static let typedAnswer = DialogPlanError.unsupported(
-        "Heeler doesn't type into Oh My Pi's questions. Write your own answer or a note in the terminal.")
+        String(localized: "Heeler doesn't type into Oh My Pi's questions. Write your own answer or a note in the terminal."))
 
     /// Answering a tab shows the next one, and after the last the review.
     private func pageTurn() -> [DialogStep] {

@@ -75,7 +75,7 @@ final class HerdrCoreWindowsExtensionFlow: Identifiable {
     }
 
     private static func message(for error: any Error) -> String {
-        (error as? TransportError)?.presentation.message ?? "Heeler couldn't add the extension. Nothing more was written."
+        (error as? TransportError)?.presentation.message ?? String(localized: "Heeler couldn't add the extension. Nothing more was written.")
     }
 }
 
@@ -112,7 +112,7 @@ struct HerdrCoreWindowsExtensionSheet: View {
         case .ready(let folders):
             folderSection(
                 folders,
-                footer: "Expect Pi and Oh My Pi to load what is in these folders for every session on this Host. The extension only tells Chat which conversation a session is in.")
+                footer: String(localized: "Expect Pi and Oh My Pi to load what is in these folders for every session on this Host. The extension only tells Chat which conversation a session is in."))
             Section {
                 Button("Add to \(folders.count) Folders") {
                     Task { await flow.confirm() }
@@ -123,7 +123,7 @@ struct HerdrCoreWindowsExtensionSheet: View {
             folderSection(folders, footer: nil)
             ProgressView()
         case .written(let folders):
-            folderSection(folders, footer: "Added. Start the Agent again to load it, and Chat follows its conversation.")
+            folderSection(folders, footer: String(localized: "Added. Start the Agent again to load it, and Chat follows its conversation."))
         case .failed(let message):
             Text(message)
                 .foregroundStyle(.secondary)

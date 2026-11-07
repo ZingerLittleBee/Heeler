@@ -208,7 +208,7 @@ struct ChangesRowTotals: View {
         .lineLimit(1)
         .fixedSize()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Changes: " + badge.accessibilityValue)
+        .accessibilityLabel(String(localized: "Changes: ") + badge.accessibilityValue)
         // VoiceOver hears exact counts either way; this says which one shows.
         .accessibilityIdentifier(identifier + (style == .exact ? ".exact" : ".compact"))
     }

@@ -27,15 +27,15 @@ enum AgentDetailSurface: String, CaseIterable, Sendable {
     /// The More-menu title that brings this surface up.
     var showTitle: String {
         switch self {
-        case .terminal: "Show Agent Terminal"
-        case .chat: "Show Chat"
+        case .terminal: String(localized: "Show Agent Terminal")
+        case .chat: String(localized: "Show Chat")
         }
     }
 
     var showAccessibilityHint: String {
         switch self {
-        case .terminal: "Shows this Agent's live terminal in place of Chat."
-        case .chat: "Shows this Agent's conversation in place of its terminal."
+        case .terminal: String(localized: "Shows this Agent's live terminal in place of Chat.")
+        case .chat: String(localized: "Shows this Agent's conversation in place of its terminal.")
         }
     }
 }

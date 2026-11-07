@@ -21,7 +21,7 @@ struct OpenCodeDialogPlanner {
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .codexExec, .codexPatch, .codexNetwork,
             .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .codexWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork:
-            throw .unsupported("Not an OpenCode dialog.")
+            throw .unsupported(String(localized: "Not an OpenCode dialog."))
         }
     }
 
@@ -53,7 +53,7 @@ struct OpenCodeDialogPlanner {
 
     private func rejection() throws(DialogPlanError) -> DialogActionPlan {
         guard toolUseID != nil else {
-            throw .unsupported("Reject this in the terminal: OpenCode asks why when a subagent's request is rejected.")
+            throw .unsupported(String(localized: "Reject this in the terminal: OpenCode asks why when a subagent's request is rejected."))
         }
         return DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChangeOrUnblocked)
     }
@@ -71,7 +71,7 @@ struct OpenCodeDialogPlanner {
             return DialogActionPlan(steps: [.keys([digit])], confirmation: .fingerprintChangeOrUnblocked)
         case .dismiss:
             guard toolUseID != nil else {
-                throw .unsupported("Dismiss this question in the terminal: Heeler can't match it to OpenCode's call.")
+                throw .unsupported(String(localized: "Dismiss this question in the terminal: Heeler can't match it to OpenCode's call."))
             }
             return DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChangeOrUnblocked)
         case .respond, .amend:
@@ -81,5 +81,5 @@ struct OpenCodeDialogPlanner {
         }
     }
 
-    private static let ownAnswer = DialogPlanError.unsupported("Type your own answer in the terminal.")
+    private static let ownAnswer = DialogPlanError.unsupported(String(localized: "Type your own answer in the terminal."))
 }

@@ -351,7 +351,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         }
         guard result.exitStatus == 0 else {
             throw TransportError.malformedResponse(
-                "herdr-core: The locator exited with status \(result.exitStatus).")
+                String(localized: "herdr-core: The locator exited with status \(result.exitStatus)."))
         }
         do {
             let location = try HerdrCoreLocator.parse(stdout: result.stdout, nonce: nonce)

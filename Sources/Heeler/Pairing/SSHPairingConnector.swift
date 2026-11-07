@@ -131,7 +131,7 @@ struct SSHPairingConnector: PairingConnector {
             guard presented == code.hostKeyFingerprint else {
                 await Self.close(connection)
                 attempts.append(
-                    "\(address): presented \(presented.displayString), not the pinned host key")
+                    String(localized: "\(address): presented \(presented.displayString), not the pinned host key"))
                 continue
             }
 
@@ -192,7 +192,7 @@ struct SSHPairingConnector: PairingConnector {
             line.utf8.count < Self.maximumEnrollmentLineBytes
         else {
             throw PairingCeremonyError.enrollmentFailed(
-                detail: "the Device Key submission was not one bounded line")
+                detail: String(localized: "the Device Key submission was not one bounded line"))
         }
 
         let response: Data
@@ -208,7 +208,7 @@ struct SSHPairingConnector: PairingConnector {
             throw CancellationError()
         } catch SSHError.timedOut {
             throw PairingCeremonyError.enrollmentFailed(
-                detail: "the Enrollment exchange timed out")
+                detail: String(localized: "the Enrollment exchange timed out"))
         } catch SSHError.unexpectedEOF {
             throw PairingCeremonyError.enrollmentUnanswered
         } catch {
@@ -284,7 +284,7 @@ struct SSHPairingConnector: PairingConnector {
         } catch SSHError.authenticationFailed {
             await Self.close(connection)
             throw PairingCeremonyError.verificationFailed(
-                detail: "the Host did not accept the enrolled Device Key")
+                detail: String(localized: "the Host did not accept the enrolled Device Key"))
         } catch SSHError.cancelled {
             await Self.close(connection)
             throw CancellationError()

@@ -68,7 +68,7 @@ struct HostFormView: View {
                     NewHostRouteView(draft: $draft, otherHosts: otherHosts)
                 }
             }
-            .navigationTitle(editing == nil ? "Add Host" : "Edit Host")
+            .navigationTitle(editing == nil ? String(localized: "Add Host") : String(localized: "Edit Host"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -103,7 +103,7 @@ struct HostFormView: View {
                 Text(rsaKeyReplacementError ?? "")
             }
             .confirmationDialog(
-                "Replace the Device Key?",
+                String(localized: "Replace the Device Key?"),
                 isPresented: $isConfirmingDeviceKeyReplacement,
                 titleVisibility: .visible
             ) {
@@ -111,13 +111,11 @@ struct HostFormView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(
-                    "Every Host using Device Key authentication will reject the replacement "
-                        + "until you add its new public key to ~/.ssh/authorized_keys, or for an "
-                        + "administrator account on Windows to "
+                                        String(localized: "Every Host using Device Key authentication will reject the replacement until you add its new public key to ~/.ssh/authorized_keys, or for an administrator account on Windows to ")
                         + #"C:\ProgramData\ssh\administrators_authorized_keys."#)
             }
             .confirmationDialog(
-                "Replace the RSA Key?",
+                String(localized: "Replace the RSA Key?"),
                 isPresented: $isConfirmingRSAKeyReplacement,
                 titleVisibility: .visible
             ) {
@@ -125,8 +123,7 @@ struct HostFormView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(
-                    "Every Host using RSA Key authentication will reject the replacement "
-                        + "until you register its new public key on that Host.")
+                    String(localized: "Every Host using RSA Key authentication will reject the replacement until you register its new public key on that Host."))
             }
             .task {
                 if focusesUsername { isUsernameFocused = true }
@@ -186,8 +183,8 @@ struct HostFormView: View {
                         .foregroundStyle(.red)
                 } else {
                     Text(draft.serverKind == .herdrTUI
-                        ? "Leave blank for the default herdr session."
-                        : "Leave blank for the default session.")
+                        ? String(localized: "Leave blank for the default herdr session.")
+                        : String(localized: "Leave blank for the default session."))
                 }
             }
         }
@@ -234,23 +231,19 @@ struct HostFormView: View {
                     }
                     .font(.subheadline)
                     .textCase(nil)
-                    .accessibilityLabel(isEditingRoutes ? "Done Editing Routes" : "Edit Routes")
+                    .accessibilityLabel(isEditingRoutes ? String(localized: "Done Editing Routes") : String(localized: "Edit Routes"))
                 }
             }
         } footer: {
             if draft.routes.isEmpty {
                 Text(
-                    "Add the address Heeler connects to: directly, over an overlay network, "
-                        + "or through a Jump Host.")
+                    String(localized: "Add the address Heeler connects to: directly, over an overlay network, or through a Jump Host."))
             } else if draft.routes.count > 1 {
                 Text(
-                    "Heeler tries every route each time it connects and keeps the first that "
-                        + "reaches the Host. Routes over this device's own network start first; "
-                        + "the rest start a moment later.")
+                                        String(localized: "Heeler tries every route each time it connects and keeps the first that reaches the Host. Routes over this device's own network start first; the rest start a moment later."))
             } else {
                 Text(
-                    "Add another way to reach this Host, such as its LAN address at home and "
-                        + "an overlay network or Jump Host elsewhere.")
+                    String(localized: "Add another way to reach this Host, such as its LAN address at home and an overlay network or Jump Host elsewhere."))
             }
         }
     }
@@ -300,15 +293,10 @@ struct HostFormView: View {
             switch draft.authMethod {
             case .deviceKey:
                 Text(
-                    "Add this line to ~/.ssh/authorized_keys on the Host. For an administrator "
-                        + "account on Windows, add it to "
-                        + #"C:\ProgramData\ssh\administrators_authorized_keys instead, "#
-                        + "which only Administrators and SYSTEM may access. "
-                        + "The private key never leaves this device.")
+                    String(localized: "Add this line to ~/.ssh/authorized_keys on the Host. For an administrator account on Windows, add it to C:\\ProgramData\\ssh\\administrators_authorized_keys instead, which only Administrators and SYSTEM may access. The private key never leaves this device."))
             case .rsaKey:
                 Text(
-                    "Register this public key wherever the Host accepts SSH identities. "
-                        + "The private key never leaves this device.")
+                    String(localized: "Register this public key wherever the Host accepts SSH identities. The private key never leaves this device."))
             case .password:
                 EmptyView()
             }
@@ -420,7 +408,7 @@ struct HostFormView: View {
             deviceKeyIsCorrupt = false
             didCopyKeyLine = false
         } catch {
-            deviceKeyReplacementError = "The replacement could not be saved to the Keychain."
+            deviceKeyReplacementError = String(localized: "The replacement could not be saved to the Keychain.")
         }
     }
 
@@ -431,7 +419,7 @@ struct HostFormView: View {
             rsaKeyIsCorrupt = false
             didCopyKeyLine = false
         } catch {
-            rsaKeyReplacementError = "The replacement could not be saved to the Keychain."
+            rsaKeyReplacementError = String(localized: "The replacement could not be saved to the Keychain.")
         }
     }
 

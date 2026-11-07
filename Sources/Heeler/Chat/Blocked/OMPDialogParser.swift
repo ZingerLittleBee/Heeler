@@ -17,7 +17,7 @@ enum OMPDialogParser {
     static func parse(_ screen: ANSIScreen) -> DialogParseResult {
         guard let panel = OMPPanel.bottom(of: screen) else { return .none }
         guard let title = panel.title else {
-            return unrecognized(panel, on: screen, "The top of Oh My Pi's panel is off screen.")
+            return unrecognized(panel, on: screen, String(localized: "The top of Oh My Pi's panel is off screen."))
         }
         if title.hasPrefix(approvalPrefix) {
             return approval(panel, title: title, on: screen)
@@ -25,7 +25,7 @@ enum OMPDialogParser {
         if title == "Ask" {
             return ask(panel, on: screen)
         }
-        return unrecognized(panel, on: screen, "Heeler does not know Oh My Pi's \u{201C}\(title)\u{201D} panel.")
+        return unrecognized(panel, on: screen, String(localized: "Heeler does not know Oh My Pi's \u{201C}\(title)\u{201D} panel."))
     }
 
     private static let approvalPrefix = "Allow tool:"
@@ -38,11 +38,11 @@ enum OMPDialogParser {
     /// arrow keys and Enter answer (see `approvalChoices`).
     private static func approval(_ panel: OMPPanel, title: String, on screen: ANSIScreen) -> DialogParseResult {
         guard panel.sections.count > 1, let footer = panel.sections.last else {
-            return unrecognized(panel, on: screen, "The approval's keys are not on screen.")
+            return unrecognized(panel, on: screen, String(localized: "The approval's keys are not on screen."))
         }
         let keys = footer.map(\.text).joined(separator: " ")
         guard keys.contains(" approve"), keys.contains(" deny") else {
-            return unrecognized(panel, on: screen, "The approval's keys are not on screen.")
+            return unrecognized(panel, on: screen, String(localized: "The approval's keys are not on screen."))
         }
         let details = panel.sections.dropLast().flatMap { $0 }
         let choices = approvalChoices(details)
@@ -62,7 +62,7 @@ enum OMPDialogParser {
         let focused = isGuarded ? nil : choices?.focused
         var options = [
             DialogOption(
-                ordinal: 1, number: nil, label: "Approve", shortcut: "ctrl+q", role: .approve, isFocused: focused == 1)
+                ordinal: 1, number: nil, label: String(localized: "Approve"), shortcut: "ctrl+q", role: .approve, isFocused: focused == 1)
         ]
         if let session = choices?.sessionLabel {
             options.append(
@@ -71,7 +71,7 @@ enum OMPDialogParser {
         }
         options.append(
             DialogOption(
-                ordinal: options.count + 1, number: nil, label: "Deny", shortcut: "esc", role: .decline,
+                ordinal: options.count + 1, number: nil, label: String(localized: "Deny"), shortcut: "esc", role: .decline,
                 isFocused: focused == options.count + 1))
         return .dialog(
             BlockedDialog(
@@ -130,7 +130,7 @@ enum OMPDialogParser {
     /// multi-select question's or an option's description, leaves the
     /// question to the terminal.
     private static func ask(_ panel: OMPPanel, on screen: ANSIScreen) -> DialogParseResult {
-        let layout = "Heeler doesn't know this question's layout. Answer it with these keys or in the terminal."
+        let layout = String(localized: "Heeler doesn't know this question's layout. Answer it with these keys or in the terminal.")
         guard panel.sections.count == 3, let footer = panel.sections[2].first?.text else {
             return unrecognized(panel, on: screen, layout)
         }
@@ -162,7 +162,7 @@ enum OMPDialogParser {
             guard let (label, isFocused) = choice(line.text) else {
                 return unrecognized(
                     panel, on: screen,
-                    "Heeler answers only Oh My Pi's single-select questions. Answer this one in the terminal.")
+                    String(localized: "Heeler answers only Oh My Pi's single-select questions. Answer this one in the terminal."))
             }
             options.append(
                 DialogOption(

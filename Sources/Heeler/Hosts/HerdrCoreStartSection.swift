@@ -14,11 +14,9 @@ enum CoreStartOffer: Equatable, Sendable {
         case .start:
             nil
         case .instructions:
-            "A core started over SSH would run outside the desktop login session, so Heeler "
-                + "does not start one here. In a terminal on that machine, run:"
+            String(localized: "A core started over SSH would run outside the desktop login session, so Heeler does not start one here. In a terminal on that machine, run:")
         case .windowsInstructions:
-            "A core started over SSH would run outside your desktop session, so Heeler does not "
-                + "start one here. In a PowerShell window on that machine, not run as administrator, run:"
+            String(localized: "A core started over SSH would run outside your desktop session, so Heeler does not start one here. In a PowerShell window on that machine, not run as administrator, run:")
         }
     }
 }
@@ -28,9 +26,7 @@ struct CoreStartConfirmation: Equatable, Sendable {
     let session: String
 
     var message: String {
-        "This starts the Host's core session \"\(session)\" through your interactive login shell, "
-            + "so the core and every Terminal it starts get the environment of your own terminal. "
-            + "It also tries to turn on systemd linger for your user when it is off."
+        String(localized: "This starts the Host's core session \"\(session)\" through your interactive login shell, so the core and every Terminal it starts get the environment of your own terminal. It also tries to turn on systemd linger for your user when it is off.")
     }
 }
 
@@ -49,9 +45,9 @@ enum CoreStartState: Equatable, Sendable {
         case .idle, .running:
             nil
         case .started(let session):
-            "Started session \"\(session)\" with the environment of your own terminal."
+            String(localized: "Started session \"\(session)\" with the environment of your own terminal.")
         case .alreadyRunning(let session):
-            "herdr-core was already running for session \"\(session)\", so Start changed nothing."
+            String(localized: "herdr-core was already running for session \"\(session)\", so Start changed nothing.")
         case .failed(let message):
             message
         }
@@ -88,7 +84,7 @@ struct HerdrCoreStartSection: View {
             store.requestCoreStart()
         } label: {
             HStack {
-                Text(store.coreStart == .running ? "Starting herdr-core…" : "Start herdr-core")
+                Text(store.coreStart == .running ? String(localized: "Starting herdr-core…") : String(localized: "Start herdr-core"))
                 if store.coreStart == .running {
                     Spacer()
                     ProgressView()

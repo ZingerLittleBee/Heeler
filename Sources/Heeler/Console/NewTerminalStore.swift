@@ -139,7 +139,7 @@ final class NewTerminalStore {
             let destination = try await destination(on: hostID)
             let identity = try await create(destination, hostID)
             guard let terminal = await awaitTerminal(identity, hostID) else {
-                state = .failed("The terminal was created, but its Workspace hasn't refreshed yet.")
+                state = .failed(String(localized: "The terminal was created, but its Workspace hasn't refreshed yet."))
                 return
             }
             state = .created(terminal.id)
@@ -163,7 +163,7 @@ final class NewTerminalStore {
         switch target {
         case .existingWorkspace:
             guard let workspaceID = selectedWorkspaceID else {
-                throw SubmitFailure(message: "Choose a Workspace.")
+                throw SubmitFailure(message: String(localized: "Choose a Workspace."))
             }
             let known = directory(hostID, workspaceID)
             let cwd = if let known { known } else { try await home(on: hostID) }
@@ -188,7 +188,7 @@ final class NewTerminalStore {
             throw SubmitFailure(message: StartAgentStore.homeProbeMessage(for: error))
         }
         guard RemoteHostPath.isAbsolute(home) else {
-            throw SubmitFailure(message: "The Host's home directory is not a usable path: \(home)")
+            throw SubmitFailure(message: String(localized: "The Host's home directory is not a usable path: \(home)"))
         }
         return home
     }

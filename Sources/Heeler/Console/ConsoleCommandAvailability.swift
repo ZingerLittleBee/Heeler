@@ -20,15 +20,15 @@ struct ConsoleCommandShortcut: Identifiable, Equatable, Sendable {
         (1...9).map {
             Self(action: .selectAgent($0), title: "Select Agent \($0)", key: Character(String($0)))
         } + [
-            Self(action: .previousAgent, title: "Previous Agent", key: "["),
-            Self(action: .nextAgent, title: "Next Agent", key: "]"),
-            Self(action: .focusSearch, title: "Search Agents", key: "f"),
-            Self(action: .newAgent, title: "New Agent", key: "n"),
-            Self(action: .settings, title: "Settings…", key: ","),
-            Self(action: .hosts, title: "Hosts", key: "h", requiresShift: true),
+            Self(action: .previousAgent, title: String(localized: "Previous Agent"), key: "["),
+            Self(action: .nextAgent, title: String(localized: "Next Agent"), key: "]"),
+            Self(action: .focusSearch, title: String(localized: "Search Agents"), key: "f"),
+            Self(action: .newAgent, title: String(localized: "New Agent"), key: "n"),
+            Self(action: .settings, title: String(localized: "Settings…"), key: ","),
+            Self(action: .hosts, title: String(localized: "Hosts"), key: "h", requiresShift: true),
             Self(action: .toggleInputMode, title: "Toggle Direct Input / Composer", key: "e"),
-            Self(action: .sendDraft, title: "Send Composer Draft", key: "\r"),
-            Self(action: .closeAgent, title: "Close Agent View", key: "w"),
+            Self(action: .sendDraft, title: String(localized: "Send Composer Draft"), key: "\r"),
+            Self(action: .closeAgent, title: String(localized: "Close Agent View"), key: "w"),
         ]
 }
 
@@ -40,9 +40,9 @@ struct ConsoleCommandTitles: Equatable, Sendable {
 
     func title(for shortcut: ConsoleCommandShortcut) -> String {
         switch shortcut.action {
-        case .focusSearch where listsTerminals: "Search Terminals"
-        case .newAgent where listsTerminals: "New Terminal"
-        case .closeAgent where showsShell: "Close Terminal View"
+        case .focusSearch where listsTerminals: String(localized: "Search Terminals")
+        case .newAgent where listsTerminals: String(localized: "New Terminal")
+        case .closeAgent where showsShell: String(localized: "Close Terminal View")
         default: shortcut.title
         }
     }
