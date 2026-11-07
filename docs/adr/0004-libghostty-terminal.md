@@ -7,9 +7,9 @@ feed the existing Attach transport. The transport layer remains independent of
 the terminal engine.
 
 libghostty-spm owns terminal parsing, Metal rendering, CoreText font handling,
-IME integration, and scrollback storage. Heeler continues to own its
-two-mode keyboard UI, touch-scroll routing, URL policy, Attach lifecycle, and
-the native text-selection presentation requested by Ghostty's iOS delegate.
+IME integration, scrollback storage, and inline terminal selection. Heeler
+continues to own its two-mode keyboard UI, touch-scroll routing, URL policy,
+Attach lifecycle, and Chat's selectable-text sheet.
 
 ## Considered Options
 
@@ -30,7 +30,7 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   prebuilt XCFramework. Pin its exact version, retain SwiftPM's checksum
   verification, and review supply-chain changes before every update.
 - libghostty's embedding API is still evolving. Keep all package-specific code
-  behind `HeelerTerminalView` and the terminal selection presenter.
+  behind `HeelerTerminalView`.
 - The custom keyboards use the public `UITerminalView.sendKey` API introduced
   in libghostty-spm 1.6.20260909. Ghostty encodes keys for the active terminal
   mode, including enhanced keyboard protocols. Ghostty's default fixterms
@@ -42,9 +42,21 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   one-shot modifier selection; it does not also arm Ghostty's sticky modifiers.
   The multiline action remains Ctrl-J (LF in legacy mode). The incremental DEC
   mode tracker remains necessary for touch-scroll routing, not key encoding.
-- Long-press selection is intentionally presented in a native selectable text
-  sheet. The wrapper supplies a viewport snapshot and anchor range; it does not
-  present selection handles on behalf of the host app.
+- Since libghostty-spm 2.2.2026103001, terminal selection stays inline: long
+  press opens the system menu, double/triple taps select words/rows, and native
+  handles extend the selection. Chat's Select Text still opens its text sheet.
+  The native single tap owns selection/menu dismissal and then mouse clicks;
+  Heeler gates click admission and only requests the keyboard for its existing
+  input targets. A tap that stops Heeler's momentum never clicks or opens it.
+  The native pan owns selection extension and two-finger local scrollback;
+  Heeler's one-finger pan waits for it to decline ordinary scrolling.
+- The pinned wrapper has no public inline-selection state or dismissal API.
+  Select/Select All action availability distinguishes its inline range from
+  pointer selection; toggling `usesInlineTextSelection` clears the range/menu.
+  Recheck these contracts on upgrade. Both touch menus replace the upstream
+  Paste action with Heeler's text-only paste route, retaining the local input
+  gate, IME notifications, and remote bracketed-paste policy. Device-local
+  clipboard file paths must never be pasted into the remote Host.
 - libghostty-spm normally makes every direct terminal touch request first
   responder status. Heeler instead gates first-responder eligibility on
   taps within the current IME cursor row. The full-width target is at least 44
@@ -52,8 +64,9 @@ the native text-selection presentation requested by Ghostty's iOS delegate.
   selection.
 - libghostty-spm 1.3.2's internal iOS touch-scroll path does not emit remote TUI
   wheel input through an in-memory session, and its mouse-scroll API is not
-  public. The adapter therefore owns one vertical Pan gesture: normal-buffer
-  drags invoke Ghostty scrollback actions, while tracked alternate-screen drags
+  public. The adapter therefore retains its vertical Pan for ordinary
+  one-finger scrolling: normal-buffer drags invoke Ghostty scrollback actions,
+  while tracked alternate-screen drags
   encode SGR or legacy terminal wheel events through the session's public input
   seam. DEC private-mode tracking is incremental so split SSH packets remain
   correct.

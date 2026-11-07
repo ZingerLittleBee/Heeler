@@ -1,39 +1,33 @@
 import CoreGraphics
 import Foundation
 
-/// Mouse reports for a remote application that enabled tracking.
+/// Wheel reports for a remote application that enabled tracking.
 ///
-/// Ghostty's UIKit layer only turns indirect pointers (trackpad, mouse) into
-/// mouse events; a direct touch never produces one. Touch input therefore has
-/// to be encoded here before it can reach a TUI behind the PTY.
+/// Ghostty owns clicks and selection. Heeler keeps semantic row scrolling
+/// for remote TUIs, rather than forwarding native precision-scroll deltas.
 enum TerminalMouseEncoding {
     /// Normal tracking (DECSET 1000): `ESC [ M Cb Cx Cy`, every value biased
     /// by 32 and capped at 223.
     case legacy
-    /// SGR extended tracking (DECSET 1006): `ESC [ < b ; col ; row M|m`, with
-    /// no coordinate limit and a distinct release terminator.
+    /// SGR extended tracking (DECSET 1006): `ESC [ < b ; col ; row M`, with
+    /// no coordinate limit.
     case sgr
 
     /// Button codes as they appear on the wire, before the legacy +32 bias.
     enum Button: Int {
-        case left = 0
         case wheelUp = 64
         case wheelDown = 65
     }
 
     /// Encodes one report for a 1-based cell coordinate.
-    func report(button: Button, column: Int, row: Int, isRelease: Bool = false) -> Data {
+    func report(button: Button, column: Int, row: Int) -> Data {
         switch self {
         case .sgr:
-            let terminator = isRelease ? "m" : "M"
-            return Data("\u{1B}[<\(button.rawValue);\(column);\(row)\(terminator)".utf8)
+            return Data("\u{1B}[<\(button.rawValue);\(column);\(row)M".utf8)
         case .legacy:
-            // Legacy reports carry no button identity on release: the
-            // terminator stays 'M' and the button becomes 3, "released".
-            let code = isRelease ? 3 : button.rawValue
             return Data([
                 0x1B, 0x5B, 0x4D,
-                UInt8(clamping: code + 32),
+                UInt8(clamping: button.rawValue + 32),
                 UInt8(clamping: min(column, 223) + 32),
                 UInt8(clamping: min(row, 223) + 32),
             ])

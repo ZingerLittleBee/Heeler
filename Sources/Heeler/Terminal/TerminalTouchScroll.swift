@@ -268,16 +268,6 @@ struct TerminalModeTracker: Equatable {
                 : [0x1B, 0x5B, 0x42])
     }
 
-    /// A full left-button click on a 1-based cell, or nil when the remote
-    /// application never asked for mouse tracking — a plain shell has no use
-    /// for the report and would echo it as garbage.
-    func remoteClickSequence(column: Int, row: Int) -> Data? {
-        guard tracksMouse else { return nil }
-        let encoding = mouseEncoding
-        return encoding.report(button: .left, column: column, row: row)
-            + encoding.report(button: .left, column: column, row: row, isRelease: true)
-    }
-
     private mutating func update(mode: Int, enabled: Bool) {
         switch mode {
         case 1:
