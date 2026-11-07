@@ -309,7 +309,8 @@ lacks, so herdr reports it done. An `agent prompt` sent then was swallowed,
 never reached the model or `history.jsonl`, and its Enter chose
 `1. Yes, accept this change` (47, 49, 50). Chat therefore holds any screen
 without the box whatever herdr reports, and reads a dialog from its hint row
-or question.
+or question. It holds a running turn as well, since a dialog can open from
+one before herdr's Enter (What Chat sends into, below).
 
 agy writes a call that asks the user as its dialog opens (the
 `PLANNER_RESPONSE` step) and its result only after the answer and the tool's
@@ -359,12 +360,32 @@ the rows.
 
 ### What Chat sends into
 
-Chat sends only into an empty box with nothing under it and a footer it
-knows, idle or working; a mode's grey hint is not a draft, and an armed exit
-does not hold. A draft, bash mode, a popup or panel under the box, another
-footer (code search mode and Vim's badges in agy's strings), a dialog, an
-exited agy and any unreadable screen hold the message. Stop sends one Esc,
-never Ctrl+C.
+Chat sends only into an empty box with nothing under it and an idle footer
+it knows (`? for shortcuts`, nothing at the left, or an armed exit); a
+mode's grey hint is not a draft, and an armed exit does not hold. A draft,
+bash mode, a popup or panel under the box, another footer (code search mode
+and Vim's badges in agy's strings), a dialog, an exited agy and any
+unreadable screen hold the message.
+
+A running turn holds it too: the footer `esc to cancel` or `Press up to
+edit queued messages`, or a braille spinner leading one of the bottom rows,
+the two cues herdr's manifest reads as Working (`esc_cancel_footer_working`,
+`spinner_working`). agy would queue the message, but a dialog can open from
+the turn at any moment, and herdr's Enter, written 300 ms after its paste
+whatever shows, would answer one that opened after Chat's read. In the pane
+reads of 2026-11-07 (about every 160 ms), a pending row (`○ Running (…)`,
+`○ Editing 1 file (…)`) with its spinner sat over an empty box for 1.5 to
+2.4 s before four dialogs replaced the box, and three command dialogs
+opened one read after a spinner row (`Reading file...` or a thought
+summary) with no pending row (67 and 69 show the first kind). Since herdr
+reads Working from the same screen, its status can only lag Chat's read,
+so Chat does not hold on it. What remains is a turn that starts after
+Chat's read and opens a dialog before herdr's Enter: one sent from another
+client, or the turn agy starts by itself when a background command ends
+(Background tasks, above). No probe caught either race; both follow from
+the timings above.
+
+Stop sends one Esc, never Ctrl+C.
 
 Chat's `/` menu offers agy's skills as `/name`, except one named like a
 built-in command and one whose frontmatter says

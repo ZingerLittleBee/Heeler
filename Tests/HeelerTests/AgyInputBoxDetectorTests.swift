@@ -10,7 +10,7 @@ import Testing
 struct AgyInputBoxDetectorTests {
     /// What a capture reads as, short of its exact text.
     private enum Reading: Equatable {
-        case empty, draft, shell, waitingForSecondPress, below, dialog, exited
+        case empty, draft, shell, working, waitingForSecondPress, below, dialog, exited
     }
 
     /// Every capture's reading. A new capture without one fails
@@ -32,7 +32,7 @@ struct AgyInputBoxDetectorTests {
         "agy-14-idle-draft-oneline-120x40": .draft,
         "agy-15-idle-draft-wrapped-120x40": .draft,
         "agy-16-idle-draft-multiline-120x40": .draft,
-        "agy-17-prompt-newline-just-sent-120x40": .empty,
+        "agy-17-prompt-newline-just-sent-120x40": .working,
         "agy-18-idle-after-reply-120x40": .empty,
         "agy-19-help-shortcuts-120x40": .below,
         "agy-20-help-commands-tab-120x40": .below,
@@ -45,10 +45,10 @@ struct AgyInputBoxDetectorTests {
         "agy-31-perm-run-command-default-40x30": .dialog,
         "agy-31-perm-run-command-default-62x20": .dialog,
         "agy-31-perm-run-command-default-62x41": .dialog,
-        "agy-32-perm-after-digit2-120x40": .empty,
+        "agy-32-perm-after-digit2-120x40": .working,
         "agy-33-working-with-draft-120x40": .draft,
-        "agy-34-working-submitted-while-working-120x40": .empty,
-        "agy-35-done-after-queued-120x40": .empty,
+        "agy-34-working-submitted-while-working-120x40": .working,
+        "agy-35-done-after-queued-120x40": .working,
         "agy-36-done-final-120x40": .empty,
         "agy-38-esc-while-working-120x40": .empty,
         "agy-39-ctrlc-while-working-120x40": .empty,
@@ -56,15 +56,15 @@ struct AgyInputBoxDetectorTests {
         "agy-42-ask-question-single-40x30": .dialog,
         "agy-42-ask-question-single-62x20": .dialog,
         "agy-42-ask-question-single-62x41": .dialog,
-        "agy-43-ask-question-after-digit2-120x40": .empty,
+        "agy-43-ask-question-after-digit2-120x40": .working,
         "agy-44-ask-question-multi-120x40": .dialog,
         "agy-45-ask-question-multi-q2-120x40": .dialog,
-        "agy-46-ask-question-multi-after-esc-120x40": .empty,
+        "agy-46-ask-question-multi-after-esc-120x40": .working,
         "agy-47-perm-file-edit-default-120x40": .dialog,
         "agy-48-perm-file-edit-default-40x30": .dialog,
         "agy-48-perm-file-edit-default-62x20": .dialog,
         "agy-48-perm-file-edit-default-62x41": .dialog,
-        "agy-49-prompt-sent-into-edit-dialog-120x40": .empty,
+        "agy-49-prompt-sent-into-edit-dialog-120x40": .working,
         "agy-50-after-edit-accepted-by-prompt-120x40": .empty,
         "agy-51-perm-run-command-after-esc-120x40": .empty,
         "agy-52-perm-run-command-amend-120x40": .dialog,
@@ -83,25 +83,25 @@ struct AgyInputBoxDetectorTests {
         "agy-64-idle-draft-wrapped-62x20": .draft,
         "agy-65-slash-popup-40x30": .below,
         "agy-65-slash-popup-62x20": .below,
-        "agy-66-working-nodraft-62x41": .empty,
-        "agy-67-working-tool-running-62x41": .empty,
+        "agy-66-working-nodraft-62x41": .working,
+        "agy-67-working-tool-running-62x41": .working,
         "agy-68-working-with-draft-62x41": .draft,
         "agy-69-working-draft-entered-then-perm-dialog-62x41": .dialog,
-        "agy-70-working-queued-after-approve-62x41": .empty,
+        "agy-70-working-queued-after-approve-62x41": .working,
         "agy-71-working-queued-edit-up-62x41": .draft,
-        "agy-72-working-altm-send-now-62x41": .empty,
+        "agy-72-working-altm-send-now-62x41": .working,
         "agy-73-done-after-altm-62x41": .empty,
-        "agy-74-compacting-or-after-62x41": .empty,
+        "agy-74-compacting-or-after-62x41": .working,
         "agy-75-after-compact-62x41": .empty,
         "agy-76-mode-cycle-1-120x40": .empty,
         "agy-76-mode-cycle-2-120x40": .empty,
         "agy-76-mode-cycle-3-120x40": .empty,
         "agy-76-mode-cycle-4-120x40": .empty,
         "agy-77-accept-edits-run-command-120x40": .dialog,
-        "agy-78-auto-mode-result-120x40": .empty,
+        "agy-78-auto-mode-result-120x40": .working,
         "agy-79-plan-mode-result-120x40": .empty,
         "agy-80-artifact-review-ctrl-r-120x40": .below,
-        "agy-81-artifact-review-after-y-120x40": .empty,
+        "agy-81-artifact-review-after-y-120x40": .working,
         "agy-82-plan-approved-result-120x40": .dialog,
         "agy-83-plan-edit-rejected-120x40": .empty,
         "agy-84-footer-modes-40x30-40x30": .empty,
@@ -117,29 +117,29 @@ struct AgyInputBoxDetectorTests {
         "agy-91-bang-typed-62x41": .shell,
         "agy-92-up-on-empty-box-62x41": .draft,
         "agy-93-bash-mode-with-text-62x41": .shell,
-        "agy-94-working-nodraft-40x30": .empty,
+        "agy-94-working-nodraft-40x30": .working,
         "agy-95-working-with-draft-40x30": .draft,
-        "agy-96-working-queued-40x30": .empty,
+        "agy-96-working-queued-40x30": .working,
         "agy-97-esc-with-queued-40x30": .draft,
-        "agy-98-working-nodraft-62x20": .empty,
+        "agy-98-working-nodraft-62x20": .working,
         "agy-99-perm-file-create-default-120x40": .dialog,
         "agy-99-perm-file-create-default-40x30": .dialog,
         "agy-99-perm-file-create-default-62x41": .dialog,
         "agy-100-ask-question-multiselect-62x41": .dialog,
         "agy-101-ask-question-multiselect-after-digit2-62x41": .dialog,
         "agy-102-ask-question-multiselect-after-3-2-62x41": .dialog,
-        "agy-103-ask-question-multiselect-after-enter-62x41": .empty,
+        "agy-103-ask-question-multiselect-after-enter-62x41": .working,
         "agy-104-ask-question-writein-after-digit-62x41": .dialog,
         "agy-105-ask-question-writein-typed-62x41": .dialog,
         "agy-106-ask-question-multi-q1-after-esc-62x41": .dialog,
-        "agy-107-ask-question-multi-q2-after-digit2-62x41": .empty,
+        "agy-107-ask-question-multi-q2-after-digit2-62x41": .working,
         "agy-108-perm-run-command-62x41": .dialog,
         "agy-109-perm-run-command-amend-62x41": .dialog,
         "agy-110-perm-run-command-amend-typed-62x41": .dialog,
         "agy-111-perm-run-command-tab-on-no-62x41": .dialog,
         "agy-113-ask-question-multiselect-q1-of-2-62x41": .dialog,
         "agy-114-ask-question-multiselect-q1-after-enter-62x41": .dialog,
-        "agy-115-ask-question-single-after-esc-62x41": .empty,
+        "agy-115-ask-question-single-after-esc-62x41": .working,
     ]
 
     private static func reading(of state: InputBoxState) -> Reading? {
@@ -147,6 +147,7 @@ struct AgyInputBoxDetectorTests {
         case .empty: .empty
         case .text: .draft
         case .shellMode: .shell
+        case .disabled(AgyInputBoxDetector.working): .working
         case .disabled: .waitingForSecondPress
         case .overlay: .below
         case .dialog(title: nil): .dialog
@@ -241,17 +242,38 @@ struct AgyInputBoxDetectorTests {
         #expect(try Self.detect(stem) == .empty(placeholder: hint))
     }
 
-    /// agy queues a message sent while a turn runs, and a second one while
-    /// another waits.
+    /// agy queues a message sent while a turn runs, but a dialog can open
+    /// from the turn before herdr's Enter and take it: 67 is a command's
+    /// pending row and spinner over an empty box, which a `Run this
+    /// command?` dialog replaced (69). Every running turn holds, whatever
+    /// herdr reports, as do one with a message queued (34, 70, 72, 96) and
+    /// a compaction (74).
     @Test(arguments: [
         "agy-17-prompt-newline-just-sent-120x40", "agy-34-working-submitted-while-working-120x40",
-        "agy-66-working-nodraft-62x41", "agy-70-working-queued-after-approve-62x41",
-        "agy-72-working-altm-send-now-62x41", "agy-94-working-nodraft-40x30", "agy-96-working-queued-40x30",
+        "agy-66-working-nodraft-62x41", "agy-67-working-tool-running-62x41",
+        "agy-70-working-queued-after-approve-62x41", "agy-72-working-altm-send-now-62x41",
+        "agy-74-compacting-or-after-62x41", "agy-94-working-nodraft-40x30", "agy-96-working-queued-40x30",
+        "agy-98-working-nodraft-62x20",
     ])
-    func aWorkingBoxTakesAMessage(stem: String) throws {
+    func aRunningTurnHolds(stem: String) throws {
         let screen = try ScreenFixture.screen(stem)
+        let working = InputBoxState.disabled(
+            "Antigravity CLI is working. Send once it's idle, or steer from the terminal.")
 
-        #expect(PreSendGate.check(screen, program: .agy, activity: .working) == .send)
+        #expect(Self.detect(screen) == working)
+        for activity in [ChatAgentActivity.idle, .working, .unknown] {
+            #expect(PreSendGate.check(screen, program: .agy, activity: activity) == .hold(working))
+        }
+    }
+
+    /// agy's braille spinner over the box holds on its own, as herdr's
+    /// `spinner_working` rule reads it as Working.
+    @Test func theSpinnerAloneHolds() {
+        let spinner = Self.box(footer: "? for shortcuts", over: ["\u{287F}  Generating..."])
+
+        #expect(Self.detect(spinner) == .disabled(AgyInputBoxDetector.working))
+        // An idle box over a finished reply.
+        #expect(Self.detect(Self.box(footer: "? for shortcuts", over: ["  pear"])) == .empty(placeholder: nil))
     }
 
     @Test func bashModeIsShellMode() throws {
@@ -306,13 +328,17 @@ struct AgyInputBoxDetectorTests {
         Self.grey + String(repeating: "─", count: width) + SGR.reset
     }
 
-    /// An empty box at `columns`, a past prompt above it, and `footer`.
-    private static func box(columns: Int = 62, footer: String, under: [String] = []) -> ANSIScreen {
+    /// An empty box at `columns`, a past prompt and the rows `over` above
+    /// it, `under` it, and `footer`.
+    private static func box(
+        columns: Int = 62, footer: String, over: [String] = [], under: [String] = []
+    ) -> ANSIScreen {
         ScreenFixture.synthetic(
             [
                 Self.rule(min(60, columns - 3)),
                 "\u{1B}[0m\u{1B}[1m\u{1B}[38;5;4m> Reply with only the word pear.\u{1B}[0m",
                 "",
+            ] + over + [
                 Self.rule(columns),
                 Self.blue + ">" + SGR.reset,
                 Self.rule(columns),
@@ -346,10 +372,13 @@ struct AgyInputBoxDetectorTests {
         #expect(Self.detect(screen) == .empty(placeholder: nil))
     }
 
+    /// A command agy sent to the background keeps its panel under the box
+    /// after the turn ends; the footer under the panel decides.
     @Test func theTaskPanelUnderTheBoxDoesNotHold() {
         let panel = ["   ● [00:10:32]  sleep 30; echo probe-two  running", Self.rule(62)]
 
-        #expect(Self.detect(Self.box(footer: "esc to cancel", under: panel)) == .empty(placeholder: nil))
+        #expect(Self.detect(Self.box(footer: "? for shortcuts", under: panel)) == .empty(placeholder: nil))
+        #expect(Self.detect(Self.box(footer: "esc to cancel", under: panel)) == .disabled(AgyInputBoxDetector.working))
     }
 
     /// The rule over a past prompt is at most 60 columns wide, so a past

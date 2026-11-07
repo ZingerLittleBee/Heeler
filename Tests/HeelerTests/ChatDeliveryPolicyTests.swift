@@ -223,6 +223,24 @@ struct ChatDeliveryPolicyTests {
                 ))
     }
 
+    /// Antigravity CLI's command dialog replaced this pending command row
+    /// (agy-67 to agy-69), and herdr reports its file dialogs idle, so the
+    /// message waits for the turn to end, whatever herdr reports.
+    @Test(arguments: [ChatAgentActivity.idle, .working, .unknown])
+    func agyWorkingHoldsWithItsOwnReason(activity: ChatAgentActivity) async throws {
+        let working = try ScreenFixture.screen("agy-67-working-tool-running-62x41")
+        let rules = ChatSendRules(
+            program: .agy, commands: ChatCommandMenu.commands(skills: [], agentIsIdle: false, program: .agy))
+        let preflight = try #require(
+            ComposerDeliveryPolicy.chat(rules: rules, activity: { activity }, readScreen: { working }).preflight)
+
+        #expect(
+            await preflight("hello")
+                == .inputNotReady(
+                    "The Agent isn't taking messages: Antigravity CLI is working. Send once it's idle, or steer from the terminal."
+                ))
+    }
+
     @Test func anUnreadableScreenHoldsTheMessage() async throws {
         let preflight = try #require(Self.policy { throw TransportError.timedOut }.preflight)
 

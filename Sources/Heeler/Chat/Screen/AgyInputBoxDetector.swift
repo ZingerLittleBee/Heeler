@@ -1,14 +1,21 @@
 import Foundation
 
 /// Reads Antigravity CLI's input box from a screen (agy 1.5.3). Only an
-/// empty box with nothing drawn under it reads `.empty`; a mode's grey hint
-/// never counts as typed. Every other state carries the reason Chat holds a
-/// message with.
+/// empty box with nothing drawn under it, an idle footer and no running
+/// turn reads `.empty`; a mode's grey hint never counts as typed. Every
+/// other state carries the reason Chat holds a message with.
 ///
-/// The detector alone keeps a message out of a dialog: herdr 0.9.5 reports
-/// agy's file edit and file creation dialogs, and its trust prompt at narrow
-/// widths, as idle, and Enter there accepts the default answer. A dialog
-/// draws no box, so any screen without one holds.
+/// herdr 0.9.5 reports agy's file edit and file creation dialogs, and its
+/// trust prompt at narrow widths, as idle, and Enter there accepts the
+/// default answer, so its Blocked check never keeps a message out of them.
+/// A dialog draws no box, so a screen that shows one holds. A running turn
+/// holds too: a dialog can open from one at any moment, after a pending
+/// tool row such as `○ Running (…)` or straight from a spinner such as
+/// `Generating...`, and one that opens between Chat's read and herdr's
+/// Enter, written 300 ms after its paste, takes that Enter. What remains
+/// is a turn that starts after Chat's read and opens a dialog before
+/// herdr's Enter: one sent from another client, or one agy starts itself
+/// when a background command it left running ends.
 enum AgyInputBoxDetector {
     static func detect(_ screen: ANSIScreen) -> InputBoxState {
         let agy = AgyScreen(screen)
@@ -30,12 +37,14 @@ enum AgyInputBoxDetector {
                 "Antigravity CLI is waiting for a second key press (\u{201C}\(press)\u{201D}). Finish it in the terminal first."
             )
         }
+        if agy.showsRunningTurn { return .disabled(working) }
         // Code search mode, Vim's badges and anything else agy may set in
         // the footer's place change what Enter does.
         if let hint = agy.footerHint, !AgyScreen.readyHints.contains(hint) { return .overlay(hint) }
-        // agy queues a message sent while a turn runs and delivers it when
-        // the model next reads input, so a working box is as ready as an
-        // idle one.
         return .empty(placeholder: composer.placeholder)
     }
+
+    /// agy queues a message sent while a turn runs, but herdr's Enter could
+    /// answer a dialog that opens first.
+    static let working = "Antigravity CLI is working. Send once it's idle, or steer from the terminal."
 }

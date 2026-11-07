@@ -20,8 +20,9 @@ Entries reference the pull request that made the change.
   CLI offers as commands, stops a turn with Esc, and answers its command,
   file edit and file creation permissions, its questions (several at once,
   multi-select or written) and its trust prompt from cards. It holds a
-  message, with the reason, whenever the screen shows no empty input box, so
-  a dialog never takes a message as its answer. herdr-core Hosts don't offer
+  message, with the reason, while Antigravity CLI is working or its screen
+  shows no empty input box, since a permission dialog that opened as the
+  message went in would take it as its answer. herdr-core Hosts don't offer
   Chat for Antigravity CLI yet. (#644)
 
 ### Changed

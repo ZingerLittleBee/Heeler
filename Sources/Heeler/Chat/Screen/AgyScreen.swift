@@ -58,14 +58,24 @@ struct AgyScreen: Sendable {
     /// agy has exited: its last frame stays above `Resume with -c (or
     /// command below):` and the shell's prompt.
     let hasExited: Bool
+    /// A turn runs: the footer reads one of `workingHints`, or agy's
+    /// braille spinner leads one of the bottom rows (`⡿  Generating...`,
+    /// `⣾  Running command...`). These are the two cues herdr 0.9.5's agy
+    /// manifest reads as Working (`esc_cancel_footer_working` and
+    /// `spinner_working`).
+    let showsRunningTurn: Bool
 
-    /// Footer hints of a box Enter sends from. Ctrl+C or Ctrl+D on an idle
-    /// box arms an exit with no timeout, and a paste disarms it before its
-    /// Enter sends (agy 1.5.3 through herdr 0.9.5's `agent prompt`, live).
+    /// Footer hints of an idle box Enter sends from. Ctrl+C or Ctrl+D on an
+    /// idle box arms an exit with no timeout, and a paste disarms it before
+    /// its Enter sends (agy 1.5.3 through herdr 0.9.5's `agent prompt`,
+    /// live).
     static let readyHints: Set<String> = [
-        "", "? for shortcuts", "esc to cancel", "Press up to edit queued messages", "press ctrl+c again to exit",
-        "press ctrl+d again to exit",
+        "", "? for shortcuts", "press ctrl+c again to exit", "press ctrl+d again to exit",
     ]
+
+    /// Footer hints while a turn runs: `esc to cancel`, and `Press up to
+    /// edit queued messages` while a message sent during the turn waits.
+    static let workingHints: Set<String> = ["esc to cancel", "Press up to edit queued messages"]
 
     init(_ screen: ANSIScreen) {
         let rows = screen.rows
@@ -96,6 +106,7 @@ struct AgyScreen: Sendable {
         let tail = rows.dropFirst((composer?.bottomRule ?? -1) + 1).filter { !$0.isBlank }.suffix(Self.exitTailRows)
         hasExited = tail.contains { $0.trimmedText.hasPrefix(Self.exitLine) }
         showsDialog = composer == nil && Self.showsDialog(rows)
+        showsRunningTurn = footerHint.map(Self.workingHints.contains) == true || Self.showsSpinner(rows)
     }
 
     // MARK: Box
@@ -172,6 +183,20 @@ struct AgyScreen: Sendable {
     private static let exitLine = "Resume with -c"
     /// The exit message's two rows and the shell's prompt.
     private static let exitTailRows = 4
+
+    // MARK: A running turn
+
+    /// A braille spinner (U+2801 to U+28FF), a blank and more text leading
+    /// one of the bottom non-blank rows, as herdr's `spinner_working` rule
+    /// reads it. agy replaces the spinner's row once the turn ends.
+    private static func showsSpinner(_ rows: [ScreenRow]) -> Bool {
+        rows.filter { !$0.isBlank }.suffix(spinnerRows).contains { row in
+            row.trimmedText.range(of: #"^[\x{2801}-\x{28FF}]+\s+\S"#, options: .regularExpression) != nil
+        }
+    }
+
+    /// How many of the bottom non-blank rows herdr's rule looks in.
+    private static let spinnerRows = 12
 
     // MARK: Dialogs
 
