@@ -274,7 +274,7 @@ struct AgentComposerStopStoreTests {
         let grok = AgentComposerInterrupt.terminal(forAgentKind: "grok") { .sent }
         #expect(grok == nil)
 
-        for kind in ["claude", "codex", "pi", "omp", "opencode", "an-unknown-agent"] {
+        for kind in ["claude", "codex", "pi", "omp", "opencode", "agy", "an-unknown-agent"] {
             let interrupt = AgentComposerInterrupt.terminal(forAgentKind: kind) { .failed("The surface's own press.") }
             #expect(interrupt?.wait == .escape, "\(kind)")
             #expect(interrupt?.accessibilityHint == AgentComposerInterrupt.escapeHint, "\(kind)")

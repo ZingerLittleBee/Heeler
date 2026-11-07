@@ -12,8 +12,7 @@ struct ChatSendRulesTests {
     ]
 
     /// How each program invokes a skill: Pi and Oh My Pi skills are
-    /// `/skill:name`. OpenCode's and Antigravity CLI's menus offer none,
-    /// whatever the prefix.
+    /// `/skill:name`. OpenCode's menu offers none, whatever the prefix.
     private static func skillPrefix(_ program: ChatProgram) -> String {
         switch program {
         case .claude, .opencode, .agy: "/"
@@ -378,9 +377,9 @@ struct ChatSendRulesTests {
     }
 
     /// Claude Code answers "Unknown command" for a `user-invocable: false`
-    /// skill, and Grok Build doesn't offer one as a command; Codex, Pi and
-    /// Oh My Pi have no such key and take every skill. OpenCode is offered
-    /// none.
+    /// skill, and Grok Build doesn't offer one as a command; Codex, Pi, Oh
+    /// My Pi and Antigravity CLI have no such key and take every skill.
+    /// OpenCode is offered none.
     @Test(arguments: ChatProgram.allCases)
     func onlyClaudeAndGrokHideASkillNotUserInvocable(program: ChatProgram) {
         let prefix = Self.skillPrefix(program)
@@ -399,9 +398,9 @@ struct ChatSendRulesTests {
         case .claude, .grok:
             #expect(names == ["compact", "review"])
             #expect(rules.validate("/e2e-hidden") == .unknownCommand("e2e-hidden"))
-        case .codex, .pi, .omp:
+        case .codex, .pi, .omp, .agy:
             #expect(names == ["compact", "review", "e2e-hidden"])
-        case .opencode, .agy:
+        case .opencode:
             #expect(names == ["compact"])
         }
     }
@@ -522,6 +521,51 @@ struct ChatSendRulesTests {
         #expect(rules.outgoingText("/review the diff") == "/review the diff ")
         #expect(rules.outgoingText("/deploy") == "/deploy ")
         #expect(rules.commands.allSatisfy { rules.profile.submission($0) == .trailingSpace })
+    }
+
+    // MARK: Antigravity CLI
+
+    /// Antigravity CLI 1.5.3 sends these to the model through herdr's
+    /// `agent prompt`: bare exit words don't quit it, `?` and `:` open help
+    /// and code search only as keys on an empty box, and `/btw` after the
+    /// start stays part of the message (live).
+    @Test(arguments: [
+        "exit", "quit", ":q", "  Exit\n", ":wq!", "? what does this do", ":x find the parser",
+        "Reply with elder. /btw also say fig",
+    ])
+    func agyTakesExitWordsAndModeKeysAsText(draft: String) {
+        #expect(Self.rules(.agy).read(draft) == .text)
+    }
+
+    @Test func agyOffersSkillsAndCompact() {
+        let commands = Self.rules(.agy).commands
+
+        #expect(commands.map(\.name) == ["compact", "review", "deploy"])
+        #expect(commands.first { $0.name == "compact" }?.kind == .compact)
+        #expect(commands.first { $0.name == "review" }?.kind == .skill(prefix: "/"))
+    }
+
+    /// Which of a skill and a built-in of the same name runs is not known,
+    /// so a skill named like a built-in or its alias is left out.
+    @Test(arguments: ["model", "clear", "new", "exit", "quit", "plan", "goal", "switch", "cs", "bug"])
+    func agyLeavesOutSkillsNamedLikeBuiltIns(name: String) {
+        let catalog = [
+            AgentSkill(scope: .project, name: name, description: nil),
+            AgentSkill(scope: .global, name: name.uppercased(), description: nil),
+            AgentSkill(scope: .global, name: "review", description: nil),
+        ]
+        let rules = ChatSendRules(
+            program: .agy, commands: ChatCommandMenu.commands(skills: catalog, agentIsIdle: true, program: .agy))
+
+        #expect(rules.commands.map(\.name) == ["compact", "review"])
+        #expect(rules.validate("/\(name)") == .unknownCommand(name))
+    }
+
+    /// agy trims the trailing space before it reads `/compact`, which it
+    /// then runs (live).
+    @Test func agySendsCompactWithATrailingSpaceOnlyWhileIdle() {
+        #expect(Self.rules(.agy).outgoingText("  /compact \n") == "/compact ")
+        #expect(Self.rules(.agy, idle: false).validate("/compact") == .commandAwaitsIdle("compact"))
     }
 
     // MARK: OpenCode

@@ -9,8 +9,8 @@ import Testing
 @MainActor
 @Suite("Chat Stop plan")
 struct ChatStopPlanTests {
-    @Test(arguments: [ChatProgram.claude, .codex, .pi, .omp])
-    func claudeCodexPiAndOhMyPiPressOneEscAndWaitThreeSeconds(program: ChatProgram) {
+    @Test(arguments: [ChatProgram.claude, .codex, .pi, .omp, .agy])
+    func oneEscAndThreeSecondsForEveryProgramButGrokAndOpenCode(program: ChatProgram) {
         let plan = ChatStopPlan.standard(for: program)
 
         #expect(plan.keys == ["esc"])

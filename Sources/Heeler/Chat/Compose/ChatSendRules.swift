@@ -36,7 +36,8 @@ enum ChatCommandMenu {
     /// `allow_implicit_invocation` and `disable-model-invocation` limit only
     /// the model). Grok Build also keeps its built-in commands' names, in
     /// any case, and offers a skill named like one only under a qualified
-    /// name. OpenCode gets none, so its menu holds only `/compact`: its
+    /// name; Antigravity CLI's skills are kept clear of its built-ins the
+    /// same way. OpenCode gets none, so its menu holds only `/compact`: its
     /// skills have no form a message can invoke, and its server commands
     /// are not offered.
     static func offers(_ skill: AgentSkill, for program: ChatProgram) -> Bool {
@@ -45,9 +46,11 @@ enum ChatCommandMenu {
         case .claude: skill.isUserInvocable
         case .codex: true
         case .grok: skill.isUserInvocable && !GrokSlashCommands.builtIns.contains(skill.name.lowercased())
-        // Which Antigravity CLI skills a message can invoke is not known
-        // yet, so none are offered.
-        case .opencode, .agy: false
+        // Antigravity CLI runs a skill as `/name`, like its `/` popup lists
+        // it. It hides one marked `disable-slash-command: true`, a key the
+        // Skills probe does not read.
+        case .agy: !AgySlashCommands.builtIns.contains(skill.name.lowercased())
+        case .opencode: false
         }
     }
 
@@ -146,9 +149,13 @@ struct ChatSendProfile: Sendable {
             // Claude Code runs `/exit` for these whole inputs.
             ChatSendProfile(exitWords: ["exit", "quit", ":q", ":q!", ":wq", ":wq!"])
         case .agy:
-            // Which whole inputs make Antigravity CLI quit is not known yet;
-            // Claude Code's words are the widest set Chat holds back.
-            ChatSendProfile(exitWords: ["exit", "quit", ":q", ":q!", ":wq", ":wq!"])
+            // Antigravity CLI sends `exit`, `quit` and `:q` to the model as
+            // messages, and a pasted message that starts with `?` or `:`, or
+            // holds `/btw` after its start, as typed; its help and code
+            // search modes open only for a key on an empty box (1.5.3, live
+            // through herdr 0.9.5's `agent prompt`). It trims the trailing
+            // space before it reads `/compact`.
+            ChatSendProfile(exitWords: [])
         case .grok:
             // Grok Build quits at once for these whole inputs, and reads
             // `/btw` and `/goal` anywhere in a message. It trims the
