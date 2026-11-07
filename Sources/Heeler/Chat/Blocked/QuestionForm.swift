@@ -10,6 +10,10 @@ enum QuestionFormAnswer: Hashable, Sendable {
     /// An answer the user typed: Claude's `Type something.` row, Codex's
     /// `None of the above` with notes, Antigravity CLI's `Write-in...`.
     case text(String)
+    /// No answer: Antigravity CLI's Esc skips the question on screen and
+    /// turns the page, so a skip goes out in its page's turn, as an answer
+    /// does (`QuestionForm.skipsPageByPage`).
+    case skipped
 }
 
 /// A dialog asking several questions at once, filled in on the card before
@@ -36,6 +40,13 @@ struct QuestionForm: Equatable, Sendable {
         self.program = program
         self.questions = questions
     }
+
+    /// Whether a page can be skipped on its own. Antigravity CLI's Esc
+    /// skips only the question on screen, which is the form's first until
+    /// the answers go out, so a skip is held with the answers and sent on
+    /// its own page. Claude Code's and Codex's Esc ends the whole ask, so
+    /// their form's Stop acts at once.
+    var skipsPageByPage: Bool { program == .agy }
 
     /// Whether `dialog` is the page asking question `index`, with the
     /// options the call lists.
@@ -81,6 +92,8 @@ struct QuestionForm: Equatable, Sendable {
             if let field = dialog.options.first(where: { $0.role == .otherText }) {
                 return .respond(ordinal: field.ordinal, text: text)
             }
+        case .skipped where skipsPageByPage:
+            return .skipQuestion
         default:
             break
         }
@@ -109,6 +122,8 @@ struct QuestionForm: Equatable, Sendable {
             return indices.sorted().filter(labels.indices.contains).map { labels[$0] }.joined(separator: ", ")
         case .text(let text):
             return text.trimmingCharacters(in: .whitespaces)
+        case .skipped:
+            return ""
         }
     }
 
@@ -116,5 +131,97 @@ struct QuestionForm: Equatable, Sendable {
     /// the order the review lists checked options in.
     private static func parts(_ text: String) -> [String] {
         text.split(separator: ",").map { DialogRowScanner.comparable(String($0)) }.sorted()
+    }
+}
+
+/// A question form's answers while the card holds them, and the page it
+/// shows. Turning a page sends nothing: the screen stays on the first
+/// question whichever page the card shows, so nothing here acts on the
+/// screen before the answers go out together.
+struct QuestionFormDraft: Equatable {
+    let form: QuestionForm
+    private(set) var page = 0
+    /// A single-select question's option, by question.
+    private(set) var choices: [Int?]
+    /// A multi-select question's checked options, by question.
+    private(set) var selections: [Set<Int>]
+    /// A typed answer, by question. It wins over a chosen option.
+    private(set) var texts: [String]
+    /// The questions skipped, where a page can be (`QuestionForm.skipsPageByPage`).
+    private(set) var skipped: Set<Int> = []
+
+    /// - Parameter checked: The first question's options already checked
+    ///   in the terminal, which stay checked.
+    init(form: QuestionForm, checked: Set<Int> = []) {
+        self.form = form
+        let count = form.questions.count
+        choices = Array(repeating: nil, count: count)
+        selections = [checked] + Array(repeating: [], count: max(0, count - 1))
+        texts = Array(repeating: "", count: count)
+    }
+
+    var question: ChatQuestion { form.questions[page] }
+    var isLastPage: Bool { page == form.questions.count - 1 }
+    var isSkipped: Bool { skipped.contains(page) }
+
+    /// Every question's answer, nil while one has none.
+    var answers: [QuestionFormAnswer]? {
+        let answers = form.questions.indices.compactMap(answer(at:))
+        return answers.count == form.questions.count ? answers : nil
+    }
+
+    func answer(at index: Int) -> QuestionFormAnswer? {
+        if form.questions[index].isMultiSelect {
+            if !selections[index].isEmpty { return .options(selections[index]) }
+        } else {
+            let text = texts[index].trimmingCharacters(in: .whitespaces)
+            if !text.isEmpty { return .text(text) }
+            if let choice = choices[index] { return .option(choice) }
+        }
+        return skipped.contains(index) ? .skipped : nil
+    }
+
+    func isChosen(_ option: Int) -> Bool {
+        choices[page] == option && texts[page].trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    func isChecked(_ option: Int) -> Bool { selections[page].contains(option) }
+
+    var text: String { texts[page] }
+
+    /// An option answers a single-select question and moves on, as a digit
+    /// does in the terminal; the last page waits for Submit.
+    mutating func choose(_ option: Int) {
+        choices[page] = option
+        texts[page] = ""
+        skipped.remove(page)
+        if !isLastPage { page += 1 }
+    }
+
+    mutating func toggle(_ option: Int) {
+        selections[page].formSymmetricDifference([option])
+        if !selections[page].isEmpty { skipped.remove(page) }
+    }
+
+    mutating func type(_ text: String) {
+        texts[page] = text
+        if !text.trimmingCharacters(in: .whitespaces).isEmpty { skipped.remove(page) }
+    }
+
+    /// Skips the page shown, not the one on screen, and moves on as a
+    /// chosen option does; the last page waits for Submit. The store sends
+    /// the skip as that page's key, in its turn.
+    mutating func skip() {
+        guard form.skipsPageByPage else { return }
+        choices[page] = nil
+        selections[page] = []
+        texts[page] = ""
+        skipped.insert(page)
+        if !isLastPage { page += 1 }
+    }
+
+    mutating func go(to target: Int) {
+        guard form.questions.indices.contains(target) else { return }
+        page = target
     }
 }

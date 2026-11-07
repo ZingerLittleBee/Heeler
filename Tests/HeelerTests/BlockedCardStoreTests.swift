@@ -1641,6 +1641,38 @@ struct BlockedCardStoreTests {
         #expect(store.content == .none)
     }
 
+    /// Skip on the form's second page goes out on the second page: the
+    /// first question gets its digit, never Esc, and Esc on the last page
+    /// submits the set (agy-46 records the season `(skipped)`).
+    @Test func anAgyFormSkipsTheLaterPageItWasTappedOn() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-44-ask-question-multi-120x40"))
+        await pane.react(to: ["2"], with: try ScreenFixture.screen("agy-45-ask-question-multi-q2-120x40"))
+        await pane.react(to: ["esc"], with: try ScreenFixture.screen("agy-46-ask-question-multi-after-esc-120x40"))
+        let store = try await Self.agyColorAndSeasonForm(on: pane)
+
+        await store.submit([.option(1), .skipped])
+
+        #expect(await pane.keys == [["2"], ["esc"]])
+        #expect(store.progress == .ready)
+        #expect(store.notice == nil)
+        #expect(store.content == .none)
+    }
+
+    /// A skipped first page sends Esc there, checks the second page shows,
+    /// then answers it.
+    @Test func anAgyFormSkipsItsFirstPageInTurn() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-44-ask-question-multi-120x40"))
+        await pane.react(to: ["esc"], with: try ScreenFixture.screen("agy-45-ask-question-multi-q2-120x40"))
+        await pane.react(to: ["1"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = try await Self.agyColorAndSeasonForm(on: pane)
+
+        await store.submit([.skipped, .option(0)])
+
+        #expect(await pane.keys == [["esc"], ["1"]])
+        #expect(store.progress == .ready)
+        #expect(store.notice == nil)
+    }
+
     /// herdr reports agy's trust prompt idle at 40 columns, before agy
     /// reports a session; nothing else on such a screen is read as a dialog.
     @Test func anIdleAgyAwaitingItsSessionShowsOnlyTheTrustPrompt() async throws {
@@ -1723,6 +1755,25 @@ struct BlockedCardStoreTests {
                 sendKeys: { await pane.send($0) },
                 paste: { await pane.paste($0) }),
             clock: clock.clock)
+    }
+
+    /// A store showing agy-44's two questions as a form.
+    private static func agyColorAndSeasonForm(on pane: FakePane) async throws -> BlockedCardStore {
+        let store = Self.store(.agy, pane: pane)
+        var ask = Self.agyCall("agy:9:tool:0", "ask_question", .question, "What is your favorite color?")
+        ask.questions = [
+            ChatQuestion(text: "What is your favorite color?", options: ["Red", "Blue"].map { .init(label: $0) }),
+            ChatQuestion(text: "What is your favorite season?", options: ["Summer", "Winter"].map { .init(label: $0) }),
+        ]
+        store.update(transcript: Self.agyTranscript(open: [ask], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return store
+        }
+        _ = try #require(QuestionForm(card: card))
+        return store
     }
 
     private static func agyCall(

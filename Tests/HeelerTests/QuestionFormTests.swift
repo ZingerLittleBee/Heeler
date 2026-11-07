@@ -82,6 +82,59 @@ struct QuestionFormTests {
         #expect(QuestionForm(card: try Self.card("agy-113-ask-question-multiselect-q1-of-2-62x41", singleSelect)) == nil)
     }
 
+    /// Antigravity CLI's Esc skips the question on screen, which stays the
+    /// first until the answers go out, so Skip on a later page is held as
+    /// that page's answer and goes out only once that page shows.
+    @Test func anAgySkipIsThePagesOwnAnswer() throws {
+        let form = try #require(QuestionForm(card: try Self.card("agy-44-ask-question-multi-120x40", Self.agyRequest)))
+        #expect(form.skipsPageByPage)
+        let first = try Self.dialog("agy-44-ask-question-multi-120x40")
+        let second = try Self.dialog("agy-45-ask-question-multi-q2-120x40")
+        #expect(try form.action(.skipped, forQuestion: 1, on: second) == .skipQuestion)
+        #expect(try form.action(.skipped, forQuestion: 0, on: first) == .skipQuestion)
+        // The second page's skip never goes to the first question.
+        #expect(throws: DialogPlanError.self) { try form.action(.skipped, forQuestion: 1, on: first) }
+
+        // Claude Code's and Codex's Esc ends the whole ask: no page skips.
+        let claude = try #require(QuestionForm(card: try Self.card("claude-08-c4-auq-q1", Self.claudeRequest)))
+        let codex = try #require(QuestionForm(card: try Self.card("codex-04-x3-q1", Self.codexRequest)))
+        #expect(!claude.skipsPageByPage && !codex.skipsPageByPage)
+        #expect(throws: DialogPlanError.self) {
+            try codex.action(.skipped, forQuestion: 0, on: try Self.dialog("codex-04-x3-q1"))
+        }
+        var draft = QuestionFormDraft(form: codex)
+        draft.skip()
+        #expect(draft.page == 0)
+        #expect(draft.answer(at: 0) == nil)
+    }
+
+    /// Skip on the card's second page skips the second question; the
+    /// first keeps its answer, and an answer given later replaces a skip.
+    @Test func anAgyDraftSkipsThePageItShows() throws {
+        let form = try #require(QuestionForm(card: try Self.card("agy-44-ask-question-multi-120x40", Self.agyRequest)))
+        var draft = QuestionFormDraft(form: form)
+        draft.choose(1)
+        #expect(draft.page == 1)
+        draft.skip()
+        #expect(draft.page == 1)
+        #expect(draft.isSkipped)
+        #expect(draft.answers == [.option(1), .skipped])
+
+        var first = QuestionFormDraft(form: form)
+        first.skip()
+        #expect(first.page == 1)
+        #expect(first.answers == nil)
+        first.go(to: 0)
+        first.type("Green")
+        #expect(first.answer(at: 0) == .text("Green"))
+        first.type("")
+        first.choose(0)
+        #expect(!first.skipped.contains(0))
+        #expect(first.page == 1)
+        first.choose(1)
+        #expect(first.answers == [.option(0), .option(1)])
+    }
+
     @Test func theReviewMustListTheAnswersGiven() throws {
         let form = try #require(QuestionForm(card: try Self.card("claude-08-c4-auq-q1", Self.claudeRequest)))
         let review = try Self.dialog("claude-14-c4-review")
@@ -280,6 +333,14 @@ struct QuestionFormTests {
         let result = BlockedDialogParser.parse(try ScreenFixture.screen(stem), program: ScreenFixture.program(stem))
         return try #require(result.dialog, "\(stem) parsed as \(result)")
     }
+
+    private static let agyRequest = ChatPendingRequest(
+        entryID: ChatEntryID("agy:9:tool:0"), callID: "agy:9:tool:0", kind: .question, toolName: "ask_question",
+        summary: "What is your favorite color?",
+        questions: [
+            ChatQuestion(text: "What is your favorite color?", options: ["Red", "Blue"].map { .init(label: $0) }),
+            ChatQuestion(text: "What is your favorite season?", options: ["Summer", "Winter"].map { .init(label: $0) }),
+        ])
 
     private static func card(_ stem: String, _ request: ChatPendingRequest) throws -> BlockedCard {
         BlockedCard(dialog: try dialog(stem), request: request)

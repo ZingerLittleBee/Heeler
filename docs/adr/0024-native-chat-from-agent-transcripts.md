@@ -698,7 +698,9 @@ presses Enter, and a written answer opens `Write-in...` by its digit and
 pastes into the field; several questions fill in on one card, page by page,
 and the last page's key submits them all. Skip presses Esc, which agy
 records as `User Skipped`, never while the answer field is open, where Esc
-goes back. While a field is open no digit is pressed, since it would be
+goes back. Esc skips the question on screen, which stays the first while
+the card turns its pages, so a form's Skip marks the page the card shows and
+presses Esc when that page's turn comes. While a field is open no digit is pressed, since it would be
 typed there. The trust prompt is answered with arrows, each checked, then
 Enter, and offers no Stop. Every answer is confirmed only by the dialog
 leaving the screen, since herdr reports the fields idle and no record shows

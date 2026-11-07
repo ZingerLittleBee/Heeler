@@ -687,8 +687,9 @@ extension BlockedDialog {
     /// Command Center instead), only denies an Oh My Pi approval, presses a
     /// Grok Build permission's reject row, rejects an OpenCode permission,
     /// dismisses an OpenCode question, as OpenCode's `esc dismiss` says,
-    /// and skips the Antigravity CLI question on screen, as its `esc Skip`
-    /// says; the turn goes on.
+    /// and skips an Antigravity CLI question, as its `esc Skip` says: on a
+    /// card the question on screen, on a form the page it shows, sent with
+    /// the answers (`QuestionFormDraft.skip`); the turn goes on.
     var stopTitle: String {
         switch kind {
         case .claudeWorkspaceTrust: "Exit Claude Code"

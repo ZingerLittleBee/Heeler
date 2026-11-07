@@ -336,14 +336,16 @@ writes the folder into agy's settings:
 | A single-select answer | Its digit, then a check for `Question i+1/n` on a page of several |
 | A multi-select set | The digit of each answer whose check must change, each checked, then Enter |
 | A written answer | `Write-in...`'s digit, the field checked, the paste, checked, Enter |
-| Skip on a question | Esc, never while the answer field is open (there Esc is Back) |
+| Skip on a question | Esc, never while the answer field is open (there Esc is Back). On a form, Esc on the page the card showed, in that page's turn |
 | Trust | Arrows to the option, each checked, then Enter; no Stop |
 
 Every plan confirms only by the dialog leaving the screen: herdr reports the
 file dialogs and fields idle, and no record shows an approval. A card's
 answer that showed no effect waits for its call's result. Several questions
 fill in on one card and go page by page (`QuestionForm`); the last page's
-key submits them all.
+key submits them all. The screen stays on `Question 1/n` while the card
+turns its pages, and Esc skips the question on screen (106), so a form's
+Skip marks the page the card shows and goes out as that page's key.
 
 The card reads an idle agy while the open turn has a call without a result
 that asks the user (`run_command`, `ask_question`, and the edit and write
