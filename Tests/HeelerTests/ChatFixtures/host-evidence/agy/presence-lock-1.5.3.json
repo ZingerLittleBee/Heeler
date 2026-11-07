@@ -1,6 +1,6 @@
 {
  "version": "Antigravity CLI 1.5.3 (agy), macOS 27.0.1 (26A434) arm64, signed in, in a plain PTY outside herdr and herdr-core (2026-11-07)",
- "method": "No core ran. after-first-prompt is HostProcessReader's own macOS open-file read (lsof -nP -a -d 0-65535 -Fn -p, the awk verbatim) of a probe's agy, every G row in order. at-prompt is the same process's plain `lsof -nP -c agy` two minutes before its first prompt, cut to numbered descriptors with an absolute path, which is what that read keeps. The follow-* scenes are one agy sampled once a second with `lsof -nP -a -p <pid> -F n` and the resumed-* and *-instance scenes two more sampled every 0.1 s; those samplers kept only presence/, brain/ and conversations/ paths. pid, name (`ps -o comm=`), argv where the probe started agy, and files are recorded; parent, start (the probe's own start time in lstart form, not read with ps) and HC_SCOPE are written for the tests. HOME was the account's real home. The account name became developer, and the scratch directory /Users/developer/lab.",
+ "method": "No core ran. after-first-prompt is HostProcessReader's own macOS open-file read (lsof -nP -a -d 0-65535 -Fn -p, the awk verbatim) of a probe's agy, every G row in order. at-prompt is the same process's plain `lsof -nP -c agy` two minutes before its first prompt, cut to numbered descriptors with an absolute path, which is what that read keeps. The follow-* scenes are one agy sampled once a second with `lsof -nP -a -p <pid> -F n` and the resumed-* and *-instance scenes two more sampled every 0.1 s; those samplers kept only presence/, brain/ and conversations/ paths. pid, name (`ps -o comm=`), argv where the probe started agy, and files are recorded; parent, start (the probe's own start time in lstart form, not read with ps) and HC_SCOPE are written for the tests. HOME was the account's real home. The account name became developer, and the scratch directory /Users/developer/lab. Every UUID became a synthetic one, consistent within the file and in sort order: conversations 00000000-0000-4000-8000-000000000101 to 0105, ~/.gemini/config/projects files 0201 to 0207, the crash log 0301.",
  "observed": "agy holds exactly one <root>/presence/<conversation id>.lock: from the first prompt of a new conversation, and from about 0.2 s after start for --conversation <existing id>. /clear and /fork move it to the new conversation at once and keep the earlier conversation's brain/<id> folder and conversations/<id>.db open. /exit releases it. A second agy opened on a conversation already open shows `Conversation already open` and holds the brain folder and database but never the lock, not even after the first exits. --conversation <unknown id> warns `conversation \"<id>\" not found` and creates no lock, folder or database. Lock files stay after their process exits (19 were on disk before the probes). The process also holds ~/.gemini/config/projects/<uuid>.json files, which name projects, not conversations.",
  "scenes": [
   {
@@ -23,7 +23,7 @@
       "/Users/developer/.gemini/antigravity-cli/log/cli-20261107_235000.log",
       "/dev/ttys023",
       "/dev/ttys023",
-      "/Users/developer/.gemini/antigravity-cli/crashes/crash_99419_6dd2f699-83df-4094-b3dd-70765cb5e68e.log",
+      "/Users/developer/.gemini/antigravity-cli/crashes/crash_99419_00000000-0000-4000-8000-000000000301.log",
       "/Users/developer/.gemini/antigravity-cli/conversation_summaries.db",
       "/Users/developer/.gemini/antigravity-cli/conversation_summaries.db-wal",
       "/Users/developer/.gemini/antigravity-cli/conversation_summaries.db-shm",
@@ -62,13 +62,13 @@
       "/Users/developer/.gemini/config/sidecars",
       "/Users/developer/.gemini/config/skills",
       "/Users/developer/.gemini/config/projects",
-      "/Users/developer/.gemini/config/projects/03d11853-e46a-4fab-9358-5da637db4580.json",
-      "/Users/developer/.gemini/config/projects/0a707f2b-7a11-41fb-ac1c-314ae789116d.json",
-      "/Users/developer/.gemini/config/projects/2a5ea04f-44d9-466b-b0e6-22730fcbef6c.json",
-      "/Users/developer/.gemini/config/projects/3eaed324-029d-4252-8887-40a0b25a0dd3.json",
-      "/Users/developer/.gemini/config/projects/5641f25d-34a2-4f4f-a3b4-3316dedc35e6.json",
-      "/Users/developer/.gemini/config/projects/674bae65-162a-4894-a0a3-500857e4445a.json",
-      "/Users/developer/.gemini/config/projects/8aead5a8-9868-4cea-b3ac-61bda8b242cf.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000201.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000202.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000203.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000204.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000205.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000206.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000207.json",
       "/Users/developer/.gemini/config/projects/default-cli-project.json",
       "/Users/developer/.gemini/antigravity-cli/conversation_summaries.db",
       "/Users/developer/.gemini/antigravity-cli/conversation_summaries.db",
@@ -120,12 +120,12 @@
       "/Users/developer/.gemini/antigravity-cli/log/cli-20261107_235000.log",
       "/dev/ttys023",
       "/dev/ttys023",
-      "/Users/developer/.gemini/antigravity-cli/crashes/crash_99419_6dd2f699-83df-4094-b3dd-70765cb5e68e.log",
-      "/Users/developer/.gemini/antigravity-cli/conversations/95739799-ba8d-4e64-90ee-04991d45f22d.db",
-      "/Users/developer/.gemini/antigravity-cli/conversations/95739799-ba8d-4e64-90ee-04991d45f22d.db-wal",
+      "/Users/developer/.gemini/antigravity-cli/crashes/crash_99419_00000000-0000-4000-8000-000000000301.log",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000103.db",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000103.db-wal",
       "/Users/developer/.gemini/antigravity-cli/settings.json",
-      "/Users/developer/.gemini/antigravity-cli/presence/95739799-ba8d-4e64-90ee-04991d45f22d.lock",
-      "/Users/developer/.gemini/antigravity-cli/brain/95739799-ba8d-4e64-90ee-04991d45f22d/.system_generated",
+      "/Users/developer/.gemini/antigravity-cli/presence/00000000-0000-4000-8000-000000000103.lock",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000103/.system_generated",
       "/Users/developer/.gemini/antigravity-cli",
       "/Users/developer/.gemini/antigravity-cli/annotations",
       "/Users/developer/.gemini/antigravity-cli/bin",
@@ -134,7 +134,7 @@
       "/Users/developer/.gemini/antigravity-cli/cache",
       "/Users/developer/.gemini/antigravity-cli/log/cli-20261107_235000.log",
       "/Users/developer/.gemini/antigravity-cli/conversation_summaries.db",
-      "/Users/developer/.gemini/antigravity-cli/conversations/95739799-ba8d-4e64-90ee-04991d45f22d.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000103.db-shm",
       "/Users/developer/.gemini/antigravity-cli/conversation_summaries.db-wal",
       "/Users/developer/.gemini/antigravity-cli/conversations",
       "/Users/developer/.gemini/antigravity-cli/crashes",
@@ -159,20 +159,20 @@
       "/Users/developer/.gemini/config/sidecars",
       "/Users/developer/.gemini/config/skills",
       "/Users/developer/.gemini/config/projects",
-      "/Users/developer/.gemini/config/projects/03d11853-e46a-4fab-9358-5da637db4580.json",
-      "/Users/developer/.gemini/config/projects/0a707f2b-7a11-41fb-ac1c-314ae789116d.json",
-      "/Users/developer/.gemini/config/projects/2a5ea04f-44d9-466b-b0e6-22730fcbef6c.json",
-      "/Users/developer/.gemini/config/projects/3eaed324-029d-4252-8887-40a0b25a0dd3.json",
-      "/Users/developer/.gemini/config/projects/5641f25d-34a2-4f4f-a3b4-3316dedc35e6.json",
-      "/Users/developer/.gemini/config/projects/674bae65-162a-4894-a0a3-500857e4445a.json",
-      "/Users/developer/.gemini/config/projects/8aead5a8-9868-4cea-b3ac-61bda8b242cf.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000201.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000202.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000203.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000204.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000205.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000206.json",
+      "/Users/developer/.gemini/config/projects/00000000-0000-4000-8000-000000000207.json",
       "/Users/developer/.gemini/config/projects/default-cli-project.json",
       "/Users/developer/.gemini/antigravity-cli/conversation_summaries.db-wal",
       "/Users/developer/.gemini/antigravity-cli/conversation_summaries.db-shm",
       "/Users/developer/.gemini/antigravity-cli/conversation_summaries.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/brain/95739799-ba8d-4e64-90ee-04991d45f22d/scratch",
-      "/Users/developer/.gemini/antigravity-cli/brain/95739799-ba8d-4e64-90ee-04991d45f22d",
-      "/Users/developer/.gemini/antigravity-cli/brain/95739799-ba8d-4e64-90ee-04991d45f22d/.user_uploaded",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000103/scratch",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000103",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000103/.user_uploaded",
       "/Users/developer/.gemini/config/mcp_config.json",
       "/Users/developer/lab/proj-a/.git",
       "/Users/developer/lab/proj-a/.git/COMMIT_EDITMSG",
@@ -201,7 +201,7 @@
   },
   {
    "name": "follow-after-reply",
-   "observed": "Another agy after its first prompt's reply (3af3ed7f).",
+   "observed": "Another agy after its first prompt's reply (00000000-0000-4000-8000-000000000102).",
    "processes": [
     {
      "pid": 42724,
@@ -216,15 +216,15 @@
       "HOME": "/Users/developer"
      },
      "files": [
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/.user_uploaded",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/scratch",
-      "/Users/developer/.gemini/antigravity-cli/presence/3af3ed7f-0f65-423c-8ef4-69072caf1e06.lock",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/.system_generated",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-wal",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-shm"
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/.user_uploaded",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/scratch",
+      "/Users/developer/.gemini/antigravity-cli/presence/00000000-0000-4000-8000-000000000102.lock",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/.system_generated",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-wal",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-shm"
      ]
     }
    ],
@@ -232,7 +232,7 @@
   },
   {
    "name": "follow-after-clear",
-   "observed": "The same process 1.4 s after /clear: the lock moved to 3760d133, 3af3ed7f's folder and database still open.",
+   "observed": "The same process 1.4 s after /clear: the lock moved to 00000000-0000-4000-8000-000000000101, 00000000-0000-4000-8000-000000000102's folder and database still open.",
    "processes": [
     {
      "pid": 42724,
@@ -247,22 +247,22 @@
       "HOME": "/Users/developer"
      },
      "files": [
-      "/Users/developer/.gemini/antigravity-cli/presence/3760d133-2936-4a32-95b4-8437ce7a8fbe.lock",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/.user_uploaded",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/scratch",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/.system_generated",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-wal",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3760d133-2936-4a32-95b4-8437ce7a8fbe.db",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3760d133-2936-4a32-95b4-8437ce7a8fbe.db-wal",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3760d133-2936-4a32-95b4-8437ce7a8fbe.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/brain/3760d133-2936-4a32-95b4-8437ce7a8fbe",
-      "/Users/developer/.gemini/antigravity-cli/brain/3760d133-2936-4a32-95b4-8437ce7a8fbe/.user_uploaded",
-      "/Users/developer/.gemini/antigravity-cli/brain/3760d133-2936-4a32-95b4-8437ce7a8fbe/scratch",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3760d133-2936-4a32-95b4-8437ce7a8fbe.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-shm"
+      "/Users/developer/.gemini/antigravity-cli/presence/00000000-0000-4000-8000-000000000101.lock",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/.user_uploaded",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/scratch",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/.system_generated",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-wal",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000101.db",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000101.db-wal",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000101.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000101",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000101/.user_uploaded",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000101/scratch",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000101.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-shm"
      ]
     }
    ],
@@ -270,7 +270,7 @@
   },
   {
    "name": "follow-after-fork",
-   "observed": "The same process 1.5 s after /fork from 3760d133: the lock moved to eeb92e4d, both earlier conversations still open.",
+   "observed": "The same process 1.5 s after /fork from 00000000-0000-4000-8000-000000000101: the lock moved to 00000000-0000-4000-8000-000000000105, both earlier conversations still open.",
    "processes": [
     {
      "pid": 42724,
@@ -285,30 +285,30 @@
       "HOME": "/Users/developer"
      },
      "files": [
-      "/Users/developer/.gemini/antigravity-cli/presence/eeb92e4d-a862-4caa-972f-c23cd05e6d69.lock",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/.user_uploaded",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/scratch",
-      "/Users/developer/.gemini/antigravity-cli/brain/3760d133-2936-4a32-95b4-8437ce7a8fbe/.system_generated",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/.system_generated",
-      "/Users/developer/.gemini/antigravity-cli/conversations/eeb92e4d-a862-4caa-972f-c23cd05e6d69.db",
-      "/Users/developer/.gemini/antigravity-cli/conversations/eeb92e4d-a862-4caa-972f-c23cd05e6d69.db-wal",
-      "/Users/developer/.gemini/antigravity-cli/conversations/eeb92e4d-a862-4caa-972f-c23cd05e6d69.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/brain/eeb92e4d-a862-4caa-972f-c23cd05e6d69",
-      "/Users/developer/.gemini/antigravity-cli/brain/eeb92e4d-a862-4caa-972f-c23cd05e6d69/.user_uploaded",
-      "/Users/developer/.gemini/antigravity-cli/brain/eeb92e4d-a862-4caa-972f-c23cd05e6d69/scratch",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-wal",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3760d133-2936-4a32-95b4-8437ce7a8fbe.db",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3760d133-2936-4a32-95b4-8437ce7a8fbe.db-wal",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3760d133-2936-4a32-95b4-8437ce7a8fbe.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/brain/3760d133-2936-4a32-95b4-8437ce7a8fbe",
-      "/Users/developer/.gemini/antigravity-cli/brain/3760d133-2936-4a32-95b4-8437ce7a8fbe/.user_uploaded",
-      "/Users/developer/.gemini/antigravity-cli/brain/3760d133-2936-4a32-95b4-8437ce7a8fbe/scratch",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3760d133-2936-4a32-95b4-8437ce7a8fbe.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/conversations/eeb92e4d-a862-4caa-972f-c23cd05e6d69.db-shm"
+      "/Users/developer/.gemini/antigravity-cli/presence/00000000-0000-4000-8000-000000000105.lock",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/.user_uploaded",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/scratch",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000101/.system_generated",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/.system_generated",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000105.db",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000105.db-wal",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000105.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000105",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000105/.user_uploaded",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000105/scratch",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-wal",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000101.db",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000101.db-wal",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000101.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000101",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000101/.user_uploaded",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000101/scratch",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000101.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000105.db-shm"
      ]
     }
    ],
@@ -316,7 +316,7 @@
   },
   {
    "name": "resumed-by-id",
-   "observed": "agy --conversation 3760d133 0.2 s after start, before any prompt. This sampler kept presence/ paths only.",
+   "observed": "agy --conversation 00000000-0000-4000-8000-000000000101 0.2 s after start, before any prompt. This sampler kept presence/ paths only.",
    "processes": [
     {
      "pid": 54954,
@@ -326,14 +326,14 @@
      "argv": [
       "agy",
       "--conversation",
-      "3760d133-2936-4a32-95b4-8437ce7a8fbe"
+      "00000000-0000-4000-8000-000000000101"
      ],
      "environment": {
       "HC_SCOPE": "12306847442-0a1b2c3d4e5f60718293a4b5c6d7e8f9",
       "HOME": "/Users/developer"
      },
      "files": [
-      "/Users/developer/.gemini/antigravity-cli/presence/3760d133-2936-4a32-95b4-8437ce7a8fbe.lock"
+      "/Users/developer/.gemini/antigravity-cli/presence/00000000-0000-4000-8000-000000000101.lock"
      ]
     }
    ],
@@ -341,7 +341,7 @@
   },
   {
    "name": "resumed-then-clear",
-   "observed": "The same process 112 ms after /clear from idle, with no OSC 7501 event: the lock moved to a6f59c15.",
+   "observed": "The same process 112 ms after /clear from idle, with no OSC 7501 event: the lock moved to 00000000-0000-4000-8000-000000000104.",
    "processes": [
     {
      "pid": 54954,
@@ -351,14 +351,14 @@
      "argv": [
       "agy",
       "--conversation",
-      "3760d133-2936-4a32-95b4-8437ce7a8fbe"
+      "00000000-0000-4000-8000-000000000101"
      ],
      "environment": {
       "HC_SCOPE": "12306847442-0a1b2c3d4e5f60718293a4b5c6d7e8f9",
       "HOME": "/Users/developer"
      },
      "files": [
-      "/Users/developer/.gemini/antigravity-cli/presence/a6f59c15-18bd-4d83-9149-1aeef51f8523.lock"
+      "/Users/developer/.gemini/antigravity-cli/presence/00000000-0000-4000-8000-000000000104.lock"
      ]
     }
    ],
@@ -366,7 +366,7 @@
   },
   {
    "name": "first-instance",
-   "observed": "agy --conversation 3af3ed7f, the first of two on that conversation.",
+   "observed": "agy --conversation 00000000-0000-4000-8000-000000000102, the first of two on that conversation.",
    "processes": [
     {
      "pid": 66944,
@@ -376,22 +376,22 @@
      "argv": [
       "agy",
       "--conversation",
-      "3af3ed7f-0f65-423c-8ef4-69072caf1e06"
+      "00000000-0000-4000-8000-000000000102"
      ],
      "environment": {
       "HC_SCOPE": "12306847442-0a1b2c3d4e5f60718293a4b5c6d7e8f9",
       "HOME": "/Users/developer"
      },
      "files": [
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/.system_generated",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/.user_uploaded",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/scratch",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-wal",
-      "/Users/developer/.gemini/antigravity-cli/presence/3af3ed7f-0f65-423c-8ef4-69072caf1e06.lock"
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/.system_generated",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/.user_uploaded",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/scratch",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-wal",
+      "/Users/developer/.gemini/antigravity-cli/presence/00000000-0000-4000-8000-000000000102.lock"
      ]
     }
    ],
@@ -399,7 +399,7 @@
   },
   {
    "name": "second-instance",
-   "observed": "A second agy --conversation 3af3ed7f 1.5 s later, showing `Conversation already open`: its folder and database, no lock.",
+   "observed": "A second agy --conversation 00000000-0000-4000-8000-000000000102 1.5 s later, showing `Conversation already open`: its folder and database, no lock.",
    "processes": [
     {
      "pid": 67180,
@@ -409,21 +409,21 @@
      "argv": [
       "agy",
       "--conversation",
-      "3af3ed7f-0f65-423c-8ef4-69072caf1e06"
+      "00000000-0000-4000-8000-000000000102"
      ],
      "environment": {
       "HC_SCOPE": "12306847442-0a1b2c3d4e5f60718293a4b5c6d7e8f9",
       "HOME": "/Users/developer"
      },
      "files": [
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/.system_generated",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/.user_uploaded",
-      "/Users/developer/.gemini/antigravity-cli/brain/3af3ed7f-0f65-423c-8ef4-69072caf1e06/scratch",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-shm",
-      "/Users/developer/.gemini/antigravity-cli/conversations/3af3ed7f-0f65-423c-8ef4-69072caf1e06.db-wal"
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/.system_generated",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/.user_uploaded",
+      "/Users/developer/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000102/scratch",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-shm",
+      "/Users/developer/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db-wal"
      ]
     }
    ],

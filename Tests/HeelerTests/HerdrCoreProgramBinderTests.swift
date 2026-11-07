@@ -863,7 +863,7 @@ struct HerdrCoreProgramBinderTests {
 
         let evidence = try await rig.binder.check(record)
 
-        #expect(evidence == Self.agyBound("95739799-ba8d-4e64-90ee-04991d45f22d"))
+        #expect(evidence == Self.agyBound("00000000-0000-4000-8000-000000000103"))
         #expect(await rig.table.requests.count == 1)
         #expect(await rig.reads.isEmpty)
         #expect(await rig.files.statuses.isEmpty)
@@ -879,12 +879,12 @@ struct HerdrCoreProgramBinderTests {
     /// `/clear` and `/fork` move the lock at once, and the conversation left behind
     /// keeps its folder and database open.
     @Test(arguments: [
-        ("follow-after-reply", "3af3ed7f-0f65-423c-8ef4-69072caf1e06"),
-        ("follow-after-clear", "3760d133-2936-4a32-95b4-8437ce7a8fbe"),
-        ("follow-after-fork", "eeb92e4d-a862-4caa-972f-c23cd05e6d69"),
-        ("resumed-by-id", "3760d133-2936-4a32-95b4-8437ce7a8fbe"),
-        ("resumed-then-clear", "a6f59c15-18bd-4d83-9149-1aeef51f8523"),
-        ("first-instance", "3af3ed7f-0f65-423c-8ef4-69072caf1e06"),
+        ("follow-after-reply", "00000000-0000-4000-8000-000000000102"),
+        ("follow-after-clear", "00000000-0000-4000-8000-000000000101"),
+        ("follow-after-fork", "00000000-0000-4000-8000-000000000105"),
+        ("resumed-by-id", "00000000-0000-4000-8000-000000000101"),
+        ("resumed-then-clear", "00000000-0000-4000-8000-000000000104"),
+        ("first-instance", "00000000-0000-4000-8000-000000000102"),
     ])
     func theConversationOnScreenIsTheOneWhoseLockIsHeld(_ scene: String, _ session: String) async throws {
         #expect(try await Self.agyEvidence(scene) == Self.agyBound(session))
@@ -902,7 +902,7 @@ struct HerdrCoreProgramBinderTests {
             return
         }
         #expect(list.transcriptRoot == Self.agyRoot)
-        #expect(list.candidates.map(\.sessionID) == ["3af3ed7f-0f65-423c-8ef4-69072caf1e06"])
+        #expect(list.candidates.map(\.sessionID) == ["00000000-0000-4000-8000-000000000102"])
         #expect(list.candidates.map(\.origins) == [[.heldOpen]])
         // agy files conversations by id, so there is no directory to list.
         #expect(await rig.files.listings.isEmpty)
@@ -925,15 +925,15 @@ struct HerdrCoreProgramBinderTests {
             try await Self.agyEvidence("after-first-prompt") { $0 + [other] }
                 == .unavailable(.cannotTellSession(.agy)))
         #expect(
-            try await Self.agyEvidence("after-first-prompt") { $0 + [Self.agyLock("95739799-ba8d-4e64-90ee-04991d45f22d")] }
-                == Self.agyBound("95739799-ba8d-4e64-90ee-04991d45f22d"))
+            try await Self.agyEvidence("after-first-prompt") { $0 + [Self.agyLock("00000000-0000-4000-8000-000000000103")] }
+                == Self.agyBound("00000000-0000-4000-8000-000000000103"))
     }
 
     /// Lock files stay after their process exits. One on disk that the Agent does not
     /// hold counts for nothing, and the check never looks at the folder.
     @Test func aStaleLockFileThatIsNotHeldCountsForNothing() async throws {
         let (rig, record) = try await Self.agyRig("at-prompt")
-        for session in ["3af3ed7f-0f65-423c-8ef4-69072caf1e06", "95739799-ba8d-4e64-90ee-04991d45f22d"] {
+        for session in ["00000000-0000-4000-8000-000000000102", "00000000-0000-4000-8000-000000000103"] {
             await rig.files.write("", at: Self.agyLock(session))
         }
 
@@ -946,7 +946,7 @@ struct HerdrCoreProgramBinderTests {
     /// bind nothing, and beside the real lock they are no second one.
     @Test(arguments: [
         "\(agyRoot)/presence/not-a-conversation.lock",
-        "\(agyRoot)/presence/95739799ba8d4e6490ee04991d45f22d.lock",
+        "\(agyRoot)/presence/00000000000040008000000000000103.lock",
         "\(agyRoot)/presence/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.lock.tmp",
         "\(agyRoot)/presence/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11",
         "\(agyRoot)/presence/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11/held.lock",
@@ -960,7 +960,7 @@ struct HerdrCoreProgramBinderTests {
         #expect(try await Self.agyEvidence("after-first-prompt", holding: withoutLock) == .unavailable(.cannotTellSession(.agy)))
         #expect(
             try await Self.agyEvidence("after-first-prompt") { $0 + [path] }
-                == Self.agyBound("95739799-ba8d-4e64-90ee-04991d45f22d"))
+                == Self.agyBound("00000000-0000-4000-8000-000000000103"))
     }
 
     /// Written for the test: a lock whose root a read cannot take names no root to
@@ -976,7 +976,7 @@ struct HerdrCoreProgramBinderTests {
         #expect(HerdrCoreSessionBinder.antigravityLock(held: path) == nil)
         #expect(
             try await Self.agyEvidence("after-first-prompt") { $0 + [path] }
-                == Self.agyBound("95739799-ba8d-4e64-90ee-04991d45f22d"))
+                == Self.agyBound("00000000-0000-4000-8000-000000000103"))
     }
 
     /// The bound root is the one the lock names, which is what the process writes
@@ -989,14 +989,14 @@ struct HerdrCoreProgramBinderTests {
         await rig.add([row])
         let record = try Self.record(for: row)
 
-        #expect(try await rig.binder.check(record) == Self.agyBound("95739799-ba8d-4e64-90ee-04991d45f22d"))
+        #expect(try await rig.binder.check(record) == Self.agyBound("00000000-0000-4000-8000-000000000103"))
         let answer = try await rig.binder.candidates(of: record)
         guard case .listed(let list) = answer else {
             Issue.record("Expected a list, got \(answer)")
             return
         }
         #expect(list.transcriptRoot == "/home/link/.gemini/antigravity-cli")
-        #expect(list.candidates.map(\.sessionID) == ["95739799-ba8d-4e64-90ee-04991d45f22d"])
+        #expect(list.candidates.map(\.sessionID) == ["00000000-0000-4000-8000-000000000103"])
     }
 
     /// Without `HOME` there is no root for a list or a pick, though a held lock still
@@ -1009,7 +1009,7 @@ struct HerdrCoreProgramBinderTests {
         await rig.add([row])
         let record = try Self.record(for: row)
 
-        #expect(try await rig.binder.check(record) == Self.agyBound("95739799-ba8d-4e64-90ee-04991d45f22d"))
+        #expect(try await rig.binder.check(record) == Self.agyBound("00000000-0000-4000-8000-000000000103"))
         #expect(try await rig.binder.candidates(of: record) == .noProcess)
     }
 

@@ -532,7 +532,7 @@ struct HerdrCoreMacOSSessionBinderTests {
         #expect(
             try await binder.check(record)
                 == .bound(
-                    sessionID: "95739799-ba8d-4e64-90ee-04991d45f22d",
+                    sessionID: "00000000-0000-4000-8000-000000000103",
                     transcriptRoot: "/Users/developer/.gemini/antigravity-cli", directory: nil))
         #expect(await files.reads.isEmpty)
 
@@ -553,7 +553,7 @@ struct HerdrCoreMacOSSessionBinderTests {
         }
         #expect(
             Set(list.candidates.map(\.sessionID))
-                == ["3760d133-2936-4a32-95b4-8437ce7a8fbe", "3af3ed7f-0f65-423c-8ef4-69072caf1e06"])
+                == ["00000000-0000-4000-8000-000000000101", "00000000-0000-4000-8000-000000000102"])
         #expect(list.candidates.allSatisfy { $0.origins == [.heldOpen] })
     }
 

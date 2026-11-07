@@ -124,7 +124,7 @@ struct ConversationReferenceTests {
     /// herdr reports an Antigravity CLI conversation by the id its folder
     /// under `brain` is named for, which agy writes lowercase.
     @Test func antigravityBindsItsConversationID() {
-        let id = "95739799-ba8d-4e64-90ee-04991d45f22d"
+        let id = "00000000-0000-4000-8000-00000000abcd"
         #expect(
             ConversationReference.resolve(Self.session(source: "herdr:antigravity_cli", agent: "agy", value: id))
                 == .bound(ConversationReference(program: .agy, sessionID: id)))

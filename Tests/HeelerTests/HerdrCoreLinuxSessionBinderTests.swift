@@ -159,8 +159,8 @@ struct HerdrCoreLinuxSessionBinderTests {
     /// Each scene and the conversation its lock names, none before the first prompt
     /// and none for a second agy on a conversation already open.
     private nonisolated static let agyScenes: [(scene: String, session: String?)] = [
-        ("after-first-prompt", "95739799-ba8d-4e64-90ee-04991d45f22d"),
-        ("follow-after-fork", "eeb92e4d-a862-4caa-972f-c23cd05e6d69"),
+        ("after-first-prompt", "00000000-0000-4000-8000-000000000103"),
+        ("follow-after-fork", "00000000-0000-4000-8000-000000000105"),
         ("at-prompt", nil),
         ("second-instance", nil),
     ]

@@ -353,8 +353,8 @@ struct HerdrCoreProgramChatTests {
     /// lock and holds that Send.
     @Test(arguments: ["Linux", "Darwin"])
     func anAntigravityCLIOfferedByATestsListFollowsItsHeldLock(_ kernel: String) async throws {
-        let first = "3af3ed7f-0f65-423c-8ef4-69072caf1e06"
-        let cleared = "3760d133-2936-4a32-95b4-8437ce7a8fbe"
+        let first = "00000000-0000-4000-8000-000000000102"
+        let cleared = "00000000-0000-4000-8000-000000000101"
         let rig = Rig(
             host: host, record: Self.record(foreground: ["agy"], name: "agy", app: "antigravity"), offering: [.agy])
         let row = Self.process(
