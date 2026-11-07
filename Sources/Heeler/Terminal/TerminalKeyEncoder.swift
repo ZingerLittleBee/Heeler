@@ -148,9 +148,8 @@ enum TerminalKeyEncoder {
     private static func legacyControl(_ byte: UInt8, _ modifiers: Modifiers) -> String {
         let character = String(UnicodeScalar(byte))
         if byte == 0x7F {
-            // Backspace keeps its identity only through Ctrl, which is ^H, and
-            // Ghostty gives up on it under all three.
-            if modifiers == [.shift, .ctrl, .alt] { return character }
+            // Ctrl chooses ^H and Alt adds Escape; Shift does not change
+            // Backspace, including when all three modifiers are held.
             let base = modifiers.contains(.ctrl) ? "\u{8}" : character
             return (modifiers.contains(.alt) ? "\u{1B}" : "") + base
         }

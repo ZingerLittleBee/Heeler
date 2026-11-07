@@ -3700,8 +3700,8 @@
 			targets = (
 				081A3B29EFF2C7B2FCAA3248 /* Heeler */,
 				DFFB82C74B73FA5CBCE6D5D2 /* HeelerNotificationService */,
-				9806EA6C63028F1217417282 /* HeelerTests */,
 				134E6CD1AC1396155DAB93E2 /* HeelerWidgets */,
+				9806EA6C63028F1217417282 /* HeelerTests */,
 			);
 		};
 /* End PBXProject section */
@@ -5165,7 +5165,7 @@
 			repositoryURL = "https://github.com/Lakr233/libghostty-spm.git";
 			requirement = {
 				kind = revision;
-				revision = 7e45d27160f9b34aca9ca5c9820e9207482f9f04;
+				revision = 3404c8a2e6403d0a5e730eb08abdaa1c865a83e9;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

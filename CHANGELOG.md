@@ -14,6 +14,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Select terminal text inline with handles and the system edit menu, using libghostty-spm 2.2.2026103001. Chat's Select Text sheet is unchanged. (PR #650)
 - Show user commands in Chat with the same right-aligned bubble and text size
   as other user messages, keeping command output below the bubble. (#648)
 
