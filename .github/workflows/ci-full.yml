@@ -260,7 +260,7 @@ jobs:
       HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
       HEELER_CI_DISABLE_COMPILATION_CACHE: '1'
       HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
-      # Temporary room for 200 severance cases; each retains its 20-second bound.
+      # Temporary room for repeated severance cases; each keeps its 20-second bound.
       HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '900'
     steps:
       - uses: actions/checkout@v5
@@ -306,10 +306,24 @@ jobs:
           HEELER_CI_LANE: package
           HEELER_CI_MANDATORY: "1"
         run: |
+          # Temporary TCP-header-only trace for the missing RST (refs #630).
+          # No pcap, payload dump, credentials or non-loopback traffic.
+          sudo tcpdump -i lo0 -nn -tt -S -l -s 80 'tcp and net 127.0.0.0/8' \
+            > "$RUNNER_TEMP/ci630-tcp-headers.log" 2> "$RUNNER_TEMP/ci630-tcp-capture.log" &
+          capture=$!
+          trap 'sudo kill -INT "$capture"; wait "$capture" || true' EXIT
           make test-ci-package
           python3 scripts/verify-ci-ios-evidence.py complete \
             --evidence-dir "$HEELER_CI_EVIDENCE_DIR" \
             --lane package --shard all --sha "$GITHUB_SHA"
+
+      - name: Upload temporary TCP headers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci630-tcp-headers-${{ github.run_id }}
+          path: ${{ runner.temp }}/ci630-tcp-*.log
+          retention-days: 7
 
       - name: Upload package test evidence
         if: always()

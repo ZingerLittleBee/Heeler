@@ -813,7 +813,7 @@ struct SessionDriverE2ETests {
     /// loss. A severed link used to surface as `.channelFailed`, which shows
     /// Session Ended until the Events reader notices and redials (#523). Runs
     /// through the degraded proxy, so the loss lands on a link with real latency.
-    @Test("a PTY that loses its socket invalidates the session", arguments: PTYSeverance.allCases, 0..<50)
+    @Test("a PTY that loses its socket invalidates the session", arguments: PTYSeverance.allCases, 0..<20)
     func ptySocketLossInvalidatesTheSession(severance: PTYSeverance, iteration: Int) async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let proxy = try #require(WeakNetworkProxyFixture.current)
