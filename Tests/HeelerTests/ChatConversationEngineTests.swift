@@ -1017,9 +1017,9 @@ struct ChatConversationEngineTests {
         #expect(await fixture.savedDocument() == nil)
     }
 
-    /// Reducers word notices and tool rows as they read, so entries saved
-    /// in one language would sit beside rows read in another.
-    @Test func entriesWordedInAnotherLanguageAreDiscarded() async throws {
+    /// A Saved Chat's messages live only in the document, so one worded in
+    /// another language still shows while the Host cannot answer.
+    @Test func entriesWordedInAnotherLanguageStillShowAndAreKept() async throws {
         let fixture = Fixture()
         await fixture.cache.save(
             fixture.document(
@@ -1028,26 +1028,51 @@ struct ChatConversationEngineTests {
 
         let restored = await engine.restore()
 
-        #expect(restored.transcript.entries.isEmpty)
-        #expect(!restored.isFromCache)
-        #expect(await fixture.savedDocument() == nil)
+        #expect(restored.isFromCache)
+        #expect(Self.numbers(restored) == Self.ids(0..<3))
+        #expect(await fixture.savedDocument()?.localization == "ja")
+    }
+
+    /// Reducers word notices and tool rows as they read, so entries saved
+    /// in one language never sit above rows read in another: the Host's
+    /// earlier pages replace them, and the next save is worded anew.
+    @Test func entriesWordedInAnotherLanguageStayOutOfTheLiveWindow() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<30), at: Self.claudePath)
+        await fixture.cache.save(
+            fixture.document(
+                numbers: 0..<25, head: Self.lines(0..<30), coverageEnd: Self.offset(of: 25), localization: "ja"))
+        let engine = fixture.makeEngine(localization: "en")
+        _ = await engine.restore()
+
+        let snapshot = await fixture.open(engine)
+
+        #expect(!snapshot.isFromCache)
+        #expect(snapshot.older == .available)
+        #expect(!Self.numbers(snapshot).contains("n-0"))
+
+        await engine.save(force: true)
+
+        #expect(await fixture.savedDocument()?.localization == "en")
     }
 
     @Test func entriesSavedWithoutALanguageCountAsEnglish() async throws {
         let fixture = Fixture()
-        await fixture.cache.save(
-            fixture.document(
-                numbers: 0..<3, head: Self.lines(0..<3), coverageEnd: Self.offset(of: 3), localization: nil))
+        await fixture.files.write(Self.lines(0..<30), at: Self.claudePath)
+        let document = fixture.document(
+            numbers: 0..<25, head: Self.lines(0..<30), coverageEnd: Self.offset(of: 25), localization: nil)
 
-        let english = await fixture.makeEngine(localization: "en").restore()
+        await fixture.cache.save(document)
+        let english = fixture.makeEngine(localization: "en")
+        _ = await english.restore()
 
-        #expect(english.isFromCache)
-        #expect(Self.numbers(english) == Self.ids(0..<3))
+        #expect(Self.numbers(await fixture.open(english)) == Self.ids(0..<30))
 
-        let japanese = await fixture.makeEngine(localization: "ja").restore()
+        await fixture.cache.save(document)
+        let japanese = fixture.makeEngine(localization: "ja")
+        _ = await japanese.restore()
 
-        #expect(japanese.transcript.entries.isEmpty)
-        #expect(await fixture.savedDocument() == nil)
+        #expect(await fixture.open(japanese).older == .available)
     }
 
     @Test func savingRecordsTheLanguageTheEntriesAreWordedIn() async throws {

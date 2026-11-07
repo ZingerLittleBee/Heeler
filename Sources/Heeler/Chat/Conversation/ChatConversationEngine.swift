@@ -362,7 +362,7 @@ actor ChatConversationEngine {
     /// Heeler can name an id before the program has written it (ADR 0034).
     private let sessionMayPrecedeItsStore: Bool
     /// The localization entries are worded in now, which a saved document
-    /// must match to show (`ChatCacheDocument.localization`).
+    /// must match to join live rows (`ChatCacheDocument.localization`).
     private let localization: String
 
     init(
@@ -392,12 +392,13 @@ actor ChatConversationEngine {
     }
 
     /// Shows what the device kept from an earlier visit, before the Host
-    /// answers. A document from another adapter revision or worded in
-    /// another language is discarded, not mixed with what is read now.
+    /// answers. A document from another adapter revision is discarded. One
+    /// worded in another language still shows, since a Saved Chat's
+    /// messages live only here, but never joins live rows (`joinedCache`),
+    /// so the next save words it anew.
     func restore() async -> ChatConversationSnapshot {
         switch await cache.load(cacheKey) {
-        case .hit(let document)
-        where document.adapterRevision == adapter.revision && document.isWorded(in: localization):
+        case .hit(let document) where document.adapterRevision == adapter.revision:
             cached = document
             update {
                 $0.transcript = ChatTranscript(
@@ -978,10 +979,10 @@ actor ChatConversationEngine {
     }
 
     /// The saved document when its entries continue the live window without
-    /// a gap.
+    /// a gap, in the words the live rows use.
     private func joinedCache(windowStart: UInt64) -> ChatCacheDocument? {
-        guard adapter.joinsCachedHistory, let cached, windowStart > 0, cached.coverageEnd >= windowStart,
-            cached.coverageStart < windowStart
+        guard adapter.joinsCachedHistory, let cached, cached.isWorded(in: localization), windowStart > 0,
+            cached.coverageEnd >= windowStart, cached.coverageStart < windowStart
         else { return nil }
         return cached
     }
