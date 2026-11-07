@@ -222,6 +222,99 @@ Issue #644's claims against these observations:
 
 ## Screen, input and keys
 
+Observed live on agy 1.5.3 through herdr 0.9.5 (2026-11-07 and 08) at
+120×40, the phone's 62×41, 62×20 and 40×30, the Heeler app's 59×41 and the
+desktop's 190×49. The screen fixtures under
+`Tests/HeelerTests/ChatFixtures/screens/agy/` are those reads; the numbers
+below are their stems. agy draws inline on the normal screen, so a read also
+holds scrollback above the box.
+
+### The box
+
+- Two full-width rules of `─` from column 0 in 256-color 8 (grey). Between
+  them, `>` at column 0 in color 12 (bright blue, not bold) and the draft in
+  the default color from column 2. A wrapped draft and a typed newline both
+  continue at column 2, so the two read the same (15, 16, 59). The box grows
+  upward as a draft grows once the screen is full.
+- The footer under the bottom rule: `? for shortcuts` when the box is empty,
+  `esc to cancel` while a turn runs, `Press up to edit queued messages` while
+  a message waits, and nothing at the left with a draft. The mode, model and
+  effort sit at the right edge in dim text.
+- Accept-edits, auto and plan modes set a grey hint after `> ` in an empty
+  box, such as `Plan mode: research & plan only (shift+tab to cycle)`, cut
+  with `...` at 40 columns (76, 84). It stays until a key is typed.
+- Bash mode: `!` on an empty box turns the marker into a bold blue (color 4)
+  `!` and the footer into `activated bash mode · esc to cancel` (91, 93).
+- Over the box: the welcome before the first prompt, a bold yellow
+  `1 artifact · /artifact to review` row after a plan (79), the spinner row
+  while working, and a grey `▸ <text> (alt+m to send immediately)` row for a
+  queued message.
+- Under the box, in place of the footer and each taking Enter: the `/` and
+  `@` popups, the `?` help, the `/model` picker and the artifact review panel
+  Ctrl+R opens (19, 25 to 29, 80, 85). A background task adds a panel
+  between the box and the footer, `● [hh:mm:ss]  <command>  running` and a
+  rule (72).
+- Past prompts in the scrollback are bold color 4 `> text` rows under a grey
+  rule `min(60, columns − 3)` wide, never the full width, so they never read
+  as the box. `/compact` leaves a full-width rule labelled
+  `Conversation compacted` above the box.
+- After agy exits, its last frame stays above `Resume with -c (or command
+  below):`, `agy --conversation=<id>` and the shell's prompt (88).
+
+### Keys
+
+| State | Key | Result |
+|---|---|---|
+| Working | Esc | The turn stops (`⎿  Interrupted · …`) and the box is left empty; a queued message comes back into the box (38, 97) |
+| Working | Ctrl+C | The same, and no exit is armed (39) |
+| Idle | Ctrl+C or Ctrl+D | Arms an exit, `press ctrl+c again to exit`, with no timeout; a draft stays (03, 07). A second press exits |
+| Exit armed | A typed key, Esc, or a paste through herdr's `agent prompt` | Disarms it; the pasted message is sent (04, live) |
+| Idle draft | Esc, Esc within 0.25 s | One Esc does nothing; two clear the draft (05, 06) |
+| Bash mode | Esc | Leaves bash mode and drops the text (93) |
+| Empty box | `?`, `!`, Up | Help, bash mode, the previous prompt from the global history as a draft (19, 91, 92) |
+| Working | Enter | Queues the message, which agy delivers within the turn or at its end (34, 35) |
+
+Shift+Enter, Alt+Enter and Ctrl+J insert a newline. herdr's `agent prompt`
+pastes its text, and a pasted message reaches the model as typed: bare
+`exit`, `quit` and `:q`, a leading `?` or `:` (help and code search open
+only for a key on an empty box), and `/btw` after the start all went to the
+model as text (live, 2026-11-08). `/compact ` with a trailing space runs
+compaction; only `/exit` and `/quit` quit.
+
+### Dialogs
+
+Each dialog takes the box's place: no `>` row between full-width rules while
+it shows. It has a bold yellow title (`Command`, `Pending edit`, `Question`,
+or `Accessing workspace:` for the trust prompt) over a full-width rule, a
+bold question, numbered options with the selected one `> N. …` in color 12,
+a hint row, and the footer `esc to cancel`.
+
+| Dialog | Question and hint row | Keys | herdr 0.9.5 |
+|---|---|---|---|
+| Trust, at start (00, 10 to 12) | `Do you trust the contents of this project?`, which wraps at 40 columns; `↑/↓ Navigate · enter Confirm` | Enter confirms the selection | Blocked at 190 and 62 columns, **idle at 40** |
+| Command (30, 31, 55, 77) | `Run this command?`; `↑/↓ Navigate · tab Amend · ctrl+g edit/expand command` | A digit picks and confirms at once; Esc or Ctrl+C stops the whole turn; Tab opens Amend | Blocked |
+| Command's Amend field (52) | `> ` field under option 1; `enter Submit` | Typed text and Enter approve the command with the text as instructions | **done** |
+| File edit (47, 48, 82) | `Accept this file edit?`; `↑/↓ Navigate · f full diff` | As for a command | **done** |
+| File creation (probe A) | `Allow creation of this file?` | As for a command | Not read |
+| Question (41, 42, 44, 45) | `Question N/M: …`; `↑/↓ Navigate · enter Select · esc Skip` | A digit answers; Esc skips one question | Blocked |
+
+**An Enter in the file edit dialog accepts the edit.** herdr's
+`permission_prompt` rule needs `tab amend`, which this dialog's hint row
+lacks, so herdr reports it done. An `agent prompt` sent then was swallowed,
+never reached the model or `history.jsonl`, and its Enter chose
+`1. Yes, accept this change` (47, 49, 50). Chat therefore holds any screen
+without the box whatever herdr reports, and reads a dialog from its hint row
+or question.
+
+### What Chat sends into
+
+Chat sends only into an empty box with nothing under it and a footer it
+knows, idle or working; a mode's grey hint is not a draft, and an armed exit
+does not hold. A draft, bash mode, a popup or panel under the box, another
+footer (code search mode and Vim's badges in agy's strings), a dialog, an
+exited agy and any unreadable screen hold the message. Stop sends one Esc,
+never Ctrl+C.
+
 ## Open questions
 
 - When a turn ended. `created_at` is a step's start, so the last step's
@@ -240,3 +333,11 @@ Issue #644's claims against these observations:
   where its turn should start is not settled.
 - `/rewind`, multi-select and write-in answers, and an `EPHEMERAL_MESSAGE`
   were not captured.
+- Screens not captured: two queued messages, code search mode, Vim mode,
+  the background prompt `press %s again to send command to background`, and
+  a file creation dialog under herdr. Chat holds all but the queue.
+- Whether `/compact` takes focus text, and which of a skill and a built-in
+  command of the same name runs. Chat sends `/compact` as typed and offers
+  no skill named like a built-in.
+- Skills marked `disable-slash-command: true`, which agy hides from `/`;
+  Heeler's skill probe does not read that key, so Chat still offers them.
