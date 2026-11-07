@@ -2061,6 +2061,9 @@ struct TerminalAttachTests {
         let handoffID = inset.beginResponderHandoff(currentHeight: { 0 }) {
             expiredID = $0
         }
+        // The Composer takes first responder, but with a hardware keyboard
+        // no frame settles it.
+        inset.acceptResponderHandoff(handoffID)
         #expect(!inset.isConfirmingDismissal)
         #expect(!inset.isSoftwareKeyboardDismissed)
         // Composer's `.system` pin still holds while the freeze is active.
@@ -2080,7 +2083,7 @@ struct TerminalAttachTests {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 383 }
         inset.dismissalConfirmationDelay = .milliseconds(30)
-        inset.responderHandoffFallbackDelay = .seconds(60)
+        inset.responderHandoffAcceptanceDelay = .seconds(60)
         try await Self.presentThenHide(inset, center: center)
         try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
 
@@ -2111,7 +2114,7 @@ struct TerminalAttachTests {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 383 }
         inset.dismissalConfirmationDelay = .milliseconds(30)
-        inset.destinationResponderHandoffFallbackDelay = .seconds(60)
+        inset.responderHandoffAcceptanceDelay = .seconds(60)
         try await Self.presentThenHide(inset, center: center)
 
         // Entry precondition, checked in the same synchronous section as
@@ -2151,8 +2154,8 @@ struct TerminalAttachTests {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 383 }
         inset.dismissalConfirmationDelay = .milliseconds(30)
-        inset.responderHandoffFallbackDelay = exit == "fallback" ? .milliseconds(30) : .seconds(60)
-        inset.destinationResponderHandoffFallbackDelay = .seconds(60)
+        inset.responderHandoffAcceptanceDelay =
+            exit == "fallback" ? .milliseconds(30) : .seconds(60)
         try await Self.presentThenHide(inset, center: center)
         try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
         #expect(!inset.isConfirmingDismissal)
@@ -2589,7 +2592,7 @@ struct TerminalAttachTests {
     func endingAHandoffAdoptsTheSettledKeyboardHeight(measured: CGFloat) async throws {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
-        inset.destinationResponderHandoffFallbackDelay = .seconds(60)
+        inset.responderHandoffAcceptanceDelay = .seconds(60)
         center.post(
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
@@ -2613,8 +2616,9 @@ struct TerminalAttachTests {
     }
 
     /// A scene transition can emit will-hide without a matching did-frame.
-    /// The safety leash must release the hold, notify its owner, and reconcile
-    /// a hide that never received a destination frame.
+    /// The Composer has no timeout of its own once it accepts, so the owner's
+    /// fallback must release the hold, notify its owner, and reconcile a hide
+    /// that never received a destination frame.
     @MainActor
     @Test func responderHandoffFallbackReleasesAnUnsettledFreeze() async throws {
         let center = NotificationCenter()
@@ -2636,11 +2640,11 @@ struct TerminalAttachTests {
             }
         })
         ownerHandoffID = handoffID
+        inset.acceptResponderHandoff(handoffID)
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
-        try await Task.sleep(for: .milliseconds(80))
+        try #require(await Self.eventually { expiredHandoffID == handoffID })
 
         #expect(!inset.isHoldingHandoffHeight)
-        #expect(expiredHandoffID == handoffID)
         #expect(ownerHandoffID == nil)
         #expect(inset.height == 0)
         #expect(inset.lastPresentedHeight == 402)
@@ -2660,50 +2664,108 @@ struct TerminalAttachTests {
                 x: 0, y: 554, width: 440, height: 436)])
         try #require(await Self.eventually { inset.height == 402 })
 
-        _ = inset.beginResponderHandoff(currentHeight: { 402 })
+        let handoffID = inset.beginResponderHandoff(currentHeight: { 402 })
+        inset.acceptResponderHandoff(handoffID)
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
-        try await Task.sleep(for: .milliseconds(80))
+        try #require(await Self.eventually { !inset.isHoldingHandoffHeight })
 
-        #expect(!inset.isHoldingHandoffHeight)
         #expect(inset.height == 402)
         #expect(inset.lastPresentedHeight == 402)
     }
 
-    /// Composer-to-Direct already has the destination terminal's bounded
-    /// fallback. A second inset-owned timer starts earlier and can commit a
-    /// transient hide before the terminal gets its final frame.
+    /// The owner's guard from the switch only waits for the destination to
+    /// accept. On a slow main thread that can take over a second, longer than
+    /// the destination's own timeout, and the destination is then still
+    /// settling: a release there exposes the transient frames the freeze
+    /// holds back (a will-hide applies zero at once) and drops the settle
+    /// that measures the keyboard the destination kept (#634). Accepting
+    /// hands the timing to the destination: the terminal's own leash, and
+    /// for the Composer, which has none, the owner's fallback from then on.
     @MainActor
-    @Test func destinationOwnedFallbackKeepsTheInsetFrozen() async throws {
+    @Test(arguments: ["Composer to Direct Input", "Direct Input to Composer"])
+    func anAcceptedDestinationKeepsTheFreezeUntilItSettles(handoff: String) async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
-        inset.responderHandoffFallbackDelay = .milliseconds(50)
-        inset.destinationResponderHandoffFallbackDelay = .milliseconds(200)
-
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 294 }
+        inset.responderHandoffAcceptanceDelay = .milliseconds(50)
+        inset.responderHandoffFallbackDelay = .seconds(60)
         center.post(
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 554, width: 440, height: 436)])
-        try #require(await Self.eventually { inset.height == 402 })
+                x: 0, y: 546, width: 402, height: 328)])
+        try #require(await Self.eventually { inset.height == 294 })
 
-        let handoffID = inset.beginDestinationOwnedResponderHandoff()
+        var expiredID: UUID?
+        let handoffID: UUID
+        if handoff == "Composer to Direct Input" {
+            handoffID = inset.beginDestinationOwnedResponderHandoff(currentHeight: { 267 }) {
+                expiredID = $0
+            }
+            inset.acceptResponderHandoff(handoffID, destinationTimeout: .seconds(60))
+        } else {
+            handoffID = inset.beginResponderHandoff(currentHeight: { 267 }) { expiredID = $0 }
+            inset.acceptResponderHandoff(handoffID)
+        }
+        // Well past the acceptance guard, UIKit publishes a transient hide.
+        try await Task.sleep(for: .milliseconds(150))
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
-        try await Task.sleep(for: .milliseconds(80))
 
+        #expect(expiredID == nil)
         #expect(inset.isHoldingHandoffHeight)
-        #expect(inset.height == 402)
-        inset.endResponderHandoff(handoffID)
+        #expect(inset.height == 294)
+
+        // The destination's settle still ends the handoff, on the keyboard
+        // it kept.
+        inset.endResponderHandoff(handoffID, currentHeight: { 267 })
         #expect(!inset.isHoldingHandoffHeight)
-        #expect(inset.height == 402)
+        #expect(inset.height == 267)
+        #expect(!inset.isConfirmingDismissal)
+        #expect(!inset.isSoftwareKeyboardDismissed)
     }
 
-    /// A destination can disappear before its weakly captured terminal timer
-    /// fires. The inset owner has a later watchdog so that loss cannot leave
-    /// the shared handoff token frozen forever.
+    /// The Composer's request can reach it late too. Its timeout starts when
+    /// it accepts, not at the switch, so a slow request does not undo the
+    /// switch before the Composer could take the keyboard.
     @MainActor
-    @Test func destinationLossFallsBackThroughTheInsetOwner() async throws {
+    @Test func theComposersTimeoutStartsWhenItAccepts() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 267 }
+        inset.responderHandoffAcceptanceDelay = .seconds(60)
+        inset.responderHandoffFallbackDelay = .milliseconds(50)
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 573, width: 402, height: 301)])
+        try #require(await Self.eventually { inset.height == 267 })
+
+        var expiredID: UUID?
+        let handoffID = inset.beginResponderHandoff(currentHeight: { 294 }) {
+            expiredID = $0
+        }
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(expiredID == nil)
+        #expect(inset.isHoldingHandoffHeight)
+
+        let acceptedAt = ContinuousClock.now
+        inset.acceptResponderHandoff(handoffID)
+        try #require(await Self.eventually { expiredID == handoffID })
+        #expect(acceptedAt.duration(to: .now) >= .milliseconds(50))
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 294)
+    }
+
+    /// A destination can disappear before it reports an outcome: before it
+    /// ever received the request, or after accepting it, when its weakly
+    /// captured timeout can no longer fire. The owner's guard catches both,
+    /// past the destination's own timeout once it accepted, so that loss
+    /// cannot leave the shared handoff token frozen forever.
+    @MainActor
+    @Test(arguments: ["before accepting", "after accepting"])
+    func destinationLossFallsBackThroughTheInsetOwner(lost: String) async throws {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
-        inset.destinationResponderHandoffFallbackDelay = .milliseconds(50)
+        let accepts = lost == "after accepting"
+        inset.responderHandoffAcceptanceDelay = accepts ? .seconds(60) : .milliseconds(50)
+        inset.destinationResponderHandoffGrace = .milliseconds(30)
 
         center.post(
             name: UIResponder.keyboardWillShowNotification,
@@ -2716,44 +2778,61 @@ struct TerminalAttachTests {
         let handoffID = inset.beginDestinationOwnedResponderHandoff(
             currentHeight: { nil }
         ) { expiredID = $0 }
+        let acceptedAt = ContinuousClock.now
+        if accepts {
+            inset.acceptResponderHandoff(handoffID, destinationTimeout: .milliseconds(30))
+        }
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
-        try await Task.sleep(for: .milliseconds(80))
+        try #require(await Self.eventually { expiredID == handoffID })
 
-        #expect(expiredID == handoffID)
+        if accepts {
+            #expect(acceptedAt.duration(to: .now) >= .milliseconds(60))
+        }
         #expect(!inset.isHoldingHandoffHeight)
         #expect(inset.height == 402)
     }
 
-    /// A slow main thread can expire either fallback while the keyboard is
-    /// still up, after it changed height inside the freeze (the Composer's
-    /// candidate bar going or coming, #629). The frame that changed it was
+    /// The keyboard can change height inside the freeze (the Composer's
+    /// candidate bar going or coming, #629), and a destination that accepted
+    /// can still be lost before it settles. The frame that changed it was
     /// discarded while holding, so the fallback adopts the keyboard the
     /// window measures, as the destination's settle would have.
     @MainActor
     @Test(arguments: ["destination watchdog", "owner fallback"])
     func aFallbackAdoptsTheKeyboardTheWindowMeasures(fallback: String) async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 294 }
+        // Composer to Direct Input drops the candidate bar; the way back
+        // raises it.
+        let (frozen, measured): (CGFloat, CGFloat) =
+            fallback == "owner fallback" ? (267, 294) : (294, 267)
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in frozen }
+        inset.responderHandoffAcceptanceDelay = .seconds(60)
         inset.responderHandoffFallbackDelay = .milliseconds(50)
-        inset.destinationResponderHandoffFallbackDelay = .milliseconds(50)
+        inset.destinationResponderHandoffGrace = .milliseconds(30)
         center.post(
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 546, width: 402, height: 328)])
-        try #require(await Self.eventually { inset.height == 294 })
+        try #require(await Self.eventually { inset.height == frozen })
 
         var expiredID: UUID?
-        let handoffID =
-            fallback == "owner fallback"
-            ? inset.beginResponderHandoff(currentHeight: { 267 }) { expiredID = $0 }
-            : inset.beginDestinationOwnedResponderHandoff(currentHeight: { 267 }) {
+        let handoffID: UUID
+        if fallback == "owner fallback" {
+            handoffID = inset.beginResponderHandoff(currentHeight: { measured }) {
                 expiredID = $0
             }
+            inset.acceptResponderHandoff(handoffID)
+        } else {
+            handoffID = inset.beginDestinationOwnedResponderHandoff(
+                currentHeight: { measured }
+            ) { expiredID = $0 }
+            inset.acceptResponderHandoff(handoffID, destinationTimeout: .milliseconds(20))
+        }
         try #require(await Self.eventually { expiredID == handoffID })
 
         #expect(!inset.isHoldingHandoffHeight)
-        try #require(await Self.eventually { inset.height == 267 })
-        #expect(inset.lastPresentedHeight == 267)
+        try #require(await Self.eventually { inset.height == measured })
+        #expect(inset.lastPresentedHeight == measured)
         #expect(!inset.isSoftwareKeyboardDismissed)
     }
 

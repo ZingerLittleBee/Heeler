@@ -811,7 +811,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// How long an unsettled handoff may keep the grid frozen before the
     /// freeze force-ends anyway — a leash for production, where the settle
     /// signal can fail to arrive. Tests stretch it so a loaded runner cannot
-    /// end a handoff out from under them (#225).
+    /// end a handoff out from under them (#225). The Agent's keyboard inset
+    /// guards an accepted handoff for longer than this, read when the
+    /// terminal accepts; see `TerminalKeyboardInset.acceptResponderHandoff`.
     var keyboardTransitionFallbackDelay: TimeInterval = 0.5
     private var keyboardGridReportTask: Task<Void, Never>?
     /// How long Ghostty gets to answer a settled layout before its grid is

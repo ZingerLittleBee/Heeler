@@ -94,20 +94,31 @@ final class TerminalKeyboardInset {
     /// terminal confirms that its own keyboard frame settled.
     private(set) var activeResponderHandoffID: UUID?
     @ObservationIgnored private var responderHandoffFallbackTask: Task<Void, Never>?
+    /// The active handoff's owner-side fallback, kept so acceptance can
+    /// re-arm it with the settle guard's delay.
+    @ObservationIgnored private var responderHandoffFallback: ResponderHandoffFallback?
     /// A dismissal the handoff has to settle on exit: a hide inside the
     /// freeze, or one still unconfirmed when the freeze began or expiring
     /// during it. Every exit reconciles it against the owning window, so a
     /// hardware keyboard attached just before a mode switch cannot leave the
     /// inset pinned with nothing left to confirm it.
     @ObservationIgnored private var owesDismissalAfterResponderHandoff = false
+    /// How long a handoff waits, from the switch, for its destination to
+    /// accept first responder. It only has to catch a destination that never
+    /// receives the request: until one accepts, the outgoing responder keeps
+    /// the keyboard, and the frozen inset still matches it. A slow main
+    /// thread delays the request well past the destination's own timeouts on
+    /// a loaded runner (over a second, #634), and expiring here drops the
+    /// switch, so this is long.
+    @ObservationIgnored var responderHandoffAcceptanceDelay = Duration.seconds(2)
+    /// How long an accepted destination with no timeout of its own (the
+    /// Composer) has for its keyboard frame to settle. This is its timeout.
     @ObservationIgnored var responderHandoffFallbackDelay = Duration.milliseconds(500)
-    /// The destination terminal owns the primary 500ms timeout. This later
-    /// owner-side watchdog exists for a destination that is deallocated
-    /// before its weakly captured timeout can report an outcome. It starts
-    /// before the destination's own timeout, so a slow main thread can also
-    /// expire it under a live destination; like the destination's settle, it
-    /// then adopts the keyboard the window measures (#629).
-    @ObservationIgnored var destinationResponderHandoffFallbackDelay = Duration.seconds(1)
+    /// How long past an accepted destination's own timeout (the terminal's
+    /// leash) the owner waits before treating the destination as gone: one
+    /// deallocated, or replaced, before it could report an outcome. A live
+    /// destination always ends the handoff first.
+    @ObservationIgnored var destinationResponderHandoffGrace = Duration.milliseconds(500)
 
     var isHoldingHandoffHeight: Bool { activeResponderHandoffID != nil }
 
@@ -325,53 +336,84 @@ final class TerminalKeyboardInset {
     /// retaining one would let a candidate-row or another window's frame
     /// replace the settled height. The destination's settle measures the
     /// keyboard it actually kept; see ``endResponderHandoff(_:currentHeight:)``.
+    ///
+    /// The destination has no timeout of its own (the Composer): once it
+    /// accepts, ``responderHandoffFallbackDelay`` is the handoff's timeout.
+    /// See ``acceptResponderHandoff(_:destinationTimeout:)``.
     func beginResponderHandoff(
         currentHeight: @escaping @MainActor () -> CGFloat? = { nil },
         onFallback: @escaping @MainActor (UUID) -> Void = { _ in }
     ) -> UUID {
-        let id = prepareResponderHandoff()
-        let fallbackDelay = responderHandoffFallbackDelay
-        responderHandoffFallbackTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: fallbackDelay)
-            guard !Task.isCancelled else { return }
-            guard let self, self.activeResponderHandoffID == id else { return }
-            self.responderHandoffFallbackTask = nil
-            self.activeResponderHandoffID = nil
-            let owesDismissal = self.owesDismissalAfterResponderHandoff
-            self.owesDismissalAfterResponderHandoff = false
-            let measuredHeight = currentHeight()
-            self.reconcileResponderHandoffExit(
-                owesDismissal: owesDismissal,
-                measuredHeight: owesDismissal ? measuredHeight ?? 0 : measuredHeight,
-                keepsVisibleHeight: true)
-            onFallback(id)
-        }
-        return id
+        beginResponderHandoff(
+            ResponderHandoffFallback(
+                destinationOwnsTimeout: false,
+                currentHeight: currentHeight,
+                onFallback: onFallback))
     }
 
-    /// Starts a freeze whose destination owns the primary fallback. A later
-    /// owner-side watchdog prevents a deallocated destination from leaving
-    /// the shared inset and handoff token active forever.
+    /// Starts a freeze whose destination owns the primary timeout (the
+    /// terminal's leash). The owner-side guard only catches a destination
+    /// that is gone, so the shared inset and handoff token cannot stay
+    /// active forever; see ``acceptResponderHandoff(_:destinationTimeout:)``.
     func beginDestinationOwnedResponderHandoff(
         currentHeight: @escaping @MainActor () -> CGFloat? = { nil },
         onFallback: @escaping @MainActor (UUID) -> Void = { _ in }
     ) -> UUID {
+        beginResponderHandoff(
+            ResponderHandoffFallback(
+                destinationOwnsTimeout: true,
+                currentHeight: currentHeight,
+                onFallback: onFallback))
+    }
+
+    /// Until the destination accepts, the owner only guards against a
+    /// request that never arrives.
+    private func beginResponderHandoff(_ fallback: ResponderHandoffFallback) -> UUID {
         let id = prepareResponderHandoff()
-        let fallbackDelay = destinationResponderHandoffFallbackDelay
-        responderHandoffFallbackTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: fallbackDelay)
-            guard !Task.isCancelled else { return }
-            guard let self, self.activeResponderHandoffID == id else { return }
-            self.responderHandoffFallbackTask = nil
-            self.activeResponderHandoffID = nil
-            let owesDismissal = self.owesDismissalAfterResponderHandoff
-            self.owesDismissalAfterResponderHandoff = false
-            self.reconcileResponderHandoffExit(
-                owesDismissal: owesDismissal, measuredHeight: currentHeight(),
-                keepsVisibleHeight: true)
-            onFallback(id)
-        }
+        responderHandoffFallback = fallback
+        armResponderHandoffFallback(id, after: responderHandoffAcceptanceDelay)
         return id
+    }
+
+    /// The destination took first responder, so the handoff is now its to
+    /// settle. The guard from the switch is replaced by one that starts now:
+    /// past `destinationTimeout` and ``destinationResponderHandoffGrace`` for
+    /// a destination with its own timeout, which then only catches one that
+    /// is gone, and ``responderHandoffFallbackDelay`` otherwise. A guard
+    /// started at the switch could expire under a destination that accepted
+    /// late but is still settling: it released the freeze to transient
+    /// frames and dropped that destination's settle (#634). Should this one
+    /// expire, it ends the handoff as the destination's settle would.
+    func acceptResponderHandoff(_ id: UUID, destinationTimeout: Duration = .zero) {
+        guard activeResponderHandoffID == id, let responderHandoffFallback else { return }
+        armResponderHandoffFallback(
+            id,
+            after: responderHandoffFallback.destinationOwnsTimeout
+                ? destinationTimeout + destinationResponderHandoffGrace
+                : responderHandoffFallbackDelay)
+    }
+
+    private func armResponderHandoffFallback(_ id: UUID, after delay: Duration) {
+        responderHandoffFallbackTask?.cancel()
+        responderHandoffFallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            guard let self, self.activeResponderHandoffID == id,
+                  let fallback = self.responderHandoffFallback
+            else { return }
+            self.responderHandoffFallbackTask = nil
+            let owesDismissal = self.releaseResponderHandoff()
+            let measuredHeight = fallback.currentHeight()
+            // Without a measurement, a handoff to the Composer trusts a hide
+            // it carried; one to a terminal leaves the frozen height
+            // standing.
+            self.reconcileResponderHandoffExit(
+                owesDismissal: owesDismissal,
+                measuredHeight: owesDismissal && !fallback.destinationOwnsTimeout
+                    ? measuredHeight ?? 0 : measuredHeight,
+                keepsVisibleHeight: true)
+            fallback.onFallback(id)
+        }
     }
 
     private func prepareResponderHandoff() -> UUID {
@@ -412,6 +454,7 @@ final class TerminalKeyboardInset {
     private func releaseResponderHandoff() -> Bool {
         responderHandoffFallbackTask?.cancel()
         responderHandoffFallbackTask = nil
+        responderHandoffFallback = nil
         activeResponderHandoffID = nil
         let owesDismissal = owesDismissalAfterResponderHandoff
         owesDismissalAfterResponderHandoff = false
@@ -739,6 +782,15 @@ struct KeyboardRideMotion {
     func isSettled(at time: CFTimeInterval) -> Bool {
         time - start >= Self.spring.settlingDuration
     }
+}
+
+/// What an owner-side handoff guard measures and reports when it expires.
+private struct ResponderHandoffFallback {
+    /// Whether the destination ends the handoff on its own timeout (the
+    /// terminal's leash), leaving the owner to catch only its loss.
+    let destinationOwnsTimeout: Bool
+    let currentHeight: @MainActor () -> CGFloat?
+    let onFallback: @MainActor (UUID) -> Void
 }
 
 /// Keeps a display link from retaining the inset it advances.

@@ -525,6 +525,12 @@ struct AgentTerminalView: View {
             guard composerToDirectHandoffID == id else { return }
             if succeeded {
                 settlingKeyboardHandoffID = id
+                // The terminal that accepted is the one the request was
+                // delivered to; its leash starts with the request.
+                keyboardInset.acceptResponderHandoff(
+                    id,
+                    destinationTimeout: .seconds(
+                        keyboardControl.terminal?.keyboardTransitionFallbackDelay ?? 0))
                 applyInputMode(.direct, preservingKeyboardHandoff: true)
             } else {
                 cancelKeyboardHandoff(id)
@@ -1507,7 +1513,7 @@ struct AgentTerminalView: View {
             let id = keyboardInset.beginDestinationOwnedResponderHandoff(
                 currentHeight: currentWindowKeyboardHeight
             ) { expiredID in
-                cancelKeyboardHandoff(expiredID)
+                keyboardHandoffFallbackExpired(expiredID)
             }
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -1524,7 +1530,7 @@ struct AgentTerminalView: View {
             let id = keyboardInset.beginResponderHandoff(
                 currentHeight: currentWindowKeyboardHeight
             ) { expiredID in
-                cancelKeyboardHandoff(expiredID)
+                keyboardHandoffFallbackExpired(expiredID)
             }
             keyboardHandoff.arm(for: agent.id)
             composerKeyboardPresentation = .system
@@ -1632,7 +1638,20 @@ struct AgentTerminalView: View {
             return
         }
         settlingKeyboardHandoffID = id
+        // The Composer has no timeout of its own; the inset's is its.
+        keyboardInset.acceptResponderHandoff(id)
         applyInputMode(.composer, preservingKeyboardHandoff: true)
+    }
+
+    /// The inset's guard released this view's handoff. A destination that
+    /// accepted it was still settling, and its exit is the settle it never
+    /// reported; one that never accepted leaves the switch undone.
+    private func keyboardHandoffFallbackExpired(_ id: UUID) {
+        if settlingKeyboardHandoffID == id {
+            endKeyboardHandoff(id)
+        } else {
+            cancelKeyboardHandoff(id)
+        }
     }
 
     private func composerKeyboardHandoffSettled(_ id: UUID) {
