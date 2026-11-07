@@ -759,7 +759,7 @@ struct DialogActionPlannerTests {
 
     @Test(
         "Plans for every captured dialog use herdr's keys and check after each arrow and paste",
-        arguments: ScreenFixture.all)
+        arguments: ScreenFixture.all + ScreenFixture.agy)
     func planShapes(stem: String) throws {
         let result = BlockedDialogParser.parse(try ScreenFixture.screen(stem), program: ScreenFixture.program(stem))
         guard let dialog = result.dialog else { return }
@@ -843,6 +843,45 @@ struct DialogExpectationTests {
         #expect(try meets(.inputText(note), "claude-05-c1-pasted-feedback", bash))
         #expect(try !meets(.inputText(note), "claude-04-c1-tab-on-no", bash))
         #expect(try !meets(.inputText("Do not create it"), "claude-05-c1-pasted-feedback", bash))
+    }
+
+    /// The checks Antigravity CLI's plans make, against the screens agy
+    /// drew after each of the keys sent live.
+    @Test("Each step of Antigravity CLI's note, answer and selection meets its check")
+    func agySteps() throws {
+        let command = try fingerprint("agy-108-perm-run-command-62x41")
+        let note = "then also reply with the word kiwi"
+        #expect(try meets(.feedbackMode(ordinal: 1), "agy-109-perm-run-command-amend-62x41", command))
+        #expect(try !meets(.feedbackMode(ordinal: 1), "agy-108-perm-run-command-62x41", command))
+        #expect(try !meets(.feedbackMode(ordinal: 1), "agy-110-perm-run-command-amend-typed-62x41", command))
+        #expect(try meets(.inputText(note), "agy-110-perm-run-command-amend-typed-62x41", command))
+        #expect(try !meets(.inputText(note), "agy-109-perm-run-command-amend-62x41", command))
+
+        let pet = try fingerprint("agy-104-ask-question-writein-after-digit-62x41")
+        #expect(try meets(.feedbackMode(ordinal: 3), "agy-104-ask-question-writein-after-digit-62x41", pet))
+        #expect(try meets(.inputText("a small hamster"), "agy-105-ask-question-writein-typed-62x41", pet))
+
+        let colors = try fingerprint("agy-100-ask-question-multiselect-62x41")
+        #expect(try meets(.checked([2]), "agy-101-ask-question-multiselect-after-digit2-62x41", colors))
+        #expect(try meets(.checked([3]), "agy-102-ask-question-multiselect-after-3-2-62x41", colors))
+        #expect(try !meets(.checked([2]), "agy-100-ask-question-multiselect-62x41", colors))
+
+        let first = try fingerprint("agy-44-ask-question-multi-120x40")
+        #expect(try meets(.page("Question 2/2"), "agy-45-ask-question-multi-q2-120x40", first))
+        #expect(try meets(.page("Question 2/2"), "agy-114-ask-question-multiselect-q1-after-enter-62x41", first))
+        #expect(try !meets(.page("Question 2/2"), "agy-44-ask-question-multi-120x40", first))
+    }
+
+    /// herdr reports agy idle while a field is open, so only the dialog
+    /// leaving confirms an answer.
+    @Test("Antigravity CLI confirms only by the dialog leaving")
+    func agyConfirmation() throws {
+        let command = try fingerprint("agy-108-perm-run-command-62x41")
+        for stem in ["agy-109-perm-run-command-amend-62x41", "agy-110-perm-run-command-amend-typed-62x41"] {
+            #expect(try !confirms(.fingerprintChange, stem, command, activity: .idle), "\(stem)")
+        }
+        #expect(try confirms(.fingerprintChange, "agy-115-ask-question-single-after-esc-62x41", command, activity: .idle))
+        #expect(try confirms(.fingerprintChange, "agy-111-perm-run-command-tab-on-no-62x41", command))
     }
 
     @Test("A note cut off at the phone's width still meets its check")
