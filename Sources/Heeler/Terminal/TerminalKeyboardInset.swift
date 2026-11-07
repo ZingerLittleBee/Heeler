@@ -420,6 +420,12 @@ final class TerminalKeyboardInset {
         let id = UUID()
         coalesceTask?.cancel()
         coalesceTask = nil
+        // A presentation moves the ride at once and the height only after
+        // its coalesce, which the freeze just dropped. The ride returns to
+        // the height the freeze holds, or an exit that measures that same
+        // height would leave the input chrome off the keyboard by the
+        // difference (#634).
+        rideKeyboard(height: height)
         responderHandoffFallbackTask?.cancel()
         // An unconfirmed hide from before the freeze, or one a replaced
         // freeze still owed, is carried into it rather than dropped.

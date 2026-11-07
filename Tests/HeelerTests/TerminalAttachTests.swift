@@ -2836,6 +2836,53 @@ struct TerminalAttachTests {
         #expect(!inset.isSoftwareKeyboardDismissed)
     }
 
+    /// A presentation moves the ride at once and the height only after its
+    /// coalesce. A handoff that begins inside that window drops the
+    /// coalesce, so the ride returns to the height the freeze holds. An exit
+    /// that measures that same height then moves nothing; a ride left on the
+    /// dropped frame kept the Agent switcher off the keyboard by the
+    /// difference, 27pt above it (#634).
+    @MainActor
+    @Test(arguments: ["end", "cancel"])
+    func aHandoffInsideAPresentationCoalesceKeepsTheRideOnTheFrozenHeight(
+        exit: String
+    ) async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { frame in
+            frame.height == 328 ? 294 : 267
+        }
+        func present(height: CGFloat) {
+            center.post(
+                name: UIResponder.keyboardWillShowNotification, object: nil,
+                userInfo: [
+                    UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                        x: 0, y: 874 - height, width: 402, height: height),
+                    UIResponder.keyboardAnimationDurationUserInfoKey: 0.0,
+                ])
+        }
+        present(height: 328)
+        try #require(await Self.eventually { inset.height == 294 })
+        #expect(inset.keyboardRideRaise == 294)
+
+        present(height: 301)
+        #expect(inset.keyboardRideRaise == 267)
+        #expect(inset.height == 294)
+        let handoffID = inset.beginResponderHandoff(currentHeight: { 294 })
+        if exit == "end" {
+            inset.endResponderHandoff(handoffID, currentHeight: { 294 })
+        } else {
+            inset.cancelResponderHandoff(handoffID, currentHeight: { 294 })
+        }
+
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == 294)
+        #expect(inset.keyboardRideRaise == 294)
+        // The dropped coalesce does not land later either.
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 294)
+        #expect(inset.keyboardRideRaise == 294)
+    }
+
     @MainActor
     @Test func responderHandoffCancellationUsesTheOwningWindowHeight() async throws {
         let center = NotificationCenter()
