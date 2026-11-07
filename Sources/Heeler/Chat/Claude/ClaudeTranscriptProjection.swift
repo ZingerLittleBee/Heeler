@@ -28,7 +28,7 @@ enum ClaudeTranscriptProjection {
             chain: chain, index: index, role: role, activity: context.activity, transcriptPath: transcriptPath)
         builder.build()
         let waiting = role == .main ? builder.addWaitingPrompts(waitingEnqueues(index)) : [:]
-        return ChatTranscript(
+        var transcript = ChatTranscript(
             entries: builder.entries, title: index.title,
             needsOlderHistory: context.windowStart > 0,
             pendingRequests: builder.pendingRequests,
@@ -42,6 +42,12 @@ enum ClaudeTranscriptProjection {
             turns: role == .main ? builder.turns : [],
             precedingTurnEnd: role == .main ? builder.precedingTurnEnd : nil,
             unrecordedEntryIDs: Set(waiting.values))
+        if role == .main {
+            transcript.model = index.model
+            transcript.effort = index.effort
+            transcript.permissionMode = index.permissionMode
+        }
+        return transcript
     }
 
     /// The output `record` holds for the call `use`, as its row's preview
@@ -70,6 +76,7 @@ enum ClaudeTranscriptProjection {
         waiting: [UInt64: ChatEntryID] = [:]
     ) -> [ChatRecordedPrompt] {
         var prompts: [(prompt: ChatRecordedPrompt, rawKey: String)] = []
+        var fires: [(offset: UInt64, key: String)] = []
         let byPosition = index.recordsByPosition
         let imageSources = imageSources(byPosition, indexed: index.records)
         for (position, record) in byPosition.enumerated() where !record.isSidechain && record.teamName == nil {
@@ -82,6 +89,13 @@ enum ClaudeTranscriptProjection {
                         ChatRecordedPrompt(offset: record.byteOffset, text: text, entryID: entryByRecord[record.uuid]),
                         ClaudeTranscriptReducer.echoKey(text)
                     ))
+                continue
+            }
+            // A scheduled fire settles its enqueue, but nobody sent it.
+            if record.kind == .system("scheduled_task_fire") {
+                if let prompt = record.system?.scheduledPrompt.flatMap(promptText) {
+                    fires.append((record.byteOffset, ClaudeTranscriptReducer.echoKey(prompt)))
+                }
                 continue
             }
             guard let raw = typedText(of: record, indexed: index.records) else { continue }
@@ -104,6 +118,12 @@ enum ClaudeTranscriptProjection {
             guard let content = operation.content, let text = promptText(content) else { continue }
             let key = ClaudeTranscriptReducer.echoKey(text)
             let delivery = prompts.first { $0.prompt.offset > operation.offset && $0.rawKey == key }?.prompt
+            // The task's own enqueue, which its fire delivers before any Send could.
+            if let fire = fires.first(where: { $0.offset > operation.offset && $0.key == key }),
+                fire.offset < delivery?.offset ?? .max
+            {
+                continue
+            }
             enqueued.append(
                 ChatRecordedPrompt(
                     offset: operation.offset, text: text, entryID: delivery?.entryID ?? waiting[operation.offset],
@@ -218,6 +238,9 @@ enum ClaudeTranscriptProjection {
         case .system("local_command"):
             guard case .command(let typed) = ClaudeUserText.classify(record.system?.content ?? "") else { return nil }
             return (record.system?.commandRun ?? typed).displayText
+        case .system("scheduled_task_fire"):
+            // Delivers the enqueue Claude Code wrote for the task's prompt.
+            return record.system?.scheduledPrompt.flatMap(promptText)
         default:
             return nil
         }
@@ -878,6 +901,12 @@ private struct Builder {
             add(
                 "notice:\(record.uuid)", at: record,
                 .notice(ChatNotice(kind: .stopped, title: "All background agents stopped")))
+        case "scheduled_task_fire":
+            // Its prompt follows as a meta record; the line stands for both,
+            // not a bubble, since nobody typed it.
+            add(
+                "notice:\(record.uuid)", at: record,
+                .notice(ChatNotice(kind: .scheduledTask, title: "Scheduled task", detail: record.system?.scheduledPrompt)))
         case "informational" where ClaudeTranscriptProjection.unknownCommand(record) != nil:
             addUnknownCommand(record, content: content)
         default:
@@ -1119,7 +1148,7 @@ private struct Builder {
     /// before one of them never gets one.
     private static func isTurnBoundary(_ record: ClaudeRecord) -> Bool {
         switch record.kind {
-        case .system("turn_duration"):
+        case .system("turn_duration"), .system("scheduled_task_fire"):
             return true
         case .user:
             guard record.toolResults.isEmpty, !record.isMeta, !record.isCompactSummary,
@@ -1141,6 +1170,9 @@ private struct Builder {
     /// origin open one too: what follows them is not the turn before.
     private static func opensTurn(_ record: ClaudeRecord, whileOpen: Bool) -> Bool {
         switch record.kind {
+        case .system("scheduled_task_fire"):
+            // Fired between turns; its reply is not the turn before's.
+            return true
         case .system("local_command"):
             guard !whileOpen, case .command = ClaudeUserText.classify(record.system?.content ?? "") else { return false }
             return true

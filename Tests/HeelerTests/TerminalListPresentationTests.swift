@@ -114,15 +114,21 @@ struct TerminalListProjectionTests {
     @Test func hostFilterLimitsCardsAndIssues() {
         let first = Host.fixture(name: "one")
         let second = Host.fixture(name: "two")
+        let third = Host.fixture(name: "three")
         let list = projection(
-            hosts: [first, second],
+            hosts: [first, second, third],
             terminals: [
                 terminal(host: first, paneID: "a"), terminal(host: second, paneID: "b"),
+                terminal(host: third, paneID: "c"),
             ],
-            statuses: [first.id: .suspended, second.id: .suspended])
-        #expect(list.workspaces(filteredHostID: second.id).map(\.hostID) == [second.id])
-        #expect(list.issues(filteredHostID: second.id).map(\.hostID) == [second.id])
-        #expect(list.issues().map(\.hostID) == [first.id, second.id])
+            statuses: [first.id: .suspended, second.id: .suspended, third.id: .suspended])
+        #expect(list.workspaces(filteredHostIDs: [second.id]).map(\.hostID) == [second.id])
+        #expect(list.issues(filteredHostIDs: [second.id]).map(\.hostID) == [second.id])
+        #expect(list.issues().map(\.hostID) == [first.id, second.id, third.id])
+        let selected: Set<Host.ID> = [third.id, first.id]
+        #expect(list.workspaces(filteredHostIDs: selected).map(\.hostID) == [first.id, third.id])
+        #expect(list.hostGroups(filteredHostIDs: selected).map(\.hostID) == [first.id, third.id])
+        #expect(list.issues(filteredHostIDs: selected).map(\.hostID) == [first.id, third.id])
     }
 
     @Test func directoryPrefersCheckoutThenShellThenAgentAbsolutePaths() {

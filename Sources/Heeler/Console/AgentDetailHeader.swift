@@ -27,7 +27,7 @@ import SwiftUI
 struct AgentDetailHeader: View {
     static let controlSize: CGFloat = 44
     /// How much of the glass shows, the rest letting output through.
-    static let glassOpacity: Double = 0.8
+    static let glassOpacity: Double = 0.9
     /// Buttons sharing a capsule sit closer than standalone ones.
     static let capsuleButtonWidth: CGFloat = 36
     static let capsuleInset: CGFloat = (controlSize - capsuleButtonWidth) / 2
@@ -62,6 +62,10 @@ struct AgentDetailHeader: View {
     /// Temporarily replaces the task title and reveals it even while folded,
     /// without changing the user's expansion preference or the other controls.
     var statusTitle: String?
+    /// Chat's confirmed model and effort sit beside the launch folder.
+    var sessionSettings: AgentSessionSettings?
+    /// The whole title opens the native model menu when switching is supported.
+    var sessionControls: AgentSessionControls?
     /// Where this header's actions live. A horizontal bar keeps their room
     /// clear so the expanded title stays centred; a vertical bar stands
     /// outside the content and needs no horizontal reservation.
@@ -151,11 +155,57 @@ struct AgentDetailHeader: View {
         }
     }
 
-    /// Fills the room up to the trailing capsule, so the gaps on either side
-    /// match, truncating the title at its end and the directory at its
-    /// start, so the folder the Agent works in stays readable.
+    @ViewBuilder
     private func titlePill(_ title: AgentDetailHeaderTitle) -> some View {
-        VStack(spacing: 1) {
+        if let controls = sessionControls {
+            Menu {
+                Menu("Model", systemImage: "cpu") {
+                    Section("Model") {
+                        Picker("Model", selection: Binding(
+                            get: { AgentSessionSettings.modelChoices.first { AgentSessionSettings.model(sessionSettings?.model, is: $0.id) }?.id ?? "" },
+                            set: { controls.setModel($0) })
+                        ) {
+                            ForEach(AgentSessionSettings.modelChoices, id: \.id) { choice in
+                                Text(choice.title).tag(choice.id)
+                            }
+                        }
+                        .labelsHidden()
+                        .disabled(!controls.isEnabled || statusTitle != nil)
+                    }
+                    Section("Effort") {
+                        Picker("Effort", selection: Binding(
+                            get: { sessionSettings?.effort ?? "" }, set: { controls.setEffort($0) })
+                        ) {
+                            ForEach(AgentSessionSettings.effortChoices, id: \.self) { level in
+                                Text(level).tag(level)
+                            }
+                        }
+                        .labelsHidden()
+                        .disabled(!controls.isEnabled || statusTitle != nil)
+                    }
+                }
+            } label: {
+                titleLabel(title)
+                    .contentShape(.capsule)
+            }
+            .buttonStyle(.plain)
+            .menuOrder(.fixed)
+            .accessibilityLabel("Agent settings")
+            .accessibilityValue(sessionSettings?.modelLine ?? "Model")
+            .accessibilityHint("Select model and effort for \(title.title)")
+            .accessibilityIdentifier("agent-header-model")
+        } else {
+            titleLabel(title)
+        }
+    }
+
+    /// Fills the room between equal side slots. Long models truncate rather
+    /// than pushing Back or More outside the screen.
+    private func titleLabel(_ title: AgentDetailHeaderTitle) -> some View {
+        let mark = AgentKindMark(kind: title.kind)
+        // Claude's square asset has vertical padding; match the folder's visible height.
+        let markSize: CGFloat = mark.artwork == AgentKindMark.artwork(for: .claude) ? 18 : 12
+        return VStack(spacing: 1) {
             HStack(spacing: 6) {
                 if statusTitle != nil {
                     ProgressView()
@@ -165,16 +215,39 @@ struct AgentDetailHeader: View {
                 }
                 Text(statusTitle ?? title.title)
                     .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(palette.foreground)
                     .lineLimit(1)
             }
             HStack(spacing: 4) {
-                Text(title.harness)
-                    .layoutPriority(1)
-                if let directory = title.directory {
+                Group {
+                    if let artwork = mark.artwork {
+                        Image(artwork.template)
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        Text(verbatim: mark.monogram)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    }
+                }
+                .frame(width: markSize, height: markSize)
+                .frame(height: 12)
+                .accessibilityHidden(true)
+                if let folder = title.folder {
                     Text(verbatim: "·")
+                        .accessibilityHidden(true)
+                    Image(systemName: "folder")
+                        .accessibilityHidden(true)
+                    Text(verbatim: folder)
+                        .truncationMode(.middle)
+                }
+                if let model = sessionSettings?.modelLine {
+                    if title.folder != nil {
+                        Text(verbatim: "·")
+                            .accessibilityHidden(true)
+                    }
+                    Text(verbatim: model)
                         .layoutPriority(1)
-                    Text(directory)
-                        .truncationMode(.head)
                 }
             }
             .font(.system(size: 12))
@@ -383,24 +456,24 @@ private struct AgentDetailHeaderVerticalBarControls: ToolbarContent {
 }
 #endif
 
-/// What `AgentDetailHeader` names: the Agent's task on the first line, and
-/// its harness and directory on the second.
+/// The task title and launch folder; Chat adds its live model separately.
 struct AgentDetailHeaderTitle: Equatable {
     let title: String
-    let harness: String
+    let kind: String
     let directory: String?
+
+    var folder: String? { directory.map(RemoteHostPath.lastComponent(of:)) }
 }
 
 extension AgentDetailHeaderTitle {
-    /// The task title as the Console list shows it, the harness by its
-    /// product name rather than a custom Agent name, and the launch
-    /// directory with the Host account's home shortened to `~`.
+    /// The task title as the Console list shows it, the harness's kind for
+    /// its mark, and the reported launch directory. Keep the home folder's
+    /// name rather than shortening it to `~`.
     init(_ agent: ConsoleAgent) {
         self.init(
             title: AgentTerminalView.displayTitle(for: agent),
-            harness: SupportedAgentKind(rawValue: agent.agent.kind)?.displayName
-                ?? agent.agent.kind,
-            directory: agent.displayCwd.isEmpty ? nil : agent.displayCwd)
+            kind: agent.agent.kind,
+            directory: agent.agent.cwd.isEmpty ? nil : agent.agent.cwd)
     }
 }
 

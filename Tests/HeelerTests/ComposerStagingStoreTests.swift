@@ -50,6 +50,31 @@ struct ComposerStagingStoreTests {
         #expect(events == [.completed(id: id, path: path)])
     }
 
+    @Test func aCopiedPathsLineGoesByItself() async throws {
+        let fixture = try await makeFixture(.image)
+        defer { fixture.cleanup() }
+
+        fixture.store.begin(.photo(DataImageSelection(data: Data([0x01]))))
+        try await waitUntil("staging should complete") { fixture.store.state.isCompleted }
+        try await waitUntil("the line should go", timeout: ComposerStagingStore.completedLinger + .seconds(3)) {
+            fixture.store.presentation == nil
+        }
+        #expect(fixture.composer.draft == "\(remotePath(for: .image)) ")
+    }
+
+    @Test func severalPicksStageOneAfterAnother() async throws {
+        let path = remotePath(for: .image)
+        let fixture = try await makeFixture(.image, stagePlans: [.success(path), .success(path)])
+        defer { fixture.cleanup() }
+
+        await fixture.store.beginAll([
+            .photo(DataImageSelection(data: Data([0x01]))), .photo(DataImageSelection(data: Data([0x02]))),
+        ])
+
+        #expect(await fixture.stageRequestCount(for: .image) == 2)
+        #expect(fixture.store.state.isCompleted)
+    }
+
     @Test func beginCanOmitComposerInsertAndStillPublishCompletion() async throws {
         let fixture = try await makeFixture(.image)
         defer { fixture.cleanup() }

@@ -61,16 +61,28 @@ struct AgentChatSurfaceView: View {
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
-    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
     @State private var agentKeys: ChatAgentKeysStore
+    /// Claude Code's "Switch model?" question, asked again on the phone.
+    @State private var switchQuestion: SwitchQuestion?
+    /// A status-line switch under way; the controls wait for it, since two
+    /// at once would type into one input line.
+    private var switchingSetting: AgentSettingOverrides.Setting? {
+        get { session.settingOverrides.switchingSetting }
+        nonmutating set { session.settingOverrides.switchingSetting = newValue }
+    }
+    private var isSwitchingSetting: Bool { switchingSetting != nil }
+    /// A fresh Claude session has no reply yet; its welcome banner names the model.
+    @State private var welcomeModel: String?
     @State private var isRenamingAgent = false
     @State private var titleRename: AgentTitleRenameStore?
     @State private var isRenamingWorkspace = false
     @State private var closeErrorMessage: String?
+    @State private var permissionErrorMessage: String?
     /// The Workspace drawer's panel, while the back header's menu owns it.
     @State private var isHeaderDrawerOpen = false
     /// The Background Work strip's height over the staging bar; zero while
@@ -170,6 +182,15 @@ struct AgentChatSurfaceView: View {
             presentedSurface
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
+        .confirmationDialog(
+            switchQuestion?.title ?? "", isPresented: switchQuestionShown, titleVisibility: .visible,
+            presenting: switchQuestion
+        ) { question in
+            Button(question.yes) { answerSwitch(true) }
+            Button("No, go back", role: .cancel) { answerSwitch(false) }
+        } message: { question in
+            Text(verbatim: question.detail)
+        }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { surfaceHeight = $0 }
         // Keyboard avoidance is `TerminalKeyboardInset`'s, as on the
         // terminal, so swapping surfaces never changes the proposal.
@@ -198,7 +219,9 @@ struct AgentChatSurfaceView: View {
         lifecycleSurface
         .photosPicker(
             isPresented: $isSelectingPhoto,
-            selection: $selectedPhoto,
+            selection: $selectedPhotos,
+            maxSelectionCount: 10,
+            selectionBehavior: .ordered,
             matching: .images)
         .fileImporter(
             isPresented: $isSelectingFile,
@@ -298,6 +321,14 @@ struct AgentChatSurfaceView: View {
         } message: {
             Text(closeErrorMessage ?? "")
         }
+        .alert("Couldn't Change Setting", isPresented: Binding(
+            get: { permissionErrorMessage != nil },
+            set: { if !$0 { permissionErrorMessage = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(permissionErrorMessage ?? "")
+        }
     }
 
     private var lifecycleSurface: some View {
@@ -326,6 +357,7 @@ struct AgentChatSurfaceView: View {
             stageExit = ChatStageExit.watch(isOnStage: isOnStage) { [chat, viewerID, composer] in
                 chat?.hide(viewerID)
                 composer.voice.composerDidLeaveScreen()
+                answerSwitch(false)
             }
         }
         .onChange(of: timelineFeed, initial: true) { _, feed in
@@ -349,6 +381,7 @@ struct AgentChatSurfaceView: View {
         // Also on appearing: Chat may have followed another while it was away.
         .onChange(of: chat?.conversationGeneration, initial: true) { _, generation in
             guard let generation else { return }
+            welcomeModel = nil
             composer.conversationDidChange(to: generation)
         }
         .onChange(of: chat?.sendStatuses, initial: true) { _, statuses in
@@ -364,10 +397,11 @@ struct AgentChatSurfaceView: View {
             prepareComposerKeyboardPresentation(.hidden)
             composerKeyboardPresentation = .hidden
         }
-        .onChange(of: selectedPhoto) { _, item in
-            guard let item else { return }
-            selectedPhoto = nil
-            session.staging.begin(.photo(PhotosPickerImageSelection(item: item)))
+        .onChange(of: selectedPhotos) { _, items in
+            guard !items.isEmpty else { return }
+            selectedPhotos = []
+            let staging = session.staging
+            Task { await staging.beginAll(items.map { .photo(PhotosPickerImageSelection(item: $0)) }) }
         }
         .onChange(of: composer.draft.hasPrefix("/"), initial: true) { _, opensMenu in
             guard opensMenu, let skills else { return }
@@ -452,6 +486,8 @@ struct AgentChatSurfaceView: View {
                 surfaceSwitch: terminalSurfaceSwitch,
                 title: AgentDetailHeaderTitle(agent),
                 statusTitle: console.connectionRecoveryTitle(for: agent.hostID),
+                sessionSettings: sessionSettings,
+                sessionControls: sessionControls,
                 controlPlacement: headerControlPlacement)
             .padding(.horizontal, 12)
             .padding(.top, backHeaderTop)
@@ -903,10 +939,20 @@ struct AgentChatSurfaceView: View {
     }
 
     private var sendPolicy: ComposerDeliveryPolicy {
-        .chat(
+        var policy = ComposerDeliveryPolicy.chat(
             rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, confirmSession: confirmSession,
             sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
+        // A status-line switch types into the same input line.
+        let preflight = policy.preflight
+        let isSwitching = { isSwitchingSetting }
+        let settle = settleUnansweredSwitch
+        policy.preflight = { text in
+            if isSwitching() { return .inputNotReady("Claude Code is switching a setting. Try again in a moment.") }
+            if let reason = await settle() { return .inputNotReady(reason) }
+            return await preflight?(text)
+        }
+        return policy
     }
 
     /// Which conversation Chat follows, noted with a refusal.
@@ -977,6 +1023,8 @@ struct AgentChatSurfaceView: View {
                 status: console.hostStatuses[agent.hostID],
                 latency: console.hostLatencies[agent.hostID]),
             changes: AgentDetailChanges(rows: console.rowChanges, agent: agent, open: showChanges),
+            session: sessionSettings,
+            sessionControls: sessionControls,
             chromeColorScheme: colorScheme,
             switcher: agentSwitcher,
             keyboardHandoff: keyboardHandoff,
@@ -999,6 +1047,267 @@ struct AgentChatSurfaceView: View {
             interrupt: stopInterrupt)
         .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
         .frame(maxWidth: .infinity)
+        // The transcript records the mode as snapshots, and not every change
+        // (plan approval moves to auto unrecorded); the footer shows it live.
+        .task(id: "\(agent.agent.status)-\(chat?.conversationGeneration ?? 0)-\(console.hostConnectionGenerations[agent.hostID] ?? 0)-\(console.isHostReadyForInput(agent.hostID))") {
+            await readSessionSettingsFromScreen()
+        }
+    }
+
+    /// One confirmed snapshot for the title's model and the Composer's mode.
+    private var sessionSettings: AgentSessionSettings? {
+        (chat?.conversation.transcript).map {
+            AgentSessionSettings(
+                model: override(.model) ?? $0.model ?? welcomeModel,
+                permissionMode: override(.permissionMode) ?? $0.permissionMode,
+                effort: override(.effort) ?? $0.effort)
+        }
+    }
+
+    private func override(_ setting: AgentSettingOverrides.Setting) -> String? {
+        session.settingOverrides.value(setting, over: recordedSettings)
+    }
+
+    private func setOverride(_ setting: AgentSettingOverrides.Setting, _ value: String?) {
+        session.settingOverrides.set(setting, value, over: recordedSettings)
+    }
+
+    /// The transcript's mode, model and effort, which the overrides stand over.
+    private var recordedSettings: [String?] {
+        let transcript = chat?.conversation.transcript
+        return [transcript?.permissionMode, transcript?.model, transcript?.effort]
+    }
+
+    /// Claude Code's permission mode and model, switched from the status line.
+    private var sessionControls: AgentSessionControls? {
+        guard program == .claude else { return nil }
+        let status = agent.agent.status
+        return AgentSessionControls(
+            isEnabled: (status == .idle || status == .done) && !isSwitchingSetting && !isComposerSending,
+            isSwitchingPermissionMode: switchingSetting == .permissionMode,
+            allowsBypassPermissions: session.settingOverrides.allowsBypassPermissions,
+            setPermissionMode: { target in switchSetting(.permissionMode) { await switchPermissionMode(to: target) } },
+            setModel: { id in
+                switchSetting(.model) {
+                    if let model = await typeCommand("/model \(id)", done: "Set model to", kept: "Kept model as") {
+                        setOverride(.model, model)
+                    }
+                }
+            },
+            setEffort: { level in
+                switchSetting(.effort) {
+                    if await typeCommand("/effort \(level)", done: "Set effort level to", kept: "Kept effort level as") != nil {
+                        setOverride(.effort, level)
+                    }
+                }
+            })
+    }
+
+    /// A Composer Send between its first check and its last key, which a
+    /// switch would type into.
+    private var isComposerSending: Bool {
+        composer.messages.contains { $0.state == .sending }
+    }
+
+    /// Runs one status-line switch at a time, and none while a Send types.
+    private func switchSetting(
+        _ setting: AgentSettingOverrides.Setting, _ work: @escaping @MainActor () async -> Void
+    ) {
+        // A confirmation may close after a turn began; the menu's state is older.
+        guard !isSwitchingSetting, !isComposerSending, agentActivity() == .idle else { return }
+        switchingSetting = setting
+        let settle = settleUnansweredSwitch
+        Task {
+            defer { switchingSetting = nil }
+            if await settle() != nil {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            } else {
+                await work()
+            }
+        }
+    }
+
+    /// After a switch whose paste or key got no answer: nothing goes until
+    /// the Host answers a read, and then the user hears once that the
+    /// command may still be in the Agent's input, as a Composer Send does.
+    private var settleUnansweredSwitch: @MainActor () async -> String? {
+        let overrides = session.settingOverrides
+        let io = chat?.screenIO
+        return {
+            guard overrides.lastSwitchHasNoAnswer else { return nil }
+            guard let io, (try? await io.readScreen()) != nil else {
+                return "The Host has not answered the last setting change."
+            }
+            overrides.lastSwitchHasNoAnswer = false
+            return "The last setting command may still be in the Agent's input. Check the terminal."
+        }
+    }
+
+    /// Types one step of a switch. A refusal typed nothing; any other failure
+    /// may still arrive, so it is kept until settled.
+    private func typeSwitchStep(
+        _ io: BlockedScreenIO, _ typing: BlockedScreenIO.Typing,
+        whileShowing check: @escaping @Sendable (ANSIScreen) -> Bool
+    ) async throws {
+        do {
+            try await io.type(typing, whileShowing: check)
+        } catch let refusal as HerdrCoreChatTyping.Refusal {
+            throw refusal
+        } catch {
+            session.settingOverrides.lastSwitchHasNoAnswer = true
+            throw error
+        }
+    }
+
+    /// The live footer and, before the first reply, the welcome banner. A new
+    /// process can report Idle before painting; retry missing frames without keys.
+    private func readSessionSettingsFromScreen() async {
+        let status = agent.agent.status
+        guard program == .claude, !isSwitchingSetting else { return }
+        session.settingOverrides.refreshPermissionLaunch(nil, liveMode: nil)
+        guard status == .idle || status == .done, console.isHostReadyForInput(agent.hostID) else { return }
+        var mode: String?
+        for attempt in 0..<10 {
+            let screen = try? await readAgentScreen()
+            guard !Task.isCancelled, !isSwitchingSetting, isOnStage() else { return }
+            if let screen {
+                mode = AgentSessionSettings.permissionMode(onScreen: screen)
+                welcomeModel = AgentSessionSettings.welcomeModel(onScreen: screen)
+                if let mode {
+                    setOverride(.permissionMode, mode)
+                    session.settingOverrides.refreshPermissionLaunch(nil, liveMode: mode)
+                    break
+                }
+            }
+            if attempt < 9 {
+                do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            }
+        }
+        let launch = try? await console.claudePermissionLaunch(for: agent, corePin: session.corePin)
+        guard !Task.isCancelled, !isSwitchingSetting else { return }
+        session.settingOverrides.refreshPermissionLaunch(launch, liveMode: mode)
+    }
+
+    /// Rechecks launch opt-in after confirmation, then lets the footer confirm
+    /// every step. Missing modes stop at the original mode, never one key past it.
+    private func switchPermissionMode(to target: String) async {
+        guard let io = chat?.screenIO else { return }
+        let overrides = session.settingOverrides
+        let previous = overrides.permissionLaunch?.process
+        let launch = try? await console.claudePermissionLaunch(for: agent, corePin: session.corePin)
+        let screen = try? await io.readScreen()
+        overrides.refreshPermissionLaunch(launch, liveMode: screen.flatMap { AgentSessionSettings.permissionMode(onScreen: $0) })
+        guard previous == nil || previous == launch?.process else {
+            permissionErrorMessage = "The Agent's process changed. Open the permission menu again."
+            return
+        }
+        guard target != "bypassPermissions" || overrides.allowsBypassPermissions else {
+            permissionErrorMessage = "Bypass is not available for this session. No keys were sent."
+            return
+        }
+        let result = await ClaudePermissionMode.switchTo(
+            target, readScreen: io.readScreen,
+            press: { mode in
+                if let launch {
+                    let current = try await console.claudePermissionLaunch(for: agent, corePin: session.corePin)
+                    guard current?.process == launch.process else { throw CancellationError() }
+                }
+                let currentScreen = try await io.readScreen()
+                guard agentActivity() == .idle, !isComposerSending,
+                    PreSendGate.check(currentScreen, program: .claude, activity: .idle) == .send,
+                    AgentSessionSettings.permissionMode(onScreen: currentScreen) == mode
+                else { throw CancellationError() }
+                try await typeSwitchStep(io, .keys(["shift+tab"]), whileShowing: {
+                    PreSendGate.check($0, program: .claude, activity: .idle) == .send
+                        && AgentSessionSettings.permissionMode(onScreen: $0) == mode
+                })
+            },
+            mayContinue: { isOnStage() && !isComposerSending && agentActivity() == .idle })
+        if let shown = result.mode { setOverride(.permissionMode, shown) }
+        overrides.refreshPermissionLaunch(launch, liveMode: result.mode)
+        if result.feedbackTimedOut { overrides.lastSwitchHasNoAnswer = true }
+        if !result.reachedTarget {
+            if result.completedCycle, target == "bypassPermissions" { overrides.bypassWasMissingFromCycle() }
+            permissionErrorMessage = result.completedCycle
+                ? "This session does not offer that mode. The original permission mode is restored."
+                : "The terminal did not confirm the change. Check its current mode before trying again."
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+    }
+
+    /// Types `command` and Enter into the Agent, as the terminal would, then
+    /// watches the screen. Only an input box read as empty gets the command,
+    /// so a draft typed elsewhere is never submitted with it. Claude Code may
+    /// ask "Switch model?" (the cache is lost); the same question is put to
+    /// the user here, and their answer pressed there only while that question
+    /// still shows. Returns the confirmed value, not the requested alias;
+    /// `kept`, a No, or an unconfirmed command returns nil.
+    private func typeCommand(_ command: String, done: String, kept: String) async -> String? {
+        // A Blocked card's way in: on a herdr-core Host each step types only
+        // while the process read last still holds the terminal and its check
+        // passes on the screen it types over.
+        if let reason = await confirmSession?() {
+            permissionErrorMessage = reason
+            return nil
+        }
+        guard let chat else { return nil }
+        let io = chat.screenIO
+        let generation = chat.conversationGeneration
+        let activity = agentActivity
+        do {
+            let before = try await io.readScreen()
+            guard PreSendGate.check(before, program: .claude, activity: activity()) == .send else {
+                throw CancellationError()
+            }
+            let was = AgentSessionSettings.Outcome(of: command, done: done, kept: kept, on: before)
+            // A turn may have begun while the screen was read.
+            guard isOnStage(), chat.conversationGeneration == generation, activity() == .idle else { throw CancellationError() }
+            try await typeSwitchStep(io, .paste(command + " "), whileShowing: { PreSendGate.check($0, program: .claude, activity: .idle) == .send })
+            try await Task.sleep(for: .milliseconds(150))
+            guard isOnStage(), chat.conversationGeneration == generation, activity() == .idle else { throw CancellationError() }
+            try await typeSwitchStep(io, .keys(["enter"]), whileShowing: { screen in
+                guard case .text(let typed) = InputBoxStateDetector.detect(screen, program: .claude) else { return false }
+                return typed.trimmingCharacters(in: .whitespacesAndNewlines) == command
+            })
+            var asked = false
+            for _ in 0..<12 {
+                try await Task.sleep(for: .milliseconds(250))
+                let screen = try await io.readScreen()
+                guard isOnStage(), chat.conversationGeneration == generation else { throw CancellationError() }
+                let outcome = AgentSessionSettings.Outcome(of: command, done: done, kept: kept, on: screen)
+                if let answered = outcome.answered(since: was) {
+                    if answered { return outcome.value }
+                    break
+                }
+                if !asked, let question = SwitchQuestion(screen) {
+                    asked = true
+                    let yes = await withCheckedContinuation { switchQuestion = question.answering(with: $0) }
+                    // Another client may have answered it meanwhile; keys
+                    // then would land on whatever replaced it.
+                    _ = try await io.readScreen()
+                    guard isOnStage(), chat.conversationGeneration == generation else { throw CancellationError() }
+                    // Yes is the highlighted first option; Esc is the TUI's go back.
+                    // Enter picks Yes only while the selection is still on it.
+                    try await typeSwitchStep(io, .keys([yes ? "enter" : "esc"]), whileShowing: { screen in
+                        guard let now = SwitchQuestion(screen) else { return false }
+                        return now == question && (!yes || now.yesIsFocused)
+                    })
+                    guard yes else { return nil }
+                }
+            }
+        } catch {}
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        return nil
+    }
+
+    private var switchQuestionShown: Binding<Bool> {
+        Binding(get: { switchQuestion != nil }, set: { if !$0 { answerSwitch(false) } })
+    }
+
+    private func answerSwitch(_ yes: Bool) {
+        guard let question = switchQuestion else { return }
+        switchQuestion = nil
+        question.answer?.resume(returning: yes)
     }
 
     /// Chat's Stop: the program's Stop plan, in line with the Agent page's
@@ -1343,5 +1652,37 @@ enum ChatStageExit {
                 try? await Task.sleep(for: interval)
             }
         }
+    }
+}
+
+/// Claude Code's "Switch model?" dialog as the screen shows it (2.1.319).
+private struct SwitchQuestion: Equatable, Sendable {
+    let title: String
+    let detail: String
+    let yes: String
+    /// Whether the selection (`❯`) is on Yes, which Enter then picks.
+    let yesIsFocused: Bool
+    var answer: CheckedContinuation<Bool, Never>?
+
+    init?(_ screen: ANSIScreen) {
+        let rows = screen.rows.map { $0.text.trimmingCharacters(in: .whitespaces) }
+        guard let top = rows.lastIndex(where: { $0.hasSuffix("?") && $0.hasPrefix("Switch ") }),
+            let option = rows[top...].firstIndex(where: { $0.contains("Yes, switch to") })
+        else { return nil }
+        title = rows[top]
+        detail = rows[(top + 1)..<option].filter { !$0.isEmpty }.joined(separator: " ")
+        // "❯ 1. Yes, switch to Sonnet 5.5" → "Yes, switch to Sonnet 5.5"
+        yes = rows[option].range(of: "Yes, switch to").map { String(rows[option][$0.lowerBound...]) } ?? "Yes"
+        yesIsFocused = rows[option].hasPrefix("❯")
+    }
+
+    static func == (a: SwitchQuestion, b: SwitchQuestion) -> Bool {
+        (a.title, a.detail, a.yes, a.yesIsFocused) == (b.title, b.detail, b.yes, b.yesIsFocused)
+    }
+
+    func answering(with continuation: CheckedContinuation<Bool, Never>) -> SwitchQuestion {
+        var copy = self
+        copy.answer = continuation
+        return copy
     }
 }

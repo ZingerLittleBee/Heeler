@@ -7,9 +7,10 @@ this directory.
 
 ## Provenance
 
-All captures come from live probes against an isolated herdr backend on
+The original captures come from live probes against an isolated herdr backend on
 2026-10-06: herdr 0.9.3 (protocol 22), Claude Code 2.1.291 and Codex 0.160.1.
-None came from a personal session.
+Those captures did not come from a personal session. Later captures are noted
+below.
 
 | Path | Source |
 |---|---|
