@@ -426,6 +426,7 @@
 		68DF935AA6F4DF2BE1C72008 /* AgentComposerStop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F7BE8391B312E7E435D288D /* AgentComposerStop.swift */; };
 		693D650A778BAC6F2189F32A /* AcknowledgementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2782D0CCB8DD0CC97AF6932C /* AcknowledgementsView.swift */; };
 		69789BFC12127E6C6DC61755 /* FileDiffListChangeNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10D52510AEF298FEB5C27ED /* FileDiffListChangeNotice.swift */; };
+		6A22880E01196C3D0CD63579 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10961AC1A5B294E66555423E /* Localizable.xcstrings */; };
 		6A4A6C677BD586F0D4750B21 /* KnownHostsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACC0F2C9582DE0932380D35 /* KnownHostsStoreTests.swift */; };
 		6A512419312DC382B336B105 /* AgentUsageReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9643BD1738B579A7308136C4 /* AgentUsageReport.swift */; };
 		6AC419CE3DBE72B411364F8F /* OpenCodePluginEditTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15C4213B6A4A97D781279B5 /* OpenCodePluginEditTests.swift */; };
@@ -3648,6 +3649,7 @@
 			buildConfigurationList = B35C77F8E63871E19A34092D /* Build configuration list for PBXNativeTarget "HeelerNotificationService" */;
 			buildPhases = (
 				69921EC4920C00F9A9525CDF /* Sources */,
+				F771B8C1F1DD0A9E5E8EECCE /* Resources */,
 			);
 			buildRules = (
 			);
@@ -3761,6 +3763,14 @@
 				0B67978E4183023EF40B256B /* Notices in Resources */,
 				CAEA10BC9AF3498E5FD73478 /* PrivacyInfo.xcprivacy in Resources */,
 				D3AA6DEBDCB6F49674926712 /* helper in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F771B8C1F1DD0A9E5E8EECCE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6A22880E01196C3D0CD63579 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

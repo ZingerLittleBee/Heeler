@@ -176,6 +176,10 @@ targets:
     sources:
       - Sources/HeelerNotificationService
       - Sources/HeelerNotificationCore
+      # The extension renders notification copy from HeelerNotificationCore,
+      # and an extension only localizes against the resources inside its own
+      # bundle.
+      - Sources/Heeler/Resources/Localizable.xcstrings
       - Sources/Heeler/Support/Base64URL.swift
       - Sources/Heeler/Transport/SecretStore.swift
       # For AgentStatus; Foundation-only by construction (JSONValue is the
