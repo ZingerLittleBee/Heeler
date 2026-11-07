@@ -24,7 +24,7 @@
 
 ---
 
-Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控制台，用于远程操作 Claude Code、Codex 和其他编程 Agent。Agent 在你自己的 Host 上通过 herdr 运行，Heeler 通过 SSH 连接。跨机器查看多个 Agent，按「谁需要你」排序，再打开实时终端或支持的 Chat 对话发送指令。
+Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控制台，用于远程操作 Claude Code、Codex 和其他编程 Agent。Agent 在你自己的 Host 上通过 Herdr TUI 或 Herdr 桌面端（herdr-core）运行，Heeler 通过 SSH 连接。跨机器查看多个 Agent，按「谁需要你」排序，再打开实时终端或支持的 Chat 对话发送指令。
 
 ## 截图
 
@@ -52,6 +52,10 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
 
 - **Console** —— 所有机器上的 Agent 汇成一个按状态排序的列表（Blocked
   排最前），可按 Host 过滤，实时更新。
+- **Herdr 桌面端与 herdr-core** —— 连接 macOS、Linux 与 Windows 原生环境上的
+  Herdr 桌面端或无界面 herdr-core。Console 跟随桌面端的空间与标签页，实时终端、
+  Chat、Composer、New Agent 和 New Workspace 同样可用
+  （[了解更多](https://docs.heeler.bybee.dev/zh/herdr-core)）。
 - **Attach** —— libghostty 渲染的 Agent 真实终端：原生历史回看、也能驱动全屏
   TUI 的惯性触摸滚动、长按选择、接管失效的终端占用者，并静默收集网页链接
   供稍后打开。
@@ -88,6 +92,8 @@ herdr —— 不改服务器、不装额外软件包。SSH 服务器需允许 st
 
 Windows 原生 Host（herdr >= 0.9.3）通过 SSH 连接，需手动添加。
 
+herdr-core Host（包括运行 Herdr 桌面端的机器）需手动添加，并确认 Server Kind。Heeler 与 core 之间只有一条分帧链路：macOS 和 Linux 上经 direct-streamlocal 通道直连 core 的套接字，Windows 原生环境上经 SSH exec 运行 `herdr-core connect`。在 macOS 和 Linux 上，连接本身绝不会启动 core。可选的 Host Helper 在 macOS 和 Linux 上提供通知、实时活动和 Usage（[连接 herdr-core](https://docs.heeler.bybee.dev/zh/herdr-core)）。
+
 如需通过 Tailscale、ZeroTier 或 EasyTier 访问机器，请参阅 [Overlay Network 设置教程](docs/guides/zh/overlay-networks.md)。教程涵盖 macOS 安装、Mac 上不装 VPN 的 Tailscale 方案、Heeler 配置和连接验证。Heeler 在应用内加入这些网络，无需配置 iOS 系统 VPN；需要带有 **Settings > Overlay Networks** 的 Heeler 版本。
 
 [查看 Heeler 配置截图](docs/guides/zh/overlay-networks.md#heeler-配置界面截图)，包括 Tailscale、ZeroTier 以及 EasyTier 两种模式（Network 与 Config Server）的设置界面。
@@ -106,6 +112,7 @@ Windows 原生 Host（herdr >= 0.9.3）通过 SSH 连接，需手动添加。
 
 - **macOS / Linux：** 安装 [herdr](https://herdr.dev/docs/install/)，启用 SSH，再按下方步骤配对。
 - **Windows 原生环境：** 参见 [Windows 设置指南](docs/guides/zh/windows-setup.md)。
+- **Herdr 桌面端 / herdr-core：** 先启动桌面端或 herdr-core 并启用 SSH，再手动添加 Host，参见[连接 herdr-core](https://docs.heeler.bybee.dev/zh/herdr-core)。需要 Heeler 0.1.18 或更高版本。
 
 ## 添加机器
 
