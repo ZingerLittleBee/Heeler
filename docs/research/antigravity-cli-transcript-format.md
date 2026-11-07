@@ -284,19 +284,24 @@ compaction; only `/exit` and `/quit` quit.
 ### Dialogs
 
 Each dialog takes the box's place: no `>` row between full-width rules while
-it shows. It has a bold yellow title (`Command`, `Pending edit`, `Question`,
-or `Accessing workspace:` for the trust prompt) over a full-width rule, a
+it shows. It has a bold yellow title (`Command`, `Pending edit`, `Create
+file`, `Question`, or `Accessing workspace:` for the trust prompt) over a
+full-width grey rule (none under the trust prompt's title), the request, a
 bold question, numbered options with the selected one `> N. …` in color 12,
-a hint row, and the footer `esc to cancel`.
+a hint row, and the footer `esc to cancel`. A long option label continues at
+column 0. Scrollback keeps no past dialog: agy replaces each with a `● Ran …`
+or `? <question>` row.
 
 | Dialog | Question and hint row | Keys | herdr 0.9.5 |
 |---|---|---|---|
-| Trust, at start (00, 10 to 12) | `Do you trust the contents of this project?`, which wraps at 40 columns; `↑/↓ Navigate · enter Confirm` | Enter confirms the selection | Blocked at 190 and 62 columns, **idle at 40** |
-| Command (30, 31, 55, 77) | `Run this command?`; `↑/↓ Navigate · tab Amend · ctrl+g edit/expand command` | A digit picks and confirms at once; Esc or Ctrl+C stops the whole turn; Tab opens Amend | Blocked |
-| Command's Amend field (52) | `> ` field under option 1; `enter Submit` | Typed text and Enter approve the command with the text as instructions | **done** |
-| File edit (47, 48, 82) | `Accept this file edit?`; `↑/↓ Navigate · f full diff` | As for a command | **done** |
-| File creation (probe A) | `Allow creation of this file?` | As for a command | Not read |
-| Question (41, 42, 44, 45) | `Question N/M: …`; `↑/↓ Navigate · enter Select · esc Skip` | A digit answers; Esc skips one question | Blocked |
+| Trust, at start (00, 10 to 12) | `Do you trust the contents of this project?`, which wraps at 40 columns; `↑/↓ Navigate · enter Confirm`; two options without numbers | Arrows and Enter | Blocked at 190 and 62 columns, **idle at 40** |
+| Command (30, 31, 55, 77, 108) | `Run this command?`; `↑/↓ Navigate · tab Amend · ctrl+g edit/expand command`; `Yes, run command`, two `always allow` rules (this conversation, or saved in settings.json), `No, cancel` | A digit picks and confirms at once; Esc or Ctrl+C stops the whole turn; Tab opens Amend on the selected row | Blocked |
+| Command's Amend field (52, 109 to 111) | `    > ` under the row, whose label becomes `Yes, and tell Antigravity CLI what to do next` or `No, and tell Antigravity CLI what to do differently`; `enter Submit` | On Yes, Enter runs the command and sends the text as a prompt after the turn (empty, it just runs); on No, Enter declines (`user denied permission`) and sends the text at once. Esc stops the turn | **done** |
+| File edit (47, 48, 82) | The path in bold, `N  -  old` and `N  +  new` rows, `shift+tab to auto-approve file edits`, `Accept this file edit?`; `↑/↓ Navigate · f full diff` | As for a command, without Amend | **done** |
+| File creation (99) | The path, `N  +  line` rows, `Allow creation of this file?`; `↑/↓ Navigate · f full diff`; `Yes, allow creation`, `No, deny creation` | As for a file edit | **done** |
+| Question (41, 42, 44, 45) | `Question N/M: …`; `↑/↓ Navigate · enter Select · esc Skip`; the answers, then `Write-in...` | A digit answers; on a page of several it turns to the next, and on the last it submits them all. Esc skips one question (`User Skipped`) and the turn goes on | Blocked |
+| Multi-select question (100 to 103, 113, 114) | Answers drawn `N. [ ] x`; `↑/↓ Navigate · space Toggle · enter Submit · esc Skip`, with `→ Next` on a page of several | A digit selects its answer and toggles it; Enter submits the checked answers (`A1: apple, plum`) or turns the page | Blocked; **done** at 62 columns on a page of several, whose cut hint row loses `esc Skip` |
+| Write-in (104, 105) | `  Your answer:` and a field under the answers; `enter Submit · esc Back` | Its digit opens the field; a paste and Enter submit the text | **done** |
 
 **An Enter in the file edit dialog accepts the edit.** herdr's
 `permission_prompt` rule needs `tab amend`, which this dialog's hint row
@@ -305,6 +310,52 @@ never reached the model or `history.jsonl`, and its Enter chose
 `1. Yes, accept this change` (47, 49, 50). Chat therefore holds any screen
 without the box whatever herdr reports, and reads a dialog from its hint row
 or question.
+
+agy writes a call that asks the user as its dialog opens (the
+`PLANNER_RESPONSE` step) and its result only after the answer and the tool's
+run. It records no approval, and Esc records nothing: a stopped call stays
+without a result until the next prompt ends its turn. A skipped question's
+result reads `User Skipped`.
+
+### The Blocked card
+
+`AgyDialogParser` reads every dialog above into a native card and anything
+else between a bold yellow title and a hint row into the generic card,
+without numbers. The command's Amend field and the Write-in field keep the
+dialog's fingerprint, so a card's step into them checks against the same
+dialog. `AgyDialogPlanner` sends these keys, each sequence sent live through
+`agent send-keys` on 2026-11-08 except the trust prompt's, since answering it
+writes the folder into agy's settings:
+
+| Card action | Keys |
+|---|---|
+| A permission's option | Its digit. `No` ends the turn, so the card then focuses the composer |
+| Stop on a permission | Esc, which stops the whole turn, from the options or a note field |
+| A note with `Yes, run command` or `No, cancel` | Down to the row, each step checked, Tab, a check that the field is open and empty, the paste, a check that it holds the note, Enter |
+| A single-select answer | Its digit, then a check for `Question i+1/n` on a page of several |
+| A multi-select set | The digit of each answer whose check must change, each checked, then Enter |
+| A written answer | `Write-in...`'s digit, the field checked, the paste, checked, Enter |
+| Skip on a question | Esc, never while the answer field is open (there Esc is Back) |
+| Trust | Arrows to the option, each checked, then Enter; no Stop |
+
+Every plan confirms only by the dialog leaving the screen: herdr reports the
+file dialogs and fields idle, and no record shows an approval. A card's
+answer that showed no effect waits for its call's result. Several questions
+fill in on one card and go page by page (`QuestionForm`); the last page's
+key submits them all.
+
+The card reads an idle agy while the open turn has a call without a result
+that asks the user (`run_command`, `ask_question`, and the edit and write
+tools), and an idle agy that has reported no session for the trust prompt
+alone. The reducer offers every open call to the card whatever herdr
+reports, since an idle agy's command row reads `no result` while its Amend
+field shows. A command sent to the background has its result and keeps no
+card. Claude Code's idle-question rule and Grok Build's release on a call's
+start do not apply: agy has neither an idle question tool of its own nor a
+start record. The card matches a command by its start, a file by its path
+(cut at the screen's edge), and a question by its text; an edit or a write
+shows the call's change as the dialog draws it, since a narrow screen cuts
+the rows.
 
 ### What Chat sends into
 
@@ -331,11 +382,13 @@ never Ctrl+C.
 - A queued message delivered inside a running turn. One was seen arriving as
   a new prompt while a background command ran, rather than at the turn's end;
   where its turn should start is not settled.
-- `/rewind`, multi-select and write-in answers, and an `EPHEMERAL_MESSAGE`
-  were not captured.
+- `/rewind` and an `EPHEMERAL_MESSAGE` were not captured.
 - Screens not captured: two queued messages, code search mode, Vim mode,
-  the background prompt `press %s again to send command to background`, and
-  a file creation dialog under herdr. Chat holds all but the queue.
+  and the background prompt `press %s again to send command to background`.
+  Chat holds all but the queue.
+- Dialogs not captured: `multi_replace_file_content`'s edit, Tab on an
+  `always allow` row, a typed answer on a multi-select question, and Esc on
+  the trust prompt. Chat leaves those to the terminal.
 - Whether `/compact` takes focus text, and which of a skill and a built-in
   command of the same name runs. Chat sends `/compact` as typed and offers
   no skill named like a built-in.
