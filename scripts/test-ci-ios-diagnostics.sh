@@ -174,10 +174,17 @@ if len(toolchain[0]) != 1 or len(toolchain[1]) != 1:
 simulator_lanes = {}
 for path in sorted(workflows.glob("*.yml")):
     source = path.read_text()
-    if "\njobs:\n" not in source:
+    sections = re.split(r"(?m)^jobs:[ \t]*(?:#.*)?\n", source, maxsplit=1)
+    if len(sections) == 1:
+        if re.search(r"(?m)^jobs:", source):
+            raise SystemExit(f"{path.name} has a jobs key this check cannot read")
         continue
-    for match in re.finditer(r"(?m)^  ([\w-]+):\n(.*?)(?=^  [\w-]+:|\Z)",
-                             source.split("\njobs:\n", 1)[1], re.DOTALL):
+    jobs = sections[1]
+    headers = re.findall(r"(?m)^  [^\s#][^\n]*$", jobs)
+    parsed = list(re.finditer(r"(?m)^  ([\w-]+):[ \t]*(?:#[^\n]*)?\n(.*?)(?=^  [^\s#]|\Z)", jobs, re.DOTALL))
+    if not parsed or len(parsed) != len(headers):
+        raise SystemExit(f"{path.name} has jobs this check cannot read")
+    for match in parsed:
         name, body = f"{path.name} {match.group(1)}", match.group(2)
         runner = settings(body, "runs-on")
         if len(runner) != 1:
@@ -194,6 +201,9 @@ if set(simulator_lanes) != {"ci-diagnostics.yml diagnose", "ci-full.yml app-test
 runtimes = {tuple(values) for values in simulator_lanes.values()}
 if len(runtimes) != 1 or len(next(iter(runtimes))) != 1:
     raise SystemExit("Every Simulator lane must pin the same HEELER_CI_SIMULATOR_OS")
+runner_script = (workflows.parent.parent / "scripts/run-ci-ios-tests.sh").read_text()
+if not re.search(r"(?m)^ci_simulator_os=\"\$\{HEELER_CI_SIMULATOR_OS:-\}\"$", runner_script):
+    raise SystemExit("run-ci-ios-tests.sh must read the pinned runtime from HEELER_CI_SIMULATOR_OS")
 print("Passed fast build, full verification, scheduled alert, diagnostic isolation and toolchain contracts.")
 PYWORKFLOW
 
