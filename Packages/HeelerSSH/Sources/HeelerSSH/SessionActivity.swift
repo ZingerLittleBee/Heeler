@@ -19,6 +19,9 @@ import Foundation
 /// takes no bytes off the socket, so it wakes nobody, and the number of
 /// wakeups stays bounded by the traffic that actually arrived.
 final class SessionActivity: @unchecked Sendable {
+    // Temporary diagnostics on the CI investigation branch only (refs #630).
+    @TaskLocal static var traceReceives = false
+
     private struct Registration {
         let waiter: DispatchWaiter
         let token: UInt64
@@ -142,9 +145,12 @@ private func sessionReceive(
     _ abstract: UnsafeMutablePointer<UnsafeMutableRawPointer?>?
 ) -> Int {
     let received = Darwin.recv(socket, buffer, length, flags)
+    let code = received < 0 ? errno : 0
+    if SessionActivity.traceReceives {
+        print("[DEBUG-ci630] time=\(Date().timeIntervalSince1970) recv fd=\(socket) result=\(received) errno=\(code)")
+    }
     guard received >= 0 else {
         // libssh2 reads these as negated errno values, not as its own codes.
-        let code = errno
         // EINTR reports as EAGAIN, exactly as upstream's `_libssh2_recv` does:
         // recv leaves its arguments untouched on EINTR but bytes may still be
         // waiting, and -EAGAIN is the only value libssh2's callers retry on.

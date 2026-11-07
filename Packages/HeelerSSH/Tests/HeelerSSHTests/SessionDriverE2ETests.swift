@@ -813,8 +813,8 @@ struct SessionDriverE2ETests {
     /// loss. A severed link used to surface as `.channelFailed`, which shows
     /// Session Ended until the Events reader notices and redials (#523). Runs
     /// through the degraded proxy, so the loss lands on a link with real latency.
-    @Test("a PTY that loses its socket invalidates the session", arguments: PTYSeverance.allCases)
-    func ptySocketLossInvalidatesTheSession(severance: PTYSeverance) async throws {
+    @Test("a PTY that loses its socket invalidates the session", arguments: PTYSeverance.allCases, 0..<50)
+    func ptySocketLossInvalidatesTheSession(severance: PTYSeverance, iteration: Int) async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let proxy = try #require(WeakNetworkProxyFixture.current)
         let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
@@ -829,7 +829,10 @@ struct SessionDriverE2ETests {
                 rows: 24,
                 timeout: .seconds(15))
             #expect(await connection.isConnected)
-            thrown = try await severance.drive(channel, proxy: proxy)
+            thrown = try await SessionActivity.$traceReceives.withValue(true) {
+                try await severance.drive(channel, proxy: proxy)
+            }
+            print("[DEBUG-ci630] time=\(Date().timeIntervalSince1970) severance=\(severance) iteration=\(iteration) outcome=\(String(describing: thrown))")
         } catch {
             try? await proxy.reset()
             try? await connection.close(timeout: .seconds(2))
@@ -2933,7 +2936,9 @@ enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
         case .resetSeenByRead, .resetSeenByWrite, .resetSeenByResize:
             try await channel.write(Data("up\n".utf8), timeout: .seconds(5))
             _ = try await channel.read(timeout: .seconds(5))
-            guard try await proxy.cut() > 0 else { return nil }
+            let cut = try await proxy.cut()
+            print("[DEBUG-ci630] time=\(Date().timeIntervalSince1970) cut connections=\(cut)")
+            guard cut > 0 else { return nil }
         case .serverKilledSeenByRead:
             break
         }
