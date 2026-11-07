@@ -1006,6 +1006,42 @@ struct TerminalAttachTests {
         #expect(pastes == ["provider paste"])
     }
 
+    @MainActor
+    @Test(arguments: [false, true])
+    func inlineMenuPasteUsesHostRoutingAndRechecksInputPermission(selecting: Bool) throws {
+        var pastes: [String] = []
+        let text = "Worker: 04\n中文 text"
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onPaste: { text, _ in pastes.append(text) },
+            clipboard: TerminalClipboard(string: { text }, hasStrings: { true }))
+        let systemMenu = UIMenu(title: "AutoFill", identifier: .autoFill, children: [])
+        func items() -> [UIMenuElement] {
+            if selecting {
+                return terminal.touchSelectionMenuItems(for: TerminalTouchSelectionMenuContext(
+                    sourcePoint: .zero, selectedText: "selected text", systemMenuItems: [systemMenu]))
+            }
+            return terminal.touchMenuItems(for: TerminalTouchMenuContext(
+                sourcePoint: .zero, systemMenuItems: [systemMenu]))
+        }
+        let menu = items()
+        #expect(menu.contains { $0 === systemMenu })
+        let action = try #require(menu.compactMap { $0 as? UIAction }.first {
+            $0.identifier.rawValue == "terminal.paste"
+        })
+        let button = UIButton(type: .system)
+        button.addAction(action, for: .touchUpInside)
+        button.sendActions(for: .touchUpInside)
+        #expect(pastes == [text])
+
+        // A menu can remain open while the terminal stops accepting input.
+        terminal.setLocalInputEnabled(false)
+        button.sendActions(for: .touchUpInside)
+        #expect(pastes == [text])
+        #expect(!items().contains {
+            ($0 as? UIAction)?.identifier.rawValue == "terminal.paste"
+        })
+    }
+
     /// The input row's paste control takes its size from the frame SwiftUI
     /// gives it, never from its own first measurement, which came back 0×0
     /// and left an empty slot. A later frame resizes it too.
@@ -1494,7 +1530,7 @@ struct TerminalAttachTests {
     /// a tap can raise the keyboard, that tap must be spent on the halt alone —
     /// otherwise stopping a scroll costs you the bottom half of the screen.
     @MainActor
-    @Test func theTapThatHaltsAFlickDoesNothingElse() {
+    @Test func theTapThatHaltsAFlickDoesNothingElse() throws {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)
         terminal.receive(Data("\u{1B}[?1049h".utf8))
@@ -1502,10 +1538,18 @@ struct TerminalAttachTests {
         terminal.startTouchScrollMomentum(velocityY: 2_000)
         #expect(terminal.isTouchScrollMomentumRunning)
 
-        // The same tap that raises the keyboard in the test above.
-        terminal.handleTap(at: CGPoint(x: 195, y: 120))
+        let finger = KeyboardFinger()
+        finger.point = CGPoint(x: 195, y: 120)
+        terminal.touchesBegan([finger], with: nil)
+        terminal.touchesEnded([finger], with: nil)
+        let tap = try #require(terminal.gestureRecognizers?
+            .compactMap { $0 as? UITapGestureRecognizer }
+            .first { $0.numberOfTapsRequired == 1 })
 
         #expect(!terminal.isTouchScrollMomentumRunning)
+        // The native single tap waits for double/triple tap recognition. It
+        // must remember the halt even though momentum has already stopped.
+        #expect(!terminal.gestureRecognizerShouldBegin(tap))
         #expect(!terminal.canBecomeFirstResponder)
     }
 
@@ -1528,7 +1572,9 @@ struct TerminalAttachTests {
                 else { return nil }
                 return pan
             } ?? []
-        #expect(enabledTouchPans.count == 1)
+        // Native selection extension/two-finger history and Heeler's remote
+        // one-finger scroll both remain available, with exclusive admission.
+        #expect(enabledTouchPans.count == 2)
 
         terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
         #expect(terminal.scrollTouch(translationY: 32) == 2)
@@ -3324,19 +3370,32 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func terminalSelectionRejectsOutOfBoundsAnchorRanges() {
-        #expect(
-            TerminalTextSelectionViewController.normalizedSelectionRange(
-                NSRange(location: 2, length: 3), textLength: 8)
-                == NSRange(location: 2, length: 3))
-        #expect(
-            TerminalTextSelectionViewController.normalizedSelectionRange(
-                NSRange(location: 7, length: 4), textLength: 8)
-                == NSRange(location: 0, length: 8))
-        #expect(
-            TerminalTextSelectionViewController.normalizedSelectionRange(
-                nil, textLength: 8)
-                == NSRange(location: 0, length: 8))
+    @Test func chatSelectionStillPresentsTheWholeMessageInItsReadingFont() async throws {
+        let controller = UIViewController()
+        let font = UIFont.preferredFont(forTextStyle: .body)
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 720),
+            rootViewController: controller
+        ) { _ in
+            TerminalTextSelectionPresenter.present(
+                text: "Hi 😀\n中文", font: font, adjustsFontForContentSizeCategory: true,
+                accessibilityIdentifier: "chat.text-selection", from: controller.view)
+            let navigation = try #require(controller.presentedViewController as? UINavigationController)
+            let selection = try #require(navigation.topViewController)
+            selection.loadViewIfNeeded()
+            let text = try #require(accessibleElements(in: selection.view)
+                .compactMap { $0 as? UITextView }.first)
+            #expect(selection.title == "Select Text")
+            #expect(text.text == "Hi 😀\n中文")
+            #expect(text.selectedRange == NSRange(location: 0, length: 8))
+            #expect(text.font == font)
+            #expect(text.isSelectable && !text.isEditable)
+            #expect(text.adjustsFontForContentSizeCategory)
+            try await Task.sleep(for: .milliseconds(500))
+            await withCheckedContinuation { continuation in
+                controller.dismiss(animated: false) { continuation.resume() }
+            }
+        }
     }
 
     @Test func injectableAttachCommandRidesThrough() throws {
