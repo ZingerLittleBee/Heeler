@@ -26,8 +26,14 @@
       }
     },
     "NSCameraUsageDescription" : {
-      "extractionState" : "manual",
+      "extractionState" : "extracted_with_value",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -37,8 +43,14 @@
       }
     },
     "NSLocalNetworkUsageDescription" : {
-      "extractionState" : "manual",
+      "extractionState" : "extracted_with_value",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby, and to find machines that offer SSH."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -48,8 +60,14 @@
       }
     },
     "NSMicrophoneUsageDescription" : {
-      "extractionState" : "manual",
+      "extractionState" : "extracted_with_value",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler records your voice when you tap the microphone in the Composer, and sends the recording to the speech service you chose in Settings to turn it into text."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
