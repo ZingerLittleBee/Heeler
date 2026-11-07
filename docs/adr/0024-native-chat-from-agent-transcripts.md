@@ -4,14 +4,15 @@ status: accepted
 
 # Native Chat from the Agent's own transcript
 
-A Claude Code, Codex, Pi, Oh My Pi, Grok Build or OpenCode Agent's detail can
-show Chat in its terminal's place: the Agent's conversation as native rows,
-read from the transcript its program writes on the Host. Heeler reads that
-file read-only over SFTP on the Host's existing SSH connection, with one
-adapter per program: Claude Code's project JSONL, with its subagent
-transcripts under `<session>/subagents/`; Codex's rollout in its paginated and
-legacy forms; Pi/Oh My Pi's v2-v3 tree JSONL; and Grok Build's
-`updates.jsonl`. OpenCode 2.x writes no transcript file, so Chat reads its
+A Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode or Antigravity CLI
+Agent's detail can show Chat in its terminal's place: the Agent's
+conversation as native rows, read from the transcript its program writes on
+the Host. Heeler reads that file read-only over SFTP on the Host's existing
+SSH connection, with one adapter per program: Claude Code's project JSONL,
+with its subagent transcripts under `<session>/subagents/`; Codex's rollout
+in its paginated and legacy forms; Pi/Oh My Pi's v2-v3 tree JSONL; Grok
+Build's `updates.jsonl`; and Antigravity CLI's `transcript_full.jsonl`.
+OpenCode 2.x writes no transcript file, so Chat reads its
 session's rows from OpenCode's own SQLite database with a bounded read-only
 query on the Host instead;
 [ADR 0025](0025-opencode-chat-reads-its-session-store.md) records that read
@@ -21,7 +22,8 @@ and herdr is unchanged. herdr still owns the Agent's identity and Agent
 Status, submission through `agent.prompt`, and keys through `agent.send_keys`;
 its `agent_session` names the transcript by a Claude Code session id, a
 Codex thread id or a Grok Build session id, or Pi/OMP's exact absolute JSONL
-path (with UUID lookup for older integrations), or an OpenCode `ses_` id.
+path (with UUID lookup for older integrations), or an OpenCode `ses_` id,
+or an Antigravity CLI conversation id.
 Other Agents, and every Agent on a native Windows Host, hide the entry.
 
 The formats as observed are recorded in
@@ -182,6 +184,66 @@ directory's group, such as a worktree fork, records its prompts in that
 group's file, so a message sent to it only goes overdue. Chat doesn't watch
 the screen between sends.
 
+Antigravity CLI (`agy`) observations are in
+[Antigravity CLI transcripts](../research/antigravity-cli-transcript-format.md).
+herdr reports an agy conversation by the lowercase UUIDv4 that names its
+folder, and only from a prompt: a fresh launch, and one resumed with
+`--conversation` or `-c`, reports none until its next prompt, and after
+`/clear` herdr keeps the earlier conversation until the next prompt, so Chat
+shows that one until then. Chat reads only a UUID, lowercased. The adapter
+follows `brain/<id>/.system_generated/logs/transcript_full.jsonl` under
+`~/.gemini/antigravity-cli`, then under each added Account's directory; a
+folder without that file is a conversation still to start, as `/clear`
+leaves one. agy writes the same steps to `transcript.jsonl` beside it, but
+that file encodes every tool argument as a JSON string and cuts a long field
+or argument to its ends around a `<truncated N bytes>` marker, which can
+leave an argument unreadable. The full file keeps arguments as JSON values
+and cuts nothing, so Chat reads it, though it runs about twice the size (1
+to 4.4 times in a census of 28 conversations). A turn of large reads can
+fill several MB, so a request the list makes by itself reads at most 4 MiB
+there, as in Grok Build.
+
+agy's tool calls carry no id. Their results follow the planner response that
+made them, one step each in call order, so the reducer pairs each result
+with the oldest call still waiting for one, as all 1,917 results in the
+census pair across 305 batches of several calls. A call the next planner
+response finds without a result never gets one. No step marks a turn's end,
+and Esc or Ctrl+C writes nothing, so a prompt that follows a turn with no
+reply ends that turn as interrupted, along with a call it left open. A
+step's `created_at` is when it started, so agy turns show no time worked. A
+command sent to the background writes one `RUNNING` result and ends with a
+later system message from its task, and the notice agy adds when a
+conversation resumes marks a task still running as stopped. agy writes a
+prompt sent while it works only when it takes that prompt, so a sent
+message's 10 seconds count only while herdr reports the Agent neither
+Working nor Blocked, as for Grok Build. After a send, Chat reads what agy
+appended to the data root's `history.jsonl` since just before the send, up
+to 64 KiB, and a line with the message's text under another conversation's
+id raises the same hold as Grok Build's prompt log (above). Every agy on the
+data root writes to that log, a fresh launch's first prompt carries no id
+there, and a queued prompt is logged at Enter, so it can only tell that
+another conversation took a message.
+
+agy's input box is two full-width grey rules with a `>` row between them,
+drawn inline on the normal screen. Chat sends only into an empty box with
+nothing under it and a footer it knows, idle or working, since agy queues a
+message sent during a turn and delivers it later; a mode's grey hint is not
+a draft, and an armed exit does not hold, since the paste disarms it. A
+draft, bash mode, a popup or panel under the box, another footer, an exited
+agy and any screen without the box hold the message, whatever herdr
+reports. Every agy dialog takes the box's place, and herdr 0.9.5 reports
+some of them done or idle (see Blocked cards), where the prompt's Enter
+answers the dialog: an `agent.prompt` sent into a file edit dialog was
+swallowed, and its Enter accepted the edit (1.5.3). agy takes `exit`,
+`quit`, `:q`, a leading `?` or `:` and a `/btw` after the start as text, so
+Chat refuses none of them. The `/` menu offers agy's skills as `/name`,
+except one named like a built-in command or alias, since which of the two
+runs is not known, and one whose `SKILL.md` frontmatter says
+`disable-slash-command: true`, which agy hides from `/` and `/name`.
+`/compact` goes with its trailing space, which agy trims. Stop presses one
+Esc, which stops a running turn and puts a queued message back in the box;
+Ctrl+C is never sent, since on an idle box it arms exit.
+
 ## Entry and the terminal
 
 A button for the surface not showing, sharing the detail header's More-menu
@@ -309,8 +371,10 @@ result is an image, Codex's image views and generated images, a Grok Build
 `read_file` whose result holds an image, a Pi or Oh My Pi `read` whose result
 says it read an image file (Oh My Pi names the resolved file in
 `details.mediaPath`), an OpenCode 2 read whose result returns an image (named
-as the path it read), and an OpenCode 1.x read of a file with an image
-extension. Paths come from transcript metadata, resolving relative paths only
+as the path it read), an OpenCode 1.x read of a file with an image
+extension, and an Antigravity CLI read whose result attaches an image as
+`media` (agy's copy, named by a `file:` URL or an absolute path). Paths come
+from transcript metadata, resolving relative paths only
 against the recorded working directory; display titles are never treated as
 paths. An OpenCode session records only the folder it is in now, so a read
 before a move resolves against the folder that move left, and against none
@@ -585,6 +649,43 @@ dialog therefore shows no keys. It says why OpenCode is Blocked, the subagent
 panel covering the request, the turn's error, or a likely failed model
 request, and points to the terminal.
 
+Antigravity CLI draws each dialog in its input box's place: a command's, a
+file edit's or a file creation's permission, single and multi-select
+questions, and the trust prompt at start. herdr 0.9.5 reports the command
+dialog and the questions Blocked, but the file dialogs, a command's Amend
+field, the `Write-in...` answer field and a multi-select page whose cut hint
+row lost `esc Skip` done or idle, and the trust prompt idle once its
+question wraps at 40 columns. agy writes a call that asks the user as its
+dialog opens and its result only once answered. So, as Claude Code's open
+AskUserQuestion call does, an open call of a tool agy asks about
+(`run_command`, `ask_question`, and the edit and write tools) in the open
+turn stands in for Blocked: an idle agy's screen is read for a card then.
+The reducer offers every open call to the card whatever herdr reports,
+since an idle command row reads as without a result while its Amend field
+shows; a command sent to the background has its result and keeps no card.
+An idle agy that has reported no session is read for the trust prompt
+alone, as Codex is. The card matches a command by its start, a file by its
+path, cut at the screen's edge, and a question by its text, and an edit or
+a write shows the call's change as the dialog draws it, since a narrow
+screen cuts the rows. A permission's option presses its digit, which picks
+and confirms at once; the two `always allow` rows carry captions saying
+whether the rule lasts for the conversation or is saved in agy's settings,
+and No ends the turn, so the card then focuses the Composer. A note with
+the command's Yes or No moves to that row, opens Amend with Tab, pastes the
+note and presses Enter, checking the screen after each step. Stop on a
+permission presses Esc, which stops the whole turn and joins the history
+as Stopped, since agy records nothing. A single answer presses its digit,
+a multi-select set toggles each answer whose check must change and then
+presses Enter, and a written answer opens `Write-in...` by its digit and
+pastes into the field; several questions fill in on one card, page by page,
+and the last page's key submits them all. Skip presses Esc, which agy
+records as `User Skipped`, never while the answer field is open, where Esc
+goes back. While a field is open no digit is pressed, since it would be
+typed there. The trust prompt is answered with arrows, each checked, then
+Enter, and offers no Stop. Every answer is confirmed only by the dialog
+leaving the screen, since herdr reports the fields idle and no record shows
+an approval; an answer that showed no effect waits for its call's result.
+
 ## Background Work
 
 Claude Code's terminal lists background agents and Workflows under its input
@@ -809,6 +910,11 @@ no Attach at all.
   Earlier Messages, and the loaded part of that turn folds under the time its
   end record gives, or "Details" without one. The other programs' lists keep
   loading by themselves as Load Earlier Messages does.
+- Antigravity CLI reports no session to herdr until its first prompt, also
+  after a resume, and keeps the earlier one after `/clear` until the next
+  prompt. Its earlier history loads by itself at most 4 MiB a request, as
+  Grok Build's does, and its turns show no time worked, since no record
+  says when one ended.
 - Conversation text now rests on the device, in the protected cache that
   [PRIVACY.md](../../PRIVACY.md) describes.
 - Not in this version:
@@ -832,6 +938,16 @@ no Attach at all.
     Composer Stop that presses the second Esc; and, as ADR 0025 records,
     stores other than the default one and tool output OpenCode moved to a
     file of its own.
+  - For Antigravity CLI: Background Work, so a background command shows
+    only as its call's row until its task ends, and its subagents'
+    conversations; its working directory, so the absolute paths it records
+    are shown as they are; its plan artifacts, shown as a file write;
+    `/rewind`; the dialogs no capture shows (`multi_replace_file_content`'s
+    edit, Tab on an `always allow` row, a typed answer on a multi-select
+    question, Esc on the trust prompt), which stay in the terminal; and
+    Chat on herdr-core Hosts, where its conversation binds from its
+    presence lock (ADR 0034) but no platform offers it until it is checked
+    on a real machine.
   - The segment before a Codex undo. After one, Chat shows only the turns
     written since; the reducer accepts the earlier segment, but nothing loads
     it yet.
