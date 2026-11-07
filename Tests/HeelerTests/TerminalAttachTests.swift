@@ -2650,9 +2650,12 @@ struct TerminalAttachTests {
     /// A scene transition can emit will-hide without a matching did-frame.
     /// The Composer has no timeout of its own once it accepts, so the owner's
     /// fallback must release the hold, notify its owner, and reconcile a hide
-    /// that never received a destination frame.
+    /// that never received a destination frame. With no window to measure,
+    /// the hide is trusted either side of acceptance, as it would be with no
+    /// handoff.
     @MainActor
-    @Test func responderHandoffFallbackReleasesAnUnsettledFreeze() async throws {
+    @Test(arguments: [true, false])
+    func responderHandoffFallbackReleasesAnUnsettledFreeze(accepted: Bool) async throws {
         let center = NotificationCenter()
         let clock = ManualClock()
         let inset = Self.makeInset(center: center, clock: clock) { _ in 402 }
@@ -2670,9 +2673,14 @@ struct TerminalAttachTests {
             }
         })
         ownerHandoffID = handoffID
-        inset.acceptResponderHandoff(handoffID)
+        if accepted {
+            inset.acceptResponderHandoff(handoffID)
+        }
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
-        try #require(await clock.pass(TerminalKeyboardInset.responderHandoffFallbackDelay))
+        try #require(await clock.pass(
+            accepted
+                ? TerminalKeyboardInset.responderHandoffFallbackDelay
+                : TerminalKeyboardInset.responderHandoffAcceptanceDelay))
         try #require(await Self.eventually { expiredHandoffID == handoffID })
 
         #expect(!inset.isHoldingHandoffHeight)
