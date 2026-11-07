@@ -13,6 +13,7 @@ const TEXT_FIELDS = {
   "whats-new": { attribute: "whatsNew", limit: 4000 },
   promo: { attribute: "promotionalText", limit: 170 },
   keywords: { attribute: "keywords", limit: 100 },
+  description: { attribute: "description", limit: 4000 },
 };
 const HEADERS = { "content-type": "application/json", "x-csrf-itc": "[asc-ui]" };
 const BASE = `https://appstoreconnect.apple.com/apps/${ARGS.appId}/distribution/ios/version/inflight`;
@@ -60,7 +61,7 @@ async function findVersion() {
   const list = await api(`apps/${ARGS.appId}/appStoreVersions?limit=10&fields[appStoreVersions]=versionString,appStoreState`);
   const version = list.data.find((v) => v.attributes.versionString === ARGS.version);
   if (!version) throw new Error(`No store version ${ARGS.version}`);
-  const locales = await api(`appStoreVersions/${version.id}/appStoreVersionLocalizations?fields[appStoreVersionLocalizations]=locale,whatsNew,promotionalText,keywords`);
+  const locales = await api(`appStoreVersions/${version.id}/appStoreVersionLocalizations?fields[appStoreVersionLocalizations]=locale,whatsNew,promotionalText,keywords,description`);
   const localization = locales.data.find((l) => l.attributes.locale === ARGS.locale);
   if (!localization) throw new Error(`No ${ARGS.locale} localization; found ${locales.data.map((l) => l.attributes.locale)}`);
   return { version, localization, locales: locales.data };
@@ -99,6 +100,7 @@ async function status({ version, localization, locales }) {
     console.log(`\nPromotional Text (${l.attributes.locale})\n${l.attributes.promotionalText ?? "(empty)"}`);
     console.log(`\nWhat's New (${l.attributes.locale})\n${l.attributes.whatsNew ?? "(empty)"}`);
     console.log(`\nKeywords (${l.attributes.locale})\n${l.attributes.keywords ?? "(empty)"}`);
+    console.log(`\nDescription (${l.attributes.locale})\n${l.attributes.description ?? "(empty)"}`);
   }
 }
 
@@ -200,7 +202,7 @@ async function setText({ localization }) {
 try {
   await goto(BASE, /Distribution/);
   const found = await findVersion();
-  const action = { status, screenshots: replaceScreenshots, creative: replaceCreative, "whats-new": setText, promo: setText, keywords: setText }[ARGS.action];
+  const action = { status, screenshots: replaceScreenshots, creative: replaceCreative, "whats-new": setText, promo: setText, keywords: setText, description: setText }[ARGS.action];
   await action(found);
 } finally {
   await task.finish({ keep: [] });

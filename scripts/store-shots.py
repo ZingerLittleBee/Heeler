@@ -407,7 +407,7 @@ def restore(udid: str) -> None:
     print(f"Restored {udid}.")
 
 
-TEXT_ACTIONS = ("whats-new", "promo", "keywords")
+TEXT_ACTIONS = ("whats-new", "promo", "keywords", "description")
 
 
 def asc(args: argparse.Namespace) -> None:
@@ -445,7 +445,7 @@ def main() -> None:
     commands.add_parser("down", help="stop everything and clean the home directory")
     store = commands.add_parser("asc", help="read or replace App Store Connect assets")
     store.add_argument("action", choices=("status", "screenshots", "creative", *TEXT_ACTIONS))
-    store.add_argument("target", nargs="?", help="ipad, iphone or duo; header or search; the text file for whats-new, promo or keywords")
+    store.add_argument("target", nargs="?", help="ipad, iphone or duo; header or search; the text file for a text field")
     store.add_argument("files", nargs="*", help="exports")
     store.add_argument("--version", required=True, help="the store version, such as 0.1.16")
     store.add_argument("--locale", default="en-US")
