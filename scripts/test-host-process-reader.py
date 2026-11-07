@@ -34,6 +34,7 @@ struct Input: Decodable {
     var prefixes: [String]?
     var files: Bool?
     var arguments: [String]?
+    var ordered: Bool?
     var descendants: String?
     var root: String?
     var macOS: Bool?
@@ -51,6 +52,7 @@ let request = HostProcessReader.Request(
     namesWithPrefix: input.prefixes ?? [],
     readsOpenFiles: input.files ?? false,
     argumentsAmong: input.arguments ?? [],
+    preservesArgumentOrder: input.ordered ?? false,
     descendantsOf: input.descendants)
 let nonce = "0123456789abcdef01234567"
 
@@ -109,6 +111,7 @@ case "parse":
             case .unavailable: entry["arguments"] = "unavailable"
             }
         }
+        if request.preservesArgumentOrder { entry["argv"] = reading(fact.argumentVector) }
         if let parent = fact.parent { entry["parent"] = parent }
         if let name = fact.name { entry["name"] = name }
         if pid == input.descendants { entry["descendants"] = reading(fact.descendants) }
@@ -611,6 +614,22 @@ class ArgumentTests(ReaderTestCase):
 
     def cmdline(self, pid: int, data: bytes) -> None:
         (self.process(pid, command="codex") / "cmdline").write_bytes(data)
+
+    def test_ordered_arguments_keep_values_in_place_without_disclosing_them(self) -> None:
+        words = ["--settings", "--permission-mode", "bypassPermissions", "--permission-mode=manual", "--"]
+        self.cmdline(10, b"claude\0--settings\0private-json\0--permission-mode\0bypassPermissions\0"
+                     b"--permission-mode=manual\0--settings=private-inline\0--unknown\0--\0private-prompt\0")
+
+        def check(shell: list[str]) -> None:
+            request = {"pids": ["10"], "arguments": words, "ordered": True}
+            raw = self.run_script(shell, **request)
+            self.assertEqual(self.parse(raw, **request)["10"]["argv"], [
+                "", "--settings", "", "--permission-mode", "bypassPermissions",
+                "--permission-mode=manual", "--settings=", "-", "--", ""])
+            for secret in ["private-json", "private-inline", "private-prompt", "--unknown"]:
+                self.assertNotIn(secret, raw)
+                self.assertNotIn(secret.encode().hex(), raw)
+        self.for_each_shell(check)
 
     def test_reports_only_the_arguments_it_was_asked_about(self) -> None:
         self.cmdline(10, b"/home/dev/.codex/bin/codex\0app-server\0--listen\0unix://\0--managed-daemon\0")
@@ -1150,6 +1169,21 @@ class MacOSReadTests(ReaderTestCase):
     # Arguments
 
     ASKED_ARGUMENTS = ["--managed-daemon", "app-server", "pid-update-loop"]
+
+    def test_ordered_arguments_keep_option_values_private_on_macos(self) -> None:
+        pid = self.rewritten("keep", "--settings", "private-json", "--permission-mode=bypassPermissions",
+                             "--settings=private-inline", "--unknown", "--", "private-prompt")
+
+        def check(shell: list[str]) -> None:
+            request = {"pids": [pid], "arguments": ["--settings", "--permission-mode=bypassPermissions", "--"],
+                       "ordered": True, "macOS": True}
+            raw = self.run_script(shell, **request)
+            self.assertEqual(self.parse(raw, **request)[pid]["argv"], [
+                "", "", "--settings", "", "--permission-mode=bypassPermissions", "--settings=", "-", "--", ""])
+            for secret in ["private-json", "private-inline", "private-prompt", "--unknown"]:
+                self.assertNotIn(secret, raw)
+                self.assertNotIn(secret.encode().hex(), raw)
+        self.for_each_shell(check)
 
     def test_arguments_report_only_the_asked_words(self) -> None:
         daemon = self.rewritten("keep", "app-server", "--listen", "unix://do-not-print", "--managed-daemon")

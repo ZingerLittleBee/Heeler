@@ -757,6 +757,7 @@ struct AgentSurfaceReplacementTests {
             closePane: {})
         let agent = Self.makeAgent(pane: "w1:p1", title: "Connection recovery")
         let title = AgentDetailHeaderTitle(agent)
+        let folder = try #require(title.folder)
         let controller = UIHostingController(
             rootView: Self.makeDetailView(
                 agent: agent, activity: AppActivityCoordinator(),
@@ -773,7 +774,7 @@ struct AgentSurfaceReplacementTests {
             try #require(await Self.eventually { owner.terminalStatus == .live })
             @MainActor func hasTaskTitle() -> Bool {
                 Self.accessibilityLabels(in: controller.view).contains {
-                    $0.contains(title.title) && $0.contains(title.harness)
+                    $0.contains(title.title) && $0.contains(folder)
                 }
             }
             try #require(await Self.eventually {
@@ -803,7 +804,7 @@ struct AgentSurfaceReplacementTests {
                 controller.view.layoutIfNeeded()
                 let labels = Self.accessibilityLabels(in: controller.view)
                 return owner.terminalStatus == .reconnecting
-                    && labels.contains { $0.contains("Reconnecting…") && $0.contains(title.harness) }
+                    && labels.contains { $0.contains("Reconnecting…") && $0.contains(folder) }
             }, "recovery must appear in the title even when the header is folded")
             #expect(!surface.isTouchScrollMomentumRunning)
             #expect(surface.scrollTouch(translationY: 960) == 0)

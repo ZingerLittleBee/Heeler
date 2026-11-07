@@ -37,22 +37,22 @@
         674,
         1202,
         862,
-        1521
+        1520
       ],
       "device-right": [
         2334,
         1202,
         862,
-        1521
+        1520
       ],
       "device-center": [
         1560,
         1090,
         752,
-        1597
+        1596
       ]
     },
-    "export_sha256": "0a58eed9896834584159c63097a09f17bb8429753c42b3503bfd5d133983d387"
+    "export_sha256": "c216c26e2344ac3eb9e4dfa0a69371dfe8ecca0c8f27f735bc73b810c5f828bf"
   },
   {
     "slug": "search-results",
@@ -104,15 +104,15 @@
         2063,
         522,
         1174,
-        2073
+        2071
       ],
       "device-front": [
         2627,
         298,
         1168,
-        2150
+        2148
       ]
     },
-    "export_sha256": "fadf6e3f7bdffbda2784157e71c62bfff4c8c8b7d64cddf95909a2b8a33a983b"
+    "export_sha256": "a48496e8a6dd2c19df3dfc241babeea5cdb32e1a2860189eefba1167f21f3a71"
   }
 ]

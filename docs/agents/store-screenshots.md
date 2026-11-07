@@ -11,7 +11,8 @@ Compose scripts live with their exports:
 | iPhone large display | `output/app-store/iphone-6.9/` | `compose_mockups.py` |
 | iPad 13-inch | `output/app-store/ipad-13/` | `compose_mockups.py` |
 | iPhone Duo, first image | `output/app-store/iphone-duo/` | `compose_mockups.py` |
-| Voice Input, second image of all three | `output/app-store/voice/` | `compose_voice.py` |
+| Herdr desktop, second image of all three | `output/app-store/desktop/` | `compose_desktop.py` |
+| Voice Input, third image of all three | `output/app-store/voice/` | `compose_voice.py` |
 | Header and Search Results | `output/app-store/creative-assets/` | `compose_creative.py` |
 
 ## 1. Start the Agents
@@ -21,10 +22,12 @@ python3 scripts/store-shots.py up
 ```
 
 This takes a few minutes. It creates `~/workspace` (the app shortens paths only
-under the Host user's home), starts two herdr sessions, and runs five Agents:
+under the Host user's home), starts two herdr sessions, and runs eleven Agents:
 Storefront (left Blocked), Docs, Search, Inventory (a Chat reply with a code
-block and bullets), and Payments API on the second session (the richest Changes
-page, with three staged files). It refuses a `~/workspace` it did not create;
+block and bullets), Mobile App, Analytics, Notifications and Admin Dashboard,
+plus Payments API (the richest Changes page, with three staged files), Auth
+Service and Release CLI on the second session. Eleven rows fill an iPhone
+Console. It refuses a `~/workspace` it did not create;
 pass `--workspace` to use another directory.
 
 ## 2. Connect a simulator
@@ -64,6 +67,25 @@ xcrun simctl io "$UDID" screenshot --display=primary-1 capture.png
 That gives 2853 x 2007 in landscape. XCUITest taps miss in this posture on
 Xcode 27, so click through the Device Hub window.
 
+### Herdr desktop
+
+The rig has no herdr-core, so this image needs a Linux machine running the
+Herdr desktop app, such as a throwaway VM. Copy the fixture repositories there,
+log Claude Code in, and add the machine to the seeded simulator as a herdr-core
+Host. Start each Agent from Heeler's New Agent with a New Workspace, so the
+desktop names its space. The image cuts the Hosts card and the Agents list
+filtered to that Host.
+
+The Hosts card shows `user@address`, so every Host gets a machine name
+(`studio-mac`, `build-server`, `linux-desktop`) on port 22 and the same user
+name. Route all three through a jump host on the Mac that maps each name to a
+local port: the rig's sshd, or a forward to the VM's sshd. A small asyncssh
+server that only accepts `direct-tcpip` is enough. A jump host on the VM sends
+the Herdr TUI Hosts across its network twice, and the card then shows
+latencies of several seconds. Agent rows shorten a path to `~` only under
+`/Users/<user>` or `/home/<user>`, so the VM account needs that user name and
+home.
+
 ### Voice Input
 
 The simulator's microphone records near silence, so a live recording draws a
@@ -90,6 +112,8 @@ python3 scripts/store-shots.py asc screenshots duo output/app-store/iphone-duo/e
 python3 scripts/store-shots.py asc creative header output/app-store/creative-assets/exports/product-page-header-3840x1646.png --version 0.1.17
 python3 scripts/store-shots.py asc whats-new notes.txt --version 0.1.17
 python3 scripts/store-shots.py asc promo promo.txt --version 0.1.17
+python3 scripts/store-shots.py asc keywords keywords.txt --version 0.1.17
+python3 scripts/store-shots.py asc description description.txt --version 0.1.17
 ```
 
 `screenshots` matches by file name and keeps each image's position, deleting the
