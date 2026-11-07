@@ -4,10 +4,10 @@ import Testing
 @testable import Heeler
 
 /// Explicit opt-in only: the configuration names disposable test Agents, never
-/// the focused pane. See docs/prototypes/title-rename/README.md for the contract.
+/// the focused pane. Run with the HeelerLiveTests scheme, never the CI suite.
+/// See docs/prototypes/title-rename/README.md for the contract.
 @MainActor
-@Suite("Native title rename over real SSH", .serialized,
-    .enabled(if: ProcessInfo.processInfo.environment["HEELER_TITLE_RENAME_CONFIG"]?.isEmpty == false))
+@Suite("Native title rename over real SSH", .serialized)
 struct AgentTitleRenameLiveTests {
     struct Configuration: Decodable {
         var port: Int
