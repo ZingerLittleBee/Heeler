@@ -340,12 +340,18 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         }
 
         private mutating func readCheckpoint(_ step: AgyStep) {
+            let opensWindow = open.map { $0.isAboveWindow && !$0.hasSteps } ?? false
             ensureOpen()
             note(step)
             place(.divider(.compaction(summary: Self.summary(in: step.content))), id: Self.id(step), step)
             // `/compact` is answered by its checkpoint; one agy makes by
-            // itself comes mid-turn, and the turn goes on.
-            if open?.isCompact == true { open?.hasReply = true }
+            // itself comes mid-turn, between a result and a planner
+            // response (all 10 in the census), and the turn goes on. A
+            // checkpoint the window starts at may answer a `/compact` cut
+            // off above it, so it counts as the reply too: a planner
+            // response after it takes that back, and only a prompt right
+            // after it, as `/compact` gets, keeps it.
+            if open?.isCompact == true || opensWindow { open?.hasReply = true }
         }
 
         private mutating func readError(_ step: AgyStep) {

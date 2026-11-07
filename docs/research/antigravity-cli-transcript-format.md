@@ -200,7 +200,9 @@ stopped due to server restart. …`, whether or not anything was running.
 holds `# Resuming from a compaction`, a `<summary>` with numbered bold
 sections such as `**Task Overview**`, and `# Conversation Logs`. No planner
 response follows. The census's 10 checkpoints all fell between a result and
-a planner response, compactions agy made inside a turn.
+a planner response, compactions agy made inside a turn. So a checkpoint
+that a read window starts at, its prompt cut off above, counts as a reply
+until a planner response follows it.
 
 **Errors.** The one census `ERROR_MESSAGE` (`The stream was interrupted.
 Please continue the task you were working on.`) was followed by a planner

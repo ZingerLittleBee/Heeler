@@ -199,6 +199,25 @@ struct AgyTranscriptReducerTests {
         #expect(transcript.turns.map(\.ending) == [.completed, .completed])
     }
 
+    /// A tail window can start at `/compact`'s checkpoint, its prompt cut
+    /// off above. The checkpoint answers that turn, so the next prompt
+    /// doesn't close it as interrupted, as when the window starts at the
+    /// prompt.
+    @Test(arguments: [("approvals.jsonl", 47), ("tasks-question-compact.jsonl", 50)])
+    func aWindowStartingAtACompactCheckpointAddsNoInterruption(_ name: String, checkpoint: Int) throws {
+        let all = try Self.lines(name)
+        let start = try #require(all.firstIndex { AgyStep.decode($0)?.stepIndex == checkpoint })
+        try #require(start > 0)
+        let window = Array(all[start...])
+        let transcript = Self.transcript(window, windowStart: window[0].offset)
+
+        #expect(transcript.entries.first?.id.rawValue == "agy:\(checkpoint)")
+        #expect(!Self.notices(transcript).contains { $0.id == "agy:\(checkpoint):interrupted" })
+        #expect(transcript.precedingTurnEnd?.ending == .completed)
+        let fromPrompt = Self.transcript(Array(all[(start - 1)...]), windowStart: all[start - 1].offset)
+        #expect(Self.notices(transcript).map(\.id) == Self.notices(fromPrompt).map(\.id))
+    }
+
     /// An error message is a notice inside a turn that goes on. Reminders,
     /// ephemeral messages and other agents' messages show nothing, and a
     /// type Chat does not know is counted.
