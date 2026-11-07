@@ -191,18 +191,14 @@ class Connection:
             # stopped is visible, both pumps may immediately return and join.
             linger = struct.pack("ii", 1, 0)
             for endpoint in (self.client, self.upstream):
-                print(f"[DEBUG-ci630] time={time.time()} cut connection={self.index} "
-                      f"fd={endpoint.fileno()} local={endpoint.getsockname()} "
-                      f"peer={endpoint.getpeername()}", flush=True)
                 try:
                     endpoint.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, linger)
-                except OSError as error:
-                    print(f"[DEBUG-ci630] linger failed: {error}", flush=True)
+                except OSError:
+                    pass
                 try:
                     endpoint.close()
-                except OSError as error:
-                    print(f"[DEBUG-ci630] close failed: {error}", flush=True)
-                print(f"[DEBUG-ci630] time={time.time()} closed connection={self.index}", flush=True)
+                except OSError:
+                    pass
         return True
 
     def close(self) -> None:
