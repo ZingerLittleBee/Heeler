@@ -390,7 +390,7 @@ struct HostProcessReaderTests {
         }
     }
 
-    @Test(arguments: ["", "a b", "a'b", "$(id)", "a;b", "new\nline", "路径", "a=b"])
+    @Test(arguments: ["", "a b", "a'b", "$(id)", "a;b", "new\nline", "路径"])
     func anArgumentThatIsNotAPlainWordIsRefused(word: String) {
         #expect(throws: HostProcessReader.Refusal.argument(word)) {
             _ = try HostProcessReader.script(

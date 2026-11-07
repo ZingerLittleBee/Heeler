@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// One Agent's Composer and the staging its picks and drops upload through.
 ///
@@ -14,6 +15,9 @@ final class AgentComposerSession {
     let staging: ComposerStagingStore
     /// The core this Composer's Agent runs on, which the details showing it keep to.
     let corePin: TerminalCorePin
+    /// Chat's confirmed status-line switches, which every Chat showing this
+    /// Agent reads, and a rebuilt one keeps.
+    let settingOverrides = AgentSettingOverrides()
     /// The details showing this Agent, one key per window.
     private var presence: Set<UUID> = []
     private var leaveTask: Task<Void, Never>?
@@ -73,5 +77,54 @@ final class AgentComposerSession {
     /// out of sight.
     func didSuspend() {
         staging.didEnterBackground()
+    }
+}
+
+/// The mode, model and effort a status-line switch confirmed, each over the
+/// transcript's value for it when it was made: once the transcript records
+/// another, the transcript's stands again.
+@MainActor
+@Observable
+final class AgentSettingOverrides {
+    enum Setting: Int { case permissionMode, model, effort }
+
+    private var values: [String?] = [nil, nil, nil]
+    private var recorded: [String?] = [nil, nil, nil]
+    /// A switch's paste or key got no answer, so it may still reach the
+    /// Agent's input; the next input waits until the Host answers a read.
+    var lastSwitchHasNoAnswer = false
+    /// Shared by all Chat windows while a menu reads or changes the terminal.
+    var switchingSetting: Setting?
+
+    private(set) var permissionLaunch: ClaudePermissionMode.Launch?
+    private var livePermissionMode: String?
+    private var bypassMissingFromCycle: ClaudePermissionMode.ProcessIdentity?
+
+    var allowsBypassPermissions: Bool {
+        if livePermissionMode == "bypassPermissions" { return true }
+        guard let permissionLaunch, permissionLaunch.process != bypassMissingFromCycle else { return false }
+        return permissionLaunch.optsIntoBypass
+    }
+
+    func refreshPermissionLaunch(_ launch: ClaudePermissionMode.Launch?, liveMode: String?) {
+        if let launch, let previous = permissionLaunch, launch.process != previous.process {
+            bypassMissingFromCycle = nil
+        }
+        permissionLaunch = launch
+        livePermissionMode = liveMode
+    }
+
+    func bypassWasMissingFromCycle() {
+        bypassMissingFromCycle = permissionLaunch?.process
+        livePermissionMode = nil
+    }
+
+    func value(_ setting: Setting, over now: [String?]) -> String? {
+        recorded[setting.rawValue] == now[setting.rawValue] ? values[setting.rawValue] : nil
+    }
+
+    func set(_ setting: Setting, _ value: String?, over now: [String?]) {
+        values[setting.rawValue] = value
+        recorded[setting.rawValue] = now[setting.rawValue]
     }
 }

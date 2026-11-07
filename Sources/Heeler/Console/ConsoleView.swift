@@ -118,9 +118,10 @@ struct ConsoleView: View {
     /// 1.2 s visual-feedback hold after `retryHost` returns. Distinct from
     /// `EventsSessionStatus.reconnecting`.
     @State private var manualReconnectInFlightHostIDs: Set<Host.ID> = []
-    /// Narrows the Agent list to one Host; nil shows every Host. This is a
-    /// filter in both presentations, not a second grouping mechanism.
-    @State private var hostFilter: Host.ID?
+    /// Narrows both lists to selected Hosts; an empty set shows every Host.
+    /// Filtering does not change grouping or catalog order.
+    @State private var hostFilter: Set<Host.ID> = []
+    @State private var filterPopoverTab: ConsoleTab?
     /// Each list's own search (#292, #316), after `hostFilter`. The field
     /// hides under the title until the list is pulled down.
     @State private var agentSearchText = ""
@@ -269,7 +270,7 @@ struct ConsoleView: View {
                     hosts: hosts.consoleHosts.offeringNewItem(
                         listsTerminals: true, capabilities: { console.capabilities(for: $0.id) }),
                     console: console,
-                    initialHostID: hostFilter
+                    initialHostID: hostFilter.count == 1 ? hostFilter.first : nil
                 ) {
                     // A new shell lands in its terminal, as tapping its row would.
                     selectTerminal($0)
@@ -387,12 +388,10 @@ struct ConsoleView: View {
                 isSettingsTabSelected = false
             }
         }
-        // A filter pointing at a removed Host would silently hide every
-        // Agent; fall back to All Hosts instead.
+        // Drop removed Hosts without losing remaining selections. Removing
+        // the last selected Host falls back to All Hosts.
         .onChange(of: hosts.consoleHosts) { _, hosts in
-            if let hostFilter, !hosts.contains(where: { $0.id == hostFilter }) {
-                self.hostFilter = nil
-            }
+            hostFilter.formIntersection(hosts.map(\.id))
         }
         .environment(\.consoleCommandRegistry, commandRegistry)
         .focusedSceneValue(\.consoleCommandTarget, commandTarget)
@@ -991,7 +990,7 @@ struct ConsoleView: View {
                     hosts: hosts.consoleHosts,
                     console: console,
                     presentation: terminalPresentation,
-                    filteredHostID: hostFilter,
+                    filteredHostIDs: hostFilter,
                     searchQuery: terminalSearchText,
                     selection: selectedItem,
                     onOpen: { openTerminal($0, from: .terminals, bySidebar: true) },
@@ -1012,37 +1011,51 @@ struct ConsoleView: View {
     /// A filter is meaningless with a single Host.
     private var filtersByHost: Bool { hosts.consoleHosts.count > 1 }
 
+    private func offersFilters(for tab: ConsoleTab) -> Bool {
+        !hosts.consoleHosts.isEmpty && (tab == .agents || filtersByHost)
+    }
+
     /// At the largest text sizes a bar cannot fit its title beside three
-    /// buttons, so the Host filter joins the presentation menu. An iPad
+    /// buttons, so the filters join the presentation menu. An iPad
     /// sidebar keeps both menus at its foot, which has room for them.
-    private var foldsHostFilter: Bool {
-        filtersByHost && !usesSidebarNavigation && dynamicTypeSize >= .xxLarge
+    private var foldsListFilters: Bool {
+        !usesSidebarNavigation && dynamicTypeSize >= .xxLarge
     }
 
-    private var hostFilterPicker: some View {
-        Picker("Host", selection: $hostFilter) {
-            Text("All Hosts").tag(Host.ID?.none)
-            ForEach(hosts.consoleHosts) { @Sendable host in
-                Text(host.displayName).tag(Host.ID?.some(host.id))
-            }
+    private func filterIsPresented(for tab: ConsoleTab) -> Binding<Bool> {
+        Binding(
+            get: { filterPopoverTab == tab },
+            set: { shown in
+                if shown {
+                    filterPopoverTab = tab
+                } else if filterPopoverTab == tab {
+                    filterPopoverTab = nil
+                }
+            })
+    }
+
+    private func filterChoices(for tab: ConsoleTab) -> some View {
+        ConsoleListFilterChoices(
+            hosts: hosts.consoleHosts, hostFilter: $hostFilter,
+            agentStatuses: tab == .agents ? listPresentation : nil,
+            counts: statusFilterCounts)
+            .presentationCompactAdaptation(.popover)
+    }
+
+    private func filterButton(for tab: ConsoleTab) -> some View {
+        let isFiltered = !hostFilter.isEmpty || (tab == .agents && !listPresentation.statusFilter.isEmpty)
+        return Button {
+            filterPopoverTab = tab
+        } label: {
+            Label(
+                tab == .agents ? "Filter Agents" : "Filter by Host",
+                systemImage: isFiltered
+                    ? "line.3.horizontal.decrease.circle.fill"
+                    : "line.3.horizontal.decrease.circle")
         }
-    }
-
-    @ViewBuilder
-    private var foldedHostFilter: some View {
-        if foldsHostFilter {
-            Section("Filter by Host") { hostFilterPicker }
-        }
-    }
-
-    private var hostFilterMenu: some View {
-        Menu(
-            "Filter by Host",
-            systemImage: hostFilter == nil
-                ? "line.3.horizontal.decrease.circle"
-                : "line.3.horizontal.decrease.circle.fill"
-        ) {
-            hostFilterPicker
+        .accessibilityValue(isFiltered ? "Filtered" : "All")
+        .popover(isPresented: filterIsPresented(for: tab)) {
+            filterChoices(for: tab)
         }
     }
 
@@ -1055,12 +1068,21 @@ struct ConsoleView: View {
                         Label(mode.title, systemImage: mode.systemImage).tag(mode)
                     }
                 }
-                foldedHostFilter
+                if foldsListFilters, offersFilters(for: tab) {
+                    Section {
+                        Button("Filter by Host", systemImage: "line.3.horizontal.decrease.circle") {
+                            filterPopoverTab = tab
+                        }
+                    }
+                }
             } label: {
                 Label("Presentation", systemImage: terminalPresentation.mode.systemImage)
             }
             .accessibilityLabel("Terminal list presentation")
             .accessibilityValue(terminalPresentation.mode.title)
+            .popover(isPresented: foldsListFilters ? filterIsPresented(for: tab) : .constant(false)) {
+                filterChoices(for: tab)
+            }
         } else {
             Menu {
                 Picker("Presentation", selection: presentationModeBinding) {
@@ -1068,12 +1090,21 @@ struct ConsoleView: View {
                         Label(mode.title, systemImage: mode.systemImage).tag(mode)
                     }
                 }
-                foldedHostFilter
+                if foldsListFilters, offersFilters(for: tab) {
+                    Section {
+                        Button("Filter Agents", systemImage: "line.3.horizontal.decrease.circle") {
+                            filterPopoverTab = tab
+                        }
+                    }
+                }
             } label: {
                 Label("Presentation", systemImage: listPresentation.mode.systemImage)
             }
             .accessibilityLabel("Agent list presentation")
             .accessibilityValue(listPresentation.mode.title)
+            .popover(isPresented: foldsListFilters ? filterIsPresented(for: tab) : .constant(false)) {
+                filterChoices(for: tab)
+            }
         }
     }
 
@@ -1094,9 +1125,9 @@ struct ConsoleView: View {
         // does too, on its trailing edge (`wideSidebarListMenus`), so its bar
         // keeps only the title. Compact width keeps them in the bar.
         if !usesSidebarNavigation, horizontalSizeClass != .regular,
-           filtersByHost, !foldsHostFilter {
+           offersFilters(for: tab), !foldsListFilters {
             ToolbarItem(placement: .primaryAction) {
-                hostFilterMenu.hoverEffect(.highlight)
+                filterButton(for: tab).hoverEffect(.highlight)
             }
         }
         if !usesSidebarNavigation, horizontalSizeClass != .regular, !hosts.consoleHosts.isEmpty {
@@ -1134,8 +1165,8 @@ struct ConsoleView: View {
     private func wideSidebarListMenus(for tab: ConsoleTab) -> some View {
         HStack(spacing: 4) {
             Spacer(minLength: 0)
-            if filtersByHost, !foldsHostFilter {
-                hostFilterMenu.roundPointerHighlight()
+            if offersFilters(for: tab), !foldsListFilters {
+                filterButton(for: tab).roundPointerHighlight()
             }
             if !hosts.consoleHosts.isEmpty {
                 presentationMenu(for: tab).roundPointerHighlight()
@@ -1178,8 +1209,8 @@ struct ConsoleView: View {
             Spacer(minLength: 0)
             // A menu's pointer target is its own, not its button style's
             // label, so it takes the round highlight here.
-            if filtersByHost, !foldsHostFilter {
-                hostFilterMenu.roundPointerHighlight()
+            if offersFilters(for: tab), !foldsListFilters {
+                filterButton(for: tab).roundPointerHighlight()
             }
             if !hosts.consoleHosts.isEmpty {
                 presentationMenu(for: tab).roundPointerHighlight()
@@ -1626,11 +1657,32 @@ struct ConsoleView: View {
                     "No Agents on \(hostName)",
                     systemImage: "line.3.horizontal.decrease.circle")
             } actions: {
-                Button("Show All Hosts") { hostFilter = nil }
+                Button("Show All Hosts") { hostFilter.removeAll() }
                     .hoverEffect(.highlight)
             }
         case .noSearchResults:
-            ContentUnavailableView.search(text: agentSearchText)
+            if agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ContentUnavailableView {
+                    Label("No Matching Agents", systemImage: "line.3.horizontal.decrease.circle")
+                } actions: {
+                    Button("Show All") { listPresentation.clearStatusFilter() }
+                        .hoverEffect(.highlight)
+                        .accessibilityIdentifier("agents.status-filter.clear-empty")
+                }
+            } else if !listPresentation.statusFilter.isEmpty {
+                // The filter may be what hides the match, and it outlives the search.
+                ContentUnavailableView {
+                    Label("No Results for \u{201C}\(agentSearchText)\u{201D}", systemImage: "magnifyingglass")
+                } description: {
+                    Text("The status filter is on.")
+                } actions: {
+                    Button("Show All Statuses") { listPresentation.clearStatusFilter() }
+                        .hoverEffect(.highlight)
+                        .accessibilityIdentifier("agents.status-filter.clear-search")
+                }
+            } else {
+                ContentUnavailableView.search(text: agentSearchText)
+            }
         case .rows:
             List(selection: selectedItem) {
                 switch listPresentation.mode {
@@ -2174,19 +2226,20 @@ struct ConsoleView: View {
     private var agentsSurface: ConsoleAgentsSurface {
         ConsoleAgentsSurface(
             hostCount: hosts.consoleHosts.count,
-            filteredHostName: hostFilter == nil ? nil : filteredHostName,
+            filteredHostName: hostFilter.isEmpty ? nil : filteredHostName,
             filteredAgentCount: filteredAgents.count,
             visibleIssueCount: visibleHostIssues.count,
             presentationMode: listPresentation.mode,
             projectedSectionCount: hostSections.count,
-            searchQuery: agentSearchText)
+            searchQuery: agentSearchText,
+            isStatusFiltered: !listPresentation.statusFilter.isEmpty)
     }
 
     private var hostSections: [ConsoleHostSection] {
         listPresentation.sections(
             hosts: hosts.consoleHosts,
             console: console,
-            filteredHostID: hostFilter,
+            filteredHostIDs: hostFilter,
             searchQuery: agentSearchText)
     }
 
@@ -2194,7 +2247,7 @@ struct ConsoleView: View {
         ConsoleWorkspaceCard.cards(
             listPresentation.workspaceSections(
                 hosts: hosts.consoleHosts, console: console,
-                filteredHostID: hostFilter, searchQuery: agentSearchText))
+                filteredHostIDs: hostFilter, searchQuery: agentSearchText))
     }
 
     /// Where previous and next can land.
@@ -2228,15 +2281,27 @@ struct ConsoleView: View {
     }
 
     private var hostFilteredAgents: [ConsoleAgent] {
-        guard let hostFilter else { return console.chatDisplayAgents }
-        return console.chatDisplayAgents.filter { $0.hostID == hostFilter }
+        guard !hostFilter.isEmpty else { return console.chatDisplayAgents }
+        return console.chatDisplayAgents.filter { hostFilter.contains($0.hostID) }
     }
 
-    private var filteredAgents: [ConsoleAgent] {
+    /// After the Host filter and the search, before the status filter: what
+    /// the status menu counts.
+    private var searchedAgents: [ConsoleAgent] {
         let hostFiltered = hostFilteredAgents
         let needle = agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return hostFiltered }
         return hostFiltered.filter { $0.matchesAgentSearch(needle) }
+    }
+
+    private var filteredAgents: [ConsoleAgent] {
+        let statusFilter = listPresentation.statusFilter
+        return searchedAgents.filter { statusFilter.admits($0) }
+    }
+
+    private var statusFilterCounts: [ConsoleAgentStatusFilter: Int] {
+        Dictionary(grouping: searchedAgents.compactMap { ConsoleAgentStatusFilter($0.agent.status) }) { $0 }
+            .mapValues(\.count)
     }
 
     /// Program names for rows whose cards would otherwise read the same.
@@ -2259,7 +2324,7 @@ struct ConsoleView: View {
         }
     }
 
-    /// Host issues shown in the list: all of them, or the filtered Host's
+    /// Host issues shown in the list: all of them, or the selected Hosts'
     /// only — a filtered Console should not nag about other machines — and
     /// none while searching, where they would only bury the matches.
     private var visibleHostIssues: [ConsoleHostStatusPresentation] {
@@ -2272,12 +2337,13 @@ struct ConsoleView: View {
     /// Every Host problem under the Host filter, as the flat lists show
     /// them outside a search, and as their summary's sheet lists them.
     private var filteredHostIssues: [ConsoleHostStatusPresentation] {
-        guard let hostFilter else { return hostIssues }
-        return hostIssues.filter { $0.hostID == hostFilter }
+        guard !hostFilter.isEmpty else { return hostIssues }
+        return hostIssues.filter { hostFilter.contains($0.hostID) }
     }
 
     private var filteredHostName: String {
-        hosts.consoleHosts.first(where: { $0.id == hostFilter })?.displayName ?? "this Host"
+        guard hostFilter.count == 1 else { return "Selected Hosts" }
+        return hosts.consoleHosts.first(where: { hostFilter.contains($0.id) })?.displayName ?? "this Host"
     }
 
     private struct HostsTabRequest {
@@ -2438,6 +2504,128 @@ private struct ConsoleListSearch: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// Hosts scroll independently, so a long inventory never pushes status
+/// choices off the bottom of the filter panel. Statuses can also scroll
+/// when accessibility text or a short window needs more room.
+struct ConsoleListFilterChoices: View {
+    private enum HostScrollHint: Equatable {
+        case fits, moreBelow, atEnd
+    }
+
+    let hosts: [Host]
+    @Binding var hostFilter: Set<Host.ID>
+    let agentStatuses: ConsoleListPresentationStore?
+    let counts: [ConsoleAgentStatusFilter: Int]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hostContentHeight: CGFloat = 220
+    @State private var statusContentHeight: CGFloat = 220
+    @State private var hostScrollHint = HostScrollHint.fits
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if hosts.count > 1 {
+                heading("Host")
+                ScrollView {
+                    VStack(spacing: 0) {
+                        choice("All Hosts", selected: hostFilter.isEmpty) { hostFilter.removeAll() }
+                        ForEach(hosts) { @Sendable host in
+                            MainActorContent {
+                                choice(host.displayName, selected: hostFilter.contains(host.id)) {
+                                    if !hostFilter.insert(host.id).inserted { hostFilter.remove(host.id) }
+                                }
+                            }
+                        }
+                    }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { hostContentHeight = $0 }
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollIndicatorsFlash(onAppear: true)
+                .frame(minHeight: 44, idealHeight: min(hostContentHeight, 220), maxHeight: min(hostContentHeight, 220))
+                .accessibilityIdentifier("console.filters.hosts")
+                .onScrollGeometryChange(for: HostScrollHint.self) { geometry in
+                    guard geometry.contentSize.height > geometry.containerSize.height + 1 else { return .fits }
+                    return geometry.visibleRect.maxY < geometry.contentSize.height - 1 ? .moreBelow : .atEnd
+                } action: { _, hint in
+                    hostScrollHint = hint
+                }
+                // Keep the hint's space at the end, so scrolling never
+                // moves the divider or the status choices beneath it.
+                Image(systemName: "chevron.down.2")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: hostScrollHint == .fits ? 0 : 16)
+                    .opacity(hostScrollHint == .moreBelow ? 1 : 0)
+                    .allowsHitTesting(false)
+                    .accessibilityLabel("More Hosts below")
+                    .accessibilityHidden(hostScrollHint != .moreBelow)
+                if agentStatuses != nil { Divider().padding(.vertical, 6) }
+            }
+            if let agentStatuses {
+                heading("Agent Status")
+                ScrollView {
+                    VStack(spacing: 0) {
+                        choice("All Status", selected: agentStatuses.statusFilter.isEmpty) {
+                            agentStatuses.clearStatusFilter()
+                        }
+                        .accessibilityIdentifier("agents.status-filter.all")
+                        ForEach(ConsoleAgentStatusFilter.allCases) { @Sendable filter in
+                            MainActorContent {
+                                choice(
+                                    "\(filter.status.displayTitle ?? filter.rawValue) (\(counts[filter] ?? 0))",
+                                    selected: agentStatuses.statusFilter.contains(filter)
+                                ) {
+                                    agentStatuses.toggleStatusFilter(filter)
+                                }
+                                .accessibilityIdentifier("agents.status-filter.\(filter.rawValue)")
+                            }
+                        }
+                    }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { statusContentHeight = $0 }
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(minHeight: 44, idealHeight: min(statusContentHeight, 400), maxHeight: min(statusContentHeight, 400))
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(width: 300)
+    }
+
+    private func heading(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+            .padding(.bottom, 4)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func choice(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(reduceMotion ? nil : .snappy) { action() }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 16)
+                    .opacity(selected ? 1 : 0)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .frame(minHeight: 44)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

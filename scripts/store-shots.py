@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run real Agents for store screenshots, and replace store assets in App Store Connect.
 
-  up       start the isolated backend, demo repositories and five real Agents
+  up       start the isolated backend, demo repositories and eleven real Agents
   seed     point a booted simulator's Heeler at that backend
   working  give the Search Agent more work, so its ring turns for a capture
   diff     have the Payments Agent edit files, so its terminal shows a colored diff
@@ -75,6 +75,24 @@ AGENTS = (
         "dead-letter limit to src/dead-letter.js, add src/config.js for the backoff settings, give "
         "each new module its own test file, and add a Webhooks section to README.md. Run the tests "
         "when you are done.",), session="build"),
+    Agent("dark-mode", "codex", "mobile-app", "Mobile App", (
+        "Add a theme setting to src/settings.js that follows the system by default and can be "
+        "forced to light or dark, with tests. Run the tests when you are done.",)),
+    Agent("weekly-retention", "claude", "analytics", "Analytics", (
+        "Add weeklyRetention(events) to src/retention.js. It groups users by the week of their "
+        "first event and returns the share still active in each later week. Add tests and run them.",)),
+    Agent("login-lockout", "claude", "auth-service", "Auth Service", (
+        "Lock an account for 15 minutes after 5 failed logins in src/login.js, reset the count on "
+        "success, and add tests with a fake clock. Run the tests when you are done.",), session="build"),
+    Agent("quiet-hours", "codex", "notifications", "Notifications", (
+        "Add quiet hours to src/schedule.js: hold notifications between a user's start and end "
+        "hour, including ranges that cross midnight, with tests. Run the tests when you are done.",)),
+    Agent("csv-export", "claude", "admin-dashboard", "Admin Dashboard", (
+        "Add toCsv(orders) to src/export.js with a header row and proper quoting of commas and "
+        "quotes, with tests. Run the tests when you are done.",)),
+    Agent("dry-run", "claude", "release-cli", "Release CLI", (
+        "Add a dryRun option to src/release.js that returns the planned version and tag without "
+        "writing anything, with tests. Run the tests when you are done.",), session="build"),
 )
 WORKING_PROMPT = ("Now add typo tolerance: treat a title word within edit distance 1 of a query "
                   "term as a weaker match, ranked below exact matches, with tests. Run the tests "
@@ -389,11 +407,14 @@ def restore(udid: str) -> None:
     print(f"Restored {udid}.")
 
 
+TEXT_ACTIONS = ("whats-new", "promo", "keywords", "description")
+
+
 def asc(args: argparse.Namespace) -> None:
     if args.action != "screenshots" and (args.at is not None or args.remove):
         raise SystemExit("--at and --remove apply only to screenshots")
     # Text fields have no target, so their file lands in the target position.
-    named = [args.target, *args.files] if args.action in ("whats-new", "promo") and args.target else args.files
+    named = [args.target, *args.files] if args.action in TEXT_ACTIONS and args.target else args.files
     files = [str(Path(f).resolve()) for f in named]
     missing = [f for f in files if not Path(f).exists()]
     if missing:
@@ -423,8 +444,8 @@ def main() -> None:
     undo.add_argument("udid")
     commands.add_parser("down", help="stop everything and clean the home directory")
     store = commands.add_parser("asc", help="read or replace App Store Connect assets")
-    store.add_argument("action", choices=("status", "screenshots", "creative", "whats-new", "promo"))
-    store.add_argument("target", nargs="?", help="ipad, iphone or duo; header or search; the text file for whats-new or promo")
+    store.add_argument("action", choices=("status", "screenshots", "creative", *TEXT_ACTIONS))
+    store.add_argument("target", nargs="?", help="ipad, iphone or duo; header or search; the text file for a text field")
     store.add_argument("files", nargs="*", help="exports")
     store.add_argument("--version", required=True, help="the store version, such as 0.1.16")
     store.add_argument("--locale", default="en-US")

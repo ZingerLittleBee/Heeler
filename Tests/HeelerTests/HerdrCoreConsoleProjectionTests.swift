@@ -501,8 +501,8 @@ struct HerdrCoreConsoleProjectionTests {
             defaults: UserDefaults(suiteName: "core-\(UUID())") ?? .standard
         ).projection(hosts: catalog.consoleHosts, console: store)
         #expect(list.workspaces().count == 2)
-        #expect(list.workspaces(filteredHostID: host.id).flatMap(\.terminals).map(\.paneID) == ["t1"])
-        #expect(list.workspaces(filteredHostID: tui.id).flatMap(\.terminals).map(\.paneID) == ["w1:p1"])
+        #expect(list.workspaces(filteredHostIDs: [host.id]).flatMap(\.terminals).map(\.paneID) == ["t1"])
+        #expect(list.workspaces(filteredHostIDs: [tui.id]).flatMap(\.terminals).map(\.paneID) == ["w1:p1"])
     }
 
     @Test func aCoreHostLendsNoNotificationTransport() async throws {

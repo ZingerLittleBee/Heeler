@@ -850,6 +850,25 @@ final class ConsoleStore {
         composerSession(for: agent).composer
     }
 
+    /// The live process's opt-in, never a saved transcript or a terminal's launch command.
+    func claudePermissionLaunch(
+        for agent: ConsoleAgent, corePin: TerminalCorePin
+    ) async throws -> ClaudePermissionMode.Launch? {
+        let projection = try projection(for: agent.hostID)
+        if let core = projection as? HerdrCoreConsoleProjection {
+            guard !hasLeftCore(corePin, on: agent.hostID) else { return nil }
+            return try await core.claudePermissionLaunch(paneID: agent.agent.paneID)
+        }
+        let info = try await projection.processInfo(paneID: agent.agent.paneID)
+        guard let pid = ClaudePermissionMode.processID(in: info) else { return nil }
+        let facts = try await projection.withHostServices {
+            try await $0.readProcesses(ClaudePermissionMode.request(pid: pid))
+        }
+        let current = try await projection.processInfo(paneID: agent.agent.paneID)
+        guard ClaudePermissionMode.processID(in: current) == pid, let process = facts[pid] else { return nil }
+        return ClaudePermissionMode.Launch(pid: pid, facts: process)
+    }
+
     /// The Agent's Chat (ADR 0024), made on first use and kept while the
     /// Agent and its Host entry last. Nil when the Host is not in the
     /// catalog or the program has no transcript adapter.

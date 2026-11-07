@@ -169,20 +169,20 @@ struct TerminalListProjection {
     /// Every Workspace card, Host catalog order first, then herdr's
     /// Workspace order. A query keeps matching shells only and drops cards
     /// left empty; without one, an empty Workspace stays listed.
-    func workspaces(filteredHostID: Host.ID? = nil, searchQuery: String = "")
+    func workspaces(filteredHostIDs: Set<Host.ID> = [], searchQuery: String = "")
         -> [TerminalWorkspaceGroup]
     {
-        visibleHosts(filteredHostID).flatMap { workspaces(on: $0, searchQuery: searchQuery) }
+        visibleHosts(filteredHostIDs).flatMap { workspaces(on: $0, searchQuery: searchQuery) }
     }
 
     /// A query drops Hosts without a match, whatever their state, as the
     /// Agents list does, and opens every Host so no match hides behind a
     /// collapsed one.
-    func hostGroups(filteredHostID: Host.ID? = nil, searchQuery: String = "")
+    func hostGroups(filteredHostIDs: Set<Host.ID> = [], searchQuery: String = "")
         -> [TerminalHostGroup]
     {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return visibleHosts(filteredHostID).compactMap { host in
+        return visibleHosts(filteredHostIDs).compactMap { host in
             let workspaces = workspaces(on: host, searchQuery: searchQuery)
             if isSearching && workspaces.isEmpty { return nil }
             return TerminalHostGroup(
@@ -200,14 +200,14 @@ struct TerminalListProjection {
 
     /// Host problems in catalog order, for the By Workspace presentation,
     /// which has no Host headers to carry them.
-    func issues(filteredHostID: Host.ID? = nil) -> [ConsoleHostStatusPresentation] {
-        visibleHosts(filteredHostID).compactMap(issue(for:))
+    func issues(filteredHostIDs: Set<Host.ID> = []) -> [ConsoleHostStatusPresentation] {
+        visibleHosts(filteredHostIDs).compactMap(issue(for:))
     }
 
-    private func visibleHosts(_ filteredHostID: Host.ID?) -> [Host] {
+    private func visibleHosts(_ filteredHostIDs: Set<Host.ID>) -> [Host] {
         var seen: Set<Host.ID> = []
         return hosts.filter {
-            (filteredHostID == nil || $0.id == filteredHostID) && seen.insert($0.id).inserted
+            (filteredHostIDs.isEmpty || filteredHostIDs.contains($0.id)) && seen.insert($0.id).inserted
         }
     }
 

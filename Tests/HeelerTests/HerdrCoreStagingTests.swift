@@ -179,13 +179,17 @@ struct HerdrCoreStagingTests {
         await fixture.scripted.setPlatformFailure(.timedOut)
 
         _ = try fixture.session
-        try await Self.until("the first ask") { await fixture.scripted.platformAsks == 1 }
+        // A failed ask may already have retried after a projection update by
+        // the time this polls. Its count is not a stable state to wait for.
+        try await Self.until("a failed platform ask") { await fixture.scripted.platformAsks > 0 }
         #expect(!console.capabilities(for: hostID).uploads)
 
-        await fixture.scripted.setPlatformFailure(nil)
         await console.suspend()
+        let previousAsks = await fixture.scripted.platformAsks
+        await fixture.scripted.setPlatformFailure(nil)
         await console.resume()
         try await Self.until("Add") { console.capabilities(for: hostID).uploads }
+        #expect(await fixture.scripted.platformAsks > previousAsks)
         await fixture.finish()
     }
 

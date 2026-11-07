@@ -179,12 +179,12 @@ struct HerdrCoreAgentsTests {
         #expect(Set(byHost[0].agents.map(\.agent.paneID)) == ["t1", "t2"])
         #expect(byHost[1].agents.map(\.agent.paneID) == ["w1:p1"])
 
-        let filtered = presentation.sections(hosts: [host, tui], console: store, filteredHostID: host.id)
+        let filtered = presentation.sections(hosts: [host, tui], console: store, filteredHostIDs: [host.id])
         #expect(filtered.map(\.hostID) == [host.id])
         #expect(Set(filtered[0].agents.map(\.agent.paneID)) == ["t1", "t2"])
 
         let byWorkspace = presentation.workspaceSections(
-            hosts: [host, tui], console: store, filteredHostID: host.id)
+            hosts: [host, tui], console: store, filteredHostIDs: [host.id])
         #expect(Set(byWorkspace.map(\.title)) == ["app", "docs"])
         #expect(byWorkspace.first { $0.title == "app" }?.agents.map(\.agent.paneID) == ["t1"])
         #expect(byWorkspace.first { $0.title == "docs" }?.agents.map(\.agent.paneID) == ["t2"])

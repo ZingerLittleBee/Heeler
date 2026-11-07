@@ -106,13 +106,13 @@ struct ConsoleAgentSearchTests {
 
         let filteredToMatchingHost = store.sections(
             hosts: [hostA, hostB], agents: agents,
-            filteredHostID: hostA.id, searchQuery: "alpha")
+            filteredHostIDs: [hostA.id], searchQuery: "alpha")
         #expect(filteredToMatchingHost.count == 1)
         #expect(filteredToMatchingHost.first?.agents.count == 1)
 
         let filteredToOtherHost = store.sections(
             hosts: [hostA, hostB], agents: agents,
-            filteredHostID: hostA.id, searchQuery: "beta")
+            filteredHostIDs: [hostA.id], searchQuery: "beta")
         #expect(filteredToOtherHost.isEmpty)
 
         let unfiltered = store.sections(

@@ -180,6 +180,7 @@ struct HerdrCoreSessionBinder: Sendable {
         var values: [String] = []
         var namesOf: [String] = []
         var arguments: [String] = []
+        var preservesArgumentOrder = false
         var readsOpenFiles = false
     }
 
@@ -284,6 +285,7 @@ struct HerdrCoreSessionBinder: Sendable {
             namesOf: ask.namesOf,
             readsOpenFiles: ask.readsOpenFiles,
             argumentsAmong: ask.arguments,
+            preservesArgumentOrder: ask.preservesArgumentOrder,
             descendantsOf: root)
         let facts = try await processes(request)
         func scope(of pid: String) -> String? {

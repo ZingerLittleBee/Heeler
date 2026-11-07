@@ -22,7 +22,7 @@ struct NewTerminalView: View {
                 workspaces: { console.workspaces(for: $0) },
                 directory: { hostID, workspaceID in
                     TerminalListProjection(hosts: hosts, console: console)
-                        .workspaces(filteredHostID: hostID)
+                        .workspaces(filteredHostIDs: [hostID])
                         .first { $0.workspaceID == workspaceID }?
                         .directory
                 },

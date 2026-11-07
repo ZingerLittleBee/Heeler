@@ -1795,6 +1795,28 @@ struct AgentChatStoreTests {
         #expect(fixture.store.sendStatuses[third] == .awaiting)
     }
 
+    @Test func anImagePathWithTextIsRecordedThoughTheSpaceAfterThePathIsGone() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<1), at: Self.path(Self.first))
+        await fixture.store.step()
+        let send = UUID()
+        fixture.store.updateSends([Self.sent(send, "/tmp/d.png what changed here ", delivered: false)])
+        fixture.store.updateSends([Self.sent(send, "/tmp/d.png what changed here ")])
+
+        // Claude Code 2.1.319 records `[Image #1]what changed here`, the
+        // space eaten; its projection puts the path back, as this text stands for.
+        await fixture.files.append(NumberedChatReducer.prompt("/tmp/d.pngwhat changed here"), to: Self.path(Self.first))
+        await fixture.store.step()
+
+        #expect(fixture.store.sendStatuses[send] == .recorded)
+    }
+
+    @Test func onlyTheSpaceAfterAnImagePathMayBeMissingFromTheRecord() {
+        #expect(AgentChatStore.withoutSpaceAfterImagePaths("/tmp/d.png what changed ") == "/tmp/d.pngwhat changed")
+        #expect(AgentChatStore.withoutSpaceAfterImagePaths(#"print("a b")"#) == nil)
+        #expect(AgentChatStore.withoutSpaceAfterImagePaths("/tmp/d.png") == nil)
+    }
+
     @Test func aCodexUndoIsFollowedOnAStatusChangeAndOnAnOverdueSend() async throws {
         let thread = "01a10f87-e025-7fb1-8974-8dd09937767a"
         let directory = "/home/dev/.codex/sessions/2026/10/06"

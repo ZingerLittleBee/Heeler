@@ -210,9 +210,11 @@ enum ConsoleAgentsSurface: Equatable {
         visibleIssueCount: Int,
         presentationMode: ConsoleListPresentationMode = .flat,
         projectedSectionCount: Int = 0,
-        searchQuery: String = ""
+        searchQuery: String = "",
+        isStatusFiltered: Bool = false
     ) {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || isStatusFiltered
         if hostCount == 0 {
             self = .noHosts
         } else if presentationMode == .grouped {
