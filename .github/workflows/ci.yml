@@ -1,7 +1,7 @@
 # Fast feedback on PRs and pushes to main that change build inputs (refs #23).
-# Full Swift/UI/SSH verification lives in ci-full.yml, which runs daily,
-# manually and before every release. ci-package.yml compiles HeelerSSH's own
-# tests, which this app build compiles only as a library.
+# Full Swift/UI/SSH verification lives in ci-full.yml, which runs daily and
+# manually; releases do not wait for it (ADR 0039). ci-package.yml compiles
+# HeelerSSH's own tests, which this app build compiles only as a library.
 #
 # app-build compiles the committed app, extensions and HeelerTests bundle with
 # build-for-testing against the generic Simulator SDK. It never boots a

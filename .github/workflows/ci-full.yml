@@ -152,7 +152,7 @@ jobs:
 
       # xcodebuild -version is enough to pin the image. Listing every
       # simulator runtime cold-starts CoreSimulator on the critical path
-      # (~12–29s on hosted macOS-26); the gate's own simctl boot overlaps
+      # (~12–29s measured on macos-26); the gate's own simctl boot overlaps
       # that work with the build instead.
       - name: Show Xcode version
         run: xcodebuild -version
