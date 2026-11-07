@@ -483,6 +483,17 @@ struct ClaudeSyntheticTranscriptTests {
         ])
     }
 
+    @Test("Output without its command stays a system notice, not a user bubble")
+    func outputWithoutCommand() {
+        let (transcript, _) = Self.read(
+            #"""
+            {"type":"user","uuid":"b1","parentUuid":null,"message":{"role":"user","content":"<bash-stdout>Command completed.</bash-stdout>"}}
+            """#)
+        #expect(
+            ClaudeSample.entry("notice:b1", in: transcript)
+                == .notice(ChatNotice(kind: .system, title: "Command completed.")))
+    }
+
     // MARK: - Errors and interruptions
 
     @Test("An API error is an error notice, not assistant text")

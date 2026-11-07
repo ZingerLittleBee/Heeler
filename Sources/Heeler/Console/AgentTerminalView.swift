@@ -263,6 +263,7 @@ struct AgentTerminalView: View {
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var isRenamingAgent = false
+    @State private var titleRename: AgentTitleRenameStore?
     /// The skill whose full document is on screen; set from the Skills
     /// pane's long-press menu.
     @State private var viewingSkill: AgentSkill?
@@ -567,7 +568,7 @@ struct AgentTerminalView: View {
             isFocused: keyboardControl.isFirstResponder,
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
                 || isStartingAgent || isManagingSnippets || isShowingSkillsPicker
-                || isRenamingAgent || viewingSkill != nil || isRenamingWorkspace
+                || isRenamingAgent || titleRename != nil || viewingSkill != nil || isRenamingWorkspace
                 || isShowingWorktree || attachLinksOrigin != nil || closeErrorMessage != nil
                 || attach.pendingPaste != nil || attach.pasteErrorMessage != nil
                 || attach.attachLinkOpenFailure != nil,
@@ -635,6 +636,11 @@ struct AgentTerminalView: View {
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
                     horizontalSizeClass: horizontalSizeClass)))
+        }
+        .sheet(item: $titleRename) { store in
+            AgentTitleRenameSheet(store: store)
+                .modifier(ConsoleSheetPresentationModifier(
+                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
@@ -1251,6 +1257,11 @@ struct AgentTerminalView: View {
         if let showChanges {
             actions.append(AgentDetailHeaderAction(
                 title: "Changes", systemImage: "arrow.triangle.branch", perform: showChanges))
+        }
+        if console.offersTitleRename(for: agent) {
+            actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {
+                titleRename = console.titleRenameStore(for: agent)
+            })
         }
         return actions
     }

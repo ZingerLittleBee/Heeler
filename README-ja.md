@@ -24,7 +24,7 @@
 
 ---
 
-Heeler は、iPhone と iPad で使える独立した **herdr モバイルクライアント**であり、Claude Code、Codex などのコーディング Agent のためのエージェントコンソールです。Agent はご自身の Host 上で herdr とともに動作し、Heeler は SSH で接続します。複数のマシンにまたがる複数の Agent を、対応が必要なものから順に並べて監視し、ライブターミナルや対応している Chat の会話を開いて指示を送れます。
+Heeler は、iPhone と iPad で使える独立した **herdr モバイルクライアント**であり、Claude Code、Codex などのコーディング Agent のためのエージェントコンソールです。Agent はご自身の Host 上で Herdr TUI または Herdr デスクトップアプリ（herdr-core）とともに動作し、Heeler は SSH で接続します。複数のマシンにまたがる複数の Agent を、対応が必要なものから順に並べて監視し、ライブターミナルや対応している Chat の会話を開いて指示を送れます。
 
 ## スクリーンショット
 
@@ -51,6 +51,7 @@ Heeler は、iPhone と iPad で使える独立した **herdr モバイルクラ
 ## 機能
 
 - **Console** — すべてのマシン上のすべての Agent を、ステータス順（Blocked が先頭）の 1 つのリストにまとめます。Host で絞り込むことができ、リアルタイムで更新されます。
+- **Herdr デスクトップと herdr-core** — macOS、Linux、ネイティブの Windows で動作する Herdr デスクトップアプリ、またはヘッドレスの herdr-core に接続します。Console はデスクトップアプリのスペースとタブに従い、ライブターミナル、Chat、Composer、New Agent、New Workspace も利用できます（[詳しくはこちら](https://docs.heeler.bybee.dev/herdr-core)）。
 - **Attach** — libghostty で描画される Agent の実際のターミナルです。ネイティブのスクロールバック、全画面の TUI も操作できる慣性つきのタッチスクロール、長押しでの選択、古くなったターミナルの所有者からの引き継ぎに対応し、Web リンクを目立たないように集めて、あとで開けるようにします。
 - **Chat** — Agent の会話をターミナル画面ではなくネイティブのメッセージとして読み、Composer から返信し、Blocked の Agent にはボタンで回答できます。Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode に対応しています（[詳しくはこちら](https://docs.heeler.bybee.dev/chat)）。
 - **Composer** — iOS の完全なキーボード（自動修正、IME、音声入力）を使って手元で下書きし、一度の Send で送信します。ツールキーボードでは、Agent の制御キー、Agent Skills、再利用できる Snippets、ターミナルの外観を利用できます。Voice Input を使うと、ご自身の音声サービスの API キーで Composer に話しかけることができます（[詳しくはこちら](https://docs.heeler.bybee.dev/voice-input)）。
@@ -69,6 +70,8 @@ macOS と Linux の Host では、Heeler は SSH 経由で herdr の JSON API �
 
 ネイティブの Windows Host（herdr >= 0.9.3）は SSH で接続し、手動で追加します。
 
+herdr-core の Host（Herdr デスクトップアプリを実行しているマシンを含む）は手動で追加し、Server Kind を確認します。Heeler は core との間に 1 本のフレーム化されたリンクを使います。macOS と Linux では core のソケットへの direct-streamlocal チャネル、ネイティブの Windows では SSH exec で実行する `herdr-core connect` です。macOS と Linux では、接続しただけで core が起動することはありません。オプションの Host Helper を入れると、macOS と Linux で通知、ライブアクティビティ、Usage を利用できます（[herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core)）。
+
 Tailscale、ZeroTier、EasyTier でアクセスする場合は、[Overlay Network のセットアップガイド](docs/guides/overlay-networks.md)に従ってください。macOS へのインストール、Mac で VPN を使わない Tailscale、Heeler の設定、接続の確認について説明しています。Heeler は iOS の VPN 構成を使わずに、アプリ内でこれらのネットワークに参加します。**Settings > Overlay Networks** がある Heeler のバージョンが必要です。
 
 Tailscale、ZeroTier、および EasyTier の 2 つのモードについて、[Heeler のセットアップのスクリーンショットを見る](docs/guides/overlay-networks.md#heeler-setup-screenshots)ことができます。
@@ -86,6 +89,7 @@ Host には、自宅では LAN のアドレス、外出先では Overlay Network
 
 - **macOS / Linux:** [herdr](https://herdr.dev/docs/install/) をインストールし、SSH を有効にしてから、以下のペアリングの手順に従ってください。
 - **ネイティブの Windows:** [Windows のセットアップガイド](docs/guides/windows-setup.md)に従ってください。
+- **Herdr デスクトップアプリ / herdr-core:** デスクトップアプリまたは herdr-core を起動し、SSH を有効にしてから、Host を手動で追加してください。[herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core)をご覧ください。Heeler 0.1.18 以降が必要です。
 
 ## マシンの追加
 

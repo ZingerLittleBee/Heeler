@@ -125,6 +125,8 @@ actor ChatRowBuilder {
         switch content {
         case .user, .pending:
             return 24
+        case .notice(let notice) where notice.userCommandText != nil:
+            return 24
         case .tool, .reasoning, .toolGroup:
             switch previous {
             case .tool, .reasoning, .toolGroup: return 4

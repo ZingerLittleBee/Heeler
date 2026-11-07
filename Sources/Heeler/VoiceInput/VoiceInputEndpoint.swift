@@ -42,10 +42,9 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// `gpt-transcribe` takes the possible languages and rejects `language`
-    /// beside them. Qwen3-ASR on DeepInfra takes one forced language, which
-    /// matches how the owner's Mac setup runs it. SiliconFlow documents
-    /// neither field, so nothing is sent.
+    /// OpenAI documents language hints; DeepInfra's API accepts one language,
+    /// whose effect on hosted Qwen3-ASR still needs a real-key smoke test.
+    /// SiliconFlow documents neither field, so nothing is sent.
     fileprivate var languageField: VoiceInputLanguageField {
         switch self {
         case .openAI: .candidates
@@ -64,9 +63,9 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
 /// How a service hears which languages to expect.
 enum VoiceInputLanguageField: Equatable, Sendable {
     case none
-    /// `language`: the primary language only.
+    /// `language`: one explicitly selected language.
     case primary
-    /// `languages[]`: the primary language, then English.
+    /// `languages[]`: the explicitly selected languages.
     case candidates
 }
 
@@ -97,10 +96,10 @@ struct VoiceInputEndpoint: Equatable, Sendable {
             sendsResponseFormat: false)
     }
 
-    static func custom(baseURL: URL, model: String, sendsLanguage: Bool) -> VoiceInputEndpoint {
+    static func custom(baseURL: URL, model: String) -> VoiceInputEndpoint {
         VoiceInputEndpoint(
             source: .custom, baseURL: baseURL, model: model,
-            languageField: sendsLanguage ? .primary : .none, takesKeywords: false,
+            languageField: .none, takesKeywords: false,
             sendsResponseFormat: true)
     }
 
@@ -198,23 +197,5 @@ enum VoiceInputCustomURL {
         components.path = path
         guard let url = components.url else { return .failure(.invalid) }
         return .success(url)
-    }
-}
-
-/// The languages a recording is expected to hold. Until Voice Input has its
-/// own language list, the primary comes from the system's first preferred
-/// language, and English is the second.
-enum VoiceInputLanguage {
-    static func primary(preferredLanguages: [String] = Locale.preferredLanguages) -> String {
-        for identifier in preferredLanguages {
-            if let code = Locale.Language(identifier: identifier).languageCode?.identifier(.alpha2) {
-                return code.lowercased()
-            }
-        }
-        return "en"
-    }
-
-    static func candidates(primary: String) -> [String] {
-        primary == "en" ? ["en"] : [primary, "en"]
     }
 }

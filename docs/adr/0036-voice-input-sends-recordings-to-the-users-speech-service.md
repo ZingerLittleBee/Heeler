@@ -25,9 +25,21 @@ research behind it, including the vendor evidence, is
   key, and a JSON `text` in reply. Per-service differences are data on the
   preset, not code paths: `gpt-transcribe` takes the possible languages as
   `languages[]` and answers 400 when `language` comes beside them; DeepInfra
-  takes one `language`; SiliconFlow documents neither, so nothing is sent.
-  Custom adds `response_format=json` and sends `language` only when the user
-  turns it on.
+  documents one `language` (hosted Qwen3-ASR behavior still needs a real-key
+  smoke test); SiliconFlow documents neither, so nothing is sent. Languages
+  default to automatic detection, independent of device language. OpenAI can
+  select several hints; DeepInfra can select one. Settings are scoped by the
+  preset and model.
+- **Custom form fields.** Custom starts with `response_format=json` and no
+  language field. Its Advanced Request Fields are scoped by normalized URL
+  and model, saved only on Save. Multiple values repeat the exact field name;
+  brackets are never inferred. Explicit fields replace generated Prompt and
+  response format fields. File and model are reserved; invalid names,
+  duplicate names and conflicting language fields fail before saving or
+  uploading. Headers and the multipart file remain owned by the client. The
+  legacy Send Language toggle migrates once to an explicit `language` value,
+  even if Custom is not the active service. Response decoding still requires
+  JSON `text` or plain text; arbitrary fields do not add streaming support.
 - **Custom is fenced.** A Custom base URL must be https, with no user
   information, query or fragment; a pasted `/audio/transcriptions` or trailing
   slash is stripped. Its key is stored under a digest of the normalized URL,

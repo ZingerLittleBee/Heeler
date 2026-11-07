@@ -12,11 +12,14 @@ Entries reference the pull request that made the change.
 - Switch Claude Code's permission mode, model and effort from Chat's status line, which shows them for the newest reply. Each opens a menu while the Agent is Idle or Done: the mode is cycled with Shift+Tab until the footer shows it, bypass asking first, and a model or effort is set with `/model` or `/effort`, asking on the phone when Claude Code asks "Switch model?". The label changes only once the terminal confirms. (PR #647)
 - Filter the Agents list by status with one button per status and its count. The filter is kept across launches, and a list it empties offers Show All. (PR #647)
 - Pick up to 10 images at once in the Composer, staged one after another. The note that an image path was inserted and copied goes by itself after 2 seconds. (PR #647)
+- Choose Voice Input languages independently of the device language, with automatic detection by default, multiple OpenAI hints and one optional DeepInfra language. Custom services gain per-URL/model request fields with multiple values, validation and migration of the previous Send Language setting. (PR #643)
+- Rename an Agent's conversation from its existing More menu or the Agents list's long-press menu on Herdr TUI Hosts. Save a manual title for Claude Code, Codex, Pi, Oh My Pi, Grok Build, or OpenCode; generate and apply a new title with Claude Code, Codex, or Oh My Pi. Busy Agents, existing terminal drafts, changed conversations, and unconfirmed results are reported without retrying the command. (#645)
 
 ### Fixed
 
 - A Send of an image path followed by text settles once Claude Code records it, rather than staying as not yet in the conversation. (PR #647)
 - A Claude Code scheduled task shows as a small notice opening its own turn, rather than its reply folding into the turn before, and no longer waits as an unsent message. (PR #647)
+- Clear an unsaved Voice Input API key when its service or Custom URL changes, and report Keychain deletion failures without switching the saved destination or withdrawing its agreement. (PR #643)
 
 ## [0.1.18]
 
@@ -65,6 +68,9 @@ Entries reference the pull request that made the change.
   preset are each Host's home folder. (#632)
 
 ### Changed
+
+- Show user commands in Chat with the same right-aligned bubble and text size
+  as other user messages, keeping command output below the bubble. (#648)
 
 - Accounts moved out of Usage into Settings › Agents & Accounts. Usage's
   notice about Account folders it found opens the same screen. (#632)

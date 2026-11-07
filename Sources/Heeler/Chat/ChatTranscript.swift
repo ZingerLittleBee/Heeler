@@ -824,6 +824,16 @@ struct ChatNotice: Equatable, Codable, Sendable {
     var rawDetail: String?
     var questions: [ChatQuestion]
 
+    /// Input shown with the same bubble as an ordinary user message.
+    var userCommandText: String? {
+        switch kind {
+        case .command: title.hasPrefix("/") ? title : nil
+        case .shellCommand: "! " + title
+        case .pythonCommand: "$ " + title
+        default: nil
+        }
+    }
+
     init(
         kind: Kind, title: String, detail: String? = nil, rawDetail: String? = nil, questions: [ChatQuestion] = []
     ) {
