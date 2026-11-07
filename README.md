@@ -63,8 +63,8 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
   collected web links to open later.
 - **Chat** — read an Agent's conversation as native messages instead of a
   terminal screen, reply from the Composer, and answer a Blocked Agent with
-  buttons; for Claude Code, Codex, Pi, Oh My Pi, Grok Build, and OpenCode
-  ([Read more](https://docs.heeler.bybee.dev/chat)).
+  buttons; for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, and
+  Antigravity CLI ([Read more](https://docs.heeler.bybee.dev/chat)).
 - **Composer** — draft locally with the full iOS keyboard (autocorrect, IME,
   dictation), then Send once; the tools keyboard adds Agent control keys,
   Agent Skills, reusable Snippets, and terminal appearance. Voice Input lets

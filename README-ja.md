@@ -53,7 +53,7 @@ Heeler は、iPhone と iPad で使える独立した **herdr モバイルクラ
 - **Console** — すべてのマシン上のすべての Agent を、ステータス順（Blocked が先頭）の 1 つのリストにまとめます。Host で絞り込むことができ、リアルタイムで更新されます。
 - **Herdr デスクトップと herdr-core** — macOS、Linux、ネイティブの Windows で動作する Herdr デスクトップアプリ、またはヘッドレスの herdr-core に接続します。Console はデスクトップアプリのスペースとタブに従い、ライブターミナル、Chat、Composer、New Agent、New Workspace も利用できます（[詳しくはこちら](https://docs.heeler.bybee.dev/herdr-core)）。
 - **Attach** — libghostty で描画される Agent の実際のターミナルです。ネイティブのスクロールバック、全画面の TUI も操作できる慣性つきのタッチスクロール、長押しでの選択、古くなったターミナルの所有者からの引き継ぎに対応し、Web リンクを目立たないように集めて、あとで開けるようにします。
-- **Chat** — Agent の会話をターミナル画面ではなくネイティブのメッセージとして読み、Composer から返信し、Blocked の Agent にはボタンで回答できます。Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode に対応しています（[詳しくはこちら](https://docs.heeler.bybee.dev/chat)）。
+- **Chat** — Agent の会話をターミナル画面ではなくネイティブのメッセージとして読み、Composer から返信し、Blocked の Agent にはボタンで回答できます。Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode、Antigravity CLI に対応しています（[詳しくはこちら](https://docs.heeler.bybee.dev/chat)）。
 - **Composer** — iOS の完全なキーボード（自動修正、IME、音声入力）を使って手元で下書きし、一度の Send で送信します。ツールキーボードでは、Agent の制御キー、Agent Skills、再利用できる Snippets、ターミナルの外観を利用できます。Voice Input を使うと、ご自身の音声サービスの API キーで Composer に話しかけることができます（[詳しくはこちら](https://docs.heeler.bybee.dev/voice-input)）。
 - **Terminal** — Agent のディレクトリで通常のシェルを開きます。Text と Keys の 2 つのモードがあり、Workspace ごとに 1 つのタブを再利用します。
 - **添付ファイル** — 写真や 64 MiB までのファイルを SFTP で Host に置き、そのパスを下書きに挿入します。

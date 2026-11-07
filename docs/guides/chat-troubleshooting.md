@@ -4,7 +4,7 @@ Fixes for the problems you are most likely to meet in [Chat](chat.md). Most othe
 
 ## There is no Show Chat
 
-With herdr, Chat works only for Claude Code, Codex, Pi, Oh My Pi, Grok Build, and OpenCode on macOS and Linux Hosts. On a herdr-core Host, native Windows included, [herdr-core](herdr-core.md#chat) lists the programs Chat opens for on each system. After Heeler starts, **Show Chat** also stays hidden until the Host connects.
+With herdr, Chat works only for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, and Antigravity CLI on macOS and Linux Hosts. On a herdr-core Host, native Windows included, [herdr-core](herdr-core.md#chat) lists the programs Chat opens for on each system. After Heeler starts, **Show Chat** also stays hidden until the Host connects.
 
 ## Waiting for Conversation
 
