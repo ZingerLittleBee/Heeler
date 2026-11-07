@@ -71,11 +71,18 @@ struct AgentChatSurfaceView: View {
     @State private var switchQuestion: SwitchQuestion?
     /// A status-line switch under way; the controls wait for it, since two
     /// at once would type into one input line.
-    @State private var isSwitchingSetting = false
+    private var switchingSetting: AgentSettingOverrides.Setting? {
+        get { session.settingOverrides.switchingSetting }
+        nonmutating set { session.settingOverrides.switchingSetting = newValue }
+    }
+    private var isSwitchingSetting: Bool { switchingSetting != nil }
+    /// A fresh Claude session has no reply yet; its welcome banner names the model.
+    @State private var welcomeModel: String?
     @State private var isRenamingAgent = false
     @State private var titleRename: AgentTitleRenameStore?
     @State private var isRenamingWorkspace = false
     @State private var closeErrorMessage: String?
+    @State private var permissionErrorMessage: String?
     /// The Workspace drawer's panel, while the back header's menu owns it.
     @State private var isHeaderDrawerOpen = false
     /// The Background Work strip's height over the staging bar; zero while
@@ -314,6 +321,14 @@ struct AgentChatSurfaceView: View {
         } message: {
             Text(closeErrorMessage ?? "")
         }
+        .alert("Couldn't Change Setting", isPresented: Binding(
+            get: { permissionErrorMessage != nil },
+            set: { if !$0 { permissionErrorMessage = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(permissionErrorMessage ?? "")
+        }
     }
 
     private var lifecycleSurface: some View {
@@ -342,6 +357,7 @@ struct AgentChatSurfaceView: View {
             stageExit = ChatStageExit.watch(isOnStage: isOnStage) { [chat, viewerID, composer] in
                 chat?.hide(viewerID)
                 composer.voice.composerDidLeaveScreen()
+                answerSwitch(false)
             }
         }
         .onChange(of: timelineFeed, initial: true) { _, feed in
@@ -365,6 +381,7 @@ struct AgentChatSurfaceView: View {
         // Also on appearing: Chat may have followed another while it was away.
         .onChange(of: chat?.conversationGeneration, initial: true) { _, generation in
             guard let generation else { return }
+            welcomeModel = nil
             composer.conversationDidChange(to: generation)
         }
         .onChange(of: chat?.sendStatuses, initial: true) { _, statuses in
@@ -469,6 +486,8 @@ struct AgentChatSurfaceView: View {
                 surfaceSwitch: terminalSurfaceSwitch,
                 title: AgentDetailHeaderTitle(agent),
                 statusTitle: console.connectionRecoveryTitle(for: agent.hostID),
+                sessionSettings: sessionSettings,
+                sessionControls: sessionControls,
                 controlPlacement: headerControlPlacement)
             .padding(.horizontal, 12)
             .padding(.top, backHeaderTop)
@@ -1004,11 +1023,7 @@ struct AgentChatSurfaceView: View {
                 status: console.hostStatuses[agent.hostID],
                 latency: console.hostLatencies[agent.hostID]),
             changes: AgentDetailChanges(rows: console.rowChanges, agent: agent, open: showChanges),
-            session: (chat?.conversation.transcript).map {
-                AgentSessionSettings(
-                    model: override(.model) ?? $0.model, permissionMode: override(.permissionMode) ?? $0.permissionMode,
-                    effort: override(.effort) ?? $0.effort)
-            },
+            session: sessionSettings,
             sessionControls: sessionControls,
             chromeColorScheme: colorScheme,
             switcher: agentSwitcher,
@@ -1034,7 +1049,19 @@ struct AgentChatSurfaceView: View {
         .frame(maxWidth: .infinity)
         // The transcript records the mode as snapshots, and not every change
         // (plan approval moves to auto unrecorded); the footer shows it live.
-        .task(id: agent.agent.status) { await readPermissionModeFromFooter() }
+        .task(id: "\(agent.agent.status)-\(chat?.conversationGeneration ?? 0)-\(console.hostConnectionGenerations[agent.hostID] ?? 0)-\(console.isHostReadyForInput(agent.hostID))") {
+            await readSessionSettingsFromScreen()
+        }
+    }
+
+    /// One confirmed snapshot for the title's model and the Composer's mode.
+    private var sessionSettings: AgentSessionSettings? {
+        (chat?.conversation.transcript).map {
+            AgentSessionSettings(
+                model: override(.model) ?? $0.model ?? welcomeModel,
+                permissionMode: override(.permissionMode) ?? $0.permissionMode,
+                effort: override(.effort) ?? $0.effort)
+        }
     }
 
     private func override(_ setting: AgentSettingOverrides.Setting) -> String? {
@@ -1057,15 +1084,19 @@ struct AgentChatSurfaceView: View {
         let status = agent.agent.status
         return AgentSessionControls(
             isEnabled: (status == .idle || status == .done) && !isSwitchingSetting && !isComposerSending,
-            setPermissionMode: { target in switchSetting { await switchPermissionMode(to: target) } },
+            isSwitchingPermissionMode: switchingSetting == .permissionMode,
+            allowsBypassPermissions: session.settingOverrides.allowsBypassPermissions,
+            setPermissionMode: { target in switchSetting(.permissionMode) { await switchPermissionMode(to: target) } },
             setModel: { id in
-                switchSetting {
-                    if await typeCommand("/model \(id)", done: "Set model to", kept: "Kept model as") { setOverride(.model, id) }
+                switchSetting(.model) {
+                    if let model = await typeCommand("/model \(id)", done: "Set model to", kept: "Kept model as") {
+                        setOverride(.model, model)
+                    }
                 }
             },
             setEffort: { level in
-                switchSetting {
-                    if await typeCommand("/effort \(level)", done: "Set effort level to", kept: "Kept effort level as") {
+                switchSetting(.effort) {
+                    if await typeCommand("/effort \(level)", done: "Set effort level to", kept: "Kept effort level as") != nil {
                         setOverride(.effort, level)
                     }
                 }
@@ -1079,18 +1110,20 @@ struct AgentChatSurfaceView: View {
     }
 
     /// Runs one status-line switch at a time, and none while a Send types.
-    private func switchSetting(_ work: @escaping @MainActor () async -> Void) {
+    private func switchSetting(
+        _ setting: AgentSettingOverrides.Setting, _ work: @escaping @MainActor () async -> Void
+    ) {
         // A confirmation may close after a turn began; the menu's state is older.
         guard !isSwitchingSetting, !isComposerSending, agentActivity() == .idle else { return }
-        isSwitchingSetting = true
+        switchingSetting = setting
         let settle = settleUnansweredSwitch
         Task {
+            defer { switchingSetting = nil }
             if await settle() != nil {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             } else {
                 await work()
             }
-            isSwitchingSetting = false
         }
     }
 
@@ -1126,35 +1159,80 @@ struct AgentChatSurfaceView: View {
         }
     }
 
-    /// The footer's mode while the Agent waits, over the transcript's snapshot.
-    private func readPermissionModeFromFooter() async {
+    /// The live footer and, before the first reply, the welcome banner. A new
+    /// process can report Idle before painting; retry missing frames without keys.
+    private func readSessionSettingsFromScreen() async {
         let status = agent.agent.status
-        guard program == .claude, status == .idle || status == .done, !isSwitchingSetting,
+        guard program == .claude, !isSwitchingSetting else { return }
+        session.settingOverrides.refreshPermissionLaunch(nil, liveMode: nil)
+        guard status == .idle || status == .done, console.isHostReadyForInput(agent.hostID) else { return }
+        var mode: String?
+        for attempt in 0..<10 {
             let screen = try? await readAgentScreen()
-        else { return }
-        setOverride(.permissionMode, AgentSessionSettings.permissionMode(onScreen: screen))
+            guard !Task.isCancelled, !isSwitchingSetting, isOnStage() else { return }
+            if let screen {
+                mode = AgentSessionSettings.permissionMode(onScreen: screen)
+                welcomeModel = AgentSessionSettings.welcomeModel(onScreen: screen)
+                if let mode {
+                    setOverride(.permissionMode, mode)
+                    session.settingOverrides.refreshPermissionLaunch(nil, liveMode: mode)
+                    break
+                }
+            }
+            if attempt < 9 {
+                do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            }
+        }
+        let launch = try? await console.claudePermissionLaunch(for: agent, corePin: session.corePin)
+        guard !Task.isCancelled, !isSwitchingSetting else { return }
+        session.settingOverrides.refreshPermissionLaunch(launch, liveMode: mode)
     }
 
-    /// Presses Shift+Tab, as the terminal would, until the footer shows `target`.
-    /// A mode the session cannot reach (bypass without its launch flag) stops
-    /// after one full cycle, on whatever the footer then shows.
+    /// Rechecks launch opt-in after confirmation, then lets the footer confirm
+    /// every step. Missing modes stop at the original mode, never one key past it.
     private func switchPermissionMode(to target: String) async {
-        // Each key through the pane's checked typing, over the footer just read.
         guard let io = chat?.screenIO else { return }
-        var shown: String?
-        for attempt in 0...AgentSessionSettings.permissionChoices.count + 1 {
-            guard let screen = try? await io.readScreen() else { break }
-            let mode = AgentSessionSettings.permissionMode(onScreen: screen)
-            shown = mode
-            if mode == target || attempt == AgentSessionSettings.permissionChoices.count + 1 { break }
-            guard agentActivity() == .idle else { break }
-            do {
-                try await typeSwitchStep(io, .keys(["shift+tab"]), whileShowing: { AgentSessionSettings.permissionMode(onScreen: $0) == mode })
-            } catch { break }
-            try? await Task.sleep(for: .milliseconds(300))
+        let overrides = session.settingOverrides
+        let previous = overrides.permissionLaunch?.process
+        let launch = try? await console.claudePermissionLaunch(for: agent, corePin: session.corePin)
+        let screen = try? await io.readScreen()
+        overrides.refreshPermissionLaunch(launch, liveMode: screen.flatMap { AgentSessionSettings.permissionMode(onScreen: $0) })
+        guard previous == nil || previous == launch?.process else {
+            permissionErrorMessage = "The Agent's process changed. Open the permission menu again."
+            return
         }
-        if let shown { setOverride(.permissionMode, shown) }
-        if shown != target { UINotificationFeedbackGenerator().notificationOccurred(.error) }
+        guard target != "bypassPermissions" || overrides.allowsBypassPermissions else {
+            permissionErrorMessage = "Bypass is not available for this session. No keys were sent."
+            return
+        }
+        let result = await ClaudePermissionMode.switchTo(
+            target, readScreen: io.readScreen,
+            press: { mode in
+                if let launch {
+                    let current = try await console.claudePermissionLaunch(for: agent, corePin: session.corePin)
+                    guard current?.process == launch.process else { throw CancellationError() }
+                }
+                let currentScreen = try await io.readScreen()
+                guard agentActivity() == .idle, !isComposerSending,
+                    PreSendGate.check(currentScreen, program: .claude, activity: .idle) == .send,
+                    AgentSessionSettings.permissionMode(onScreen: currentScreen) == mode
+                else { throw CancellationError() }
+                try await typeSwitchStep(io, .keys(["shift+tab"]), whileShowing: {
+                    PreSendGate.check($0, program: .claude, activity: .idle) == .send
+                        && AgentSessionSettings.permissionMode(onScreen: $0) == mode
+                })
+            },
+            mayContinue: { isOnStage() && !isComposerSending && agentActivity() == .idle })
+        if let shown = result.mode { setOverride(.permissionMode, shown) }
+        overrides.refreshPermissionLaunch(launch, liveMode: result.mode)
+        if result.feedbackTimedOut { overrides.lastSwitchHasNoAnswer = true }
+        if !result.reachedTarget {
+            if result.completedCycle, target == "bypassPermissions" { overrides.bypassWasMissingFromCycle() }
+            permissionErrorMessage = result.completedCycle
+                ? "This session does not offer that mode. The original permission mode is restored."
+                : "The terminal did not confirm the change. Check its current mode before trying again."
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
     }
 
     /// Types `command` and Enter into the Agent, as the terminal would, then
@@ -1162,13 +1240,19 @@ struct AgentChatSurfaceView: View {
     /// so a draft typed elsewhere is never submitted with it. Claude Code may
     /// ask "Switch model?" (the cache is lost); the same question is put to
     /// the user here, and their answer pressed there only while that question
-    /// still shows. True only once `done` answers this command; `kept`, a No,
-    /// or neither is not.
-    private func typeCommand(_ command: String, done: String, kept: String) async -> Bool {
+    /// still shows. Returns the confirmed value, not the requested alias;
+    /// `kept`, a No, or an unconfirmed command returns nil.
+    private func typeCommand(_ command: String, done: String, kept: String) async -> String? {
         // A Blocked card's way in: on a herdr-core Host each step types only
         // while the process read last still holds the terminal and its check
         // passes on the screen it types over.
-        guard let io = chat?.screenIO else { return false }
+        if let reason = await confirmSession?() {
+            permissionErrorMessage = reason
+            return nil
+        }
+        guard let chat else { return nil }
+        let io = chat.screenIO
+        let generation = chat.conversationGeneration
         let activity = agentActivity
         do {
             let before = try await io.readScreen()
@@ -1177,22 +1261,22 @@ struct AgentChatSurfaceView: View {
             }
             let was = AgentSessionSettings.Outcome(of: command, done: done, kept: kept, on: before)
             // A turn may have begun while the screen was read.
-            guard activity() == .idle else { throw CancellationError() }
+            guard isOnStage(), chat.conversationGeneration == generation, activity() == .idle else { throw CancellationError() }
             try await typeSwitchStep(io, .paste(command + " "), whileShowing: { PreSendGate.check($0, program: .claude, activity: .idle) == .send })
             try await Task.sleep(for: .milliseconds(150))
-            guard activity() == .idle else { throw CancellationError() }
+            guard isOnStage(), chat.conversationGeneration == generation, activity() == .idle else { throw CancellationError() }
             try await typeSwitchStep(io, .keys(["enter"]), whileShowing: { screen in
                 guard case .text(let typed) = InputBoxStateDetector.detect(screen, program: .claude) else { return false }
-                return typed.contains(command)
+                return typed.trimmingCharacters(in: .whitespacesAndNewlines) == command
             })
             var asked = false
             for _ in 0..<12 {
                 try await Task.sleep(for: .milliseconds(250))
                 let screen = try await io.readScreen()
-                if let answered = AgentSessionSettings.Outcome(of: command, done: done, kept: kept, on: screen)
-                    .answered(since: was)
-                {
-                    if answered { return true }
+                guard isOnStage(), chat.conversationGeneration == generation else { throw CancellationError() }
+                let outcome = AgentSessionSettings.Outcome(of: command, done: done, kept: kept, on: screen)
+                if let answered = outcome.answered(since: was) {
+                    if answered { return outcome.value }
                     break
                 }
                 if !asked, let question = SwitchQuestion(screen) {
@@ -1201,18 +1285,19 @@ struct AgentChatSurfaceView: View {
                     // Another client may have answered it meanwhile; keys
                     // then would land on whatever replaced it.
                     _ = try await io.readScreen()
+                    guard isOnStage(), chat.conversationGeneration == generation else { throw CancellationError() }
                     // Yes is the highlighted first option; Esc is the TUI's go back.
                     // Enter picks Yes only while the selection is still on it.
                     try await typeSwitchStep(io, .keys([yes ? "enter" : "esc"]), whileShowing: { screen in
                         guard let now = SwitchQuestion(screen) else { return false }
                         return now == question && (!yes || now.yesIsFocused)
                     })
-                    guard yes else { return false }
+                    guard yes else { return nil }
                 }
             }
         } catch {}
         UINotificationFeedbackGenerator().notificationOccurred(.error)
-        return false
+        return nil
     }
 
     private var switchQuestionShown: Binding<Bool> {

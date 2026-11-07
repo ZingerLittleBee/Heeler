@@ -329,7 +329,7 @@ struct ConsoleHostAgentStatusCounts: Equatable {
     }
 }
 
-/// One button of the Agents list's status filter. Blocked carries Error:
+/// One choice of the Agents list's status filter. Blocked carries Error:
 /// both ask for the user, and the list already sorts them together.
 enum ConsoleAgentStatusFilter: String, CaseIterable, Identifiable, Sendable {
     case blocked, working, done, idle
@@ -346,7 +346,7 @@ enum ConsoleAgentStatusFilter: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The status whose ink and wash the button wears.
+    /// The status represented by this choice.
     var status: AgentStatus {
         switch self {
         case .blocked: .blocked
@@ -387,13 +387,13 @@ final class ConsoleListPresentationStore {
     func workspaceSections(
         hosts: [Host], agents: [ConsoleAgent],
         savedStructures: [Host.ID: [ChatCachedWorkspace]] = [:],
-        filteredHostID: Host.ID? = nil, searchQuery: String = ""
+        filteredHostIDs: Set<Host.ID> = [], searchQuery: String = ""
     ) -> [ConsoleWorkspaceSection] {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !statusFilter.isEmpty
         let collapsedIDs = collapsedWorkspaceIDs
         return sections(
-            hosts: hosts, agents: agents, filteredHostID: filteredHostID, searchQuery: searchQuery
+            hosts: hosts, agents: agents, filteredHostIDs: filteredHostIDs, searchQuery: searchQuery
         ).flatMap { host in
             let buckets = Dictionary(grouping: host.agents, by: \.agent.workspaceID)
             var order: [String] = []
@@ -571,7 +571,7 @@ final class ConsoleListPresentationStore {
     func sections(
         hosts: [Host],
         console: ConsoleStore,
-        filteredHostID: Host.ID? = nil,
+        filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
         sections(
@@ -581,7 +581,7 @@ final class ConsoleListPresentationStore {
             hostStandingFailures: console.hostStandingFailures,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
             hostSyncErrors: console.hostSyncErrors,
-            filteredHostID: filteredHostID,
+            filteredHostIDs: filteredHostIDs,
             searchQuery: searchQuery)
     }
 
@@ -590,13 +590,13 @@ final class ConsoleListPresentationStore {
     func workspaceSections(
         hosts: [Host],
         console: ConsoleStore,
-        filteredHostID: Host.ID? = nil,
+        filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleWorkspaceSection] {
         workspaceSections(
             hosts: hosts, agents: console.chatDisplayAgents,
             savedStructures: console.savedWorkspaceStructures,
-            filteredHostID: filteredHostID, searchQuery: searchQuery)
+            filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
     }
 
     /// Projects one section per catalog Host, in catalog order. `agents` is
@@ -609,7 +609,7 @@ final class ConsoleListPresentationStore {
         hostStandingFailures: [Host.ID: TransportError] = [:],
         hostsAwaitingSnapshot: Set<Host.ID> = [],
         hostSyncErrors: [Host.ID: String] = [:],
-        filteredHostID: Host.ID? = nil,
+        filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
         let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -622,7 +622,7 @@ final class ConsoleListPresentationStore {
         var projectedHostIDs: Set<Host.ID> = []
 
         return hosts.compactMap { host in
-            guard filteredHostID == nil || host.id == filteredHostID else { return nil }
+            guard filteredHostIDs.isEmpty || filteredHostIDs.contains(host.id) else { return nil }
             guard projectedHostIDs.insert(host.id).inserted else { return nil }
 
             let hostAgents = agentsByHost[host.id] ?? []

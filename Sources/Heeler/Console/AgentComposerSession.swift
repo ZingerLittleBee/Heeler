@@ -93,6 +93,31 @@ final class AgentSettingOverrides {
     /// A switch's paste or key got no answer, so it may still reach the
     /// Agent's input; the next input waits until the Host answers a read.
     var lastSwitchHasNoAnswer = false
+    /// Shared by all Chat windows while a menu reads or changes the terminal.
+    var switchingSetting: Setting?
+
+    private(set) var permissionLaunch: ClaudePermissionMode.Launch?
+    private var livePermissionMode: String?
+    private var bypassMissingFromCycle: ClaudePermissionMode.ProcessIdentity?
+
+    var allowsBypassPermissions: Bool {
+        if livePermissionMode == "bypassPermissions" { return true }
+        guard let permissionLaunch, permissionLaunch.process != bypassMissingFromCycle else { return false }
+        return permissionLaunch.optsIntoBypass
+    }
+
+    func refreshPermissionLaunch(_ launch: ClaudePermissionMode.Launch?, liveMode: String?) {
+        if let launch, let previous = permissionLaunch, launch.process != previous.process {
+            bypassMissingFromCycle = nil
+        }
+        permissionLaunch = launch
+        livePermissionMode = liveMode
+    }
+
+    func bypassWasMissingFromCycle() {
+        bypassMissingFromCycle = permissionLaunch?.process
+        livePermissionMode = nil
+    }
 
     func value(_ setting: Setting, over now: [String?]) -> String? {
         recorded[setting.rawValue] == now[setting.rawValue] ? values[setting.rawValue] : nil

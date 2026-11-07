@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -49,6 +51,79 @@ struct ConsoleListPresentationStoreTests {
             isStatusFiltered: true) == .noSearchResults)
     }
 
+    @Test(.serialized, arguments: [DynamicTypeSize.large, .accessibility3])
+    func filterChoicesKeepHostsBoundedAndSelectionsIndependent(textSize: DynamicTypeSize) async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        store.toggleStatusFilter(.blocked)
+        store.toggleStatusFilter(.working)
+        let hosts = (1...20).map { Host.fixture(name: "Host \($0)") }
+        var selectedHosts: Set<Host.ID> = [hosts[0].id]
+        let view = ConsoleListFilterChoices(
+            hosts: hosts, hostFilter: Binding(get: { selectedHosts }, set: { selectedHosts = $0 }),
+            agentStatuses: store, counts: [.blocked: 1, .working: 2, .done: 3, .idle: 4])
+            .environment(\.dynamicTypeSize, textSize)
+        let controller = UIHostingController(rootView: view)
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 320, height: 568), rootViewController: controller
+        ) { window in
+            try await Task.sleep(for: .milliseconds(300))
+            let hostScroll = try #require(accessibleElements(in: window).compactMap { $0 as? UIScrollView }
+                .first { $0.contentSize.height > 800 })
+            #expect(hostScroll.bounds.height <= 220)
+            let all = try #require(accessibleElement(labeled: "All Status", in: window))
+            let statusY = all.accessibilityFrame.minY
+            #expect(statusY >= hostScroll.convert(hostScroll.bounds, to: window).maxY)
+            #expect(!all.accessibilityTraits.contains(.selected))
+            let hint = try #require(accessibleElement(labeled: "More Hosts below", in: window))
+            #expect(hint.accessibilityFrame.minY >= hostScroll.convert(hostScroll.bounds, to: window).maxY)
+            #expect(hint.accessibilityFrame.maxY < statusY)
+
+            // The final Host remains reachable without moving the status section.
+            hostScroll.setContentOffset(CGPoint(x: 0, y: hostScroll.contentSize.height - hostScroll.bounds.height), animated: false)
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(accessibleElement(labeled: "More Hosts below", in: window) == nil)
+            let lastHost = try #require(accessibleElement(labeled: "Host 20", in: window))
+            #expect(hostScroll.convert(hostScroll.bounds, to: window).contains(lastHost.accessibilityFrame))
+            #expect(lastHost.accessibilityActivate())
+            #expect(selectedHosts == [hosts[0].id, hosts[19].id])
+            #expect(lastHost.accessibilityActivate())
+            #expect(selectedHosts == [hosts[0].id])
+            #expect(lastHost.accessibilityActivate())
+            #expect(abs(all.accessibilityFrame.minY - statusY) < 1)
+            #expect(all.accessibilityActivate())
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(store.statusFilter.isEmpty)
+            #expect(ConsoleListPresentationStore(defaults: defaults).statusFilter.isEmpty)
+            #expect(selectedHosts == [hosts[0].id, hosts[19].id])
+            #expect(accessibleElement(labeled: "All Status", in: window)?.accessibilityTraits.contains(.selected) == true)
+
+            store.toggleStatusFilter(.done)
+            hostScroll.setContentOffset(.zero, animated: false)
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(accessibleElement(labeled: "More Hosts below", in: window) != nil)
+            let allHosts = try #require(accessibleElement(labeled: "All Hosts", in: window))
+            #expect(allHosts.accessibilityActivate())
+            #expect(selectedHosts.isEmpty)
+            #expect(store.statusFilter == [.done])
+            let firstHost = try #require(accessibleElement(labeled: "Host 1", in: window))
+            #expect(firstHost.accessibilityActivate())
+            #expect(selectedHosts == [hosts[0].id])
+            #expect(firstHost.accessibilityActivate())
+            #expect(selectedHosts.isEmpty)
+
+            // A short inventory needs neither a hint nor extra footer space.
+            controller.rootView = ConsoleListFilterChoices(
+                hosts: Array(hosts.prefix(2)),
+                hostFilter: Binding(get: { selectedHosts }, set: { selectedHosts = $0 }),
+                agentStatuses: store, counts: [:])
+                .environment(\.dynamicTypeSize, .large)
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(accessibleElement(labeled: "More Hosts below", in: window) == nil)
+        }
+    }
+
     private func makeDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
         let suiteName = "hm-console-list-presentation-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -94,7 +169,7 @@ struct ConsoleListPresentationStoreTests {
         #expect(groups.allSatisfy { !$0.isCollapsed && $0.title == "Shared" })
         #expect(ConsoleWorkspaceCard.cards(groups).flatMap(\.visibleAgentIDs).count == agents.count)
         let filtered = store.workspaceSections(
-            hosts: [first, second], agents: agents, filteredHostID: second.id)
+            hosts: [first, second], agents: agents, filteredHostIDs: [second.id])
         #expect(filtered.map(\.id) == [.init(hostID: second.id, workspaceID: "w1")])
     }
 
@@ -565,23 +640,41 @@ struct ConsoleListPresentationStoreTests {
         #expect(reloadedAgain.isCollapsed(hostB.id))
     }
 
-    @Test func sectionsFollowCatalogOrderAndFilterToAtMostOneHost() throws {
+    @Test func sectionsFollowCatalogOrderAndFilterToSelectedHosts() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let first = Host.fixture(name: "zeta")
         let second = Host.fixture(name: "alpha")
+        let third = Host.fixture(name: "beta")
+        let hosts = [first, second, third]
+        let agents = [
+            consoleAgent(host: third, paneID: "p3", status: .working),
+            consoleAgent(host: second, paneID: "p2", status: .working),
+            consoleAgent(host: first, paneID: "p1", status: .done),
+        ]
         let store = ConsoleListPresentationStore(defaults: defaults)
 
-        let all = store.sections(hosts: [first, second], agents: [])
-        #expect(all.map(\.hostID) == [first.id, second.id])
+        let all = store.sections(hosts: hosts, agents: agents)
+        #expect(all.map(\.hostID) == [first.id, second.id, third.id])
 
         let filtered = store.sections(
-            hosts: [first, second], agents: [], filteredHostID: second.id)
+            hosts: hosts, agents: agents, filteredHostIDs: [second.id])
         #expect(filtered.map(\.hostID) == [second.id])
 
         let missing = store.sections(
-            hosts: [first, second], agents: [], filteredHostID: UUID())
+            hosts: hosts, agents: agents, filteredHostIDs: [UUID()])
         #expect(missing.isEmpty)
+
+        let selected: Set<Host.ID> = [third.id, first.id]
+        #expect(store.sections(hosts: hosts, agents: agents, filteredHostIDs: selected)
+            .map(\.hostID) == [first.id, third.id])
+        #expect(store.workspaceSections(hosts: hosts, agents: agents, filteredHostIDs: selected)
+            .map(\.id.hostID) == [first.id, third.id])
+        store.toggleStatusFilter(.working)
+        #expect(store.sections(hosts: hosts, agents: agents, filteredHostIDs: selected)
+            .flatMap(\.agents).map(\.id) == [agents[0].id])
+        #expect(store.workspaceSections(hosts: hosts, agents: agents, filteredHostIDs: selected)
+            .flatMap(\.agents).map(\.id) == [agents[0].id])
     }
 
     @Test func sectionsPreserveTheSuppliedAgentOrderWithinEachHost() throws {

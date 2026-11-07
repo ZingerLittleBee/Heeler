@@ -9,7 +9,7 @@ struct TerminalListView: View {
     let hosts: [Host]
     let console: ConsoleStore
     let presentation: TerminalListPresentationStore
-    let filteredHostID: Host.ID?
+    let filteredHostIDs: Set<Host.ID>
     /// Keeps matching shells only, in either presentation.
     var searchQuery = ""
     @Binding var selection: ConsoleSelection?
@@ -73,11 +73,11 @@ struct TerminalListView: View {
     @ViewBuilder
     private var byWorkspace: some View {
         let workspaces = projection.workspaces(
-            filteredHostID: filteredHostID, searchQuery: searchQuery)
+            filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
         // Host problems only bury a search's matches.
         let issues =
             searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? projection.issues(filteredHostID: filteredHostID) : []
+            ? projection.issues(filteredHostIDs: filteredHostIDs) : []
         if workspaces.isEmpty && issues.isEmpty {
             emptyState
         } else {
@@ -107,7 +107,7 @@ struct TerminalListView: View {
     @ViewBuilder
     private var byHost: some View {
         let groups = projection.hostGroups(
-            filteredHostID: filteredHostID, searchQuery: searchQuery)
+            filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
         if groups.allSatisfy({ $0.workspaces.isEmpty && $0.issue == nil }) {
             emptyState
         } else {

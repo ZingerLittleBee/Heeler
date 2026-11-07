@@ -24,6 +24,10 @@ enum HostProcessReader {
         /// an argv leaves the Host, since an argv can hold a secret, past one exception:
         /// macOS's walk reports argv[0]'s last path part as a process's ``Facts/name``.
         var argumentsAmong: [String] = []
+        /// Also keeps argument order and empty placeholders for redacted words.
+        /// An asked long option followed by `=` keeps its name, never its value
+        /// unless the whole argument is in `argumentsAmong`.
+        var preservesArgumentOrder = false
         /// One of ``pids``: also finds its descendants on the Host and reads
         /// each of them the same way, since nothing can name them beforehand.
         var descendantsOf: String?
@@ -76,6 +80,7 @@ enum HostProcessReader {
         var openFiles: Reading<[String]> = .unavailable
         /// Those of ``Request/argumentsAmong`` the argv holds.
         var arguments: Reading<Set<String>> = .unavailable
+        var argumentVector: Reading<[String]> = .unavailable
         /// In ``Request/descendantsOf``'s walk: the parent, and the process's name,
         /// `-` when it holds anything but `[A-Za-z0-9._-]`. Linux gives the kernel's name,
         /// macOS the last path part of argv[0] (so a title), Windows the image's name.
@@ -250,10 +255,14 @@ enum HostProcessReader {
             "a() {",
             "  { od -An -v -tx1 <\"$R/$1/cmdline\" && echo ok; } | awk -v p=\"$1\" '",
             "BEGIN{\(request.argumentsAmong.map { "W[\"\(hex($0))\"]=1" }.joined(separator: ";"))}",
-            "function t(){if(v in W)o=o \"A \" p \" \" v \"\\n\";v=\"\"}",
+            "function r(v,j,q){if(v in W)return v;for(j=1;j<=length(v);j+=2)if(substr(v,j,2)==\"3d\"){"
+                + "q=substr(v,1,j-1);if((q in W)&&substr(q,1,4)==\"2d2d\")return q \"3d\";break}"
+                + "return substr(v,1,2)==\"2d\"?\"2d\":\"-\"}",
+            "function t(){if(v in W)o=o \"A \" p \" \" v \"\\n\";"
+                + (request.preservesArgumentOrder ? "o=o \"R \" p \" \" r(v) \"\\n\";" : "") + "v=\"\"}",
             "$1==\"ok\"{k=1;next}",
             "{for(i=1;i<=NF;i++){c=1;if($i==\"00\")t();else v=v $i}}",
-            "END{t();if(k&&c){printf \"%s\",o;print \"B\",p,\"ok\"}else print \"B\",p,\"-\"}",
+            "END{if(v!=\"\")t();if(k&&c){printf \"%s\",o;print \"B\",p,\"ok\"}else print \"B\",p,\"-\"}",
             "'",
             "}",
             // `read` needs no process per entry of /proc. The parent is counted
@@ -374,8 +383,8 @@ enum HostProcessReader {
             "done",
             "}",
             // The strings before `argc` runs out, hex, compared whole. Nothing else
-            // of an argv leaves here, `w`'s name being the one thing that does. An entry
-            // past them holds `=`, which no asked word does.
+            // of an argv leaves here, `w`'s name being the one thing that does.
+            // Ordered reads retain only whitelisted words and argument placeholders.
             "a() {",
             "  /usr/bin/perl -e '",
             "use strict;my $p=shift;my %W=map{($_,1)}qw(\(request.argumentsAmong.joined(separator: " ")));",
@@ -384,7 +393,13 @@ enum HostProcessReader {
             "my $d=substr($b,0,unpack(\"Q\",$l));my $c=unpack(\"i\",$d);",
             "my $r=substr($d,4);$r=~s/^[^\\0]*\\0+//;",
             "my @a=split(/\\0/,$r,-1);my %G;my $o=\"\";",
-            "for my $x(splice(@a,0,$c)){$o.=\"A $p \".unpack(\"H*\",$x).\"\\n\" if $W{$x}&&!$G{$x}++;}",
+            "exit 1 if $c<1||$c>@a;",
+            "for my $x(splice(@a,0,$c)){$o.=\"A $p \".unpack(\"H*\",$x).\"\\n\" if $W{$x}&&!$G{$x}++;"
+                + (request.preservesArgumentOrder
+                    ? "my($k,$v)=split(/=/,$x,2);my $r=$W{$x}?$x:defined($v)&&$W{$k}&&index($k,\"--\")==0?$k.\"=\":\"\";"
+                        + "$r=\"-\" if !length($r)&&index($x,\"-\")==0;"
+                        + "$o.=\"R $p \".(length($r)?unpack(\"H*\",$r):\"-\").\"\\n\";"
+                    : "") + "}",
             "print $o,\"B $p ok\\n\";",
             "' \"$1\" </dev/null || printf 'B %s -\\n' \"$1\"",
             "}",
@@ -428,7 +443,7 @@ enum HostProcessReader {
 
     static func isArgumentWord(_ text: String) -> Bool {
         !text.isEmpty
-            && text.utf8.allSatisfy { nameBytes.utf8.contains($0) || $0 == UInt8(ascii: "-") }
+            && text.utf8.allSatisfy { nameBytes.utf8.contains($0) || "-=".utf8.contains($0) }
     }
 
     private static func hex(_ text: String) -> String {
@@ -467,6 +482,7 @@ enum HostProcessReader {
         var listed: Set<String> = []
         var files: [String: [String]] = [:]
         var arguments: [String: Set<String>] = [:]
+        var vectors: [String: [String]] = [:]
         var argumentsRead: Set<String> = []
         var known = request.pids
         var walked: [String] = []
@@ -535,6 +551,14 @@ enum HostProcessReader {
                     let argument = String(data: bytes, encoding: .utf8), request.argumentsAmong.contains(argument)
                 else { throw MalformedOutput() }
                 arguments[pid, default: []].insert(argument)
+            case "R":
+                guard request.preservesArgumentOrder,
+                    let bytes = bytes(fromHex: Substring(fields[2])), let argument = String(data: bytes, encoding: .utf8),
+                    argument.isEmpty || argument == "-" || request.argumentsAmong.contains(argument)
+                        || (argument.hasPrefix("--") && argument.hasSuffix("=")
+                            && request.argumentsAmong.contains(String(argument.dropLast())))
+                else { throw MalformedOutput() }
+                vectors[pid, default: []].append(argument)
             case "B":
                 guard fields[2] == "ok" || fields[2] == "-" else { throw MalformedOutput() }
                 if fields[2] == "ok" { argumentsRead.insert(pid) }
@@ -552,6 +576,7 @@ enum HostProcessReader {
             var fact = facts[pid] ?? Facts()
             if listed.contains(pid) { fact.openFiles = .value(files[pid] ?? []) }
             if argumentsRead.contains(pid) { fact.arguments = .value(arguments[pid] ?? []) }
+            if argumentsRead.contains(pid), let vector = vectors[pid] { fact.argumentVector = .value(vector) }
             let isReadable = readable.contains(pid)
             for name in request.valuesOf {
                 fact.variables[name] = isReadable ? values[pid]?[name] ?? .unset : .unavailable
