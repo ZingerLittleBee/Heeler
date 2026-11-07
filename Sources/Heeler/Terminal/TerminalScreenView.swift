@@ -882,9 +882,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         target: self,
         action: #selector(handleHerdrZoomGesture(_:)))
 
-    private lazy var tapGesture = UITapGestureRecognizer(
-        target: self,
-        action: #selector(handleHerdrTap(_:)))
+    private weak var inlineSelectionPan: UIPanGestureRecognizer?
+    private weak var inlineSelectionTap: UITapGestureRecognizer?
+    private var touchStoppedMomentum = false
 
     override var inputView: UIView? {
         terminalInputView
@@ -1685,6 +1685,54 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         inputDelegate?.textDidChange(self)
     }
 
+    override func touchMenuItems(for context: TerminalTouchMenuContext) -> [UIMenuElement] {
+        hostPasteMenuItems(super.touchMenuItems(for: context), selecting: false)
+    }
+
+    override func touchSelectionMenuItems(
+        for context: TerminalTouchSelectionMenuContext
+    ) -> [UIMenuElement] {
+        hostPasteMenuItems(super.touchSelectionMenuItems(for: context), selecting: true)
+    }
+
+    private func hostPasteMenuItems(
+        _ items: [UIMenuElement], selecting: Bool
+    ) -> [UIMenuElement] {
+        // The upstream action bypasses paste(_:), including host routing and
+        // the input gate, and can paste a device-local image path into SSH.
+        let identifier = UIAction.Identifier("terminal.paste")
+        var items = items.filter { ($0 as? UIAction)?.identifier != identifier }
+        if canPerformAction(#selector(paste(_:)), withSender: nil) {
+            let paste = UIAction(
+                title: String(localized: "Paste"),
+                image: UIImage(systemName: "doc.on.clipboard"),
+                identifier: identifier
+            ) { [weak self] _ in
+                guard let self, self.isLocalInputEnabled else { return }
+                self.dismissInlineSelection()
+                self.paste(nil)
+            }
+            items.insert(paste, at: selecting ? 1 : 0)
+        }
+        return items
+    }
+
+    private func dismissInlineSelection() {
+        // 2.2 has no public dismiss-selection action. This clears its overlay
+        // and edit menu, then restores the native selection gestures.
+        usesInlineTextSelection = false
+        usesInlineTextSelection = true
+    }
+
+    private var hasInlineSelection: Bool {
+        // In the pinned 2.2 API, only an inline range disables Select while
+        // leaving Select All available. Copy also sees pointer selections,
+        // which must not admit a remote click while local input is disabled.
+        usesInlineTextSelection
+            && super.canPerformAction(#selector(selectAll(_:)), withSender: nil)
+            && !super.canPerformAction(#selector(select(_:)), withSender: nil)
+    }
+
     override func paste(itemProviders: [NSItemProvider]) {
         guard isLocalInputEnabled else { return }
         for provider in itemProviders where provider.canLoadObject(ofClass: NSString.self) {
@@ -1796,7 +1844,15 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        responderGate.directTouchesBegan(Self.directTouchCount(in: touches))
+        let directTouches = Self.directTouchCount(in: touches)
+        if directTouches > 0 {
+            // The native single tap waits for double/triple taps to fail.
+            // Remember the halt until that decision, even after touches end.
+            touchStoppedMomentum = isTouchScrollMomentumRunning
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+        }
+        responderGate.directTouchesBegan(directTouches)
         super.touchesBegan(touches, with: event)
     }
 
@@ -1819,18 +1875,33 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     override func gestureRecognizerShouldBegin(
         _ gestureRecognizer: UIGestureRecognizer
     ) -> Bool {
+        if gestureRecognizer === inlineSelectionPan {
+            return hasInlineSelection || inlineSelectionPan?.numberOfTouches == 2
+        }
         if gestureRecognizer === touchScrollGesture {
             let velocity = touchScrollGesture.velocity(in: self)
-            return abs(velocity.y) > abs(velocity.x)
+            return !hasInlineSelection && abs(velocity.y) > abs(velocity.x)
         }
-        if gestureRecognizer === tapGesture {
-            // A TUI wants every tap — to click, to raise the keyboard, or both.
-            // In the normal buffer only the input row is interactive. A running
-            // flick claims any tap regardless, to halt itself.
-            return modeTracker.tracksMouse
-                || modeTracker.isAlternateScreen
-                || isTouchScrollMomentumRunning
-                || keyboardActivationRegion.contains(tapGesture.location(in: self))
+        if gestureRecognizer === inlineSelectionTap {
+            defer { touchStoppedMomentum = false }
+            guard !touchStoppedMomentum else { return false }
+            if hasInlineSelection {
+                return super.gestureRecognizerShouldBegin(gestureRecognizer)
+            }
+            let canClick = isLocalInputEnabled && (
+                modeTracker.tracksMouse || modeTracker.isAlternateScreen
+                    || keyboardActivationRegion.contains(gestureRecognizer.location(in: self)))
+            guard canClick else {
+                // Close a menu on an inert output row or a read-only terminal
+                // without a remote click. Do not reset selection gestures:
+                // UIKit asks here before the double/triple tap has failed.
+                DispatchQueue.main.async { [weak self] in
+                    for case let menu as UIEditMenuInteraction in self?.interactions ?? [] {
+                        menu.dismissMenu()
+                    }
+                }
+                return false
+            }
         }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
@@ -2016,21 +2087,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
                 : TerminalKeyboardTapTarget.minimumHeight)
     }
 
-    /// Reports a touch as a left click when the remote application asked for
-    /// mouse tracking. Returns whether anything was sent.
-    @discardableResult
-    func clickTouch(at point: CGPoint) -> Bool {
-        guard isLocalInputEnabled,
-            let cell = gridPointMapper.cell(at: point),
-            let report = modeTracker.remoteClickSequence(
-                column: cell.column,
-                row: cell.row)
-        else { return false }
-
-        terminalSession.sendInput(report)
-        return true
-    }
-
     /// The grid Ghostty last measured this surface against, or `nil` before
     /// the surface has reported one. This is the value a thawing freeze
     /// forwards to the Host as the settled grid.
@@ -2111,13 +2167,20 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     private func installTouchScrolling() {
         let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)
-        // Ghostty's touch and wheel pans both scroll its local screen rather
-        // than the remote application. The wheel pan accepts every touch type
-        // by default, so this also retires it; `pointerScrollGesture` replaces it.
-        for case let pan as UIPanGestureRecognizer in gestureRecognizers ?? []
-        where pan.allowedTouchTypes.contains(directTouch) {
-            pan.isEnabled = false
+        for case let pan as UIPanGestureRecognizer in gestureRecognizers ?? [] {
+            if !pan.allowedScrollTypesMask.isEmpty {
+                pan.isEnabled = false
+            } else if pan.allowedTouchTypes.contains(directTouch) {
+                // Keep native selection extension and two-finger scrollback.
+                // The delegate admits ordinary one-finger scrolling only to
+                // Heeler, which preserves semantic remote TUI wheel input.
+                inlineSelectionPan = pan
+                touchScrollGesture.require(toFail: pan)
+            }
         }
+        inlineSelectionTap = gestureRecognizers?
+            .compactMap { $0 as? UITapGestureRecognizer }
+            .first { $0.numberOfTapsRequired == 1 && $0.allowedTouchTypes.contains(directTouch) }
 
         touchScrollGesture.allowedTouchTypes = [directTouch]
         touchScrollGesture.maximumNumberOfTouches = 1
@@ -2127,12 +2190,6 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
         pointerScrollGesture.delegate = self
         addGestureRecognizer(pointerScrollGesture)
-
-        tapGesture.allowedTouchTypes = [directTouch]
-        tapGesture.numberOfTouchesRequired = 1
-        tapGesture.cancelsTouchesInView = false
-        tapGesture.delegate = self
-        addGestureRecognizer(tapGesture)
     }
 
     /// Ghostty ships its own pinch handler that mutates the surface font size
@@ -2462,22 +2519,13 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
     }
 
-    @objc private func handleHerdrTap(_ gesture: UITapGestureRecognizer) {
-        guard gesture.state == .ended else { return }
-        handleTap(at: gesture.location(in: self))
-    }
-
-    func handleTap(at location: CGPoint) {
-        switch tapAction(at: location) {
-        case .haltMomentum:
-            stopTouchScrollMomentum()
-            touchScrollAccumulator.reset()
-        case .report(let raisesKeyboard):
-            clickTouch(at: location)
-            if raisesKeyboard {
-                requestKeyboard()
-            }
-        }
+    override func toggleSoftwareKeyboard() {
+        // Ghostty calls this only after selection/menu dismissal declined the
+        // tap and the native handler sent its click. Do not send a second one.
+        guard isLocalInputEnabled, let tap = inlineSelectionTap, tap.state == .ended,
+            tapAction(at: tap.location(in: self)) == .report(raisesKeyboard: true)
+        else { return }
+        requestKeyboard()
     }
 
     /// What a tap means, given what the terminal is currently doing.
@@ -2616,8 +2664,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 }
 
 extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
-    TerminalSurfaceTextSelectionRequestDelegate, TerminalSurfaceLifecycleDelegate,
-    TerminalSurfaceGridResizeDelegate
+    TerminalSurfaceLifecycleDelegate, TerminalSurfaceGridResizeDelegate
 {
     func terminalDidRequestOpenURL(_ url: String, kind _: TerminalOpenURLKind) {
         guard let url = TerminalLinkPolicy.url(for: url) else { return }
@@ -2646,10 +2693,6 @@ extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
     private func reportCellPixels() {
         guard let cellPixels else { return }
         onCellPixelsChange?(cellPixels.width, cellPixels.height)
-    }
-
-    func terminalDidRequestTextSelection(_ request: TerminalTextSelectionRequest) {
-        TerminalTextSelectionPresenter.present(request, from: self)
     }
 
     func terminalDidAttachSurface(_: TerminalSurface) {}

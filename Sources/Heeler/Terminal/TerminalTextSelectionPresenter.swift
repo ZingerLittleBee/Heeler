@@ -1,14 +1,7 @@
-import GhosttyTerminal
 import UIKit
 
 @MainActor
 enum TerminalTextSelectionPresenter {
-    static func present(_ request: TerminalTextSelectionRequest, from sourceView: UIView) {
-        present(
-            TerminalTextSelectionViewController(text: request.text, anchorRange: request.anchorRange),
-            from: sourceView)
-    }
-
     /// Chat's Select Text: the whole message in the reading font, selected.
     static func present(
         text: String, font: UIFont, adjustsFontForContentSizeCategory: Bool,
@@ -16,7 +9,7 @@ enum TerminalTextSelectionPresenter {
     ) {
         present(
             TerminalTextSelectionViewController(
-                text: text, anchorRange: nil, font: font,
+                text: text, font: font,
                 adjustsFontForContentSizeCategory: adjustsFontForContentSizeCategory,
                 accessibilityIdentifier: accessibilityIdentifier),
             from: sourceView)
@@ -36,20 +29,17 @@ enum TerminalTextSelectionPresenter {
 @MainActor
 final class TerminalTextSelectionViewController: UIViewController {
     private let text: String
-    private let anchorRange: NSRange?
     private let font: UIFont
     private let adjustsFontForContentSizeCategory: Bool
     private let textAccessibilityIdentifier: String
     private let textView = UITextView()
 
     init(
-        text: String, anchorRange: NSRange?,
-        font: UIFont = .monospacedSystemFont(ofSize: 14, weight: .regular),
-        adjustsFontForContentSizeCategory: Bool = false,
-        accessibilityIdentifier: String = "terminal.text-selection"
+        text: String, font: UIFont,
+        adjustsFontForContentSizeCategory: Bool,
+        accessibilityIdentifier: String
     ) {
         self.text = text
-        self.anchorRange = anchorRange
         self.font = font
         self.adjustsFontForContentSizeCategory = adjustsFontForContentSizeCategory
         textAccessibilityIdentifier = accessibilityIdentifier
@@ -90,24 +80,12 @@ final class TerminalTextSelectionViewController: UIViewController {
             textView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
-        textView.selectedRange = Self.normalizedSelectionRange(
-            anchorRange,
-            textLength: (text as NSString).length)
+        textView.selectedRange = NSRange(location: 0, length: (text as NSString).length)
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         textView.scrollRangeToVisible(textView.selectedRange)
-    }
-
-    static func normalizedSelectionRange(_ range: NSRange?, textLength: Int) -> NSRange {
-        guard let range,
-            range.location <= textLength,
-            range.length <= textLength - range.location
-        else {
-            return NSRange(location: 0, length: textLength)
-        }
-        return range
     }
 
     @objc private func dismissSelection() {
