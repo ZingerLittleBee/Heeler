@@ -2921,7 +2921,10 @@ enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
 
     var command: String {
         switch self {
-        case .resetSeenByRead, .resetSeenByWrite, .resetSeenByResize: "cat"
+        // The PTY echoes the readiness line. Do not echo it a second time from
+        // cat: cutting while that reply is in flight can strand a macOS peer
+        // behind a challenged, then suppressed TCP reset (refs #630).
+        case .resetSeenByRead, .resetSeenByWrite, .resetSeenByResize: "cat >/dev/null"
         // ForceCommand execs this shell, so its parent is the session's sshd.
         case .serverKilledSeenByRead: "sleep 1; kill -KILL $PPID; sleep 30"
         }
@@ -2935,7 +2938,14 @@ enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
         switch self {
         case .resetSeenByRead, .resetSeenByWrite, .resetSeenByResize:
             try await channel.write(Data("up\n".utf8), timeout: .seconds(5))
-            _ = try await channel.read(timeout: .seconds(5))
+            let readyDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+            var ready = Data()
+            while !ready.contains(UInt8(ascii: "\n")) {
+                guard let bytes = try await channel.read(
+                    timeout: ContinuousClock.now.duration(to: readyDeadline)) else { return nil }
+                ready.append(bytes)
+            }
+            try #require(ready == Data("up\r\n".utf8))
             let cut = try await proxy.cut()
             print("[DEBUG-ci630] time=\(Date().timeIntervalSince1970) cut connections=\(cut)")
             guard cut > 0 else { return nil }
