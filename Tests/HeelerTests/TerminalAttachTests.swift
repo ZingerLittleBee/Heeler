@@ -1951,15 +1951,13 @@ struct TerminalAttachTests {
     @MainActor
     @Test func aConfirmedDismissalReleasesTheSystemPinUntilTheNextPresentation() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { frame in
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { frame in
             frame.height == 403 ? 383 : 48.5
         }
-        inset.dismissalConfirmationDelay = .milliseconds(30)
         let fullFrame = CGRect(x: 0, y: 973, width: 1032, height: 403)
 
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: fullFrame])
+        try await Self.present(fullFrame, on: center, clock: clock)
         try #require(await Self.eventually { inset.height == 383 })
         #expect(Self.systemContentInset(inset) == 383)
 
@@ -1976,6 +1974,7 @@ struct TerminalAttachTests {
         #expect(inset.isConfirmingDismissal)
         #expect(Self.systemContentInset(inset) == 383)
 
+        try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
         try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
         #expect(Self.systemContentInset(inset) == 0)
         #expect(inset.lastPresentedHeight == 383)
@@ -1986,6 +1985,7 @@ struct TerminalAttachTests {
         #expect(!inset.isSoftwareKeyboardDismissed)
         #expect(!inset.isConfirmingDismissal)
         #expect(Self.systemContentInset(inset) == 383)
+        try #require(await clock.pass(TerminalKeyboardInset.coalesceDelay))
         try #require(await Self.eventually { inset.height == 383 })
         #expect(Self.systemContentInset(inset) == 383)
     }
@@ -1996,23 +1996,21 @@ struct TerminalAttachTests {
     @MainActor
     @Test func aWillHideAnsweredByAPresentationKeepsTheSystemPin() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 383 }
-        inset.dismissalConfirmationDelay = .milliseconds(30)
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 383 }
         let frame = CGRect(x: 0, y: 973, width: 1032, height: 403)
 
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: frame])
+        try await Self.present(frame, on: center, clock: clock)
         try #require(await Self.eventually { inset.height == 383 })
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
         #expect(inset.isConfirmingDismissal)
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: frame])
+        try #require(await clock.parks(for: TerminalKeyboardInset.dismissalConfirmationDelay))
+        try await Self.present(frame, on: center, clock: clock)
 
         // The presentation cancelled the only timer that could confirm.
         #expect(!inset.isConfirmingDismissal)
         try #require(await Self.eventually { inset.height == 383 })
+        #expect(clock.advance(TerminalKeyboardInset.dismissalConfirmationDelay) == 0)
         #expect(!inset.isSoftwareKeyboardDismissed)
         #expect(Self.systemContentInset(inset) == 383)
     }
@@ -2025,21 +2023,18 @@ struct TerminalAttachTests {
     @MainActor
     @Test func expectingTheSoftwareKeyboardRestoresThePinUntilItFailsToPresent() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 383 }
-        inset.dismissalConfirmationDelay = .milliseconds(30)
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 383 }
 
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 973, width: 1032, height: 403)])
-        try #require(await Self.eventually { inset.height == 383 })
-        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try await Self.presentThenHide(inset, center: center, clock: clock)
+        try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
         try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
 
         inset.expectSoftwareKeyboard()
         #expect(!inset.isSoftwareKeyboardDismissed)
         #expect(Self.systemContentInset(inset) == 383)
 
+        try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
         try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
         #expect(Self.systemContentInset(inset) == 0)
     }
@@ -2052,10 +2047,9 @@ struct TerminalAttachTests {
     @MainActor
     @Test func aHideBeforeAHandoffIsSettledByItsFallback() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 383 }
-        inset.dismissalConfirmationDelay = .milliseconds(30)
-        inset.responderHandoffFallbackDelay = .milliseconds(30)
-        try await Self.presentThenHide(inset, center: center)
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 383 }
+        try await Self.presentThenHide(inset, center: center, clock: clock)
 
         var expiredID: UUID?
         let handoffID = inset.beginResponderHandoff(currentHeight: { 0 }) {
@@ -2069,8 +2063,10 @@ struct TerminalAttachTests {
         // Composer's `.system` pin still holds while the freeze is active.
         #expect(Self.systemContentInset(inset) == 383)
 
+        try #require(await clock.pass(TerminalKeyboardInset.responderHandoffFallbackDelay))
         try #require(await Self.eventually { expiredID == handoffID })
         #expect(!inset.isHoldingHandoffHeight)
+        try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
         try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
         #expect(inset.height == 0)
         #expect(Self.systemContentInset(inset) == 0)
@@ -2081,10 +2077,10 @@ struct TerminalAttachTests {
     @MainActor
     @Test func aConfirmationExpiringWhileHoldingIsSettledOnCancel() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 383 }
-        inset.dismissalConfirmationDelay = .milliseconds(30)
-        inset.responderHandoffAcceptanceDelay = .seconds(60)
-        try await Self.presentThenHide(inset, center: center)
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 383 }
+        try await Self.presentThenHide(inset, center: center, clock: clock)
+        try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
         try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
 
         let handoffID = inset.beginResponderHandoff()
@@ -2092,12 +2088,14 @@ struct TerminalAttachTests {
         // with a hardware keyboard nothing presents.
         inset.expectSoftwareKeyboard()
         #expect(inset.isConfirmingDismissal)
+        try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
         try #require(await Self.eventually { !inset.isConfirmingDismissal })
         #expect(inset.isHoldingHandoffHeight)
         #expect(!inset.isSoftwareKeyboardDismissed)
 
         inset.cancelResponderHandoff(handoffID, currentHeight: { 0 })
         #expect(!inset.isHoldingHandoffHeight)
+        try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
         try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
         #expect(Self.systemContentInset(inset) == 0)
     }
@@ -2112,10 +2110,9 @@ struct TerminalAttachTests {
         measured: CGFloat?
     ) async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 383 }
-        inset.dismissalConfirmationDelay = .milliseconds(30)
-        inset.responderHandoffAcceptanceDelay = .seconds(60)
-        try await Self.presentThenHide(inset, center: center)
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 383 }
+        try await Self.presentThenHide(inset, center: center, clock: clock)
 
         // Entry precondition, checked in the same synchronous section as
         // the begin: the dismissal is still pending, not already confirmed.
@@ -2136,6 +2133,7 @@ struct TerminalAttachTests {
             // The end re-armed the confirmation the begin had carried.
             #expect(inset.isConfirmingDismissal)
             #expect(!inset.isSoftwareKeyboardDismissed)
+            try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
             try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
             #expect(Self.systemContentInset(inset) == 0)
         }
@@ -2152,11 +2150,10 @@ struct TerminalAttachTests {
         exit: String
     ) async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 383 }
-        inset.dismissalConfirmationDelay = .milliseconds(30)
-        inset.responderHandoffAcceptanceDelay =
-            exit == "fallback" ? .milliseconds(30) : .seconds(60)
-        try await Self.presentThenHide(inset, center: center)
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 383 }
+        try await Self.presentThenHide(inset, center: center, clock: clock)
+        try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
         try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
         #expect(!inset.isConfirmingDismissal)
 
@@ -2178,6 +2175,7 @@ struct TerminalAttachTests {
         case "cancel":
             inset.cancelResponderHandoff(handoffID, currentHeight: { 383 })
         default:
+            try #require(await clock.pass(TerminalKeyboardInset.responderHandoffAcceptanceDelay))
             try #require(await Self.eventually { !inset.isHoldingHandoffHeight })
         }
 
@@ -2197,11 +2195,11 @@ struct TerminalAttachTests {
         async throws
     {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(
-            notificationCenter: center, measure: Self.iPadProPortraitCoverage)
-        inset.dismissalConfirmationDelay = .milliseconds(30)
+        let clock = ManualClock()
+        let inset = Self.makeInset(
+            center: center, clock: clock, measure: Self.iPadProPortraitCoverage)
 
-        try await Self.focusWithHardwareKeyboard(inset, center: center)
+        try await Self.focusWithHardwareKeyboard(inset, center: center, clock: clock)
 
         let softwareKeyboard = CGRect(x: 0, y: 973, width: 1032, height: 403)
         center.post(
@@ -2212,6 +2210,7 @@ struct TerminalAttachTests {
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: softwareKeyboard])
         #expect(!inset.isSoftwareKeyboardDismissed)
         #expect(!inset.isConfirmingDismissal)
+        try #require(await clock.pass(TerminalKeyboardInset.coalesceDelay))
         try #require(await Self.eventually { inset.height == 383 })
         #expect(!inset.isSoftwareKeyboardDismissed)
         #expect(Self.systemContentInset(inset) == 383)
@@ -2231,14 +2230,14 @@ struct TerminalAttachTests {
         async throws
     {
         let center = NotificationCenter()
+        let clock = ManualClock()
         var windowKeyboardHeight: CGFloat? = 0
-        let inset = TerminalKeyboardInset(
-            notificationCenter: center,
+        let inset = Self.makeInset(
+            center: center, clock: clock,
             measure: Self.iPadProPortraitCoverage,
             measureWindowKeyboard: { windowKeyboardHeight })
-        inset.dismissalConfirmationDelay = .milliseconds(30)
 
-        try await Self.focusWithHardwareKeyboard(inset, center: center)
+        try await Self.focusWithHardwareKeyboard(inset, center: center, clock: clock)
 
         windowKeyboardHeight = 383
         center.post(
@@ -2268,19 +2267,23 @@ struct TerminalAttachTests {
             frame: CGRect(x: 0, y: 0, width: 390, height: 700),
             rootViewController: UIViewController())
         defer { window.isHidden = true }
+        let clock = ManualClock()
         var windowKeyboardHeight: CGFloat? = 301
-        let inset = TerminalKeyboardInset(
-            notificationCenter: NotificationCenter(),
+        let inset = Self.makeInset(
+            center: NotificationCenter(), clock: clock,
             measure: Self.iPadProPortraitCoverage,
             measureWindowKeyboard: { windowKeyboardHeight })
-        inset.dismissalConfirmationDelay = .milliseconds(30)
         inset.expectSoftwareKeyboard()
+        try #require(await clock.parks(for: TerminalKeyboardInset.dismissalConfirmationDelay))
 
         inset.inheritPresentedKeyboard(in: window)
         #expect(inset.height == 301)
         #expect(inset.lastPresentedHeight == 301)
-        try await Task.sleep(for: .milliseconds(80))
-        #expect(!inset.isSoftwareKeyboardDismissed, "an adopted keyboard is not an unanswered will-hide")
+        #expect(!inset.isConfirmingDismissal)
+        #expect(
+            clock.advance(TerminalKeyboardInset.dismissalConfirmationDelay) == 0,
+            "an adopted keyboard is not an unanswered will-hide")
+        #expect(!inset.isSoftwareKeyboardDismissed)
 
         let untouched = TerminalKeyboardInset(
             notificationCenter: NotificationCenter(),
@@ -2300,17 +2303,15 @@ struct TerminalAttachTests {
     @MainActor
     @Test func aDidShowLeavesMeasuredPresentationsAndDismissalsAlone() async throws {
         let center = NotificationCenter()
+        let clock = ManualClock()
         var windowKeyboardHeight: CGFloat? = 300
-        let inset = TerminalKeyboardInset(
-            notificationCenter: center,
+        let inset = Self.makeInset(
+            center: center, clock: clock,
             measure: Self.iPadProPortraitCoverage,
             measureWindowKeyboard: { windowKeyboardHeight })
-        inset.dismissalConfirmationDelay = .milliseconds(30)
 
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 973, width: 1032, height: 403)])
+        try await Self.present(
+            CGRect(x: 0, y: 973, width: 1032, height: 403), on: center, clock: clock)
         try #require(await Self.eventually { inset.height == 383 })
         center.post(name: UIResponder.keyboardDidShowNotification, object: nil)
         #expect(inset.height == 383)
@@ -2446,7 +2447,7 @@ struct TerminalAttachTests {
     /// will-hide, confirmed.
     @MainActor
     private static func focusWithHardwareKeyboard(
-        _ inset: TerminalKeyboardInset, center: NotificationCenter
+        _ inset: TerminalKeyboardInset, center: NotificationCenter, clock: ManualClock
     ) async throws {
         center.post(
             name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
@@ -2454,6 +2455,7 @@ struct TerminalAttachTests {
                 x: 0, y: 1376, width: 1032, height: 0)])
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
         #expect(inset.height == 0)
+        try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
         try #require(await eventually { inset.isSoftwareKeyboardDismissed })
         #expect(systemContentInset(inset) == 0)
     }
@@ -2469,16 +2471,49 @@ struct TerminalAttachTests {
 
     @MainActor
     private static func presentThenHide(
-        _ inset: TerminalKeyboardInset, center: NotificationCenter
+        _ inset: TerminalKeyboardInset, center: NotificationCenter, clock: ManualClock
     ) async throws {
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 973, width: 1032, height: 403)])
+        try await present(
+            CGRect(x: 0, y: 973, width: 1032, height: 403), on: center, clock: clock)
         try #require(await eventually { inset.height == 383 })
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
         #expect(inset.height == 0)
         #expect(inset.isConfirmingDismissal)
+    }
+
+    /// A terminal destination's own handoff timeout: the default
+    /// `keyboardTransitionFallbackDelay`, which the Agent passes on when the
+    /// terminal accepts.
+    private static let terminalLeash = Duration.milliseconds(500)
+
+    /// An inset whose timers all wait on `clock`, so only the test moves
+    /// time: a deadline it does not pass never fires, however slow the
+    /// runner.
+    @MainActor
+    private static func makeInset(
+        center: NotificationCenter,
+        clock: ManualClock,
+        measure: @escaping @MainActor (CGRect) -> CGFloat?,
+        measureWindowKeyboard: (@MainActor () -> CGFloat?)? = nil
+    ) -> TerminalKeyboardInset {
+        TerminalKeyboardInset(
+            notificationCenter: center,
+            measure: measure,
+            measureWindowKeyboard: measureWindowKeyboard,
+            sleep: clock.parkedSleep(for:),
+            handoffSleep: clock.parkedSleep(for:))
+    }
+
+    /// Presents a keyboard ending at `frame` and passes the presentation's
+    /// coalesce. The height lands once the inset's timer runs.
+    @MainActor
+    private static func present(
+        _ frame: CGRect, on center: NotificationCenter, clock: ManualClock
+    ) async throws {
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: frame])
+        try #require(await clock.pass(TerminalKeyboardInset.coalesceDelay))
     }
 
     @MainActor
@@ -2514,23 +2549,24 @@ struct TerminalAttachTests {
     @MainActor
     @Test func toolsModeIgnoresCandidateRowTransitionFrames() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { frame in
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { frame in
             frame.height == 436 ? 402 : 365
         }
         let completeFrame = CGRect(x: 0, y: 554, width: 440, height: 436)
         let withoutCandidateRow = CGRect(x: 0, y: 591, width: 440, height: 399)
 
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: completeFrame])
+        try await Self.present(completeFrame, on: center, clock: clock)
         try #require(await Self.eventually { inset.height == 402 })
 
         inset.pauseHeightCapture()
         center.post(
             name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: withoutCandidateRow])
-        // The shorter frame must not land, so this waits out its delivery.
-        try await Task.sleep(for: .milliseconds(120))
+        // The shorter frame is dropped as it arrives: nothing rides it, and
+        // no coalesce waits to land it.
+        #expect(inset.keyboardRideTarget == 402)
+        #expect(clock.advance(TerminalKeyboardInset.coalesceDelay) == 0)
         #expect(inset.height == 402)
         #expect(inset.lastPresentedHeight == 402)
 
@@ -2539,9 +2575,7 @@ struct TerminalAttachTests {
         #expect(inset.lastPresentedHeight == 402)
 
         inset.resumeHeightCapture()
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: completeFrame])
+        try await Self.present(completeFrame, on: center, clock: clock)
         try #require(await Self.eventually { inset.height == 402 })
     }
 
@@ -2591,12 +2625,10 @@ struct TerminalAttachTests {
     @Test(arguments: [CGFloat(375), 402, 429])
     func endingAHandoffAdoptsTheSettledKeyboardHeight(measured: CGFloat) async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
-        inset.responderHandoffAcceptanceDelay = .seconds(60)
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 554, width: 440, height: 436)])
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 402 }
+        try await Self.present(
+            CGRect(x: 0, y: 554, width: 440, height: 436), on: center, clock: clock)
         try #require(await Self.eventually { inset.height == 402 })
 
         let handoffID = inset.beginDestinationOwnedResponderHandoff()
@@ -2622,13 +2654,11 @@ struct TerminalAttachTests {
     @MainActor
     @Test func responderHandoffFallbackReleasesAnUnsettledFreeze() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
-        inset.responderHandoffFallbackDelay = .milliseconds(50)
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 402 }
 
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 554, width: 440, height: 436)])
+        try await Self.present(
+            CGRect(x: 0, y: 554, width: 440, height: 436), on: center, clock: clock)
         try #require(await Self.eventually { inset.height == 402 })
 
         var ownerHandoffID: UUID?
@@ -2642,6 +2672,7 @@ struct TerminalAttachTests {
         ownerHandoffID = handoffID
         inset.acceptResponderHandoff(handoffID)
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try #require(await clock.pass(TerminalKeyboardInset.responderHandoffFallbackDelay))
         try #require(await Self.eventually { expiredHandoffID == handoffID })
 
         #expect(!inset.isHoldingHandoffHeight)
@@ -2655,18 +2686,17 @@ struct TerminalAttachTests {
     @MainActor
     @Test func responderHandoffFallbackUsesTheOwningWindowHeight() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
-        inset.responderHandoffFallbackDelay = .milliseconds(50)
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 402 }
 
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 554, width: 440, height: 436)])
+        try await Self.present(
+            CGRect(x: 0, y: 554, width: 440, height: 436), on: center, clock: clock)
         try #require(await Self.eventually { inset.height == 402 })
 
         let handoffID = inset.beginResponderHandoff(currentHeight: { 402 })
         inset.acceptResponderHandoff(handoffID)
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try #require(await clock.pass(TerminalKeyboardInset.responderHandoffFallbackDelay))
         try #require(await Self.eventually { !inset.isHoldingHandoffHeight })
 
         #expect(inset.height == 402)
@@ -2685,28 +2715,38 @@ struct TerminalAttachTests {
     @Test(arguments: ["Composer to Direct Input", "Direct Input to Composer"])
     func anAcceptedDestinationKeepsTheFreezeUntilItSettles(handoff: String) async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 294 }
-        inset.responderHandoffAcceptanceDelay = .milliseconds(50)
-        inset.responderHandoffFallbackDelay = .seconds(60)
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 546, width: 402, height: 328)])
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 294 }
+        try await Self.present(
+            CGRect(x: 0, y: 546, width: 402, height: 328), on: center, clock: clock)
         try #require(await Self.eventually { inset.height == 294 })
 
         var expiredID: UUID?
+        let toDirectInput = handoff == "Composer to Direct Input"
         let handoffID: UUID
-        if handoff == "Composer to Direct Input" {
+        if toDirectInput {
             handoffID = inset.beginDestinationOwnedResponderHandoff(currentHeight: { 267 }) {
                 expiredID = $0
             }
-            inset.acceptResponderHandoff(handoffID, destinationTimeout: .seconds(60))
         } else {
             handoffID = inset.beginResponderHandoff(currentHeight: { 267 }) { expiredID = $0 }
+        }
+        // The request reaches the destination a moment before the switch's
+        // guard would expire.
+        let acceptance = TerminalKeyboardInset.responderHandoffAcceptanceDelay
+        try #require(await clock.parks(for: acceptance))
+        clock.advance(acceptance - .milliseconds(1))
+        if toDirectInput {
+            inset.acceptResponderHandoff(handoffID, destinationTimeout: Self.terminalLeash)
+        } else {
             inset.acceptResponderHandoff(handoffID)
         }
-        // Well past the acceptance guard, UIKit publishes a transient hide.
-        try await Task.sleep(for: .milliseconds(150))
+        try #require(await clock.parks(
+            for: toDirectInput
+                ? Self.terminalLeash + TerminalKeyboardInset.destinationResponderHandoffGrace
+                : TerminalKeyboardInset.responderHandoffFallbackDelay))
+        // Past the switch's guard, UIKit publishes a transient hide.
+        #expect(clock.advance(.milliseconds(2)) == 0, "the switch's guard outlived the acceptance")
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
 
         #expect(expiredID == nil)
@@ -2728,27 +2768,32 @@ struct TerminalAttachTests {
     @MainActor
     @Test func theComposersTimeoutStartsWhenItAccepts() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 267 }
-        inset.responderHandoffAcceptanceDelay = .seconds(60)
-        inset.responderHandoffFallbackDelay = .milliseconds(50)
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 573, width: 402, height: 301)])
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 267 }
+        try await Self.present(
+            CGRect(x: 0, y: 573, width: 402, height: 301), on: center, clock: clock)
         try #require(await Self.eventually { inset.height == 267 })
 
         var expiredID: UUID?
         let handoffID = inset.beginResponderHandoff(currentHeight: { 294 }) {
             expiredID = $0
         }
-        try await Task.sleep(for: .milliseconds(150))
+        // The request arrives a moment before the guard that waits for it
+        // expires, long past the Composer's own timeout from the switch.
+        let acceptance = TerminalKeyboardInset.responderHandoffAcceptanceDelay
+        let timeout = TerminalKeyboardInset.responderHandoffFallbackDelay
+        try #require(await clock.parks(for: acceptance))
+        #expect(clock.advance(acceptance - .milliseconds(1)) == 0)
         #expect(expiredID == nil)
         #expect(inset.isHoldingHandoffHeight)
 
-        let acceptedAt = ContinuousClock.now
         inset.acceptResponderHandoff(handoffID)
+        try #require(await clock.parks(for: timeout))
+        // Past the switch's guard, which the acceptance replaced.
+        #expect(clock.advance(timeout - .milliseconds(1)) == 0)
+        #expect(inset.isHoldingHandoffHeight)
+        #expect(clock.advance(.milliseconds(1)) == 1)
         try #require(await Self.eventually { expiredID == handoffID })
-        #expect(acceptedAt.duration(to: .now) >= .milliseconds(50))
         #expect(!inset.isHoldingHandoffHeight)
         #expect(inset.height == 294)
     }
@@ -2762,32 +2807,30 @@ struct TerminalAttachTests {
     @Test(arguments: ["before accepting", "after accepting"])
     func destinationLossFallsBackThroughTheInsetOwner(lost: String) async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
-        let accepts = lost == "after accepting"
-        inset.responderHandoffAcceptanceDelay = accepts ? .seconds(60) : .milliseconds(50)
-        inset.destinationResponderHandoffGrace = .milliseconds(30)
-
-        center.post(
-            name: UIResponder.keyboardWillShowNotification,
-            object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 554, width: 440, height: 436)])
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in 402 }
+        try await Self.present(
+            CGRect(x: 0, y: 554, width: 440, height: 436), on: center, clock: clock)
         try #require(await Self.eventually { inset.height == 402 })
 
         var expiredID: UUID?
         let handoffID = inset.beginDestinationOwnedResponderHandoff(
             currentHeight: { nil }
         ) { expiredID = $0 }
-        let acceptedAt = ContinuousClock.now
-        if accepts {
-            inset.acceptResponderHandoff(handoffID, destinationTimeout: .milliseconds(30))
+        let guardDelay: Duration
+        if lost == "after accepting" {
+            inset.acceptResponderHandoff(handoffID, destinationTimeout: Self.terminalLeash)
+            guardDelay = Self.terminalLeash + TerminalKeyboardInset.destinationResponderHandoffGrace
+        } else {
+            guardDelay = TerminalKeyboardInset.responderHandoffAcceptanceDelay
         }
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try #require(await clock.parks(for: guardDelay))
+        #expect(clock.advance(guardDelay - .milliseconds(1)) == 0)
+        #expect(inset.isHoldingHandoffHeight)
+        clock.advance(.milliseconds(1))
         try #require(await Self.eventually { expiredID == handoffID })
 
-        if accepts {
-            #expect(acceptedAt.duration(to: .now) >= .milliseconds(60))
-        }
         #expect(!inset.isHoldingHandoffHeight)
         #expect(inset.height == 402)
     }
@@ -2805,29 +2848,29 @@ struct TerminalAttachTests {
         // raises it.
         let (frozen, measured): (CGFloat, CGFloat) =
             fallback == "owner fallback" ? (267, 294) : (294, 267)
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in frozen }
-        inset.responderHandoffAcceptanceDelay = .seconds(60)
-        inset.responderHandoffFallbackDelay = .milliseconds(50)
-        inset.destinationResponderHandoffGrace = .milliseconds(30)
-        center.post(
-            name: UIResponder.keyboardWillShowNotification, object: nil,
-            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
-                x: 0, y: 546, width: 402, height: 328)])
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { _ in frozen }
+        try await Self.present(
+            CGRect(x: 0, y: 546, width: 402, height: 328), on: center, clock: clock)
         try #require(await Self.eventually { inset.height == frozen })
 
         var expiredID: UUID?
         let handoffID: UUID
+        let guardDelay: Duration
         if fallback == "owner fallback" {
             handoffID = inset.beginResponderHandoff(currentHeight: { measured }) {
                 expiredID = $0
             }
             inset.acceptResponderHandoff(handoffID)
+            guardDelay = TerminalKeyboardInset.responderHandoffFallbackDelay
         } else {
             handoffID = inset.beginDestinationOwnedResponderHandoff(
                 currentHeight: { measured }
             ) { expiredID = $0 }
-            inset.acceptResponderHandoff(handoffID, destinationTimeout: .milliseconds(20))
+            inset.acceptResponderHandoff(handoffID, destinationTimeout: Self.terminalLeash)
+            guardDelay = Self.terminalLeash + TerminalKeyboardInset.destinationResponderHandoffGrace
         }
+        try #require(await clock.pass(guardDelay))
         try #require(await Self.eventually { expiredID == handoffID })
 
         #expect(!inset.isHoldingHandoffHeight)
@@ -2848,7 +2891,8 @@ struct TerminalAttachTests {
         exit: String
     ) async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { frame in
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { frame in
             frame.height == 328 ? 294 : 267
         }
         func present(height: CGFloat) {
@@ -2861,12 +2905,14 @@ struct TerminalAttachTests {
                 ])
         }
         present(height: 328)
+        try #require(await clock.pass(TerminalKeyboardInset.coalesceDelay))
         try #require(await Self.eventually { inset.height == 294 })
         #expect(inset.keyboardRideRaise == 294)
 
         present(height: 301)
         #expect(inset.keyboardRideRaise == 267)
         #expect(inset.height == 294)
+        try #require(await clock.parks(for: TerminalKeyboardInset.coalesceDelay))
         let handoffID = inset.beginResponderHandoff(currentHeight: { 294 })
         if exit == "end" {
             inset.endResponderHandoff(handoffID, currentHeight: { 294 })
@@ -2878,7 +2924,7 @@ struct TerminalAttachTests {
         #expect(inset.height == 294)
         #expect(inset.keyboardRideRaise == 294)
         // The dropped coalesce does not land later either.
-        try await Task.sleep(for: .milliseconds(120))
+        #expect(clock.advance(TerminalKeyboardInset.coalesceDelay) == 0)
         #expect(inset.height == 294)
         #expect(inset.keyboardRideRaise == 294)
     }

@@ -64,14 +64,22 @@ final class TerminalKeyboardInset {
     private(set) var isSkippingKeyboardRide = false
     @ObservationIgnored private var keyboardRideSkipTask: Task<Void, Never>?
     private static let toolsDockExitDuration = Duration.milliseconds(800)
-    @ObservationIgnored var dismissalConfirmationDelay = Duration.milliseconds(350)
+    static let dismissalConfirmationDelay = Duration.milliseconds(350)
     @ObservationIgnored private var dismissalConfirmationTask: Task<Void, Never>?
     /// Whether a will-hide is still waiting on ``dismissalConfirmationDelay``.
     var isConfirmingDismissal: Bool { dismissalConfirmationTask != nil }
     /// Long enough to fold a presentation's follow-up frame into the first,
     /// short enough to stay inside the keyboard's own animation.
-    private static let coalesceDelay = Duration.milliseconds(60)
+    static let coalesceDelay = Duration.milliseconds(60)
     @ObservationIgnored private var coalesceTask: Task<Void, Never>?
+    /// Waits out the keyboard's own timing: a presentation's coalesce, a
+    /// will-hide's confirmation, and the tools-dock exit. These measure gaps
+    /// between UIKit's keyboard notifications.
+    @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
+    /// Waits out the responder-handoff guards. Apart from ``sleep``, since
+    /// these are the app's own deadlines: a test can hold or pass them while
+    /// the keyboard's timing follows real notifications.
+    @ObservationIgnored private let handoffSleep: @Sendable (Duration) async throws -> Void
     /// Nil in production, where the keyboard is measured against `window`.
     @ObservationIgnored private let measureOverride: (@MainActor (CGRect) -> CGFloat?)?
     /// Nil in production, where `window`'s keyboard layout guide is read.
@@ -110,28 +118,37 @@ final class TerminalKeyboardInset {
     /// thread delays the request well past the destination's own timeouts on
     /// a loaded runner (over a second, #634), and expiring here drops the
     /// switch, so this is long.
-    @ObservationIgnored var responderHandoffAcceptanceDelay = Duration.seconds(2)
+    static let responderHandoffAcceptanceDelay = Duration.seconds(2)
     /// How long an accepted destination with no timeout of its own (the
     /// Composer) has for its keyboard frame to settle. This is its timeout.
-    @ObservationIgnored var responderHandoffFallbackDelay = Duration.milliseconds(500)
+    static let responderHandoffFallbackDelay = Duration.milliseconds(500)
     /// How long past an accepted destination's own timeout (the terminal's
     /// leash) the owner waits before treating the destination as gone: one
     /// deallocated, or replaced, before it could report an outcome. A live
     /// destination always ends the handoff first.
-    @ObservationIgnored var destinationResponderHandoffGrace = Duration.milliseconds(500)
+    static let destinationResponderHandoffGrace = Duration.milliseconds(500)
 
     var isHoldingHandoffHeight: Bool { activeResponderHandoffID != nil }
 
     /// `measure` and `measureWindowKeyboard` replace the window measurements
     /// in tests; production leaves them nil and attaches the terminal's
-    /// window instead.
+    /// window instead. `sleep` and `handoffSleep` let tests move time
+    /// themselves.
     init(
         notificationCenter: NotificationCenter = .default,
         measure: (@MainActor (CGRect) -> CGFloat?)? = nil,
-        measureWindowKeyboard: (@MainActor () -> CGFloat?)? = nil
+        measureWindowKeyboard: (@MainActor () -> CGFloat?)? = nil,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = {
+            try await Task.sleep(for: $0)
+        },
+        handoffSleep: @escaping @Sendable (Duration) async throws -> Void = {
+            try await Task.sleep(for: $0)
+        }
     ) {
         measureOverride = measure
         measureWindowKeyboardOverride = measureWindowKeyboard
+        self.sleep = sleep
+        self.handoffSleep = handoffSleep
         for name: Notification.Name in [
             UIResponder.keyboardWillShowNotification,
             UIResponder.keyboardWillChangeFrameNotification,
@@ -179,8 +196,9 @@ final class TerminalKeyboardInset {
     func skipKeyboardRideLeavingToolsDock() {
         isSkippingKeyboardRide = true
         keyboardRideSkipTask?.cancel()
+        let sleep = sleep
         keyboardRideSkipTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.toolsDockExitDuration)
+            try? await sleep(Self.toolsDockExitDuration)
             guard !Task.isCancelled else { return }
             self?.isSkippingKeyboardRide = false
         }
@@ -231,8 +249,9 @@ final class TerminalKeyboardInset {
         isSoftwareKeyboardDismissed = false
         rideKeyboard(height: height, animates: animates)
         coalesceTask?.cancel()
+        let sleep = sleep
         coalesceTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.coalesceDelay)
+            try? await sleep(Self.coalesceDelay)
             guard !Task.isCancelled else { return }
             self?.apply(height)
         }
@@ -302,9 +321,9 @@ final class TerminalKeyboardInset {
 
     private func confirmDismissalIfUnanswered() {
         dismissalConfirmationTask?.cancel()
-        let delay = dismissalConfirmationDelay
+        let sleep = sleep
         dismissalConfirmationTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: delay)
+            try? await sleep(Self.dismissalConfirmationDelay)
             guard !Task.isCancelled, let self else { return }
             self.dismissalConfirmationTask = nil
             guard self.height == 0 else { return }
@@ -371,7 +390,7 @@ final class TerminalKeyboardInset {
     private func beginResponderHandoff(_ fallback: ResponderHandoffFallback) -> UUID {
         let id = prepareResponderHandoff()
         responderHandoffFallback = fallback
-        armResponderHandoffFallback(id, after: responderHandoffAcceptanceDelay)
+        armResponderHandoffFallback(id, after: Self.responderHandoffAcceptanceDelay)
         return id
     }
 
@@ -389,14 +408,15 @@ final class TerminalKeyboardInset {
         armResponderHandoffFallback(
             id,
             after: responderHandoffFallback.destinationOwnsTimeout
-                ? destinationTimeout + destinationResponderHandoffGrace
-                : responderHandoffFallbackDelay)
+                ? destinationTimeout + Self.destinationResponderHandoffGrace
+                : Self.responderHandoffFallbackDelay)
     }
 
     private func armResponderHandoffFallback(_ id: UUID, after delay: Duration) {
         responderHandoffFallbackTask?.cancel()
+        let handoffSleep = handoffSleep
         responderHandoffFallbackTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: delay)
+            try? await handoffSleep(delay)
             guard !Task.isCancelled else { return }
             guard let self, self.activeResponderHandoffID == id,
                   let fallback = self.responderHandoffFallback

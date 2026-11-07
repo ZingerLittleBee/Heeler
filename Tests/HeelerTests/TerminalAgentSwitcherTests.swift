@@ -1238,7 +1238,13 @@ struct TerminalAgentSwitcherTests {
     @Test(.timeLimit(.minutes(1)))
     func aTerminalTimeoutPreservesItsDestinationOwnedInset() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        // The inset's own guards wait on a clock this test never moves, so
+        // only the terminal's timeout can end the handoff. The presentation
+        // below still coalesces in real time.
+        let guards = ManualClock()
+        let inset = TerminalKeyboardInset(
+            notificationCenter: center, measure: { _ in 402 },
+            handoffSleep: guards.parkedSleep(for:))
         let presentation = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
         defer { presentation.continuation.finish() }
         withObservationTracking {
@@ -1299,12 +1305,24 @@ struct TerminalAgentSwitcherTests {
     @MainActor
     @Test func aTemporaryDetachKeepsItsDestinationOwnedHandoff() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        let clock = ManualClock()
+        let inset = TerminalKeyboardInset(
+            notificationCenter: center, measure: { _ in 402 },
+            sleep: clock.parkedSleep(for:), handoffSleep: clock.parkedSleep(for:))
+        let presentation = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        defer { presentation.continuation.finish() }
+        withObservationTracking {
+            _ = inset.height
+        } onChange: {
+            presentation.continuation.yield(())
+        }
         center.post(
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 554, width: 440, height: 436)])
-        try await Task.sleep(for: .milliseconds(120))
+        try #require(await clock.pass(TerminalKeyboardInset.coalesceDelay))
+        var presentationEvents = presentation.stream.makeAsyncIterator()
+        _ = await presentationEvents.next()
         #expect(inset.height == 402)
 
         let terminal = TerminalScreenView.makeConfiguredTerminal(

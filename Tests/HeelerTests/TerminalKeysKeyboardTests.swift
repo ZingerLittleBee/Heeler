@@ -105,8 +105,8 @@ struct TerminalKeysKeyboardTests {
     /// keyboard-sized band.
     @Test func aConfirmedHardwareKeyboardDismissalReleasesTheShellTextPin() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
-        inset.dismissalConfirmationDelay = .milliseconds(30)
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock)
         let text = ShellTerminalView.keyboardPresentation(
             mode: .text, insetHeight: 0, keyboardIsUp: true)
         #expect(text == .system)
@@ -115,11 +115,13 @@ struct TerminalKeysKeyboardTests {
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 500, width: 402, height: 370)])
+        try #require(await clock.pass(TerminalKeyboardInset.coalesceDelay))
         try #require(await Self.eventually { inset.height == 336 })
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
         #expect(ShellTerminalView.keyboardLayout(
             inset: inset, presentation: text).contentInset == 336)
 
+        try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
         try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
         #expect(ShellTerminalView.keyboardLayout(
             inset: inset, presentation: text).contentInset == 0)
@@ -140,17 +142,19 @@ struct TerminalKeysKeyboardTests {
     /// the terminal drops to the bottom and rides back up with the keyboard.
     @Test func keysToTextKeepsThePreShowPinAfterAConfirmedDismissal() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
-        inset.dismissalConfirmationDelay = .milliseconds(30)
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock)
 
         center.post(
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 500, width: 402, height: 370)])
+        try #require(await clock.pass(TerminalKeyboardInset.coalesceDelay))
         try #require(await Self.eventually { inset.height == 336 })
 
         ShellTerminalView.prepareKeyboardMode(.controls, inset: inset)
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        try #require(await clock.pass(TerminalKeyboardInset.dismissalConfirmationDelay))
         try #require(await Self.eventually { inset.isSoftwareKeyboardDismissed })
         #expect(ShellTerminalView.keyboardLayout(
             inset: inset, presentation: .tools).contentInset == 336)
@@ -168,6 +172,7 @@ struct TerminalKeysKeyboardTests {
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 500, width: 402, height: 370)])
         #expect(!inset.isConfirmingDismissal)
+        try #require(await clock.pass(TerminalKeyboardInset.coalesceDelay))
         try #require(await Self.eventually { inset.height == 336 })
         #expect(ShellTerminalView.keyboardLayout(
             inset: inset, presentation: text).contentInset == 336)
@@ -196,6 +201,16 @@ struct TerminalKeysKeyboardTests {
             try? await Task.sleep(for: .milliseconds(5))
         }
         return condition()
+    }
+
+    /// A shell terminal's inset, measuring a 336pt keyboard, whose timers
+    /// wait on `clock`.
+    private static func makeInset(
+        center: NotificationCenter, clock: ManualClock
+    ) -> TerminalKeyboardInset {
+        TerminalKeyboardInset(
+            notificationCenter: center, measure: { _ in 336 },
+            sleep: clock.parkedSleep(for:), handoffSleep: clock.parkedSleep(for:))
     }
 }
 
