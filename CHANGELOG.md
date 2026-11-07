@@ -18,6 +18,8 @@ Entries reference the pull request that made the change.
 ### Changed
 
 - Select terminal text inline with handles and the system edit menu, using libghostty-spm 2.2.2026103001. Chat's Select Text sheet is unchanged. (PR #650)
+- Show user commands in Chat with the same right-aligned bubble and text size
+  as other user messages, keeping command output below the bubble. (#648)
 
 ### Fixed
 
@@ -75,9 +77,6 @@ Entries reference the pull request that made the change.
   preset are each Host's home folder. (#632)
 
 ### Changed
-
-- Show user commands in Chat with the same right-aligned bubble and text size
-  as other user messages, keeping command output below the bubble. (#648)
 
 - Accounts moved out of Usage into Settings › Agents & Accounts. Usage's
   notice about Account folders it found opens the same screen. (#632)
