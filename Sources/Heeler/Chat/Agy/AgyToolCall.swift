@@ -61,7 +61,9 @@ struct AgyToolCall: Sendable {
     ]
 
     /// The tools that change part of a file, asked about in agy's `Pending
-    /// edit` dialog.
+    /// edit` dialog. No capture shows `multi_replace_file_content`'s; agy
+    /// 1.5.3's strings hold only that one edit dialog, so the card answers
+    /// it as any edit.
     static let editTools: Set<String> = ["edit_file", "replace_file_content", "multi_replace_file_content"]
 
     /// The tools that write a whole file, asked about in `Create file` for a

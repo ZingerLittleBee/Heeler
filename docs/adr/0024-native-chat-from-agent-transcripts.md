@@ -970,9 +970,12 @@ no Attach at all.
     only as its call's row until its task ends, and its subagents'
     conversations; its working directory, so the absolute paths it records
     are shown as they are; its plan artifacts, shown as a file write;
-    `/rewind`; the dialogs no capture shows (`multi_replace_file_content`'s
-    edit, Tab on an `always allow` row, a typed answer on a multi-select
-    question, Esc on the trust prompt), which stay in the terminal; and
+    `/rewind`; the dialogs no capture shows that the card refuses (Tab on
+    an `always allow` row, a typed answer on a multi-select question, Esc
+    on the trust prompt), which stay in the terminal;
+    `multi_replace_file_content`'s edit, which no capture shows either and
+    the card answers as any edit, on the inference that it asks in the same
+    `Pending edit` dialog; and
     Chat on herdr-core Hosts, where its conversation binds from its
     presence lock (ADR 0034) but no platform offers it until it is checked
     on a real machine.

@@ -331,6 +331,34 @@ struct AgyDialogParserTests {
         #expect(dialog.focus == DialogFocusState(focusedOrdinal: 2))
     }
 
+    // MARK: Scrollback
+
+    /// A declined call leaves its dialog's title in the scrollback, bold
+    /// blue over `⎿  User declined the tool call`. The parser reads the
+    /// live dialog under it, framed from its own bold yellow title.
+    @Test(arguments: [
+        ("agy-69-working-draft-entered-then-perm-dialog-62x41", 25),
+        ("agy-113-ask-question-multiselect-q1-of-2-62x41", 29),
+    ])
+    func aDeclinedTitleInTheScrollbackIsNoDialog(_ stem: String, liveTitle: Int) throws {
+        let text = try ScreenFixture.text(stem)
+        #expect(text.contains(Self.declined))
+        let dialog = try Self.dialog(stem)
+        #expect(dialog.rows.lowerBound == liveTitle)
+
+        // With the live title blue too, no title frames a dialog: the
+        // declined one above is not read as one.
+        let live = "\(SGR.bold)\u{1B}[38;5;3m\(dialog.kind == .agyCommand ? "Command" : "Question")"
+        try #require(text.components(separatedBy: live).count == 2)
+        let blue = text.replacingOccurrences(of: live, with: live.replacingOccurrences(of: "38;5;3m", with: "38;5;4m"))
+        let result = AgyDialogParser.parse(ANSIScreenDecoder.decode(blue))
+        #expect(result.dialog == nil)
+        #expect(result.excerpt?.reason == "Heeler can't find the top of Antigravity CLI's dialog.")
+    }
+
+    /// agy 1.5.3's declined title: bold, blue 4.
+    private static let declined = "\(SGR.bold)\u{1B}[38;5;4mCommand"
+
     // MARK: Unknown
 
     /// A dialog agy draws with a title Heeler doesn't know holds sending as

@@ -9,8 +9,12 @@ import Foundation
 /// question, the options, and a hint row of keys over the footer. Options
 /// are numbered `N. label`, the selected one drawn `> N. label` in blue 12;
 /// a label too long for its row continues at column 0. The trust prompt's
-/// two options have no numbers. Scrollback above keeps no past dialogs:
-/// agy replaces each with a `● Ran …` or `? <question>` row.
+/// two options have no numbers. Scrollback above keeps past dialogs only
+/// as rows: an answered one becomes a `● Ran …`, `● Edited …` or `?
+/// <question>` row, but a declined one keeps its title at column 0, bold
+/// blue instead of yellow, over `⎿  User declined the tool call` (56, 69,
+/// 83). The frame is the bottom-most bold yellow title with a rule under it
+/// above the last hint row, so such a title is never read as a dialog.
 ///
 /// Tab on a command's `Yes` or `No` row turns it into a note field, `> `
 /// under the row, and its label into `Yes, and tell Antigravity CLI what to

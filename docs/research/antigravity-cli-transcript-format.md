@@ -289,8 +289,11 @@ file`, `Question`, or `Accessing workspace:` for the trust prompt) over a
 full-width grey rule (none under the trust prompt's title), the request, a
 bold question, numbered options with the selected one `> N. …` in color 12,
 a hint row, and the footer `esc to cancel`. A long option label continues at
-column 0. Scrollback keeps no past dialog: agy replaces each with a `● Ran …`
-or `? <question>` row.
+column 0. Scrollback keeps an answered dialog only as a `● Ran …`, `● Edited
+…` or `? <question>` row. A declined one keeps its title at column 0, bold
+blue (4) instead of yellow (3), over `⎿  User declined the tool call` (56,
+69, 83, 88); Heeler frames a dialog by the bottom-most bold yellow title
+with a rule under it, so it never reads that title as one.
 
 | Dialog | Question and hint row | Keys | herdr 0.9.5 |
 |---|---|---|---|
@@ -444,7 +447,13 @@ its `/` popup and from `/name` (agy's changelog, 1.1.12).
   setting that says Vim mode is on.
 - Dialogs not captured: `multi_replace_file_content`'s edit, Tab on an
   `always allow` row, a typed answer on a multi-select question, and Esc on
-  the trust prompt. Chat leaves those to the terminal.
+  the trust prompt. Chat leaves the last three to the terminal: the card
+  refuses them. It answers a `multi_replace_file_content` edit like any
+  other: agy 1.5.3's strings hold one `Pending edit` title and one `Accept
+  this file edit?` question, so the edit most likely asks in that dialog
+  (inferred, never captured), and a dialog of any other shape gets the
+  generic card. Its call records no change Heeler can draw, so the card
+  shows the screen's rows.
 - Whether `/compact` takes focus text, and which of a skill and a built-in
   command of the same name runs. Chat sends `/compact` as typed and offers
   no skill named like a built-in.
