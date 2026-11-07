@@ -125,7 +125,8 @@ final class TerminalKeyboardInset {
     /// How long past an accepted destination's own timeout (the terminal's
     /// leash) the owner waits before treating the destination as gone: one
     /// deallocated, or replaced, before it could report an outcome. A live
-    /// destination always ends the handoff first.
+    /// destination normally ends the handoff first; should a late timer let
+    /// this expire under one, it ends the handoff as that settle would.
     static let destinationResponderHandoffGrace = Duration.milliseconds(500)
 
     var isHoldingHandoffHeight: Bool { activeResponderHandoffID != nil }

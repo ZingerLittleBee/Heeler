@@ -1513,7 +1513,7 @@ struct AgentTerminalView: View {
             let id = keyboardInset.beginDestinationOwnedResponderHandoff(
                 currentHeight: currentWindowKeyboardHeight
             ) { expiredID in
-                keyboardHandoffFallbackExpired(expiredID)
+                cancelKeyboardHandoff(expiredID)
             }
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -1530,7 +1530,7 @@ struct AgentTerminalView: View {
             let id = keyboardInset.beginResponderHandoff(
                 currentHeight: currentWindowKeyboardHeight
             ) { expiredID in
-                keyboardHandoffFallbackExpired(expiredID)
+                cancelKeyboardHandoff(expiredID)
             }
             keyboardHandoff.arm(for: agent.id)
             composerKeyboardPresentation = .system
@@ -1593,6 +1593,10 @@ struct AgentTerminalView: View {
         }
     }
 
+    /// Drops this view's handoff and releases the inset's freeze. A switch
+    /// the destination already accepted stands. The inset's guard calls this
+    /// after it has released and reconciled the freeze itself, so for an
+    /// accepted handoff this only clears the view's state.
     private func cancelKeyboardHandoff(_ id: UUID) {
         let destinationAccepted = settlingKeyboardHandoffID == id
         var ownsHandoff = false
@@ -1641,17 +1645,6 @@ struct AgentTerminalView: View {
         // The Composer has no timeout of its own; the inset's is its.
         keyboardInset.acceptResponderHandoff(id)
         applyInputMode(.composer, preservingKeyboardHandoff: true)
-    }
-
-    /// The inset's guard released this view's handoff. A destination that
-    /// accepted it was still settling, and its exit is the settle it never
-    /// reported; one that never accepted leaves the switch undone.
-    private func keyboardHandoffFallbackExpired(_ id: UUID) {
-        if settlingKeyboardHandoffID == id {
-            endKeyboardHandoff(id)
-        } else {
-            cancelKeyboardHandoff(id)
-        }
     }
 
     private func composerKeyboardHandoffSettled(_ id: UUID) {
