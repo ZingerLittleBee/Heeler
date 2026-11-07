@@ -14,6 +14,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Release a herdr-core terminal's focus when its window closes while the attach is still opening, so a retained terminal does not keep claiming the closed window's size. (#630)
 - Clear an unsaved Voice Input API key when its service or Custom URL changes, and report Keychain deletion failures without switching the saved destination or withdrawing its agreement. (PR #643)
 
 ## [0.1.18]
