@@ -109,11 +109,14 @@ func accessibleElement(labeled label: String, in root: NSObject) -> NSObject? {
 enum HostedMenu {
     /// What each menu labeled `label` offers, one list per menu, in the order
     /// the window lists them. Each is closed again.
-    static func items(labeled label: String, in window: UIWindow) async throws -> [[String]] {
+    static func items(
+        labeled label: String, in window: UIWindow, inspect: (UIMenu) -> Void = { _ in }
+    ) async throws -> [[String]] {
         var menus: [[String]] = []
         for element in accessibleElements(in: window) where element.accessibilityLabel == label {
             let opened = try await open(element, in: window)
             menus.append(leafTitles(of: opened.menu))
+            inspect(opened.menu)
             try await close(opened.controller, in: window)
         }
         return menus

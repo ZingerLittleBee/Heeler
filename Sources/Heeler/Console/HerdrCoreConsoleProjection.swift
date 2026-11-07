@@ -1583,6 +1583,20 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         HerdrCoreHostSystem(kernel: kernel).cannotTellSession(program)
     }
 
+    func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch? {
+        guard hasInventory, departedAgentsByPane[paneID] == nil else { return nil }
+        let core = inventoryCore
+        let record = try await inventoryTransport().terminalRecord(paneID)
+        let binder = chatBinder(paneID: paneID, program: .claude, core: core)
+        let ask = HerdrCoreSessionBinder.ProcessAsk(
+            namesOf: [ChatTranscriptOffVariable.childSession.rawValue],
+            arguments: ClaudePermissionMode.argumentWords, preservesArgumentOrder: true)
+        guard let tree = try await binder.readTerminalProcesses(of: record, ask: ask),
+            let pid = binder.agentProcess(in: tree), let facts = tree.facts[pid], inventoryCore == core
+        else { return nil }
+        return ClaudePermissionMode.Launch(pid: pid, facts: facts)
+    }
+
     private func chatBinder(paneID: String, program: ChatProgram, core: String?) -> HerdrCoreSessionBinder {
         let session = session
         return HerdrCoreSessionBinder(
