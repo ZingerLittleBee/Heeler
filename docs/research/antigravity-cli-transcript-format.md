@@ -366,6 +366,11 @@ footer (code search mode and Vim's badges in agy's strings), a dialog, an
 exited agy and any unreadable screen hold the message. Stop sends one Esc,
 never Ctrl+C.
 
+Chat's `/` menu offers agy's skills as `/name`, except one named like a
+built-in command and one whose frontmatter says
+`disable-slash-command: true`, which agy keeps for the model and hides from
+its `/` popup and from `/name` (agy's changelog, 1.1.12).
+
 ## Open questions
 
 - When a turn ended. `created_at` is a step's start, so the last step's
@@ -392,5 +397,3 @@ never Ctrl+C.
 - Whether `/compact` takes focus text, and which of a skill and a built-in
   command of the same name runs. Chat sends `/compact` as typed and offers
   no skill named like a built-in.
-- Skills marked `disable-slash-command: true`, which agy hides from `/`;
-  Heeler's skill probe does not read that key, so Chat still offers them.

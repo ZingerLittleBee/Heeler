@@ -561,6 +561,34 @@ struct ChatSendRulesTests {
         #expect(rules.validate("/\(name)") == .unknownCommand(name))
     }
 
+    /// Antigravity CLI hides a skill marked `disable-slash-command: true`
+    /// from its `/` popup and from `/name`, so only its menu leaves one out;
+    /// the other programs don't read the key. OpenCode is offered none.
+    @Test(arguments: ChatProgram.allCases)
+    func onlyAgyHidesASkillWhoseSlashCommandIsDisabled(program: ChatProgram) {
+        let prefix = Self.skillPrefix(program)
+        let catalog = [
+            AgentSkill(scope: .project, name: "review", description: nil, commandPrefix: prefix),
+            AgentSkill(
+                scope: .project, name: "swarm-monitor", description: nil, commandPrefix: prefix,
+                isSlashCommandDisabled: true),
+        ]
+        let rules = ChatSendRules(
+            program: program,
+            commands: ChatCommandMenu.commands(skills: catalog, agentIsIdle: true, program: program))
+        let names = rules.commands.map(\.name)
+
+        switch program {
+        case .agy:
+            #expect(names == ["compact", "review"])
+            #expect(rules.validate("/swarm-monitor") == .unknownCommand("swarm-monitor"))
+        case .claude, .codex, .pi, .omp, .grok:
+            #expect(names == ["compact", "review", "swarm-monitor"])
+        case .opencode:
+            #expect(names == ["compact"])
+        }
+    }
+
     /// agy trims the trailing space before it reads `/compact`, which it
     /// then runs (live).
     @Test func agySendsCompactWithATrailingSpaceOnlyWhileIdle() {

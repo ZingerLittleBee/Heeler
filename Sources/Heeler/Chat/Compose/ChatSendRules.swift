@@ -37,7 +37,8 @@ enum ChatCommandMenu {
     /// the model). Grok Build also keeps its built-in commands' names, in
     /// any case, and offers a skill named like one only under a qualified
     /// name; Antigravity CLI's skills are kept clear of its built-ins the
-    /// same way. OpenCode gets none, so its menu holds only `/compact`: its
+    /// same way, and it hides a skill marked `disable-slash-command: true`.
+    /// OpenCode gets none, so its menu holds only `/compact`: its
     /// skills have no form a message can invoke, and its server commands
     /// are not offered.
     static func offers(_ skill: AgentSkill, for program: ChatProgram) -> Bool {
@@ -47,9 +48,10 @@ enum ChatCommandMenu {
         case .codex: true
         case .grok: skill.isUserInvocable && !GrokSlashCommands.builtIns.contains(skill.name.lowercased())
         // Antigravity CLI runs a skill as `/name`, like its `/` popup lists
-        // it. It hides one marked `disable-slash-command: true`, a key the
-        // Skills probe does not read.
-        case .agy: !AgySlashCommands.builtIns.contains(skill.name.lowercased())
+        // it, and hides one marked `disable-slash-command: true` from both
+        // (its changelog, 1.1.12), so Chat leaves that one out too.
+        case .agy:
+            !skill.isSlashCommandDisabled && !AgySlashCommands.builtIns.contains(skill.name.lowercased())
         case .opencode: false
         }
     }
