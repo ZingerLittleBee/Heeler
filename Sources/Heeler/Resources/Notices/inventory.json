@@ -3,7 +3,7 @@
   "dependencyCoverage": {
     "packageResolved": {
       "libghostty-spm": ["libghostty-spm", "Ghostty", "GhosttyTheme", "JetBrainsMono"],
-      "msdisplaylink": ["MSDisplayLink"]
+      "displaylink": ["DisplayLink"]
     },
     "heelerSSHBinaryTargets": {
       "CLibSSH2": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly"],
@@ -43,15 +43,15 @@
     {
       "id": "Ghostty",
       "displayName": "Ghostty",
-      "version": "82938b633ba646db38591d969c3c526332bd7e65",
-      "source": "https://github.com/ghostty-org/ghostty (libghostty binary via libghostty-spm 1.6.20260909)",
+      "version": "1e9e14af5df14211892f5fc15fd21a49c7d94868",
+      "source": "https://github.com/ghostty-org/ghostty (libghostty binary via libghostty-spm 2.2.2026103001)",
       "spdx": "MIT",
       "notice": "Ghostty-MIT.txt"
     },
     {
       "id": "GhosttyTheme",
       "displayName": "GhosttyTheme (iTerm2-Color-Schemes)",
-      "version": "1.6.20260909",
+      "version": "2.2.2026103001",
       "source": "https://github.com/lakr233/libghostty-spm (product GhosttyTheme; color schemes © Mark Badolato)",
       "spdx": "MIT",
       "notice": "GhosttyTheme-MIT.txt"
@@ -97,12 +97,12 @@
       "notice": "Lucide-ISC.txt"
     },
     {
-      "id": "MSDisplayLink",
-      "displayName": "MSDisplayLink",
-      "version": "2.2.0",
-      "source": "https://github.com/Lakr233/MSDisplayLink.git",
+      "id": "DisplayLink",
+      "displayName": "DisplayLink",
+      "version": "3.0.1",
+      "source": "https://github.com/Lakr233/DisplayLink.git",
       "spdx": "MIT",
-      "notice": "MSDisplayLink-MIT.txt"
+      "notice": "DisplayLink-MIT.txt"
     },
     {
       "id": "OpenSSL",
@@ -155,7 +155,7 @@
     {
       "id": "libghostty-spm",
       "displayName": "libghostty-spm",
-      "version": "1.6.20260909",
+      "version": "2.2.2026103001",
       "source": "https://github.com/lakr233/libghostty-spm.git",
       "spdx": "MIT",
       "notice": "libghostty-spm-MIT.txt"
