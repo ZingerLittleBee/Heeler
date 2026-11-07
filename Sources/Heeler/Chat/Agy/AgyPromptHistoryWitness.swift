@@ -6,9 +6,12 @@ import Foundation
 /// `type: "slash_command"` (1.5.3, probes and live).
 ///
 /// It witnesses only a send recorded under another conversation's id, the
-/// case of a terminal resumed into another conversation. It cannot see:
-/// - a conversation's first prompt, which agy records without an id, so a
-///   send into the conversation `/clear` or a new launch just started;
+/// case of a terminal resumed into another conversation. That includes a
+/// send into the conversation `/clear` just started: agy records the first
+/// prompt after `/clear` under the new id, while herdr names the old one
+/// until that prompt, so the send reads as elsewhere until Chat follows
+/// herdr there. It cannot see:
+/// - a fresh launch's first prompt, which agy records without an id;
 /// - whether a queued send was taken: agy records it at Enter, and Esc can
 ///   put it back in the box unsent;
 /// - a send under another data root, such as another Account's;

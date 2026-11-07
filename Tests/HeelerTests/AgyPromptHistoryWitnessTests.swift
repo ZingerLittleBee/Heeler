@@ -15,8 +15,8 @@ struct AgyPromptHistoryWitnessTests {
         inFolder: AgyTranscriptLocator.folder(in: root, id: followed))
     private static let history = "\(root)/history.jsonl"
 
-    /// One line as agy writes it; agy leaves `conversationId` out of a
-    /// conversation's first prompt.
+    /// One line as agy writes it; agy leaves `conversationId` out of a fresh
+    /// launch's first prompt.
     private static func line(_ display: String, conversation: String?, type: String? = nil) throws -> String {
         var record: [String: Any] = [
             "display": display, "timestamp": 1_794_074_286_952, "workspace": "/Users/developer/projects/fruits",
@@ -56,14 +56,27 @@ struct AgyPromptHistoryWitnessTests {
         #expect(try await Self.verdict("Reply with only the word plum. ", before: before, appended: appended) == .elsewhere)
     }
 
+    /// `/clear` is logged under the conversation it leaves, and the first
+    /// prompt after it under the new one (probe A, 1.5.3). herdr names the
+    /// old conversation until that prompt, so a send Chat makes into the
+    /// new one reads as elsewhere.
+    @Test func aSendIntoTheConversationClearStartedIsElsewhere() async throws {
+        let before =
+            try Self.line("Reply with only the word pear.", conversation: Self.followed)
+            + Self.line("/clear", conversation: Self.followed, type: "slash_command")
+        let appended = try Self.line("Reply with only the word melon.", conversation: Self.other)
+
+        #expect(try await Self.verdict("Reply with only the word melon.", before: before, appended: appended) == .elsewhere)
+    }
+
     @Test func aLineNamingThisConversationIsHere() async throws {
         let appended = try Self.line("Reply with only the word plum.", conversation: Self.followed)
 
         #expect(try await Self.verdict("Reply with only the word plum. ", appended: appended) == .here)
     }
 
-    /// The first prompt of a conversation `/clear` or a launch started has
-    /// no id, so the log cannot tell where it went.
+    /// A fresh launch's first prompt has no id, so the log cannot tell where
+    /// it went.
     @Test func aFirstPromptWithoutAnIdSaysNothing() async throws {
         let appended = try Self.line("Reply with only the word plum.", conversation: nil)
 

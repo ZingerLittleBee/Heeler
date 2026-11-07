@@ -359,7 +359,7 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   database and never the lock, so it says it cannot tell and lists those for one
   confirmation. Its list has nothing from a directory: agy files conversations by
   id, and `history.jsonl`, which names a workspace, is one log for every agy on the
-  data root and names no id for a conversation's first prompt. `/clear` from idle
+  data root and names no id for a fresh launch's first prompt. `/clear` from idle
   reports no status, so Chat keeps showing the conversation before it until the next
   status or the check before a Send, which moves Chat and holds that Send once.
   Seen on 2026-11-07 on one signed-in Mac, macOS 27.0.1, in a plain PTY outside herdr
