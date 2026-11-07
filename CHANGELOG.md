@@ -14,6 +14,15 @@ Entries reference the pull request that made the change.
 - Pick up to 10 images at once in the Composer, staged one after another. The note that an image path was inserted and copied goes by itself after 2 seconds. (PR #647)
 - Choose Voice Input languages independently of the device language, with automatic detection by default, multiple OpenAI hints and one optional DeepInfra language. Custom services gain per-URL/model request fields with multiple values, validation and migration of the previous Send Language setting. (PR #643)
 - Rename an Agent's conversation from its existing More menu or the Agents list's long-press menu on Herdr TUI Hosts. Save a manual title for Claude Code, Codex, Pi, Oh My Pi, Grok Build, or OpenCode; generate and apply a new title with Claude Code, Codex, or Oh My Pi. Busy Agents, existing terminal drafts, changed conversations, and unconfirmed results are reported without retrying the command. (#645)
+- Chat shows Antigravity CLI conversations on macOS and Linux Herdr TUI
+  Hosts: messages, reasoning, tools with their file changes, background
+  commands and compactions. Chat sends prompts and the skills Antigravity
+  CLI offers as commands, stops a turn with Esc, and answers its command,
+  file edit and file creation permissions, its questions (several at once,
+  multi-select or written) and its trust prompt from cards. It holds a
+  message, with the reason, whenever the screen shows no empty input box, so
+  a dialog never takes a message as its answer. herdr-core Hosts don't offer
+  Chat for Antigravity CLI yet. (#644)
 
 ### Changed
 
