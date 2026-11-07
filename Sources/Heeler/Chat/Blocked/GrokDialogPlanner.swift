@@ -38,7 +38,8 @@ struct GrokDialogPlanner {
         case .claudeBash, .claudeFileEdit, .claudeFileCreate, .claudeFileRead, .claudeFetch, .claudePlan,
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .codexExec, .codexPatch, .codexNetwork,
             .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .codexWorkspaceTrust, .ompApproval, .ompQuestion,
-            .ompQuestionReview, .openCodePermission, .openCodeQuestion:
+            .ompQuestionReview, .openCodePermission, .openCodeQuestion, .agyCommand, .agyFileEdit, .agyFileCreate,
+            .agyQuestion, .agyWorkspaceTrust:
             throw Self.notGrok
         }
     }

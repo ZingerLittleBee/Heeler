@@ -336,7 +336,7 @@ private struct CodexDialogPlanner {
         case .claudeBash, .claudeFileEdit, .claudeFileCreate, .claudeFileRead, .claudeFetch, .claudePlan,
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork, .openCodePermission,
-            .openCodeQuestion:
+            .openCodeQuestion, .agyCommand, .agyFileEdit, .agyFileCreate, .agyQuestion, .agyWorkspaceTrust:
             throw .unsupported("Not a Codex dialog.")
         }
     }

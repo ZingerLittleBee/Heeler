@@ -43,7 +43,7 @@ struct AgyToolCall: Sendable {
 
     /// The file-edit tools whose permission dialog herdr 0.9.5 reports as
     /// idle: its hint row lacks the words herdr's Blocked rule looks for.
-    var asksInADialogHerdrMisses: Bool { Self.editTools.contains(name) }
+    var asksInADialogHerdrMisses: Bool { Self.editTools.contains(name) || Self.writeTools.contains(name) }
 
     /// Tool names across agy's two tool families (1.4 to 1.5.3) and the
     /// ones issue #644 names.
@@ -60,9 +60,20 @@ struct AgyToolCall: Sendable {
         "generate_image": .image,
     ]
 
-    private static let editTools: Set<String> = [
-        "write_file", "write_to_file", "edit_file", "replace_file_content", "multi_replace_file_content",
-    ]
+    /// The tools that change part of a file, asked about in agy's `Pending
+    /// edit` dialog.
+    static let editTools: Set<String> = ["edit_file", "replace_file_content", "multi_replace_file_content"]
+
+    /// The tools that write a whole file, asked about in `Create file` for a
+    /// new one.
+    static let writeTools: Set<String> = ["write_file", "write_to_file"]
+
+    /// The tools agy asks the user about: it writes the call as its dialog
+    /// opens and the result only after the answer, so an open call can
+    /// stand in for the Blocked herdr misses. A command agy runs without
+    /// asking still writes its call first, but herdr reports it working.
+    /// The tools that need no answer are written with their results.
+    static let userGatedTools: Set<String> = editTools.union(writeTools).union(["run_command", "ask_question"])
 
     // MARK: Status
 

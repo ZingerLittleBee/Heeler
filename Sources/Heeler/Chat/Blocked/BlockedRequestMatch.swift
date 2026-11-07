@@ -66,7 +66,19 @@ enum BlockedRequestMatch {
             return openCodePermission(request, subject)
         case .openCodeQuestion:
             return request.kind == .question && asks(request, subject.question ?? dialog.title)
-        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .codexNetwork, .grokCancelTurn, .grokFork:
+        case .agyCommand:
+            return request.toolName == "run_command" && begins(request.summary, with: subject.command)
+        case .agyFileEdit:
+            // agy cuts a long path at the screen's edge. A write over a file
+            // may ask as an edit.
+            return (AgyToolCall.editTools.contains(request.toolName) || AgyToolCall.writeTools.contains(request.toolName))
+                && begins(request.summary, with: subject.filePath)
+        case .agyFileCreate:
+            return AgyToolCall.writeTools.contains(request.toolName) && begins(request.summary, with: subject.filePath)
+        case .agyQuestion:
+            return request.toolName == "ask_question" && asks(request, subject.question ?? dialog.title)
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .codexNetwork, .grokCancelTurn, .grokFork,
+            .agyWorkspaceTrust:
             return false
         }
     }

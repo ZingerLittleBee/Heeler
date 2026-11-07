@@ -55,7 +55,8 @@ struct QuestionFormCard: View {
             controls
                 .disabled(!isReady)
             BlockedCardFooter(
-                notice: store.notice, stopTitle: "Stop", isReady: isReady, canStop: store.canStop, stop: stop,
+                notice: store.notice, stopTitle: card.dialog.stopTitle, isReady: isReady, canStop: store.canStop,
+                stop: stop,
                 asideTitle: chat?.label, aside: chatInstead)
         }
     }

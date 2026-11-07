@@ -141,6 +141,15 @@ enum ScreenFixture {
         "agy-90-first-screen-welcome-62x41", "agy-91-bang-typed-62x41", "agy-92-up-on-empty-box-62x41",
         "agy-93-bash-mode-with-text-62x41", "agy-94-working-nodraft-40x30", "agy-95-working-with-draft-40x30",
         "agy-96-working-queued-40x30", "agy-97-esc-with-queued-40x30", "agy-98-working-nodraft-62x20",
+        "agy-99-perm-file-create-default-120x40", "agy-99-perm-file-create-default-40x30",
+        "agy-99-perm-file-create-default-62x41", "agy-100-ask-question-multiselect-62x41",
+        "agy-101-ask-question-multiselect-after-digit2-62x41", "agy-102-ask-question-multiselect-after-3-2-62x41",
+        "agy-103-ask-question-multiselect-after-enter-62x41", "agy-104-ask-question-writein-after-digit-62x41",
+        "agy-105-ask-question-writein-typed-62x41", "agy-106-ask-question-multi-q1-after-esc-62x41",
+        "agy-107-ask-question-multi-q2-after-digit2-62x41", "agy-108-perm-run-command-62x41",
+        "agy-109-perm-run-command-amend-62x41", "agy-110-perm-run-command-amend-typed-62x41",
+        "agy-111-perm-run-command-tab-on-no-62x41", "agy-113-ask-question-multiselect-q1-of-2-62x41",
+        "agy-114-ask-question-multiselect-q1-after-enter-62x41", "agy-115-ask-question-single-after-esc-62x41",
     ]
 
     /// The Claude and Codex captures that the dialog and input-box suites walk.

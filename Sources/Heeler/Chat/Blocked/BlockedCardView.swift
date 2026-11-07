@@ -105,7 +105,7 @@ private struct BlockedDialogCard: View {
     /// a phone, where the folder and the program's warning fill the card's
     /// share. The text gives up their room, so the card stays as tall.
     private var pinsChoices: Bool {
-        dialog.kind == .claudeWorkspaceTrust || dialog.kind == .codexWorkspaceTrust
+        [.claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust].contains(dialog.kind)
     }
 
     private var scrollingMaxHeight: CGFloat {
@@ -167,7 +167,8 @@ private struct BlockedDialogCard: View {
             // screen's rows leave out the question the options answer.
             let shown = dialog.body.filter { !$0.hasPrefix("Claude has written up a plan") }
             BlockedPlanBox(text: BlockedRequestMatch.claudePlanText(call: card.request?.summary, shownRows: shown))
-        case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion:
+        case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion,
+            .agyQuestion:
             VStack(alignment: .leading, spacing: 4) {
                 // Codex's asynchronous questions name their page by the
                 // question itself.
@@ -192,7 +193,7 @@ private struct BlockedDialogCard: View {
                     }
                 }
             }
-        case .claudeWorkspaceTrust, .codexWorkspaceTrust:
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust:
             BlockedCodeBox(text: subject.workspacePath ?? "")
             // Codex's note on a folder below a repository's root, then the
             // root.
@@ -247,6 +248,17 @@ private struct BlockedDialogCard: View {
             if let focused = dialog.focus.focusedOrdinal, focused != 1, let option = dialog.option(focused) {
                 BlockedCardText("Selected in the terminal: \(option.label)")
             }
+        case .agyCommand:
+            if let summary = card.request?.detail {
+                BlockedCardText(summary)
+            }
+            BlockedCodeBox(text: card.request?.summary ?? subject.command ?? "")
+        case .agyFileEdit, .agyFileCreate:
+            BlockedCodeBox(text: card.request?.summary ?? subject.filePath ?? "")
+            // The changed lines as the screen shows them, cut at its edge.
+            if dialog.body.count > 1 {
+                BlockedChangeBox(lines: Array(dialog.body.dropFirst()), marksChanges: true)
+            }
         case .codexNetwork:
             EmptyView()
         }
@@ -272,10 +284,17 @@ private struct BlockedDialogCard: View {
 
     // MARK: Choices
 
-    /// Matches the planner: only Claude asks multi-select questions here;
-    /// Oh My Pi's stay in the terminal.
-    private var isMultiSelect: Bool {
-        dialog.kind == .claudeQuestion && dialog.options.contains { $0.role == .next }
+    /// Matches the planners: Claude's page with a `Next` button, and
+    /// Antigravity CLI's answers with check boxes. Oh My Pi's stay in the
+    /// terminal.
+    private var isMultiSelect: Bool { dialog.isMultiSelect }
+
+    /// What sends a multi-select page's answers: Claude's button, or
+    /// Antigravity CLI's Enter, which turns to the next question until the
+    /// last.
+    private var selectionTitle: String {
+        if let button = dialog.options.first(where: { $0.role == .next }) { return button.label }
+        return dialog.questionPage.map { $0.index < $0.count } == true ? "Next" : "Submit"
     }
 
     @ViewBuilder
@@ -295,7 +314,7 @@ private struct BlockedDialogCard: View {
             Button {
                 perform(.submitSelection(selection))
             } label: {
-                Text(verbatim: dialog.options.first { $0.role == .next }?.label ?? "Next")
+                Text(verbatim: selectionTitle)
                     .font(.body.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 28)
             }
@@ -420,7 +439,9 @@ private struct BlockedDialogCard: View {
             if let field = dialog.options.last(where: { $0.role == .otherText && $0.input != nil }) {
                 planFeedback(field)
             }
-        case .claudeQuestion:
+        case .agyCommand:
+            noteEntry
+        case .claudeQuestion, .agyQuestion:
             if !isMultiSelect, let field = dialog.options.first(where: { $0.role == .otherText && $0.input != nil }) {
                 VStack(alignment: .leading, spacing: 8) {
                     BlockedTextField(placeholder: field.label, text: $text, isFocused: $isTextFocused)
@@ -452,7 +473,8 @@ private struct BlockedDialogCard: View {
     private var noteEntry: some View {
         if isAddingNote {
             VStack(alignment: .leading, spacing: 8) {
-                BlockedTextField(placeholder: "Tell Claude what to do", text: $text, isFocused: $isTextFocused)
+                BlockedTextField(
+                    placeholder: "Tell \(dialog.program.chatName) what to do", text: $text, isFocused: $isTextFocused)
                 HStack(spacing: 8) {
                     if let allow = dialog.options.first(where: { $0.role == .approve }) {
                         Button("Allow with Note") { perform(.amend(ordinal: allow.ordinal, note: text)) }
@@ -613,6 +635,11 @@ extension DialogOption {
             return "Grok Build won't ask about edits again in this session."
         case .grok:
             return "Grok Build saves this rule for the project and won't ask again."
+        case .agy where folded.contains(DialogRowScanner.comparable("persist to settings.json")):
+            return
+                "Saves a rule in Antigravity CLI's settings, so commands that start this way aren't asked about again."
+        case .agy where folded.contains(DialogRowScanner.comparable("in this conversation")):
+            return "Antigravity CLI won't ask again in this conversation for commands that start this way."
         case .claude, .codex, .pi, .agy:
             return "Saves a rule, so this isn't asked again."
         case .opencode:
@@ -624,7 +651,8 @@ extension DialogOption {
 private extension BlockedDialog {
     var cardTitle: String {
         switch kind {
-        case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion:
+        case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion,
+            .agyQuestion:
             "Question"
         case .codexAsyncCollapsed: "Questions"
         case .ompApproval: "Allow \(subject.toolName ?? "Tool")"
@@ -634,17 +662,30 @@ private extension BlockedDialog {
     }
 
     /// Whether Stop does something a card can name: the planner refuses it
-    /// on Codex's asynchronous question, and on Grok Build's questions and
+    /// on Codex's asynchronous question, on Grok Build's questions and
     /// subagent panel, where Esc only parks the keyboard or keeps the turn
-    /// running.
-    var canStop: Bool { ![.codexAsyncQuestion, .grokQuestion, .grokCancelTurn, .grokFork].contains(kind) }
+    /// running, and on Antigravity CLI's trust prompt, where what Esc does
+    /// isn't known.
+    var canStop: Bool {
+        ![.codexAsyncQuestion, .grokQuestion, .grokCancelTurn, .grokFork, .agyWorkspaceTrust].contains(kind)
+    }
 
-    /// What Stop does, for the folded card and an open card whose options
-    /// don't send it: it quits Claude Code or Codex on the trust dialog
-    /// (Codex without `--no-daemon` goes back to its Agent Command Center
-    /// instead), only denies an Oh My Pi approval, presses a Grok Build
-    /// permission's reject row, rejects an OpenCode permission and
-    /// dismisses an OpenCode question, as OpenCode's `esc dismiss` says.
+    /// Whether the open card offers Esc itself: only when no option
+    /// already sends it.
+    var stopsFromCard: Bool {
+        canStop && !options.contains { [.decline, .exitProgram, .cancel].contains($0.role) }
+    }
+}
+
+extension BlockedDialog {
+    /// What Stop does, for the folded card, a question form and an open
+    /// card whose options don't send it: it quits Claude Code or Codex on
+    /// the trust dialog (Codex without `--no-daemon` goes back to its Agent
+    /// Command Center instead), only denies an Oh My Pi approval, presses a
+    /// Grok Build permission's reject row, rejects an OpenCode permission,
+    /// dismisses an OpenCode question, as OpenCode's `esc dismiss` says,
+    /// and skips the Antigravity CLI question on screen, as its `esc Skip`
+    /// says; the turn goes on.
     var stopTitle: String {
         switch kind {
         case .claudeWorkspaceTrust: "Exit Claude Code"
@@ -652,14 +693,9 @@ private extension BlockedDialog {
         case .ompApproval, .grokPermission: "Deny"
         case .openCodePermission: "Reject"
         case .openCodeQuestion: "Dismiss"
+        case .agyQuestion: "Skip"
         default: "Stop"
         }
-    }
-
-    /// Whether the open card offers Esc itself: only when no option
-    /// already sends it.
-    var stopsFromCard: Bool {
-        canStop && !options.contains { [.decline, .exitProgram, .cancel].contains($0.role) }
     }
 }
 

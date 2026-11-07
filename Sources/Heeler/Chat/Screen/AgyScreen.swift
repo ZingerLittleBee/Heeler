@@ -134,7 +134,7 @@ struct AgyScreen: Sendable {
     /// A grey `─` rule from column 0 at least `width` cells wide. The box's
     /// rules span the screen; the rule over a past prompt is at most 60
     /// columns, and three short of the width on narrower screens.
-    private static func isRule(_ row: ScreenRow, width: Int) -> Bool {
+    static func isRule(_ row: ScreenRow, width: Int) -> Bool {
         row.indent == 0 && DialogRowScanner.isRule(row, of: "─", minimumWidth: width)
             && row.visibleRuns.allSatisfy { $0.style.foreground == grey8 }
     }
