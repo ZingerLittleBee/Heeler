@@ -311,7 +311,7 @@ jobs:
           sudo tcpdump -i lo0 -nn -tt -S -l -s 80 'tcp and net 127.0.0.0/8' \
             > "$RUNNER_TEMP/ci630-tcp-headers.log" 2> "$RUNNER_TEMP/ci630-tcp-capture.log" &
           capture=$!
-          trap 'sudo kill -INT "$capture"; wait "$capture" || true' EXIT
+          trap 'sudo kill -TERM "$capture"; wait "$capture" || true' EXIT
           make test-ci-package
           python3 scripts/verify-ci-ios-evidence.py complete \
             --evidence-dir "$HEELER_CI_EVIDENCE_DIR" \
