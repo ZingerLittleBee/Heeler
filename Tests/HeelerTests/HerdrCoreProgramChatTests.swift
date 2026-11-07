@@ -320,6 +320,79 @@ struct HerdrCoreProgramChatTests {
                 == nil)
     }
 
+    // MARK: Antigravity CLI
+
+    /// agy waits for the owner's check in a core Terminal on Linux and on a Mac
+    /// (ADR 0034), and Windows reads hold none of the open files it binds from, so no
+    /// shipped list offers it, whatever a Windows list says. Herdr TUI offers it.
+    @Test func noShippedListOffersAntigravityCLIUntilTheOwnersCheck() {
+        #expect(!HostCapabilities.confirmedLinuxCoreChatPrograms.contains(.agy))
+        #expect(!HostCapabilities.confirmedMacOSCoreChatPrograms.contains(.agy))
+        #expect(!HostCapabilities.confirmedWindowsCoreChatPrograms.contains(.agy))
+        #expect(!HostCapabilities.windowsCoreChatCandidates.contains(.agy))
+        for kernel in ["Linux", "Darwin"] {
+            #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: kernel).offersChat(for: .agy))
+        }
+        #expect(
+            !HostCapabilities(
+                serverKind: .herdrCore, platform: .nativeWindows, coreKernel: "Windows",
+                coreWindowsChatPrograms: Set(ChatProgram.allCases)
+            ).offersChat(for: .agy))
+        #expect(HostCapabilities(serverKind: .herdrTUI).offersChat(for: .agy))
+    }
+
+    private static let agyRoot = "\(home)/.gemini/antigravity-cli"
+
+    private static func agyTranscript(_ session: String) -> String {
+        AgyTranscriptLocator.transcriptPath(inFolder: AgyTranscriptLocator.folder(in: agyRoot, id: session))
+    }
+
+    /// Offered by this test's own list, as the owner's check would turn it on: Chat
+    /// follows the conversation whose presence lock agy holds, and after `/clear`,
+    /// which reports no status from idle, the check before a Send finds the moved
+    /// lock and holds that Send.
+    @Test(arguments: ["Linux", "Darwin"])
+    func anAntigravityCLIOfferedByATestsListFollowsItsHeldLock(_ kernel: String) async throws {
+        let first = "3af3ed7f-0f65-423c-8ef4-69072caf1e06"
+        let cleared = "3760d133-2936-4a32-95b4-8437ce7a8fbe"
+        let rig = Rig(
+            host: host, record: Self.record(foreground: ["agy"], name: "agy", app: "antigravity"), offering: [.agy])
+        let row = Self.process(
+            name: "agy", environment: [:], argv: ["agy"],
+            files: [
+                "\(Self.agyRoot)/presence/\(first).lock", "\(Self.agyRoot)/brain/\(first)",
+                "\(Self.agyRoot)/conversations/\(first).db",
+            ])
+        let turns = try ChatFixture.data("agy/core-turns.jsonl")
+        await rig.files.write(turns, at: Self.agyTranscript(first))
+        try await rig.start([row], kernel: kernel)
+        let agent = try #require(rig.agent)
+        #expect(rig.store.chatProgram(for: agent) == .agy)
+        let chat = try rig.chat(.agy)
+
+        chat.show()
+
+        try await rig.waitUntil("Chat to follow it") {
+            chat.conversation.phase == .following(path: Self.agyTranscript(first))
+        }
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+
+        var moved = row
+        moved.openFiles = [
+            "\(Self.agyRoot)/presence/\(cleared).lock", "\(Self.agyRoot)/brain/\(first)",
+            "\(Self.agyRoot)/conversations/\(first).db", "\(Self.agyRoot)/brain/\(cleared)",
+        ]
+        await rig.transport.processTable.add(moved)
+        await rig.files.write(turns, at: Self.agyTranscript(cleared))
+
+        #expect(await chat.confirmSessionBeforeSend() != nil)
+        try await rig.waitUntil("Chat to move with the lock") {
+            chat.conversation.phase == .following(path: Self.agyTranscript(cleared))
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     // MARK: Codex
 
     private static let codexThread = "01a10f87-e025-7fb1-8974-8dd09937767a"

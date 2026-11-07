@@ -453,7 +453,7 @@ extension ChatProgram {
         case .claude, .pi, .omp:
             "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal."
         case .agy:
-            "Heeler can't yet read which conversation Antigravity CLI shows on this Host. You can continue in the Agent terminal."
+            "Antigravity CLI shows its conversation with the first message, or as it starts when it resumes one, so send one in the terminal. One opened on a conversation that's already open in another terminal never shows it."
         }
     }
 

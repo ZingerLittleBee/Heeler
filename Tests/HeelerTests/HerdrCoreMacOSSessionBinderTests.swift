@@ -487,17 +487,89 @@ struct HerdrCoreMacOSSessionBinderTests {
         #expect(try await linux.check(try rig.record()) == entry.evidence)
     }
 
-    /// No macOS recording read Antigravity CLI, and its presence-lock binding
-    /// is not implemented, so a macOS Host never binds it exactly, and
-    /// neither does any other: it can't tell.
-    @Test func antigravityIsNotBoundExactly() async throws {
-        #expect(HostCapabilities.macOSExactCoreChatPrograms == Set(ChatProgram.allCases).subtracting([.agy]))
-        let rig = try await Rig("claude-direct")
+    // MARK: Antigravity CLI
 
-        let shipped = rig.binder(.agy, exact: HostCapabilities.macOSExactCoreChatPrograms)
-        #expect(try await shipped.check(try rig.record()) == Self.cannotTell(.agy))
-        #expect(try await rig.binder(.agy).check(try rig.record()) == Self.cannotTell(.agy))
-        #expect(await rig.log.cleared.isEmpty)
+    /// agy 1.5.3 on a signed-in Mac, outside a core (`host-evidence/agy`): its rows
+    /// through the macOS script's lines and the real parser, with a record naming agy
+    /// as the Terminal's own process and its foreground.
+    private static func agyBinder(
+        _ scene: String, exact: Set<ChatProgram> = HostCapabilities.macOSExactCoreChatPrograms,
+        configure: (MacOSProcessTable) async -> Void = { _ in }
+    ) async throws -> (HerdrCoreSessionBinder, HerdrCoreTerminalRecord, VirtualHostFiles) {
+        let scene = try HostEvidenceFixture.named("agy/presence-lock-1.5.3").scene(scene)
+        let row = try #require(scene.processes?.first)
+        let table = MacOSProcessTable([row])
+        await configure(table)
+        let files = VirtualHostFiles(home: "/Users/developer")
+        var binder = HerdrCoreSessionBinder(
+            program: .agy, processes: { try await table.read($0) }, files: files.hostFiles(), clearLabels: { _ in })
+        binder.hostSystem = .macOS
+        binder.macOSExactPrograms = exact
+        let name = JSONValue.string("agy")
+        let record = try JSONDecoder().decode(
+            HerdrCoreTerminalRecord.self,
+            from: try JSONEncoder().encode(
+                JSONValue.object([
+                    "address": .string("t1"), "cwd": .string("/Users/developer/lab"), "state": .string("live"),
+                    "argv": .array([name]), "keep": .bool(true), "title": .string(""), "cols": .number(80),
+                    "rows": .number(24), "name": .null, "reason": .null, "pid": .number(Double(row.pid)),
+                    "labels": .object([:]),
+                    "foreground": .object([
+                        "pid": .number(Double(row.pid)), "name": name, "argv": .array([name]),
+                        "cwd": .string("/Users/developer/lab"),
+                    ]),
+                ])))
+        return (binder, record, files)
+    }
+
+    /// The reader's own macOS read of a probe's agy is what the macOS Host binds from.
+    /// The owner's check in a core Terminal has not run, so no Mac offers it yet.
+    @Test func antigravityBindsExactlyFromItsMacOSRead() async throws {
+        #expect(HostCapabilities.macOSExactCoreChatPrograms.contains(.agy))
+        #expect(!HostCapabilities.confirmedMacOSCoreChatPrograms.contains(.agy))
+        let (binder, record, files) = try await Self.agyBinder("after-first-prompt")
+
+        #expect(
+            try await binder.check(record)
+                == .bound(
+                    sessionID: "95739799-ba8d-4e64-90ee-04991d45f22d",
+                    transcriptRoot: "/Users/developer/.gemini/antigravity-cli", directory: nil))
+        #expect(await files.reads.isEmpty)
+
+        let (atPrompt, atPromptRecord, _) = try await Self.agyBinder("at-prompt")
+        #expect(try await atPrompt.check(atPromptRecord) == Self.cannotTell(.agy))
+    }
+
+    /// Left out of the exact set, it reads as cannot tell and lists what it holds.
+    @Test func antigravityLeftUnconfirmedListsWhatItHolds() async throws {
+        let (binder, record, _) = try await Self.agyBinder(
+            "follow-after-clear", exact: Set(ChatProgram.allCases).subtracting([.agy]))
+
+        #expect(try await binder.check(record) == Self.cannotTell(.agy))
+        let answer = try await binder.candidates(of: record)
+        guard case .listed(let list) = answer else {
+            Issue.record("Expected a list, got \(answer)")
+            return
+        }
+        #expect(
+            Set(list.candidates.map(\.sessionID))
+                == ["3760d133-2936-4a32-95b4-8437ce7a8fbe", "3af3ed7f-0f65-423c-8ef4-69072caf1e06"])
+        #expect(list.candidates.allSatisfy { $0.origins == [.heldOpen] })
+    }
+
+    /// A Mac with no `lsof` answers `-`, which says nothing held is known.
+    @Test func antigravityWithOpenFilesThatCannotBeReadCannotTell() async throws {
+        let (binder, record, _) = try await Self.agyBinder("after-first-prompt") {
+            await $0.stopAnsweringOpenFiles()
+        }
+
+        #expect(try await binder.check(record) == Self.cannotTell(.agy))
+        let answer = try await binder.candidates(of: record)
+        guard case .listed(let list) = answer else {
+            Issue.record("Expected a list, got \(answer)")
+            return
+        }
+        #expect(list.candidates.isEmpty)
     }
 
     /// The one confirmation still works there.

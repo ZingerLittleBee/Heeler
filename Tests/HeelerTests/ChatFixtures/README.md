@@ -42,8 +42,10 @@ below.
 | `agy/written-for-tests.jsonl` | Written for the test, not captured: a `view_file` of an image with its `media`, a failed `replace_file_content`, an `ERROR_MESSAGE`, a background command and its end, an unknown tool, a reminder, an `EPHEMERAL_MESSAGE`, a step type agy never wrote, a restart notice that stopped a running task, a canceled task, and a command that exited 1. The steps take the shapes the captures show |
 
 `host-evidence/` is a separate recording, for the herdr-core session binding of
-ADR 0034. `HerdrCoreProgramBinderTests` reads the `.json` scenes of `codex/`, `grok/`
-and `opencode/`, `OpenCodeStoreQueryTests` the schemas, and the Pi and Oh My Pi binder
+ADR 0034. `HerdrCoreProgramBinderTests` reads the `.json` scenes of `codex/`, `grok/`,
+`opencode/` and `agy/`, which the macOS and Linux binder suites also read, the Linux one
+with its paths moved under that Host's home since no Linux run recorded agy,
+`OpenCodeStoreQueryTests` the schemas, and the Pi and Oh My Pi binder
 tests the scenes and core event streams of `pi/` and `omp/` through `PiHostEvidence`.
 No test reads `reply-held.json`, `omp/session-lock-by-id.json`, since no check reads a
 lock, or the Codex, Grok Build and OpenCode core event streams, whose captures start
@@ -75,6 +77,7 @@ process rows shaped for `ScriptedProcessTable.Process`, plus the files as read.
 | `host-evidence/omp/session-lock-by-id.json` | Oh My Pi 18.13.3: the lock its process holds while the title is held, and the names its own `tryAcquireSessionLease` binds for the same ids and for invented ids and homes. The hash is not identified |
 | `host-evidence/macos/vm-26.5.json` | herdr-core 0.1.13 on macOS 26.5 in a throwaway VM with SIP off, no sign-in and a fake model: each program's rows as `HostProcessReader`'s macOS script read them, trimmed to terminals and session files, the core's record, and the files as read. Rollouts keep their first line's identifying fields. Its `record` field is the core's `terminal.get` |
 | `host-evidence/linux/hc-lab-signed-in.json` | herdr-core 0.1.13 on hc-lab (Debian 13, Linux 6.18 x86_64), Codex and Grok Build signed in and the others on an API-key provider, real `HOME` `/data/home`: Codex CLI 0.165.0 `--no-daemon` before its first prompt and after its reply, plain `codex` on the box's 0.160.0 app-server daemon, Grok Build 1.0.70 `-s`, OpenCode 2.2.2 `-s ses…`, Pi 1.4.0 `--session-id` and two Oh My Pi 18.13.3 on bun 1.4.4, all without the Host Helper's extension. Rows are a watcher's samples of each Terminal's process and its descendants by parent; `record` is the core's reply to `terminal.run` with the foreground its events named. Its `method` and `observed` fields say what was rebuilt and what the run saw beyond the rows |
+| `host-evidence/agy/presence-lock-1.5.3.json` | Antigravity CLI 1.5.3 signed in on macOS 27.0.1 (2026-11-07), in a plain PTY with no herdr or herdr-core, from the #644 probes' scratch conversations: the presence locks, brain folders and databases its process held at the prompt, after the first reply, after `/clear` and `/fork`, when resumed by id and after `/clear` from there, and for two agy on one conversation. `after-first-prompt` is `HostProcessReader`'s macOS open-file read itself; `at-prompt` is plain `lsof` cut to that read's rows; the other scenes kept only `presence/`, `brain/` and `conversations/` paths. No core ran, so `parent`, `start` and `HC_SCOPE` were written for the tests and there is no `record`. The account name became `developer` and the scratch directory `/Users/developer/lab`; its `method` and `observed` fields say the rest |
 | `host-evidence/reply-held.json` | All five with the fake model holding each reply, Pi on 0.85.1 and 1.4.0 and OpenCode on 2.0.32 and 2.2.5: what existed during the hold |
 | `host-evidence/*/*-core-events.ndjson` | The core's event stream for the same runs, from `scripts/lab/herdr-core-capture.py` |
 

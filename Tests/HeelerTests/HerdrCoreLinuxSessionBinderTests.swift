@@ -125,4 +125,61 @@ struct HerdrCoreLinuxSessionBinderTests {
         #expect(request.namesWithPrefix.isEmpty)
         #expect(asked.contains("HC_SCOPE"))
     }
+
+    // MARK: Antigravity CLI
+
+    /// No Linux run has shown agy yet. Its lock is `jetski/presence/lock_unix.go`'s
+    /// on both systems, so these take the macOS recording (`host-evidence/agy`) with
+    /// its paths moved under this Host's home, read the way a Linux Host reads them:
+    /// `/proc/<pid>/fd` targets, which name the same files.
+    private nonisolated static func agyRig(_ scene: String) async throws -> (ScriptedProcessTable, HerdrCoreTerminalRecord) {
+        let row = try #require(try HostEvidenceFixture.named("agy/presence-lock-1.5.3").scene(scene).processes?.first)
+        var process = row.process
+        process.environment["HOME"] = home
+        process.openFiles = row.files.map { $0.replacingOccurrences(of: "/Users/developer", with: home) }
+        let table = ScriptedProcessTable()
+        await table.add(process)
+        let name = JSONValue.string("agy")
+        let record = try JSONDecoder().decode(
+            HerdrCoreTerminalRecord.self,
+            from: try JSONEncoder().encode(
+                JSONValue.object([
+                    "address": .string("t1"), "cwd": .string("\(home)/user/projects/agy"), "state": .string("live"),
+                    "argv": .array([name]), "keep": .bool(true), "title": .string(""), "cols": .number(80),
+                    "rows": .number(24), "name": .null, "reason": .null, "pid": .number(Double(row.pid)),
+                    "labels": .object([:]),
+                    "foreground": .object([
+                        "pid": .number(Double(row.pid)), "name": name, "argv": .array([name]),
+                        "cwd": .string("\(home)/user/projects/agy"),
+                    ]),
+                ])))
+        return (table, record)
+    }
+
+    /// Each scene and the conversation its lock names, none before the first prompt
+    /// and none for a second agy on a conversation already open.
+    private nonisolated static let agyScenes: [(scene: String, session: String?)] = [
+        ("after-first-prompt", "95739799-ba8d-4e64-90ee-04991d45f22d"),
+        ("follow-after-fork", "eeb92e4d-a862-4caa-972f-c23cd05e6d69"),
+        ("at-prompt", nil),
+        ("second-instance", nil),
+    ]
+
+    @Test(arguments: agyScenes)
+    func antigravityBindsFromTheLockItHolds(_ entry: (scene: String, session: String?)) async throws {
+        let (scene, session) = entry
+        let (table, record) = try await Self.agyRig(scene)
+        let files = VirtualHostFiles(home: Self.home)
+        let binder = HerdrCoreSessionBinder(
+            program: .agy, processes: { try await table.read($0) }, files: files.hostFiles(), clearLabels: { _ in })
+
+        let evidence = try await binder.check(record)
+
+        #expect(
+            evidence
+                == session.map { .bound(sessionID: $0, transcriptRoot: "\(Self.home)/.gemini/antigravity-cli", directory: nil) }
+                ?? Self.cannotTell(.agy))
+        #expect(await table.requests.count == 1)
+        #expect(await files.reads.isEmpty)
+    }
 }

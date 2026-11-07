@@ -83,12 +83,10 @@ extension HerdrCoreSessionBinder {
     /// The id or file the label names, in the form this program's Chat reads it.
     private func pickedConversation(_ hint: HerdrCoreSessionHint) -> String? {
         switch program {
-        case .claude, .codex: ConversationReference.canonicalUUID(hint.session)
+        case .claude, .codex, .agy: ConversationReference.canonicalUUID(hint.session)
         case .grok: ConversationReference.lowercaseUUID(hint.session)
         case .opencode: OpenCodeSessionID(hint.session)?.rawValue
         case .pi, .omp: hint.piSession(onWindows: isOnWindows)
-        // Its binding is not implemented, so a pick names nothing it reads.
-        case .agy: nil
         }
     }
 }

@@ -142,6 +142,10 @@ enum HerdrCoreLaunch {
             return SessionStart(flags: ["-s", id], hint: id)
         case .codex:
             return SessionStart(flags: ["--no-daemon"])
+        // agy 1.5.3 warns that `--conversation <new id>` is not found and creates
+        // nothing under it, so its presence lock is its only evidence (ADR 0034).
+        case .antigravity:
+            return SessionStart()
         default:
             return SessionStart()
         }

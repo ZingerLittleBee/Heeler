@@ -1,6 +1,7 @@
 import Foundation
 
-/// The evidence ADR 0034 names for Codex, Grok Build and OpenCode. None of it
+/// The evidence ADR 0034 names for Codex, Grok Build, OpenCode and Antigravity
+/// CLI. None of it
 /// counts until the recorded shape in `ChatFixtures/host-evidence` matches, and a
 /// shape it does not know binds nothing.
 extension HerdrCoreSessionBinder {
@@ -308,5 +309,75 @@ extension HerdrCoreSessionBinder {
             zip(argv, argv.dropFirst()).contains(where: { $0 == "-s" && $1 == label })
         else { return cannotTell }
         return .bound(sessionID: session.rawValue, transcriptRoot: nil, directory: nil)
+    }
+
+    // MARK: Antigravity CLI
+
+    /// A conversation's presence lock, and the data root it is under.
+    struct AntigravityLock: Hashable {
+        let session: String
+        let root: String
+    }
+
+    /// agy holds `<data root>/presence/<conversation id>.lock` under an exclusive
+    /// lock for the conversation on its screen: from the first prompt of a new one,
+    /// and from its start for one it resumes by id. `/clear` and `/fork` move it at
+    /// once (agy 1.5.3 on macOS, `host-evidence/agy/presence-lock-1.5.3.json`). Lock
+    /// files outlive their process, and a second agy on a conversation already open
+    /// holds none, so only a lock the Agent holds open counts, and the brain folder
+    /// and database of a conversation it left with `/clear` or `/fork` stay open
+    /// and never bind. One lock is the whole proof, so a check reads no file.
+    func checkAntigravity(_ tree: HerdrCoreTerminalProcesses) -> ChatSessionEvidence {
+        guard let pid = agentProcess(in: tree), let process = tree.facts[pid],
+            case .value(let files) = process.openFiles
+        else { return cannotTell }
+        // lsof lists a file once per descriptor, so the same lock twice is one.
+        let held = Set(files.compactMap(Self.antigravityLock(held:)))
+        // One process holds one: anything else is a release no recording shows.
+        guard held.count == 1, let lock = held.first else { return cannotTell }
+        // The root the process really writes under, whatever its `HOME` says.
+        return .bound(sessionID: lock.session, transcriptRoot: lock.root, directory: nil)
+    }
+
+    /// `<root>/presence/<uuid>.lock`, with a root a read can take. The folder must be
+    /// `presence` itself: agy also holds `config/projects/<uuid>.json` and
+    /// `brain/<uuid>`, and neither says what the screen shows.
+    static func antigravityLock(held path: String) -> AntigravityLock? {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count >= 3, parts[parts.count - 2] == "presence", let leaf = parts.last, leaf.hasSuffix(".lock"),
+            let session = ConversationReference.canonicalUUID(String(leaf.dropLast(".lock".count)))
+        else { return nil }
+        let root = parts.dropLast(2).joined(separator: "/")
+        guard RemoteFilePath.isAcceptable(root) else { return nil }
+        return AntigravityLock(session: session, root: root)
+    }
+
+    /// A conversation whose files an agy process holds: its lock, its brain folder
+    /// or its database. A second agy on a conversation already open holds the last
+    /// two alone, which only a confirmation can take (`host-evidence/agy`).
+    static func antigravityConversation(held path: String) -> String? {
+        if let lock = antigravityLock(held: path) { return lock.session }
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count >= 3, RemoteFilePath.isAcceptable(path), let leaf = parts.last else { return nil }
+        switch parts[parts.count - 2] {
+        case "brain": return ConversationReference.canonicalUUID(String(leaf))
+        case "conversations" where leaf.hasSuffix(".db"):
+            return ConversationReference.canonicalUUID(String(leaf.dropLast(".db".count)))
+        default: return nil
+        }
+    }
+
+    /// `HOME`, for the data root a pick and the candidate list read under.
+    var antigravityProcessAsk: ProcessAsk {
+        ProcessAsk(values: [Self.homeVariable], readsOpenFiles: true)
+    }
+
+    /// `~/.gemini/antigravity-cli` under the Agent's own `HOME`. No variable is known
+    /// to move it (agy 1.5.3), so nothing else is asked.
+    func antigravityRoot(of process: HostProcessReader.Facts) -> String? {
+        guard case .value(let home)? = process.variables[Self.homeVariable], RemoteFilePath.isAcceptable(home) else {
+            return nil
+        }
+        return RemoteFilePath.join(home, AgyTranscriptLocator.defaultRoot)
     }
 }

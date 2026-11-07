@@ -129,7 +129,8 @@ extension HostCapabilities {
     }
 
     /// What Chat on a native Windows core Host can ever open (ADR 0034). Codex and
-    /// OpenCode stay without it.
+    /// OpenCode stay without it, and so does Antigravity CLI, whose only evidence is a
+    /// file it holds open, which nothing reads there.
     static let windowsCoreChatCandidates: Set<ChatProgram> = [.claude, .grok, .pi, .omp]
 
     /// The programs whose Chat a native Windows core Host opens, each once the owner's
@@ -150,20 +151,22 @@ extension HostCapabilities {
     /// and Oh My Pi 18.13.3 on an API-key provider. OpenCode stays off, since this list
     /// turns a program on for every release: 2.2.2 passed, but on the recheck
     /// (2026-11-04) a 1.19.5 Agent's last turn never ended in Chat, and every Send from
-    /// Chat found no input box on screen.
+    /// Chat found no input box on screen. Antigravity CLI binds there from its
+    /// presence lock, which no Linux run has shown yet, and waits for its own check.
     static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp]
 
     /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in
     /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New
     /// Agent reached only candidates there and 2.1 or later was not run, so it stays off.
+    /// Antigravity CLI 1.5.3's presence lock was read on a Mac only outside a core
+    /// (`host-evidence/agy`), so it waits for the owner's check in a core Terminal.
     static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp]
 
     /// The programs a macOS core Host binds exactly, each from reads the macOS
-    /// recordings saw it through (ADR 0034, `host-evidence/macos`). Taking one out
+    /// recordings saw it through (ADR 0034, `host-evidence/macos`, and for Antigravity
+    /// CLI the reader's own open-file read in `host-evidence/agy`). Taking one out
     /// leaves it to the candidate list on macOS, and changes nothing on Linux.
-    /// Antigravity CLI is left out: no recording read it, and its binding is not
-    /// implemented.
-    static let macOSExactCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp, .grok, .opencode]
+    static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases)
 }
 
 extension Host {

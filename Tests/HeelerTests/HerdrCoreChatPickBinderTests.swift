@@ -73,11 +73,12 @@ struct HerdrCoreChatPickBinderTests {
         case .grok: "\(home)/.grok"
         case .pi: "\(home)/.pi/agent/sessions"
         case .omp: "\(home)/.omp/agent/sessions"
-        case .opencode, .agy: nil
+        case .agy: "\(home)/.gemini/antigravity-cli"
+        case .opencode: nil
         }
     }
 
-    private nonisolated static let programs: [ChatProgram] = [.claude, .codex, .grok, .opencode, .pi, .omp]
+    private nonisolated static let programs: [ChatProgram] = [.claude, .codex, .grok, .opencode, .pi, .omp, .agy]
 
     private static func conversation(_ program: ChatProgram) -> String {
         program == .opencode ? openCodeID : uuid
@@ -543,6 +544,39 @@ struct HerdrCoreChatPickBinderTests {
         #expect(elsewhere.candidates.isEmpty)
         #expect(here.candidates.map(\.sessionID) == [thread])
         #expect(here.candidates.first?.origins == [.recentTranscript])
+    }
+
+    /// agy names its conversations by id and files none by directory, so the list is
+    /// what the process holds: a lock, a brain folder, a database. A project file of
+    /// agy's own config is no conversation, and nothing is listed from a folder.
+    @Test func antigravityListsTheConversationsItHoldsOpen() async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        await Self.holding(rig, [
+            "\(root)/brain/\(Self.uuid)", "\(root)/brain/\(Self.uuid)/scratch",
+            "\(root)/conversations/\(Self.other).db", "\(root)/conversations/\(Self.other).db-wal",
+            "\(Self.home)/.gemini/config/projects/11111111-1111-4111-8111-111111111111.json",
+        ])
+
+        let list = try await Self.list(rig)
+
+        #expect(list.transcriptRoot == root)
+        #expect(list.candidates.map(\.sessionID) == [Self.other, Self.uuid])
+        #expect(list.candidates.allSatisfy { $0.origins == [.heldOpen] && $0.file == nil })
+        #expect(await rig.files.listings.isEmpty)
+        #expect(await rig.files.reads.isEmpty)
+    }
+
+    /// Exact evidence takes over from a pick the moment agy holds a lock.
+    @Test func anAntigravityLockTakesOverFromAPick() async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        await Self.holding(rig, ["\(root)/presence/\(Self.other).lock"])
+
+        let evidence = try await rig.binder.check(try Self.record(.agy, labels: ["heeler.chat": Self.label()]))
+
+        #expect(evidence == .bound(sessionID: Self.other, transcriptRoot: root, directory: nil))
+        #expect(await rig.log.cleared == ["heeler.chat"])
     }
 
     /// The Agent's process is what a confirmation binds to, so no process, no list.

@@ -316,6 +316,18 @@ struct HerdrCoreLaunchTests {
         #expect(Self.labels(of: omp).isEmpty)
     }
 
+    /// `agy --conversation <new id>` warns it is not found and creates nothing, so
+    /// Heeler gives it no id, and its presence lock is the evidence (ADR 0034).
+    @Test func antigravityCLIStartsWithNoConversationFlagOrHint() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+
+        let params = try await fixture.launch(.antigravity)
+
+        #expect(Self.program(of: params) == ["agy"])
+        #expect(Self.labels(of: params).isEmpty)
+    }
+
     @Test(arguments: [
         ("2.2.2", true), ("opencode v2.2.2", true), ("v2.1.0-beta.1", true), ("2.1", true), ("3.0.0", true),
         ("1.19.5", false), ("2.0.32", false), ("opencode v2.0.32", false), ("0.0.0-main-2025", false),

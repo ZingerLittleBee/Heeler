@@ -139,9 +139,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 case .grok: try await checkGrokBuild(tree)
                 case .opencode: try await checkOpenCode(record, tree: tree)
                 case .pi, .omp: try await checkPiFamily(record, tree: tree)
-                // Antigravity CLI holds a presence lock named for its
-                // conversation; binding by it is not implemented yet.
-                case .agy: cannotTell
+                case .agy: checkAntigravity(tree)
                 }
         }
         return await applyingPick(to: evidence, record: record, tree: tree)
@@ -195,8 +193,9 @@ struct HerdrCoreSessionBinder: Sendable {
                 namesOf: ChatTranscriptOffVariable.allCases.map(\.rawValue))
         case .codex: codexProcessAsk
         case .grok: grokProcessAsk
-        case .opencode, .agy: ProcessAsk()
+        case .opencode: ProcessAsk()
         case .pi, .omp: piFamilyProcessAsk
+        case .agy: antigravityProcessAsk
         }
     }
 
@@ -216,8 +215,10 @@ struct HerdrCoreSessionBinder: Sendable {
                 ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" })
         case .opencode: tree.agent(isAgent: { $0?.name == "opencode" })
         case .pi, .omp: piFamilyAgent(in: tree)
-        // Not implemented with the presence-lock binding.
-        case .agy: nil
+        // A native binary that calls itself `agy`, with nothing of its own under
+        // it at the prompt (agy 1.5.3, `host-evidence/agy`). Windows never asks:
+        // its reads hold no open files, so `check` answers before any exec there.
+        case .agy: tree.agent(isAgent: { $0?.name == "agy" })
         }
     }
 
@@ -228,8 +229,9 @@ struct HerdrCoreSessionBinder: Sendable {
         case .claude: Self.configRoot(of: process, variable: Self.configVariable, underHome: ".claude")
         case .codex: codexHome(of: process)
         case .grok: grokHome(of: process)
-        case .opencode, .agy: nil
+        case .opencode: nil
         case .pi, .omp: piFamilySessions(of: process)
+        case .agy: antigravityRoot(of: process)
         }
     }
 

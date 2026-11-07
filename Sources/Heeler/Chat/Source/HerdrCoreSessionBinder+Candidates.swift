@@ -125,11 +125,9 @@ extension HerdrCoreSessionBinder {
     /// (`host-evidence/grok/s-flag-core-events.ndjson`).
     private func statusChildConversation(_ key: String) -> String? {
         switch program {
-        case .claude, .codex, .pi, .omp: ConversationReference.canonicalUUID(key)
+        case .claude, .codex, .pi, .omp, .agy: ConversationReference.canonicalUUID(key)
         case .grok: ConversationReference.lowercaseUUID(key)
         case .opencode: OpenCodeSessionID(key)?.rawValue
-        // Its binding is not implemented.
-        case .agy: nil
         }
     }
 
@@ -168,7 +166,9 @@ extension HerdrCoreSessionBinder {
         case .pi, .omp:
             guard let session = Self.piSession(inFileName: leaf), RemoteFilePath.isAcceptable(path) else { return nil }
             return Found(session: session, file: path)
-        case .codex, .agy:
+        case .agy:
+            return Self.antigravityConversation(held: path).map { Found(session: $0) }
+        case .codex:
             return nil
         }
     }
@@ -201,6 +201,12 @@ extension HerdrCoreSessionBinder {
         case .grok: return try await recentGrokBuild(root: root, directories: directories)
         case .opencode: return try await recentOpenCode(directories: directories)
         case .pi, .omp: return try await recentPiFamily(root: root, process: process, directories: directories)
+        // agy files conversations by id, not by directory. Its `history.jsonl`
+        // names a workspace, but it is one log for every agy on the data root,
+        // with no end to its size, and a new conversation's first prompt carries
+        // no id, so the conversation just started here is the one it cannot name
+        // (agy 1.5.3, `docs/research/antigravity-cli-transcript-format.md`). The
+        // list holds what the process has open.
         case .agy: return []
         }
     }
