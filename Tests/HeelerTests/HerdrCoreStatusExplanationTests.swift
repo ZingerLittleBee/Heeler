@@ -29,6 +29,7 @@ import Testing
         ("opencode", "OpenCode", "2.1"),
         ("pi", "Pi", "1.1.0"),
         ("omp", "Oh My Pi", "18.8.7"),
+        ("agy", "Antigravity CLI", "1.4.0"),
     ])
     func aProgramNamesItsFirstReportingRelease(executable: String, program: String, release: String) throws {
         let explanation = try #require(

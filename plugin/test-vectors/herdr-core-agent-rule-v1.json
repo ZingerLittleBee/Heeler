@@ -12,7 +12,8 @@
     "opencode": "opencode",
     "pi": "pi",
     "omp": "omp",
-    "grok-build": "grok"
+    "grok-build": "grok",
+    "antigravity": "agy"
   },
   "cases": [
     {
@@ -562,6 +563,124 @@
         "kind": "grok",
         "known": true,
         "status": "working"
+      }
+    },
+    {
+      "name": "antigravity maps to agy while it names the foreground",
+      "source": "agy 1.5.3 on macOS, 2026-11-07, in a plain PTY with AGY_CLI_OSC7501=on (#644): it reports app=antigravity; no core recorded it",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "agy",
+          "argv": [
+            "agy"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "antigravity"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "agy",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "antigravity with an ordinary program in the foreground is no Agent",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "vim",
+          "argv": [
+            "vim",
+            "notes.md"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "antigravity"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "antigravity with only a launch command that names it is an Agent until a foreground arrives",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "agy"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "working",
+          "app": "antigravity"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "agy",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "a report from antigravity does not move another known program's status",
+      "source": "ADR 0032, the Agent rule",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "blocked",
+          "app": "antigravity"
+        },
+        "reported": true
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
       }
     },
     {

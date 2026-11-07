@@ -17,6 +17,7 @@ export const REPORTED_APPS = {
   pi: "pi",
   omp: "omp",
   "grok-build": "grok",
+  antigravity: "agy",
 };
 
 const reportedKind = (app) => (Object.hasOwn(REPORTED_APPS, app) ? REPORTED_APPS[app] : null);

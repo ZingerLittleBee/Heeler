@@ -18,6 +18,8 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
         "opencode": (program: "OpenCode", release: "2.1"),
         "pi": (program: "Pi", release: "1.1.0"),
         "omp": (program: "Oh My Pi", release: "18.8.7"),
+        // From agy's own changelog, embedded in its 1.5.3 binary.
+        "agy": (program: "Antigravity CLI", release: "1.4.0"),
     ]
 
     /// Nil unless the record holds an Agent reading Unknown.
