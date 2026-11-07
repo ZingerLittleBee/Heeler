@@ -170,7 +170,11 @@ struct StartAgentView: View {
                     case _ where store.isStartingTemplate:
                         HStack {
                             ProgressView()
-                            Text("Starting \(store.selectedTemplate?.name ?? "the Template")…")
+                            if let name = store.selectedTemplate?.name {
+                                Text("Starting \(name)…")
+                            } else {
+                                Text("Starting the Template…")
+                            }
                         }
                     case .idle:
                         Text("Select a Host to detect installed Agents.")

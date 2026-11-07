@@ -40,7 +40,7 @@ struct HostConnectionDetailPresentation: Equatable {
             failure = retrying
             title = String(localized: "Reconnecting")
             tone = .reconnecting
-            self.attempt = "Attempt \(attempt)"
+            self.attempt = String(localized: "Attempt \(attempt)")
             isDialing = false
             canStop = true
         case .failed(let stopped):
@@ -137,7 +137,7 @@ struct HostConnectionDetailContent: View {
                 }
                 Text(
                     presentation.isDialing
-                        ? "Connecting to \(presentation.address)…" : presentation.address
+                        ? String(localized: "Connecting to \(presentation.address)…") : presentation.address
                 )
                 .font(.subheadline.monospaced())
                 .foregroundStyle(.secondary)

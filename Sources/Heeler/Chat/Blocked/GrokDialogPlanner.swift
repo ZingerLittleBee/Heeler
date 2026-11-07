@@ -54,13 +54,13 @@ struct GrokDialogPlanner {
             return try press(option)
         case .dismiss:
             guard let reject = dialog.options.first(where: { $0.role == .decline }) else {
-                throw .unsupported("The permission has no reject row.")
+                throw .unsupported(String(localized: "The permission has no reject row."))
             }
             return try press(reject)
         case .amend, .respond:
             throw .unsupported(String(localized: "Heeler doesn't type feedback into Grok Build's permissions. Add it in the terminal."))
         case .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The permission has no such action.")
+            throw .unsupported(String(localized: "The permission has no such action."))
         }
     }
 
@@ -87,7 +87,7 @@ struct GrokDialogPlanner {
             // Shift+X skips, unconfirmed on 1.0.62.
             throw .unsupported(String(localized: "Skip Grok Build's question in the terminal."))
         case .dismiss, .approvePlan, .submitSelection, .expandQuestions:
-            throw .unsupported("The question has no such action.")
+            throw .unsupported(String(localized: "The question has no such action."))
         }
     }
 
@@ -108,21 +108,23 @@ struct GrokDialogPlanner {
         case .respond, .amend:
             throw Self.typedAnswer
         case .dismiss, .skipQuestion, .approvePlan, .submitSelection, .expandQuestions:
-            throw .unsupported("The fork question has no such action.")
+            throw .unsupported(String(localized: "The fork question has no such action."))
         }
     }
 
     /// `1` stops the turn and its subagents; `2` ends the turn and keeps
     /// them running. Esc would keep the turn running.
     private func cancelPanel(_ action: DialogAction) throws(DialogPlanError) -> DialogActionPlan {
-        guard case .choose(let ordinal) = action else { throw .unsupported("The panel has no such action.") }
+        guard case .choose(let ordinal) = action else {
+            throw .unsupported(String(localized: "The panel has no such action."))
+        }
         guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
         return try press(option)
     }
 
     private func press(_ option: DialogOption) throws(DialogPlanError) -> DialogActionPlan {
         guard let key = DialogActionPlanner.digitKey(option.number) else {
-            throw .unsupported("Option \(option.ordinal) has no digit key.")
+            throw .unsupported(String(localized: "Option \(option.ordinal) has no digit key."))
         }
         return Self.plan(key)
     }

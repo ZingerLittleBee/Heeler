@@ -250,7 +250,9 @@ enum OMPDialogParser {
     private static let otherLabel = "Other (type your own)"
     private static let recommendedSuffix = " (Recommended)"
     private static let submitTab = "Submit"
-    private static let reviewTitle = "Review answers"
+    /// Oh My Pi's review page as it draws it: the page's title and progress,
+    /// which the planner expects after the last question.
+    static let reviewTitle = "Review answers"
     private static let draftGuardFooter = "Finish or clear the current prompt to answer"
 
     private static func value(of label: String, in body: [String]) -> String? {

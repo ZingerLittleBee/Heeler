@@ -303,9 +303,10 @@ extension Character {
 }
 
 extension OverlayKind {
+    /// Product names, the same in every language.
     var displayName: String {
         switch self {
-        case .tailscale: String(localized: "Tailscale")
+        case .tailscale: "Tailscale"
         case .zerotier: "ZeroTier"
         case .easytier: "EasyTier"
         }

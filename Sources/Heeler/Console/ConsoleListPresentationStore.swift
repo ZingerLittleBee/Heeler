@@ -56,7 +56,7 @@ struct ConsoleWorkspaceSection: Identifiable, Equatable, Sendable {
     var statusCounts: ConsoleHostAgentStatusCounts { .init(agents: agents) }
     var accessibilityValue: String {
         let count = agents.count == 1 ? String(localized: "1 Agent") : String(localized: "\(agents.count) Agents")
-        return [count, isCollapsed ? "Collapsed" : "Expanded",
+        return [count, isCollapsed ? String(localized: "Collapsed") : String(localized: "Expanded"),
                 ConsoleHostSectionHeaderPresentation.statusText(items: statusCounts.items)]
             .compactMap { $0 }.joined(separator: ", ")
     }
@@ -181,7 +181,7 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
 
     var accessibilityValue: String {
         let count = agents.count == 1 ? String(localized: "1 Agent") : String(localized: "\(agents.count) Agents")
-        return [count, isCollapsed ? "Collapsed" : "Expanded",
+        return [count, isCollapsed ? String(localized: "Collapsed") : String(localized: "Expanded"),
                 ConsoleHostSectionHeaderPresentation.statusText(
                     items: ConsoleHostAgentStatusCounts(agents: agents).items)]
             .compactMap { $0 }.joined(separator: ", ")
@@ -267,16 +267,18 @@ struct ConsoleCheckoutTitle: Equatable, Sendable {
         return reads.first { String(decoding: $0.checkout.topLevel, as: UTF8.self) == path }?.head.branch
     }
 
+    /// Each shape is one whole phrase; git's "detached" stays git's word.
     var accessibilityLabel: String {
         switch role {
         case .workspace:
             return title
         case .mainCheckout:
-            if detail != nil { return "\(title), detached" }
-            return isPending ? title : "Branch \(title)"
+            if detail != nil { return String(localized: "\(title), detached") }
+            return isPending ? title : String(localized: "Branch \(title)")
         case .worktree:
-            let branch = detail.map { $0 == Self.detachedText ? "detached" : "branch \($0)" }
-            return ["\(title), worktree", branch].compactMap { $0 }.joined(separator: ", ")
+            guard let detail else { return String(localized: "\(title), worktree") }
+            if detail == Self.detachedText { return String(localized: "\(title), worktree, detached") }
+            return String(localized: "\(title), worktree, branch \(detail)")
         }
     }
 }
@@ -346,13 +348,14 @@ enum ConsoleAgentStatusFilter: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The status represented by this choice.
-    var status: AgentStatus {
+    /// The choice as the filter lists it, with how many Agents it admits.
+    /// The raw value is the saved token, never shown.
+    func title(count: Int) -> String {
         switch self {
-        case .blocked: .blocked
-        case .working: .working
-        case .done: .done
-        case .idle: .idle
+        case .blocked: String(localized: "Blocked (\(count))")
+        case .working: String(localized: "Working (\(count))")
+        case .done: String(localized: "Done (\(count))")
+        case .idle: String(localized: "Idle (\(count))")
         }
     }
 }
@@ -369,6 +372,19 @@ struct ConsoleHostAgentStatusCount: Identifiable, Equatable {
     let count: Int
 
     var id: String { status.rawValue }
+
+    /// "2 working", as a count pill says it. The statuses
+    /// `ConsoleHostAgentStatusCounts` counts each have a whole phrase, the
+    /// same ones VoiceOver hears from the Host header.
+    var text: String {
+        switch status {
+        case .blocked: String(localized: "\(count) blocked")
+        case .error: count == 1 ? String(localized: "1 error") : String(localized: "\(count) errors")
+        case .working: String(localized: "\(count) working")
+        case .done: String(localized: "\(count) done")
+        default: "\(count) \(status.displayTitle ?? status.rawValue)"
+        }
+    }
 }
 
 /// Persists the Console presentation choice and Host/Workspace collapse state,

@@ -230,7 +230,7 @@ private struct FileDiffDocumentView<Footer: View & SendableMetatype>: View {
             .accessibilityRotor("Files") {
                 ForEach(patch.files) { file in
                     AccessibilityRotorEntry(
-                        Text(file.newPath ?? file.oldPath ?? "File"),
+                        Text(file.newPath ?? file.oldPath ?? String(localized: "File")),
                         id: Row.ID.file(file.id), in: rotor
                     ) {
                         scroll.scrollTo(Row.ID.file(file.id), anchor: .top)

@@ -36,7 +36,7 @@ struct AgentUsageBreakdownTable: View {
             Divider()
             HStack {
                 if rows.count > limit {
-                    NavigationLink("Show All \(rows.count.formatted()) \(kind.title)") {
+                    NavigationLink(kind.showAll(rows.count)) {
                         List {
                             AgentUsageBreakdown(scope: scope, kind: kind, metric: metric)
                         }
@@ -276,7 +276,8 @@ struct AgentUsageLimitsPage: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         } else {
-            AgentUsageContent(state: entry.isConnected ? entry.store.state : .failed("Not connected"))
+            AgentUsageContent(
+                state: entry.isConnected ? entry.store.state : .failed(String(localized: "Not connected")))
                 .font(.subheadline)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(18)

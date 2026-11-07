@@ -81,7 +81,9 @@ struct PairingCode: Sendable, Equatable {
             let endpoint = HerdrEndpoint(socketPath: socketPath, executablePath: executablePath)
         else {
             throw .badPayload(
-                reason: String(localized: "sock and herdr must be absolute paths without quotes, backslashes, or control characters, and sock a herdr socket path of at most \(HerdrEndpoint.maximumSocketPathUTF8Length) bytes"))
+                reason: "sock and herdr must be absolute paths without quotes, backslashes, "
+                    + "or control characters, and sock a herdr socket path of at most "
+                    + "\(HerdrEndpoint.maximumSocketPathUTF8Length) bytes")
         }
         code.endpoint = endpoint
         return code

@@ -347,7 +347,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         let nonce = nonce()
         let result = try await runLocator(nonce: nonce)
         if HerdrCoreLocator.wasCutShort(stdout: result.stdout, exitStatus: result.exitStatus, nonce: nonce) {
-            throw TransportError.channelFailed(detail: "herdr-core: The locator was cut short.")
+            throw TransportError.channelFailed(detail: String(localized: "herdr-core: The locator was cut short."))
         }
         guard result.exitStatus == 0 else {
             throw TransportError.malformedResponse(
@@ -358,7 +358,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             located = location
             return location
         } catch {
-            throw TransportError.malformedResponse("herdr-core: The locator's output is unreadable.")
+            throw TransportError.malformedResponse(
+                String(localized: "herdr-core: The locator's output is unreadable."))
         }
     }
 
@@ -409,7 +410,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         let executablePath = try Self.installedExecutable(at: location)
         guard location.appMayStartCore else {
             throw TransportError.hostFeatureUnavailable(
-                feature: "Starting herdr-core on \(location.kernel)")
+                feature: String(localized: "Starting herdr-core on \(location.kernel)"))
         }
         let script = try HerdrCoreStart.script(executablePath: executablePath, session: session)
         let clock = ContinuousClock()
@@ -526,7 +527,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             case .value(let shell)? = facts[pid]?.variables["SHELL"], !shell.isEmpty
         else {
             throw TransportError.hostFeatureUnavailable(
-                feature: "Starting an Agent needs your login shell, which this Host does not report")
+                feature: String(localized: "Starting an Agent needs your login shell, which this Host does not report"))
         }
         return shell
     }
@@ -704,7 +705,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
                 path: location.socketPath, limit: location.socketPathLimit)
         }
         guard !forOneCall || location.isNativeWindows else {
-            throw TransportError.hostFeatureUnavailable(feature: "A core call on a link of its own")
+            throw TransportError.hostFeatureUnavailable(
+                feature: String(localized: "A core call on a link of its own"))
         }
         let channel = try await openChannel(to: location, forOneCall: forOneCall)
         do {
@@ -716,7 +718,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         } catch TransportError.channelFailed(detail: HerdrCoreLink.closedDetail) where location.isNativeWindows {
             // `cmd` prints the marker before it runs `connect`, so this is `connect`
             // itself ending. Its stderr does not reach here, so why stays unknown.
-            throw TransportError.channelFailed(detail: "herdr-core connect exited before answering hello.")
+            throw TransportError.channelFailed(
+                detail: String(localized: "herdr-core connect exited before answering hello."))
         }
     }
 
@@ -734,7 +737,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
                 ? try await connection.openCoreCallExec(command: command)
                 : try await connection.openCoreLinkExec(command: command)
             return BootstrappedExecChannel(
-                channel: exec, startupFailure: "The command that runs herdr-core connect did not start.")
+                channel: exec, startupFailure: String(localized: "The command that runs herdr-core connect did not start."))
         }
         do {
             return try await connection.openCoreLinkChannel(socketPath: location.socketPath)
@@ -750,7 +753,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private static func installedExecutable(at location: HerdrCoreLocator.Location) throws -> String {
         if let executablePath = location.executablePath { return executablePath }
         if let unanswered = location.unansweredExecutablePath {
-            throw TransportError.channelFailed(detail: "herdr-core at \(unanswered) did not report its version")
+            throw TransportError.channelFailed(
+                detail: String(localized: "herdr-core at \(unanswered) did not report its version"))
         }
         throw TransportError.herdrCoreNotInstalled
     }

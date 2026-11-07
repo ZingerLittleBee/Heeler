@@ -1654,7 +1654,9 @@ struct ConsoleView: View {
         case .noAgentsOnHost(let hostName):
             ContentUnavailableView {
                 Label(
-                    "No Agents on \(hostName)",
+                    hostName.isEmpty
+                        ? String(localized: "No Agents on the Selected Hosts")
+                        : String(localized: "No Agents on \(hostName)"),
                     systemImage: "line.3.horizontal.decrease.circle")
             } actions: {
                 Button("Show All Hosts") { hostFilter.removeAll() }
@@ -2073,7 +2075,7 @@ struct ConsoleView: View {
                 } else if offers.closes {
                     Divider()
                     Button(
-                        "Close \(closeScope(for: agent))", systemImage: "trash",
+                        closeScope(for: agent).actionTitle, systemImage: "trash",
                         role: .destructive
                     ) {
                         pendingTabClose = agent
@@ -2111,7 +2113,7 @@ struct ConsoleView: View {
                         pendingTabClose = agent
                     }
                 } label: {
-                    Label(isSaved ? SavedChatRemovalCopy.confirm : "Close", systemImage: "trash")
+                    Label(isSaved ? SavedChatRemovalCopy.confirm : String(localized: "Close"), systemImage: "trash")
                 }
                 .tint(.red)
             }
@@ -2176,18 +2178,19 @@ struct ConsoleView: View {
     }
 
     /// What closing this Agent takes down, widest first.
-    private func closeScope(for agent: ConsoleAgent) -> String {
-        if console.closesWorkspaceWithTab(of: agent) { return "Workspace" }
-        return console.closesTab(of: agent) ? "Tab" : "Pane"
+    private func closeScope(for agent: ConsoleAgent) -> TerminalCloseScope {
+        if console.closesWorkspaceWithTab(of: agent) { return .workspace }
+        return console.closesTab(of: agent) ? .tab : .pane
     }
 
-    private var pendingCloseScope: String {
-        pendingTabClose.map(closeScope(for:)) ?? "Tab"
+    /// The pending close's reach; a Tab's while the alert dismisses.
+    private var pendingCloseScope: TerminalCloseScope {
+        pendingTabClose.map(closeScope(for:)) ?? .tab
     }
 
-    private var tabCloseDialogTitle: String { "Close \(pendingCloseScope)?" }
+    private var tabCloseDialogTitle: String { pendingCloseScope.confirmationTitle }
 
-    private var tabCloseConfirmLabel: String { "Close \(pendingCloseScope)" }
+    private var tabCloseConfirmLabel: String { pendingCloseScope.actionTitle }
 
     /// Confirmation copy naming the Agent as its row does, and the
     /// workspace when it dies with the tab.
@@ -2196,7 +2199,9 @@ struct ConsoleView: View {
             agent: agent, layout: console.rowLayout(for: agent.hostID)
         ).switcherTitle
         if console.closesWorkspaceWithTab(of: agent) {
-            let workspace = agent.workspaceLabel ?? String(localized: "this workspace")
+            guard let workspace = agent.workspaceLabel else {
+                return String(localized: "Are you sure you want to also close this workspace? It is the workspace's last tab.")
+            }
             return String(localized: "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab.")
         }
         if console.closesTab(of: agent) {
@@ -2341,9 +2346,11 @@ struct ConsoleView: View {
         return hostIssues.filter { hostFilter.contains($0.hostID) }
     }
 
+    /// The one selected Host's name, which the empty state names; empty for
+    /// several Hosts, or one no longer listed, which it calls the selection.
     private var filteredHostName: String {
-        guard hostFilter.count == 1 else { return "Selected Hosts" }
-        return hosts.consoleHosts.first(where: { hostFilter.contains($0.id) })?.displayName ?? "this Host"
+        guard hostFilter.count == 1 else { return "" }
+        return hosts.consoleHosts.first(where: { hostFilter.contains($0.id) })?.displayName ?? ""
     }
 
     private struct HostsTabRequest {
@@ -2530,7 +2537,7 @@ struct ConsoleListFilterChoices: View {
                 heading("Host")
                 ScrollView {
                     VStack(spacing: 0) {
-                        choice("All Hosts", selected: hostFilter.isEmpty) { hostFilter.removeAll() }
+                        choice(String(localized: "All Hosts"), selected: hostFilter.isEmpty) { hostFilter.removeAll() }
                         ForEach(hosts) { @Sendable host in
                             MainActorContent {
                                 choice(host.displayName, selected: hostFilter.contains(host.id)) {
@@ -2568,14 +2575,14 @@ struct ConsoleListFilterChoices: View {
                 heading("Agent Status")
                 ScrollView {
                     VStack(spacing: 0) {
-                        choice("All Status", selected: agentStatuses.statusFilter.isEmpty) {
+                        choice(String(localized: "All Status"), selected: agentStatuses.statusFilter.isEmpty) {
                             agentStatuses.clearStatusFilter()
                         }
                         .accessibilityIdentifier("agents.status-filter.all")
                         ForEach(ConsoleAgentStatusFilter.allCases) { @Sendable filter in
                             MainActorContent {
                                 choice(
-                                    "\(filter.status.displayTitle ?? filter.rawValue) (\(counts[filter] ?? 0))",
+                                    filter.title(count: counts[filter] ?? 0),
                                     selected: agentStatuses.statusFilter.contains(filter)
                                 ) {
                                     agentStatuses.toggleStatusFilter(filter)
@@ -2594,7 +2601,7 @@ struct ConsoleListFilterChoices: View {
         .frame(width: 300)
     }
 
-    private func heading(_ title: String) -> some View {
+    private func heading(_ title: LocalizedStringKey) -> some View {
         Text(title)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
@@ -3163,7 +3170,7 @@ struct ConsoleHostStatusCountPills: View {
 
     private var pills: some View {
         ForEach(items) { @Sendable item in
-            Text("\(item.count) \(item.status.rawValue)")
+            Text(item.text)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color(item.status.inkUIColor))
                 .fixedSize()
@@ -3335,7 +3342,7 @@ private struct NavigationBarTopReader: UIViewRepresentable {
 
         @available(*, unavailable)
         required init?(coder: NSCoder) {
-            fatalError(String(localized: "init(coder:) is unavailable"))
+            fatalError("init(coder:) is unavailable")
         }
 
         override func didMoveToWindow() {

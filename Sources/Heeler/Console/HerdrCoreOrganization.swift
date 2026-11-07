@@ -298,7 +298,7 @@ enum HerdrCoreOrganization {
     }
 
     private static func label(directory: String) -> String {
-        directory.isEmpty ? "No directory" : RemoteHostPath.lastComponent(of: directory)
+        directory.isEmpty ? String(localized: "No directory") : RemoteHostPath.lastComponent(of: directory)
     }
 
     /// Where the desktop app looks for a Terminal's folder: what runs there

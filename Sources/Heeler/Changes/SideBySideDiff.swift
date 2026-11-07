@@ -15,14 +15,15 @@ struct SideBySideRow: Sendable, Equatable, Identifiable {
             left.accessibilityLabel
         case let (left?, right?):
             left.accessibilityLabel
-                + (left.accessibilityLabel.hasSuffix(".") ? " " : ". ")
+                // A localized label may end in a Japanese full stop.
+                + (left.accessibilityLabel.hasSuffix(".") || left.accessibilityLabel.hasSuffix("。") ? " " : ". ")
                 + right.accessibilityLabel
         case let (left?, nil):
             left.accessibilityLabel
         case let (nil, right?):
             right.accessibilityLabel
         case (nil, nil):
-            String(localized: "")
+            ""
         }
     }
 }

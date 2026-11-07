@@ -117,7 +117,7 @@ private struct BlockedDialogCard: View {
     /// way out; it says Stop then, rather than repeat the declining option.
     private var stopTitle: String? {
         if dialog.stopsFromCard { return dialog.stopTitle }
-        return dialog.canStop && store.progress == .unconfirmed ? "Stop" : nil
+        return dialog.canStop && store.progress == .unconfirmed ? String(localized: "Stop") : nil
     }
 
     /// Who asked, when a subagent did.
@@ -206,7 +206,7 @@ private struct BlockedDialogCard: View {
                 }
             }
         case .codexAsyncCollapsed:
-            BlockedCardText("Codex asked \(dialog.title). Its turn goes on, and the answers go with its next step.")
+            BlockedCardText(dialog.collapsedQuestionsNote)
         case .ompApproval:
             if let reason = subject.reason {
                 BlockedCardText(reason)
@@ -601,10 +601,11 @@ extension DialogOption {
         let folded = DialogRowScanner.comparable(label.lowercased())
         switch program {
         case .omp:
+            // The prefix and suffix are Oh My Pi's own label, matched.
             let prefix = "Approve ", suffix = " for this session"
-            let subject =
-                label.hasPrefix(prefix) && label.hasSuffix(suffix) && label.count > prefix.count + suffix.count
-                ? String(label.dropFirst(prefix.count).dropLast(suffix.count)) : String(localized: "this tool")
+            guard label.hasPrefix(prefix) && label.hasSuffix(suffix) && label.count > prefix.count + suffix.count
+            else { return String(localized: "Oh My Pi won't ask again for this tool in this session.") }
+            let subject = String(label.dropFirst(prefix.count).dropLast(suffix.count))
             return String(localized: "Oh My Pi won't ask again for \(subject) in this session.")
         case .claude where folded.contains(DialogRowScanner.comparable("always allow access to")):
             return String(localized: "Lets Claude work in this folder for the session.")
@@ -626,10 +627,25 @@ private extension BlockedDialog {
         case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion:
             String(localized: "Question")
         case .codexAsyncCollapsed: String(localized: "Questions")
-        case .ompApproval: String(localized: "Allow \(subject.toolName ?? String(localized: "Tool"))")
+        case .ompApproval: subject.toolName.map { String(localized: "Allow \($0)") } ?? String(localized: "Allow Tool")
         case .grokCancelTurn: String(localized: "Subagents Still Running")
+        // The program's own title stays the page's progress, which the
+        // planner matches; the card says it in the user's language.
+        case .claudeQuestionReview: String(localized: "Review your answers")
+        case .ompQuestionReview: String(localized: "Review answers")
         default: title.hasSuffix(":") ? String(title.dropLast()) : title
         }
+    }
+
+    /// The note on Codex's folded questions, whose title is its own
+    /// `2 questions`: the count, in the user's words.
+    var collapsedQuestionsNote: String {
+        guard let count = Int(title.prefix { $0.isNumber }) else {
+            return String(localized: "Codex asked questions. Its turn goes on, and the answers go with its next step.")
+        }
+        return count == 1
+            ? String(localized: "Codex asked \(count) question. Its turn goes on, and the answers go with its next step.")
+            : String(localized: "Codex asked \(count) questions. Its turn goes on, and the answers go with its next step.")
     }
 
     /// Whether Stop does something a card can name: the planner refuses it
@@ -999,7 +1015,8 @@ private struct BlockedChangeBox: View {
                 }
             }
             if lines.count > Self.lineLimit {
-                Text("\(lines.count - Self.lineLimit) more lines")
+                let more = lines.count - Self.lineLimit
+                Text(more == 1 ? String(localized: "\(more) more line") : String(localized: "\(more) more lines"))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
                     .padding(.top, 4)

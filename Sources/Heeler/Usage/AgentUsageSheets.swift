@@ -157,9 +157,18 @@ struct AgentUsageBreakdown: View {
         var id: Self { self }
         var title: String {
             switch self {
-            case .models: "Models"
-            case .directories: "Directories"
-            case .days: "Days"
+            case .models: String(localized: "Models")
+            case .directories: String(localized: "Directories")
+            case .days: String(localized: "Days")
+            }
+        }
+
+        /// The link to every row of a breakdown cut short.
+        func showAll(_ count: Int) -> String {
+            switch self {
+            case .models: String(localized: "Show All \(count.formatted()) Models")
+            case .directories: String(localized: "Show All \(count.formatted()) Directories")
+            case .days: String(localized: "Show All \(count.formatted()) Days")
             }
         }
     }
@@ -208,7 +217,7 @@ struct AgentUsageBreakdown: View {
                     .navigationBarTitleDisplayMode(.inline)
                 } label: {
                     HStack {
-                        Text("Show All \(rows.count.formatted()) \(kind.title)")
+                        Text(kind.showAll(rows.count))
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.footnote.weight(.semibold))
@@ -247,7 +256,7 @@ struct AgentUsageBreakdown: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(AgentUsageStyle.value(row.summary, metric: metric, locale: locale))
                     .font(.subheadline.weight(.semibold))
-                Text("\(AgentUsageStyle.share(value, of: total, locale: locale)) · \(metric == .cost ? "\(AgentUsageStyle.tokens(row.summary.tokens.total, locale: locale)) tokens" : AgentUsageStyle.cost(row.summary.estimatedCostUSD, locale: locale))")
+                Text("\(AgentUsageStyle.share(value, of: total, locale: locale)) · \(metric == .cost ? String(localized: "\(AgentUsageStyle.tokens(row.summary.tokens.total, locale: locale)) tokens") : AgentUsageStyle.cost(row.summary.estimatedCostUSD, locale: locale))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if !row.priced {
@@ -421,7 +430,7 @@ struct AgentUsageDaySheet: View {
                         Spacer(minLength: 8)
                         Text(summary.map { AgentUsageStyle.cost($0.estimatedCostUSD, locale: locale) } ?? "–")
                             .font(.subheadline.weight(.semibold))
-                        Text(summary.map { "\(AgentUsageStyle.tokens($0.tokens.total, locale: locale)) tokens" } ?? "")
+                        Text(summary.map { String(localized: "\(AgentUsageStyle.tokens($0.tokens.total, locale: locale)) tokens") } ?? "")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .frame(minWidth: 84, alignment: .trailing)
@@ -621,7 +630,8 @@ struct AgentUsageHostLimits: View {
             }
         } else {
             Section {
-                AgentUsageContent(state: entry.isConnected ? entry.store.state : .failed("Not connected"))
+                AgentUsageContent(
+                    state: entry.isConnected ? entry.store.state : .failed(String(localized: "Not connected")))
             } header: {
                 header
             }

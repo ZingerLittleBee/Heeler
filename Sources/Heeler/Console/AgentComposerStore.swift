@@ -855,7 +855,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         case TransportError.timedOut:
             String(localized: "The Host did not answer. Check the connection and retry.")
         case let error as HerdrAPIError:
-            "herdr rejected the message: \(error.message)"
+            String(localized: "herdr rejected the message: \(error.message)")
         case let error as TransportError:
             error.presentation.message
         default:

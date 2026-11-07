@@ -50,7 +50,8 @@ struct ChatConversationEngineTests {
         }
 
         func makeEngine(
-            workflowLimits: ChatConversationEngine.WorkflowLimits = ChatConversationEngine.WorkflowLimits()
+            workflowLimits: ChatConversationEngine.WorkflowLimits = ChatConversationEngine.WorkflowLimits(),
+            localization: String = ChatCacheDocument.currentLocalization
         ) -> ChatConversationEngine {
             let clock = clock
             return ChatConversationEngine(
@@ -58,7 +59,7 @@ struct ChatConversationEngineTests {
                 cacheKey: key, files: files.hostFiles(), cache: cache,
                 adapter: NumberedChatReducer.adapter(
                     revision: revision, limits: limits, wantsFirstLine: program == .codex),
-                workflowLimits: workflowLimits, now: { clock.now })
+                workflowLimits: workflowLimits, localization: localization, now: { clock.now })
         }
 
         func open(_ engine: ChatConversationEngine) async -> ChatConversationSnapshot {
@@ -90,7 +91,7 @@ struct ChatConversationEngineTests {
 
         func document(
             numbers: Range<Int>, head: String, coverageEnd: UInt64, reachedStart: Bool = true,
-            revision: Int? = nil
+            revision: Int? = nil, localization: String? = ChatCacheDocument.currentLocalization
         ) -> ChatCacheDocument {
             ChatCacheDocument(
                 key: key, adapterRevision: revision ?? self.revision, transcriptPath: path,
@@ -101,7 +102,7 @@ struct ChatConversationEngineTests {
                         id: ChatEntryID("n-\(n)"), sourceOffset: NumberedChatReducer.offset(of: n),
                         content: .user(ChatUserMessage(text: "\(n)")))
                 },
-                savedAt: start)
+                savedAt: start, localization: localization)
         }
     }
 
@@ -1014,6 +1015,52 @@ struct ChatConversationEngineTests {
 
         #expect(restored.transcript.entries.isEmpty)
         #expect(await fixture.savedDocument() == nil)
+    }
+
+    /// Reducers word notices and tool rows as they read, so entries saved
+    /// in one language would sit beside rows read in another.
+    @Test func entriesWordedInAnotherLanguageAreDiscarded() async throws {
+        let fixture = Fixture()
+        await fixture.cache.save(
+            fixture.document(
+                numbers: 0..<3, head: Self.lines(0..<3), coverageEnd: Self.offset(of: 3), localization: "ja"))
+        let engine = fixture.makeEngine(localization: "en")
+
+        let restored = await engine.restore()
+
+        #expect(restored.transcript.entries.isEmpty)
+        #expect(!restored.isFromCache)
+        #expect(await fixture.savedDocument() == nil)
+    }
+
+    @Test func entriesSavedWithoutALanguageCountAsEnglish() async throws {
+        let fixture = Fixture()
+        await fixture.cache.save(
+            fixture.document(
+                numbers: 0..<3, head: Self.lines(0..<3), coverageEnd: Self.offset(of: 3), localization: nil))
+
+        let english = await fixture.makeEngine(localization: "en").restore()
+
+        #expect(english.isFromCache)
+        #expect(Self.numbers(english) == Self.ids(0..<3))
+
+        let japanese = await fixture.makeEngine(localization: "ja").restore()
+
+        #expect(japanese.transcript.entries.isEmpty)
+        #expect(await fixture.savedDocument() == nil)
+    }
+
+    @Test func savingRecordsTheLanguageTheEntriesAreWordedIn() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<3), at: Self.claudePath)
+        let engine = fixture.makeEngine(localization: "ja")
+        _ = await fixture.open(engine)
+
+        await engine.save(force: true)
+
+        let saved = try #require(await fixture.savedDocument())
+        #expect(saved.localization == "ja")
+        #expect(await fixture.makeEngine(localization: "ja").restore().isFromCache)
     }
 
     @Test func savingRecordsCoverageAndIsThrottledUnlessForced() async throws {

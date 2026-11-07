@@ -35,7 +35,9 @@ enum DialogActionPlanner {
             throw .unsupported(String(localized: "Answer this dialog in the Agent terminal."))
         }
         guard excerpt.numbered[number] != nil else { throw .noSuchOption(number) }
-        guard let digit = digitKey(number) else { throw .unsupported("Option \(number) has no digit key.") }
+        guard let digit = digitKey(number) else {
+            throw .unsupported(String(localized: "Option \(number) has no digit key."))
+        }
         // Claude draws its text cursor in reverse video. With a field
         // focused, the digit would be typed rather than pressed.
         if program == .claude, excerpt.rows.contains(where: { $0.runs.contains(where: \.style.isReverse) }) {
@@ -191,7 +193,7 @@ private struct ClaudeDialogPlanner {
         case .submitSelection(let ordinals):
             try submitSelection(ordinals)
         case .expandQuestions, .skipQuestion:
-            throw .unsupported("Only Codex queues questions.")
+            throw .unsupported(String(localized: "Only Codex queues questions."))
         }
     }
 
@@ -246,7 +248,7 @@ private struct ClaudeDialogPlanner {
     private func respond(_ ordinal: Int, text: String, submitKey: String) throws(DialogPlanError) -> DialogActionPlan {
         guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
         guard option.role == .otherText, option.input != nil else {
-            throw .unsupported("Option \(ordinal) is not a text field.")
+            throw .unsupported(String(localized: "Option \(ordinal) is not a text field."))
         }
         guard !isMultiSelect else {
             throw .unsupported(String(localized: "Heeler does not type into a multi-select question's Other row."))
@@ -281,12 +283,12 @@ private struct ClaudeDialogPlanner {
         for ordinal in ordinals.sorted() {
             guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
             guard option.role == .answer else {
-                throw .unsupported("Option \(ordinal) is not an answer Heeler can check.")
+                throw .unsupported(String(localized: "Option \(ordinal) is not an answer Heeler can check."))
             }
         }
         guard !dialog.hasTypedText else { throw .textFieldNotEmpty }
         if dialog.options.contains(where: { $0.role == .otherText && $0.isChecked == true }) {
-            throw .unsupported("The typed answer is checked; finish it in the terminal.")
+            throw .unsupported(String(localized: "The typed answer is checked; finish it in the terminal."))
         }
         var builder = StepBuilder(dialog: dialog)
         try builder.leaveField()
@@ -294,7 +296,7 @@ private struct ClaudeDialogPlanner {
         for option in dialog.options
         where option.role == .answer && ordinals.contains(option.ordinal) != checked.contains(option.ordinal) {
             guard let digit = DialogActionPlanner.digitKey(option.number) else {
-                throw .unsupported("Option \(option.ordinal) has no digit key.")
+                throw .unsupported(String(localized: "Option \(option.ordinal) has no digit key."))
             }
             checked.formSymmetricDifference([option.ordinal])
             builder.keys(digit)
@@ -313,7 +315,7 @@ private struct ClaudeDialogPlanner {
         guard dialog.kind == .claudeQuestion, headers.count > 1, let current = dialog.progress,
             let index = headers.firstIndex(of: current)
         else { return [] }
-        let next = headers.indices.contains(index + 1) ? headers[index + 1] : "Review your answers"
+        let next = headers.indices.contains(index + 1) ? headers[index + 1] : ClaudeDialogParser.reviewPage
         return [.expect(.page(next))]
     }
 }
@@ -356,9 +358,10 @@ private struct CodexDialogPlanner {
             return DialogActionPlan(
                 steps: [.keys(["esc"])], confirmation: .fingerprintChangeOrUnblocked, focusesComposer: true)
         case .amend, .respond, .approvePlan:
-            throw .unsupported("Codex ignores text on approvals; decline, then tell Codex in the composer.")
+            throw .unsupported(
+                String(localized: "Codex ignores text on approvals; decline, then tell Codex in the composer."))
         case .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The approval has no such action.")
+            throw .unsupported(String(localized: "The approval has no such action."))
         }
     }
 
@@ -403,11 +406,13 @@ private struct CodexDialogPlanner {
             builder.append(nextQuestion())
             return DialogActionPlan(steps: builder.steps, confirmation: .fingerprintChangeOrUnblocked)
         case .dismiss:
-            guard notes == nil else { throw .unsupported("Esc would clear Codex's notes rather than interrupt.") }
+            guard notes == nil else {
+                throw .unsupported(String(localized: "Esc would clear Codex's notes rather than interrupt."))
+            }
             return DialogActionPlan(
                 steps: [.keys(["esc"])], confirmation: .fingerprintChangeOrUnblocked, focusesComposer: true)
         case .amend, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The question has no such action.")
+            throw .unsupported(String(localized: "The question has no such action."))
         }
     }
 
@@ -458,7 +463,7 @@ private struct CodexDialogPlanner {
         case .dismiss:
             return DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChange)
         case .amend, .respond, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The trust screen has no such action.")
+            throw .unsupported(String(localized: "The trust screen has no such action."))
         }
     }
 

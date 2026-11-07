@@ -1358,7 +1358,8 @@ struct AgentTerminalView: View {
         let settings = session.settingOverrides
         policy.preflight = { _ in
             if settings.switchingSetting != nil {
-                return .inputNotReady("Claude Code is reading or changing a setting. Try again in a moment.")
+                return .inputNotReady(
+                    String(localized: "Claude Code is reading or changing a setting. Try again in a moment."))
             }
             return nil
         }
@@ -1492,7 +1493,7 @@ struct AgentTerminalView: View {
     private func interruptAgent() -> AgentInterruptOutcome {
         keyboardControl.noteReliableInputBegan()
         return attach.sendEscapeKey()
-            ? .sent : .failed("The terminal isn't connected, so Esc wasn't sent.")
+            ? .sent : .failed(String(localized: "The terminal isn't connected, so Esc wasn't sent."))
     }
 
     private func selectInputMode(_ mode: AgentInputMode) {
@@ -1583,7 +1584,7 @@ struct AgentTerminalView: View {
                 }
             }
         case .composer:
-            UIAccessibility.post(notification: .announcement, argument: "Composer.")
+            UIAccessibility.post(notification: .announcement, argument: String(localized: "Composer."))
         }
     }
 
@@ -1928,7 +1929,7 @@ struct AgentTerminalView: View {
     }
 
     private var connectionRecoveryTitle: String? {
-        if attach.terminalStatus == .reconnecting { return "Reconnecting…" }
+        if attach.terminalStatus == .reconnecting { return String(localized: "Reconnecting…") }
         return console.connectionRecoveryTitle(for: agent.hostID)
     }
 

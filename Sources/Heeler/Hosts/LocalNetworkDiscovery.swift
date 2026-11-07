@@ -381,7 +381,7 @@ final class LocalMachinePickerModel {
             machines = found
             waitingHint = nil
         case .waiting(let permissionDenied):
-            waitingHint = permissionDenied ? .permissionDenied : .failed(String(localized: "waiting for the network"))
+            waitingHint = permissionDenied ? .permissionDenied : .failed("waiting for the network")
         case .ready:
             waitingHint = nil
         }

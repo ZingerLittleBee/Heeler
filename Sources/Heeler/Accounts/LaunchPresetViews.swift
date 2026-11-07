@@ -12,8 +12,8 @@ struct LaunchPresetSummary: View {
         if !arguments.isEmpty { detail.append(arguments) }
         switch preset.environment.count {
         case 0: break
-        case 1: detail.append("1 variable")
-        case let count: detail.append("\(count) variables")
+        case 1: detail.append(String(localized: "1 variable"))
+        case let count: detail.append(String(localized: "\(count) variables"))
         }
         if !detail.isEmpty { lines.append(detail.joined(separator: " · ")) }
         return lines
@@ -124,7 +124,7 @@ struct LaunchPresetEditor: View {
                 }
             }
         }
-        .navigationTitle(isNew ? "New Preset" : draft.name)
+        .navigationTitle(isNew ? String(localized: "New Preset") : draft.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {

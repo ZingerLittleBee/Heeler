@@ -4,12 +4,51 @@ import Foundation
 ///
 /// Quiet rows (Paused, Connecting, Loading Agents) are informational and
 /// do not navigate to Host settings. Failed and reconnecting rows still do.
-/// `inventoryNoun` names what the loading row waits for on its list.
+/// `inventoryNoun` names what the loading row waits for on its list: the
+/// token "Agents" or "Terminals", never shown as it is.
 struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     enum Severity: Equatable {
         case informational
         case warning
         case critical
+    }
+
+    /// The condition `status` words, kept apart from its copy so a summary
+    /// counts Hosts per condition in whole localized phrases.
+    enum Condition: Equatable {
+        case paused
+        case connecting
+        case reconnecting
+        case cannotConnect
+        case syncIssue
+        case loadingAgents
+        case loadingTerminals
+
+        /// A few words for a compact row.
+        var title: String {
+            switch self {
+            case .paused: String(localized: "Paused")
+            case .connecting: String(localized: "Connecting…")
+            case .reconnecting: String(localized: "Reconnecting…")
+            case .cannotConnect: String(localized: "Can't connect")
+            case .syncIssue: String(localized: "Sync issue")
+            case .loadingAgents: String(localized: "Loading Agents…")
+            case .loadingTerminals: String(localized: "Loading Terminals…")
+            }
+        }
+
+        /// "3 reconnecting": how many Hosts share the condition.
+        func countText(_ count: Int) -> String {
+            switch self {
+            case .paused: String(localized: "\(count) paused")
+            case .connecting: String(localized: "\(count) connecting")
+            case .reconnecting: String(localized: "\(count) reconnecting")
+            case .cannotConnect: String(localized: "\(count) can't connect")
+            case .syncIssue: String(localized: "\(count) sync issue")
+            case .loadingAgents: String(localized: "\(count) loading agents")
+            case .loadingTerminals: String(localized: "\(count) loading terminals")
+            }
+        }
     }
 
     let hostID: Host.ID
@@ -23,14 +62,15 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     let navigates: Bool
     /// The badge on the Host's server glyph, as on its section header.
     let tone: HostConnectionTone
-    /// A few words for a compact row: "Reconnecting…", "Can't connect".
-    let status: String
+    let condition: Condition
     /// Connected but loading or out of sync, rather than without a
     /// connection at all.
     let isConnected: Bool
 
     var id: Host.ID { hostID }
     var isCritical: Bool { severity == .critical }
+    /// A few words for a compact row: "Reconnecting…", "Can't connect".
+    var status: String { condition.title }
 
     init?(
         host: Host,
@@ -46,60 +86,65 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         let usesHerdrEndpoint = host.herdrEndpoint != nil
         // What follows a "studio: " prefix, where the message has one.
         var unprefixed: String?
+        let name = host.displayName
         switch status {
         case .suspended:
-            message = "Connection to \(host.displayName) is paused."
+            message = String(localized: "Connection to \(name) is paused.")
             systemImage = "pause.circle"
             severity = .informational
             navigates = false
-            (tone, self.status) = (.paused, "Paused")
+            (tone, condition) = (.paused, .paused)
         case .connecting:
             if let standingFailure {
                 (message, systemImage, severity, navigates) = Self.failed(
-                    standingFailure, hostName: host.displayName,
+                    standingFailure, hostName: name,
                     usesHerdrEndpoint: usesHerdrEndpoint)
                 unprefixed = standingFailure.presentation(
                     usesHerdrEndpoint: usesHerdrEndpoint).message
-                (tone, self.status) = Self.cannotConnect
+                (tone, condition) = Self.cannotConnect
             } else {
-                message = "Connecting to \(host.displayName)…"
+                message = String(localized: "Connecting to \(name)…")
                 systemImage = "dot.radiowaves.left.and.right"
                 severity = .informational
                 navigates = false
-                (tone, self.status) = (.pending, "Connecting…")
+                (tone, condition) = (.pending, .connecting)
             }
         case .reconnecting(_, _, let failure):
-            message = "Reconnecting to \(host.displayName): \(failure.presentation.summary)"
+            let summary = failure.presentation.summary
+            message = String(localized: "Reconnecting to \(name): \(summary)")
             systemImage = "wifi.exclamationmark"
             severity = .warning
             navigates = true
-            (tone, self.status) = (.reconnecting, "Reconnecting…")
+            (tone, condition) = (.reconnecting, .reconnecting)
         case .failed(let failure):
             (message, systemImage, severity, navigates) = Self.failed(
-                failure, hostName: host.displayName, usesHerdrEndpoint: usesHerdrEndpoint)
+                failure, hostName: name, usesHerdrEndpoint: usesHerdrEndpoint)
             unprefixed = failure.presentation(usesHerdrEndpoint: usesHerdrEndpoint).message
-            (tone, self.status) = Self.cannotConnect
+            (tone, condition) = Self.cannotConnect
         case .connected:
             if let syncError {
                 (message, systemImage, severity, navigates) = Self.syncError(
-                    syncError, hostName: host.displayName)
+                    syncError, hostName: name)
                 unprefixed = syncError
-                (tone, self.status) = Self.syncIssue
+                (tone, condition) = Self.syncIssue
             } else if isAwaitingSnapshot {
-                message = "Loading \(inventoryNoun) from \(host.displayName)…"
+                let loadsTerminals = inventoryNoun == "Terminals"
+                message = loadsTerminals
+                    ? String(localized: "Loading Terminals from \(name)…")
+                    : String(localized: "Loading Agents from \(name)…")
                 systemImage = "hourglass"
                 severity = .informational
                 navigates = false
-                (tone, self.status) = (.pending, "Loading \(inventoryNoun)…")
+                (tone, condition) = (.pending, loadsTerminals ? .loadingTerminals : .loadingAgents)
             } else {
                 return nil
             }
         case .ended, nil:
             if let syncError {
                 (message, systemImage, severity, navigates) = Self.syncError(
-                    syncError, hostName: host.displayName)
+                    syncError, hostName: name)
                 unprefixed = syncError
-                (tone, self.status) = Self.syncIssue
+                (tone, condition) = Self.syncIssue
             } else {
                 return nil
             }
@@ -107,8 +152,8 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         sectionMessage = unprefixed ?? message
     }
 
-    private static let cannotConnect: (HostConnectionTone, String) = (.unavailable, "Can't connect")
-    private static let syncIssue: (HostConnectionTone, String) = (.warning, "Sync issue")
+    private static let cannotConnect: (HostConnectionTone, Condition) = (.unavailable, .cannotConnect)
+    private static let syncIssue: (HostConnectionTone, Condition) = (.warning, .syncIssue)
 
     private static func failed(
         _ failure: TransportError, hostName: String, usesHerdrEndpoint: Bool
@@ -159,19 +204,18 @@ struct ConsoleHostIssueSummary: Equatable {
         title =
             issues.contains(where: \.isConnected)
             ? String(localized: "\(issues.count) Hosts not ready") : String(localized: "\(issues.count) Hosts not connected")
-        // One count per status, in the order the worst first appears.
+        // One count per condition, in the order the worst first appears.
         let ranked = issues.sorted { Self.rank($0.tone) > Self.rank($1.tone) }
-        var grouped: [(tone: HostConnectionTone, status: String, count: Int)] = []
+        var grouped: [(tone: HostConnectionTone, condition: ConsoleHostStatusPresentation.Condition, count: Int)] = []
         for issue in ranked {
-            // "Reconnecting…" counts as "3 reconnecting".
-            let status = issue.status.lowercased().replacingOccurrences(of: "…", with: "")
-            if let index = grouped.firstIndex(where: { $0.status == status }) {
+            if let index = grouped.firstIndex(where: { $0.condition == issue.condition }) {
                 grouped[index].count += 1
             } else {
-                grouped.append((issue.tone, status, 1))
+                grouped.append((issue.tone, issue.condition, 1))
             }
         }
-        counts = grouped.map { Count(tone: $0.tone, text: "\($0.count) \($0.status)") }
+        // "Reconnecting…" counts as "3 reconnecting".
+        counts = grouped.map { Count(tone: $0.tone, text: $0.condition.countText($0.count)) }
         tone = ranked.first?.tone ?? .pending
     }
 

@@ -20,13 +20,14 @@ struct TerminalThemePreview: UIViewRepresentable {
 
 @MainActor
 final class TerminalThemePreviewView: UITerminalView {
+    /// Terminal bytes, escape sequences included: sample output, not copy.
     private static let previewLines: [String] = [
         "\u{1B}[2J\u{1B}[H\u{1B}[1;36mheeler\u{1B}[0m",
-        String(localized: "\u{1B}[32m● connected\u{1B}[0m  mac-studio"),
-        String(localized: ""),
+        "\u{1B}[32m● connected\u{1B}[0m  mac-studio",
+        "",
         "\u{1B}[34m~/Projects/herdr\u{1B}[0m",
-        String(localized: "\u{1B}[35m›\u{1B}[0m codex --continue"),
-        String(localized: "\u{1B}[2mReady for input\u{1B}[0m"),
+        "\u{1B}[35m›\u{1B}[0m codex --continue",
+        "\u{1B}[2mReady for input\u{1B}[0m",
     ]
     private static let preview = Data(previewLines.joined(separator: "\r\n").utf8)
 
@@ -54,7 +55,7 @@ final class TerminalThemePreviewView: UITerminalView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError(String(localized: "init(coder:) is unavailable"))
+        fatalError("init(coder:) is unavailable")
     }
 
     override func didMoveToWindow() {

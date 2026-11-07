@@ -126,7 +126,7 @@ final class RenameStore {
     ) -> RenameStore {
         RenameStore(subject: .workspace, currentValue: currentLabel) { value in
             guard let value else {
-                assertionFailure(String(localized: "workspace rename submitted without a label"))
+                assertionFailure("workspace rename submitted without a label")
                 throw TransportError.cancelled
             }
             try await rename(value)
@@ -142,10 +142,10 @@ final class RenameStore {
         case TransportError.coreMutationOutcomeUnknown:
             String(localized: "The Host did not confirm the rename. It may still apply, so check the desktop app before trying again.")
         case let refused as HerdrAppControl.Refused:
-            refused.reason.map { "The desktop app refused the rename: \($0)" }
+            refused.reason.map { String(localized: "The desktop app refused the rename: \($0)") }
                 ?? String(localized: "The desktop app could not be reached.")
         case let apiError as HerdrAPIError:
-            "herdr rejected the rename: \(apiError.message)"
+            String(localized: "herdr rejected the rename: \(apiError.message)")
         default:
             String(localized: "The rename failed: \(String(describing: error))")
         }

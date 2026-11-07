@@ -7,9 +7,10 @@ import Foundation
 enum HostLatencyFormatting {
     /// Integer milliseconds, or `<1 ms` below the first one — an integer
     /// there would round to a zero the measurement does not support.
+    /// The `ms` symbol reads the same in every language, so this stays plain.
     static func formatted(_ latency: Duration) -> String {
         guard let milliseconds = roundedMilliseconds(latency) else { return "<1 ms" }
-        return String(localized: "\(milliseconds) ms")
+        return "\(milliseconds) ms"
     }
 
     /// The same value spelled for VoiceOver, which reads `ms` as letters.
@@ -17,7 +18,9 @@ enum HostLatencyFormatting {
         guard let milliseconds = roundedMilliseconds(latency) else {
             return String(localized: "Less than 1 millisecond")
         }
-        return "\(milliseconds) millisecond\(milliseconds == 1 ? "" : "s")"
+        return milliseconds == 1
+            ? String(localized: "1 millisecond")
+            : String(localized: "\(milliseconds) milliseconds")
     }
 
     /// Nil below one millisecond. A negative measurement — a clock that moved

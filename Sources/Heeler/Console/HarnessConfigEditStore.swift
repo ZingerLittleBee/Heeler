@@ -75,10 +75,11 @@ final class HarnessConfigEditStore {
                 ).undo(edit)
                 forget(edit, on: hostID)
             } catch let error as HarnessConfigEditError {
-                let outcome =
+                let reason = HarnessConfigEditMessage.text(for: error)
+                refusal =
                     error == .folderChangedDuringUndo
-                    ? String(localized: "The Host Helper is gone. ") : String(localized: "The Host Helper is gone, but its OpenCode edit stays in \(edit.path). ")
-                refusal = outcome + (error.errorDescription ?? "")
+                    ? String(localized: "The Host Helper is gone. \(reason)")
+                    : String(localized: "The Host Helper is gone, but its OpenCode edit stays in \(edit.path). \(reason)")
             }
         }
         return refusal
@@ -278,7 +279,7 @@ enum HarnessConfigEditMessage {
     static func text(for error: any Error) -> String {
         switch error {
         case let error as HarnessConfigEditError:
-            error.errorDescription ?? "Nothing was written."
+            error.errorDescription ?? String(localized: "Nothing was written.")
         case let error as TransportError:
             error.presentation.message
         default:

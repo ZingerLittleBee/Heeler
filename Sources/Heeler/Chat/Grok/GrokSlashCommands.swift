@@ -45,11 +45,12 @@ enum GrokSlashCommands {
                 String(localized: "Grok Build would treat this as a /btw side question and keep it out of the conversation. Rephrase it, or ask in the terminal."))
         }
         // Grok 1.0.62 answers `/compact` with text after it with the toast
-        // String(localized: "/compact takes no arguments.") and keeps the text in its box.
+        // "/compact takes no arguments." and keeps the text in its box.
         // Checked before the menu, so a focus is refused while the Agent
         // works too.
         if isCompactWithFocus(trimmed) {
-            return .commandUnavailable("Grok Build's /compact takes no focus. Send /compact on its own.")
+            return .commandUnavailable(
+                String(localized: "Grok Build's /compact takes no focus. Send /compact on its own."))
         }
         return nil
     }

@@ -159,7 +159,7 @@ actor HerdrCoreLink {
             method, params: params, deadline: deadline, isMutation: isMutation, opensStream: true,
             creditsWhenConsumed: creditsWhenConsumed)
         guard let channel = reply.streamChannel else {
-            throw TransportError.malformedResponse("herdr-core: \(method) named no channel.")
+            throw TransportError.malformedResponse(String(localized: "herdr-core: \(method) named no channel."))
         }
         return (reply.result, HerdrCoreLinkStream(channel: channel, link: self))
     }
@@ -213,7 +213,8 @@ actor HerdrCoreLink {
         do {
             bytes = try HerdrCoreFrame(channel: 0, kind: .data, payload: Data(payload)).encoded()
         } catch {
-            throw TransportError.channelFailed(detail: "The herdr-core request exceeds the frame limit.")
+            throw TransportError.channelFailed(
+                detail: String(localized: "The herdr-core request exceeds the frame limit."))
         }
         return try await exchange(
             id: id, bytes: bytes, deadline: deadline, isMutation: isMutation, opensStream: opensStream,
@@ -309,7 +310,7 @@ actor HerdrCoreLink {
             return nil
         }
         guard state.waiter == nil else {
-            throw TransportError.channelFailed(detail: "A herdr-core stream has one reader.")
+            throw TransportError.channelFailed(detail: String(localized: "A herdr-core stream has one reader."))
         }
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -337,7 +338,7 @@ actor HerdrCoreLink {
         let bytes = try frame.encoded()
         if let ending { throw ending.callFailure }
         guard let state = streams[frame.channel], !state.serverClosed else {
-            throw TransportError.channelFailed(detail: "The herdr-core channel is closed.")
+            throw TransportError.channelFailed(detail: String(localized: "The herdr-core channel is closed."))
         }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
             enqueue(Outbound(bytes: bytes, completion: continuation))
@@ -459,7 +460,8 @@ actor HerdrCoreLink {
             guard let split = HerdrCoreFrameDecoder.splitHelloLine(plain) else {
                 plainInput = plain
                 if plain.count > Self.maximumHelloLineBytes {
-                    tearDown(.failed(TransportError.malformedResponse("herdr-core: The hello reply is too long.")))
+                    tearDown(.failed(TransportError.malformedResponse(
+                        String(localized: "herdr-core: The hello reply is too long."))))
                 }
                 return
             }
@@ -517,7 +519,8 @@ actor HerdrCoreLink {
 
     private func claimStream(from result: JSONValue, creditsWhenConsumed: Bool) throws -> UInt32 {
         guard let channel = Self.channel(in: result), !retired.contains(channel) else {
-            throw TransportError.malformedResponse("herdr-core: The reply names no usable channel.")
+            throw TransportError.malformedResponse(
+                String(localized: "herdr-core: The reply names no usable channel."))
         }
         var state = streams[channel] ?? StreamState()
         state.claimed = true
@@ -535,7 +538,8 @@ actor HerdrCoreLink {
         guard !retired.contains(channel), var state = streamForArrival(channel) else { return }
         state.credit -= payload.count
         guard state.credit >= 0 else {
-            tearDown(.failed(TransportError.malformedResponse("herdr-core: A stream exceeded its credit.")))
+            tearDown(.failed(TransportError.malformedResponse(
+                String(localized: "herdr-core: A stream exceeded its credit."))))
             return
         }
         if let waiter = state.waiter {
@@ -568,7 +572,8 @@ actor HerdrCoreLink {
     private func streamForArrival(_ channel: UInt32) -> StreamState? {
         if let state = streams[channel] { return state }
         guard streams.values.count(where: { !$0.claimed }) < Self.maximumUnclaimedChannels else {
-            tearDown(.failed(TransportError.malformedResponse("herdr-core: Too many unrequested channels.")))
+            tearDown(.failed(TransportError.malformedResponse(
+                String(localized: "herdr-core: Too many unrequested channels."))))
             return nil
         }
         return StreamState()
@@ -614,12 +619,15 @@ actor HerdrCoreLink {
         closeTask = Task { [channel] in try? await channel.close(timeout: Self.closeTimeout) }
     }
 
-    /// What a link says when its channel reached the end of its stream.
-    static let closedDetail = String(localized: "The herdr-core link closed.")
+    /// What a link says when its channel reached the end of its stream. A
+    /// plain token, not copy: `HerdrCoreSSHTransport` matches on it, and
+    /// `TransportError.displayedChannelDetail(_:)` localizes it where it is shown.
+    static let closedDetail = "The herdr-core link closed."
 
     private static func linkFailure(_ error: any Error) -> any Error {
         if error is TransportError { return error }
-        return TransportError.channelFailed(detail: "The herdr-core link failed: \(error)")
+        return TransportError.channelFailed(
+            detail: String(localized: "The herdr-core link failed: \(String(describing: error))"))
     }
 }
 

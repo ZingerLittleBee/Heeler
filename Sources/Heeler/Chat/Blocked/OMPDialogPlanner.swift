@@ -50,7 +50,7 @@ struct OMPDialogPlanner {
         case .amend, .respond, .approvePlan:
             throw .unsupported(String(localized: "Oh My Pi takes no note with an approval."))
         case .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The approval has no such action.")
+            throw .unsupported(String(localized: "The approval has no such action."))
         }
     }
 
@@ -89,7 +89,7 @@ struct OMPDialogPlanner {
         case .respond, .amend:
             throw Self.typedAnswer
         case .dismiss, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The question has no such action.")
+            throw .unsupported(String(localized: "The question has no such action."))
         }
     }
 
@@ -102,7 +102,7 @@ struct OMPDialogPlanner {
         guard dialog.kind == .ompQuestion, headers.count > 1, let current = dialog.progress,
             let index = headers.firstIndex(of: current)
         else { return [] }
-        let next = headers.indices.contains(index + 1) ? headers[index + 1] : "Review answers"
+        let next = headers.indices.contains(index + 1) ? headers[index + 1] : OMPDialogParser.reviewTitle
         return [.expect(.page(next))]
     }
 }

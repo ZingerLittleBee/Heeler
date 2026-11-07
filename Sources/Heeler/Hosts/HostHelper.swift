@@ -210,9 +210,9 @@ enum HostHelperInstallAction: Sendable, Equatable {
 
     var title: String {
         switch self {
-        case .install: "Install"
-        case .update: "Update"
-        case .repair: "Repair"
+        case .install: String(localized: "Install")
+        case .update: String(localized: "Update")
+        case .repair: String(localized: "Repair")
         }
     }
 }
@@ -406,7 +406,7 @@ struct HostHelperNotificationStanding: Sendable, Equatable {
         if case .intact(let version) = reading.integrity { installedVersion = version }
         if let installedVersion, installedVersion < HostHelperCompatibility.firstWithNotifications {
             canRegister = false
-            requirement = "Host Helper: \(presentation.value). Notifications need a newer Host Helper. \(action)"
+            requirement = String(localized: "Host Helper: \(presentation.value). Notifications need a newer Host Helper. \(action)")
             drivesLiveActivity = false
             return
         }
@@ -471,9 +471,9 @@ struct HostHelperPresentation: Sendable, Equatable {
             needsAttention = true
         case .nodeMissing(let tooOld):
             value = String(localized: "Node.js Missing")
-            let required = String(localized: "The Host Helper needs Node.js \(NodeToolchainProbe.minimumMajorVersion) or newer")
-            detail = tooOld.map { "\(required), and this Host has \($0)." }
-                ?? String(localized: "\(required), and Heeler could not find it on this Host.")
+            let minimum = NodeToolchainProbe.minimumMajorVersion
+            detail = tooOld.map { String(localized: "The Host Helper needs Node.js \(minimum) or newer, and this Host has \($0).") }
+                ?? String(localized: "The Host Helper needs Node.js \(minimum) or newer, and Heeler could not find it on this Host.")
             needsAttention = true
         case .lingerOff:
             value = String(localized: "Linger Off")
@@ -493,7 +493,7 @@ struct HostHelperPresentation: Sendable, Equatable {
             needsAttention = false
         case .unsupportedPlatform(.other(let kernel)):
             value = String(localized: "Not Available")
-            detail = "The Host Helper does not run on \(kernel)."
+            detail = String(localized: "The Host Helper does not run on \(kernel).")
             needsAttention = false
         case .unsupportedPlatform(.noSystemd):
             value = String(localized: "Not Available")
@@ -520,7 +520,8 @@ struct HostHelperPresentation: Sendable, Equatable {
             return String(localized: "launchd did not say how the service is (\(health.result)). \(remedy)")
         }
         let facts = [health.activeState, health.result, restarts].filter { !$0.isEmpty }
-        return "The service is not staying up (\(facts.joined(separator: ", "))). \(remedy)"
+            .joined(separator: ", ")
+        return String(localized: "The service is not staying up (\(facts)). \(remedy)")
     }
 }
 
@@ -557,9 +558,9 @@ enum HostHelperError: Error, Equatable {
         case .stepFailed(let step, let detail):
             detail.isEmpty ? String(localized: "\(step) failed.") : String(localized: "\(step) failed: \(detail)")
         case .lingerRefused(let user, let detail):
-            String(localized: "This Host did not let Heeler turn on linger")
-                + (detail.isEmpty ? "." : ": \(detail)")
-                + String(localized: " An administrator can run: sudo loginctl enable-linger \(user)")
+            detail.isEmpty
+                ? String(localized: "This Host did not let Heeler turn on linger. An administrator can run: sudo loginctl enable-linger \(user)")
+                : String(localized: "This Host did not let Heeler turn on linger: \(detail) An administrator can run: sudo loginctl enable-linger \(user)")
         }
     }
 }

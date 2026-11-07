@@ -95,7 +95,7 @@ struct AgentUsageHostHelperTests {
         await store.pullToRefresh()
 
         #expect(store.state == .hostHelper(.notInstalled))
-        #expect(AgentUsageScope.reason(for: store.state) == "Needs the Host Helper")
+        #expect(AgentUsageScope.exclusion(for: store.state) == .needsHostHelper)
         #expect(AgentUsageHostHelperNeed.notInstalled.message.contains("Usage needs the Host Helper"))
     }
 
@@ -157,7 +157,7 @@ struct AgentUsageHostHelperTests {
         #expect(store.state == .hostHelper(.nodeGone))
         #expect(AgentUsageHostHelperNeed.nodeGone.message.contains("Repair"))
         #expect(!AgentUsageHostHelperNeed.nodeGone.message.contains("core"))
-        #expect(AgentUsageScope.reason(for: store.state) == "Repair the Host Helper")
+        #expect(AgentUsageScope.exclusion(for: store.state) == .repairHostHelper)
     }
 
     /// Repaired while no core runs: the record is rewritten at the Helper's next
@@ -389,7 +389,7 @@ struct AgentUsageHostHelperTests {
         await console.agentUsageStore(for: host.id).pullToRefresh()
 
         let scope = AgentUsageScope(readings: [console.agentUsageEntry(for: host).reading])
-        #expect(scope.excluded.map(\.reason) == ["Not connected"])
+        #expect(scope.excluded.map(\.exclusion) == [.notConnected])
     }
 
     @Test func aFailedReadOfAHostThatAnswersIsNotBlamedOnTheConnection() async throws {
@@ -455,7 +455,7 @@ struct AgentUsageHostHelperTests {
 
         await console.agentUsageStore(for: host.id).pullToRefresh()
 
-        #expect(widgets.reasons == ["Needs the Host Helper"])
+        #expect(widgets.reasons == [.needsHostHelper])
     }
 
     // MARK: The widget, with no one opening Usage
@@ -480,7 +480,7 @@ struct AgentUsageHostHelperTests {
         }
 
         var snapshot: UsageWidgetSnapshot? { store.read() }
-        var reasons: [String?]? { snapshot?.hosts.map(\.excludedReason) }
+        var reasons: [AgentUsageExclusion?]? { snapshot?.hosts.map(\.excludedReason) }
         func remove() { try? FileManager.default.removeItem(at: directory) }
     }
 
@@ -493,8 +493,7 @@ struct AgentUsageHostHelperTests {
         let (console, _) = try await unconnectedConsole(helper, session: session, usageWidgets: widgets.publisher())
         defer { console.setHosts([]) }
 
-        let reason = session == .nativeWindows
-            ? "Comes with the Host Helper, not available yet" : "Needs the Host Helper"
+        let reason: AgentUsageExclusion = session == .nativeWindows ? .hostHelperNotOnWindows : .needsHostHelper
         try await waitUntil("the widget says why") { widgets.reasons == [reason] }
     }
 
@@ -515,7 +514,7 @@ struct AgentUsageHostHelperTests {
         defer { widgets.remove() }
         let (console, _) = try await unconnectedConsole(helper, usageWidgets: widgets.publisher())
         defer { console.setHosts([]) }
-        try await waitUntil("the widget waits") { widgets.reasons == ["Waiting for the core"] }
+        try await waitUntil("the widget waits") { widgets.reasons == [.waitingForCore] }
 
         await helper.seedUsage(try AgentUsageFixture.reportData(refreshing: false), session: "default")
 
@@ -530,7 +529,7 @@ struct AgentUsageHostHelperTests {
         }
         defer { console.setHosts([]) }
 
-        try await waitUntil("the widget says not connected") { widgets.reasons == ["Not connected"] }
+        try await waitUntil("the widget says not connected") { widgets.reasons == [.notConnected] }
     }
 
     @Test func aLaunchKeepsTheReasonTheBackgroundRefreshWrote() async throws {
@@ -539,7 +538,7 @@ struct AgentUsageHostHelperTests {
         let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         await AgentUsageBackgroundRefresh(read: { _, _ in .hostHelper(.notOnWindows) })
             .run(hosts: [host], publisher: widgets.publisher(), isUsageEnabled: { true })
-        let reason = "Comes with the Host Helper, not available yet"
+        let reason = AgentUsageExclusion.hostHelperNotOnWindows
         #expect(widgets.reasons == [reason])
 
         // The next launch: nothing read yet, and no widget to read it for.
@@ -560,7 +559,7 @@ struct AgentUsageHostHelperTests {
             dials.withLock { $0 += 1 }
         }
         defer { console.setHosts([]) }
-        try await waitUntil("the widget says why") { widgets.reasons?.first == "Comes with the Host Helper, not available yet" }
+        try await waitUntil("the widget says why") { (widgets.reasons?.first ?? nil) == .hostHelperNotOnWindows }
 
         await console.reactivate()
         try await Task.sleep(for: .milliseconds(200))
@@ -573,12 +572,12 @@ struct AgentUsageHostHelperTests {
         defer { widgets.remove() }
         let (console, host) = try await unconnectedConsole(ScriptedHelperHost(), usageWidgets: widgets.publisher())
         defer { console.setHosts([]) }
-        try await waitUntil("the first Host is read") { widgets.reasons == ["Needs the Host Helper"] }
+        try await waitUntil("the first Host is read") { widgets.reasons == [.needsHostHelper] }
 
         console.setHosts([host, Host(address: "other.example", username: "dev", serverKind: .herdrCore)])
 
         try await waitUntil("the added Host is read") {
-            widgets.reasons == ["Needs the Host Helper", "Needs the Host Helper"]
+            widgets.reasons == [.needsHostHelper, .needsHostHelper]
         }
     }
 
@@ -592,7 +591,7 @@ struct AgentUsageHostHelperTests {
             dials.withLock { $0 += 1 }
         }
         defer { console.setHosts([]) }
-        try await waitUntil("the widget waits") { widgets.reasons == ["Waiting for the core"] }
+        try await waitUntil("the widget waits") { widgets.reasons == [.waitingForCore] }
 
         await console.suspend()
         let atSuspend = dials.withLock { $0 }
@@ -615,7 +614,7 @@ struct AgentUsageHostHelperTests {
         try await Task.sleep(for: .milliseconds(200))
 
         #expect(dials.withLock { $0 } == 0)
-        #expect(widgets.reasons == ["Not read yet"])
+        #expect(widgets.reasons == [.notReadYet])
     }
 }
 

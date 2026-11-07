@@ -27,8 +27,17 @@ struct HarnessConfigChangeLines: View {
             .font(.footnote.monospaced())
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityLabel(
-                "\(isAdded ? "Added" : "Removed"): \(line.text)\(line.endsWithoutNewline ? ", no newline" : "")")
+            .accessibilityLabel(Self.spokenLine(line, isAdded: isAdded))
+    }
+
+    private static func spokenLine(_ line: HarnessConfigShownLine, isAdded: Bool) -> String {
+        let text = line.text
+        switch (isAdded, line.endsWithoutNewline) {
+        case (true, false): return String(localized: "Added: \(text)")
+        case (false, false): return String(localized: "Removed: \(text)")
+        case (true, true): return String(localized: "Added: \(text), no newline")
+        case (false, true): return String(localized: "Removed: \(text), no newline")
+        }
     }
 }
 
@@ -165,7 +174,7 @@ struct HerdrCoreStatusExplanationSheet: View {
                     HarnessConfigEditOffer(
                         flow: flow,
                         offer: String(localized: "Grok Build's automatic check left its status off. One change to its configuration turns it on, and you see the change first."),
-                        actionTitle: "Turn On Grok Build's Status",
+                        actionTitle: String(localized: "Turn On Grok Build's Status"),
                         afterApplying: String(localized: "Start Grok Build again to see its status."))
                 }
             }

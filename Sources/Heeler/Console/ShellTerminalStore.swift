@@ -253,11 +253,11 @@ final class AgentOpenTerminalStore {
         case let api as HerdrAPIError:
             OpenTerminalFailure(
                 kind: .rejected,
-                message: "herdr couldn't create the terminal: \(api.message)")
+                message: String(localized: "herdr couldn't create the terminal: \(api.message)"))
         case TransportError.apiRejected(_, let message):
             OpenTerminalFailure(
                 kind: .rejected,
-                message: "herdr couldn't create the terminal: \(message)")
+                message: String(localized: "herdr couldn't create the terminal: \(message)"))
         case TransportError.hostFeatureUnavailable(let feature):
             OpenTerminalFailure(kind: .rejected, message: feature)
         default:

@@ -235,10 +235,12 @@ private struct PatchFileBuilder {
         var notes: [String] = []
         if isBinary { notes.append(String(localized: "Binary file.")) }
         if isRename, let oldPath, let newPath {
-            notes.append("Renamed from \(ChangedFile.displayText(oldPath)) to \(ChangedFile.displayText(newPath)).")
+            let old = ChangedFile.displayText(oldPath)
+            let new = ChangedFile.displayText(newPath)
+            notes.append(String(localized: "Renamed from \(old) to \(new)."))
         }
         if let oldMode, let newMode {
-            notes.append("File mode changed from \(oldMode) to \(newMode).")
+            notes.append(String(localized: "File mode changed from \(oldMode) to \(newMode)."))
         }
         if isComplete && hunks.isEmpty && !isBinary {
             if isNew { notes.append(String(localized: "New empty file.")) }

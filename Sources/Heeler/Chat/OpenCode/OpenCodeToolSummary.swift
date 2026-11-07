@@ -8,7 +8,7 @@ enum OpenCodeToolSummary {
     static let declinedMessages: Set<String> = ["The user declined this tool call", "The user dismissed this question"]
 
     /// The line that ends an output OpenCode itself shortened.
-    static let shortenedNote = "[OpenCode shortened this output. The full output stays on the Host.]"
+    static let shortenedNote = String(localized: "[OpenCode shortened this output. The full output stays on the Host.]")
 
     /// The row for `tool` as its step recorded it, its output read again
     /// from `output`. The reducer settles a running call by its turn.
@@ -99,7 +99,7 @@ enum OpenCodeToolSummary {
             return (input.questions.first?.question ?? tool.name, nil)
         case .other:
             guard tool.name.lowercased() == "skill" else { return (tool.name, nil) }
-            return ((tool.metadata?.name ?? input.id).map { "Skill \($0)" } ?? tool.name, nil)
+            return ((tool.metadata?.name ?? input.id).map { String(localized: "Skill \($0)") } ?? tool.name, nil)
         default:
             let patchPaths = input.patchText.map(PiFileChanges.patchPaths) ?? []
             let target =
@@ -133,7 +133,7 @@ enum OpenCodeToolSummary {
     ) -> ChatToolPreview? {
         let answers = questions.compactMap(\.answer)
         if tool.status == "completed", !answers.isEmpty {
-            return ChatToolPreview(capping: "Answered: " + answers.joined(separator: "; "))
+            return ChatToolPreview(capping: String(localized: "Answered: \(answers.joined(separator: "; "))"))
         }
         guard var text = tool.output else {
             // A call that failed records its error, and may record nothing else.

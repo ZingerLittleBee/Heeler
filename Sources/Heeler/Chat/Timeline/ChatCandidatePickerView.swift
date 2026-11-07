@@ -85,7 +85,7 @@ private struct CandidateRow: View {
 extension ChatSessionCandidate {
     fileprivate var displayTitle: String {
         if let title, !title.isEmpty { return title }
-        return String(localized: "Conversation \(sessionID.prefix(8))")
+        return String(localized: "Conversation \(String(sessionID.prefix(8)))")
     }
 
     fileprivate var detail: String {
@@ -141,7 +141,7 @@ private struct ChatCandidatePreviewView: View {
 
     private var previewTitle: String {
         if case .conversation(let title?, _) = preview, !title.isEmpty { return title }
-        return String(localized: "Conversation \(candidate.sessionID.prefix(8))")
+        return String(localized: "Conversation \(String(candidate.sessionID.prefix(8)))")
     }
 
     @ViewBuilder

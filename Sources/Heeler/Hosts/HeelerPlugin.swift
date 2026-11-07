@@ -233,9 +233,9 @@ struct HeelerPluginActionFailure: Equatable, Sendable {
                 } else if error.isDownloadFailure {
                     String(localized: "herdr could not download the plugin. Check that the Host can reach github.com.")
                 } else if case .uninstall = error.step {
-                    "herdr could not remove the old copy of the plugin."
+                    String(localized: "herdr could not remove the old copy of the plugin.")
                 } else {
-                    "herdr could not install the plugin."
+                    String(localized: "herdr could not install the plugin.")
                 }
             self.init(message: message, detail: error.detail())
         case TransportError.timedOut:
@@ -257,7 +257,7 @@ struct HeelerPluginActionFailure: Equatable, Sendable {
         case .missing:
             self.init(
                 message: String(localized: "Heeler could not find Node.js \(NodeToolchainProbe.minimumMajorVersion) or newer on the Host, so nothing changed. Install it, or make it the default version in your version manager, then try again."),
-                detail: "Looked in \(NodeToolchainProbe.searchedPlaces).")
+                detail: String(localized: "Looked in \(NodeToolchainProbe.searchedPlaces)."))
         case .tooOld(let version):
             self.init(
                 message: String(localized: "The Node.js Heeler found on the Host is \(version), and the plugin needs \(NodeToolchainProbe.minimumMajorVersion) or newer, so nothing changed. Install a newer version or make it the default, then try again."))
@@ -354,7 +354,7 @@ struct HeelerPluginPresentation: Equatable {
             value = String(localized: "Not installed")
             notice = Notice(
                 tone: .info,
-                                message: String(localized: "Install the Heeler plugin for notifications, Live Activity updates, and herdr's sidebar fields."),
+                message: String(localized: "Install the Heeler plugin for notifications, Live Activity updates, and herdr's sidebar fields."),
                 commands: [Self.installCommand(session: session, endpoint: endpoint)],
                 notes: [],
                 action: Notice.Action(title: String(localized: "Install Plugin"), steps: [.install]))
@@ -371,11 +371,13 @@ struct HeelerPluginPresentation: Equatable {
         endpoint: HerdrEndpoint?, bundled: PluginVersion
     ) -> (value: String, notice: Notice?) {
         let installCommand = Self.installCommand(session: session, endpoint: endpoint)
-        let version = installation.version.isEmpty ? "Unknown version" : installation.version
+        let version =
+            installation.version.isEmpty ? String(localized: "Unknown version") : installation.version
         let parsed = installation.parsedVersion
         let isOutdated = parsed.map { $0 < bundled } ?? false
         let isLocal = installation.source == .local
-        let shownValue = isLocal ? "\(version) · Linked locally" : version
+        let shownValue = isLocal ? String(localized: "\(version) · Linked locally") : version
+        let disabledValue = String(localized: "\(version) · Disabled")
         let missing = parsed.map {
             HeelerPluginFeature.requirements(
                 HeelerPluginFeature.allCases.filter { $0.minimumVersion <= bundled },
@@ -395,10 +397,9 @@ struct HeelerPluginPresentation: Equatable {
                     version,
                     Notice(
                         tone: .warning,
-                                                message: String(localized: "This Host runs an old Heeler plugin under its former name, and the current plugin is disabled. Remove the old copy, then ")
-                            + (reinstalls
-                                ? String(localized: "install the current plugin and turn it on.")
-                                : String(localized: "turn the current plugin on.")),
+                        message: reinstalls
+                            ? String(localized: "This Host runs an old Heeler plugin under its former name, and the current plugin is disabled. Remove the old copy, then install the current plugin and turn it on.")
+                            : String(localized: "This Host runs an old Heeler plugin under its former name, and the current plugin is disabled. Remove the old copy, then turn the current plugin on."),
                         commands: [uninstallCommand(
                             installation.pluginID, session: session, endpoint: endpoint)]
                             + (reinstalls ? [installCommand, enable] : [enable]),
@@ -408,7 +409,7 @@ struct HeelerPluginPresentation: Equatable {
                 version,
                 Notice(
                     tone: .warning,
-                                        message: String(localized: "This Host runs an old Heeler plugin under its former name. Remove it, then install the current plugin."),
+                    message: String(localized: "This Host runs an old Heeler plugin under its former name. Remove it, then install the current plugin."),
                     commands: [
                         uninstallCommand(installation.pluginID, session: session, endpoint: endpoint),
                         installCommand,
@@ -426,12 +427,14 @@ struct HeelerPluginPresentation: Equatable {
                 shownValue,
                 Notice(
                     tone: .warning,
-                                        message: String(localized: "An old copy of the Heeler plugin is still installed under its former name and may send duplicate notifications. Remove it")
-                        + (updates ? String(localized: " and update the plugin:") : ":"),
+                    message: updates
+                        ? String(localized: "An old copy of the Heeler plugin is still installed under its former name and may send duplicate notifications. Remove it and update the plugin:")
+                        : String(localized: "An old copy of the Heeler plugin is still installed under its former name and may send duplicate notifications. Remove it:"),
                     commands: removals + (updates ? [installCommand] : []),
                     notes: missing,
                     action: action(
-                        updates ? "Update Plugin" : "Remove Old Copy", for: installation,
+                        updates ? String(localized: "Update Plugin") : String(localized: "Remove Old Copy"),
+                        for: installation,
                         steps: (updates ? [.install] : [])
                             + installation.leftoverLegacyIDs.map { .uninstall(pluginID: $0) })))
         }
@@ -442,26 +445,26 @@ struct HeelerPluginPresentation: Equatable {
             // enable, which also succeeds on an enabled plugin.
             if isOutdated, !isLocal, let parsed {
                 return (
-                    "\(version) · Disabled",
+                    disabledValue,
                     Notice(
                         tone: .warning,
-                                                message: String(localized: "The Heeler plugin is disabled and out of date: \(String(describing: parsed)) → \(String(describing: bundled)). Update it, then turn it on:"),
+                        message: String(localized: "The Heeler plugin is disabled and out of date: \(String(describing: parsed)) → \(String(describing: bundled)). Update it, then turn it on:"),
                         commands: [installCommand, enableCommand(
                             installation.pluginID, session: session, endpoint: endpoint)],
                         notes: missing,
                         action: action(
-                            "Update and Turn On", for: installation,
+                            String(localized: "Update and Turn On"), for: installation,
                             steps: [.install, .enable(pluginID: installation.pluginID)])))
             }
             return (
-                "\(version) · Disabled",
+                disabledValue,
                 Notice(
                     tone: .warning,
-                                        message: String(localized: "The Heeler plugin is disabled, so this Host sends no notifications or Live Activity updates."),
+                    message: String(localized: "The Heeler plugin is disabled, so this Host sends no notifications or Live Activity updates."),
                     commands: [enableCommand(installation.pluginID, session: session, endpoint: endpoint)],
                     notes: [],
                     action: action(
-                        "Turn On Plugin", for: installation,
+                        String(localized: "Turn On Plugin"), for: installation,
                         steps: [.enable(pluginID: installation.pluginID)])))
         }
         if installation.hasManifestWarning {
@@ -469,8 +472,9 @@ struct HeelerPluginPresentation: Equatable {
                 shownValue,
                 Notice(
                     tone: .warning,
-                    message: String(localized: "herdr could not read the plugin's manifest, so its version may be ")
-                        + (isLocal ? String(localized: "out of date. Check the linked checkout.") : String(localized: "out of date. Reinstall it.")),
+                    message: isLocal
+                        ? String(localized: "herdr could not read the plugin's manifest, so its version may be out of date. Check the linked checkout.")
+                        : String(localized: "herdr could not read the plugin's manifest, so its version may be out of date. Reinstall it."),
                     // No action: the version herdr reports from its
                     // registry may be stale, so a reinstall could be a
                     // downgrade the app cannot see.
@@ -484,7 +488,7 @@ struct HeelerPluginPresentation: Equatable {
                 shownValue,
                 Notice(
                     tone: .warning,
-                                        message: String(localized: "Plugin \(String(describing: bundled)) is available. This plugin is linked from a local checkout; update that checkout to \(String(describing: bundled)) or newer."),
+                    message: String(localized: "Plugin \(String(describing: bundled)) is available. This plugin is linked from a local checkout; update that checkout to \(String(describing: bundled)) or newer."),
                     commands: [],
                     notes: missing))
         }
@@ -495,7 +499,7 @@ struct HeelerPluginPresentation: Equatable {
                 message: String(localized: "Update available: \(String(describing: parsed)) → \(String(describing: bundled)). Run this on the Host:"),
                 commands: [installCommand],
                 notes: missing,
-                action: action("Update Plugin", for: installation, steps: [.install])))
+                action: action(String(localized: "Update Plugin"), for: installation, steps: [.install])))
     }
 
     /// `steps` as a notice action, unless they install over a plugin that is

@@ -7,7 +7,7 @@ enum AgentLayoutTokenStyle: Equatable {
     var label: String {
         switch self {
         case .default: String(localized: "Default")
-        case .secondary: "Secondary"
+        case .secondary: String(localized: "Secondary")
         }
     }
 
@@ -15,7 +15,7 @@ enum AgentLayoutTokenStyle: Equatable {
     var badge: String? {
         switch self {
         case .default: nil
-        case .secondary: "Secondary"
+        case .secondary: String(localized: "Secondary")
         }
     }
 
@@ -142,19 +142,28 @@ enum AgentLayoutTokensEditing {
         if !hostName.isEmpty { parts.append(hostName) }
         if let rowIndex, let slot = AgentRowSlot.forRow(rowIndex) {
             if side == .trailing {
-                parts.append("right side")
+                parts.append(String(localized: "right side"))
             } else if followsPlugin {
-                parts.append("\(slot.label) row")
+                parts.append(slotRowName(slot))
             }
         }
         return parts.joined(separator: " · ")
+    }
+
+    /// "herdr row" or "Heeler row": one phrase per slot, so a translation
+    /// never joins the slot's name to a separately localized word.
+    static func slotRowName(_ slot: AgentRowSlot) -> String {
+        switch slot {
+        case .herdr: String(localized: "herdr row")
+        case .heeler: String(localized: "Heeler row")
+        }
     }
 
     /// Footer of the Add Field sheet.
     static func addFieldFooter(rowIndex: Int, side: AgentRowSide = .leading) -> String {
         switch (AgentRowSlot.forRow(rowIndex), side) {
         case (nil, _):
-            String(localized: "")
+            ""
         case (_, .trailing):
             String(localized: "These fields end the row on the right. They are Heeler's own; Sync from plugin keeps them.")
         case (.herdr?, .leading):

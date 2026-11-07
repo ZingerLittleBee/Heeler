@@ -15,7 +15,7 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
     var displayName: String {
         switch self {
         case .preset(let preset): preset.displayName
-        case .custom: "Custom"
+        case .custom: String(localized: "Custom", comment: "Voice Input service: a service the user configures")
         }
     }
 

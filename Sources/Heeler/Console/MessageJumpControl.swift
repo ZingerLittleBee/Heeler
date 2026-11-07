@@ -774,7 +774,7 @@ final class MessageJumpChromeContainer: UIView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError(String(localized: "init(coder:) is unavailable"))
+        fatalError("init(coder:) is unavailable")
     }
 
     func embed(_ view: UIView) {

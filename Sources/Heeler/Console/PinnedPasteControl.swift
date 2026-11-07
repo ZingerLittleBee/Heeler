@@ -85,7 +85,7 @@ final class PinnedPasteView: UIView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError(String(localized: "init(coder:) is unavailable"))
+        fatalError("init(coder:) is unavailable")
     }
 
     override func paste(itemProviders: [NSItemProvider]) {

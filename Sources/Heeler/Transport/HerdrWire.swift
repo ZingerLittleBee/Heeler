@@ -63,7 +63,7 @@ enum HerdrWire {
             envelope = try JSONDecoder().decode(ResponseEnvelope<R>.self, from: lineData)
         } catch {
             let preview = String(decoding: lineData.prefix(200), as: UTF8.self)
-            throw TransportError.malformedResponse("undecodable response line: \(preview)")
+            throw TransportError.malformedResponse(String(localized: "undecodable response line: \(preview)"))
         }
         // Errors are attributable to the connection's sole in-flight request
         // even when id correlation is off (empty id, subscribe probe ids).
@@ -72,10 +72,10 @@ enum HerdrWire {
         }
         guard envelope.id == requestID else {
             throw TransportError.malformedResponse(
-                "response id \(envelope.id ?? "<none>") does not match request id \(requestID)")
+                String(localized: "response id \(envelope.id ?? "<none>") does not match request id \(requestID)"))
         }
         guard let result = envelope.result else {
-            throw TransportError.malformedResponse("response has neither result nor error")
+            throw TransportError.malformedResponse(String(localized: "response has neither result nor error"))
         }
         return result
     }

@@ -357,7 +357,7 @@ struct AgentCardPresentation: Equatable, Sendable {
     /// Agent as its kind word would.
     let isMarked: Bool
 
-    var headline: String { rows.first?.map(\.text).joined() ?? "Agent" }
+    var headline: String { rows.first?.map(\.text).joined() ?? String(localized: "Agent") }
     var additionalRows: [String] { rows.dropFirst().map { $0.map(\.text).joined() } }
 
     /// `leadsWithMark` for an Agents list row, which leads with the
@@ -381,7 +381,7 @@ struct AgentCardPresentation: Equatable, Sendable {
             let name = agent.agent.displayName
             rows = [[RenderedToken(
                 token: .agent,
-                text: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Agent" : name,
+                text: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? String(localized: "Agent") : name,
                 fg: nil, bold: nil, dim: nil)]]
             slots = [0]
         } else {
@@ -604,7 +604,7 @@ struct AgentStatusBadge: View {
                 hostID: UUID(),
                 hostName: "devbox",
                 agent: Agent(
-                    terminalID: "term_a", kind: "claude", title: String(localized: "Fix the flaky test"),
+                    terminalID: "term_a", kind: "claude", title: "Fix the flaky test",
                     status: .blocked, workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1",
                     cwd: "/work/proj", revision: 3),
                 workspaceLabel: "proj",
@@ -614,14 +614,14 @@ struct AgentStatusBadge: View {
                     repoRoot: "/work/proj",
                     checkoutPath: "/work/proj-wt",
                     isLinkedWorktree: true),
-                lastOutputSnippet: String(localized: "Allow Claude to run rm -rf? 1. Yes 2. No")))
+                lastOutputSnippet: "Allow Claude to run rm -rf? 1. Yes 2. No"))
         // No workspace in the snapshot: the Agent's own name takes the lead.
         AgentCardView(
             agent: ConsoleAgent(
                 hostID: UUID(),
                 hostName: "devbox",
                 agent: Agent(
-                    terminalID: "term_b", kind: "claude", title: String(localized: "Draft the release notes"),
+                    terminalID: "term_b", kind: "claude", title: "Draft the release notes",
                     status: .working, workspaceID: "w2", tabID: "w2:t1", paneID: "w2:p1",
                     cwd: "/tmp", revision: 1),
                 workspaceLabel: nil,

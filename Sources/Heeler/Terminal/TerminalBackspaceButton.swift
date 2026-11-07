@@ -61,7 +61,7 @@ final class TerminalRepeatingBackspaceButton: UIButton {
             button.configuration = configuration
         }
         accessibilityLabel = String(localized: "Backspace")
-        accessibilityHint = "Tap to delete once; hold to keep deleting"
+        accessibilityHint = String(localized: "Tap to delete once; hold to keep deleting")
         isExclusiveTouch = true
         let touchObserver = TerminalBackspaceTouchRecognizer()
         touchObserver.button = self
@@ -75,7 +75,7 @@ final class TerminalRepeatingBackspaceButton: UIButton {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError(String(localized: "init(coder:) is unavailable")) }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
     override var isEnabled: Bool {
         didSet { if !isEnabled { cancelHold() } }

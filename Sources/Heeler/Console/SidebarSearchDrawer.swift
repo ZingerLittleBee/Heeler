@@ -42,7 +42,7 @@ private struct SidebarSearchDrawerBridge: UIViewRepresentable {
         }
 
         @available(*, unavailable)
-        required init?(coder: NSCoder) { fatalError(String(localized: "init(coder:) is unavailable")) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
         override func didMoveToWindow() {
             super.didMoveToWindow()

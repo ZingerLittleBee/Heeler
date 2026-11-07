@@ -512,9 +512,9 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
             if end.wasKilled || end.signal == "killed" {
                 detail.append(String(localized: "Killed"))
             } else if let signal = end.signal {
-                detail.append("Signal \(signal)")
+                detail.append(String(localized: "Signal \(signal)"))
             } else if let code = end.exitCode {
-                detail.append("Exit code \(code)")
+                detail.append(String(localized: "Exit code \(code)"))
             }
             let isCommand = end.taskKind == nil || end.taskKind == "bash"
             addNotice(

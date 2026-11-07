@@ -18,11 +18,11 @@ enum HerdrCoreWire {
     static func result(from data: Data, id: String) throws -> JSONValue {
         let envelope = try decodeLine(data)
         guard envelope["jsonrpc"] == .string("2.0"), envelope["id"] == .string(id) else {
-            throw malformed("The response is not JSON-RPC 2.0 for the requested id.")
+            throw malformed(String(localized: "The response is not JSON-RPC 2.0 for the requested id."))
         }
         if let error = envelope["error"], error != .null {
             guard let message = error["message"]?.stringValue else {
-                throw malformed("The error response has no message.")
+                throw malformed(String(localized: "The error response has no message."))
             }
             let kind = error["data"]?["kind"]?.stringValue
                 ?? integer(error["code"]).map(String.init) ?? "herdr_core_error"
@@ -30,7 +30,7 @@ enum HerdrCoreWire {
             throw HerdrAPIError(code: kind, message: hint.map { "\(message) \($0)" } ?? message)
         }
         guard let result = envelope["result"] else {
-            throw malformed("The response has neither a result nor an error.")
+            throw malformed(String(localized: "The response has neither a result nor an error."))
         }
         return result
     }
@@ -47,7 +47,7 @@ enum HerdrCoreWire {
         do {
             return try JSONDecoder().decode(Value.self, from: JSONEncoder().encode(value))
         } catch {
-            throw malformed("Invalid \(Value.self).")
+            throw malformed(String(localized: "Invalid \(String(describing: Value.self))."))
         }
     }
 
@@ -57,14 +57,14 @@ enum HerdrCoreWire {
     static func address(_ value: String) throws -> String {
         guard !value.isEmpty, !value.contains("/") else {
             throw TransportError.hostFeatureUnavailable(
-                feature: "Connect directly to the Host that owns this herdr-core Terminal")
+                feature: String(localized: "Connect directly to the Host that owns this herdr-core Terminal"))
         }
         return value
     }
 
     private static func decodeLine(_ data: Data) throws -> JSONValue {
         do { return try JSONDecoder().decode(JSONValue.self, from: data) }
-        catch { throw malformed("Invalid JSON response.") }
+        catch { throw malformed(String(localized: "Invalid JSON response.")) }
     }
 
     static func integer(_ value: JSONValue?) -> Int? {

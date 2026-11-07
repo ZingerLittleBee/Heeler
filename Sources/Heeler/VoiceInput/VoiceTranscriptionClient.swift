@@ -34,9 +34,9 @@ enum VoiceTranscriptionError: Error, Equatable, Sendable {
         case .unauthorized(let detail):
             Self.joined(String(localized: "The speech service rejected the API key."), detail)
         case .rejected(let status, let detail):
-            Self.joined("The speech service refused the recording (HTTP \(status)).", detail)
+            Self.joined(String(localized: "The speech service refused the recording (HTTP \(status))."), detail)
         case .unavailable(let status, let detail):
-            Self.joined("The speech service is unavailable (HTTP \(status)).", detail)
+            Self.joined(String(localized: "The speech service is unavailable (HTTP \(status))."), detail)
         case .redirected(let host):
             if let host {
                 String(localized: "The speech service redirected to \(host). Voice Input does not follow redirects; check the URL.")

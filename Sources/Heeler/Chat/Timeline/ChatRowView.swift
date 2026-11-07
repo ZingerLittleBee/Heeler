@@ -196,7 +196,7 @@ private struct ChatUserBubble: View {
 
     /// "You: text", then what the chips say.
     private var accessibilityLabel: String {
-        var parts = ["You: \(message.displayText)"]
+        var parts = [String(localized: "You: \(message.displayText)")]
         if message.imageCount > 0 {
             parts.append(message.imageCount == 1 ? String(localized: "1 image") : String(localized: "\(message.imageCount) images"))
         }
@@ -312,7 +312,7 @@ private struct ChatReasoningRow: View {
 
     private var title: String {
         guard let milliseconds = reasoning.durationMilliseconds, milliseconds >= 1_000 else {
-            return "Reasoning"
+            return String(localized: "Reasoning")
         }
         let duration = Duration.milliseconds(milliseconds)
         return String(localized: "Thought for \(duration.formatted(.units(allowed: [.minutes, .seconds], width: .narrow)))")
@@ -361,8 +361,7 @@ private struct ChatTurnHeaderRow: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(duration.map { String(localized: "Worked for \(Self.spoken($0))") } ?? String(localized: "Details"))
                 .accessibilityValue(header.isOpen ? String(localized: "Expanded") : String(localized: "Collapsed"))
-                .accessibilityHint(
-                    "\(header.isOpen ? String(localized: "Hides") : String(localized: "Shows")) \(header.stepCount == 1 ? String(localized: "1 step") : String(localized: "\(header.stepCount) steps"))")
+                .accessibilityHint(Self.hint(isOpen: header.isOpen, steps: header.stepCount))
             }
             Rectangle()
                 .fill(Color(uiColor: .separator))
@@ -371,9 +370,20 @@ private struct ChatTurnHeaderRow: View {
         }
     }
 
+    /// "Shows 3 steps": one whole phrase per state and count, so each
+    /// language orders its verb and count.
+    static func hint(isOpen: Bool, steps: Int) -> String {
+        switch (isOpen, steps == 1) {
+        case (true, true): String(localized: "Hides 1 step")
+        case (true, false): String(localized: "Hides \(steps) steps")
+        case (false, true): String(localized: "Shows 1 step")
+        case (false, false): String(localized: "Shows \(steps) steps")
+        }
+    }
+
     /// "Worked for 35s", or "Details" when the records give no duration.
     static func title(_ duration: TimeInterval?) -> String {
-        guard let duration else { return "Details" }
+        guard let duration else { return String(localized: "Details") }
         let seconds = max(1, Int(duration.rounded()))
         let formatted = Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))
         return String(localized: "Worked for \(formatted)")
@@ -442,17 +452,29 @@ private struct ChatToolGroupRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(group.isOpen ? String(localized: "Expanded") : String(localized: "Collapsed"))
-        .accessibilityHint("\(group.isOpen ? String(localized: "Hides") : String(localized: "Shows")) \(group.calls == 1 ? String(localized: "1 call") : String(localized: "\(group.calls) calls"))")
+        .accessibilityHint(hint)
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// "Shows 3 calls": one whole phrase per state and count.
+    private var hint: String {
+        switch (group.isOpen, group.calls == 1) {
+        case (true, true): String(localized: "Hides 1 call")
+        case (true, false): String(localized: "Hides \(group.calls) calls")
+        case (false, true): String(localized: "Shows 1 call")
+        case (false, false): String(localized: "Shows \(group.calls) calls")
+        }
     }
 
     private var accessibilityLabel: String {
         var parts = [group.summary]
-        if let added = group.added, let removed = group.removed { parts.append("\(added) added, \(removed) removed") }
+        if let added = group.added, let removed = group.removed {
+            parts.append(String(localized: "\(added) added, \(removed) removed"))
+        }
         if group.isRunning {
             parts.append(String(localized: "Running"))
         } else if group.failed > 0 {
-            parts.append("\(group.failed) failed")
+            parts.append(String(localized: "\(group.failed) failed"))
         }
         return parts.joined(separator: ", ")
     }
@@ -464,14 +486,17 @@ struct ChatSubagentPresentation {
     let activity: ChatSubagentActivity
 
     var name: String {
-        activity.agentPath?.split(separator: "/").last.map(String.init) ?? "Unnamed subagent"
+        activity.agentPath?.split(separator: "/").last.map(String.init) ?? String(localized: "Unnamed subagent")
     }
 
     var status: String { Self.label(for: activity.events.last ?? "unknown") }
-    var eventCount: String { activity.events.count == 1 ? "1 event" : "\(activity.events.count) events" }
+    var eventCount: String {
+        activity.events.count == 1
+            ? String(localized: "1 event") : String(localized: "\(activity.events.count) events")
+    }
 
     var copyText: String {
-        (["Subagent: \(name)", activity.agentPath].compactMap { $0 }
+        ([String(localized: "Subagent: \(name)"), activity.agentPath].compactMap { $0 }
             + history.map(\.label)).joined(separator: "\n")
     }
 
@@ -499,12 +524,14 @@ struct ChatSubagentPresentation {
         return runs
     }
 
+    /// What a recorded event says. `kind` is the record's own word, matched
+    /// as written; only the label is in the app's language.
     static func label(for kind: String) -> String {
         switch kind {
-        case "started": "Started"
+        case "started": String(localized: "Started")
         case "interacted": String(localized: "Message exchanged")
-        case "completed": "Completed"
-        case "interrupted": "Interrupted"
+        case "completed": String(localized: "Completed")
+        case "interrupted": String(localized: "Interrupted")
         default: String(localized: "Activity recorded")
         }
     }
@@ -556,7 +583,11 @@ private struct ChatSubagentActivityRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Subagent, \(presentation.name)")
-            .accessibilityValue("\(presentation.status), \(presentation.eventCount), \(isExpanded ? "Expanded" : "Collapsed")")
+            .accessibilityValue(
+                [
+                    presentation.status, presentation.eventCount,
+                    isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"),
+                ].joined(separator: ", "))
             .accessibilityHint(isExpanded ? String(localized: "Hides activity history") : String(localized: "Shows activity history"))
             if isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
@@ -803,8 +834,8 @@ private struct ChatToolRow: View {
     /// What a row with nothing to read says: a call running when last seen
     /// may have printed since.
     private static func noOutputText(for tool: ChatToolActivity) -> String {
-        guard tool.status == .running else { return "No output." }
-        return tool.isNotUpdating ? "No output when last seen." : "Running…"
+        guard tool.status == .running else { return String(localized: "No output.") }
+        return tool.isNotUpdating ? String(localized: "No output when last seen.") : String(localized: "Running…")
     }
 
     /// What a row with no preview says about its read; nil when the read
@@ -941,7 +972,7 @@ private struct ChatToolStatusBadge: View {
     /// A plain success shows only its checkmark, so `succeeded` gets here
     /// only when it was allowed in Chat.
     private var label: String {
-        if cardAnswer == .stopped { return "Stopped" }
+        if cardAnswer == .stopped { return String(localized: "Stopped") }
         switch status {
         case .awaitingApproval: return String(localized: "Waiting")
         case .succeeded: return String(localized: "Allowed")

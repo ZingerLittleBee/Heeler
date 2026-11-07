@@ -185,7 +185,8 @@ private struct PairingCeremonyView: View {
                 LabeledContent(
                     "Address",
                     value: code.addresses.count == 1
-                        ? code.addresses[0] : "\(code.addresses.count) candidates")
+                        ? code.addresses[0]
+                        : String(localized: "\(code.addresses.count) candidates"))
                 if code.port != 22 {
                     LabeledContent("Port", value: String(code.port))
                 }

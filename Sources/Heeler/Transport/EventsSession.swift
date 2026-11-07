@@ -509,7 +509,7 @@ actor EventsSession {
     private func awaitUsableTransport() async throws -> any Transport {
         if let transport = currentTransport { return transport }
         guard phase == .active, !isWindingDown, runTask != nil else {
-            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
         if let terminalTransportFailure { throw terminalTransportFailure }
         let id = UUID()
@@ -765,7 +765,7 @@ actor EventsSession {
             }
             let failure =
                 pendingKeepaliveFailure ?? streamFailure
-                ?? .channelFailed(detail: "events stream ended unexpectedly")
+                ?? .channelFailed(detail: String(localized: "events stream ended unexpectedly"))
             pendingKeepaliveFailure = nil
             guard failure.isRetryable else {
                 terminalTransportFailure = failure

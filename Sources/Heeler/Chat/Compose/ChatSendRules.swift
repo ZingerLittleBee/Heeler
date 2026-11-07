@@ -179,7 +179,7 @@ struct ChatSendProfile: Sendable {
     /// OpenCode runs a bare `/compact` from its popup. With a space after
     /// it, the popup closes and the text goes to the model as a message.
     private static let openCodeCompactSubmission = ChatCommandSubmission.bare(
-        argumentsRefusal: "OpenCode's /compact takes no instructions. Send /compact alone.")
+        argumentsRefusal: String(localized: "OpenCode's /compact takes no instructions. Send /compact alone."))
 }
 
 /// What a Chat draft sends to the Agent's input box (ADR 0024).
@@ -256,7 +256,8 @@ struct ChatSendRules: Sendable {
                 .unsafeText(String(localized: "A message starting with ! runs a shell command. Open the terminal to run one.")))
         }
         if profile.exitWords.contains(trimmed.lowercased()) {
-            return .refused(.unsafeText("Sending this would exit \(program.chatName). Open the terminal to exit."))
+            return .refused(
+                .unsafeText(String(localized: "Sending this would exit \(program.chatName). Open the terminal to exit.")))
         }
         if let refusal = profile.refusal(clean, trimmed) { return .refused(refusal) }
         guard trimmed.hasPrefix("/") else { return .text }

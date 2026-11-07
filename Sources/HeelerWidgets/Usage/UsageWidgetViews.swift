@@ -134,9 +134,7 @@ struct UsageWidgetView: View {
             }
             UsageFigure(summary: total, metric: entry.metric, size: 36)
                 .padding(.top, 6)
-            Text(entry.metric == .cost
-                ? "\(metricName) · \(UsageWidgetText.tokens(total.tokens, locale: locale))"
-                : "\(metricName) · \(UsageWidgetText.cost(total.cost, locale: locale)) est.")
+            Text("\(metricName) · \(entry.metric == .cost ? UsageWidgetText.tokens(total.tokens, locale: locale) : UsageWidgetText.estimated(total.cost, locale: locale))")
                 .font(.footnote).foregroundStyle(.secondary)
             // The chart takes whatever the rows leave, so one Host's two
             // rows do not leave the bottom empty.
@@ -213,7 +211,7 @@ struct UsageWidgetView: View {
                     UsageFigure(summary: total, metric: entry.metric, size: 22)
                     Text(entry.metric == .cost
                         ? UsageWidgetText.tokens(total.tokens, locale: locale)
-                        : "\(UsageWidgetText.cost(total.cost, locale: locale)) est.")
+                        : UsageWidgetText.estimated(total.cost, locale: locale))
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -230,7 +228,8 @@ struct UsageWidgetView: View {
     /// only a chosen Host is named, after the figure, so the tail is cut.
     private func inline(_ scope: UsageWidgetScope) -> some View {
         let total = scope.total(entry.range)
-        let reading = "\(UsageWidgetText.short(total, metric: entry.metric, locale: locale)) \(UsageWidgetText.rangeInline(entry.range))"
+        let reading = UsageWidgetText.inline(
+            UsageWidgetText.short(total, metric: entry.metric, locale: locale), range: entry.range)
         return Label(
             scope.hostID == nil ? reading : "\(reading) · \(scope.title)",
             systemImage: "chart.bar.fill")
@@ -249,14 +248,13 @@ struct UsageWidgetView: View {
 
     private func symbol(_ scope: UsageWidgetScope?) -> String {
         guard let scope, let reason = scope.excluded.first?.excludedReason else { return "chart.bar.fill" }
-        return reason == "Not connected" ? "wifi.slash" : "desktopcomputer"
+        return reason == .notConnected ? "wifi.slash" : "desktopcomputer"
     }
 
     private func message(_ scope: UsageWidgetScope?) -> String {
         guard let scope else { return String(localized: "Open Heeler to load Usage.") }
-        if let reason = scope.excluded.first?.excludedReason,
-            scope.hostID != nil || reason == UsageWidgetSnapshot.usageOffReason {
-            return reason == "Not read yet" ? String(localized: "Open Heeler to load Usage.") : reason
+        if let reason = scope.excluded.first?.excludedReason, scope.hostID != nil || reason == .usageOff {
+            return reason == .notReadYet ? String(localized: "Open Heeler to load Usage.") : reason.reason
         }
         return String(localized: "Open Heeler to load Usage.")
     }
@@ -294,9 +292,9 @@ struct UsageLimitsWidgetView: View {
         } else {
             UsageWidgetMessage(
                 family: family,
-                symbol: host?.excludedReason == "Not connected" ? "wifi.slash" : "gauge.with.dots.needle.50percent",
-                title: (host?.name ?? "Usage Limits", nil),
-                message: host?.excludedReason.flatMap { $0 == "Not read yet" ? nil : $0 }
+                symbol: host?.excludedReason == .notConnected ? "wifi.slash" : "gauge.with.dots.needle.50percent",
+                title: (host?.name ?? String(localized: "Usage Limits"), nil),
+                message: host?.excludedReason.flatMap { $0 == .notReadYet ? nil : $0.reason }
                     ?? String(localized: "Open Heeler to read Usage Limits."))
         }
     }
@@ -357,7 +355,7 @@ struct UsageLimitsWidgetView: View {
                     }
                 }
             } else {
-                Text(limits?.message ?? "No Usage Limits reported.")
+                Text(limits?.message ?? UsageWidgetText.noLimits)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(3)
             }
@@ -561,7 +559,7 @@ struct UsageLimitsWidgetView: View {
                     UsageWindowRow(window: window, program: limits.program, now: now, showsCountdown: true, size: 13)
                 }
             } else {
-                Text(limits?.message ?? "No Usage Limits reported.")
+                Text(limits?.message ?? UsageWidgetText.noLimits)
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -575,7 +573,7 @@ struct UsageLimitsWidgetView: View {
         let reading = UsageLimitsPick.reading(programEntries(host), now: now).map { reading in
             let figure = "\(reading.window.name) \(UsageWidgetText.percent(reading.window.usedPercent))"
             return reading.limits.account.map { "\($0) \(figure)" } ?? figure
-        } ?? "Usage Limits"
+        } ?? String(localized: "Usage Limits")
         return Label("\(reading) · \(host.name)", systemImage: "gauge.with.dots.needle.50percent")
     }
 
@@ -584,7 +582,7 @@ struct UsageLimitsWidgetView: View {
         case "claude": "Claude Code"
         case "codex": "Codex"
         case let program?: program
-        case nil: "Usage Limits"
+        case nil: String(localized: "Usage Limits")
         }
     }
 }
@@ -788,7 +786,7 @@ struct UsageFigure: View {
                 Text(UsageWidgetText.cost(summary.cost, locale: locale))
             case .tokens:
                 Text(AgentUsageStyle.tokens(summary.tokens, locale: locale))
-                    + Text(" tokens").font(.system(size: size * 0.5, weight: .semibold))
+                    + (Text(verbatim: " ") + Text("tokens")).font(.system(size: size * 0.5, weight: .semibold))
             }
         }
         .font(.system(size: size, weight: .semibold).monospacedDigit())
@@ -943,7 +941,7 @@ struct UsageLimitsLine: View {
             if limits.windows.isEmpty {
                 // As tall as a window's row, so the lines stay evenly spaced.
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(limits.message ?? "No Usage Limits reported.")
+                    Text(limits.message ?? UsageWidgetText.noLimits)
                         .font(.system(size: size - 1))
                         .foregroundStyle(.secondary)
                     Color.clear.frame(height: 4)
@@ -1318,7 +1316,9 @@ enum UsageWidgetColor {
 // MARK: Copy
 
 enum UsageWidgetText {
-    static let windowReset = "Reset · usage unknown"
+    static var windowReset: String { String(localized: "Reset · usage unknown") }
+
+    static var noLimits: String { String(localized: "No Usage Limits reported.") }
 
     /// After an hour a reading reads as stale.
     static let staleAfter: TimeInterval = 3_600
@@ -1329,32 +1329,34 @@ enum UsageWidgetText {
 
     /// "Updated 5:38 PM", or the day for an older reading.
     static func updated(_ readAt: Date, now: Date) -> String {
-        Calendar.current.isDate(readAt, inSameDayAs: now)
-            ? "Updated \(readAt.formatted(date: .omitted, time: .shortened))"
-            : "Updated \(readAt.formatted(.dateTime.month(.abbreviated).day()))"
+        let when = Calendar.current.isDate(readAt, inSameDayAs: now)
+            ? readAt.formatted(date: .omitted, time: .shortened)
+            : readAt.formatted(.dateTime.month(.abbreviated).day())
+        return String(localized: "Updated \(when)")
     }
 
     static func range(_ range: AgentUsageRange) -> String {
         switch range {
-        case .today: "Today"
-        case .last7Days: "Last 7 days"
-        case .last30Days: "Last 30 days"
+        case .today: String(localized: "Today")
+        case .last7Days: String(localized: "Last 7 days")
+        case .last30Days: String(localized: "Last 30 days")
         }
     }
 
     static func rangeShort(_ range: AgentUsageRange) -> String {
         switch range {
-        case .today: "Today"
-        case .last7Days: "7 days"
-        case .last30Days: "30 days"
+        case .today: String(localized: "Today")
+        case .last7Days: String(localized: "7 days")
+        case .last30Days: String(localized: "30 days")
         }
     }
 
-    static func rangeInline(_ range: AgentUsageRange) -> String {
+    /// The inline Lock Screen figure with its range: "$12 last 7 days".
+    static func inline(_ figure: String, range: AgentUsageRange) -> String {
         switch range {
-        case .today: "today"
-        case .last7Days: "last 7 days"
-        case .last30Days: "last 30 days"
+        case .today: String(localized: "\(figure) today")
+        case .last7Days: String(localized: "\(figure) last 7 days")
+        case .last30Days: String(localized: "\(figure) last 30 days")
         }
     }
 
@@ -1362,8 +1364,13 @@ enum UsageWidgetText {
         AgentUsageStyle.cost(value, locale: locale)
     }
 
+    /// "$12.40 est.", beside a token figure.
+    static func estimated(_ value: Double?, locale: Locale) -> String {
+        String(localized: "\(cost(value, locale: locale)) est.")
+    }
+
     static func tokens(_ value: Int64, locale: Locale) -> String {
-        "\(AgentUsageStyle.tokens(value, locale: locale)) tokens"
+        String(localized: "\(AgentUsageStyle.tokens(value, locale: locale)) tokens")
     }
 
     static func value(_ summary: UsageWidgetSnapshot.Summary, metric: AgentUsageMetric, locale: Locale) -> String {
@@ -1405,7 +1412,7 @@ enum UsageWidgetText {
     static func resetLine(_ window: UsageWidgetSnapshot.Window, now: Date) -> String {
         guard let reset = window.resetsAt else { return window.isExpired(at: now) ? windowReset : "" }
         if window.isExpired(at: now) { return windowReset }
-        return "resets in \(countdown(to: reset, now: now)) · \(clock(reset, now: now))"
+        return String(localized: "resets in \(countdown(to: reset, now: now)) · \(clock(reset, now: now))")
     }
 
     /// "resets 7:26 PM", or "resets Oct 30" when it is not today, beside a
@@ -1415,7 +1422,7 @@ enum UsageWidgetText {
         let when = Calendar.current.isDate(reset, inSameDayAs: now)
             ? reset.formatted(date: .omitted, time: .shortened)
             : reset.formatted(.dateTime.month(.abbreviated).day())
-        return "resets \(when)"
+        return String(localized: "resets \(when)")
     }
 
     /// Where a program's windows came from, as clock times that a widget
@@ -1423,10 +1430,10 @@ enum UsageWidgetText {
     static func source(_ limits: UsageWidgetSnapshot.Limits) -> String? {
         guard let observed = limits.observedAt else { return nil }
         let time = observed.formatted(date: .omitted, time: .shortened)
-        if limits.isLastReading { return "Last reading · as of \(time)" }
+        if limits.isLastReading { return String(localized: "Last reading · as of \(time)") }
         switch limits.source {
-        case .lastSession: return "Last session · as of \(time)"
-        case .program: return "From \(limits.name) · as of \(time)"
+        case .lastSession: return String(localized: "Last session · as of \(time)")
+        case .program: return String(localized: "From \(limits.name) · as of \(time)")
         case nil: return nil
         }
     }
@@ -1436,8 +1443,8 @@ enum UsageWidgetText {
     static func shortSource(_ limits: UsageWidgetSnapshot.Limits, now: Date) -> String? {
         guard let observed = limits.observedAt else { return nil }
         let time = clock(observed, now: now)
-        if limits.isLastReading { return "Last reading · \(time)" }
-        return limits.source == .lastSession ? "Last session · \(time)" : nil
+        if limits.isLastReading { return String(localized: "Last reading · \(time)") }
+        return limits.source == .lastSession ? String(localized: "Last session · \(time)") : nil
     }
 
     static func clock(_ date: Date, now: Date) -> String {

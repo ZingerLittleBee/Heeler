@@ -14,7 +14,7 @@ enum DiffLayout: String, CaseIterable, Identifiable, Hashable, Sendable {
     var title: String {
         switch self {
         case .sideBySide: String(localized: "Side by Side")
-        case .unified: "Unified"
+        case .unified: String(localized: "Unified")
         }
     }
 }

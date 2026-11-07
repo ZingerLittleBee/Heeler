@@ -145,7 +145,7 @@ struct OverlayNetworkDetailView: View {
         .modifier(
             MachineSearch(
                 isEnabled: searchesMachines, query: $query,
-                prompt: network.kind == .tailscale ? "Machines" : "Peers"))
+                prompt: network.kind == .tailscale ? String(localized: "Machines") : String(localized: "Peers")))
         .onChange(of: searchesMachines) { _, searches in
             if !searches { query = "" }
         }
@@ -185,7 +185,7 @@ struct OverlayNetworkDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                                String(localized: "This device is logged out of the tailnet and its login is deleted. Hosts using this network disconnect and stay disconnected until you tap Sign In here, which signs in automatically if an auth key is saved."))
+                String(localized: "This device is logged out of the tailnet and its login is deleted. Hosts using this network disconnect and stay disconnected until you tap Sign In here, which signs in automatically if an auth key is saved."))
         }
         .confirmationDialog(
             String(localized: "Reset the machine ID?"),
@@ -315,33 +315,36 @@ struct OverlayNetworkDetailView: View {
             // One node ID for every ZeroTier network on this device.
             let nodeID = store.zeroTierNodeID ?? details.nodeID
             if !addresses.isEmpty {
-                OverlayDeviceAddresses(
-                    label: nodeID.map { "This device · \($0)" } ?? String(localized: "This device"), addresses: addresses)
+                OverlayDeviceAddresses(label: Self.deviceLabel(nodeID), addresses: addresses)
             } else if let nodeID {
-                OverlayDeviceIdentifier(label: "This device · Node ID", title: "node ID", value: nodeID)
+                OverlayDeviceIdentifier(
+                    label: String(localized: "This device · Node ID"),
+                    copyLabel: String(localized: "Copy node ID"), value: nodeID)
             } else {
-                LabeledContent("Node ID", value: "Created when you first connect")
+                LabeledContent("Node ID", value: String(localized: "Created when you first connect"))
             }
         case .easytierConfigServer(_, let machineID, _, _):
             let lines = OverlayAssignedAddressLine.lines(status.isOnline ? details.assignedNetworks : [])
             if !lines.isEmpty {
-                OverlayAssignedAddresses(label: Self.deviceLabel(details), lines: lines)
+                OverlayAssignedAddresses(label: Self.deviceLabel(details.hostname), lines: lines)
             } else if !addresses.isEmpty {
-                OverlayDeviceAddresses(label: Self.deviceLabel(details), addresses: addresses)
+                OverlayDeviceAddresses(label: Self.deviceLabel(details.hostname), addresses: addresses)
             } else if waitReason == .configServerAssignment {
                 OverlayDeviceIdentifier(
-                    label: "This device · Machine ID", title: "machine ID",
+                    label: String(localized: "This device · Machine ID"),
+                    copyLabel: String(localized: "Copy machine ID"),
                     value: machineID.uuidString.lowercased(), isCompact: true)
             }
         case .tailscale, .easytier:
             if !addresses.isEmpty {
-                OverlayDeviceAddresses(label: Self.deviceLabel(details), addresses: addresses)
+                OverlayDeviceAddresses(label: Self.deviceLabel(details.hostname), addresses: addresses)
             }
         }
     }
 
-    private static func deviceLabel(_ details: OverlayNodeDetails) -> String {
-        details.hostname.map { "This device · \($0)" } ?? "This device"
+    /// "This device", with its name or node ID when the network gives one.
+    private static func deviceLabel(_ name: String?) -> String {
+        name.map { String(localized: "This device · \($0)") } ?? String(localized: "This device")
     }
 
     /// What the card's state means for Hosts, or what happens next.
@@ -350,7 +353,7 @@ struct OverlayNetworkDetailView: View {
         status: OverlayNodeStatus, waitReason: OverlayWaitReason?, offersSignIn: Bool
     ) -> String? {
         if let signOutFailure = store.signOutFailures[networkID] {
-                        return String(localized: "Heeler signed this device out and forgot its login, but could not reach the coordination server (\(signOutFailure.presentation.summary)). Remove the device in the tailnet's admin console if it is still listed.")
+            return String(localized: "Heeler signed this device out and forgot its login, but could not reach the coordination server (\(signOutFailure.presentation.summary)). Remove the device in the tailnet's admin console if it is still listed.")
         }
         switch waitReason {
         case .zeroTierAuthorization:
@@ -363,7 +366,10 @@ struct OverlayNetworkDetailView: View {
             break
         }
         if offersSignIn {
-            return String(localized: "\((network.deviceName ?? String(localized: "This device"))) joins the tailnet as its own device. Its address and the tailnet's machines appear here afterwards.")
+            guard let deviceName = network.deviceName else {
+                return String(localized: "This device joins the tailnet as its own device. Its address and the tailnet's machines appear here afterwards.")
+            }
+            return String(localized: "\(deviceName) joins the tailnet as its own device. Its address and the tailnet's machines appear here afterwards.")
         }
         switch control {
         case .connecting:
@@ -440,7 +446,9 @@ struct OverlayNetworkDetailView: View {
     private func addFooter(_ kind: OverlayKind) -> some View {
         if hostStore != nil {
             Text(
-                String(localized: "Tap a \(kind == .tailscale ? String(localized: "machine") : String(localized: "peer")) to add it as a Host. Touch and hold to copy its address."))
+                kind == .tailscale
+                    ? String(localized: "Tap a machine to add it as a Host. Touch and hold to copy its address.")
+                    : String(localized: "Tap a peer to add it as a Host. Touch and hold to copy its address."))
         }
     }
 
@@ -565,7 +573,7 @@ struct OverlayNetworkDetailView: View {
         } footer: {
             if !members.isEmpty {
                 Text(
-                                        String(localized: "Nodes this device has reached on any of its ZeroTier networks. ZeroTier doesn't share their managed IPs: for a Host, copy your Mac's IP from ZeroTier Central or your controller."))
+                    String(localized: "Nodes this device has reached on any of its ZeroTier networks. ZeroTier doesn't share their managed IPs: for a Host, copy your Mac's IP from ZeroTier Central or your controller."))
             }
         }
     }
@@ -589,7 +597,7 @@ struct OverlayNetworkDetailView: View {
             if let nodeID {
                 Button {
                     UIPasteboard.general.string = nodeID
-                    AccessibilityNotification.Announcement("Copied").post()
+                    AccessibilityNotification.Announcement(String(localized: "Copied")).post()
                 } label: {
                     Label("Copy Node ID", systemImage: "doc.on.doc")
                 }
@@ -736,7 +744,8 @@ private struct OverlayStatusHeader<Trailing: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(
-                    "Status: \(headline.title)" + (headline.subtitle.map { ", \($0)" } ?? ""))
+                    headline.subtitle.map { String(localized: "Status: \(headline.title), \($0)") }
+                        ?? String(localized: "Status: \(headline.title)"))
             }
             trailing
         }
@@ -771,7 +780,7 @@ private struct OverlayDeviceAddresses: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                OverlayCardCopyButton(value: primary, accessibilityLabel: "Copy \(primary)")
+                OverlayCardCopyButton(value: primary, accessibilityLabel: String(localized: "Copy \(primary)"))
             }
             ForEach(addresses.filter { $0 != primary }, id: \.self) { @Sendable address in
                 Text(address)
@@ -797,8 +806,8 @@ private struct OverlayDeviceAddresses: View {
 /// EasyTier machine ID), in the card with a copy button.
 private struct OverlayDeviceIdentifier: View {
     let label: String
-    /// Spoken in "Copy node ID".
-    let title: String
+    /// The copy button's spoken label, such as "Copy node ID".
+    let copyLabel: String
     let value: String
     /// Smaller type for a long value (a machine ID), still on one line.
     var isCompact = false
@@ -819,7 +828,7 @@ private struct OverlayDeviceIdentifier: View {
                     .minimumScaleFactor(0.6)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                OverlayCardCopyButton(value: value, accessibilityLabel: "Copy \(title)")
+                OverlayCardCopyButton(value: value, accessibilityLabel: copyLabel)
             }
         }
         .padding(.vertical, 2)
@@ -852,7 +861,7 @@ private struct OverlayAssignedAddresses: View {
                         MainActorContent {
                             OverlayCardCopyButton(
                                 value: line.address, size: 30,
-                                accessibilityLabel: "Copy the address on \(line.network)")
+                                accessibilityLabel: String(localized: "Copy the address on \(line.network)"))
                         }
                     }
                     .accessibilityElement(children: .contain)
@@ -910,7 +919,7 @@ private struct OverlayCardCopyButton: View {
 
     static func copy(_ value: String) {
         UIPasteboard.general.string = value
-        AccessibilityNotification.Announcement("Copied").post()
+        AccessibilityNotification.Announcement(String(localized: "Copied")).post()
     }
 }
 
@@ -1099,7 +1108,7 @@ private struct ZeroTierPeerRow: View {
                 Text(peer.name ?? peer.id)
             }
             if !paths.isEmpty {
-                Text("Path: " + paths.joined(separator: ", "))
+                Text("Path: \(paths.joined(separator: ", "))")
                     .font(.footnote.monospaced())
                     .foregroundStyle(.secondary)
             }
@@ -1190,7 +1199,7 @@ struct OverlayDiagnosticsView: View {
                         Text("Roots")
                     } footer: {
                         Text(
-                                                        String(localized: "The planet and moon servers this device uses to find members and relay traffic. On a self-hosted planet the root is often the network controller as well."))
+                            String(localized: "The planet and moon servers this device uses to find members and relay traffic. On a self-hosted planet the root is often the network controller as well."))
                     }
                 }
                 Section("State") {
@@ -1238,7 +1247,7 @@ struct OverlayDiagnosticsView: View {
                 Button {
                     UIPasteboard.general.string = diagnostics.text
                     copied = true
-                    AccessibilityNotification.Announcement("Copied").post()
+                    AccessibilityNotification.Announcement(String(localized: "Copied")).post()
                 } label: {
                     Label(copied ? "Copied" : "Copy All", systemImage: copied ? "checkmark" : "doc.on.doc")
                 }

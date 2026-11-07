@@ -207,7 +207,7 @@ final class AgentListFieldsEditor {
     /// Inline Sync from plugin: fills the Host from its plugin snapshot and
     /// saves immediately. The resulting `syncStates` entry survives the save
     /// so the screen can report what happened; the next change clears it.
-    func replaceWithPluginFields(_ hostID: Host.ID, hostName: String = "this Host") async {
+    func replaceWithPluginFields(_ hostID: Host.ID, hostName: String? = nil) async {
         guard followsPlugin(hostID) else { return }
         let wasEditing = isEditing
         if !wasEditing { beginEditing() }
@@ -232,9 +232,9 @@ final class AgentListFieldsEditor {
     /// ended or the draft was edited since. Draft-only; the screen uses
     /// `replaceWithPluginFields`.
     ///
-    /// `hostName` is only interpolated into the unread-snapshot failure copy.
-    /// The one-argument call stays valid and uses "this Host".
-    func syncFromPlugin(_ hostID: Host.ID, hostName: String = "this Host") async {
+    /// `hostName` only names the Host in the unread-snapshot failure copy.
+    /// The one-argument call stays valid and says "this Host" instead.
+    func syncFromPlugin(_ hostID: Host.ID, hostName: String? = nil) async {
         guard isEditing, followsPlugin(hostID) else { return }
         let request = UUID()
         syncRequests[hostID] = request
@@ -261,9 +261,11 @@ final class AgentListFieldsEditor {
             syncStates[hostID] = .filled(
                 String(localized: "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
         case .unavailable:
-            syncStates[hostID] = .failed("Couldn't reach \(hostName). Rows unchanged.")
+            syncStates[hostID] = .failed(
+                hostName.map { String(localized: "Couldn't reach \($0). Rows unchanged.") }
+                    ?? String(localized: "Couldn't reach this Host. Rows unchanged."))
         case .loading, nil:
-            syncStates[hostID] = .failed("You're offline. Rows unchanged.")
+            syncStates[hostID] = .failed(String(localized: "You're offline. Rows unchanged."))
         }
         errorMessage = nil
     }

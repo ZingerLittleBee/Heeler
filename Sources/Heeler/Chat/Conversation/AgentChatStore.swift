@@ -1672,7 +1672,8 @@ final class AgentChatStore {
         if resolution != before { wake() }
         let name = program.chatName
         if followed != shown {
-            return "herdr now reports another \(name) conversation for this Agent. Chat is switching to it; check it, then send again."
+            return String(
+                localized: "herdr now reports another \(name) conversation for this Agent. Chat is switching to it; check it, then send again.")
         }
         if staleSession != nil {
             return String(localized: "\(name) is on its home screen, so this conversation isn't open there. Open it in the terminal first.")
@@ -2165,8 +2166,8 @@ final class AgentChatStore {
             case .elsewhere:
                 misdirectedSends.insert(send.id)
                 sessionConcern = ChatSessionConcern(
-                    reason:
-                        "Your last message went to another \(program.chatName) session. Switch back to this conversation in the terminal, so its newest message shows there, or send from the terminal; then send again here.",
+                    reason: String(
+                        localized: "Your last message went to another \(program.chatName) session. Switch back to this conversation in the terminal, so its newest message shows there, or send from the terminal; then send again here."),
                     raisedBy: send.id, promptFloor: conversation.readOffset, generation: generation)
             case .unknown:
                 break

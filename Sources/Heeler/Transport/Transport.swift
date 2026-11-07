@@ -277,15 +277,15 @@ extension Transport {
     func modelContextWindow(selector: String) async throws -> Int? { nil }
 
     func agentInfo(_ target: AgentTarget) async throws -> Agent {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     func paneProcessInfo(paneID: String) async throws -> PaneProcessInfo {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     func sendPaneInput(_ params: PaneSendInputParams) async throws {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     /// Test doubles and alternative transports without a Host-side plugin
@@ -357,11 +357,12 @@ enum SupportedAgentKind: String, CaseIterable, Identifiable, Sendable, Equatable
 
     var id: String { rawValue }
 
+    /// Product names, the same in every language.
     var displayName: String {
         switch self {
         case .pi: "Pi"
-        case .claude: String(localized: "Claude Code")
-        case .codex: String(localized: "Codex")
+        case .claude: "Claude Code"
+        case .codex: "Codex"
         case .gemini: "Gemini CLI"
         case .cursor: "Cursor Agent"
         case .devin: "Devin CLI"
@@ -369,13 +370,13 @@ enum SupportedAgentKind: String, CaseIterable, Identifiable, Sendable, Equatable
         case .cline: "Cline"
         case .omp: "OMP"
         case .mastracode: "Mastra Code"
-        case .opencode: String(localized: "OpenCode")
+        case .opencode: "OpenCode"
         case .copilot: "GitHub Copilot CLI"
         case .kimi: "Kimi CLI"
         case .kiro: "Kiro CLI"
         case .droid: "Droid"
         case .amp: "Amp"
-        case .grok: String(localized: "Grok Build")
+        case .grok: "Grok Build"
         case .hermes: "Hermes Agent"
         case .kilo: "Kilo Code"
         case .qodercli: "Qoder CLI"

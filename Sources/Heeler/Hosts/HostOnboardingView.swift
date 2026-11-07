@@ -208,7 +208,7 @@ struct HostOnboardingView: View {
             Button("Don't Trust", role: .cancel) { store.confirmFingerprint(trusted: false) }
         } message: { candidate in
             Text(
-                                String(localized: "First connection to \(candidate.host):\(String(candidate.port)).\n\nKey fingerprint:\n\(candidate.fingerprint.displayString)\n\nVerify it matches the Host's key before trusting."))
+                String(localized: "First connection to \(candidate.host):\(String(candidate.port)).\n\nKey fingerprint:\n\(candidate.fingerprint.displayString)\n\nVerify it matches the Host's key before trusting."))
         }
         // An alert, which also opens on its own after a route edit: iOS 26
         // shows a confirmation dialog as a popover without Cancel.
@@ -291,11 +291,8 @@ struct HostOnboardingView: View {
                 // newer than this build is usable, just not fully known.
                 Text(
                     info.exceedsGeneratedProtocol
-                        ? "herdr \(info.version) · protocol \(info.protocolVersion) — "
-                            + String(localized: "newer than this app was built against, so features added ")
-                            + "after protocol \(HeelerSSHTransport.generatedProtocolVersion) "
-                            + "may be unavailable."
-                        : "herdr \(info.version) · protocol \(info.protocolVersion)")
+                        ? String(localized: "herdr \(info.version) · protocol \(info.protocolVersion) — newer than this app was built against, so features added after protocol \(HeelerSSHTransport.generatedProtocolVersion) may be unavailable.")
+                        : String(localized: "herdr \(info.version) · protocol \(info.protocolVersion)"))
             }
         }
     }
@@ -380,7 +377,7 @@ struct HostOnboardingView: View {
     }
 
     private func networkName(_ id: UUID) -> String {
-        overlayNetworks?.network(id: id)?.displayName ?? "Unavailable overlay network"
+        overlayNetworks?.network(id: id)?.displayName ?? String(localized: "Unavailable overlay network")
     }
 
     private var sessionLine: String {
@@ -435,9 +432,10 @@ struct HostOnboardingView: View {
         }
         if route.usesJumpHost {
             let jump = route.jumpAddress.trimmingCharacters(in: .whitespaces)
-            parts.append("via \(route.jumpPort == 22 ? jump : "\(jump):\(route.jumpPort)")")
+            let jumpEndpoint = route.jumpPort == 22 ? jump : "\(jump):\(route.jumpPort)"
+            parts.append(String(localized: "via \(jumpEndpoint)"))
         }
-        return parts.isEmpty ? "Direct" : parts.joined(separator: " · ")
+        return parts.isEmpty ? String(localized: "Direct") : parts.joined(separator: " · ")
     }
 
     /// The status card with its one action, and the failure's whole message
@@ -542,9 +540,9 @@ struct HostOnboardingView: View {
                         Text(failure ?? routeDescription(route))
                     } trailing: {
                         if route.id == status.inUseRouteID {
-                            HostRouteTag(text: "In Use", tint: .green)
+                            HostRouteTag(text: String(localized: "In Use"), tint: .green)
                         } else if failure != nil {
-                            HostRouteTag(text: "Failed", tint: .red)
+                            HostRouteTag(text: String(localized: "Failed"), tint: .red)
                         }
                     }
                 }
@@ -799,7 +797,8 @@ extension HostKeyReplacement {
             } else {
                 "ed25519"
             }
-        return String(localized: "ssh-keygen -lf /etc/ssh/ssh_host_\(keyType)_key.pub")
+        // A command the user runs, not copy: it stays the same in every locale.
+        return "ssh-keygen -lf /etc/ssh/ssh_host_\(keyType)_key.pub"
     }
 
     fileprivate var trustActionTitle: String {
@@ -811,7 +810,11 @@ extension HostKeyReplacement {
     }
 
     fileprivate var verificationNote: String {
-        String(localized: "Trust the new key only if this prints the same fingerprint. On Windows, the key is under %ProgramData%\\ssh.")
+        // The folder goes in as an argument: a `%` in the catalog key would
+        // read as a format specifier.
+        let windowsFolder = #"%ProgramData%\ssh"#
+        return String(
+            localized: "Trust the new key only if this prints the same fingerprint. On Windows, the key is under \(windowsFolder).")
     }
 
     fileprivate var confirmationTitle: String {
@@ -824,7 +827,7 @@ extension HostKeyReplacement {
         guard let jumpHost else {
             return String(localized: "Compare the new key with what the command prints on the Host first. A changed key can indicate a reinstalled Host or an attack.")
         }
-                return String(localized: "Jump Host: \(jumpHost.endpointDescription)\n\nCompare the new key with what the command prints on the Jump Host first. A changed key can indicate a reinstalled Jump Host or an attack.")
+        return String(localized: "Jump Host: \(jumpHost.endpointDescription)\n\nCompare the new key with what the command prints on the Jump Host first. A changed key can indicate a reinstalled Jump Host or an attack.")
     }
 }
 

@@ -71,10 +71,7 @@ struct ChangesBadge: Equatable {
 
     /// Always exact.
     var accessibilityValue: String {
-        guard showsFiles else {
-            return (totals.linesAreComplete ? "" : "At least ")
-                + LineCounts.lines(added: totals.added, removed: totals.removed).accessibilityLabel
-        }
+        guard showsFiles else { return totals.spokenLines }
         var parts: [String] = []
         if totals.trackedFiles > 0 || totals.untrackedItems == 0 {
             parts.append(totals.spokenFiles(statusTruncated: isStatusTruncated))
@@ -208,7 +205,7 @@ struct ChangesRowTotals: View {
         .lineLimit(1)
         .fixedSize()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(String(localized: "Changes: ") + badge.accessibilityValue)
+        .accessibilityLabel(String(localized: "Changes: \(badge.accessibilityValue)"))
         // VoiceOver hears exact counts either way; this says which one shows.
         .accessibilityIdentifier(identifier + (style == .exact ? ".exact" : ".compact"))
     }

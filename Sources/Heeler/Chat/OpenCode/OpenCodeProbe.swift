@@ -427,7 +427,8 @@ enum OpenCodeProbe {
         }
         let detail = printable(homeShownAsTilde(line), limit: 200)
         throw TransportError.hostStoreUnreadable(
-            detail: detail.isEmpty ? "OpenCode's database reader exited with status \(status)." : detail)
+            detail: detail.isEmpty
+                ? String(localized: "OpenCode's database reader exited with status \(status).") : detail)
     }
 
     /// `/Users/<name>` and `/home/<name>` read as `~`, so a reader's message

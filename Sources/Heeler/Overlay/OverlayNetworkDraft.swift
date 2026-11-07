@@ -246,7 +246,7 @@ struct OverlayNetworkDraft: Equatable, Sendable {
                 case .configServer:
                     .easytierConfigServer(
                         server: configServerURL.flatMap(OverlayNetwork.easyTierConfigServerOrigin)
-                            ?? String(localized: ""),
+                            ?? "",
                         machineID: machineID,
                         hostname: hostname,
                         requireEncryption: requireEncryption)

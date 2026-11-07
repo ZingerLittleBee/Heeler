@@ -312,7 +312,9 @@ enum GrokDialogParser {
             focus: card.focus(of: options), subject: DialogSubject())
     }
 
-    /// Grok Build's own English question; it is matched, never shown.
+    /// Grok Build's own English question, matched against the card's text
+    /// to tell the fork question apart, so it stays untranslated. The card
+    /// shows the question as Grok drew it.
     private static let forkQuestion = "Run this fork in an isolated git worktree?"
     private static let forkRows: [(key: String, label: String, offered: Bool)] = [
         ("1", "Yes", true), ("2", "No", true), ("3", "Always worktree", false), ("4", "Never worktree", false),

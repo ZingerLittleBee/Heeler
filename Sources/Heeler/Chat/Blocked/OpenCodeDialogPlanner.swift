@@ -45,9 +45,10 @@ struct OpenCodeDialogPlanner {
         case .dismiss:
             return try rejection()
         case .amend, .respond, .approvePlan:
-            throw .unsupported("OpenCode takes no note with a permission; reject, then tell OpenCode in the composer.")
+            throw .unsupported(
+                String(localized: "OpenCode takes no note with a permission; reject, then tell OpenCode in the composer."))
         case .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The permission has no such action.")
+            throw .unsupported(String(localized: "The permission has no such action."))
         }
     }
 
@@ -66,7 +67,7 @@ struct OpenCodeDialogPlanner {
             guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
             guard option.role == .answer else { throw Self.ownAnswer }
             guard let digit = DialogActionPlanner.digitKey(option.number) else {
-                throw .unsupported("Option \(ordinal) has no digit key. Answer it in the terminal.")
+                throw .unsupported(String(localized: "Option \(ordinal) has no digit key. Answer it in the terminal."))
             }
             return DialogActionPlan(steps: [.keys([digit])], confirmation: .fingerprintChangeOrUnblocked)
         case .dismiss:
@@ -77,7 +78,7 @@ struct OpenCodeDialogPlanner {
         case .respond, .amend:
             throw Self.ownAnswer
         case .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The question has no such action.")
+            throw .unsupported(String(localized: "The question has no such action."))
         }
     }
 

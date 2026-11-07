@@ -20,7 +20,7 @@ struct RemoteDirectoryBrowserView: View {
 
         var useTitle: String {
             switch self {
-            case .workspace: "Select"
+            case .workspace: String(localized: "Select")
             case .account: String(localized: "Add")
             }
         }

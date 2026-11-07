@@ -136,7 +136,7 @@ struct AgentComposerActions {
 enum SavedChatRemovalCopy {
     static let action = String(localized: "Remove Saved Chat")
     static let question = String(localized: "Remove Saved Chat?")
-    static let confirm = "Remove"
+    static let confirm = String(localized: "Remove")
 
     static func message(naming name: String) -> String {
         String(localized: "Removes \u{201C}\(name)\u{201D} and its saved messages from this device. If the Agent is still running, it returns when the Host connects.")

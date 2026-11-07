@@ -892,7 +892,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         _ request: AgentLaunchRequest, placement: HerdrCoreLaunch.Placement
     ) async throws -> Agent {
         guard let kind = SupportedAgentKind(rawValue: request.kind) else {
-            throw unavailable("Starting \(request.kind)")
+            throw TransportError.hostFeatureUnavailable(
+                feature: String(localized: "Starting \(request.kind) on a herdr-core Host"))
         }
         let transport = try await session.withTransport { $0 }
         let shell = try await transport.launchShell()
@@ -1068,7 +1069,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// Off on native Windows until one passes a test there (ADR 0032).
     private func worktreeGit() async throws -> HerdrCoreWorktreeGit {
         let services = try await session.withTransport { $0.hostServices }
-        guard try await services.hostPlatform() == .posix else { throw unavailable("Worktrees") }
+        guard try await services.hostPlatform() == .posix else {
+            throw TransportError.hostFeatureUnavailable(
+                feature: String(localized: "Worktrees on a herdr-core Host"))
+        }
         return HerdrCoreWorktreeGit(services: services, gate: gitGate)
     }
 
@@ -1216,16 +1220,16 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     // MARK: Actions not built yet
 
-    private func unavailable(_ feature: String) -> TransportError {
-        .hostFeatureUnavailable(feature: "\(feature) on a herdr-core Host")
-    }
+    // Each unavailable action names itself and the herdr-core Host in one
+    // whole phrase, so it translates as one.
 
     /// A core has no focused Agent to report: each attach says whether it is
     /// seen on its own channel.
     func focusAgent(_ paneID: String) async throws {}
 
     func renameAgent(_ paneID: String, name: String?) async throws {
-        throw unavailable("Rename Agent")
+        throw TransportError.hostFeatureUnavailable(
+            feature: String(localized: "Rename Agent on a herdr-core Host"))
     }
 
     /// One `do`, whatever comes of it. A failure asks whether the app still runs,
@@ -1233,7 +1237,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     func renameWorkspace(_ workspaceID: String, label: String) async throws {
         guard desktopAppNaming?.workspaceIDs.contains(workspaceID) == true,
             let space = HerdrCoreOrganization.desktopSpace(ofWorkspace: workspaceID)
-        else { throw unavailable("Rename Workspace") }
+        else {
+            throw TransportError.hostFeatureUnavailable(
+                feature: String(localized: "Rename Workspace on a herdr-core Host"))
+        }
         let transport = try await session.withTransport { $0 }
         do {
             try await transport.renameDesktopSpace(space, name: label)
@@ -1244,15 +1251,18 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     func agentInfo(paneID: String) async throws -> Agent {
-        throw unavailable("Agents")
+        throw TransportError.hostFeatureUnavailable(
+            feature: String(localized: "Agents on a herdr-core Host"))
     }
 
     func processInfo(paneID: String) async throws -> PaneProcessInfo {
-        throw unavailable("Agents")
+        throw TransportError.hostFeatureUnavailable(
+            feature: String(localized: "Agents on a herdr-core Host"))
     }
 
     func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
-        throw unavailable("The Composer")
+        throw TransportError.hostFeatureUnavailable(
+            feature: String(localized: "The Composer on a herdr-core Host"))
     }
 
     func readAgentScreen(_ paneID: String) async throws -> ANSIScreen {
@@ -1773,7 +1783,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let params = HerdrCoreWindowsExtensions.writeParams(folder: folder, contents: contents)
         let result = try await transport.call("file.write", params: params, isMutation: true)
         guard result["bytes"] == .number(Double(contents.count)) else {
-            throw TransportError.hostFeatureUnavailable(feature: "Heeler's extension in \(folder)")
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Heeler's extension in \(folder)"))
         }
     }
 

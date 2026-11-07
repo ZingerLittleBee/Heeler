@@ -12,11 +12,10 @@ struct TransportErrorPresentation: Equatable, Sendable {
     let recoverySuggestion: String?
 
     /// `summary` [+ ": " + `detail`] + "." — what happened, no instruction.
-    /// A detail that already ends its sentence, with a period or an ellipsis
-    /// where it was cut short, gets no second one. The joining punctuation is
-    /// itself localized so other locales can close the sentence in their own
-    /// marks (a full-width period for Japanese); the ASCII check below stays
-    /// over the machine-supplied detail either way.
+    /// A detail that already ends its sentence, with a period (a full-width
+    /// one in a localized detail) or an ellipsis where it was cut short, gets
+    /// no second one. The joining formats are catalog entries, so a locale
+    /// closes the sentence with its own mark: Japanese ends it with "。".
     var explanation: String {
         if let detail {
             return detail.hasSuffix("…") || detail.hasSuffix(".") || detail.hasSuffix("。")
@@ -29,7 +28,7 @@ struct TransportErrorPresentation: Equatable, Sendable {
     /// `explanation` [+ " " + `recoverySuggestion`] — the whole presentation.
     var message: String {
         if let recoverySuggestion {
-            return String(localized: "\(explanation) \(recoverySuggestion)")
+            return "\(explanation) \(recoverySuggestion)"
         }
         return explanation
     }
@@ -234,7 +233,7 @@ extension TransportError {
         case .hostFileUnreadable(let status):
             TransportErrorPresentation(
                 summary: String(localized: "The conversation file cannot be read"),
-                detail: "SFTP status \(status)",
+                detail: String(localized: "SFTP status \(status)"),
                 recoverySuggestion: String(localized: "Check the file's permissions on the Host."))
         case .hostStoreUnreadable(let detail):
             // A whole sentence explains itself. A reader's own line cut
@@ -264,7 +263,7 @@ extension TransportError {
         case .channelFailed(let detail):
             TransportErrorPresentation(
                 summary: String(localized: "Connection dropped"),
-                detail: detail,
+                detail: Self.displayedChannelDetail(detail),
                 recoverySuggestion: nil)
         case .attachExited(let status, let output):
             TransportErrorPresentation(
@@ -288,11 +287,20 @@ extension TransportError {
                 String(localized: "Start the herdr instance configured for this Host and verify its socket path."))
     }
 
-    /// herdr's own sentence may already end in a period; `explanation`
-    /// supplies the closing one.
+    /// A `channelFailed` detail as the user reads it.
+    /// ``HerdrCoreLink/closedDetail`` stays a plain token because
+    /// `HerdrCoreSSHTransport` matches on it, so it is localized here, where
+    /// it is shown, rather than where it is thrown.
+    static func displayedChannelDetail(_ detail: String) -> String {
+        detail == HerdrCoreLink.closedDetail
+            ? String(localized: "The herdr-core link closed.") : detail
+    }
+
+    /// herdr's own sentence, or a localized detail, may already end in a
+    /// period; `explanation` supplies the closing one.
     private static func droppingTrailingPeriods(_ text: String) -> String {
         var text = Substring(text)
-        while text.last == "." { text = text.dropLast() }
+        while text.last == "." || text.last == "。" { text = text.dropLast() }
         return String(text)
     }
 
@@ -444,7 +452,7 @@ extension TransportError {
         case .channelFailed(let detail):
             TransportErrorPresentation(
                 summary: String(localized: "The Jump Host connection dropped"),
-                detail: detail,
+                detail: Self.displayedChannelDetail(detail),
                 recoverySuggestion: nil)
         case .deviceKeyCorrupt, .rsaKeyCorrupt:
             underlying.presentation

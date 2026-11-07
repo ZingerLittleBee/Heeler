@@ -519,7 +519,7 @@ final class AttachTerminalStore {
                 return
             }
             guard !stopRequested else { return }
-            status = .ended("The session ended.")
+            status = .ended(String(localized: "The session ended."))
             return
         }
     }

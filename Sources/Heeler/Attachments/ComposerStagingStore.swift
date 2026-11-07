@@ -47,14 +47,78 @@ final class ComposerStagingStore {
         case image
         case file
 
-        fileprivate var displayName: String {
-            switch self {
-            case .image: "Image"
-            case .file: "File"
-            }
+        // Each message is one whole sentence per medium, so a translation
+        // can place and inflect the noun as its language needs.
+
+        fileprivate var preparing: String {
+            self == .image ? String(localized: "Preparing Image…") : String(localized: "Preparing File…")
         }
 
-        fileprivate var noun: String { displayName.lowercased() }
+        fileprivate var preparingAccessibilityLabel: String {
+            self == .image ? String(localized: "Preparing Image") : String(localized: "Preparing File")
+        }
+
+        /// `percent` is already formatted, as "40%".
+        fileprivate func uploading(_ percent: String) -> String {
+            self == .image
+                ? String(localized: "Uploading Image… \(percent)")
+                : String(localized: "Uploading File… \(percent)")
+        }
+
+        fileprivate func uploadingAccessibilityLabel(_ percentage: Int) -> String {
+            self == .image
+                ? String(localized: "Uploading Image, \(percentage) percent")
+                : String(localized: "Uploading File, \(percentage) percent")
+        }
+
+        fileprivate var uploadPaused: String {
+            self == .image
+                ? String(localized: "Image upload paused when Heeler moved to the background.")
+                : String(localized: "File upload paused when Heeler moved to the background.")
+        }
+
+        fileprivate var overCoreFileLimit: String {
+            self == .image
+                ? String(localized: "This image is over the 8 MiB limit on a native Windows Host. Nothing was sent.")
+                : String(localized: "This file is over the 8 MiB limit on a native Windows Host. Nothing was sent.")
+        }
+
+        fileprivate var unconfirmed: String {
+            self == .image
+                ? String(localized: "The Host did not confirm the image. Retry sends another copy.")
+                : String(localized: "The Host did not confirm the file. Retry sends another copy.")
+        }
+
+        fileprivate var terminalEnded: String {
+            self == .image
+                ? String(localized: "This Terminal has ended, so the image was not sent.")
+                : String(localized: "This Terminal has ended, so the file was not sent.")
+        }
+
+        /// `reason` is the Host's refusal message, as it sent it.
+        fileprivate func refused(_ reason: String) -> String {
+            self == .image
+                ? String(localized: "The Host refused the image: \(reason)")
+                : String(localized: "The Host refused the file: \(reason)")
+        }
+
+        fileprivate var uploadFailed: String {
+            self == .image ? String(localized: "Image upload failed.") : String(localized: "File upload failed.")
+        }
+
+        fileprivate var preparationFailed: String {
+            self == .image
+                ? String(localized: "Image preparation failed.") : String(localized: "File preparation failed.")
+        }
+
+        fileprivate func inserted(copied: Bool) -> String {
+            switch (self, copied) {
+            case (.image, true): String(localized: "Image path inserted and copied.")
+            case (.image, false): String(localized: "Image path inserted, but couldn't be copied.")
+            case (.file, true): String(localized: "File path inserted and copied.")
+            case (.file, false): String(localized: "File path inserted, but couldn't be copied.")
+            }
+        }
 
         fileprivate var preparationIcon: String {
             switch self {
@@ -470,8 +534,7 @@ final class ComposerStagingStore {
             case .background:
                 let failure = Failure(
                     medium: medium,
-                    message:
-                        String(localized: "\(medium.displayName) upload paused when Heeler moved to the background."),
+                    message: medium.uploadPaused,
                     isRetryable: preparedSource != nil)
                 state = .backgroundInterrupted(failure)
                 publish(.failed(id: operationID, retryable: failure.isRetryable))
@@ -523,22 +586,22 @@ final class ComposerStagingStore {
         case AttachmentStagingError.exceedsCoreFileLimit:
             Failure(
                 medium: medium,
-                message: String(localized: "This \(medium.noun) is over the 8 MiB limit on a native Windows Host. Nothing was sent."),
+                message: medium.overCoreFileLimit,
                 isRetryable: false)
         case TransportError.coreMutationOutcomeUnknown:
             Failure(
                 medium: medium,
-                message: String(localized: "The Host did not confirm the \(medium.noun). Retry sends another copy."),
+                message: medium.unconfirmed,
                 isRetryable: true)
         case let refusal as HerdrAPIError where refusal.code == "finished" || refusal.code == "not_found":
             Failure(
                 medium: medium,
-                message: String(localized: "This Terminal has ended, so the \(medium.noun) was not sent."),
+                message: medium.terminalEnded,
                 isRetryable: false)
         case let refusal as HerdrAPIError:
             Failure(
                 medium: medium,
-                message: String(localized: "The Host refused the \(medium.noun): \(refusal.message)"),
+                message: medium.refused(refusal.message),
                 isRetryable: false)
         case let transportError as TransportError where saysTransportFailures && !isSSHUnreachable(transportError):
             Failure(
@@ -553,7 +616,7 @@ final class ComposerStagingStore {
         case let staging as AttachmentStagingError:
             Failure(
                 medium: medium,
-                message: String(localized: "\(medium.displayName) upload failed."),
+                message: medium.uploadFailed,
                 isRetryable: staging.isRetryable)
         case ImagePreparationError.clipboardHasNoImage:
             Failure(
@@ -609,7 +672,7 @@ final class ComposerStagingStore {
         default:
             Failure(
                 medium: medium,
-                message: String(localized: "\(medium.displayName) preparation failed."),
+                message: medium.preparationFailed,
                 isRetryable: false)
         }
     }
@@ -626,15 +689,16 @@ final class ComposerStagingStore {
         case .preparing(let medium):
             return Presentation(
                 icon: medium.preparationIcon,
-                title: "Preparing \(medium.displayName)…",
-                accessibilityLabel: "Preparing \(medium.displayName)",
+                title: medium.preparing,
+                accessibilityLabel: medium.preparingAccessibilityLabel,
                 commands: [.cancel])
         case .uploading(let medium, let progress):
             let percentage = Int(progress.fractionCompleted * 100)
             return Presentation(
                 icon: "arrow.up.circle",
-                title: "Uploading \(medium.displayName)… \(percentage)%",
-                accessibilityLabel: "Uploading \(medium.displayName), \(percentage) percent",
+                title: medium.uploading(
+                    (Double(percentage) / 100).formatted(.percent.precision(.fractionLength(0)))),
+                accessibilityLabel: medium.uploadingAccessibilityLabel(percentage),
                 commands: [.cancel])
         case .failed(let failure), .backgroundInterrupted(let failure):
             return Presentation(
@@ -643,10 +707,7 @@ final class ComposerStagingStore {
                 accessibilityLabel: failure.message,
                 commands: failure.isRetryable ? [.retry, .dismiss] : [.dismiss])
         case .completed(let outcome):
-            let title =
-                outcome.copied
-                ? String(localized: "\(outcome.medium.displayName) path inserted and copied.")
-                : String(localized: "\(outcome.medium.displayName) path inserted, but couldn't be copied.")
+            let title = outcome.medium.inserted(copied: outcome.copied)
             return Presentation(
                 icon: outcome.copied ? "checkmark.circle" : "info.circle",
                 title: title,

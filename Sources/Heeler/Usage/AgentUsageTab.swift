@@ -55,7 +55,7 @@ struct AgentUsageScopeMenu: View {
                     ForEach(scope.excluded) { host in
                         Button {} label: {
                             Label(host.name,
-                                systemImage: host.reason == "Not connected" ? "wifi.slash" : "desktopcomputer")
+                                systemImage: host.exclusion == .notConnected ? "wifi.slash" : "desktopcomputer")
                             Text(host.reason)
                         }
                         .disabled(true)
@@ -82,7 +82,7 @@ struct AgentUsageScopeMenu: View {
     }
 
     private var title: String {
-        scopeHostID.flatMap { id in entries.first { $0.id == id }?.name } ?? "All Hosts"
+        scopeHostID.flatMap { id in entries.first { $0.id == id }?.name } ?? String(localized: "All Hosts")
     }
 }
 
@@ -123,7 +123,7 @@ struct AgentUsageSidebar: View {
                 Section {
                     ForEach(scope.excluded) { host in
                         row(tag: host.id.uuidString, title: host.name,
-                            symbol: host.reason == "Not connected" ? "wifi.slash" : "desktopcomputer",
+                            symbol: host.exclusion == .notConnected ? "wifi.slash" : "desktopcomputer",
                             subtitle: host.reason, value: nil, share: nil)
                             .opacity(0.5)
                             .selectionDisabled()

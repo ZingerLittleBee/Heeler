@@ -170,7 +170,7 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError(String(localized: "init(coder:) is unavailable"))
+        fatalError("init(coder:) is unavailable")
     }
 
     /// Takes SwiftUI's latest items from `updateUIView`, which runs inside
@@ -377,7 +377,7 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
 
     /// The chip long-press: one item, Pin or Unpin, matching the Console row.
     func pinMenu(for item: TerminalAgentSwitcherItem) -> UIMenu {
-        let title = item.isPinned ? String(localized: "Unpin") : "Pin"
+        let title = item.isPinned ? String(localized: "Unpin") : String(localized: "Pin")
         let image = UIImage(systemName: item.isPinned ? "pin.slash" : "pin")
         return UIMenu(children: [
             UIAction(title: title, image: image) { [weak self] _ in
@@ -505,7 +505,7 @@ final class TerminalAgentChip: UIControl {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError(String(localized: "init(coder:) is unavailable"))
+        fatalError("init(coder:) is unavailable")
     }
 
     override func didMoveToWindow() {

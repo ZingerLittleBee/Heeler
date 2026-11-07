@@ -151,7 +151,7 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         ]
         switch branch {
         case .named(let name):
-            sentences.append("The local branch \(name) is kept.")
+            sentences.append(String(localized: "The local branch \(name) is kept."))
         case .detached:
             break
         case .unavailable:
@@ -177,7 +177,7 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         return WorktreeRemovalConfirmation(
             request: WorktreeRemovalRequest(
                 id: request.id, identity: request.identity, toldRisk: risk),
-            title: "Remove \(workspaceLabel) worktree?",
+            title: String(localized: "Remove \(workspaceLabel) worktree?"),
             message: sentences.joined(separator: " "))
     }
 }
@@ -196,9 +196,9 @@ struct WorktreeRemovalRefusal {
     /// git's refusal for a Worktree with checked-out submodules, which herdr
     /// also sends under `forceRequiredCode` since 0.9.1. herdr finds it in
     /// git's message ignoring case (`is_dirty_worktree_remove_error`), and so
-    /// does this.
+    /// does this. It is matched against git's output, so it is never localized.
     private static let submodulesRefusal =
-        String(localized: "working trees containing submodules cannot be moved or removed")
+        "working trees containing submodules cannot be moved or removed"
 
     /// The endpoint overrides the Host's session, as it does for API requests.
     init(
@@ -246,18 +246,19 @@ struct WorktreeRemovalRefusal {
         case Self.forceRequiredCode
         where serverMessage.range(of: Self.submodulesRefusal, options: .caseInsensitive) != nil:
             let workspaceID = request.identity.workspaceID
-            let warning =
-                "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes \(request.identity.checkoutPath) and any uncommitted changes in it, so check its Changes first."
+            let checkoutPath = request.identity.checkoutPath
             if HerdrCommandLine.readsAsGlobalOption(workspaceID) {
                 // herdr would take this id as its own option, so no command
                 // can hand it to `--workspace`.
-                self.init(message: warning, offersChanges: true)
+                self.init(
+                    message: String(localized: "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes \(checkoutPath) and any uncommitted changes in it, so check its Changes first."),
+                    offersChanges: true)
             } else {
                 let command = HerdrCommandLine.render(
                     session: sessionName, endpoint: endpoint,
                     arguments: ["worktree", "remove", "--workspace", workspaceID, "--force"])
                 self.init(
-                    message: "\(warning) To force it, run on the Host: \(command)",
+                    message: String(localized: "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes \(checkoutPath) and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: \(command)"),
                     offersChanges: true,
                     command: command)
             }
@@ -270,7 +271,7 @@ struct WorktreeRemovalRefusal {
         case "workspace_not_found":
             self.init(message: String(localized: "herdr couldn't remove this worktree because the workspace is no longer on the Host."))
         default:
-            self.init(message: "herdr couldn't remove this worktree: \(serverMessage)")
+            self.init(message: String(localized: "herdr couldn't remove this worktree: \(serverMessage)"))
         }
     }
 }

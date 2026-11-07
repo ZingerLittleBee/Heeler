@@ -48,7 +48,7 @@ private struct SearchDrawerTucker: UIViewRepresentable {
         }
 
         @available(*, unavailable)
-        required init?(coder: NSCoder) { fatalError(String(localized: "init(coder:) is unavailable")) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
         /// Search fields already tucked. Once per field, not per list: a
         /// list rebuilt later (a search ending, a presentation switch) must

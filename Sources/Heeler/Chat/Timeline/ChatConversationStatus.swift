@@ -77,15 +77,18 @@ extension ChatUnavailableReason {
         case .cannotTellSession(let program):
             String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes.")
         case .extensionNotLoaded(let program, let turnedOff):
-            // Whole sentences, joined here in sentence order each locale
-            // keeps intact.
-            String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. ")
-                + (turnedOff
-                    ? String(localized: "\(program.chatName) started with its extensions turned off (--no-extensions), so Heeler's extension, which names the conversation, isn't running in this session. Start the Agent again without --no-extensions.")
-                    : String(localized: "Heeler's extension, which names the conversation, is installed, but this \(program.chatName) hasn't loaded it: it started before the Helper was installed, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on."))
-                + (program == .omp
-                    ? String(localized: " Without it, Chat follows the conversation after its first message.")
-                    : String(localized: ""))
+            // One whole text per combination, so each language joins its
+            // sentences its own way.
+            switch (turnedOff, program == .omp) {
+            case (true, false):
+                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) started with its extensions turned off (--no-extensions), so Heeler's extension, which names the conversation, isn't running in this session. Start the Agent again without --no-extensions.")
+            case (true, true):
+                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) started with its extensions turned off (--no-extensions), so Heeler's extension, which names the conversation, isn't running in this session. Start the Agent again without --no-extensions. Without it, Chat follows the conversation after its first message.")
+            case (false, false):
+                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is installed, but this \(program.chatName) hasn't loaded it: it started before the Helper was installed, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on.")
+            case (false, true):
+                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is installed, but this \(program.chatName) hasn't loaded it: it started before the Helper was installed, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on. Without it, Chat follows the conversation after its first message.")
+            }
         case .cannotTellSessionOnWindows(let program) where program == .pi || program == .omp:
             String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it through Heeler's extension, which goes in its extension folder on this Host. If it isn't there yet, add it here, then start the Agent again.")
         case .cannotTellSessionOnWindows(let program):
@@ -130,9 +133,9 @@ extension ChatUnavailableReason {
     /// false when the timeline holds only messages sent from this device,
     /// as with a new conversation whose transcript isn't written yet.
     func bannerText(showingSavedMessages: Bool) -> String {
+        // Each line whole, with and without the saved messages, so no
+        // language joins a sentence it can't order.
         let saved = showingSavedMessages
-            ? String(localized: " Showing saved messages.")
-            : String(localized: "")
         return switch self {
         case .noSession:
             String(localized: "Waiting for the Agent to report its conversation.")
@@ -142,26 +145,40 @@ extension ChatUnavailableReason {
                 ? String(localized: "\(program.chatName) saves this conversation after its first reply.")
                 : String(localized: "\(program.chatName) saves this conversation once it has a first message.")
         case .unidentifiedSession, .unsupportedSession:
-            String(localized: "Chat can't follow this conversation now.\(saved)")
+            saved
+                ? String(localized: "Chat can't follow this conversation now. Showing saved messages.")
+                : String(localized: "Chat can't follow this conversation now.")
         case .notFound:
-            showingSavedMessages
-                ? String(localized: "The transcript isn't on the Host any more.\(saved)")
+            saved
+                ? String(localized: "The transcript isn't on the Host any more. Showing saved messages.")
                 : String(localized: "Heeler hasn't found this conversation's transcript yet.")
         case .mismatched:
-            String(localized: "The transcript under this session's name holds another conversation.\(saved)")
+            saved
+                ? String(localized: "The transcript under this session's name holds another conversation. Showing saved messages.")
+                : String(localized: "The transcript under this session's name holds another conversation.")
         case .compressed, .unsupportedFormat:
-            String(localized: "Chat can't read this transcript now.\(saved)")
+            saved
+                ? String(localized: "Chat can't read this transcript now. Showing saved messages.")
+                : String(localized: "Chat can't read this transcript now.")
         case .sessionStore(let program, _):
-            String(localized: "Chat can't read this conversation from \(program.chatName)'s database now.\(saved)")
+            saved
+                ? String(localized: "Chat can't read this conversation from \(program.chatName)'s database now. Showing saved messages.")
+                : String(localized: "Chat can't read this conversation from \(program.chatName)'s database now.")
         // Never over the timeline, which this reason hides.
         case .startScreen(let program):
             String(localized: "\(program.chatName) is on its home screen.")
         case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded:
-            String(localized: "Chat can't tell which conversation this Agent is in now.\(saved)")
+            saved
+                ? String(localized: "Chat can't tell which conversation this Agent is in now. Showing saved messages.")
+                : String(localized: "Chat can't tell which conversation this Agent is in now.")
         case .transcriptOff:
-            String(localized: "This Agent isn't saving a transcript.\(saved)")
+            saved
+                ? String(localized: "This Agent isn't saving a transcript. Showing saved messages.")
+                : String(localized: "This Agent isn't saving a transcript.")
         case .codexSharedDaemon:
-            String(localized: "Codex runs on its shared background server, so Chat can't tell this conversation.\(saved)")
+            saved
+                ? String(localized: "Codex runs on its shared background server, so Chat can't tell this conversation. Showing saved messages.")
+                : String(localized: "Codex runs on its shared background server, so Chat can't tell this conversation.")
         }
     }
 
@@ -206,20 +223,19 @@ extension ChatTranscriptOffVariable {
     /// Says so instead of waiting for a file. When the core carries the variable
     /// every Agent it starts inherits it, which the Host's notice explains.
     func explanation(coreCarriesIt: Bool) -> String {
-        // One whole sentence per effect, not a predicate fragment: the
-        // clause around "so it …" moves differently across languages.
-        let sentence =
-            switch self {
-            case .childSession:
-                String(localized: "This Claude Code was started with \(rawValue), so it has kept no session record and saves no transcript for Chat to read.")
-            case .skipPromptHistory:
-                String(localized: "This Claude Code was started with \(rawValue), so it keeps no transcript for Chat to read.")
-            }
         let fix =
             coreCarriesIt
             ? String(localized: "The herdr-core on this Host carries it too. See the notice in the Host's details for how to fix that.")
             : String(localized: "Start the Agent again without that variable to use Chat.")
-        return "\(sentence) \(fix)"
+        // One whole sentence per effect, not a predicate fragment: the
+        // clause around "so it …" moves differently across languages. The
+        // fix follows as each language joins sentences.
+        return switch self {
+        case .childSession:
+            String(localized: "This Claude Code was started with \(rawValue), so it has kept no session record and saves no transcript for Chat to read. \(fix)")
+        case .skipPromptHistory:
+            String(localized: "This Claude Code was started with \(rawValue), so it keeps no transcript for Chat to read. \(fix)")
+        }
     }
 }
 
@@ -453,15 +469,16 @@ extension ChatConversationSnapshot {
 }
 
 extension ChatProgram {
-    /// The program's name in what Chat says about its conversation.
+    /// The program's name in what Chat says about its conversation: a
+    /// product name, the same in every language.
     var chatName: String {
         switch self {
-        case .claude: String(localized: "Claude Code")
-        case .codex: String(localized: "Codex")
+        case .claude: "Claude Code"
+        case .codex: "Codex"
         case .pi: "Pi"
-        case .omp: String(localized: "Oh My Pi")
-        case .grok: String(localized: "Grok Build")
-        case .opencode: String(localized: "OpenCode")
+        case .omp: "Oh My Pi"
+        case .grok: "Grok Build"
+        case .opencode: "OpenCode"
         }
     }
 
@@ -479,7 +496,6 @@ extension ChatProgram {
             String(localized: "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal.")
         }
     }
-
 }
 
 /// In the conversation's place while there is nothing to show.

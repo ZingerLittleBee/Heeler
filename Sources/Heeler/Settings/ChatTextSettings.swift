@@ -13,10 +13,10 @@ enum ChatFontOption: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .system: "System"
-        case .rounded: "Rounded"
-        case .serif: "Serif"
-        case .monospaced: "Monospaced"
+        case .system: String(localized: "System")
+        case .rounded: String(localized: "Rounded")
+        case .serif: String(localized: "Serif")
+        case .monospaced: String(localized: "Monospaced")
         }
     }
 

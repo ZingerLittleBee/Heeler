@@ -219,7 +219,7 @@ enum LicenseNoticeCatalog {
 
         guard dto.schemaVersion == 1 else {
             throw LicenseNoticeCatalogError.inventoryMalformed(
-                String(localized: "unsupported schemaVersion \(dto.schemaVersion)"))
+                "unsupported schemaVersion \(dto.schemaVersion)")
         }
         guard !dto.components.isEmpty else {
             throw LicenseNoticeCatalogError.inventoryMalformed("components is empty")
@@ -234,11 +234,11 @@ enum LicenseNoticeCatalog {
             let notice = component.notice.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !id.isEmpty, !displayName.isEmpty, !spdx.isEmpty, !notice.isEmpty else {
                 throw LicenseNoticeCatalogError.inventoryMalformed(
-                    String(localized: "component is missing a required field"))
+                    "component is missing a required field")
             }
             guard seen.insert(id).inserted else {
                 throw LicenseNoticeCatalogError.inventoryMalformed(
-                    String(localized: "duplicate component id \(id)"))
+                    "duplicate component id \(id)")
             }
             entries.append(
                 LicenseInventory.Entry(
@@ -270,11 +270,11 @@ enum LicenseNoticeCatalog {
                 let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !key.isEmpty else {
                     throw LicenseNoticeCatalogError.inventoryMalformed(
-                        String(localized: "dependencyCoverage.\(label) has an empty key"))
+                        "dependencyCoverage.\(label) has an empty key")
                 }
                 guard !rawIDs.isEmpty else {
                     throw LicenseNoticeCatalogError.inventoryMalformed(
-                        String(localized: "dependencyCoverage.\(label)[\(key)] is empty"))
+                        "dependencyCoverage.\(label)[\(key)] is empty")
                 }
                 var ids: [String] = []
                 var seenIDs = Set<String>()
@@ -282,21 +282,21 @@ enum LicenseNoticeCatalog {
                     let id = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !id.isEmpty else {
                         throw LicenseNoticeCatalogError.inventoryMalformed(
-                            String(localized: "dependencyCoverage.\(label)[\(key)] has an empty id"))
+                            "dependencyCoverage.\(label)[\(key)] has an empty id")
                     }
                     guard knownIDs.contains(id) else {
                         throw LicenseNoticeCatalogError.inventoryMalformed(
-                            String(localized: "dependencyCoverage.\(label)[\(key)] references unknown component \(id)"))
+                            "dependencyCoverage.\(label)[\(key)] references unknown component \(id)")
                     }
                     guard seenIDs.insert(id).inserted else {
                         throw LicenseNoticeCatalogError.inventoryMalformed(
-                            String(localized: "dependencyCoverage.\(label)[\(key)] duplicates component \(id)"))
+                            "dependencyCoverage.\(label)[\(key)] duplicates component \(id)")
                     }
                     ids.append(id)
                 }
                 guard result[key] == nil else {
                     throw LicenseNoticeCatalogError.inventoryMalformed(
-                        String(localized: "dependencyCoverage.\(label) has duplicate key \(key)"))
+                        "dependencyCoverage.\(label) has duplicate key \(key)")
                 }
                 result[key] = ids
             }

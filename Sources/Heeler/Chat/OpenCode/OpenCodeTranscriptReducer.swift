@@ -63,7 +63,7 @@ struct OpenCodeTranscriptReducer: ChatTranscriptReducer {
 
     var unsupportedFormat: String? {
         guard let version = session?.version, let major = session?.majorVersion, major > 2 else { return nil }
-        return "OpenCode session version \(version)"
+        return String(localized: "OpenCode session version \(version)")
     }
 
     func transcript(_ context: ChatProjectionContext) -> ChatTranscript {
@@ -86,7 +86,7 @@ struct OpenCodeTranscriptReducer: ChatTranscriptReducer {
                     content: .notice(
                         ChatNotice(
                             kind: .system, title: String(localized: "Undone in the terminal"),
-                            detail: "The next message removes these messages; /redo brings them back."))))
+                            detail: String(localized: "The next message removes these messages; /redo brings them back.")))))
         }
         // Prompts OpenCode holds until the running step ends keep the id
         // their rows will carry.
@@ -370,9 +370,16 @@ private struct Projection {
             }
         }
         if !row.isFinal, let retry = step.retry {
-            let attempt = retry.attempt.map { String(localized: " (attempt \($0))") } ?? ""
-            let reason = retry.error?.message.map { ": \($0)" } ?? ""
-            add(row, .notice(ChatNotice(kind: .system, title: String(localized: "Retrying") + attempt + reason)), ":retry")
+            // One whole title per combination, so each language orders the
+            // attempt and the reason its own way.
+            let title =
+                switch (retry.attempt, retry.error?.message) {
+                case let (attempt?, reason?): String(localized: "Retrying (attempt \(attempt)): \(reason)")
+                case let (attempt?, nil): String(localized: "Retrying (attempt \(attempt))")
+                case let (nil, reason?): String(localized: "Retrying: \(reason)")
+                case (nil, nil): String(localized: "Retrying")
+                }
+            add(row, .notice(ChatNotice(kind: .system, title: title)), ":retry")
         }
         switch step.finish {
         case "length":
@@ -425,7 +432,7 @@ private struct Projection {
                 add(row, .notice(ChatNotice(kind: .system, title: note.description ?? String(localized: "Note"), detail: note.text)))
             }
         case "skill":
-            let name = (note.name ?? note.skill).map { "Skill \($0)" } ?? String(localized: "Skill")
+            let name = (note.name ?? note.skill).map { String(localized: "Skill \($0)") } ?? String(localized: "Skill")
             add(row, .notice(ChatNotice(kind: .command, title: name)))
         default:
             add(row, .notice(ChatNotice(kind: .system, title: note.description ?? String(localized: "Instructions updated"))))

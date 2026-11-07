@@ -46,7 +46,7 @@ final class ChangesStore {
             case .incomplete:
                 (String(localized: "Incomplete Changes"), ChangesReadError.incomplete.message, "exclamationmark.triangle")
             case .timedOut:
-                ("Reading Changes Timed Out", String(localized: "The Host took too long to read Changes. Pull to try again."), "clock")
+                (String(localized: "Reading Changes Timed Out"), String(localized:"The Host took too long to read Changes. Pull to try again."), "clock")
             }
         }
     }
@@ -175,7 +175,7 @@ final class ChangesStore {
     func startRead(automatic: Bool = false) -> Task<Void, Never>? {
         guard activeRead == nil, !Task.isCancelled else { return nil }
         guard let directory = directory() ?? lastDirectory else {
-            phase = .failed("This Agent has no working directory.")
+            phase = .failed(String(localized: "This Agent has no working directory."))
             return nil
         }
         lastDirectory = directory
@@ -230,7 +230,7 @@ final class ChangesStore {
             if automatic, hadRead, announcesAutomaticUpdates {
                 let previousFiles: [ChangedFile]?
                 if case .loaded(let old) = previous { previousFiles = old.files } else { previousFiles = nil }
-                if previousFiles != result.changes.files { announce("Checkout Changes updated.") }
+                if previousFiles != result.changes.files { announce(String(localized: "Checkout Changes updated.")) }
             }
         } catch is CancellationError, TransportError.cancelled {
             // Left mid-read: nothing from it is shown, and the next

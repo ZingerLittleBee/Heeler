@@ -112,7 +112,7 @@ struct OverlayNetworkFormView: View {
                 OverlayFormField(title: String(localized: "Device name"), prompt: "heeler", text: $draft.hostname)
             case .zerotier:
                 OverlayFormField(
-                    title: String(localized: "Network ID"), prompt: "Required", text: $draft.networkID,
+                    title: String(localized: "Network ID"), prompt: String(localized: "Required"), text: $draft.networkID,
                     isMonospaced: true)
             }
         } header: {
@@ -251,7 +251,8 @@ struct OverlayNetworkFormView: View {
     @ViewBuilder
     private var easyTierConfigServerSections: some View {
         Section {
-            OverlayFormField(title: String(localized: "Server"), prompt: "Server URL", text: $draft.configServer)
+            OverlayFormField(
+                title: String(localized: "Server"), prompt: String(localized: "Server URL"), text: $draft.configServer)
                 .keyboardType(.URL)
         } header: {
             Text("Config Server")
@@ -295,8 +296,9 @@ struct OverlayNetworkFormView: View {
     @ViewBuilder
     private var easyTierNetworkSections: some View {
         Section {
-            OverlayFormField(title: String(localized: "Network name"), prompt: "Required", text: $draft.networkName)
-            secretField("Secret", prompt: "Required")
+            OverlayFormField(
+                title: String(localized: "Network name"), prompt: String(localized: "Required"), text: $draft.networkName)
+            secretField(String(localized: "Secret"), prompt: String(localized: "Required"))
             VStack(alignment: .leading, spacing: 4) {
                 Text("Peers")
                 TextField(
@@ -346,7 +348,7 @@ struct OverlayNetworkFormView: View {
         } else if hasStoredSecret {
             parts.append(String(localized: "Auth key saved"))
         }
-        return parts.isEmpty ? "Optional" : parts.joined(separator: ", ")
+        return parts.isEmpty ? String(localized: "Optional") : parts.joined(separator: ", ")
     }
 
     /// The moons and custom planet, beside Advanced.
@@ -359,7 +361,7 @@ struct OverlayNetworkFormView: View {
         if draft.planet != nil {
             parts.append(String(localized: "Custom planet"))
         }
-        return parts.isEmpty ? "Optional" : parts.joined(separator: ", ")
+        return parts.isEmpty ? String(localized: "Optional") : parts.joined(separator: ", ")
     }
 
     /// The fixed address, or DHCP, beside Advanced.
@@ -387,7 +389,7 @@ struct OverlayNetworkFormView: View {
         LabeledContent {
             SecureField(
                 title, text: $draft.secret,
-                prompt: Text(hasStoredSecret ? "Blank keeps current" : prompt))
+                prompt: Text(hasStoredSecret ? String(localized: "Blank keeps current") : prompt))
                 .multilineTextAlignment(.trailing)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -423,10 +425,10 @@ enum EasyTierConfigServerCopy {
         String(localized: "The server knows the network secrets and decides which peers this device connects to.")
 
     static let machineIDNote =
-                String(localized: "Assign up to 8 networks to it in the EasyTier console, with different subnets: a Host reaches the one its address or name is on. Heeler only connects out and drops their listeners.")
+        String(localized: "Assign up to 8 networks to it in the EasyTier console, with different subnets: a Host reaches the one its address or name is on. Heeler only connects out and drops their listeners.")
 
     static let encryptionOffWarning =
-                String(localized: "Without it, a server that offers no encryption gets the user name and network secret in clear text: anyone on the network path can read them, change the network the server sends, or pose as the server.")
+        String(localized: "Without it, a server that offers no encryption gets the user name and network secret in clear text: anyone on the network path can read them, change the network the server sends, or pose as the server.")
 
     /// The risk of a config server URL's transport, or nil for wss://, the
     /// only one that authenticates the server.
@@ -435,7 +437,7 @@ enum EasyTierConfigServerCopy {
         case "ws":
             return String(localized: "ws:// sends the user name (the server's token) in clear text when it connects, and nothing verifies the server. Prefer wss://.")
         case "udp", "tcp":
-                        return String(localized: "udp:// and tcp:// encrypt the session but do not verify the server: someone who can intercept the connection could pose as it and learn the network secret. Prefer wss:// on networks you do not trust.")
+            return String(localized: "udp:// and tcp:// encrypt the session but do not verify the server: someone who can intercept the connection could pose as it and learn the network secret. Prefer wss:// on networks you do not trust.")
         default:
             return nil
         }
@@ -541,7 +543,8 @@ private struct ZeroTierAdvancedForm: View {
                     MainActorContent {
                         VStack(alignment: .leading) {
                             OverlayFormField(
-                                title: String(localized: "World ID"), prompt: "10–16 hex digits", text: $moon.worldID,
+                                title: String(localized: "World ID"), prompt: String(localized: "10–16 hex digits"),
+                                text: $moon.worldID,
                                 isMonospaced: true)
                             OverlayFormField(
                                 title: String(localized: "Seed"), prompt: String(localized: "Root node ID"), text: $moon.seed,
@@ -577,7 +580,8 @@ private struct ZeroTierAdvancedForm: View {
         Section {
             LabeledContent(
                 "Planet",
-                value: draft.planet.map { "Custom (\($0.count) bytes)" } ?? "ZeroTier default")
+                value: draft.planet.map { String(localized: "Custom (\($0.count) bytes)") }
+                    ?? String(localized: "ZeroTier default"))
             Button {
                 isImportingPlanet = true
             } label: {

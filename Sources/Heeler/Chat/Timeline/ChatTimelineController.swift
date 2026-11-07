@@ -175,7 +175,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError(String(localized: "init(coder:) is unavailable"))
+        fatalError("init(coder:) is unavailable")
     }
 
     /// Chat's text size and font, which every cell reads from its traits;

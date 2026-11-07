@@ -38,8 +38,7 @@ enum AgentAccountError: Error, Equatable, Sendable {
         case .notHarnessDirectory(let kind):
             kind.accountMarkers.isEmpty
                 ? String(localized: "Choose a folder for \(kind.displayName)’s settings.")
-                : String(localized: "This folder has none of \(kind.displayName)’s files. Choose one that holds ")
-                    + ListFormatter.localizedString(byJoining: kind.accountMarkers.map(\.label)) + "."
+                : String(localized: "This folder has none of \(kind.displayName)’s files. Choose one that holds \(Self.markerList(kind)).")
         case .emptyName:
             String(localized: "Enter a name for this Account.")
         case .nameTaken(let name):
@@ -53,6 +52,11 @@ enum AgentAccountError: Error, Equatable, Sendable {
         case .invalidVariable:
             String(localized: "Enter a variable name of letters, digits and underscores, such as AMP_HOME.")
         }
+    }
+
+    /// The harness's own files, as a list in the current language.
+    private static func markerList(_ kind: SupportedAgentKind) -> String {
+        ListFormatter.localizedString(byJoining: kind.accountMarkers.map(\.label))
     }
 }
 

@@ -192,7 +192,7 @@ enum CodexRecordDecoder {
             if CodexMessageFormatter.isContextualLegacyMessage(text, kind: event.kind) {
                 return .nothing
             }
-            let audio = Array(repeating: "Audio", count: event.audioCount)
+            let audio = Array(repeating: String(localized: "Audio"), count: event.audioCount)
             return .record(
                 .userMessage(
                     CodexUserContent(
@@ -424,7 +424,7 @@ enum CodexRecordDecoder {
                 CodexToolSnapshot(
                     kind: .image, name: "ImageView",
                     title: raw.path.map { CodexToolSummary.relativePath(fileURLPath($0), cwd: context.cwd) }
-                        ?? "Image",
+                        ?? String(localized: "Image"),
                     status: .succeeded, callID: raw.id, output: reference(line),
                     imagePath: ChatImagePath.resolve(raw.path, cwd: context.cwd)))
         case .imageGeneration:
@@ -451,7 +451,7 @@ enum CodexRecordDecoder {
         case .subAgentActivity:
             return .tool(subAgentActivity(path: raw.agentPath, kind: raw.kind))
         case .enteredReviewMode:
-            return .review(title: String(localized: "Review started"), detail: raw.userFacingHint ?? "Review requested.")
+            return .review(title: String(localized: "Review started"), detail: raw.userFacingHint ?? String(localized: "Review requested."))
         case .exitedReviewMode:
             return .review(title: String(localized: "Review finished"), detail: raw.reviewExplanation)
         default:
@@ -791,14 +791,14 @@ enum CodexRecordDecoder {
         default: .noResult
         }
         let name = path?.split(separator: "/").last.map(String.init)
-        let title = name.map { "Subagent: \($0)" } ?? String(localized: "Subagent")
+        let title = name.map { String(localized: "Subagent: \($0)") } ?? String(localized: "Subagent")
         return CodexToolSnapshot(
             kind: .agent, name: "SubAgentActivity", title: title, status: status,
             subagentActivity: ChatSubagentActivity(agentPath: path, events: [kind ?? "unknown"]))
     }
 
     private static func sleepTitle(_ milliseconds: Int?) -> String {
-        guard let milliseconds else { return "Sleep" }
+        guard let milliseconds else { return String(localized: "Sleep") }
         if milliseconds % 1_000 == 0 {
             return String(localized: "Sleep \(milliseconds / 1_000)s")
         }

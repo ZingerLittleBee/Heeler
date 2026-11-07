@@ -249,8 +249,8 @@ extension TerminalStatusDialog where Actions == EmptyView {
         palette.background
         TerminalStatusDialog(
             glyph: .symbol("cable.connector.slash"),
-            title: String(localized: "Session Ended"),
-            message: String(localized: "The session ended."),
+            title: "Session Ended",
+            message: "The session ended.",
             palette: palette
         ) {
             Button("Reattach") {}
@@ -264,6 +264,6 @@ extension TerminalStatusDialog where Actions == EmptyView {
     ZStack {
         palette.background
         TerminalStatusDialog(
-            glyph: .progress, title: String(localized: "Connecting…"), palette: palette, dimsBackground: false)
+            glyph: .progress, title: "Connecting…", palette: palette, dimsBackground: false)
     }
 }

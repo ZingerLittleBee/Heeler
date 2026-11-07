@@ -98,7 +98,7 @@ final class ClosePaneStore {
         case let refusal as HerdrCoreCloseRefusal:
             String(localized: "herdr-core rejected the close: \(refusal.message)")
         case let apiError as HerdrAPIError:
-            "herdr rejected the close: \(apiError.message)"
+            String(localized: "herdr rejected the close: \(apiError.message)")
         default:
             TransportError.herdrCoreLinkMessage(for: error)
                 ?? String(localized: "Closing the pane failed: \(String(describing: error))")

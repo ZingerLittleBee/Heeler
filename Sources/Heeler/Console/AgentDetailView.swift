@@ -511,7 +511,7 @@ struct AgentDetailView: View {
         .onChange(of: activity.activationCount) { prepareRetainedAgent() }
         .confirmationDialog("Open Terminal", isPresented: $isChoosingTerminal, titleVisibility: .visible) {
             ForEach(workspaceShells) { @Sendable target in
-                Button("\(target.displayTitle) · \(target.tabLabel ?? "Terminal")") {
+                Button(target.displayTitle + " · " + (target.tabLabel ?? String(localized: "Terminal"))) {
                     showWorkspaceTerminal(target)
                 }
             }

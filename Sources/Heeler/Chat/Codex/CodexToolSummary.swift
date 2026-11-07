@@ -455,11 +455,16 @@ enum CodexToolSummary {
         switch action?.type {
         case "search":
             let queries = action?.queries ?? []
-            return action?.query ?? (queries.isEmpty ? "Web search" : queries.joined(separator: ", "))
+            return action?.query ?? (queries.isEmpty ? String(localized: "Web search") : queries.joined(separator: ", "))
         case "open_page", "openPage":
-            return action?.url ?? "Open page"
+            return action?.url ?? String(localized: "Open page")
         case "find_in_page", "findInPage":
-            return [action?.pattern, action?.url].compactMap { $0 }.joined(separator: " in ")
+            switch (action?.pattern, action?.url) {
+            case let (pattern?, url?): return String(localized: "\(pattern) in \(url)")
+            case let (pattern?, nil): return pattern
+            case let (nil, url?): return url
+            case (nil, nil): return ""
+            }
         default:
             return String(localized: "Web search")
         }

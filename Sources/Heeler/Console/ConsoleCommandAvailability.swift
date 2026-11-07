@@ -18,7 +18,7 @@ struct ConsoleCommandShortcut: Identifiable, Equatable, Sendable {
     /// Every entry implicitly requires Command. Terminal zoom belongs to Ghostty's adapter.
     static let all: [Self] =
         (1...9).map {
-            Self(action: .selectAgent($0), title: "Select Agent \($0)", key: Character(String($0)))
+            Self(action: .selectAgent($0), title: String(localized: "Select Agent \($0)"), key: Character(String($0)))
         } + [
             Self(action: .previousAgent, title: String(localized: "Previous Agent"), key: "["),
             Self(action: .nextAgent, title: String(localized: "Next Agent"), key: "]"),
@@ -26,7 +26,7 @@ struct ConsoleCommandShortcut: Identifiable, Equatable, Sendable {
             Self(action: .newAgent, title: String(localized: "New Agent"), key: "n"),
             Self(action: .settings, title: String(localized: "Settings…"), key: ","),
             Self(action: .hosts, title: String(localized: "Hosts"), key: "h", requiresShift: true),
-            Self(action: .toggleInputMode, title: "Toggle Direct Input / Composer", key: "e"),
+            Self(action: .toggleInputMode, title: String(localized: "Toggle Direct Input / Composer"), key: "e"),
             Self(action: .sendDraft, title: String(localized: "Send Composer Draft"), key: "\r"),
             Self(action: .closeAgent, title: String(localized: "Close Agent View"), key: "w"),
         ]

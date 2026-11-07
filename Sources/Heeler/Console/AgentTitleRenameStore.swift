@@ -156,7 +156,7 @@ final class AgentTitleRenameStore: Identifiable {
                 let command = program == .pi ? "/name" : "/rename"
                 _ = try await checkedAgent(session: initial.agentSession, idle: true)
                 guard InputBoxStateDetector.detect(try await io.screen(), program: program).isSendable else {
-                    throw failure("The Agent's input changed. Nothing was sent.")
+                    throw failure(String(localized: "The Agent's input changed. Nothing was sent."))
                 }
                 dispatched = true
                 try await io.prompt(generating ? command : command + " " + target)
@@ -172,7 +172,7 @@ final class AgentTitleRenameStore: Identifiable {
             let reason = (error as? AgentTitleRenameError)?.message
                 ?? String(localized: "The Host did not confirm the rename.")
             state = .failed(outcomeUncertain
-                ? reason + String(localized: " Check the title in Terminal before trying again.")
+                ? String(localized: "\(reason) Check the title in Terminal before trying again.")
                 : reason)
             if dispatched { await io.refresh() }
         }
@@ -211,7 +211,7 @@ final class AgentTitleRenameStore: Identifiable {
         }
         _ = try await checkedAgent(session: initial.agentSession)
         guard Self.openCodeField(try await io.screen()) == field else {
-            throw failure("OpenCode's rename dialog changed.")
+            throw failure(String(localized: "OpenCode's rename dialog changed."))
         }
         try await io.keys(["ctrl+e", "ctrl+u"])
         try await io.sleep(.milliseconds(150))
@@ -256,7 +256,7 @@ final class AgentTitleRenameStore: Identifiable {
                 fresh.status == .idle || fresh.status == .done { return }
             let text = try await io.screen().rows.map(\.text).joined(separator: "\n")
             if target == nil, fresh.status == .idle || fresh.status == .done,
-                let acknowledgement = nativeAcknowledgement(for: fresh),
+                let acknowledgement = Self.nativeAcknowledgement(program: program, title: fresh.title),
                 acknowledgementCount(acknowledgement, in: text)
                     > acknowledgementCount(acknowledgement, in: oldText) {
                 // Generating again can legitimately produce the current title.
@@ -271,13 +271,15 @@ final class AgentTitleRenameStore: Identifiable {
         throw failure(String(localized: "The Agent did not confirm the new title in time."))
     }
 
-    private func nativeAcknowledgement(for agent: Agent) -> String? {
+    /// The line the Agent's own TUI prints after a rename. It is matched
+    /// against screen text, so it stays in the Agent's language, never the app's.
+    static func nativeAcknowledgement(program: ChatProgram, title: String) -> String? {
         switch program {
         case .claude:
-            return String(localized: "Session renamed to: \(agent.title)")
+            return "Session renamed to: " + title
         case .omp:
-            let card = agent.title.hasPrefix("π > ") ? String(agent.title.dropFirst(4)) : agent.title
-            return String(localized: "Session renamed to \"\(card)\".")
+            let card = title.hasPrefix("π > ") ? String(title.dropFirst(4)) : title
+            return "Session renamed to \"" + card + "\"."
         default: return nil
         }
     }

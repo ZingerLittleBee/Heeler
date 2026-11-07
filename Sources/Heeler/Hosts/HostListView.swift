@@ -24,14 +24,13 @@ struct HostRemovalRequest: Equatable {
         var sentences = [
             deletesNotificationKey
                 ? String(localized: "This permanently deletes the Host configuration, its trusted host key, any saved password, and the Notification Key from the Keychain.")
-                                : String(localized: "This permanently deletes the Host configuration, its trusted host key, and any saved password from the Keychain.")
+                : String(localized: "This permanently deletes the Host configuration, its trusted host key, and any saved password from the Keychain.")
         ]
         if leavesNotificationsBehind {
             sentences.append(
                 hosts.count == 1
                     ? String(localized: "Heeler can't reach this Host, so it may keep sending notifications to this device. Connect to it first to stop them.")
-                                        : String(localized: "Heeler can't reach some of these Hosts, so they may keep sending notifications to this device. Connect to them first to stop ")
-                        + String(localized: "those notifications."))
+                    : String(localized: "Heeler can't reach some of these Hosts, so they may keep sending notifications to this device. Connect to them first to stop those notifications."))
         }
         sentences.append(String(localized: "This cannot be undone."))
         return sentences.joined(separator: " ")
@@ -690,8 +689,8 @@ enum HostHealthGroup: Int, CaseIterable, Comparable {
     var title: String {
         switch self {
         case .cannotConnect: String(localized: "Can't Connect")
-        case .trying: "Trying"
-        case .connected: "Connected"
+        case .trying: String(localized: "Trying")
+        case .connected: String(localized: "Connected")
         case .notConnected: String(localized: "Not Connected")
         }
     }
@@ -756,7 +755,10 @@ private struct HostGroupHeader: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(group.title), \(count) \(count == 1 ? "Host" : "Hosts")")
+        .accessibilityLabel(
+            count == 1
+                ? String(localized: "\(group.title), 1 Host")
+                : String(localized: "\(group.title), \(count) Hosts"))
         .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
         .accessibilityHint(isCollapsed ? String(localized: "Shows these Hosts.") : String(localized: "Hides these Hosts."))
         .accessibilityAddTraits(.isHeader)
@@ -836,9 +838,11 @@ struct HostRowPresentation: Equatable {
             group = .connected
             var address = host.connectionSummary
             if let endpoint = host.herdrEndpoint {
-                if !endpoint.session.isEmpty { address += " · session \(endpoint.session)" }
+                if !endpoint.session.isEmpty {
+                    address += " · " + String(localized: "session \(endpoint.session)")
+                }
             } else if case .namedSession(let session) = host.socketLocation {
-                address += " · session \(session)"
+                address += " · " + String(localized: "session \(session)")
             }
             // The reason itself is in Host detail, a tap away.
             detail = isOutOfSync ? String(localized: "Sync issue") : address
@@ -957,7 +961,7 @@ struct HostConnectionPresentation: Equatable {
             if let latency {
                 let formattedLatency = HostLatencyFormatting.formatted(latency)
                 title = formattedLatency
-                accessibilityLabel = "Connected, latency \(formattedLatency)"
+                accessibilityLabel = String(localized: "Connected, latency \(formattedLatency)")
             } else {
                 title = String(localized: "Measuring…")
                 accessibilityLabel = String(localized: "Connected, measuring latency")

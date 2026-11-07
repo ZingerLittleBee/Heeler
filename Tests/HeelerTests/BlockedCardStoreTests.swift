@@ -1433,10 +1433,12 @@ struct BlockedCardStoreTests {
                 + "while it reports Blocked, so continue in the terminal.")
 
         // A question or an exclamation ends the sentence by itself, as
-        // OpenCode 2.0.32 words a refused connection.
+        // OpenCode 2.0.32 words a refused connection, and so does a
+        // full-width period, as a Japanese error or fallback ends.
         for failure in [
             "ConnectionRefused: Unable to connect. Is the computer able to access the url?",
             "Quota exhausted!",
+            "ターンが失敗しました。",
         ] {
             store.update(transcript: Self.failedTurn(failure))
             await store.refresh()

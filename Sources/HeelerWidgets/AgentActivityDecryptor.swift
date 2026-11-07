@@ -101,17 +101,12 @@ enum AgentActivityPresentation: Equatable, Sendable {
     /// Trailing caption2 on the lock screen: overflow, stale notice, or both.
     func lockScreenTrailingCaption(isStale: Bool) -> String? {
         let overflow = lockScreenOverflowCount(isStale: isStale)
-        let staleCaption = "May be out of date"
-        if isStale {
-            if overflow > 0 {
-                return "+\(overflow) more · \(staleCaption)"
-            }
-            return staleCaption
+        switch (isStale, overflow > 0) {
+        case (true, true): return String(localized: "+\(overflow) more · May be out of date")
+        case (true, false): return String(localized: "May be out of date")
+        case (false, true): return String(localized: "+\(overflow) more")
+        case (false, false): return nil
         }
-        if overflow > 0 {
-            return "+\(overflow) more"
-        }
-        return nil
     }
 }
 
@@ -192,6 +187,30 @@ enum AgentActivityCopy {
     // Governs the Dynamic Island expanded rows; the lock screen sizes itself
     // via `lockScreenAgents` instead.
     static let rowLimit = 3
+
+    /// "2 blocked": a count and its status, in the language the widget
+    /// renders in. The status stays a wire token for colors and glyphs; one
+    /// this build does not know reads as the Host sent it.
+    static func count(_ count: Int, status: String) -> String {
+        switch status {
+        case "blocked": String(localized: "\(count) blocked")
+        case "working": String(localized: "\(count) working")
+        case "done": String(localized: "\(count) done")
+        case "idle": String(localized: "\(count) idle")
+        default: "\(count) \(status)"
+        }
+    }
+
+    /// A row's status as VoiceOver reads it after the row's fields.
+    static func status(_ status: String) -> String {
+        switch status {
+        case "blocked": String(localized: "blocked")
+        case "working": String(localized: "working")
+        case "done": String(localized: "done")
+        case "idle": String(localized: "idle")
+        default: status
+        }
+    }
 }
 
 extension AgentActivityAttributes.ContentState.Counts {

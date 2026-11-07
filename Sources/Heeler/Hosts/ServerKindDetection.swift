@@ -132,7 +132,7 @@ struct ServerKindDetection: Equatable, Sendable {
 extension ServerKindDetection.HerdrTUIFinding {
     var summary: String {
         switch self {
-        case .found: "Found"
+        case .found: String(localized: "Found")
         case .notFound: String(localized: "Not found")
         }
     }
@@ -145,7 +145,8 @@ extension ServerKindDetection.CoreFinding {
         case .notInstalled: String(localized: "Not installed")
         case .notRunning(let version, _): String(localized: "\(version), not running")
         case .socketFilePresent(let version, let path):
-            "\(version), \(HerdrCoreLocator.isWindowsPipe(path) ? "running" : "socket found")"
+            HerdrCoreLocator.isWindowsPipe(path)
+                ? String(localized: "\(version), running") : String(localized: "\(version), socket found")
         case .socketPathTooLong(let version, _, _): String(localized: "\(version), socket path too long")
         }
     }

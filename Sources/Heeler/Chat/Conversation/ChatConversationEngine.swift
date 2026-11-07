@@ -361,6 +361,9 @@ actor ChatConversationEngine {
     private let transcriptRoot: String?
     /// Heeler can name an id before the program has written it (ADR 0034).
     private let sessionMayPrecedeItsStore: Bool
+    /// The localization entries are worded in now, which a saved document
+    /// must match to show (`ChatCacheDocument.localization`).
+    private let localization: String
 
     init(
         reference: ConversationReference,
@@ -372,10 +375,12 @@ actor ChatConversationEngine {
         workflowLimits: WorkflowLimits = WorkflowLimits(),
         transcriptRoot: String? = nil,
         sessionMayPrecedeItsStore: Bool = false,
+        localization: String = ChatCacheDocument.currentLocalization,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.transcriptRoot = transcriptRoot
         self.sessionMayPrecedeItsStore = sessionMayPrecedeItsStore
+        self.localization = localization
         self.reference = reference
         self.cacheKey = cacheKey
         self.files = files
@@ -387,10 +392,12 @@ actor ChatConversationEngine {
     }
 
     /// Shows what the device kept from an earlier visit, before the Host
-    /// answers.
+    /// answers. A document from another adapter revision or worded in
+    /// another language is discarded, not mixed with what is read now.
     func restore() async -> ChatConversationSnapshot {
         switch await cache.load(cacheKey) {
-        case .hit(let document) where document.adapterRevision == adapter.revision:
+        case .hit(let document)
+        where document.adapterRevision == adapter.revision && document.isWorded(in: localization):
             cached = document
             update {
                 $0.transcript = ChatTranscript(
@@ -652,7 +659,8 @@ actor ChatConversationEngine {
             reachedStart: (joined?.reachedStart ?? (windowStart == 0)) || olderUnreadable,
             title: snapshot.transcript.title, entries: entries, savedAt: date,
             backgroundWork: snapshot.transcript.listedBackgroundWork,
-            latestPromptOffset: snapshot.transcript.latestPromptOffset, turns: snapshot.transcript.turns)
+            latestPromptOffset: snapshot.transcript.latestPromptOffset, turns: snapshot.transcript.turns,
+            localization: localization)
         await cache.save(document)
         // What was just saved fills in above a later window: a moved file's
         // fresh tail, or a rewrite's.
@@ -879,7 +887,7 @@ actor ChatConversationEngine {
             case .failure(.mismatched): return .unavailable(.mismatched)
             case .failure(.unsupportedVersion(let version)):
                 let name = reference.program == .omp ? "Oh My Pi" : "Pi"
-                return .unavailable(.unsupportedFormat("\(name) session version \(version)"))
+                return .unavailable(.unsupportedFormat(String(localized: "\(name) session version \(version)")))
             }
         case .grok:
             switch try await GrokTranscriptLocator(files: files).locate(

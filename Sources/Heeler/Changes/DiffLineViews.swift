@@ -275,7 +275,10 @@ struct FileDiffHunkBand: View {
     }
 
     static func unchangedSummary(_ count: Int) -> String {
-        "\(count.formatted()) unchanged \(count == 1 ? "line" : "lines")"
+        let text = count.formatted()
+        return count == 1
+            ? String(localized: "\(text) unchanged line")
+            : String(localized: "\(text) unchanged lines")
     }
 
     private var heading: some View {

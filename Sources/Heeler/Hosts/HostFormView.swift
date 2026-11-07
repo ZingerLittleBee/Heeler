@@ -111,8 +111,7 @@ struct HostFormView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(
-                                        String(localized: "Every Host using Device Key authentication will reject the replacement until you add its new public key to ~/.ssh/authorized_keys, or for an administrator account on Windows to ")
-                        + #"C:\ProgramData\ssh\administrators_authorized_keys."#)
+                    String(localized: "Every Host using Device Key authentication will reject the replacement until you add its new public key to ~/.ssh/authorized_keys, or for an administrator account on Windows to C:\\ProgramData\\ssh\\administrators_authorized_keys."))
             }
             .confirmationDialog(
                 String(localized: "Replace the RSA Key?"),
@@ -240,7 +239,7 @@ struct HostFormView: View {
                     String(localized: "Add the address Heeler connects to: directly, over an overlay network, or through a Jump Host."))
             } else if draft.routes.count > 1 {
                 Text(
-                                        String(localized: "Heeler tries every route each time it connects and keeps the first that reaches the Host. Routes over this device's own network start first; the rest start a moment later."))
+                    String(localized: "Heeler tries every route each time it connects and keeps the first that reaches the Host. Routes over this device's own network start first; the rest start a moment later."))
             } else {
                 Text(
                     String(localized: "Add another way to reach this Host, such as its LAN address at home and an overlay network or Jump Host elsewhere."))

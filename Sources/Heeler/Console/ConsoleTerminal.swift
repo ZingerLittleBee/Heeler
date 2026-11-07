@@ -51,9 +51,10 @@ struct ConsoleTerminal: Identifiable, Equatable, Sendable {
     }
     /// The Tab as the user named it, else its position, else its id.
     var displayTabTitle: String {
-        if let customTabLabel { return "Tab \u{201C}\(customTabLabel)\u{201D}" }
-        if let tabPosition { return "Tab \(tabPosition)" }
-        return nonempty(tabLabel).map { "Tab \($0)" } ?? "Tab \(tabID)"
+        if let customTabLabel { return String(localized: "Tab \u{201C}\(customTabLabel)\u{201D}") }
+        if let tabPosition { return String(localized: "Tab \(tabPosition)") }
+        let label = nonempty(tabLabel) ?? tabID
+        return String(localized: "Tab \(label)")
     }
     /// Foreground cwd follows `cd`; launch cwd remains the fallback.
     var cwd: String { nonempty(pane.foregroundCwd) ?? nonempty(pane.cwd) ?? "" }

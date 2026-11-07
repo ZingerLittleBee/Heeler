@@ -74,7 +74,7 @@ struct ChatStopPlan: Sendable {
     /// OpenCode's interrupt resumes: a message waiting during the turn
     /// runs after it.
     private static let openCodeUnconfirmedNotice =
-                String(localized: "Esc went twice, but OpenCode still shows Working. If a message was waiting during this turn, OpenCode runs it after a stop; tap Stop again to stop that too. In the terminal, use Esc, not Ctrl+C, which exits OpenCode when its input is empty.")
+        String(localized: "Esc went twice, but OpenCode still shows Working. If a message was waiting during this turn, OpenCode runs it after a stop; tap Stop again to stop that too. In the terminal, use Esc, not Ctrl+C, which exits OpenCode when its input is empty.")
 
     /// The request failed, so the keys may not have arrived.
     static let unreachableMessage = String(localized: "Couldn't reach the Agent, so it may still be working.")

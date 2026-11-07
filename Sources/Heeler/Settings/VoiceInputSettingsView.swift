@@ -110,7 +110,8 @@ struct VoiceInputSettingsView: View {
             VoiceInputFormField(
                 title: String(localized: "Base URL"), prompt: "https://api.example.com/v1", text: $connection.custom.baseURL,
                 keyboard: .URL)
-            VoiceInputFormField(title: String(localized: "Model"), prompt: "Required", text: $connection.custom.model)
+            VoiceInputFormField(
+                title: String(localized: "Model"), prompt: String(localized: "Required"), text: $connection.custom.model)
         } footer: {
             Text(
                 String(localized: "For services that take OpenAI's audio/transcriptions request. Language and other options can be set in Advanced Request Fields after entering the URL and model."))
@@ -132,7 +133,11 @@ struct VoiceInputSettingsView: View {
         } header: {
             Text("API Key")
         } footer: {
-            Text("Kept in this device's Keychain and sent only with recordings to \(draftHost).")
+            if let host = draftEndpoint?.host {
+                Text("Kept in this device's Keychain and sent only with recordings to \(host).")
+            } else {
+                Text("Kept in this device's Keychain and sent only with recordings to the service.")
+            }
         }
     }
 
@@ -206,10 +211,6 @@ struct VoiceInputSettingsView: View {
         connection.endpoint
     }
 
-    private var draftHost: String {
-        draftEndpoint?.host ?? String(localized: "the service")
-    }
-
     private var hasStoredKey: Bool {
         draftEndpoint.map(settings.hasKey(for:)) ?? false
     }
@@ -275,8 +276,10 @@ struct VoiceInputSettingsView: View {
     }
 
     static func consentMessage(_ endpoint: VoiceInputEndpoint) -> String {
-        let terms = endpoint.operatorName.map { "\($0)'s terms" } ?? String(localized: "the terms of whoever runs it")
-        return String(localized: "Each Voice Input recording is uploaded to \(endpoint.host) and turned into text under \(terms). Heeler keeps no copy once the text arrives.")
+        guard let operatorName = endpoint.operatorName else {
+            return String(localized: "Each Voice Input recording is uploaded to \(endpoint.host) and turned into text under the terms of whoever runs it. Heeler keeps no copy once the text arrives.")
+        }
+        return String(localized: "Each Voice Input recording is uploaded to \(endpoint.host) and turned into text under \(operatorName)'s terms. Heeler keeps no copy once the text arrives.")
     }
 }
 

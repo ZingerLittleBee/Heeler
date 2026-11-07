@@ -65,7 +65,8 @@ struct HostRoute: Identifiable, Codable, Hashable, Sendable {
         var summary = endpointDescription
         if usesJumpHost {
             let jump = jumpAddress.trimmingCharacters(in: .whitespaces)
-            summary += " via \(jumpPort == 22 ? jump : "\(jump):\(jumpPort)")"
+            let jumpEndpoint = jumpPort == 22 ? jump : "\(jump):\(jumpPort)"
+            summary = String(localized: "\(summary) via \(jumpEndpoint)")
         }
         if let overlayNetworkID {
             summary += " · \(networkName(overlayNetworkID))"
@@ -269,7 +270,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
                     // Absent in Hosts saved before jump-host support; a blank
                     // address decodes as the direct connection they had.
                     jumpAddress: try container.decodeIfPresent(String.self, forKey: .jumpAddress)
-                        ?? String(localized: ""),
+                        ?? "",
                     jumpPort: try container.decodeIfPresent(Int.self, forKey: .jumpPort) ?? 22,
                     jumpUsername: try container.decodeIfPresent(
                         String.self, forKey: .jumpUsername) ?? "",
@@ -282,7 +283,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         guard serverKind.isValidSessionName(sessionName) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .sessionName, in: container,
-                debugDescription: String(localized: "Invalid session name for this Server Kind"))
+                debugDescription: "Invalid session name for this Server Kind")
         }
     }
 

@@ -952,8 +952,7 @@ final class StartAgentStore {
         case 0:
             String(localized: "\(program) finished right after it started, so no Agent is running.")
         case 127:
-            String(localized: "\(program) ended right after it started, with exit code 127, so no Agent is running. ")
-                + commandNotFound
+            String(localized: "\(program) ended right after it started, with exit code 127, so no Agent is running. \(commandNotFound)")
         case let code?:
             String(localized: "\(program) ended right after it started, with exit code \(code), so no Agent is running.")
         case nil:
@@ -980,8 +979,7 @@ final class StartAgentStore {
         case let template as HerdrCoreTemplateError:
             template.message
         case let failure as WorktreeAgentStartFailure:
-            String(localized: "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. ")
-                + message(for: failure.underlying, launchedKind: launchedKind)
+            String(localized: "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. \(message(for: failure.underlying, launchedKind: launchedKind))")
         case let apiError as HerdrAPIError where apiError.code == "not_git_worktree":
             // The one dedicated worktree.create error code (#97); everything
             // else collapses into worktree_create_failed with raw git stderr,
@@ -994,16 +992,14 @@ final class StartAgentStore {
             // Kind captured at submit, not the picker after await. Discovery
             // does not prove herdr supports Muse (#289); keep the server
             // reason and tell the user how to recover.
-            "herdr rejected the command: \(apiError.message). "
-                + String(localized: "Update herdr on this Host to v0.9.0 or later for Muse support, ")
-                + String(localized: "or choose another supported Agent.")
+            String(localized: "herdr rejected the command: \(apiError.message). Update herdr on this Host to v0.9.0 or later for Muse support, or choose another supported Agent.")
         case let apiError as HerdrAPIError where apiError.isCanonicalModeRefusal:
             // The Transport resends this refusal for its whole shell-readiness
             // wait, so it lands here only once that wait ran out; "10 seconds"
             // mirrors `HeelerSSHTransport.shellReadinessBudget`.
             String(localized: "The Host's shell didn't accept a launch command this long within 10 seconds. On a Mac, herdr accepts at most 1,024 bytes until the shell's line editor starts, and some shells, such as dash, never start one. Shorten the arguments and try again.")
         case let apiError as HerdrAPIError:
-            "herdr rejected the command: \(apiError.message)"
+            String(localized: "herdr rejected the command: \(apiError.message)")
         default:
             TransportError.herdrCoreLinkMessage(for: error)
                 ?? String(localized: "Starting the agent failed: \(String(describing: error))")

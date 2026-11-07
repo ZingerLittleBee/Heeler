@@ -9,7 +9,8 @@ import Foundation
 /// the user never gets a configuration Grok Build cannot read.
 enum GrokBuildProgramStatusEdit {
     static let id = "grok-build.program-status"
-    static let harness = String(localized: "Grok Build")
+    /// A product name, persisted with each applied edit, so never localized.
+    static let harness = "Grok Build"
 
     /// The line this edit asks for, to say what to do by hand.
     static let manualInstruction = String(localized: #"Add program_status = "on" under [ui.notifications] in Grok Build's config.toml."#)

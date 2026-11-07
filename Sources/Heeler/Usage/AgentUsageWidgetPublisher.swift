@@ -74,15 +74,14 @@ final class AgentUsageWidgetPublisher {
                 kept.name = host.displayName
                 return kept
             }
-            return UsageWidgetSnapshot.Host(id: host.id, name: host.displayName, excludedReason: "Not read yet")
+            return UsageWidgetSnapshot.Host(id: host.id, name: host.displayName, excludedReason: .notReadYet)
         }))
     }
 
     /// Usage is off: every Host loses its figures and names why.
     func publishUsageOff(hosts: [Host]) {
         commit(UsageWidgetSnapshot(hosts: hosts.map { host in
-            UsageWidgetSnapshot.Host(
-                id: host.id, name: host.displayName, excludedReason: UsageWidgetSnapshot.usageOffReason)
+            UsageWidgetSnapshot.Host(id: host.id, name: host.displayName, excludedReason: .usageOff)
         }))
     }
 
@@ -119,7 +118,7 @@ extension UsageWidgetSnapshot.Host {
                 self.init(id: reading.id, name: reading.name, report: report, readAt: readAt)
             }
         case .requirement, .unsupportedPlatform, .hostHelper, .runtimeMissing, .updateRequired:
-            self.init(id: reading.id, name: reading.name, excludedReason: AgentUsageScope.reason(for: reading.state))
+            self.init(id: reading.id, name: reading.name, excludedReason: AgentUsageScope.exclusion(for: reading.state))
         case .idle, .loading, .failed:
             if var kept {
                 kept.name = reading.name
@@ -133,18 +132,18 @@ extension UsageWidgetSnapshot.Host {
                 self = answered
                 return
             }
-            let reason = if !reading.isConnected {
-                String(localized: "Not connected")
+            let reason: AgentUsageExclusion = if !reading.isConnected {
+                .notConnected
             } else if case .failed = reading.state {
-                AgentUsageScope.reason(for: reading.state)
+                AgentUsageScope.exclusion(for: reading.state)
             } else {
-                String(localized: "Not read yet")
+                .notReadYet
             }
             self.init(id: reading.id, name: reading.name, excludedReason: reason)
         }
     }
 
-    init(id: UUID, name: String, excludedReason: String) {
+    init(id: UUID, name: String, excludedReason: AgentUsageExclusion) {
         self.init(id: id, name: name, readAt: nil, excludedReason: excludedReason, timeZone: nil,
             programs: [], limits: [])
     }

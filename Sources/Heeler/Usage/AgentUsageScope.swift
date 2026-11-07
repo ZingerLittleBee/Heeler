@@ -35,7 +35,10 @@ struct AgentUsageScope: Equatable {
     struct ExcludedHost: Equatable, Identifiable {
         let id: Host.ID
         let name: String
-        let reason: String
+        let exclusion: AgentUsageExclusion
+
+        /// The short line the Host shows in place of its figures.
+        var reason: String { exclusion.reason }
     }
 
     struct Directory: Equatable, Identifiable {
@@ -75,12 +78,12 @@ struct AgentUsageScope: Equatable {
                     isRetryingRefresh: reading.isRetryingRefresh,
                     last30Days: Self.sum((report.programs ?? []).compactMap(\.okTotals?.last30Days))))
             case _ where !reading.isConnected:
-                excluded.append(ExcludedHost(id: reading.id, name: reading.name, reason: String(localized: "Not connected")))
+                excluded.append(ExcludedHost(id: reading.id, name: reading.name, exclusion: .notConnected))
             case .idle, .loading:
                 loading.append(reading)
             default:
                 excluded.append(ExcludedHost(
-                    id: reading.id, name: reading.name, reason: Self.reason(for: reading.state)))
+                    id: reading.id, name: reading.name, exclusion: Self.exclusion(for: reading.state)))
             }
         }
         self.included = included
@@ -157,18 +160,18 @@ struct AgentUsageScope: Equatable {
         }
     }
 
-    /// The short line a Host that cannot be added up shows in place of its
-    /// figures.
-    static func reason(for state: AgentUsageStore.State) -> String {
+    /// Why a Host that cannot be added up is left out. A Host still on its
+    /// first read lists as loading and one that reports is added up, so
+    /// neither is left out; both read as not read yet here.
+    static func exclusion(for state: AgentUsageStore.State) -> AgentUsageExclusion {
         switch state {
-        case .idle, .loading: "Loading…"
-        case .requirement: String(localized: "Needs the Heeler plugin")
-        case .unsupportedPlatform: String(localized: "Not supported on Windows")
-        case .hostHelper(let need): need.reason
-        case .runtimeMissing: String(localized: "No Agent activity yet")
-        case .updateRequired: String(localized: "Update Heeler")
-        case .failed: String(localized: "Could not read Usage")
-        case .available: ""
+        case .idle, .loading, .available: .notReadYet
+        case .requirement: .needsPlugin
+        case .unsupportedPlatform: .unsupportedPlatform
+        case .hostHelper(let need): need.exclusion
+        case .runtimeMissing: .noAgentActivity
+        case .updateRequired: .updateRequired
+        case .failed: .readFailed
         }
     }
 

@@ -2,15 +2,29 @@ import SwiftUI
 
 /// Words and checks the Accounts screen shares with Usage (#621).
 enum AccountsListing {
+    /// One whole paragraph per case, so a translation never joins sentences
+    /// localized apart.
     static func footer(for kind: SupportedAgentKind, variable: String?) -> String {
-        let defaultLine =
-            HostAccountsStore.usageKinds.contains(kind)
-            ? String(localized: "Default is the folder \(kind.displayName) uses in herdr’s environment. It can be renamed, not removed.")
-            : String(localized: "Default is the folder \(kind.displayName) picks itself.")
-        guard let variable else {
-            return defaultLine + " Name the variable \(kind.displayName) reads its folder from to launch an Account."
+        let name = kind.displayName
+        switch (HostAccountsStore.usageKinds.contains(kind), variable) {
+        case (true, let variable?):
+            return String(localized: "Default is the folder \(name) uses in herdr’s environment. It can be renamed, not removed. A Launch Preset with an Account sets \(variable) to its folder.")
+        case (true, nil):
+            return String(localized: "Default is the folder \(name) uses in herdr’s environment. It can be renamed, not removed. Name the variable \(name) reads its folder from to launch an Account.")
+        case (false, let variable?):
+            return String(localized: "Default is the folder \(name) picks itself. A Launch Preset with an Account sets \(variable) to its folder.")
+        case (false, nil):
+            return String(localized: "Default is the folder \(name) picks itself. Name the variable \(name) reads its folder from to launch an Account.")
         }
-        return defaultLine + " A Launch Preset with an Account sets \(variable) to its folder."
+    }
+
+    /// The Folder Variable alert's message: what the variable is, and what
+    /// leaving it empty does.
+    static func variableMessage(for kind: SupportedAgentKind) -> String {
+        if let fallback = kind.configDirectoryVariable {
+            return String(localized: "The environment variable \(kind.displayName) reads its settings folder from. Left empty, Heeler uses \(fallback).")
+        }
+        return String(localized: "The environment variable \(kind.displayName) reads its settings folder from. Launch Presets set it to an Account’s folder.")
     }
 
     static let suggestionsFooter =
@@ -66,7 +80,7 @@ enum AccountsListing {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if isTaken {
             let shown = trimmed.isEmpty ? AgentUsageReport.Account.defaultDisplayName : trimmed
-            return ("Another Account on \(hostName) is named \(shown).", false)
+            return (String(localized: "Another Account on \(hostName) is named \(shown)."), false)
         }
         return (
             String(localized: "Names appear in Usage, widgets and Launch Presets. Each Account of a harness on \(hostName) needs its own."),
@@ -295,7 +309,7 @@ struct HostAccountsView: View {
                 if store.isChanging(.variable(kind)) {
                     ProgressView()
                 } else {
-                    Text(variable ?? "Not Set")
+                    Text(variable ?? String(localized: "Not Set"))
                         .font(variable == nil ? .body : .body.monospaced())
                         .foregroundStyle(variable == nil ? .orange : .secondary)
                 }
@@ -422,7 +436,8 @@ private struct HostAccountsDialogs: ViewModifier {
             .alert("Rename Account", isPresented: isPresent($renaming), presenting: renaming) { renaming in
                 // Left empty, the Default Account is "Default" again.
                 TextField(
-                    renaming.row.isDefault ? AgentUsageReport.Account.defaultDisplayName : "Name", text: $draftName
+                    renaming.row.isDefault ? AgentUsageReport.Account.defaultDisplayName : String(localized: "Name"),
+                    text: $draftName
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -445,10 +460,7 @@ private struct HostAccountsDialogs: ViewModifier {
                 }
                 .keyboardShortcut(.defaultAction)
             } message: { kind in
-                Text(
-                    "The environment variable \(kind.displayName) reads its settings folder from. "
-                        + (kind.configDirectoryVariable.map { "Left empty, Heeler uses \($0)." }
-                            ?? String(localized: "Launch Presets set it to an Account’s folder.")))
+                Text(AccountsListing.variableMessage(for: kind))
             }
             .modifier(AccountChangeFailureAlert(store: store, isActive: isAlertActive))
     }

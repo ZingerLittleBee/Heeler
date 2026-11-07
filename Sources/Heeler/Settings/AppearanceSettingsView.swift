@@ -73,7 +73,7 @@ private struct TerminalAppearanceSection: View {
             Text("Terminal")
         } footer: {
             Text(
-                                String(localized: "Pinching a terminal to zoom changes its text size too, and it sticks. Each appearance has its own theme: a dark theme for Light Mode keeps the terminal dark under a light system."))
+                String(localized: "Pinching a terminal to zoom changes its text size too, and it sticks. Each appearance has its own theme: a dark theme for Light Mode keeps the terminal dark under a light system."))
         }
     }
 
@@ -138,7 +138,7 @@ private struct ChatAppearanceSection: View {
             Text("Chat")
         } footer: {
             Text(
-                                String(localized: "Code stays monospaced, and the text size follows the system's from there. A finished turn's steps fold behind one line above its answer; a turn stays open while it runs or while its background work does."))
+                String(localized: "Code stays monospaced, and the text size follows the system's from there. A finished turn's steps fold behind one line above its answer; a turn stays open while it runs or while its background work does."))
         }
     }
 

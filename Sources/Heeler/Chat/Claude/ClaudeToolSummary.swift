@@ -59,11 +59,7 @@ struct ClaudeToolSummary: Sendable, Equatable {
                 kind: .todo, title: subject ?? description ?? use.name, subtitle: subject == nil ? nil : description)
         case "TaskUpdate" where input.taskID != nil:
             let task = input.taskID ?? ""
-            if let status = input.status, !status.isEmpty {
-                self.init(kind: .todo, title: "Task #\(task): \(status)")
-            } else {
-                self.init(kind: .todo, title: String(localized: "Updated task #\(task)"))
-            }
+            self.init(kind: .todo, title: Self.taskUpdateTitle(task: task, status: input.status))
         case "TaskUpdate", "TaskGet", "TaskList":
             self.init(kind: .todo, title: input.description ?? use.name)
         case "Skill":
@@ -78,7 +74,7 @@ struct ClaudeToolSummary: Sendable, Equatable {
                     .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                 : []
             let title =
-                !selected.isEmpty ? "Loaded \(selected.joined(separator: ", "))"
+                !selected.isEmpty ? String(localized: "Loaded \(selected.joined(separator: ", "))")
                 : query.isEmpty || query.hasPrefix(Self.toolSelectPrefix) ? use.name
                 : String(localized: "Searched tools for \(query)")
             self.init(kind: .other, title: title)
@@ -102,6 +98,19 @@ struct ClaudeToolSummary: Sendable, Equatable {
     }
 
     private static let toolSelectPrefix = "select:"
+
+    /// A `TaskUpdate` row's title: the task and the status the call sets,
+    /// Claude Code's status token in the user's words.
+    private static func taskUpdateTitle(task: String, status: String?) -> String {
+        switch status ?? "" {
+        case "": String(localized: "Updated task #\(task)")
+        case "pending": String(localized: "Task #\(task): pending")
+        case "in_progress": String(localized: "Task #\(task): in progress")
+        case "completed": String(localized: "Task #\(task): completed")
+        case "deleted": String(localized: "Task #\(task): deleted")
+        default: String(localized: "Updated task #\(task)")
+        }
+    }
 
     /// What a Blocked card's screen parse matches a pending call on: the
     /// command, the path, the URL or the questions.

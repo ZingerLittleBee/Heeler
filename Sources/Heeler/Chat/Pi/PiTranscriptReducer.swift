@@ -51,7 +51,7 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
     var unsupportedFormat: String? {
         for record in records.values where record.type == "session" {
             guard case .number(let version)? = record.value["version"], version == 2 || version == 3 else {
-                return "Pi session without a supported v2/v3 tree"
+                return String(localized: "Pi session without a supported v2/v3 tree")
             }
         }
         return nil
@@ -368,9 +368,13 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                     if let index, case .tool(let existing) = transcript.entries[index].content {
                         tool = existing
                     } else {
+                        // The name classifies the call and stays plain; an
+                        // unnamed call's title is Heeler's word for it.
+                        let name = device ?? message["toolName"]?.stringValue
                         tool = Self.tool(
-                            name: device ?? message["toolName"]?.stringValue ?? String(localized: "Tool"), arguments: nil, callID: callID,
+                            name: name ?? "Tool", arguments: nil, callID: callID,
                             activity: context.activity, directory: directory)
+                        if name == nil { tool.title = String(localized: "Tool") }
                     }
                     // The write call whose text the row shows as its output.
                     var writtenBy: ChatOutputReference?

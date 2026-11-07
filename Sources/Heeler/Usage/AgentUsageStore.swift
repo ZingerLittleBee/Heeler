@@ -26,14 +26,14 @@ enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
         }
     }
 
-    /// The short line a Host left out of the totals shows.
-    var reason: String {
+    /// Why the Host is left out of the totals, which its short line names.
+    var exclusion: AgentUsageExclusion {
         switch self {
-        case .notInstalled: String(localized: "Needs the Host Helper")
-        case .outdated: String(localized: "Update the Host Helper")
-        case .waitingForCore: String(localized: "Waiting for the core")
-        case .nodeGone: String(localized: "Repair the Host Helper")
-        case .notOnWindows: String(localized: "Comes with the Host Helper, not available yet")
+        case .notInstalled: .needsHostHelper
+        case .outdated: .updateHostHelper
+        case .waitingForCore: .waitingForCore
+        case .nodeGone: .repairHostHelper
+        case .notOnWindows: .hostHelperNotOnWindows
         }
     }
 }
@@ -280,8 +280,8 @@ final class AgentUsageStore {
                 timeZone: timeZone, claudeLimits: claudeLimits, pluginRoot: pluginRoot)
             state = report.runtime == "missing" ? .runtimeMissing : .available(report)
         } else {
-            state = .requirement(
-                "herdr did not report where the Heeler plugin is installed. Update herdr on this Host to read Usage.")
+            state = .requirement(String(localized:
+                "herdr did not report where the Heeler plugin is installed. Update herdr on this Host to read Usage."))
         }
         return Reading(state: state, pluginVersion: version)
     }

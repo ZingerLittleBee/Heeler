@@ -100,8 +100,8 @@ struct ChangesReferenceViewTests {
             Text("Pair")
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Pair")
-                .diffLineAccessibilityActions(lines[1], qualifier: "Removed")
-                .diffLineAccessibilityActions(lines[2], qualifier: "Added")
+                .diffLineAccessibilityActions(lines[1], qualifier: .removed)
+                .diffLineAccessibilityActions(lines[2], qualifier: .added)
                 .environment(\.changesReferenceActions, ChangesReferenceActions(store: store)))
         try await withTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller

@@ -7,15 +7,15 @@ import Foundation
 /// (never a "server"), it sees the device token, ciphertext, source IP, and
 /// request timing, and the Live Activity fields APNs needs in cleartext. It
 /// cannot see the encrypted identifying content (project, task, agent type,
-/// Host, or pane id); a custom relay only helps a self-built app. All copy is
-/// English by project convention.
+/// Host, or pane id); a custom relay only helps a self-built app. Each string
+/// is localized; the tests pin the English source.
 enum NotificationPrivacyCopy {
     /// The explainer's lead line before the iOS permission prompt.
     static let explainerTitle = String(localized: "Before you turn on notifications")
 
     /// The pipeline in one sentence, for the top of both surfaces.
     static let summary =
-                String(localized: "Agent Notifications travel through a push relay: your Host encrypts each notification and the relay forwards it to Apple without ever holding the key to read it.")
+        String(localized: "Agent Notifications travel through a push relay: your Host encrypts each notification and the relay forwards it to Apple without ever holding the key to read it.")
 
     /// What the relay can see — the fields that cross it in the clear.
     static let relaySeesTitle = String(localized: "What the push relay sees")
@@ -37,11 +37,11 @@ enum NotificationPrivacyCopy {
 
     /// The self-built-app caveat for the custom relay setting.
     static let customRelayCaveat =
-                String(localized: "A custom relay only works with an app you build and sign yourself. It must use APNs credentials authorized for that app's bundle ID. Only the developer-hosted relay is configured to deliver notifications to this App Store or TestFlight build.")
+        String(localized: "A custom relay only works with an app you build and sign yourself. It must use APNs credentials authorized for that app's bundle ID. Only the developer-hosted relay is configured to deliver notifications to this App Store or TestFlight build.")
 
     /// The primary action label on the explainer sheet, right before the iOS
     /// permission prompt appears.
-    static let explainerConfirm = "Continue"
+    static let explainerConfirm = String(localized: "Continue")
     /// The dismissive action label on the explainer sheet.
     static let explainerCancel = String(localized: "Not Now")
 

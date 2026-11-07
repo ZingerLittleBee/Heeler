@@ -144,7 +144,7 @@ struct OverlayPeerPickerView: View {
     private var cancelledView: some View {
         List {
             Section {
-                LabeledContent("Status", value: "Cancelled")
+                LabeledContent("Status", value: String(localized: "Cancelled"))
                 Button {
                     Task { await model.load() }
                 } label: {
@@ -244,9 +244,14 @@ private struct OverlayPeerChoiceRow: View {
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isChosen ? .isSelected : [])
-        .accessibilityHint(
-            isHost
-                ? String(localized: "A Host already uses this machine")
-                : String(localized: "Uses \(candidate.address(style) ?? String(localized: "this peer")) as the address"))
+        .accessibilityHint(hint)
+    }
+
+    private var hint: String {
+        if isHost { return String(localized: "A Host already uses this machine") }
+        guard let address = candidate.address(style) else {
+            return String(localized: "Uses this peer as the address")
+        }
+        return String(localized: "Uses \(address) as the address")
     }
 }

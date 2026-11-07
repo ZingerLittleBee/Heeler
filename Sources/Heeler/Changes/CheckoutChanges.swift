@@ -55,10 +55,10 @@ enum ChangesFileGroup: CaseIterable, Sendable {
 
     var title: String {
         switch self {
-        case .conflicts: "Conflicts"
-        case .staged: "Staged"
+        case .conflicts: String(localized: "Conflicts")
+        case .staged: String(localized: "Staged")
         case .changes: String(localized: "Changes")
-        case .untracked: "Untracked"
+        case .untracked: String(localized: "Untracked")
         }
     }
 }
@@ -108,7 +108,11 @@ struct CheckoutHead: Sendable, Equatable {
         case .named(let name):
             name
         case .detached:
-            "Detached at \(commit.map { String($0.prefix(7)) } ?? "unknown commit")"
+            if let commit {
+                String(localized: "Detached at \(String(commit.prefix(7)))")
+            } else {
+                String(localized: "Detached at unknown commit")
+            }
         }
     }
 }
@@ -144,12 +148,12 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
 
         var title: String {
             switch self {
-            case .modified: "Modified"
-            case .added: "Added"
-            case .deleted: "Deleted"
-            case .renamed: "Renamed"
-            case .untracked: "Untracked"
-            case .conflicted: "Conflicted"
+            case .modified: String(localized: "Modified")
+            case .added: String(localized: "Added")
+            case .deleted: String(localized: "Deleted")
+            case .renamed: String(localized: "Renamed")
+            case .untracked: String(localized: "Untracked")
+            case .conflicted: String(localized: "Conflicted")
             }
         }
 
@@ -177,8 +181,8 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
 
         var title: String {
             switch self {
-            case .staged: "Staged"
-            case .unstaged: "Unstaged"
+            case .staged: String(localized: "Staged")
+            case .unstaged: String(localized: "Unstaged")
             case .both: String(localized: "Staged and unstaged")
             }
         }
@@ -204,7 +208,7 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
     var detail: String {
         var parts: [String] = []
         if let displayOriginalPath {
-            parts.append("\(kind.title) from \(displayOriginalPath)")
+            parts.append(String(localized: "\(kind.title) from \(displayOriginalPath)"))
         } else {
             parts.append(kind.title)
         }
@@ -216,7 +220,7 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
     var accessibilityLabel: String {
         var parts = [displayPath]
         if let displayOriginalPath {
-            parts.append("\(kind.title.lowercased()) from \(displayOriginalPath)")
+            parts.append(String(localized: "\(kind.title.lowercased()) from \(displayOriginalPath)"))
         } else {
             parts.append(kind.title.lowercased())
         }
@@ -247,7 +251,7 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
             return String(localized: "\(original.directory) → \(directory)")
         }
         let source = original.directory == directory ? original.name : displayOriginalPath
-        return (["From \(source)"] + (directory.isEmpty ? [] : [directory]))
+        return ([String(localized: "From \(source)")] + (directory.isEmpty ? [] : [directory]))
             .joined(separator: " · ")
     }
 
@@ -330,7 +334,7 @@ extension CheckoutChanges {
         ]
         switch head.branch {
         case .named(let name):
-            sentences.append("Branch \(name)")
+            sentences.append(String(localized: "Branch \(name)"))
         case .detached:
             sentences.append(head.branchTitle)
         }
@@ -359,11 +363,14 @@ enum LineCounts: Sendable, Equatable {
     }
 
     var accessibilityLabel: String {
-        switch self {
-        case .lines(let added, let removed):
-            "\(added.formatted()) \(added == 1 ? "line" : "lines") added, "
-                + "\(removed.formatted()) \(removed == 1 ? "line" : "lines") removed"
-        case .binary: "binary"
+        guard case .lines(let added, let removed) = self else { return String(localized: "binary") }
+        let addedText = added.formatted()
+        let removedText = removed.formatted()
+        return switch (added == 1, removed == 1) {
+        case (true, true): String(localized: "\(addedText) line added, \(removedText) line removed")
+        case (true, false): String(localized: "\(addedText) line added, \(removedText) lines removed")
+        case (false, true): String(localized: "\(addedText) lines added, \(removedText) line removed")
+        case (false, false): String(localized: "\(addedText) lines added, \(removedText) lines removed")
         }
     }
 }
@@ -378,23 +385,41 @@ struct ChangesTotals: Sendable, Equatable {
     var linesAreAvailable = true
 
     var filesSummary: String {
-        "\(trackedFiles.formatted()) \(trackedFiles == 1 ? "file" : "files") changed"
+        let count = trackedFiles.formatted()
+        return trackedFiles == 1
+            ? String(localized: "\(count) file changed")
+            : String(localized: "\(count) files changed")
     }
 
     var untrackedSummary: String {
-        "\(untrackedItems.formatted()) untracked \(untrackedItems == 1 ? "item" : "items")"
+        let count = untrackedItems.formatted()
+        return untrackedItems == 1
+            ? String(localized: "\(count) untracked item")
+            : String(localized: "\(count) untracked items")
+    }
+
+    /// The line counts as VoiceOver reads them, as a lower bound when some
+    /// tracked files had no counts.
+    var spokenLines: String {
+        let counts = LineCounts.lines(added: added, removed: removed).accessibilityLabel
+        return linesAreComplete ? counts : String(localized: "At least \(counts)")
     }
 
     var accessibilitySummary: String { accessibilitySummary(statusTruncated: false) }
 
     /// `statusTruncated`: the Host capped its status output.
     func accessibilitySummary(statusTruncated: Bool) -> String {
-        let lines = linesAreAvailable
-            ? (linesAreComplete ? "" : "At least ")
-                + LineCounts.lines(added: added, removed: removed).accessibilityLabel + String(localized: " in tracked files")
-            : String(localized: "Line counts unavailable")
-        return String(localized: "\(spokenFiles(statusTruncated: statusTruncated)). \(lines). ")
-            + spokenUntracked(statusTruncated: statusTruncated)
+        let counts = LineCounts.lines(added: added, removed: removed).accessibilityLabel
+        let lines = if !linesAreAvailable {
+            String(localized: "Line counts unavailable")
+        } else if linesAreComplete {
+            String(localized: "\(counts) in tracked files")
+        } else {
+            String(localized: "At least \(counts) in tracked files")
+        }
+        let files = spokenFiles(statusTruncated: statusTruncated)
+        let untracked = spokenUntracked(statusTruncated: statusTruncated)
+        return String(localized: "\(files). \(lines). \(untracked)")
     }
 
     /// Git lists every tracked entry before the untracked ones, so a capped
@@ -403,12 +428,20 @@ struct ChangesTotals: Sendable, Equatable {
     /// bound; with none listed, the tracked count is the lower bound and the
     /// untracked items were never reached.
     func spokenFiles(statusTruncated: Bool) -> String {
-        (statusTruncated && untrackedItems == 0 ? "more than " : "") + filesSummary
+        guard statusTruncated, untrackedItems == 0 else { return filesSummary }
+        let count = trackedFiles.formatted()
+        return trackedFiles == 1
+            ? String(localized: "more than \(count) file changed")
+            : String(localized: "more than \(count) files changed")
     }
 
     func spokenUntracked(statusTruncated: Bool) -> String {
         guard statusTruncated else { return untrackedSummary }
-        return untrackedItems > 0 ? "more than " + untrackedSummary : String(localized: "untracked items not counted")
+        guard untrackedItems > 0 else { return String(localized: "untracked items not counted") }
+        let count = untrackedItems.formatted()
+        return untrackedItems == 1
+            ? String(localized: "more than \(count) untracked item")
+            : String(localized: "more than \(count) untracked items")
     }
 }
 
@@ -433,11 +466,14 @@ struct CheckoutUpstream: Sendable, Equatable {
     }
 
     var accessibilitySummary: String {
-        if case .tracking(let ahead, let behind) = state {
-            "\(ahead.formatted()) \(ahead == 1 ? "commit" : "commits") ahead and "
-                + "\(behind.formatted()) \(behind == 1 ? "commit" : "commits") behind \(name)"
-        } else {
-            summary
+        guard case .tracking(let ahead, let behind) = state else { return summary }
+        let aheadText = ahead.formatted()
+        let behindText = behind.formatted()
+        return switch (ahead == 1, behind == 1) {
+        case (true, true): String(localized: "\(aheadText) commit ahead and \(behindText) commit behind \(name)")
+        case (true, false): String(localized: "\(aheadText) commit ahead and \(behindText) commits behind \(name)")
+        case (false, true): String(localized: "\(aheadText) commits ahead and \(behindText) commit behind \(name)")
+        case (false, false): String(localized: "\(aheadText) commits ahead and \(behindText) commits behind \(name)")
         }
     }
 }

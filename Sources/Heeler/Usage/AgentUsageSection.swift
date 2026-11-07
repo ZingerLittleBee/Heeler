@@ -104,7 +104,7 @@ struct AgentUsageEstimatedCost: View {
         guard let value = summary.estimatedCostUSD else { return String(localized: "Unpriced") }
         let style = FloatingPointFormatStyle<Double>.Currency(code: "USD").locale(locale)
         if value > 0 && value < 0.01 {
-            return String(localized: "< \(0.01.formatted(style))")
+            return "< \(0.01.formatted(style))"
         }
         return value.formatted(style)
     }

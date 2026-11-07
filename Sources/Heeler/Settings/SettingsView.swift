@@ -192,7 +192,7 @@ struct SettingsView: View {
                             VoiceInputSettingsView(settings: voiceInput.settings)
                         } label: {
                             LabeledContent {
-                                Text(voiceInput.settings.service?.displayName ?? "Off")
+                                Text(voiceInput.settings.service?.displayName ?? String(localized: "Off"))
                             } label: {
                                 Label("Voice Input", systemImage: "mic")
                             }

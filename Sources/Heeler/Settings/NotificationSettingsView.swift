@@ -273,8 +273,7 @@ struct NotificationSettingsView: View {
             Text("Custom Push Relay")
         } footer: {
             Text(
-                "Leave blank to use \(NotificationRelayEndpoint.productionBaseURLString). "
-                    + NotificationPrivacyCopy.customRelayCaveat)
+                "Leave blank to use \(NotificationRelayEndpoint.productionBaseURLString). \(NotificationPrivacyCopy.customRelayCaveat)")
         }
     }
 }

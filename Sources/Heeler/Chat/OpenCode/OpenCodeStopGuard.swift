@@ -10,7 +10,7 @@ import Foundation
 enum OpenCodeStopGuard {
     static func verdict(_ context: ChatStopContext) -> ChatStopVerdict {
         guard context.activity == .working else {
-            return .refuse("The turn already ended, so Stop pressed nothing.")
+            return .refuse(String(localized: "The turn already ended, so Stop pressed nothing."))
         }
         // herdr may not report Blocked yet.
         switch OpenCodeDialogParser.parse(context.screen) {
@@ -33,7 +33,7 @@ enum OpenCodeStopGuard {
             return .refuse(String(localized: "OpenCode's prompt is in shell mode, where Esc only leaves it. Stop it in the terminal."))
         }
         guard screen.isRunning else {
-            return .refuse("OpenCode's screen shows no running turn, so Stop pressed nothing.")
+            return .refuse(String(localized: "OpenCode's screen shows no running turn, so Stop pressed nothing."))
         }
         return .press
     }

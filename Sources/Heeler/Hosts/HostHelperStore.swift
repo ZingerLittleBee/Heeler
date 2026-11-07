@@ -71,7 +71,7 @@ final class HostHelperStore {
     /// What Host detail's row says.
     var rowValue: String {
         switch reading {
-        case .checking: "Checking…"
+        case .checking: String(localized: "Checking…")
         case .unavailable: String(localized: "Unavailable")
         case .read(let reading): reading.presentation.value
         }
@@ -215,7 +215,7 @@ final class HostHelperStore {
             try? await transport.close()
             failure = planFailure
         } catch {
-            failure = String(localized: "Heeler could not connect to the Host, so nothing changed. ") + Self.message(for: error)
+            failure = String(localized: "Heeler could not connect to the Host, so nothing changed. \(Self.message(for: error))")
         }
     }
 
@@ -270,7 +270,7 @@ final class HostHelperStore {
         do {
             transport = try await connect()
         } catch {
-            failure = String(localized: "Heeler could not connect to the Host, so nothing changed. ") + Self.message(for: error)
+            failure = String(localized: "Heeler could not connect to the Host, so nothing changed. \(Self.message(for: error))")
             return
         }
         let installer = installer(transport)

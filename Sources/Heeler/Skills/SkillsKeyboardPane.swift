@@ -66,8 +66,8 @@ struct SkillsKeyboardPane: View {
     private var skillsList: some View {
         ScrollView {
             LazyVStack(spacing: 0, pinnedViews: []) {
-                section(titled: "Project", skills: store.projectSkills)
-                section(titled: "Global", skills: store.globalSkills)
+                section(titled: String(localized: "Project"), skills: store.projectSkills)
+                section(titled: String(localized: "Global"), skills: store.globalSkills)
             }
         }
         .scrollBounceBehavior(.basedOnSize)

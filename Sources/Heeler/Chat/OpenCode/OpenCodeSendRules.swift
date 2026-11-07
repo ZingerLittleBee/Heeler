@@ -19,7 +19,7 @@ import Foundation
 /// the shared rules leave to prose such as `/usr/bin/env`, is refused too.
 enum OpenCodeSendRules {
     private static let pathOnlyRefusal = ComposerRefusal.unsafeText(
-                String(localized: "OpenCode can take a message that is only a file path as an attachment instead of text. Start with a few words, such as what to do with the file, and OpenCode's agent can read it from its path."))
+        String(localized: "OpenCode can take a message that is only a file path as an attachment instead of text. Start with a few words, such as what to do with the file, and OpenCode's agent can read it from its path."))
 
     /// The most paths OpenCode reads from one paste; more is text.
     private static let maximumPaths = 32

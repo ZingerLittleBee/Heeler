@@ -222,7 +222,7 @@ actor OverlayNetworkRuntime {
     /// fails with `.notConfigured` instead of reaching a stale node.
     nonisolated func route(for networkID: UUID) -> OverlayRoute {
         let name = catalog.withLock { $0.networks[networkID]?.network.displayName }
-        return OverlayRoute(networkName: name ?? "Overlay network") { host, port, timeout in
+        return OverlayRoute(networkName: name ?? String(localized: "Overlay network")) { host, port, timeout in
             try await self.dial(networkID: networkID, host: host, port: port, timeout: timeout)
         }
     }
@@ -943,7 +943,7 @@ actor OverlayNetworkRuntime {
                         "tailscale-\(network.id.uuidString).log", isDirectory: false)))
         case .zerotier(let networkIDText, let moons, let planet):
             guard let networkID = OverlayNetwork.zeroTierNetworkID(networkIDText) else {
-                throw misconfigured("The network ID must be 16 hexadecimal digits")
+                throw misconfigured(String(localized: "The network ID must be 16 hexadecimal digits"))
             }
             let identity: Data?
             do {

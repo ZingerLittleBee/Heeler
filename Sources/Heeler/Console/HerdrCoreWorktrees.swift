@@ -176,7 +176,7 @@ struct HerdrCoreWorktreeGit: Sendable {
             HerdrCoreWorktrees.branchExistsArguments(branch: branch), in: mainCheckout)
         guard lookup.status <= 1 else {
             throw HerdrCoreWorktreeError.addRefused(
-                lookup.message ?? "git exited with status \(lookup.status).")
+                lookup.message ?? String(localized: "git exited with status \(lookup.status)."))
         }
         let result: GitCommandResult
         do {
@@ -190,7 +190,7 @@ struct HerdrCoreWorktreeGit: Sendable {
         }
         guard result.status == 0 else {
             throw HerdrCoreWorktreeError.addRefused(
-                result.message ?? "git exited with status \(result.status).")
+                result.message ?? String(localized: "git exited with status \(result.status)."))
         }
         return Created(path: path, mainCheckout: mainCheckout)
     }
@@ -213,7 +213,7 @@ struct HerdrCoreWorktreeGit: Sendable {
         let status = try await read(["status", "--porcelain"], in: path)
         guard status.status == 0 || status.isTruncated else {
             throw WorktreeRemovalError.riskUnread(
-                status.message ?? "git exited with status \(status.status).")
+                status.message ?? String(localized: "git exited with status \(status.status)."))
         }
         let submodules = try await read(["submodule", "status"], in: path)
         return WorktreeRemovalRisk(
@@ -246,7 +246,7 @@ struct HerdrCoreWorktreeGit: Sendable {
         }
         guard result.status == 0 else {
             throw WorktreeRemovalError.removeRefused(
-                result.message ?? "git exited with status \(result.status).")
+                result.message ?? String(localized: "git exited with status \(result.status)."))
         }
     }
 
@@ -254,7 +254,7 @@ struct HerdrCoreWorktreeGit: Sendable {
         let result = try await read(HerdrCoreWorktrees.listArguments, in: checkout)
         guard result.status == 0 else {
             throw TransportError.malformedResponse(
-                result.message ?? "git exited with status \(result.status).")
+                result.message ?? String(localized: "git exited with status \(result.status)."))
         }
         return HerdrCoreWorktrees.parseList(result.output)
     }

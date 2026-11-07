@@ -252,9 +252,18 @@ extension AgentStatus {
     /// The status as the UI spells it, or nil when there is nothing to say:
     /// herdr reports `unknown` for an Agent whose state it cannot read, and
     /// the word on its own tells the user nothing, so it is left out rather
-    /// than shown. Statuses this build does not recognize are still shown.
+    /// than shown. Statuses this build does not recognize are still shown,
+    /// as herdr spells them.
     var displayTitle: String? {
-        self == .unknown ? nil : rawValue.capitalized
+        switch self {
+        case .unknown: nil
+        case .idle: String(localized: "Idle")
+        case .working: String(localized: "Working")
+        case .blocked: String(localized: "Blocked")
+        case .done: String(localized: "Done")
+        case .error: String(localized: "Error")
+        default: rawValue.capitalized
+        }
     }
 
     /// Console sort bucket: Blocked/Error > Done > Working > Idle. The order

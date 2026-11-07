@@ -53,7 +53,7 @@ struct AgentUsageWidgetRefreshTests {
         #expect(after.host(studio.id) == UsageWidgetSnapshot.Host(
             id: studio.id, name: studio.displayName, report: report, readAt: later))
         #expect(after.host(build.id) == before.host(build.id))
-        #expect(after.host(added.id)?.excludedReason == "Not read yet")
+        #expect(after.host(added.id)?.excludedReason == .notReadYet)
     }
 
     @Test func claudeCodeAccountsReachTheWidgetsAsEntriesOfTheirOwn() throws {
@@ -132,7 +132,7 @@ struct AgentUsageWidgetRefreshTests {
             id: fresh.id, name: "", report: kept, readAt: .now).programs)
         #expect(snapshot.host(stale.id)?.programs == UsageWidgetSnapshot.Host(
             id: stale.id, name: "", report: report, readAt: .now).programs)
-        #expect(snapshot.host(unreachable.id)?.excludedReason == "Not connected")
+        #expect(snapshot.host(unreachable.id)?.excludedReason == .notConnected)
     }
 
     @Test func theLiveReaderUsesItsOwnConnectionAndClosesIt() async throws {
@@ -219,7 +219,7 @@ struct AgentUsageWidgetRefreshTests {
 
         await Self.backgroundRead(connector).run(hosts: [core], publisher: publisher, isUsageEnabled: { true })
 
-        #expect(Self.snapshot(directory)?.host(core.id)?.excludedReason == "Not connected")
+        #expect(Self.snapshot(directory)?.host(core.id)?.excludedReason == .notConnected)
     }
 
     @Test func connectingReadsAStaleHostForTheWidgetsOnce() async throws {
@@ -283,7 +283,7 @@ struct AgentUsageWidgetRefreshTests {
         #expect(!settings.isEnabled)
         let off = try #require(Self.snapshot(directory)?.host(host.id))
         #expect(!off.reports && off.programs.isEmpty && off.limits.isEmpty)
-        #expect(off.excludedReason == UsageWidgetSnapshot.usageOffReason)
+        #expect(off.excludedReason == .usageOff)
         #expect(store.state == .idle)
         #expect(console.agentUsageStore(for: host.id) !== store)
         await console.reactivate()
@@ -312,7 +312,7 @@ struct AgentUsageWidgetRefreshTests {
         try await Task.sleep(for: .milliseconds(200))
 
         #expect(await transport.agentUsageReads == 0)
-        #expect(Self.snapshot(directory)?.host(host.id)?.excludedReason == UsageWidgetSnapshot.usageOffReason)
+        #expect(Self.snapshot(directory)?.host(host.id)?.excludedReason == .usageOff)
     }
 
     @Test func turningUsageOffDuringABackgroundRunKeepsItsReadingsFromTheWidgets() async throws {
@@ -346,7 +346,7 @@ struct AgentUsageWidgetRefreshTests {
         releaseLanding.yield()
         await run.value
 
-        #expect(Self.snapshot(directory)?.host(landing.id)?.excludedReason == UsageWidgetSnapshot.usageOffReason)
+        #expect(Self.snapshot(directory)?.host(landing.id)?.excludedReason == .usageOff)
         #expect(Self.snapshot(directory)?.host(landing.id)?.reports == false)
         #expect(waitingReadCancelled.withLock { $0 })
     }

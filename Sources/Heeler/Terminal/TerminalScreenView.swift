@@ -1133,7 +1133,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError(String(localized: "init(coder:) is unavailable"))
+        fatalError("init(coder:) is unavailable")
     }
 
     func updateCallbacks(

@@ -290,8 +290,8 @@ enum ClaudeTranscriptProjection {
         dropLeading(\.isEmpty)
         dropLeading { $0 == "Summary:" }
         dropLeading(\.isEmpty)
-        // Claude が生成する要約の見出し。リモート側は常に英語で出力する
-        // ため、検索用として翻訳しない（Localization 除外対象）。
+        // The first heading of Claude Code's own English summary, matched,
+        // so it stays untranslated.
         let heading = "1. Primary Request and Intent:"
         if let first = lines.first?.trimmingCharacters(in: .whitespaces), first.hasPrefix(heading) {
             let rest = first.dropFirst(heading.count).trimmingCharacters(in: .whitespaces)
@@ -864,7 +864,9 @@ private struct Builder {
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = trimmed.hasPrefix("[Request interrupted by user") ? "Interrupted" : ClaudeText.noticeParts(trimmed).title
+        let title =
+            trimmed.hasPrefix("[Request interrupted by user")
+            ? String(localized: "Interrupted") : ClaudeText.noticeParts(trimmed).title
         add("notice:\(record.uuid)", at: record, .notice(ChatNotice(kind: .interrupted, title: title)))
     }
 
@@ -909,7 +911,10 @@ private struct Builder {
             // not a bubble, since nobody typed it.
             add(
                 "notice:\(record.uuid)", at: record,
-                .notice(ChatNotice(kind: .scheduledTask, title: "Scheduled task", detail: record.system?.scheduledPrompt)))
+                .notice(
+                    ChatNotice(
+                        kind: .scheduledTask, title: String(localized: "Scheduled task"),
+                        detail: record.system?.scheduledPrompt)))
         case "informational" where ClaudeTranscriptProjection.unknownCommand(record) != nil:
             addUnknownCommand(record, content: content)
         default:

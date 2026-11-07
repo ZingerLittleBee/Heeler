@@ -256,9 +256,15 @@ private struct ChangesSectionHeader: View {
         .foregroundStyle(.secondary)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(section.group.title)
-        .accessibilityValue(
-            "\(section.files.count.formatted()) \(section.files.count == 1 ? "file" : "files")")
+        .accessibilityValue(fileCount)
         .accessibilityAddTraits(.isHeader)
+    }
+
+    private var fileCount: String {
+        let count = section.files.count.formatted()
+        return section.files.count == 1
+            ? String(localized: "\(count) file")
+            : String(localized: "\(count) files")
     }
 }
 

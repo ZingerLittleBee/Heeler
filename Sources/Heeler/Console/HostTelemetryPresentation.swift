@@ -23,6 +23,6 @@ struct HostTelemetryPresentation: Equatable {
         // visually the trailing corner plus the Hosts sheet's identical figure
         // are the context. A "Host" prefix read as noise in practice.
         title = HostLatencyFormatting.formatted(latency)
-        accessibilityValue = "\(HostLatencyFormatting.spoken(latency)) over SSH"
+        accessibilityValue = String(localized: "\(HostLatencyFormatting.spoken(latency)) over SSH")
     }
 }

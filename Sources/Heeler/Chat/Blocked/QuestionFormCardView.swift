@@ -39,7 +39,7 @@ struct QuestionFormCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                title: String(localized: "Question"), detail: "\(page + 1) of \(form.questions.count)",
+                title: String(localized: "Question"), detail: String(localized: "\(page + 1) of \(form.questions.count)"),
                 isActing: store.progress == .acting, collapse: { store.isCollapsed = true })
             BlockedScrollingContent(maxHeight: maxHeight) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -55,7 +55,8 @@ struct QuestionFormCard: View {
             controls
                 .disabled(!isReady)
             BlockedCardFooter(
-                notice: store.notice, stopTitle: "Stop", isReady: isReady, canStop: store.canStop, stop: stop,
+                notice: store.notice, stopTitle: String(localized: "Stop"), isReady: isReady, canStop: store.canStop,
+                stop: stop,
                 asideTitle: chat?.label, aside: chatInstead)
         }
     }

@@ -57,7 +57,9 @@ struct TerminalFullKeyboard: View {
                     .padding(.horizontal, showsSymbols ? 0 : layout.homeRowInset)
                     .frame(height: layout.rowHeight)
                 HStack(spacing: layout.keySpacing) {
-                    modifierKey(.shift, title: String(localized: "Shift"), image: "shift", label: String(localized: "Shift modifier"))
+                    // Modifier legends stay as keyboards print them, like Fn and
+                    // Esc; their VoiceOver labels are translated.
+                    modifierKey(.shift, title: "Shift", image: "shift", label: String(localized: "Shift modifier"))
                         .frame(width: layout.sideKeyWidth(characterCount: showsSymbols ? 6 : 7))
                     ForEach(
                         Array(showsSymbols ? ".,?!'`" : "zxcvbnm"), id: \.self
@@ -76,7 +78,7 @@ struct TerminalFullKeyboard: View {
                 }
                 .frame(height: layout.rowHeight)
                 HStack(spacing: layout.keySpacing) {
-                    modifierKey(.control, title: String(localized: "Ctrl"), label: String(localized: "Control modifier"))
+                    modifierKey(.control, title: "Ctrl", label: String(localized: "Control modifier"))
                         .frame(width: layout.bottomKeyWidth)
                     modifierKey(.option, title: "Alt", label: String(localized: "Option modifier"))
                         .frame(width: layout.bottomKeyWidth)
@@ -165,7 +167,7 @@ struct TerminalFullKeyboard: View {
     private func characterKey(_ character: Character, title: String? = nil) -> some View {
         TerminalKeyboardKeyCap(
             title: title ?? modifiers.characterText(character).uppercased(),
-            label: character == " " ? "Space" : modifiers.characterText(character),
+            label: character == " " ? String(localized: "Space") : modifiers.characterText(character),
             isEnabled: isEnabled,
             fontSize: title == nil ? 15 : 13
         ) { send(.character(character)) }

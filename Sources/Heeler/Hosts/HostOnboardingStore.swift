@@ -259,7 +259,7 @@ final class HostOnboardingStore {
         } catch {
             report = .failure(
                 check: .connection,
-                hint: "Could not load this Host's credentials. (\(error))")
+                hint: String(localized: "Could not load this Host's credentials. (\(String(describing: error)))"))
             return
         }
 
@@ -484,7 +484,8 @@ final class HostOnboardingStore {
                 String(localized: "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added.")
             return
         } catch {
-            confirmationRefusal = "The Server Kind could not be saved. (\(error))"
+            confirmationRefusal = String(
+                localized: "The Server Kind could not be saved. (\(String(describing: error)))")
             return
         }
         await runChecks()
@@ -553,12 +554,13 @@ final class HostOnboardingStore {
     /// preflight already settled the Host key, so a key that still needs
     /// trusting is declined rather than asked about.
     private func performCoreStart() async -> CoreStartResult {
-        let summary = String(localized: "herdr-core did not start")
         let resolved: SSHCredentials
         do {
             resolved = try credentials.credentials(for: host)
         } catch {
-            return .failed(message: String(localized: "\(summary): Could not load this Host's credentials. (\(String(describing: error)))"))
+            return .failed(
+                message: String(
+                    localized: "herdr-core did not start: Could not load this Host's credentials. (\(String(describing: error)))"))
         }
         let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
         let settings = SSHTransportSettings(
@@ -567,7 +569,7 @@ final class HostOnboardingStore {
         do {
             transport = try await connector.connectCore(settings: settings)
         } catch {
-            return .failed(message: String(localized: "\(summary): \(Self.reason(error))"))
+            return .failed(message: String(localized: "herdr-core did not start: \(Self.reason(error))"))
         }
         let outcome: Result<HerdrCoreStart.Outcome, any Error>
         do {
@@ -582,14 +584,14 @@ final class HostOnboardingStore {
         case .success(.alreadyRunning):
             return .alreadyRunning
         case .success(.failed(let detail?)):
-            return .failed(message: String(localized: "\(summary): \(detail)."))
+            return .failed(message: String(localized: "herdr-core did not start: \(detail)."))
         case .success(.failed(nil)):
-            return .failed(message: "\(summary).")
+            return .failed(message: String(localized: "herdr-core did not start."))
         case .failure(TransportError.timedOut):
             return .failed(
                 message: String(localized: "The start did not finish in time, and a startup file in your shell may be waiting for input. Run the checks again to see whether the core came up."))
         case .failure(let error):
-            return .failed(message: String(localized: "\(summary): \(Self.reason(error))"))
+            return .failed(message: String(localized: "herdr-core did not start: \(Self.reason(error))"))
         }
     }
 
@@ -630,7 +632,7 @@ final class HostOnboardingStore {
             resolved = try credentials.credentials(for: host)
         } catch {
             return HeelerPluginActionFailure(
-                message: "Could not load this Host's credentials. (\(error))")
+                message: String(localized: "Could not load this Host's credentials. (\(String(describing: error)))"))
         }
         // The preflight already settled the Host key, so a key that still
         // needs trusting is declined rather than asked about mid-change.
@@ -852,8 +854,8 @@ final class HostOnboardingStore {
         } catch TransportError.malformedResponse(let detail) {
             return .failure(
                 check: .herdrInstalled,
-                hint: "The herdr launcher at \(endpoint.executablePath) did not answer like herdr. "
-                    + "(\(detail))")
+                hint: String(
+                    localized: "The herdr launcher at \(endpoint.executablePath) did not answer like herdr. (\(detail))"))
         } catch {
             guard !Task.isCancelled else { return nil }
             captureHostKeyReplacement(error)
@@ -870,7 +872,7 @@ final class HostOnboardingStore {
         } else {
             .failure(
                 check: .connection,
-                hint: "The connection failed unexpectedly. (\(error))")
+                hint: String(localized: "The connection failed unexpectedly. (\(String(describing: error)))"))
         }
     }
 

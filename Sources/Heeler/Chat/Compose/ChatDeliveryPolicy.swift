@@ -68,9 +68,11 @@ extension ComposerDeliveryPolicy {
     }
 
     private static func unreadableScreenReason(_ error: any Error) -> String {
-        let prefix = String(localized: "Heeler couldn't check the Agent's input box.")
-        guard let error = error as? TransportError else { return prefix }
-        return "\(prefix) \(error.presentation.explanation)"
+        guard let error = error as? TransportError else {
+            return String(localized: "Heeler couldn't check the Agent's input box.")
+        }
+        // The explanation follows as each language joins sentences.
+        return String(localized: "Heeler couldn't check the Agent's input box. \(error.presentation.explanation)")
     }
 }
 

@@ -143,7 +143,7 @@ enum OverlayPeerList {
         for group in groupedByNetwork(remaining) {
             groups.append(
                 OverlayAssignedPeerGroup(
-                    id: "peers/" + (group.network ?? ""), name: group.network ?? "Peers",
+                    id: "peers/" + (group.network ?? ""), name: group.network ?? String(localized: "Peers"),
                     subnet: nil, error: nil, isRunning: true, peers: group.peers))
         }
         return groups

@@ -596,10 +596,10 @@ enum AgentListFieldsSourceCaption {
         switch source {
         case .draft, .saved: String(localized: "Your fields")
         case .plugin: String(localized: "Following herdr plugin")
-        case .pluginDefaults: "herdr default fields (plugin reported a problem)"
+        case .pluginDefaults: String(localized: "herdr default fields (plugin reported a problem)")
         case .loading: String(localized: "Reading herdr fields…")
         case .missing: String(localized: "No herdr fields snapshot")
-        case .unavailable: "herdr fields unavailable"
+        case .unavailable: String(localized: "herdr fields unavailable")
         case .heeler: String(localized: "Heeler's fields")
         }
     }
@@ -614,8 +614,9 @@ enum AgentListFieldsCopy {
     static let syncConfirmation =
         String(localized: "Row 1 and Row 2 are replaced with this Host's herdr fields and saved right away. Row 3 and every row's right side stay as they are.")
     static func applyConfirmation(hostName: String, otherHosts: Int) -> String {
-        let others = otherHosts == 1 ? String(localized: "The other Host's rows") : String(localized: "The other \(otherHosts) Hosts' rows")
-        return String(localized: "\(others), right sides included, are replaced with \(hostName)'s and saved right away. Changes you make here later stay on \(hostName).")
+        otherHosts == 1
+            ? String(localized: "The other Host's rows, right sides included, are replaced with \(hostName)'s and saved right away. Changes you make here later stay on \(hostName).")
+            : String(localized: "The other \(otherHosts) Hosts' rows, right sides included, are replaced with \(hostName)'s and saved right away. Changes you make here later stay on \(hostName).")
     }
 
     /// Apply to All Hosts' result: how many Hosts it changed.
@@ -638,24 +639,39 @@ enum AgentListFieldsCopy {
     static let resetConfirmation =
         String(localized: "The unreadable saved fields are deleted. Every Host returns to its herdr fields and can be edited again.")
     static let rowSlots =
-                String(localized: "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. Fields on a row's right side end its line, and Sync from plugin keeps them. ")
-        + String(localized: "The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
+        String(localized: "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. Fields on a row's right side end its line, and Sync from plugin keeps them. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
 
     static func rowSlots(followsPlugin: Bool) -> String {
         guard !followsPlugin else { return rowSlots }
-                return String(localized: "Row 1 starts from the terminal's title and Row 2 from its directory. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. ")
-            + String(localized: "The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
+        return String(localized: "Row 1 starts from the terminal's title and Row 2 from its directory. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
     }
 }
 
+/// A field chip's VoiceOver label: one whole phrase per side and style, so a
+/// translation never joins pieces localized apart. The field name is its
+/// token, spoken as written.
 enum AgentListFieldsChipLabel {
     static func text(
         index: Int, count: Int, token: AgentRowStyledToken, side: AgentRowSide = .leading
     ) -> String {
-        let field = side == .leading ? "Field" : "Right side field"
-        let label = String(localized: "\(field) \(index + 1) of \(count): \(token.token.rawValue)")
-        guard AgentLayoutTokensEditing.hasStyle(token.token, on: side) else { return label }
-        return label + (token.dim == true ? String(localized: ", secondary style") : String(localized: ", default style"))
+        let position = index + 1
+        let name = token.token.rawValue
+        let style: AgentLayoutTokenStyle? =
+            AgentLayoutTokensEditing.hasStyle(token.token, on: side) ? AgentLayoutTokensEditing.style(of: token) : nil
+        switch (side, style) {
+        case (.leading, nil):
+            return String(localized: "Field \(position) of \(count): \(name)")
+        case (.leading, .default?):
+            return String(localized: "Field \(position) of \(count): \(name), default style")
+        case (.leading, .secondary?):
+            return String(localized: "Field \(position) of \(count): \(name), secondary style")
+        case (.trailing, nil):
+            return String(localized: "Right side field \(position) of \(count): \(name)")
+        case (.trailing, .default?):
+            return String(localized: "Right side field \(position) of \(count): \(name), default style")
+        case (.trailing, .secondary?):
+            return String(localized: "Right side field \(position) of \(count): \(name), secondary style")
+        }
     }
 }
 
@@ -668,8 +684,8 @@ enum AgentListFieldsRowLabel {
         index: Int, row: AgentRow, trailing: AgentRow = [], followsPlugin: Bool = true
     ) -> String {
         let slot = followsPlugin ? AgentRowSlot.forRow(index) : nil
-        var parts = ["Row \(index + 1)"]
-        if let slot { parts.append("\(slot.label) row") }
+        var parts = [String(localized: "Row \(index + 1)")]
+        if let slot { parts.append(AgentLayoutTokensEditing.slotRowName(slot)) }
         if row.isEmpty {
             parts.append(emptyText(slot: slot))
         } else {
