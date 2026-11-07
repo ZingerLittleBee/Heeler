@@ -47,18 +47,17 @@ struct ChatSubagentPresentationTests {
                     toggle: { _ in }, loadOlder: {}, copy: { _ in }, selectText: { _ in }, missingOutputText: "")
                 var heights: [CGFloat] = []
                 for expanded in [false, true] {
-                    let renderer = ImageRenderer(content: ChatRowView(
-                        row: row, isExpanded: expanded, actions: actions)
-                        .padding(.vertical, 16)
-                        .frame(width: width)
-                        .background(Color(uiColor: .systemBackground))
-                        .environment(\.colorScheme, dark ? .dark : .light)
-                        .environment(\.dynamicTypeSize, accessible ? .accessibility3 : .large))
-                    renderer.scale = 2
-                    let image = try #require(renderer.uiImage)
-                    #expect(image.size.width == width)
-                    heights.append(image.size.height)
-                    Attachment.record(image,
+                    let rendered = try RenderedBitmap(
+                        ChatRowView(row: row, isExpanded: expanded, actions: actions)
+                            .padding(.vertical, 16)
+                            .frame(width: width)
+                            .background(Color(uiColor: .systemBackground))
+                            .environment(\.colorScheme, dark ? .dark : .light)
+                            .environment(\.dynamicTypeSize, accessible ? .accessibility3 : .large),
+                        proposedSize: .unspecified, scale: 2)
+                    #expect(rendered.size.width == width)
+                    heights.append(rendered.size.height)
+                    Attachment.record(try rendered.image(),
                         named: "subagent-accessible-\(accessible)-dark-\(dark)-expanded-\(expanded)", as: .png)
                 }
                 #expect(heights[1] > heights[0])
