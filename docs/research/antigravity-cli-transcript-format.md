@@ -363,9 +363,10 @@ the rows.
 Chat sends only into an empty box with nothing under it and an idle footer
 it knows (`? for shortcuts`, nothing at the left, or an armed exit); a
 mode's grey hint is not a draft, and an armed exit does not hold. A draft,
-bash mode, a popup or panel under the box, another footer (code search mode
-and Vim's badges in agy's strings), a dialog, an exited agy and any
-unreadable screen hold the message.
+bash mode, a popup or panel under the box, another footer (code search
+mode's or a Vim badge from agy's strings, if drawn there), a dialog, an
+exited agy and any unreadable screen hold the message. agy's strings hold
+no badge for Vim's Normal mode (Open questions).
 
 A running turn holds it too: the footer `esc to cancel` or `Press up to
 edit queued messages`, or a braille spinner leading one of the bottom rows,
@@ -413,7 +414,19 @@ its `/` popup and from `/name` (agy's changelog, 1.1.12).
 - `/rewind` and an `EPHEMERAL_MESSAGE` were not captured.
 - Screens not captured: two queued messages, code search mode, Vim mode,
   and the background prompt `press %s again to send command to background`.
-  Chat holds all but the queue.
+  If they show as agy's strings suggest, Chat holds code search mode, Vim's
+  Insert and Visual badges and the background prompt as unknown footers,
+  and two queued messages as a running turn.
+- Vim mode's Normal state. agy 1.5.3's strings carry the badges
+  `-- INSERT --`, `-- VISUAL --` and `-- V-LINE --` but none for Normal
+  mode. Its changelog (1.1.11) puts the badge in the status line;
+  `Editor Mode > Insert First` opens the prompt in Insert mode, where a
+  bare Enter submits, and Ctrl+S and Ctrl+Enter submit from Normal mode.
+  Inferred from those: without Insert First the prompt opens in Normal
+  mode, a box there looks like an idle box, and Chat sends into it. Whether
+  herdr's Enter then submits, or leaves the message in the box for Chat's
+  re-read to report as not delivered, is not known. Heeler reads no agy
+  setting that says Vim mode is on.
 - Dialogs not captured: `multi_replace_file_content`'s edit, Tab on an
   `always allow` row, a typed answer on a multi-select question, and Esc on
   the trust prompt. Chat leaves those to the terminal.

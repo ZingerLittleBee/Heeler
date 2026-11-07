@@ -38,8 +38,11 @@ enum AgyInputBoxDetector {
             )
         }
         if agy.showsRunningTurn { return .disabled(working) }
-        // Code search mode, Vim's badges and anything else agy may set in
-        // the footer's place change what Enter does.
+        // A footer Chat doesn't know may change what Enter does, such as
+        // code search mode's or a Vim badge, if agy draws one there (its
+        // strings; not captured). Vim's Normal mode has no badge in 1.5.3's
+        // strings, so a box in it most likely reads as idle here, though
+        // Enter may not submit from it.
         if let hint = agy.footerHint, !AgyScreen.readyHints.contains(hint) { return .overlay(hint) }
         return .empty(placeholder: composer.placeholder)
     }

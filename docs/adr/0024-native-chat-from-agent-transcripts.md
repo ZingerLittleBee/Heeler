@@ -230,7 +230,9 @@ nothing under it and an idle footer it knows; a mode's grey hint is not a
 draft, and an armed exit does not hold, since the paste disarms it. A
 draft, bash mode, a popup or panel under the box, another footer, a running
 turn, an exited agy and any screen without the box hold the message,
-whatever herdr reports. Every agy dialog takes the box's place, and herdr
+whatever herdr reports. agy's strings hold no badge for Vim mode's Normal
+state, so Chat most likely cannot tell a box in it from an idle one (see
+the research note's open questions). Every agy dialog takes the box's place, and herdr
 0.9.5 reports some of them done or idle (see Blocked cards), where the
 prompt's Enter answers the dialog: an `agent.prompt` sent into a file edit
 dialog was swallowed, and its Enter accepted the edit (1.5.3). A dialog can

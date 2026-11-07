@@ -349,8 +349,11 @@ struct AgyInputBoxDetectorTests {
         InputBoxStateDetector.detect(screen, program: .agy)
     }
 
-    /// Code search mode, Vim's badges and the background prompt change what
-    /// Enter does (agy 1.5.3's strings; no capture).
+    /// A footer Chat doesn't know holds: code search mode's, Vim's Insert
+    /// badge and the background prompt, spelled as in agy 1.5.3's strings
+    /// and drawn where the footer's hint goes, which no capture shows. Vim's
+    /// Normal mode has no badge in those strings, so this says nothing
+    /// about it.
     @Test(arguments: [
         "activated code search mode", "-- INSERT --", "press ctrl+b again to send command to background",
     ])
