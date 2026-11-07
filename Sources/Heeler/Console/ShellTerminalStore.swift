@@ -205,7 +205,7 @@ final class AgentOpenTerminalStore {
                 return
             } catch {
                 self.closeFailureMessage =
-                    "The Host couldn't be reached. The tab is still open there."
+                    String(localized: "The Host couldn't be reached. The tab is still open there.")
                 return
             }
             self.forgetTerminal()
@@ -264,7 +264,7 @@ final class AgentOpenTerminalStore {
             OpenTerminalFailure(
                 kind: .ambiguous,
                 message:
-                    "The request did not finish clearly. A new tab may already exist on the Host. Check the Host before trying again."
+                    String(localized: "The request did not finish clearly. A new tab may already exist on the Host. Check the Host before trying again.")
             )
         }
     }

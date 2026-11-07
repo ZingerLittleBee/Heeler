@@ -701,8 +701,8 @@
     /// and header totals are counted from those parsed lines, so the list
     /// and the diff stay in step.
     enum DemoChangesSample {
-        private static let missingFileMessage = "No sample diff for this file."
-        private static let missingDirectoryMessage = "No sample listing for this directory."
+        private static let missingFileMessage = String(localized: "No sample diff for this file.")
+        private static let missingDirectoryMessage = String(localized: "No sample listing for this directory.")
         private static let longReceiptLine =
             "let receiptFooter = \"A declined payment keeps the cart, the chosen "
             + "shipping method, and any applied store credit so the customer can "
@@ -1128,7 +1128,7 @@
             let oldCount = hunk.lines.filter { $0.kind != .added }.count
             let newCount = hunk.lines.filter { $0.kind != .removed }.count
             var lines = [
-                "@@ -\(hunk.oldStart),\(oldCount) +\(hunk.newStart),\(newCount) @@ \(hunk.section)"
+                String(localized: "@@ -\(hunk.oldStart),\(oldCount) +\(hunk.newStart),\(newCount) @@ \(hunk.section)")
             ]
             for line in hunk.lines {
                 let prefix =

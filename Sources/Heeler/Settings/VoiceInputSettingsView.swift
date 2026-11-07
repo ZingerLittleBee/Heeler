@@ -108,13 +108,12 @@ struct VoiceInputSettingsView: View {
     private var customSection: some View {
         Section {
             VoiceInputFormField(
-                title: "Base URL", prompt: "https://api.example.com/v1", text: $connection.custom.baseURL,
+                title: String(localized: "Base URL"), prompt: "https://api.example.com/v1", text: $connection.custom.baseURL,
                 keyboard: .URL)
-            VoiceInputFormField(title: "Model", prompt: "Required", text: $connection.custom.model)
+            VoiceInputFormField(title: String(localized: "Model"), prompt: "Required", text: $connection.custom.model)
         } footer: {
             Text(
-                "For services that take OpenAI's audio/transcriptions request. Language and other options "
-                    + "can be set in Advanced Request Fields after entering the URL and model.")
+                String(localized: "For services that take OpenAI's audio/transcriptions request. Language and other options can be set in Advanced Request Fields after entering the URL and model."))
         }
     }
 
@@ -165,8 +164,7 @@ struct VoiceInputSettingsView: View {
                 Text("The prompt in Advanced Request Fields replaces this Prompt for this Custom model.")
             } else if connection.service?.takesKeywords == false {
                 Text(
-                    "What you talk about, sent as written. This service doesn't read Keywords, "
-                        + "so they're added here.")
+                    String(localized: "What you talk about, sent as written. This service doesn't read Keywords, so they're added here."))
             } else {
                 Text("What you talk about, sent as written.")
             }
@@ -196,13 +194,11 @@ struct VoiceInputSettingsView: View {
     private var serviceFooter: String {
         switch connection.service {
         case .preset(let preset):
-            "Recordings go to \(preset.operatorName) under its terms, billed to your key. "
-                + "Heeler's developer receives none of them."
+            String(localized: "Recordings go to \(preset.operatorName) under its terms, billed to your key. Heeler's developer receives none of them.")
         case .custom:
-            "Recordings go to the URL you enter, under the terms of whoever runs it."
+            String(localized: "Recordings go to the URL you enter, under the terms of whoever runs it.")
         case nil:
-            "Voice Input turns speech into Composer text through a speech service you choose, "
-                + "with your own API key."
+            String(localized: "Voice Input turns speech into Composer text through a speech service you choose, with your own API key.")
         }
     }
 
@@ -211,7 +207,7 @@ struct VoiceInputSettingsView: View {
     }
 
     private var draftHost: String {
-        draftEndpoint?.host ?? "the service"
+        draftEndpoint?.host ?? String(localized: "the service")
     }
 
     private var hasStoredKey: Bool {
@@ -275,13 +271,12 @@ struct VoiceInputSettingsView: View {
     }
 
     static func consentTitle(_ endpoint: VoiceInputEndpoint) -> String {
-        "Send Recordings to \(endpoint.operatorName ?? endpoint.host)?"
+        String(localized: "Send Recordings to \(endpoint.operatorName ?? endpoint.host)?")
     }
 
     static func consentMessage(_ endpoint: VoiceInputEndpoint) -> String {
-        let terms = endpoint.operatorName.map { "\($0)'s terms" } ?? "the terms of whoever runs it"
-        return "Each Voice Input recording is uploaded to \(endpoint.host) and turned into text "
-            + "under \(terms). Heeler keeps no copy once the text arrives."
+        let terms = endpoint.operatorName.map { "\($0)'s terms" } ?? String(localized: "the terms of whoever runs it")
+        return String(localized: "Each Voice Input recording is uploaded to \(endpoint.host) and turned into text under \(terms). Heeler keeps no copy once the text arrives.")
     }
 }
 

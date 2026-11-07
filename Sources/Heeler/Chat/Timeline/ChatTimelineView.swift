@@ -86,7 +86,7 @@ struct ChatCollapseTrajectoryButton: View {
     var body: some View {
         Button(action: action) {
             // Arrows closing on a line: the steps fold into the summary.
-            ChatFloatingIcon(systemImage: "arrow.down.and.line.horizontal.and.arrow.up")
+            ChatFloatingIcon(systemImage: String(localized: "arrow.down.and.line.horizontal.and.arrow.up"))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Collapse Current Trajectory")
@@ -111,7 +111,7 @@ struct ChatJumpToLatestButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Jump to Latest")
-        .accessibilityIdentifier("chat.jump-to-latest")
+        .accessibilityIdentifier(String(localized: "chat.jump-to-latest"))
         .opacity(isVisible ? 1 : 0)
         .allowsHitTesting(isVisible)
         .accessibilityHidden(!isVisible)

@@ -38,14 +38,14 @@ struct HostConnectionDetailPresentation: Equatable {
         switch status {
         case .reconnecting(let attempt, _, let retrying):
             failure = retrying
-            title = "Reconnecting"
+            title = String(localized: "Reconnecting")
             tone = .reconnecting
             self.attempt = "Attempt \(attempt)"
             isDialing = false
             canStop = true
         case .failed(let stopped):
             failure = stopped
-            title = "Can't Connect"
+            title = String(localized: "Can't Connect")
             tone = .unavailable
             attempt = nil
             isDialing = false
@@ -53,7 +53,7 @@ struct HostConnectionDetailPresentation: Equatable {
         case .connecting:
             guard let previous = standingFailure ?? lastFailure else { return nil }
             failure = previous
-            title = "Connecting…"
+            title = String(localized: "Connecting…")
             tone = .pending
             attempt = nil
             isDialing = true
@@ -179,8 +179,7 @@ struct HostConnectionDetailContent: View {
                     Button("Stop Connecting", role: .cancel, action: onStop)
                         .controlSize(.large)
                         .accessibilityHint(
-                            "Stops trying to connect without waiting for a timeout. "
-                                + "The Host stays paused until you retry.")
+                            String(localized: "Stops trying to connect without waiting for a timeout. The Host stays paused until you retry."))
                 }
             }
                 .padding(.horizontal, 20)

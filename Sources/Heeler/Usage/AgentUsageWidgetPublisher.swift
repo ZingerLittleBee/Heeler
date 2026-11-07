@@ -134,11 +134,11 @@ extension UsageWidgetSnapshot.Host {
                 return
             }
             let reason = if !reading.isConnected {
-                "Not connected"
+                String(localized: "Not connected")
             } else if case .failed = reading.state {
                 AgentUsageScope.reason(for: reading.state)
             } else {
-                "Not read yet"
+                String(localized: "Not read yet")
             }
             self.init(id: reading.id, name: reading.name, excludedReason: reason)
         }
@@ -195,9 +195,9 @@ extension UsageWidgetSnapshot.Limits {
         let shown = limits.state == "ok" || limits.state == "throttled"
         let windows = shown ? limits.windows ?? [] : []
         let message: String? = if shown {
-            windows.isEmpty ? "No Usage Limits windows reported." : nil
+            windows.isEmpty ? String(localized: "No Usage Limits windows reported.") : nil
         } else if limits.state == "unavailable" && limits.reason == "notReadYet" {
-            "Open Heeler to read Usage Limits."
+            String(localized: "Open Heeler to read Usage Limits.")
         } else {
             AgentUsageLimitsView.unavailableMessage(limits, program: program)
         }

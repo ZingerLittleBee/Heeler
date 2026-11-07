@@ -34,18 +34,15 @@ enum OverlayNetworkStoreError: Error, Equatable {
     var message: String {
         switch self {
         case .unknownNetwork:
-            "The network no longer exists."
+            String(localized: "The network no longer exists.")
         case .catalogUnreadable:
-            "The saved overlay networks could not be read, so nothing can be changed. "
-                + "They may have been saved by a newer version of Heeler."
+            String(localized: "The saved overlay networks could not be read, so nothing can be changed. They may have been saved by a newer version of Heeler.")
         case .invalidZeroTierPlanet:
-            "That file is not a ZeroTier planet. Use the planet file your roots' operator "
-                + "provides (as made by mkworld); it is at most 16 KB."
+            String(localized: "That file is not a ZeroTier planet. Use the planet file your roots' operator provides (as made by mkworld); it is at most 16 KB.")
         case .zeroTierPlanetIsMoon:
-            "That file defines a moon, not a planet. Add moons to a ZeroTier network by "
-                + "world ID and seed instead."
+            String(localized: "That file defines a moon, not a planet. Add moons to a ZeroTier network by world ID and seed instead.")
         case .zeroTierPlanetNotSaved:
-            "The planet file could not be read."
+            String(localized: "The planet file could not be read.")
         }
     }
 }

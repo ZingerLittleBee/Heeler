@@ -267,7 +267,7 @@ final class NotificationPreferencesStore {
         if case .updating = states[host.id] { return }
         guard let token = deviceToken() else {
             states[host.id] = .unavailable(
-                message: "Waiting for push registration on this device.")
+                message: String(localized: "Waiting for push registration on this device."))
             return
         }
         let operation = UUID()
@@ -349,7 +349,7 @@ final class NotificationPreferencesStore {
         guard hosts.contains(host) else { return }
         guard let token = deviceToken() else {
             states[host.id] = .unavailable(
-                message: "Waiting for push registration on this device.")
+                message: String(localized: "Waiting for push registration on this device."))
             return
         }
         let operationID = UUID()
@@ -528,33 +528,29 @@ final class NotificationPreferencesStore {
         case let error as HostHelperError:
             error.message
         case NotificationRegistrationError.pluginNotInstalled:
-            "The Heeler plugin is missing or turned off on this Host. "
-                + "See this Host's page in Hosts, then check again."
+            String(localized: "The Heeler plugin is missing or turned off on this Host. See this Host's page in Hosts, then check again.")
         case NotificationRegistrationError.pluginProbeFailed:
-            "Could not check the Heeler plugin on this Host. "
-                + "Check the connection and try again."
+            String(localized: "Could not check the Heeler plugin on this Host. Check the connection and try again.")
         case NotificationRegistrationError.readFailed:
-            "Could not read notification settings from this Host. "
-                + "Check the connection and try again."
+            String(localized: "Could not read notification settings from this Host. Check the connection and try again.")
         case NotificationRegistrationError.writeFailed:
-            "Could not update notification settings on this Host. "
-                + "Check the connection and try again."
+            String(localized: "Could not update notification settings on this Host. Check the connection and try again.")
         case NotificationRegistrationError.unsupportedFileVersion:
-            "This Host was registered by a newer app version. Update the app."
+            String(localized: "This Host was registered by a newer app version. Update the app.")
         case NotificationRegistrationError.deviceNotRegistered:
-            "Register this device for notifications on this Host first."
+            String(localized: "Register this device for notifications on this Host first.")
         case TransportError.sshUnreachable:
-            "The Host is not connected."
+            String(localized: "The Host is not connected.")
         case TransportError.timedOut:
-            "The Host did not answer in time."
+            String(localized: "The Host did not answer in time.")
         case TransportError.herdrBinaryNotFound:
             TransportError.herdrBinaryNotFound.presentation.message
         case TransportError.herdrLauncherNotFound(let path):
             TransportError.herdrLauncherNotFound(path: path).presentation.message
         case is TransportError:
-            "The connection to the Host failed."
+            String(localized: "The connection to the Host failed.")
         default:
-            "Could not update notification settings. Try again."
+            String(localized: "Could not update notification settings. Try again.")
         }
     }
 }

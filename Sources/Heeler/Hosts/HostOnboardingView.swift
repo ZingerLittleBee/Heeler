@@ -208,9 +208,7 @@ struct HostOnboardingView: View {
             Button("Don't Trust", role: .cancel) { store.confirmFingerprint(trusted: false) }
         } message: { candidate in
             Text(
-                "First connection to \(candidate.host):\(String(candidate.port)).\n\n"
-                    + "Key fingerprint:\n\(candidate.fingerprint.displayString)\n\n"
-                    + "Verify it matches the Host's key before trusting.")
+                                String(localized: "First connection to \(candidate.host):\(String(candidate.port)).\n\nKey fingerprint:\n\(candidate.fingerprint.displayString)\n\nVerify it matches the Host's key before trusting."))
         }
         // An alert, which also opens on its own after a route edit: iOS 26
         // shows a confirmation dialog as a popover without Cancel.
@@ -294,7 +292,7 @@ struct HostOnboardingView: View {
                 Text(
                     info.exceedsGeneratedProtocol
                         ? "herdr \(info.version) · protocol \(info.protocolVersion) — "
-                            + "newer than this app was built against, so features added "
+                            + String(localized: "newer than this app was built against, so features added ")
                             + "after protocol \(HeelerSSHTransport.generatedProtocolVersion) "
                             + "may be unavailable."
                         : "herdr \(info.version) · protocol \(info.protocolVersion)")
@@ -356,9 +354,9 @@ struct HostOnboardingView: View {
 
     private var authenticationLabel: String {
         switch store.host.authMethod {
-        case .deviceKey: "Device Key"
-        case .rsaKey: "RSA Key"
-        case .password: "Password"
+        case .deviceKey: String(localized: "Device Key")
+        case .rsaKey: String(localized: "RSA Key")
+        case .password: String(localized: "Password")
         }
     }
 
@@ -482,8 +480,7 @@ struct HostOnboardingView: View {
             }
             .accessibilityLabel("Stop Connecting")
             .accessibilityHint(
-                "Stops trying to connect without waiting for a timeout. "
-                    + "The Host stays paused until you reconnect.")
+                String(localized: "Stops trying to connect without waiting for a timeout. The Host stays paused until you reconnect."))
         } else if isManualReconnectInFlight {
             HostCircleActionLabel(systemImage: nil)
                 .accessibilityHidden(true)
@@ -557,8 +554,7 @@ struct HostOnboardingView: View {
         } footer: {
             if store.host.routes.count > 1 {
                 Text(
-                    "Heeler tries every route each time it connects and keeps the first that "
-                        + "reaches the Host.")
+                    String(localized: "Heeler tries every route each time it connects and keeps the first that reaches the Host."))
             }
         }
     }
@@ -643,7 +639,7 @@ struct HostOnboardingView: View {
                         Text(didCopyFingerprintCommand ? "Copied" : "Copy Command")
                     } icon: {
                         // The tall two-page glyph otherwise outgrows the text.
-                        Image(systemName: didCopyFingerprintCommand ? "checkmark" : "doc.on.doc")
+                        Image(systemName: didCopyFingerprintCommand ? "checkmark" : String(localized: "doc.on.doc"))
                             .font(.footnote)
                     }
                 }
@@ -784,7 +780,7 @@ struct HostOnboardingView: View {
         do {
             try store.selectSession(session, in: catalog)
         } catch {
-            sessionSelectionError = "The selected session could not be saved."
+            sessionSelectionError = String(localized: "The selected session could not be saved.")
         }
     }
 }
@@ -803,36 +799,32 @@ extension HostKeyReplacement {
             } else {
                 "ed25519"
             }
-        return "ssh-keygen -lf /etc/ssh/ssh_host_\(keyType)_key.pub"
+        return String(localized: "ssh-keygen -lf /etc/ssh/ssh_host_\(keyType)_key.pub")
     }
 
     fileprivate var trustActionTitle: String {
-        jumpHost == nil ? "Trust New Host Key" : "Trust New Jump Host Key"
+        jumpHost == nil ? String(localized: "Trust New Host Key") : String(localized: "Trust New Jump Host Key")
     }
 
     fileprivate var checkPrompt: String {
-        jumpHost == nil ? "On the Host, run" : "On the Jump Host, run"
+        jumpHost == nil ? String(localized: "On the Host, run") : String(localized: "On the Jump Host, run")
     }
 
     fileprivate var verificationNote: String {
-        "Trust the new key only if this prints the same fingerprint. On Windows, the key "
-            + "is under %ProgramData%\\ssh."
+        String(localized: "Trust the new key only if this prints the same fingerprint. On Windows, the key is under %ProgramData%\\ssh.")
     }
 
     fileprivate var confirmationTitle: String {
-        jumpHost == nil ? "Replace the trusted Host key?" : "Replace the Jump Host's trusted key?"
+        jumpHost == nil ? String(localized: "Replace the trusted Host key?") : String(localized: "Replace the Jump Host's trusted key?")
     }
 
     /// Leaves the fingerprint to the page: an alert wraps it with hyphens
     /// that are not in it.
     fileprivate var confirmationMessage: String {
         guard let jumpHost else {
-            return "Compare the new key with what the command prints on the Host first. "
-                + "A changed key can indicate a reinstalled Host or an attack."
+            return String(localized: "Compare the new key with what the command prints on the Host first. A changed key can indicate a reinstalled Host or an attack.")
         }
-        return "Jump Host: \(jumpHost.endpointDescription)\n\n"
-            + "Compare the new key with what the command prints on the Jump Host first. "
-            + "A changed key can indicate a reinstalled Jump Host or an attack."
+                return String(localized: "Jump Host: \(jumpHost.endpointDescription)\n\nCompare the new key with what the command prints on the Jump Host first. A changed key can indicate a reinstalled Jump Host or an attack.")
     }
 }
 
@@ -870,38 +862,38 @@ struct HostRouteStatusPresentation: Equatable {
         switch status {
         case _ where isManualReconnectInFlight:
             tone = .connecting
-            title = "Connecting…"
+            title = String(localized: "Connecting…")
             subtitle = nil
             inUseRouteID = nil
             failure = nil
         case .connected:
             tone = .connected
-            title = "Connected"
+            title = String(localized: "Connected")
             let route = routes.first { $0.id == connectedRouteID }
             subtitle = route.map { "\($0.endpointDescription) · \(describe($0))" }
             inUseRouteID = route?.id
             failure = nil
         case .connecting:
             tone = .connecting
-            title = "Connecting…"
+            title = String(localized: "Connecting…")
             subtitle = nil
             inUseRouteID = nil
             failure = nil
         case .reconnecting(_, _, let reconnectFailure):
             tone = .retrying
-            title = "Reconnecting…"
+            title = String(localized: "Reconnecting…")
             subtitle = reconnectFailure.presentation.summary
             inUseRouteID = nil
             failure = reconnectFailure
         case .failed(let stopFailure):
             tone = .failed
-            title = "Can't Connect"
+            title = String(localized: "Can't Connect")
             subtitle = stopFailure.presentation.summary
             inUseRouteID = nil
             failure = stopFailure
         case .suspended, .ended, nil:
             tone = .idle
-            title = "Not Connected"
+            title = String(localized: "Not Connected")
             subtitle = nil
             inUseRouteID = nil
             failure = nil

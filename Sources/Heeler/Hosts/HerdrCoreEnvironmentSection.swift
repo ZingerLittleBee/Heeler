@@ -10,7 +10,7 @@ struct HerdrCoreEnvironmentNotice: Equatable, Sendable {
         var id: String { name }
     }
 
-    static let fix = "Restarting the core from your own terminal fixes this. Heeler does not restart it."
+    static let fix = String(localized: "Restarting the core from your own terminal fixes this. Heeler does not restart it.")
 
     /// In the order ADR 0034 lists them, a `HERDR_*` run sorted by name.
     let variables: [Variable]
@@ -37,32 +37,32 @@ struct HerdrCoreEnvironmentNotice: Equatable, Sendable {
         switch name {
         case "CLAUDE_CODE_CHILD_SESSION":
             // Claude Code 2.1.316 honored 1 and ignored a made-up value (#579).
-            "Set to 1, Claude Code keeps no session record and saves no conversation, so Chat has nothing to show."
+            String(localized: "Set to 1, Claude Code keeps no session record and saves no conversation, so Chat has nothing to show.")
         case "CLAUDE_CODE_SKIP_PROMPT_HISTORY":
-            "Claude Code saves no conversation, so Chat has nothing to show."
+            String(localized: "Claude Code saves no conversation, so Chat has nothing to show.")
         case "CLAUDECODE":
-            "Programs here read as started from inside Claude Code, which can change what they report and record."
+            String(localized: "Programs here read as started from inside Claude Code, which can change what they report and record.")
         case "TMUX":
-            "Grok Build turns its status off inside tmux, so its Agents read Unknown."
+            String(localized: "Grok Build turns its status off inside tmux, so its Agents read Unknown.")
         case "STY":
-            "Grok Build turns its status off inside GNU Screen, so its Agents read Unknown."
+            String(localized: "Grok Build turns its status off inside GNU Screen, so its Agents read Unknown.")
         case "ZELLIJ":
-            "Grok Build turns its status off inside Zellij, so its Agents read Unknown."
+            String(localized: "Grok Build turns its status off inside Zellij, so its Agents read Unknown.")
         case "CURSOR_TRACE_ID":
-            "Claude Code reads Terminals here as Cursor's, which can change what it reports."
+            String(localized: "Claude Code reads Terminals here as Cursor's, which can change what it reports.")
         case "VSCODE_GIT_ASKPASS_MAIN":
-            "Claude Code reads Terminals here as a code editor's, which can change what it reports."
+            String(localized: "Claude Code reads Terminals here as a code editor's, which can change what it reports.")
         case "CODEX_THREAD_ID":
-            "Programs here read as started from a Codex thread, which can change what they report and record."
+            String(localized: "Programs here read as started from a Codex thread, which can change what they report and record.")
         case "OMPCODE":
-            "Programs here read as started from inside Oh My Pi, which can change what they report and record."
+            String(localized: "Programs here read as started from inside Oh My Pi, which can change what they report and record.")
         case "PI_PROGRAM_STATUS":
-            "Set to 0, it turns Pi's status off, so its Agents read Unknown."
+            String(localized: "Set to 0, it turns Pi's status off, so its Agents read Unknown.")
         case "HERDR_PANE_ID":
-            "Herdr's agent hooks report to the pane this names, not to the Terminal they run in."
+            String(localized: "Herdr's agent hooks report to the pane this names, not to the Terminal they run in.")
         default:
             // Any other `HERDR_*` name, which may name no pane at all.
-            "Terminals here inherit it, so a program that reads Herdr's variables may act as if it runs inside Herdr."
+            String(localized: "Terminals here inherit it, so a program that reads Herdr's variables may act as if it runs inside Herdr.")
         }
     }
 }

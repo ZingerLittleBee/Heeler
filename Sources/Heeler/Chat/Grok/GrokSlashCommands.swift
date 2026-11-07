@@ -36,18 +36,16 @@ enum GrokSlashCommands {
         // its input box (`dispatch/prompt.rs`).
         if tokens.contains("goal") {
             return .unsafeText(
-                "Grok Build runs /goal only at the start of a message and wouldn't send this. "
-                    + "Set goals in the terminal.")
+                String(localized: "Grok Build runs /goal only at the start of a message and wouldn't send this. Set goals in the terminal."))
         }
         // It asks the rest of the message as a side question, which never
         // reaches the conversation (`slash/mid_text_hoist.rs`).
         if tokens.contains("btw") {
             return .unsafeText(
-                "Grok Build would treat this as a /btw side question and keep it out of the conversation. "
-                    + "Rephrase it, or ask in the terminal.")
+                String(localized: "Grok Build would treat this as a /btw side question and keep it out of the conversation. Rephrase it, or ask in the terminal."))
         }
         // Grok 1.0.62 answers `/compact` with text after it with the toast
-        // "/compact takes no arguments." and keeps the text in its box.
+        // String(localized: "/compact takes no arguments.") and keeps the text in its box.
         // Checked before the menu, so a focus is refused while the Agent
         // works too.
         if isCompactWithFocus(trimmed) {

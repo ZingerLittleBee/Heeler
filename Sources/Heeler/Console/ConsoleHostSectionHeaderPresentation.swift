@@ -60,10 +60,10 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
             opensConnectionDetail ? "" : section.isCollapsed ? "Collapsed" : "Expanded"
         accessibilityHint =
             opensConnectionDetail
-            ? "Shows why this Host can't connect."
+            ? String(localized: "Shows why this Host can't connect.")
             : section.isCollapsed
-                ? "Expands this Host."
-                : "Collapses this Host."
+                ? String(localized: "Expands this Host.")
+                : String(localized: "Collapses this Host.")
 
         var labelParts = [section.hostDisplayName, readiness.text]
         if let statusText {

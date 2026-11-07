@@ -81,7 +81,7 @@ struct AgentDirectInputChrome: View {
 
     private var modeControl: TerminalAgentSwitcherModeControl {
         .button(
-            systemImage: "square.and.pencil",
+            systemImage: String(localized: "square.and.pencil"),
             accessibilityLabel: AgentDirectInputPresentation.showComposerAccessibilityLabel,
             accessibilityHint: AgentDirectInputPresentation.showComposerAccessibilityHint,
             action: interactions.showComposer)
@@ -90,7 +90,7 @@ struct AgentDirectInputChrome: View {
     private var shortcutRow: some View {
         InputShortcutStripRow(
             strip: strip,
-            keyAccessibilityHint: "Sends this key directly to the Agent",
+            keyAccessibilityHint: String(localized: "Sends this key directly to the Agent"),
             sendKey: interactions.sendQuickKey
         ) { item in
             switch item {

@@ -50,7 +50,7 @@ enum OpenCodeScreenReader {
                     isArmed: false, overlayTitle: nil)
             }
             return OpenCodeScreen(
-                route: .unknown, state: .unknown("OpenCode's input box is not on screen."), isRunning: false,
+                route: .unknown, state: .unknown(String(localized: "OpenCode's input box is not on screen.")), isRunning: false,
                 isArmed: false, overlayTitle: nil)
         }
 
@@ -64,7 +64,7 @@ enum OpenCodeScreenReader {
         let hasLogo = rows[..<top].contains { $0.trimmedText.hasPrefix(logoTopRow) }
         let overlayTitle = modalTitle(above: edge, in: rows) ?? popupRow(above: top, column: column, in: rows)
         var screenRead = OpenCodeScreen(
-            route: hasLogo ? .home : .unknown, state: .unknown("OpenCode's input box is not recognized."),
+            route: hasLogo ? .home : .unknown, state: .unknown(String(localized: "OpenCode's input box is not recognized.")),
             isRunning: isRunning, isArmed: isArmed, overlayTitle: overlayTitle)
         if let overlayTitle { screenRead.state = .overlay(overlayTitle) }
 
@@ -93,7 +93,7 @@ enum OpenCodeScreenReader {
         } else if isRunning {
             // Enter would steer the turn, and a prompt that appears before
             // herdr's Enter would take it as its answer.
-            screenRead.state = .disabled("OpenCode is working. Send once it's idle, or steer from the terminal.")
+            screenRead.state = .disabled(String(localized: "OpenCode is working. Send once it's idle, or steer from the terminal."))
         } else {
             screenRead.state = .empty(placeholder: nil)
         }
@@ -101,9 +101,9 @@ enum OpenCodeScreenReader {
     }
 
     private static let homeReason =
-        "OpenCode is on its home screen, where a message starts a new conversation. Open this conversation in the terminal first."
+        String(localized: "OpenCode is on its home screen, where a message starts a new conversation. Open this conversation in the terminal first.")
     private static let subagentPanelReason =
-        "OpenCode shows its subagent panel instead of the input box. Close it in the terminal first."
+        String(localized: "OpenCode shows its subagent panel instead of the input box. Close it in the terminal first.")
 
     /// The top row of the logo the home screen draws above its box.
     private static let logoTopRow = "█▀▀█ █▀▀█ █▀▀█ █▀▀▄"

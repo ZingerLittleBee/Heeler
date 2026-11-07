@@ -76,7 +76,7 @@ extension GitProbe {
         // cannot be split by line and is not supported.
         guard lines.count == 5, lines[4].isEmpty, !lines[0].isEmpty else {
             throw ChangesReadError.gitFailed(
-                "The Checkout's path contains a line break, which Changes can't read.")
+                String(localized: "The Checkout's path contains a line break, which Changes can't read."))
         }
         let topLevel = Data(lines[0])
         let prefix = Data(lines[1])

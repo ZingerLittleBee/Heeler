@@ -9,8 +9,8 @@ enum AgentUsageMetric: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .cost: "Est. Cost"
-        case .tokens: "Tokens"
+        case .cost: String(localized: "Est. Cost")
+        case .tokens: String(localized: "Tokens")
         }
     }
 }
@@ -25,9 +25,9 @@ enum AgentUsageRange: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .today: "Today"
-        case .last7Days: "7 Days"
-        case .last30Days: "30 Days"
+        case .today: String(localized: "Today")
+        case .last7Days: String(localized: "7 Days")
+        case .last30Days: String(localized: "30 Days")
         }
     }
 
@@ -58,7 +58,7 @@ enum AgentUsageStyle {
     }
 
     static func cost(_ value: Double?, locale: Locale) -> String {
-        guard let value else { return "Unpriced" }
+        guard let value else { return String(localized: "Unpriced") }
         let style = FloatingPointFormatStyle<Double>.Currency(code: "USD").locale(locale)
         if value > 0 && value < 0.01 { return "< \(0.01.formatted(style))" }
         return value.formatted(style)
@@ -66,7 +66,7 @@ enum AgentUsageStyle {
 
     /// Whole dollars once a figure is large enough that cents are noise.
     static func shortCost(_ value: Double?, locale: Locale) -> String {
-        guard let value else { return "Unpriced" }
+        guard let value else { return String(localized: "Unpriced") }
         guard value >= 1_000 else { return cost(value, locale: locale) }
         return value.formatted(
             FloatingPointFormatStyle<Double>.Currency(code: "USD").precision(.fractionLength(0)).locale(locale))

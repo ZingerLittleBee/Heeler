@@ -50,7 +50,7 @@ struct ClaudeToolSummary: Sendable, Equatable {
             let texts = input.questions.map(\.text)
             self.init(kind: .question, title: texts.isEmpty ? use.name : texts.joined(separator: " · "))
         case "TodoWrite":
-            self.init(kind: .todo, title: "Update todos")
+            self.init(kind: .todo, title: String(localized: "Update todos"))
         case "TaskCreate":
             // Claude Code 2.1.301 names the task by `subject`.
             let subject = input.subject.flatMap { $0.isEmpty ? nil : $0 }
@@ -62,7 +62,7 @@ struct ClaudeToolSummary: Sendable, Equatable {
             if let status = input.status, !status.isEmpty {
                 self.init(kind: .todo, title: "Task #\(task): \(status)")
             } else {
-                self.init(kind: .todo, title: "Updated task #\(task)")
+                self.init(kind: .todo, title: String(localized: "Updated task #\(task)"))
             }
         case "TaskUpdate", "TaskGet", "TaskList":
             self.init(kind: .todo, title: input.description ?? use.name)
@@ -80,12 +80,12 @@ struct ClaudeToolSummary: Sendable, Equatable {
             let title =
                 !selected.isEmpty ? "Loaded \(selected.joined(separator: ", "))"
                 : query.isEmpty || query.hasPrefix(Self.toolSelectPrefix) ? use.name
-                : "Searched tools for \(query)"
+                : String(localized: "Searched tools for \(query)")
             self.init(kind: .other, title: title)
         case "EnterPlanMode":
-            self.init(kind: .other, title: "Enter plan mode")
+            self.init(kind: .other, title: String(localized: "Enter plan mode"))
         case "ExitPlanMode":
-            self.init(kind: .other, title: "Exit plan mode", subtitle: input.planFilePath)
+            self.init(kind: .other, title: String(localized: "Exit plan mode"), subtitle: input.planFilePath)
         default:
             if use.name.hasPrefix("mcp__") {
                 // `mcp__server__tool` reads as `server.tool`.
@@ -571,8 +571,8 @@ enum ClaudeToolOutcome: Sendable, Equatable {
     case failed
 
     /// The decline texts (CLI `lC`/`R0` and `lB`/`JQ`).
-    static let userDeclinePrefix = "The user doesn't want to proceed with this tool use."
-    static let permissionDeniedPrefix = "Permission for this tool use was denied"
+    static let userDeclinePrefix = String(localized: "The user doesn't want to proceed with this tool use.")
+    static let permissionDeniedPrefix = String(localized: "Permission for this tool use was denied")
 
     init(result: ClaudeToolResult, details: ClaudeToolResultDetails?, trailingTexts: [String]) {
         let text = result.content.text
@@ -606,7 +606,7 @@ enum ClaudeToolOutcome: Sendable, Equatable {
 
     /// Claude Code's own text for a question's `Chat about this` (2.1.301),
     /// recorded as the user's feedback although the user typed none.
-    static let clarifyRequestPrefix = "The user wants to clarify these questions."
+    static let clarifyRequestPrefix = String(localized: "The user wants to clarify these questions.")
 
     static func isClarifyRequest(_ feedback: String) -> Bool {
         feedback.hasPrefix(clarifyRequestPrefix)

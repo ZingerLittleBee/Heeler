@@ -672,15 +672,15 @@ final class AttachTerminalStore {
     static func message(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
-            "The Host is not connected."
+            String(localized: "The Host is not connected.")
         case TransportError.terminalChannelAlreadyOpen:
-            "Another terminal is already open on this Host."
+            String(localized: "Another terminal is already open on this Host.")
         case TransportError.timedOut:
-            "The Host did not answer in time."
+            String(localized: "The Host did not answer in time.")
         case TransportError.cancelled:
             // Attach is cancelled under the user when the Host's connection
             // is replaced or wound down, not when the user cancels.
-            "The Host's connection was reset."
+            String(localized: "The Host's connection was reset.")
         case let error as TransportError:
             // Includes `attachExited`, which quotes herdr's own last line
             // (#431), and `herdrBinaryNotFound`.
@@ -688,7 +688,7 @@ final class AttachTerminalStore {
         default:
             // A non-Transport error has no user-facing words of its own;
             // interpolating it would show a debug description.
-            "The session failed."
+            String(localized: "The session failed.")
         }
     }
 }

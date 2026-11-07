@@ -22,14 +22,14 @@ enum GrokStopGuard {
             if let reason = pendingRefusal(grok) { return .refuse(reason) }
             if grok.composer?.draft.isEmpty == false { return .refuse(draft) }
             return .refuse(
-                "Grok Build is showing an agent from its dashboard, so Stop pressed nothing. Stop it in the terminal with Ctrl+C."
+                String(localized: "Grok Build is showing an agent from its dashboard, so Stop pressed nothing. Stop it in the terminal with Ctrl+C.")
             )
         }
         // Minimal mode draws no box either.
         let showsConversation = grok.overlay == nil && !grok.isDashboard && !grok.isWelcome
         guard let composer = grok.composer, composer.mode == .prompt, showsConversation else {
             return .refuse(
-                "Grok Build is showing a menu or another view, so Stop pressed nothing. Close it in the terminal first.")
+                String(localized: "Grok Build is showing a menu or another view, so Stop pressed nothing. Close it in the terminal first."))
         }
         if let reason = pendingRefusal(grok) { return .refuse(reason) }
         // Grok offers the cancel in every pane while a turn runs.
@@ -41,7 +41,7 @@ enum GrokStopGuard {
         guard composer.draft.isEmpty else { return .refuse(draft) }
         guard grok.promptHasFocus || offersCancel else {
             return .refuse(
-                "Grok Build's input box doesn't have focus, so Stop pressed nothing. Stop it in the terminal.")
+                String(localized: "Grok Build's input box doesn't have focus, so Stop pressed nothing. Stop it in the terminal."))
         }
         return .press
     }
@@ -52,16 +52,16 @@ enum GrokStopGuard {
     private static func pendingRefusal(_ grok: GrokScreen) -> String? {
         if let press = grok.pendingDoublePress {
             return press.contains("press again to quit")
-                ? "Grok Build is waiting for a second key press to quit, so Stop pressed nothing."
-                : "Grok Build is waiting for a second key press, so Stop pressed nothing."
+                ? String(localized: "Grok Build is waiting for a second key press to quit, so Stop pressed nothing.")
+                : String(localized: "Grok Build is waiting for a second key press, so Stop pressed nothing.")
         }
-        return grok.isCancelling ? "Grok Build is already cancelling the turn." : nil
+        return grok.isCancelling ? String(localized: "Grok Build is already cancelling the turn.") : nil
     }
 
     private static let asking =
-        "Grok Build is asking something, so Stop pressed nothing. Answer it in Chat or the terminal."
+        String(localized: "Grok Build is asking something, so Stop pressed nothing. Answer it in Chat or the terminal.")
     private static let notWorking =
-        "Heeler can't see Grok Build working, so Stop pressed nothing. Stop it in the terminal with Ctrl+C."
+        String(localized: "Heeler can't see Grok Build working, so Stop pressed nothing. Stop it in the terminal with Ctrl+C.")
     private static let draft =
-        "Grok Build's input box has text, and Ctrl+C would only clear it. Stop it in the terminal."
+        String(localized: "Grok Build's input box has text, and Ctrl+C would only clear it. Stop it in the terminal.")
 }

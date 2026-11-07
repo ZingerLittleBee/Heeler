@@ -32,7 +32,7 @@ struct CommandBlock: View {
                 UIPasteboard.general.string = command
                 copied = true
             } label: {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                Image(systemName: copied ? "checkmark" : String(localized: "doc.on.doc"))
                     .font(.footnote.weight(.semibold))
                     .contentTransition(.symbolEffect(.replace))
                     .frame(width: 44, height: 44)

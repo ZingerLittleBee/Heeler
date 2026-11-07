@@ -176,8 +176,8 @@ private struct ChatBackgroundWorkSheetRow: View {
             }
             // While it runs, a Workflow can start more agents.
             Text(verbatim: row.status.isFinished
-                ? "\(fraction.done) of \(fraction.total) agents done"
-                : "\(fraction.done) of \(fraction.total) agents done so far")
+                ? String(localized: "\(fraction.done) of \(fraction.total) agents done")
+                : String(localized: "\(fraction.done) of \(fraction.total) agents done so far"))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
         }

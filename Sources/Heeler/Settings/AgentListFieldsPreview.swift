@@ -51,7 +51,7 @@ struct AgentListFieldsPreview: View {
     static func sampleAgent(
         hostName: String, layout: AgentRowLayout? = nil, followsPlugin: Bool = true, kind: String = sampleKind
     ) -> ConsoleAgent {
-        let title = followsPlugin ? "fix sidebar sync" : "fix login redirect"
+        let title = followsPlugin ? String(localized: "fix sidebar sync") : String(localized: "fix login redirect")
         var tokens = ["branch": "feat/sidebar"]
         for case .label(let key) in ((layout?.rows ?? []) + (layout?.trailing ?? [])).joined().map(\.token) {
             tokens[key] = key

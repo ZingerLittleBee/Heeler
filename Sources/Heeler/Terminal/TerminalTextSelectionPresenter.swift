@@ -58,12 +58,12 @@ final class TerminalTextSelectionViewController: UIViewController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) is unavailable")
+        fatalError(String(localized: "init(coder:) is unavailable"))
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Select Text"
+        title = String(localized: "Select Text")
         view.backgroundColor = .systemBackground
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .done,

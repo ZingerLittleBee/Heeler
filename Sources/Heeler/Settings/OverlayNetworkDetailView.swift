@@ -165,7 +165,7 @@ struct OverlayNetworkDetailView: View {
             TailscaleAuthKeySheet { signIn(withAuthKey: $0) }
         }
         .confirmationDialog(
-            "Delete \(network.displayName)?",
+            String(localized: "Delete \(network.displayName)?"),
             isPresented: $isConfirmingDelete,
             titleVisibility: .visible
         ) {
@@ -175,7 +175,7 @@ struct OverlayNetworkDetailView: View {
             Text(OverlayNetworkCopy.deleteMessage)
         }
         .confirmationDialog(
-            "Sign out of \(network.displayName)?",
+            String(localized: "Sign out of \(network.displayName)?"),
             isPresented: $isConfirmingSignOut,
             titleVisibility: .visible
         ) {
@@ -185,12 +185,10 @@ struct OverlayNetworkDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "This device is logged out of the tailnet and its login is deleted. Hosts "
-                    + "using this network disconnect and stay disconnected until you tap Sign In "
-                    + "here, which signs in automatically if an auth key is saved.")
+                                String(localized: "This device is logged out of the tailnet and its login is deleted. Hosts using this network disconnect and stay disconnected until you tap Sign In here, which signs in automatically if an auth key is saved."))
         }
         .confirmationDialog(
-            "Reset the machine ID?",
+            String(localized: "Reset the machine ID?"),
             isPresented: $isConfirmingMachineIDReset,
             titleVisibility: .visible
         ) {
@@ -200,8 +198,7 @@ struct OverlayNetworkDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "The EasyTier console then lists this device as a new one, which needs a "
-                    + "network assigned again. Hosts on this network reconnect afterwards.")
+                String(localized: "The EasyTier console then lists this device as a new one, which needs a network assigned again. Hosts on this network reconnect afterwards."))
         }
         .alert("Could not delete the network", isPresented: $deleteFailed) {
             Button("OK", role: .cancel) {}
@@ -288,7 +285,7 @@ struct OverlayNetworkDetailView: View {
     private func signInButtons(isStartingSignIn: Bool) -> some View {
         VStack(spacing: 12) {
             OverlayActivityButton(
-                title: isStartingSignIn ? "Opening Browser…" : "Sign In with Browser",
+                title: isStartingSignIn ? String(localized: "Opening Browser…") : String(localized: "Sign In with Browser"),
                 style: .filled, isLoading: isStartingSignIn, action: startSignIn)
             Button(isStartingSignIn ? "Cancel" : "Use an Auth Key Instead") {
                 if isStartingSignIn {
@@ -300,7 +297,7 @@ struct OverlayNetworkDetailView: View {
             }
             // Its own tap target, not the row's.
             .buttonStyle(.borderless)
-            .accessibilityLabel(isStartingSignIn ? "Cancel sign-in" : "Use an auth key instead")
+            .accessibilityLabel(isStartingSignIn ? String(localized: "Cancel sign-in") : String(localized: "Use an auth key instead"))
         }
         .frame(maxWidth: .infinity)
     }
@@ -319,7 +316,7 @@ struct OverlayNetworkDetailView: View {
             let nodeID = store.zeroTierNodeID ?? details.nodeID
             if !addresses.isEmpty {
                 OverlayDeviceAddresses(
-                    label: nodeID.map { "This device · \($0)" } ?? "This device", addresses: addresses)
+                    label: nodeID.map { "This device · \($0)" } ?? String(localized: "This device"), addresses: addresses)
             } else if let nodeID {
                 OverlayDeviceIdentifier(label: "This device · Node ID", title: "node ID", value: nodeID)
             } else {
@@ -353,28 +350,24 @@ struct OverlayNetworkDetailView: View {
         status: OverlayNodeStatus, waitReason: OverlayWaitReason?, offersSignIn: Bool
     ) -> String? {
         if let signOutFailure = store.signOutFailures[networkID] {
-            return "Heeler signed this device out and forgot its login, but could not reach "
-                + "the coordination server (\(signOutFailure.presentation.summary)). Remove "
-                + "the device in the tailnet's admin console if it is still listed."
+                        return String(localized: "Heeler signed this device out and forgot its login, but could not reach the coordination server (\(signOutFailure.presentation.summary)). Remove the device in the tailnet's admin console if it is still listed.")
         }
         switch waitReason {
         case .zeroTierAuthorization:
-            return "Heeler joins on its own once authorized. With your own controller, authorize "
-                + "it there."
+            return String(localized: "Heeler joins on its own once authorized. With your own controller, authorize it there.")
         case .configServerAssignment:
-            return "Heeler starts each network as soon as it is assigned, up to 8."
+            return String(localized: "Heeler starts each network as soon as it is assigned, up to 8.")
         case .configServerConnection:
-            return "Hosts on this network wait for it."
+            return String(localized: "Hosts on this network wait for it.")
         case nil:
             break
         }
         if offersSignIn {
-            return "\(network.deviceName ?? "This device") joins the tailnet as its own device. "
-                + "Its address and the tailnet's machines appear here afterwards."
+            return String(localized: "\((network.deviceName ?? String(localized: "This device"))) joins the tailnet as its own device. Its address and the tailnet's machines appear here afterwards.")
         }
         switch control {
         case .connecting:
-            return "Hosts on this network wait for it."
+            return String(localized: "Hosts on this network wait for it.")
         case .signingOut, .signIn:
             return nil
         case .toggle:
@@ -382,13 +375,12 @@ struct OverlayNetworkDetailView: View {
         }
         if headline.isAwaitingApproval {
             guard let server = network.tailscaleControlURL?.host() else {
-                return "Heeler joins on its own once approved."
+                return String(localized: "Heeler joins on its own once approved.")
             }
-            return "Heeler joins on its own once the device is approved on \(server)."
+            return String(localized: "Heeler joins on its own once the device is approved on \(server).")
         }
         if headline.tone == .failed {
-            return "Turn the switch on to try again. If it keeps failing, check the internet "
-                + "connection, or the network's settings in Edit."
+            return String(localized: "Turn the switch on to try again. If it keeps failing, check the internet connection, or the network's settings in Edit.")
         }
         if network.kind == .zerotier, !status.isOnline {
             return ZeroTierNodeIDCopy.authorizationHint
@@ -448,8 +440,7 @@ struct OverlayNetworkDetailView: View {
     private func addFooter(_ kind: OverlayKind) -> some View {
         if hostStore != nil {
             Text(
-                "Tap a \(kind == .tailscale ? "machine" : "peer") to add it as a Host. Touch "
-                    + "and hold to copy its address.")
+                String(localized: "Tap a \(kind == .tailscale ? String(localized: "machine") : String(localized: "peer")) to add it as a Host. Touch and hold to copy its address."))
         }
     }
 
@@ -461,16 +452,14 @@ struct OverlayNetworkDetailView: View {
                 Label("Only This Device So Far", systemImage: OverlayKind.glyphSymbol)
             } description: {
                 Text(
-                    "Install Tailscale on your Mac and sign in with the same account. It appears "
-                        + "here, ready to add as a Host.")
+                    String(localized: "Install Tailscale on your Mac and sign in with the same account. It appears here, ready to add as a Host."))
             }
         case .easytier(let networkName, _, _, _):
             ContentUnavailableView {
                 Label("No Peers Yet", systemImage: OverlayKind.glyphSymbol)
             } description: {
                 Text(
-                    "Run EasyTier on your Mac with network name \(networkName) and the same "
-                        + "secret. It appears here, ready to add as a Host.")
+                    String(localized: "Run EasyTier on your Mac with network name \(networkName) and the same secret. It appears here, ready to add as a Host."))
             }
         case .zerotier, .easytierConfigServer:
             Text("No peers yet")
@@ -521,7 +510,7 @@ struct OverlayNetworkDetailView: View {
             OverlayPeerList.filter(peers.map(OverlayPeerCandidate.init), query: query))
         return Section {
             if matches.isEmpty {
-                Text(kind == .tailscale ? "No matching machines" : "No matching peers")
+                Text(kind == .tailscale ? String(localized: "No matching machines") : String(localized: "No matching peers"))
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(matches) { @Sendable candidate in
@@ -562,8 +551,7 @@ struct OverlayNetworkDetailView: View {
                     Label("No Members Yet", systemImage: OverlayKind.glyphSymbol)
                 } description: {
                     Text(
-                        "A member appears after this device first reaches it. Your Mac's managed "
-                            + "IP is in ZeroTier Central or your controller.")
+                        String(localized: "A member appears after this device first reaches it. Your Mac's managed IP is in ZeroTier Central or your controller."))
                 }
             } else {
                 ForEach(members) { @Sendable member in
@@ -577,9 +565,7 @@ struct OverlayNetworkDetailView: View {
         } footer: {
             if !members.isEmpty {
                 Text(
-                    "Nodes this device has reached on any of its ZeroTier networks. ZeroTier "
-                        + "doesn't share their managed IPs: for a Host, copy your Mac's IP from "
-                        + "ZeroTier Central or your controller.")
+                                        String(localized: "Nodes this device has reached on any of its ZeroTier networks. ZeroTier doesn't share their managed IPs: for a Host, copy your Mac's IP from ZeroTier Central or your controller."))
             }
         }
     }
@@ -667,7 +653,7 @@ struct OverlayNetworkDetailView: View {
             try store.update(network, secret: key)
         } catch {
             authKeyError = (error as? OverlayNetworkStoreError)?.message
-                ?? "The auth key could not be saved in the Keychain."
+                ?? String(localized: "The auth key could not be saved in the Keychain.")
             return
         }
         startSignIn()
@@ -907,7 +893,7 @@ private struct OverlayCardCopyButton: View {
             Self.copy(value)
             copied = true
         } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+            Image(systemName: copied ? "checkmark" : String(localized: "doc.on.doc"))
                 .font((size < 36 ? Font.footnote : .body).weight(.semibold))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: size, height: size)
@@ -940,7 +926,7 @@ private struct OverlayCopyAddressButton: View {
         Button(action: action) {
             Text("Copy \(OverlayStatusCopy.addressTitle(address, among: among))")
             Text(address)
-            Image(systemName: "doc.on.doc")
+            Image(systemName: String(localized: "doc.on.doc"))
         }
     }
 }
@@ -1075,9 +1061,9 @@ private struct ZeroTierMemberRow: View {
         }
         .accessibilityElement(children: .combine)
         .contextMenu {
-            copyButton("Copy Node ID", value: peer.id)
+            copyButton(String(localized: "Copy Node ID"), value: peer.id)
             ForEach(OverlayStatusCopy.uniquePaths(peer), id: \.self) { @Sendable path in
-                MainActorContent { copyButton("Copy Path", value: path) }
+                MainActorContent { copyButton(String(localized: "Copy Path"), value: path) }
             }
         }
     }
@@ -1089,7 +1075,7 @@ private struct ZeroTierMemberRow: View {
         } label: {
             Text(title)
             Text(value)
-            Image(systemName: "doc.on.doc")
+            Image(systemName: String(localized: "doc.on.doc"))
         }
     }
 }
@@ -1153,8 +1139,7 @@ private struct TailscaleAuthKeySheet: View {
                         .onSubmit(signIn)
                 } footer: {
                     Text(
-                        "Create one in the tailnet's admin console under Settings › Keys. Heeler "
-                            + "keeps it in the Keychain and signs in with it again after a sign-out.")
+                        String(localized: "Create one in the tailnet's admin console under Settings › Keys. Heeler keeps it in the Keychain and signs in with it again after a sign-out."))
                 }
             }
             .navigationTitle("Auth Key")
@@ -1205,9 +1190,7 @@ struct OverlayDiagnosticsView: View {
                         Text("Roots")
                     } footer: {
                         Text(
-                            "The planet and moon servers this device uses to find members and "
-                                + "relay traffic. On a self-hosted planet the root is often the "
-                                + "network controller as well.")
+                                                        String(localized: "The planet and moon servers this device uses to find members and relay traffic. On a self-hosted planet the root is often the network controller as well."))
                     }
                 }
                 Section("State") {

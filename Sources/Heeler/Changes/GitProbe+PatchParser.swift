@@ -233,7 +233,7 @@ private struct PatchFileBuilder {
 
     func document(id: Int, isComplete: Bool = true) -> DiffFile {
         var notes: [String] = []
-        if isBinary { notes.append("Binary file.") }
+        if isBinary { notes.append(String(localized: "Binary file.")) }
         if isRename, let oldPath, let newPath {
             notes.append("Renamed from \(ChangedFile.displayText(oldPath)) to \(ChangedFile.displayText(newPath)).")
         }
@@ -241,8 +241,8 @@ private struct PatchFileBuilder {
             notes.append("File mode changed from \(oldMode) to \(newMode).")
         }
         if isComplete && hunks.isEmpty && !isBinary {
-            if isNew { notes.append("New empty file.") }
-            if isDeleted { notes.append("Deleted empty file.") }
+            if isNew { notes.append(String(localized: "New empty file.")) }
+            if isDeleted { notes.append(String(localized: "Deleted empty file.")) }
         }
         return DiffFile(
             id: id, oldPath: oldPath.map { String(decoding: $0, as: UTF8.self) },

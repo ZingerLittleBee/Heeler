@@ -17,9 +17,9 @@ enum VoiceRecorderError: Error, Equatable, Sendable {
     var message: String {
         switch self {
         case .microphoneUnavailable:
-            "The microphone is in use or unavailable."
+            String(localized: "The microphone is in use or unavailable.")
         case .recordingFailed:
-            "The recording could not be saved."
+            String(localized: "The recording could not be saved.")
         }
     }
 }

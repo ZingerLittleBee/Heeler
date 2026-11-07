@@ -52,8 +52,8 @@ struct TideGitItem: Equatable {
             counts.append(symbol + value.formatted())
             spoken.append("\(value.formatted()) \(phrase)")
         }
-        add(behind, "⇣", behind == 1 ? "commit behind" : "commits behind")
-        add(ahead, "⇡", ahead == 1 ? "commit ahead" : "commits ahead")
+        add(behind, "⇣", behind == 1 ? String(localized: "commit behind") : String(localized: "commits behind"))
+        add(ahead, "⇡", ahead == 1 ? String(localized: "commit ahead") : String(localized: "commits ahead"))
         for file in files { add(file.count, file.symbol, file.phrase) }
         self.counts = counts
         // The Host capped its status output, so the file counts are lower

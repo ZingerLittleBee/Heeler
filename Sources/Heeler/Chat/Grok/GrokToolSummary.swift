@@ -39,7 +39,7 @@ struct GrokToolSummary: Equatable, Sendable {
             let texts = input?.questions.map(\.text) ?? []
             title = texts.isEmpty ? nil : texts.joined(separator: " · ")
         case .todo:
-            title = "Update todos"
+            title = String(localized: "Update todos")
         case .image, .other:
             title = nil
         }
@@ -248,7 +248,7 @@ struct GrokToolCall: Sendable {
     func outcome(turnEnd: TurnEnd?, activity: ChatAgentActivity) -> (status: ChatToolActivity.Status, note: String?) {
         if let notRun {
             switch notRun {
-            case "rejected": return (.declined, turnEnd == .rejected ? "Rejecting ended the turn" : nil)
+            case "rejected": return (.declined, turnEnd == .rejected ? String(localized: "Rejecting ended the turn") : nil)
             case "cancelled": return (.interrupted, nil)
             default: return (.notCompleted, nil)
             }
@@ -264,16 +264,16 @@ struct GrokToolCall: Sendable {
             return (status, end.error ?? Self.stats(end))
         }
         if let end = taskEnd {
-            if end.wasKilled || end.signal != nil { return (.interrupted, "Stopped in the background") }
-            return ((end.exitCode ?? 0) == 0 ? .succeeded : .failed, "Finished in the background")
+            if end.wasKilled || end.signal != nil { return (.interrupted, String(localized: "Stopped in the background")) }
+            return ((end.exitCode ?? 0) == 0 ? .succeeded : .failed, String(localized: "Finished in the background"))
         }
         if status == "failed" { return (.failed, nil) }
         if sentToBackground || (isSpawn && input?.isBackground == true && output != nil) {
-            return (.started, "Sent to the background")
+            return (.started, String(localized: "Sent to the background"))
         }
         if let output {
             if let code = output.exitCode, code != 0 { return (.failed, nil) }
-            return (.succeeded, output.isUnanswered ? "Not answered" : nil)
+            return (.succeeded, output.isUnanswered ? String(localized: "Not answered") : nil)
         }
         switch turnEnd {
         case nil:
@@ -332,7 +332,7 @@ struct GrokToolCall: Sendable {
         }
         if outputIsTruncated, tool.output != nil, tool.output == outputLine {
             tool.preview?.isTruncated = true
-            if tool.note == nil { tool.note = "Output exceeds the preview limit." }
+            if tool.note == nil { tool.note = String(localized: "Output exceeds the preview limit.") }
         }
         if summary.kind == .fileRead, status == .succeeded { tool.imagePath = imagePath(directory: directory) }
         return tool

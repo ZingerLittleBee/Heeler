@@ -11,27 +11,26 @@ enum GitBranchName {
     /// message naming the violated rule.
     static func validationError(_ name: String) -> String? {
         if name.isEmpty || name == "@" {
-            return "Enter a branch name."
+            return String(localized: "Enter a branch name.")
         }
         if name.hasPrefix("-") {
-            return "Branch names cannot start with \"-\"."
+            return String(localized: "Branch names cannot start with \"-\".")
         }
         if name.contains(where: isForbiddenScalar) {
-            return "Branch names cannot contain spaces, control characters, "
-                + "or any of ~ ^ : ? * [ \\."
+            return String(localized: "Branch names cannot contain spaces, control characters, or any of ~ ^ : ? * [ \\.")
         }
         if name.contains("..") || name.contains("@{") {
-            return "Branch names cannot contain \"..\" or \"@{\"."
+            return String(localized: "Branch names cannot contain \"..\" or \"@{\".")
         }
         if name.hasPrefix("/") || name.hasSuffix("/") || name.contains("//") {
-            return "Branch names cannot start or end with \"/\" or contain \"//\"."
+            return String(localized: "Branch names cannot start or end with \"/\" or contain \"//\".")
         }
         if name.hasSuffix(".") {
-            return "Branch names cannot end with \".\"."
+            return String(localized: "Branch names cannot end with \".\".")
         }
         let components = name.split(separator: "/", omittingEmptySubsequences: false)
         if components.contains(where: { $0.hasPrefix(".") || $0.hasSuffix(".lock") }) {
-            return "Branch name components cannot start with \".\" or end with \".lock\"."
+            return String(localized: "Branch name components cannot start with \".\" or end with \".lock\".")
         }
         return nil
     }

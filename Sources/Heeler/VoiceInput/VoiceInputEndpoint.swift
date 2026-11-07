@@ -14,7 +14,7 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .openAI: "OpenAI"
         case .deepInfra: "DeepInfra"
-        case .siliconFlowCN: "SiliconFlow (China)"
+        case .siliconFlowCN: String(localized: "SiliconFlow (China)")
         }
     }
 
@@ -157,11 +157,11 @@ enum VoiceInputCustomURL {
 
         var message: String {
             switch self {
-            case .empty: "Enter the service's base URL."
-            case .invalid: "Enter an https URL, such as https://api.example.com/v1."
-            case .notHTTPS: "Voice Input only sends recordings and keys over https."
-            case .containsCredentials: "Remove the user name or password from the URL."
-            case .containsQueryOrFragment: "Remove the part after ? or # from the URL."
+            case .empty: String(localized: "Enter the service's base URL.")
+            case .invalid: String(localized: "Enter an https URL, such as https://api.example.com/v1.")
+            case .notHTTPS: String(localized: "Voice Input only sends recordings and keys over https.")
+            case .containsCredentials: String(localized: "Remove the user name or password from the URL.")
+            case .containsQueryOrFragment: String(localized: "Remove the part after ? or # from the URL.")
             }
         }
     }

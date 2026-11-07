@@ -447,7 +447,7 @@ final class ComposerStagingStore {
                 let failure = Failure(
                     medium: medium,
                     message:
-                        "\(medium.displayName) upload paused when Heeler moved to the background.",
+                        String(localized: "\(medium.displayName) upload paused when Heeler moved to the background."),
                     isRetryable: preparedSource != nil)
                 state = .backgroundInterrupted(failure)
                 publish(.failed(id: operationID, retryable: failure.isRetryable))
@@ -494,27 +494,27 @@ final class ComposerStagingStore {
         case TransportError.sshUnreachable:
             Failure(
                 medium: medium,
-                message: "The Host is not connected. Reconnect, then retry the upload.",
+                message: String(localized: "The Host is not connected. Reconnect, then retry the upload."),
                 isRetryable: true)
         case AttachmentStagingError.exceedsCoreFileLimit:
             Failure(
                 medium: medium,
-                message: "This \(medium.noun) is over the 8 MiB limit on a native Windows Host. Nothing was sent.",
+                message: String(localized: "This \(medium.noun) is over the 8 MiB limit on a native Windows Host. Nothing was sent."),
                 isRetryable: false)
         case TransportError.coreMutationOutcomeUnknown:
             Failure(
                 medium: medium,
-                message: "The Host did not confirm the \(medium.noun). Retry sends another copy.",
+                message: String(localized: "The Host did not confirm the \(medium.noun). Retry sends another copy."),
                 isRetryable: true)
         case let refusal as HerdrAPIError where refusal.code == "finished" || refusal.code == "not_found":
             Failure(
                 medium: medium,
-                message: "This Terminal has ended, so the \(medium.noun) was not sent.",
+                message: String(localized: "This Terminal has ended, so the \(medium.noun) was not sent."),
                 isRetryable: false)
         case let refusal as HerdrAPIError:
             Failure(
                 medium: medium,
-                message: "The Host refused the \(medium.noun): \(refusal.message)",
+                message: String(localized: "The Host refused the \(medium.noun): \(refusal.message)"),
                 isRetryable: false)
         case let transportError as TransportError where saysTransportFailures && !isSSHUnreachable(transportError):
             Failure(
@@ -524,68 +524,68 @@ final class ComposerStagingStore {
         case AttachmentStagingError.sftpUnavailable:
             Failure(
                 medium: medium,
-                message: "SFTP is unavailable on this Host. Enable its SSH SFTP subsystem.",
+                message: String(localized: "SFTP is unavailable on this Host. Enable its SSH SFTP subsystem."),
                 isRetryable: false)
         case let staging as AttachmentStagingError:
             Failure(
                 medium: medium,
-                message: "\(medium.displayName) upload failed.",
+                message: String(localized: "\(medium.displayName) upload failed."),
                 isRetryable: staging.isRetryable)
         case ImagePreparationError.clipboardHasNoImage:
             Failure(
                 medium: medium,
-                message: "The clipboard has no image. Copy one, then tap Paste Image.",
+                message: String(localized: "The clipboard has no image. Copy one, then tap Paste Image."),
                 isRetryable: false)
         case ImagePreparationError.clipboardUnreadable:
             Failure(
                 medium: medium,
                 message:
-                    "Heeler couldn't read the clipboard. Tap Allow Paste when asked, or check Paste from Other Apps in Settings.",
+                    String(localized: "Heeler couldn't read the clipboard. Tap Allow Paste when asked, or check Paste from Other Apps in Settings."),
                 isRetryable: false)
         case ImagePreparationError.selectionUnavailable:
             Failure(
                 medium: medium,
-                message: "The selected photo is no longer available.",
+                message: String(localized: "The selected photo is no longer available."),
                 isRetryable: false)
         case ImagePreparationError.sourceTooLarge:
             Failure(
                 medium: medium,
-                message: "The selected image is too large to decode safely.",
+                message: String(localized: "The selected image is too large to decode safely."),
                 isRetryable: false)
         case ImagePreparationError.invalidImage:
             Failure(
                 medium: medium,
-                message: "The selected item is not a readable image.",
+                message: String(localized: "The selected item is not a readable image."),
                 isRetryable: false)
         case ImagePreparationError.unableToProduceBoundedOutput:
             Failure(
                 medium: medium,
-                message: "The image could not be reduced below the 16 MiB upload limit.",
+                message: String(localized: "The image could not be reduced below the 16 MiB upload limit."),
                 isRetryable: false)
         case ImagePreparationError.localStorageFailed:
             Failure(
                 medium: medium,
-                message: "Heeler couldn't prepare the image in protected local storage.",
+                message: String(localized: "Heeler couldn't prepare the image in protected local storage."),
                 isRetryable: false)
         case FilePreparationError.selectionUnavailable:
             Failure(
                 medium: medium,
-                message: "The selected file is no longer available.",
+                message: String(localized: "The selected file is no longer available."),
                 isRetryable: false)
         case FilePreparationError.sourceTooLarge:
             Failure(
                 medium: medium,
-                message: "The selected file exceeds the 64 MiB upload limit.",
+                message: String(localized: "The selected file exceeds the 64 MiB upload limit."),
                 isRetryable: false)
         case FilePreparationError.localStorageFailed:
             Failure(
                 medium: medium,
-                message: "Heeler couldn't prepare the file in protected local storage.",
+                message: String(localized: "Heeler couldn't prepare the file in protected local storage."),
                 isRetryable: false)
         default:
             Failure(
                 medium: medium,
-                message: "\(medium.displayName) preparation failed.",
+                message: String(localized: "\(medium.displayName) preparation failed."),
                 isRetryable: false)
         }
     }
@@ -621,8 +621,8 @@ final class ComposerStagingStore {
         case .completed(let outcome):
             let title =
                 outcome.copied
-                ? "\(outcome.medium.displayName) path inserted and copied."
-                : "\(outcome.medium.displayName) path inserted, but couldn't be copied."
+                ? String(localized: "\(outcome.medium.displayName) path inserted and copied.")
+                : String(localized: "\(outcome.medium.displayName) path inserted, but couldn't be copied.")
             return Presentation(
                 icon: outcome.copied ? "checkmark.circle" : "info.circle",
                 title: title,

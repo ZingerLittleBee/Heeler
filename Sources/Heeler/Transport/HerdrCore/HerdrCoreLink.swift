@@ -615,7 +615,7 @@ actor HerdrCoreLink {
     }
 
     /// What a link says when its channel reached the end of its stream.
-    static let closedDetail = "The herdr-core link closed."
+    static let closedDetail = String(localized: "The herdr-core link closed.")
 
     private static func linkFailure(_ error: any Error) -> any Error {
         if error is TransportError { return error }

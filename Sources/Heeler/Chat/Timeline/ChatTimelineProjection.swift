@@ -470,34 +470,77 @@ enum ChatTimelineProjection {
         func files(_ verb: FileVerb) -> Int {
             (paths[verb]?.count ?? 0) + (more[verb] ?? 0) + (titled[verb]?.values.reduce(0, +) ?? 0)
         }
-        func plural(_ count: Int, _ one: String, _ many: String) -> String {
-            count == 1 ? "1 \(one)" : "\(count) \(many)"
-        }
-        func times(_ count: Int) -> String {
-            count == 1 ? "once" : "\(count) times"
-        }
-
         var parts: [String] = []
-        if case let n = count(.command), n > 0 { parts.append("Ran \(plural(n, "command", "commands"))") }
-        if case let n = files(.edited), n > 0 { parts.append("Edited \(plural(n, "file", "files"))") }
-        if case let n = files(.created), n > 0 { parts.append("Created \(plural(n, "file", "files"))") }
-        if case let n = files(.wrote), n > 0 { parts.append("Wrote \(plural(n, "file", "files"))") }
-        if case let n = files(.read), n > 0 { parts.append("Read \(plural(n, "file", "files"))") }
-        if case let n = count(.search), n > 0 { parts.append("Ran \(plural(n, "search", "searches"))") }
-        if case let n = count(.listing), n > 0 { parts.append("Listed \(plural(n, "folder", "folders"))") }
+        if case let n = count(.command), n > 0 {
+            parts.append(n == 1
+                ? String(localized: "Ran \(n) command")
+                : String(localized: "Ran \(n) commands"))
+        }
+        if case let n = files(.edited), n > 0 {
+            parts.append(n == 1
+                ? String(localized: "Edited \(n) file")
+                : String(localized: "Edited \(n) files"))
+        }
+        if case let n = files(.created), n > 0 {
+            parts.append(n == 1
+                ? String(localized: "Created \(n) file")
+                : String(localized: "Created \(n) files"))
+        }
+        if case let n = files(.wrote), n > 0 {
+            parts.append(n == 1
+                ? String(localized: "Wrote \(n) file")
+                : String(localized: "Wrote \(n) files"))
+        }
+        if case let n = files(.read), n > 0 {
+            parts.append(n == 1
+                ? String(localized: "Read \(n) file")
+                : String(localized: "Read \(n) files"))
+        }
+        if case let n = count(.search), n > 0 {
+            parts.append(n == 1
+                ? String(localized: "Ran \(n) search")
+                : String(localized: "Ran \(n) searches"))
+        }
+        if case let n = count(.listing), n > 0 {
+            parts.append(n == 1
+                ? String(localized: "Listed \(n) folder")
+                : String(localized: "Listed \(n) folders"))
+        }
         let web = tools.filter { $0.kind == .web }.map { $0.name.lowercased() }
         let searches = web.filter { $0.contains("search") }.count
         let fetches = web.filter { !$0.contains("search") && $0.contains("fetch") }.count
         let otherWeb = web.count - searches - fetches
-        if searches > 0 { parts.append("Searched the web \(times(searches))") }
-        if fetches > 0 { parts.append("Fetched \(plural(fetches, "page", "pages"))") }
-        if otherWeb > 0 { parts.append("Used the web \(times(otherWeb))") }
-        if case let n = count(.mcp), n > 0 { parts.append("Called \(plural(n, "tool", "tools"))") }
+        if searches > 0 {
+            parts.append(searches == 1
+                ? String(localized: "Searched the web once")
+                : String(localized: "Searched the web \(searches) times"))
+        }
+        if fetches > 0 {
+            parts.append(fetches == 1
+                ? String(localized: "Fetched \(fetches) page")
+                : String(localized: "Fetched \(fetches) pages"))
+        }
+        if otherWeb > 0 {
+            parts.append(otherWeb == 1
+                ? String(localized: "Used the web once")
+                : String(localized: "Used the web \(otherWeb) times"))
+        }
+        if case let n = count(.mcp), n > 0 {
+            parts.append(n == 1
+                ? String(localized: "Called \(n) tool")
+                : String(localized: "Called \(n) tools"))
+        }
         // No verb: an image row may be one the Agent viewed or generated.
-        if case let n = count(.image), n > 0 { parts.append(plural(n, "image", "images")) }
-        if count(.todo) > 0 { parts.append("Updated the to-do list") }
+        if case let n = count(.image), n > 0 {
+            parts.append(n == 1
+                ? String(localized: "\(n) image")
+                : String(localized: "\(n) images"))
+        }
+        if count(.todo) > 0 { parts.append(String(localized: "Updated the to-do list")) }
         if case let n = count(.other), n > 0 {
-            parts.append(parts.isEmpty ? "Used \(plural(n, "tool", "tools"))" : plural(n, "other tool", "other tools"))
+            parts.append(parts.isEmpty
+                ? (n == 1 ? String(localized: "Used \(n) tool") : String(localized: "Used \(n) tools"))
+                : (n == 1 ? String(localized: "\(n) other tool") : String(localized: "\(n) other tools")))
         }
         return parts.joined(separator: ", ")
     }

@@ -51,19 +51,15 @@ enum GrokDialogParser {
     }
 
     private static let unknownReason =
-        "Heeler doesn't know this Grok Build card. Answer it with these keys or in the terminal."
+        String(localized: "Heeler doesn't know this Grok Build card. Answer it with these keys or in the terminal.")
     private static let overlayReason =
-        "Grok Build is showing this card for an agent from its dashboard, which may not be this conversation. "
-        + "Answer it with these keys or in the terminal."
+        String(localized: "Grok Build is showing this card for an agent from its dashboard, which may not be this conversation. Answer it with these keys or in the terminal.")
     private static let questionReason =
-        "Heeler answers only a single question Grok Build asks during its turn. Answer this one with these keys "
-        + "or in the terminal."
+        String(localized: "Heeler answers only a single question Grok Build asks during its turn. Answer this one with these keys or in the terminal.")
     private static let forkReason =
-        "Grok Build's /fork asks this, and every answer forks. Always worktree and Never worktree also save a "
-        + "lasting choice. Answer in the terminal or with these keys."
+        String(localized: "Grok Build's /fork asks this, and every answer forks. Always worktree and Never worktree also save a lasting choice. Answer in the terminal or with these keys.")
     private static let forkHiddenRowsReason =
-        "Grok Build's /fork asks this, and every answer forks. Always worktree and Never worktree, which this "
-        + "width hides, also save a lasting choice. Answer in the terminal or with these keys."
+        String(localized: "Grok Build's /fork asks this, and every answer forks. Always worktree and Never worktree, which this width hides, also save a lasting choice. Answer in the terminal or with these keys.")
 
     // MARK: Permission
 
@@ -102,7 +98,7 @@ enum GrokDialogParser {
                 options.append(
                     DialogOption(
                         ordinal: options.count + 1, number: number, label: label,
-                        detail: role == .decline ? "Ends the turn" : nil, shortcut: option.key, role: role,
+                        detail: role == .decline ? String(localized: "Ends the turn") : nil, shortcut: option.key, role: role,
                         isFocused: index == card.cursor))
             }
         }
@@ -122,7 +118,7 @@ enum GrokDialogParser {
         var subject = DialogSubject()
         let title: String
         if !command.isEmpty {
-            title = "Allow Command"
+            title = String(localized: "Allow Command")
             subject.command = command
             // Cut to fit, the description gives way to the command.
             subject.commandDescription = description?.hasSuffix("…") == true ? nil : description
@@ -132,12 +128,12 @@ enum GrokDialogParser {
         } else if let description, let target = description.wholeMatch(of: /Allow (\S+) to (.+)/) {
             // `Allow Edit to <path>?`. The card's edge can cut the path,
             // and then its `?` is gone.
-            title = "Allow \(target.1)"
+            title = String(localized: "Allow \(String(target.1))")
             if target.2.hasSuffix("?") { subject.filePath = String(target.2.dropLast()) }
         } else if let description, description.hasPrefix("Allow "), description.hasSuffix("?") {
             title = String(description.dropLast())
         } else {
-            title = "Allow Tool"
+            title = String(localized: "Allow Tool")
         }
         let body = [description, subject.command].compactMap { $0 } + withheld
         return BlockedDialog(
@@ -182,7 +178,7 @@ enum GrokDialogParser {
     private static let sendOnce = "Yes, send once"
     private static let sessionEdits = "Yes, allow all edits during this session"
     private static let alwaysApprove = "Yes, and don't ask again for anything (always-approve mode)"
-    private static let cutRuleNote = "Widen the terminal to see the lasting rule."
+    private static let cutRuleNote = String(localized: "Widen the terminal to see the lasting rule.")
 
     // MARK: Question
 
@@ -316,7 +312,7 @@ enum GrokDialogParser {
             focus: card.focus(of: options), subject: DialogSubject())
     }
 
-    private static let forkQuestion = "Run this fork in an isolated git worktree?"
+    private static let forkQuestion = String(localized: "Run this fork in an isolated git worktree?")
     private static let forkRows: [(key: String, label: String, offered: Bool)] = [
         ("1", "Yes", true), ("2", "No", true), ("3", "Always worktree", false), ("4", "Never worktree", false),
     ]
@@ -390,9 +386,9 @@ enum GrokDialogParser {
             guard let number = Int(option.key) else { return nil }
             let choice: (label: String, detail: String, role: DialogOptionRole)
             if option.names("Stop running") {
-                choice = ("Stop running", "Stops the turn and its subagents", .cancel)
-            } else if option.names("Continue to run") {
-                choice = ("Continue to run", "Ends the turn; subagents keep running", .answer)
+                choice = ("Stop running", String(localized: "Stops the turn and its subagents"), .cancel)
+            } else if option.names(String(localized: "Continue to run")) {
+                choice = (String(localized: "Continue to run"), "Ends the turn; subagents keep running", .answer)
             } else if option.names("Always stop") || option.names("Always continue") {
                 continue
             } else {

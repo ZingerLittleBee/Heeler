@@ -57,7 +57,7 @@ struct TerminalFullKeyboard: View {
                     .padding(.horizontal, showsSymbols ? 0 : layout.homeRowInset)
                     .frame(height: layout.rowHeight)
                 HStack(spacing: layout.keySpacing) {
-                    modifierKey(.shift, title: "Shift", image: "shift", label: "Shift modifier")
+                    modifierKey(.shift, title: String(localized: "Shift"), image: "shift", label: String(localized: "Shift modifier"))
                         .frame(width: layout.sideKeyWidth(characterCount: showsSymbols ? 6 : 7))
                     ForEach(
                         Array(showsSymbols ? ".,?!'`" : "zxcvbnm"), id: \.self
@@ -76,21 +76,21 @@ struct TerminalFullKeyboard: View {
                 }
                 .frame(height: layout.rowHeight)
                 HStack(spacing: layout.keySpacing) {
-                    modifierKey(.control, title: "Ctrl", label: "Control modifier")
+                    modifierKey(.control, title: String(localized: "Ctrl"), label: String(localized: "Control modifier"))
                         .frame(width: layout.bottomKeyWidth)
-                    modifierKey(.option, title: "Alt", label: "Option modifier")
+                    modifierKey(.option, title: "Alt", label: String(localized: "Option modifier"))
                         .frame(width: layout.bottomKeyWidth)
                     TerminalKeyboardKeyCap(
-                        title: "Fn", label: "Function key layer", isEnabled: isEnabled,
+                        title: "Fn", label: String(localized: "Function key layer"), isEnabled: isEnabled,
                         isSelected: showsFunctionKeys
                     ) { showsFunctionKeys.toggle() }
                     .frame(width: layout.bottomKeyWidth)
                     TerminalKeyboardKeyCap(
-                        title: showsSymbols ? "ABC" : "#+=", label: "Symbol key layer",
+                        title: showsSymbols ? "ABC" : "#+=", label: String(localized: "Symbol key layer"),
                         isEnabled: isEnabled, isSelected: showsSymbols
                     ) { showsSymbols.toggle() }
                     .frame(width: layout.bottomKeyWidth)
-                    characterKey(" ", title: "Space")
+                    characterKey(" ", title: String(localized: "Space"))
                         .frame(width: layout.spaceWidth)
                     key(.left)
                         .frame(width: layout.bottomKeyWidth)

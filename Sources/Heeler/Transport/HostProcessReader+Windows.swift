@@ -45,9 +45,9 @@ extension HostProcessReader {
             windowsBody,
             // The command line's budget goes further without a walk nobody asked for.
             request.descendantsOf == nil ? "" : windowsWalk,
-            "say ''",
-            "say '\(endMarker(nonce))'",
-            "exit 0",
+            String(localized: "say ''"),
+            String(localized: "say '\(endMarker(nonce))'"),
+            String(localized: "exit 0"),
         ]
         .joined(separator: "\n")
         .replacingOccurrences(of: windowsBeginPlaceholder, with: beginMarker(nonce))

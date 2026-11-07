@@ -56,7 +56,7 @@ enum HerdrCoreShellLaunch {
             "printf 'version '",
             "\(isOnPath(versioned)) && \(quoted(versioned)) --version </dev/null 2>/dev/null",
             "printf '\\n%s\\n' \(quoted(endMarker(nonce)))",
-            "exit 0",
+            String(localized: "exit 0"),
         ]
         return Data("\(quoted(shell)) -ic \(quoted(lines.joined(separator: "\n")))".utf8)
     }
@@ -81,7 +81,7 @@ enum HerdrCoreShellLaunch {
             "printf 'version '",
             "command -v \(quoted(program)) >/dev/null 2>&1 && \(quoted(program)) --version </dev/null 2>/dev/null",
             end,
-            "exit 0",
+            String(localized: "exit 0"),
         ]
         return Data((lines.joined(separator: "\n") + "\n").utf8)
     }

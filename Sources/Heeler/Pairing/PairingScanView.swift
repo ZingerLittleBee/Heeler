@@ -83,8 +83,7 @@ struct PairingScanView: View {
                 } description: {
                     Text(
                         store.scanFailureMessage
-                            ?? "This device cannot scan QR codes. "
-                            + "Paste a Pairing Code, or add the Host manually instead.")
+                            ?? String(localized: "This device cannot scan QR codes. Paste a Pairing Code, or add the Host manually instead."))
                 } actions: {
                     pastePairingCodeButton
                     Button("Add Manually") { addManually() }
@@ -108,7 +107,7 @@ struct PairingScanView: View {
                     pastePairingCodeButton
                     Text(
                         store.scanFailureMessage
-                            ?? "Point the camera at the Pairing Code shown by herdr.")
+                            ?? String(localized: "Point the camera at the Pairing Code shown by herdr."))
                         .font(.callout)
                         .multilineTextAlignment(.center)
                         .padding(12)
@@ -127,8 +126,7 @@ struct PairingScanView: View {
     }
 
     private var deniedCameraCopy: String {
-        "Scanning a Pairing Code uses the camera. Allow camera access in Settings, "
-            + "paste a Pairing Code, or add the Host manually instead."
+        String(localized: "Scanning a Pairing Code uses the camera. Allow camera access in Settings, paste a Pairing Code, or add the Host manually instead.")
     }
 
     private func pastePairingCode() {
@@ -207,8 +205,7 @@ private struct PairingCeremonyView: View {
                     }
                 } footer: {
                     Text(
-                        "Pairing runs this launcher as \(code.username) on the Host. "
-                            + "Pair only with a code your own Host showed you.")
+                        String(localized: "Pairing runs this launcher as \(code.username) on the Host. Pair only with a code your own Host showed you."))
                 }
             }
 
@@ -274,11 +271,11 @@ private struct PairingCeremonyView: View {
 
     private func title(for step: PairingStep) -> String {
         switch step {
-        case .parse: "Read the code"
-        case .reach: "Reach the Host"
-        case .authenticate: "Authenticate with the Pairing Code"
-        case .enroll: "Enroll this device"
-        case .verify: "Verify the new key"
+        case .parse: String(localized: "Read the code")
+        case .reach: String(localized: "Reach the Host")
+        case .authenticate: String(localized: "Authenticate with the Pairing Code")
+        case .enroll: String(localized: "Enroll this device")
+        case .verify: String(localized: "Verify the new key")
         }
     }
 

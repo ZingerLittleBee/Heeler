@@ -109,7 +109,7 @@ struct ChatBackgroundWorkPresentation: Equatable {
         let failed = rows.count { $0.status == .failed }
         let stopped = rows.count { $0.status == .stopped }
         let parts = [
-            (notUpdating, "not updating"), (completed, "done"), (failed, "failed"), (stopped, "stopped"),
+            (notUpdating, String(localized: "not updating")), (completed, "done"), (failed, "failed"), (stopped, "stopped"),
         ].filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }
         let status: Status =
             notUpdating > 0 ? .unconfirmed : failed > 0 ? .failed : completed > 0 ? .completed : .stopped
@@ -140,7 +140,7 @@ struct ChatBackgroundWorkPresentation: Equatable {
             let lastSeen = row.lastActivity.map(time(of:))
             let note: String? =
                 switch status {
-                case .unconfirmed: "Not updating"
+                case .unconfirmed: String(localized: "Not updating")
                 case .quiet: lastSeen.map { "No updates since \($0)" } ?? "No recent updates"
                 default: nil
                 }
@@ -152,7 +152,7 @@ struct ChatBackgroundWorkPresentation: Equatable {
             let started = row.progress?.agents ?? []
             let caption =
                 switch item.kind {
-                case .subagent: item.subtitle ?? "Subagent"
+                case .subagent: item.subtitle ?? String(localized: "Subagent")
                 // The phase it is in: its last running agent's, or with none
                 // running, its last agent's.
                 case .workflow: (started.last { $0.state == .running } ?? started.last)?.phase ?? "Workflow"
@@ -228,14 +228,14 @@ struct ChatBackgroundWorkPresentation: Equatable {
                 parts.append("\(count) tokens")
             }
             if let toolUses = usage.toolUses {
-                parts.append(toolUses == 1 ? "1 tool use" : "\(toolUses) tool uses")
+                parts.append(toolUses == 1 ? String(localized: "1 tool use") : String(localized: "\(toolUses) tool uses"))
             }
             return parts.isEmpty ? nil : parts.joined(separator: " · ")
         }
 
         private func kindPhrase(_ item: ChatBackgroundWorkItem) -> String {
             switch item.kind {
-            case .subagent: item.subtitle.map { "\($0) subagent" } ?? "Subagent"
+            case .subagent: item.subtitle.map { "\($0) subagent" } ?? String(localized: "Subagent")
             case .workflow: "Workflow"
             }
         }
@@ -243,7 +243,7 @@ struct ChatBackgroundWorkPresentation: Equatable {
         private func statePhrase(_ status: Status, lastSeen: String?) -> String {
             switch status {
             case .running: "running"
-            case .unconfirmed: "not updating"
+            case .unconfirmed: String(localized: "not updating")
             case .quiet: lastSeen.map { "no updates since \($0)" } ?? "no recent updates"
             case .completed: "done"
             case .failed: "failed"

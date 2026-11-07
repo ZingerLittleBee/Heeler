@@ -52,7 +52,7 @@ enum ChatCommandMenu {
     static func commands(skills: [AgentSkill], agentIsIdle: Bool, program: ChatProgram) -> [ChatCommand] {
         var commands = [
             ChatCommand(
-                name: "compact", summary: "Summarize the conversation to free up context",
+                name: "compact", summary: String(localized: "Summarize the conversation to free up context"),
                 kind: .compact, isEnabled: agentIsIdle)
         ]
         var names: Set<String> = ["compact"]
@@ -174,7 +174,7 @@ struct ChatSendProfile: Sendable {
     /// completions once a space follows, so a focus would not reach it as
     /// typed.
     private static let ompCompactSubmission = ChatCommandSubmission.bare(
-        argumentsRefusal: "Add compaction focus in the Agent terminal.")
+        argumentsRefusal: String(localized: "Add compaction focus in the Agent terminal."))
 
     /// OpenCode runs a bare `/compact` from its popup. With a space after
     /// it, the popup closes and the text goes to the model as a message.
@@ -249,11 +249,11 @@ struct ChatSendRules: Sendable {
         let clean = Self.removingInvisibles(draft)
         let trimmed = clean.trimmingCharacters(in: .whitespacesAndNewlines)
         guard TerminalTextSafety.containsOnlySafeScalars(clean) else {
-            return .refused(.unsafeText("The message contains terminal control characters."))
+            return .refused(.unsafeText(String(localized: "The message contains terminal control characters.")))
         }
         if trimmed.hasPrefix("!") {
             return .refused(
-                .unsafeText("A message starting with ! runs a shell command. Open the terminal to run one."))
+                .unsafeText(String(localized: "A message starting with ! runs a shell command. Open the terminal to run one.")))
         }
         if profile.exitWords.contains(trimmed.lowercased()) {
             return .refused(.unsafeText("Sending this would exit \(program.chatName). Open the terminal to exit."))
@@ -282,21 +282,20 @@ struct ChatSendRules: Sendable {
     fileprivate static func ompRefusal(_ clean: String, trimmed: String) -> ComposerRefusal? {
         let lowered = trimmed.lowercased()
         if runsPython(trimmed) {
-            return .unsafeText("A message starting with $ runs Python in Oh My Pi. Open the terminal to run it.")
+            return .unsafeText(String(localized: "A message starting with $ runs Python in Oh My Pi. Open the terminal to run it."))
         }
         if trimmed == "." || lowered == "c" {
-            return .unsafeText("Oh My Pi reads this as Continue. Open the terminal to continue.")
+            return .unsafeText(String(localized: "Oh My Pi reads this as Continue. Open the terminal to continue."))
         }
         if trimmed.hasPrefix("->") || trimmed.hasPrefix("=>") {
             return .unsafeText(
-                "Oh My Pi queues a message starting with -> or => for later. Open the terminal to queue one.")
+                String(localized: "Oh My Pi queues a message starting with -> or => for later. Open the terminal to queue one."))
         }
         let lines = trimmingTrailingWhitespace(TerminalTextSafety.normalizingNewlines(clean))
             .split(separator: "\n", omittingEmptySubsequences: false)
         if lines.count >= ompLargePasteLines {
             return .unsafeText(
-                "Oh My Pi opens a menu for pastes of 100 lines or more. "
-                    + "Shorten the message or paste it in the terminal.")
+                String(localized: "Oh My Pi opens a menu for pastes of 100 lines or more. Shorten the message or paste it in the terminal."))
         }
         return nil
     }

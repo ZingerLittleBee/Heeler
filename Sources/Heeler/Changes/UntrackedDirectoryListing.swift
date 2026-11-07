@@ -28,7 +28,7 @@ struct UntrackedDirectoryListing: Sendable, Equatable {
 
     /// Shown instead of child rows when git would not descend.
     var repositoryNotice: String? {
-        isSeparateRepository ? "This directory is a separate Git repository." : nil
+        isSeparateRepository ? String(localized: "This directory is a separate Git repository.") : nil
     }
 }
 

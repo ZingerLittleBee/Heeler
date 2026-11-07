@@ -336,7 +336,7 @@ final class HostLiveActivityCoordinator {
         guard let key = notificationKey(for: hostID),
             let content = AgentActivityContentBuilder.content(for: desired, key: key)
         else {
-            reconcileNotes[hostID] = "sealing the update failed"
+            reconcileNotes[hostID] = String(localized: "sealing the update failed")
             return
         }
 
@@ -347,7 +347,7 @@ final class HostLiveActivityCoordinator {
             return
         }
         guard controller.areEnabled else {
-            reconcileNotes[hostID] = "idle — iOS has Live Activities disabled for Heeler"
+            reconcileNotes[hostID] = String(localized: "idle — iOS has Live Activities disabled for Heeler")
             return
         }
         do {
@@ -367,12 +367,12 @@ final class HostLiveActivityCoordinator {
     /// The gate that kept `computeDesired` from producing content, in the
     /// order the gates run — surfaced by the Settings diagnostic row.
     private func desireBlocker(for hostID: Host.ID) -> String {
-        if !controller.areEnabled { return "iOS has Live Activities disabled for Heeler" }
-        if !preferences.isEnabled(for: hostID) { return "the per-Host toggle is off" }
-        if registrationGate(hostID) != .open { return "this device is not registered with the Host Helper" }
-        if deviceToken() == nil { return "no push device token yet" }
-        if notificationKey(for: hostID) == nil { return "no Notification Key for this Host" }
-        return "no working, blocked, or done agents"
+        if !controller.areEnabled { return String(localized: "iOS has Live Activities disabled for Heeler") }
+        if !preferences.isEnabled(for: hostID) { return String(localized: "the per-Host toggle is off") }
+        if registrationGate(hostID) != .open { return String(localized: "this device is not registered with the Host Helper") }
+        if deviceToken() == nil { return String(localized: "no push device token yet") }
+        if notificationKey(for: hostID) == nil { return String(localized: "no Notification Key for this Host") }
+        return String(localized: "no working, blocked, or done agents")
     }
 
     private func requestFailureReason(_ error: any Error) -> String {

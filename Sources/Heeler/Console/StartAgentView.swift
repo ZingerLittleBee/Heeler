@@ -64,8 +64,8 @@ struct StartAgentView: View {
                         Text("Directory")
                     } footer: {
                         Text(store.offersWorkspaceAndTabNames
-                            ? "The Agent starts in a new tab here, next to the one you opened this from."
-                            : "The Agent starts in this directory.")
+                            ? String(localized: "The Agent starts in a new tab here, next to the one you opened this from.")
+                            : String(localized: "The Agent starts in this directory."))
                     }
                 } else {
                     Section("Host") {
@@ -94,7 +94,7 @@ struct StartAgentView: View {
                         if store.launchTarget == .newWorkspace {
                             if store.offersWorkspaceName {
                                 TextField(
-                                    "Workspace name (optional)",
+                                    String(localized: "Workspace name (optional)"),
                                     text: $store.newWorkspaceLabel)
                                     .autocorrectionDisabled()
                             }
@@ -119,8 +119,8 @@ struct StartAgentView: View {
                     } footer: {
                         if store.launchTarget == .newWorkspace {
                             Text(store.offersWorkspaceName
-                                ? "Creates a fresh Workspace on the Host. An empty name uses the directory's name."
-                                : "Creates a Workspace in this directory, named after its folder.")
+                                ? String(localized: "Creates a fresh Workspace on the Host. An empty name uses the directory's name.")
+                                : String(localized: "Creates a Workspace in this directory, named after its folder."))
                         }
                     }
                 }
@@ -228,8 +228,8 @@ struct StartAgentView: View {
                         }
                     } else {
                         Text(store.discoversThroughUserShell
-                            ? "Agents your own shell on this Host can run. Launch Presets live in Settings › Agents & Accounts."
-                            : "Agents installed and launchable from this Host's PATH. Launch Presets live in Settings › Agents & Accounts.")
+                            ? String(localized: "Agents your own shell on this Host can run. Launch Presets live in Settings › Agents & Accounts.")
+                            : String(localized: "Agents installed and launchable from this Host's PATH. Launch Presets live in Settings › Agents & Accounts."))
                     }
                 }
 
@@ -265,7 +265,7 @@ struct StartAgentView: View {
                     Section {
                         AgentArgumentsField(
                             text: $store.arguments,
-                            placeholder: "Arguments (optional)")
+                            placeholder: String(localized: "Arguments (optional)"))
                     } header: {
                         Text("Arguments")
                     } footer: {

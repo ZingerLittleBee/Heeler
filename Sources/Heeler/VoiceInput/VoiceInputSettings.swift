@@ -139,14 +139,14 @@ final class VoiceInputSettings {
         var message: String {
             switch self {
             case .options(let problem): problem.message
-            case .optionsStorage: "The request settings could not be saved."
+            case .optionsStorage: String(localized: "The request settings could not be saved.")
             case .invalidURL(let problem): problem.message
-            case .missingModel: "Enter the model name the service expects."
-            case .missingKey: "Enter the service's API key."
-            case .invalidKey: "Remove the spaces or line breaks from the key."
-            case .notConsented: "Voice Input needs your agreement to send recordings."
-            case .keychain: "The key could not be saved in the Keychain."
-            case .keyRemoval: "The key could not be removed from the Keychain. Try again."
+            case .missingModel: String(localized: "Enter the model name the service expects.")
+            case .missingKey: String(localized: "Enter the service's API key.")
+            case .invalidKey: String(localized: "Remove the spaces or line breaks from the key.")
+            case .notConsented: String(localized: "Voice Input needs your agreement to send recordings.")
+            case .keychain: String(localized: "The key could not be saved in the Keychain.")
+            case .keyRemoval: String(localized: "The key could not be removed from the Keychain. Try again.")
             }
         }
     }

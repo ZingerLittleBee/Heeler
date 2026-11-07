@@ -82,11 +82,11 @@ struct AgentUsageLimitChip: Identifiable, Equatable {
             if let tightest, limits.state == "ok" || limits.state == "throttled" {
                 title = AgentUsageLimitsView.windowName(tightest, program: program)
             } else if limits.state == "disabled" {
-                title = "Limits off"
+                title = String(localized: "Limits off")
             } else if limits.state == "unavailable" && limits.reason == "notReadYet" {
-                title = "Reading…"
+                title = String(localized: "Reading…")
             } else {
-                title = "Unavailable"
+                title = String(localized: "Unavailable")
             }
             let isLive = limits.state == "ok" || limits.state == "throttled"
             return Self(
@@ -350,7 +350,7 @@ struct AgentUsageDaySheet: View {
                     includesYear: false, includesWeekday: true))
                     .font(.title2.bold())
                 Text(scope.included.count == 1
-                    ? "Token Usage on this Host" : "Token Usage on these \(scope.included.count.formatted()) Hosts")
+                    ? String(localized: "Token Usage on this Host") : String(localized: "Token Usage on these \(scope.included.count.formatted()) Hosts"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

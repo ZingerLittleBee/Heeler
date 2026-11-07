@@ -29,7 +29,7 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
         let program =
             agent.isKnownProgram
             ? noted?.program ?? SupportedAgentKind(rawValue: agent.kind)?.displayName ?? agent.kind
-            : "This program"
+            : String(localized: "This program")
         agentProcess = record.foreground?.pid ?? record.pid
         if Self.reportedForItself(record, kind: agent.kind) {
             text = "\(program) has not reported a state yet."

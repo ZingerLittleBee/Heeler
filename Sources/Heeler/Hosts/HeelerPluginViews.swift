@@ -15,7 +15,7 @@ struct PluginRequirementNote: View {
     let text: String
 
     var body: some View {
-        let message = "\(text) See this Host's page in Hosts."
+        let message = String(localized: "\(text) See this Host's page in Hosts.")
         Label {
             Text(message)
         } icon: {

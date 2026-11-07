@@ -104,11 +104,11 @@ final class SkillsPaneStore {
         }
         return switch error {
         case TransportError.sshUnreachable:
-            "The Host is not connected."
+            String(localized: "The Host is not connected.")
         case TransportError.timedOut:
-            "The Host did not answer in time."
+            String(localized: "The Host did not answer in time.")
         default:
-            "Loading skills failed: \(error)"
+            String(localized: "Loading skills failed: \(String(describing: error))")
         }
     }
 }

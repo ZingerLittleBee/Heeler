@@ -61,13 +61,11 @@ struct LocalMachinePickerView: View {
                         if let hint = model.waitingHint {
                             Text(
                                 hint == .permissionDenied
-                                    ? "Waiting for Local Network access. Allow it when asked, or "
-                                        + "turn it on for Heeler in Settings."
-                                    : "Waiting for the network…")
+                                    ? String(localized: "Waiting for Local Network access. Allow it when asked, or turn it on for Heeler in Settings.")
+                                    : String(localized: "Waiting for the network…"))
                         }
                         Text(
-                            "Machines that offer SSH on this network. Heeler saves the IP address, "
-                                + "so the Route still works away from this network's name service.")
+                            String(localized: "Machines that offer SSH on this network. Heeler saves the IP address, so the Route still works away from this network's name service."))
                     }
                 }
                 if let error = model.resolveError {

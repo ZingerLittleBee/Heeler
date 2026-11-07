@@ -21,7 +21,7 @@ enum DialogActionPlanner {
         case .codex: try CodexDialogPlanner(dialog: dialog).plan(action)
         case .omp: try OMPDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         case .opencode: try OpenCodeDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
-        case .pi: throw .unsupported("Answer this dialog in the Agent terminal.")
+        case .pi: throw .unsupported(String(localized: "Answer this dialog in the Agent terminal."))
         case .grok: try GrokDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         }
     }
@@ -32,14 +32,14 @@ enum DialogActionPlanner {
         number: Int, for excerpt: GenericDialogExcerpt, program: ChatProgram
     ) throws(DialogPlanError) -> DialogActionPlan {
         guard program == .claude || program == .codex else {
-            throw .unsupported("Answer this dialog in the Agent terminal.")
+            throw .unsupported(String(localized: "Answer this dialog in the Agent terminal."))
         }
         guard excerpt.numbered[number] != nil else { throw .noSuchOption(number) }
         guard let digit = digitKey(number) else { throw .unsupported("Option \(number) has no digit key.") }
         // Claude draws its text cursor in reverse video. With a field
         // focused, the digit would be typed rather than pressed.
         if program == .claude, excerpt.rows.contains(where: { $0.runs.contains(where: \.style.isReverse) }) {
-            throw .unsupported("A text field in the dialog has the cursor, so a digit would be typed into it.")
+            throw .unsupported(String(localized: "A text field in the dialog has the cursor, so a digit would be typed into it."))
         }
         let confirmation: ConfirmationRule = program == .claude ? .fingerprintChange : .fingerprintChangeOrUnblocked
         return DialogActionPlan(steps: [.keys([digit])], confirmation: confirmation)
@@ -132,7 +132,7 @@ struct StepBuilder {
         guard let current = focus, dialog.option(current)?.input != nil else { return }
         let neighbor = current > 1 ? current - 1 : current + 1
         guard dialog.option(neighbor) != nil else {
-            throw .unsupported("The focused text field has no option next to it to step to.")
+            throw .unsupported(String(localized: "The focused text field has no option next to it to step to."))
         }
         try move(to: neighbor)
     }
@@ -203,7 +203,7 @@ private struct ClaudeDialogPlanner {
         case .otherText:
             throw .needsText
         case .answer where isMultiSelect:
-            throw .unsupported("A multi-select question takes its answers as a set.")
+            throw .unsupported(String(localized: "A multi-select question takes its answers as a set."))
         case .next:
             try builder.move(to: ordinal)
             builder.keys("enter")
@@ -222,11 +222,11 @@ private struct ClaudeDialogPlanner {
     /// differently`.
     private func amend(_ ordinal: Int, note: String) throws(DialogPlanError) -> DialogActionPlan {
         guard [.claudeBash, .claudeFileEdit, .claudeFileCreate, .claudeFileRead].contains(dialog.kind) else {
-            throw .unsupported("Only Claude's Bash and file dialogs take a note with the answer.")
+            throw .unsupported(String(localized: "Only Claude's Bash and file dialogs take a note with the answer."))
         }
         guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
         guard option.role == .approve || option.role == .decline else {
-            throw .unsupported("Only the Yes and No rows take a note.")
+            throw .unsupported(String(localized: "Only the Yes and No rows take a note."))
         }
         let text = try DialogActionPlanner.fieldText(note)
         guard !dialog.hasTypedText else { throw .textFieldNotEmpty }
@@ -249,7 +249,7 @@ private struct ClaudeDialogPlanner {
             throw .unsupported("Option \(ordinal) is not a text field.")
         }
         guard !isMultiSelect else {
-            throw .unsupported("Heeler does not type into a multi-select question's Other row.")
+            throw .unsupported(String(localized: "Heeler does not type into a multi-select question's Other row."))
         }
         let text = try DialogActionPlanner.fieldText(text)
         guard !dialog.hasTypedText else { throw .textFieldNotEmpty }
@@ -267,7 +267,7 @@ private struct ClaudeDialogPlanner {
     private func approvePlan(note: String) throws(DialogPlanError) -> DialogActionPlan {
         guard dialog.kind == .claudePlan, let field = dialog.options.last(where: { $0.role == .otherText }),
             field.detail?.hasPrefix("shift+tab to approve") == true
-        else { throw .unsupported("This dialog does not offer approving with feedback.") }
+        else { throw .unsupported(String(localized: "This dialog does not offer approving with feedback.")) }
         return try respond(field.ordinal, text: note, submitKey: "shift+tab")
     }
 
@@ -275,7 +275,7 @@ private struct ClaudeDialogPlanner {
     /// button and presses Enter.
     private func submitSelection(_ ordinals: Set<Int>) throws(DialogPlanError) -> DialogActionPlan {
         guard isMultiSelect, let button = dialog.options.first(where: { $0.role == .next }) else {
-            throw .unsupported("Only a multi-select question takes a set of answers.")
+            throw .unsupported(String(localized: "Only a multi-select question takes a set of answers."))
         }
         guard !ordinals.isEmpty else { throw .emptySelection }
         for ordinal in ordinals.sorted() {
@@ -337,7 +337,7 @@ private struct CodexDialogPlanner {
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork, .openCodePermission,
             .openCodeQuestion:
-            throw .unsupported("Not a Codex dialog.")
+            throw .unsupported(String(localized: "Not a Codex dialog."))
         }
     }
 
@@ -372,7 +372,7 @@ private struct CodexDialogPlanner {
         case .choose(let ordinal):
             guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
             guard notes == nil else {
-                throw .unsupported("Codex's notes field is open, so keys would be typed into it.")
+                throw .unsupported(String(localized: "Codex's notes field is open, so keys would be typed into it."))
             }
             var builder = StepBuilder(dialog: dialog)
             try builder.press(option)
@@ -381,14 +381,14 @@ private struct CodexDialogPlanner {
         case .respond(let ordinal, let text):
             guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
             guard option.role == .otherText else {
-                throw .unsupported("Heeler adds notes only to None of the above.")
+                throw .unsupported(String(localized: "Heeler adds notes only to None of the above."))
             }
             let text = try DialogActionPlanner.fieldText(text)
             var builder = StepBuilder(dialog: dialog)
             if notes != nil {
                 // The open notes belong to the highlighted option.
                 guard dialog.focus.focusedOrdinal == ordinal else {
-                    throw .unsupported("Codex's notes field is open on another option.")
+                    throw .unsupported(String(localized: "Codex's notes field is open on another option."))
                 }
             } else {
                 try builder.move(to: ordinal)
@@ -420,7 +420,7 @@ private struct CodexDialogPlanner {
         case .dismiss:
             DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChangeOrUnblocked, focusesComposer: true)
         case .choose, .amend, .respond, .approvePlan, .submitSelection, .skipQuestion:
-            throw .unsupported("Open the questions first.")
+            throw .unsupported(String(localized: "Open the questions first."))
         }
     }
 
@@ -431,7 +431,7 @@ private struct CodexDialogPlanner {
         case .choose(let ordinal):
             guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
             guard option.role == .answer else {
-                throw .unsupported("Heeler does not answer with Codex's Other yet.")
+                throw .unsupported(String(localized: "Heeler does not answer with Codex's Other yet."))
             }
             var builder = StepBuilder(dialog: dialog)
             try builder.press(option)
@@ -439,7 +439,7 @@ private struct CodexDialogPlanner {
         case .skipQuestion:
             return DialogActionPlan(steps: [.keys(["ctrl+]"])], confirmation: .fingerprintChangeOrUnblocked)
         case .dismiss, .amend, .respond, .approvePlan, .submitSelection, .expandQuestions:
-            throw .unsupported("Codex offers only an answer or a skip here.")
+            throw .unsupported(String(localized: "Codex offers only an answer or a skip here."))
         }
     }
 

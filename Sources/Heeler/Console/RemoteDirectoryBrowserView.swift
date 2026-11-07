@@ -13,29 +13,29 @@ struct RemoteDirectoryBrowserView: View {
 
         var title: String {
             switch self {
-            case .workspace: "Browse Directories"
-            case .account: "Choose Directory"
+            case .workspace: String(localized: "Browse Directories")
+            case .account: String(localized: "Choose Directory")
             }
         }
 
         var useTitle: String {
             switch self {
             case .workspace: "Select"
-            case .account: "Add"
+            case .account: String(localized: "Add")
             }
         }
 
         var useLabel: String {
             switch self {
-            case .workspace: "Select folder"
-            case .account: "Add folder as an Account"
+            case .workspace: String(localized: "Select folder")
+            case .account: String(localized: "Add folder as an Account")
             }
         }
 
         var emptyDescription: String {
             switch self {
-            case .workspace: "You can select this folder for the new Workspace."
-            case .account(let kind): "You can add this folder as a \(kind.displayName) Account."
+            case .workspace: String(localized: "You can select this folder for the new Workspace.")
+            case .account(let kind): String(localized: "You can add this folder as a \(kind.displayName) Account.")
             }
         }
 
@@ -165,7 +165,7 @@ struct RemoteDirectoryBrowserView: View {
                 text: $browser.filter,
                 isPresented: $isFiltering,
                 placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Filter folders")
+                prompt: String(localized: "Filter folders"))
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .scrollDismissesKeyboard(.interactively)
@@ -247,12 +247,12 @@ struct RemoteDirectoryBrowserView: View {
     private var emptyState: some View {
         if hidesDotFolders, !browser.visibleDirectories(hidingDotFolders: false).isEmpty {
             ContentUnavailableView {
-                Label(browser.filter.isEmpty ? "Dot Folders Hidden" : "No Matching Folders",
+                Label(browser.filter.isEmpty ? String(localized: "Dot Folders Hidden") : String(localized: "No Matching Folders"),
                     systemImage: "eye.slash")
             } description: {
                 Text(browser.filter.isEmpty
-                    ? "Every folder here starts with a dot."
-                    : "Only dot folders match “\(browser.filter)”.")
+                    ? String(localized: "Every folder here starts with a dot.")
+                    : String(localized: "Only dot folders match “\(browser.filter)”."))
             } actions: {
                 Button("Show Dot Folders") { prefersHidingDotFolders = false }
                     .accessibilityIdentifier("directory-browser-show-dot-folders")

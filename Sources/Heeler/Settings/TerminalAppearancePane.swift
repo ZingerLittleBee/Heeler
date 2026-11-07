@@ -29,9 +29,9 @@ struct TerminalAppearancePane: View {
     private var controlsRow: some View {
         HStack(spacing: 10) {
             HStack(spacing: 0) {
-                sizeButton(symbol: "textformat.size.smaller", delta: -1, label: "Smaller")
+                sizeButton(symbol: "textformat.size.smaller", delta: -1, label: String(localized: "Smaller"))
                 Divider().frame(height: 20)
-                sizeButton(symbol: "textformat.size.larger", delta: 1, label: "Larger")
+                sizeButton(symbol: "textformat.size.larger", delta: 1, label: String(localized: "Larger"))
             }
             .background(.quaternary, in: .rect(cornerRadius: 10))
 

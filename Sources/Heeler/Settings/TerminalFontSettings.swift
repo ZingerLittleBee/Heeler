@@ -22,10 +22,10 @@ enum TerminalFontOption: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .jetBrainsMono: "JetBrains Mono"
-        case .ibmPlexMono: "IBM Plex Mono"
+        case .jetBrainsMono: String(localized: "JetBrains Mono")
+        case .ibmPlexMono: String(localized: "IBM Plex Mono")
         case .menlo: "Menlo"
-        case .courierNew: "Courier New"
+        case .courierNew: String(localized: "Courier New")
         }
     }
 
@@ -34,9 +34,9 @@ enum TerminalFontOption: String, CaseIterable, Identifiable, Sendable {
     var familyName: String? {
         switch self {
         case .jetBrainsMono: nil
-        case .ibmPlexMono: "IBM Plex Mono"
+        case .ibmPlexMono: String(localized: "IBM Plex Mono")
         case .menlo: "Menlo"
-        case .courierNew: "Courier New"
+        case .courierNew: String(localized: "Courier New")
         }
     }
 

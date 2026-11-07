@@ -34,7 +34,7 @@ extension AgentUsageStyle {
     ) -> String {
         switch metric {
         case .cost: cost(summary.estimatedCostUSD, locale: locale)
-        case .tokens: "\(tokens(summary.tokens.total, locale: locale)) tokens"
+        case .tokens: String(localized: "\(tokens(summary.tokens.total, locale: locale)) tokens")
         }
     }
 }

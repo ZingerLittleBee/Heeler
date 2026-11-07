@@ -28,9 +28,9 @@ struct ChangesFreshness: Equatable {
         formatter.timeZone = timeZone
         formatter.timeStyle = .short
         let time = formatter.string(from: readAt)
-        if calendar.isDate(readAt, inSameDayAs: now) { return "Read at \(time)" }
+        if calendar.isDate(readAt, inSameDayAs: now) { return String(localized: "Read at \(time)") }
         formatter.timeStyle = .none
         formatter.dateStyle = .medium
-        return "Read \(formatter.string(from: readAt)) at \(time)"
+        return String(localized: "Read \(formatter.string(from: readAt)) at \(time)")
     }
 }

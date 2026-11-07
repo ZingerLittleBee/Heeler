@@ -61,8 +61,7 @@ struct AgentsAndAccountsSettingsView: View {
                 Text("Accounts")
             } footer: {
                 Text(
-                    "Each harness’s config folders on a Host, such as a second Claude Code or Codex sign-in. "
-                        + "Kept on the Host for every device; Usage, Chat and Launch Presets read them.")
+                    String(localized: "Each harness’s config folders on a Host, such as a second Claude Code or Codex sign-in. Kept on the Host for every device; Usage, Chat and Launch Presets read them."))
             }
         }
         .navigationTitle("Agents & Accounts")

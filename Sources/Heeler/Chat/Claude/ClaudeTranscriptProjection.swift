@@ -250,7 +250,7 @@ enum ClaudeTranscriptProjection {
     /// Claude Code's fixed opening of a compaction summary (2.1.301), which
     /// would fill the divider's few preview lines.
     static let compactionPreamble =
-        "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation."
+        String(localized: "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.")
 
     /// A summary without its fixed opening, its `Summary:` line and the
     /// first section's heading, so the preview starts with what the
@@ -266,6 +266,8 @@ enum ClaudeTranscriptProjection {
         dropLeading(\.isEmpty)
         dropLeading { $0 == "Summary:" }
         dropLeading(\.isEmpty)
+        // Claude が生成する要約の見出し。リモート側は常に英語で出力する
+        // ため、検索用として翻訳しない（Localization 除外対象）。
         let heading = "1. Primary Request and Intent:"
         if let first = lines.first?.trimmingCharacters(in: .whitespaces), first.hasPrefix(heading) {
             let rest = first.dropFirst(heading.count).trimmingCharacters(in: .whitespaces)
@@ -293,9 +295,9 @@ enum ClaudeTranscriptProjection {
 
     static func modelChangeTitle(from: String?, to: String?) -> String {
         switch (from, to) {
-        case (let from?, let to?): "Switched from \(from) to \(to)"
-        case (nil, let to?): "Switched to \(to)"
-        default: "Switched model"
+        case (let from?, let to?): String(localized: "Switched from \(from) to \(to)")
+        case (nil, let to?): String(localized: "Switched to \(to)")
+        default: String(localized: "Switched model")
         }
     }
 }
@@ -543,7 +545,7 @@ private struct Builder {
             placed = add(
                 entryID, at: record, .tool(toolRow(for: use, in: record, status: status, answer: answer)))
         case "EnterPlanMode" where status == .succeeded:
-            placed = add(entryID, at: record, .notice(ChatNotice(kind: .planMode, title: "Entered plan mode")))
+            placed = add(entryID, at: record, .notice(ChatNotice(kind: .planMode, title: String(localized: "Entered plan mode"))))
         default:
             placed = add(
                 entryID, at: record, .tool(toolRow(for: use, in: record, status: status, answer: answer)))
@@ -591,7 +593,7 @@ private struct Builder {
         if structured?.status == "teammate_spawned",
             let name = (use.input.teammateName ?? structured?.teammateName).flatMap(\.nonEmpty)
         {
-            row.subtitle = "Teammate @\(name)"
+            row.subtitle = String(localized: "Teammate @\(name)")
         }
         // A background agent reports through its notification.
         if row.preview == nil, !use.id.isEmpty, let report = notifications[use.id]?.notification.result,
@@ -653,7 +655,7 @@ private struct Builder {
         var item: ChatBackgroundWorkItem
         if Self.isWorkflow(use, result: result) {
             item = ChatBackgroundWorkItem(
-                id: use.id, kind: .workflow, title: result.workflowName.flatMap(\.nonEmpty) ?? "Workflow",
+                id: use.id, kind: .workflow, title: result.workflowName.flatMap(\.nonEmpty) ?? String(localized: "Workflow"),
                 subtitle: result.workflowSummary.flatMap(\.nonEmpty), launchOffset: record.byteOffset)
             if let transcriptPath, let runID = result.runID {
                 item.journalPath = ClaudeTranscriptLocation.workflowJournalPath(
@@ -661,7 +663,7 @@ private struct Builder {
             }
         } else if use.name == "Agent" || use.name == "Task" {
             item = ChatBackgroundWorkItem(
-                id: use.id, kind: .subagent, title: use.input.description.flatMap(\.nonEmpty) ?? "Subagent",
+                id: use.id, kind: .subagent, title: use.input.description.flatMap(\.nonEmpty) ?? String(localized: "Subagent"),
                 subtitle: use.input.subagentType.flatMap(\.nonEmpty), launchOffset: record.byteOffset)
         } else {
             return nil
@@ -877,7 +879,7 @@ private struct Builder {
         case "agents_killed":
             add(
                 "notice:\(record.uuid)", at: record,
-                .notice(ChatNotice(kind: .stopped, title: "All background agents stopped")))
+                .notice(ChatNotice(kind: .stopped, title: String(localized: "All background agents stopped"))))
         case "informational" where ClaudeTranscriptProjection.unknownCommand(record) != nil:
             addUnknownCommand(record, content: content)
         default:

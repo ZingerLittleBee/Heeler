@@ -9,13 +9,13 @@ enum HostLatencyFormatting {
     /// there would round to a zero the measurement does not support.
     static func formatted(_ latency: Duration) -> String {
         guard let milliseconds = roundedMilliseconds(latency) else { return "<1 ms" }
-        return "\(milliseconds) ms"
+        return String(localized: "\(milliseconds) ms")
     }
 
     /// The same value spelled for VoiceOver, which reads `ms` as letters.
     static func spoken(_ latency: Duration) -> String {
         guard let milliseconds = roundedMilliseconds(latency) else {
-            return "Less than 1 millisecond"
+            return String(localized: "Less than 1 millisecond")
         }
         return "\(milliseconds) millisecond\(milliseconds == 1 ? "" : "s")"
     }

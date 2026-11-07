@@ -128,18 +128,17 @@
             return [
                 "",
                 rule,
-                " \(bold)\(accent)Bash command\(reset)",
-                " \(inactive)Run the declined card UI test\(reset)",
+                String(localized: " \(bold)\(accent)Bash command\(reset)"),
+                String(localized: " \(inactive)Run the declined card UI test\(reset)"),
                 dashed,
-                " swift test --filter CheckoutUITests/testDeclinedPaymentKeepsTheCart",
+                String(localized: " swift test --filter CheckoutUITests/testDeclinedPaymentKeepsTheCart"),
                 dashed,
-                " Do you want to proceed?",
-                " \(accent)❯ \(reset)\(inactive)1. \(reset)\(accent)Yes\(reset)",
-                "   \(inactive)2. \(reset)Yes, and don't ask again for \(bold)swift test\(reset) commands in "
-                    + "\(bold)/workspace/storefront\(reset)",
-                "   \(inactive)3. \(reset)No",
+                String(localized: " Do you want to proceed?"),
+                String(localized: " \(accent)❯ \(reset)\(inactive)1. \(reset)\(accent)Yes\(reset)"),
+                String(localized: "   \(inactive)2. \(reset)Yes, and don't ask again for \(bold)swift test\(reset) commands in \(bold)/workspace/storefront\(reset)"),
+                String(localized: "   \(inactive)3. \(reset)No"),
                 "",
-                " \(inactive)Esc to cancel · Tab to amend\(reset)",
+                String(localized: " \(inactive)Esc to cancel · Tab to amend\(reset)"),
             ].joined(separator: "\r\n")
         }()
 
@@ -186,14 +185,14 @@
                         (
                             14, 6, 14, 6,
                             [
-                                " ## Pair your phone",
+                                String(localized: " ## Pair your phone"),
                                 " ",
-                                "-1. Find the host's address in **Settings → Network**.",
-                                "-2. Type the address and port into the app.",
-                                "-3. Confirm the fingerprint shown on both screens.",
-                                "+1. Open **Settings → Devices** on the computer and choose **Show Pairing Code**.",
-                                "+2. In the app, tap **Add Host** and point the camera at the code.",
-                                "+3. Check that the fingerprint matches on both screens, then tap **Trust**.",
+                                String(localized: "-1. Find the host's address in **Settings → Network**."),
+                                String(localized: "-2. Type the address and port into the app."),
+                                String(localized: "-3. Confirm the fingerprint shown on both screens."),
+                                String(localized: "+1. Open **Settings → Devices** on the computer and choose **Show Pairing Code**."),
+                                String(localized: "+2. In the app, tap **Add Host** and point the camera at the code."),
+                                String(localized: "+3. Check that the fingerprint matches on both screens, then tap **Trust**."),
                                 " ",
                             ]
                         ),
@@ -201,12 +200,12 @@
                             51, 3, 51, 7,
                             [
                                 " ",
-                                " If pairing fails, check that both devices share a network.",
+                                String(localized: " If pairing fails, check that both devices share a network."),
                                 " ",
-                                "+> **Advanced:** to pair without a camera, open **Settings → Devices → Add Manually**",
-                                "+> and type the host's address and port.",
+                                String(localized: "+> **Advanced:** to pair without a camera, open **Settings → Devices → Add Manually**"),
+                                String(localized: "+> and type the host's address and port."),
                                 "+",
-                                "+See [Troubleshooting](troubleshooting.md) for other pairing problems.",
+                                String(localized: "+See [Troubleshooting](troubleshooting.md) for other pairing problems."),
                             ]
                         ),
                     ]))
@@ -293,12 +292,12 @@
                         (
                             14, 6, 14, 6,
                             [
-                                " ## Pair your phone",
+                                String(localized: " ## Pair your phone"),
                                 " ",
-                                " 1. Open **Settings → Devices** on the computer and choose **Show Pairing Code**.",
-                                "-2. In the app, tap **Add Host** and point the camera at the code.",
-                                "+2. In the app, tap **Scan Code** and point the camera at the code.",
-                                " 3. Check that the fingerprint matches on both screens, then tap **Trust**.",
+                                String(localized: " 1. Open **Settings → Devices** on the computer and choose **Show Pairing Code**."),
+                                String(localized: "-2. In the app, tap **Add Host** and point the camera at the code."),
+                                String(localized: "+2. In the app, tap **Scan Code** and point the camera at the code."),
+                                String(localized: " 3. Check that the fingerprint matches on both screens, then tap **Trust**."),
                                 " ",
                             ]
                         )

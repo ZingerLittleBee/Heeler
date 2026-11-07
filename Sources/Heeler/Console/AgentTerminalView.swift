@@ -642,7 +642,7 @@ struct AgentTerminalView: View {
         }
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
-                title: "Rename Agent",
+                title: String(localized: "Rename Agent"),
                 store: RenameStore(
                     subject: .agent(detectedKind: agent.agent.kind),
                     currentValue: agent.agent.name ?? ""
@@ -656,7 +656,7 @@ struct AgentTerminalView: View {
         }
         .sheet(isPresented: $isRenamingWorkspace) {
             RenameSheetView(
-                title: "Rename Workspace",
+                title: String(localized: "Rename Workspace"),
                 store: RenameStore.workspace(
                     currentLabel: agent.workspaceLabel ?? ""
                 ) { [console, agent] label in
@@ -676,7 +676,7 @@ struct AgentTerminalView: View {
                 WorktreeDetailView(
                     store: worktreeStore,
                     reportAfterLeaving: console.outcomeReporter(
-                        on: agent.hostID, title: "Couldn't Remove Worktree")
+                        on: agent.hostID, title: String(localized: "Couldn't Remove Worktree"))
                 ) { _ in
                     isShowingWorktree = false
                 }
@@ -739,7 +739,7 @@ struct AgentTerminalView: View {
         } message: {
             Text(
                 attach.attachLinkOpenFailure?.message
-                    ?? "This link couldn't be opened.")
+                    ?? String(localized: "This link couldn't be opened."))
         }
     }
 
@@ -796,7 +796,7 @@ struct AgentTerminalView: View {
         .onDisappear {
             attach.close.didLeaveScreen(
                 reportingTo: console.outcomeReporter(
-                    on: agent.hostID, title: "Couldn't Close Agent"))
+                    on: agent.hostID, title: String(localized: "Couldn't Close Agent")))
             interactionProbe?.value?.disconnect()
             messageJump.resetSession()
             if let onRetainDeparture {
@@ -1563,7 +1563,7 @@ struct AgentTerminalView: View {
         case .direct:
             UIAccessibility.post(
                 notification: .announcement,
-                argument: "Keyboard. Typing into the Agent.")
+                argument: String(localized: "Keyboard. Typing into the Agent."))
             if !keyboardControl.isFirstResponder {
                 Task { @MainActor in
                     await Task.yield()
@@ -1969,7 +1969,7 @@ struct AgentTerminalView: View {
             case .finished:
                 TerminalStatusDialog(
                     glyph: .symbol("stop.circle"),
-                    title: "Agent Ended",
+                    title: String(localized: "Agent Ended"),
                     message: console.agentEndedMessage(of: agent.id, keepingTo: session.corePin)
                         ?? presentation.message,
                     palette: themePalette,

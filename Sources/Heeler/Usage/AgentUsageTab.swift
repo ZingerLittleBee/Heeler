@@ -102,8 +102,8 @@ struct AgentUsageSidebar: View {
         let total = scope.total(.last30Days)
         List(selection: selection) {
             Section {
-                row(tag: Self.allHosts, title: "All Hosts", symbol: "server.rack",
-                    subtitle: "\(scope.included.count == 1 ? "1 Host" : "\(scope.included.count.formatted()) Hosts") · \(other(total))",
+                row(tag: Self.allHosts, title: String(localized: "All Hosts"), symbol: "server.rack",
+                    subtitle: "\(scope.included.count == 1 ? String(localized: "1 Host") : String(localized: "\(scope.included.count.formatted()) Hosts")) · \(other(total))",
                     value: value(total), share: nil)
                 ForEach(scope.included) { host in
                     row(tag: host.id.uuidString, title: host.name, symbol: "desktopcomputer",
@@ -113,11 +113,11 @@ struct AgentUsageSidebar: View {
                         status: status(host))
                 }
                 ForEach(scope.loading) { host in
-                    row(tag: host.id.uuidString, title: host.name, symbol: "desktopcomputer", subtitle: "Loading…",
+                    row(tag: host.id.uuidString, title: host.name, symbol: "desktopcomputer", subtitle: String(localized: "Loading…"),
                         value: nil, share: nil, status: .refreshing)
                 }
             } header: {
-                sectionHeader("\(metric == .cost ? "Estimated API cost" : "Token Usage") · Last 30 days")
+                sectionHeader(metric == .cost ? String(localized: "Estimated API cost · Last 30 days") : String(localized: "Token Usage · Last 30 days"))
             }
             if !scope.excluded.isEmpty {
                 Section {
@@ -129,7 +129,7 @@ struct AgentUsageSidebar: View {
                             .selectionDisabled()
                     }
                 } header: {
-                    sectionHeader("Not included")
+                    sectionHeader(String(localized: "Not included"))
                 }
             }
         }
@@ -171,8 +171,8 @@ struct AgentUsageSidebar: View {
     /// The figure the metric does not show.
     private func other(_ summary: AgentUsageReport.Summary) -> String {
         metric == .cost
-            ? "\(AgentUsageStyle.tokens(summary.tokens.total, locale: locale)) tokens"
-            : "\(AgentUsageStyle.cost(summary.estimatedCostUSD, locale: locale)) est."
+            ? String(localized: "\(AgentUsageStyle.tokens(summary.tokens.total, locale: locale)) tokens")
+            : String(localized: "\(AgentUsageStyle.cost(summary.estimatedCostUSD, locale: locale)) est.")
     }
 
     private func row(

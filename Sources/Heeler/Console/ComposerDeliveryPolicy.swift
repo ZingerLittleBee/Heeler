@@ -32,19 +32,19 @@ enum ComposerRefusal: Equatable, Sendable {
     var message: String {
         switch self {
         case .agentBlocked:
-            "The Agent is waiting for an answer. Answer it first."
+            String(localized: "The Agent is waiting for an answer. Answer it first.")
         case .unsafeText(let reason):
             reason
         case .unknownCommand(let name):
-            "/\(name) is not in the menu. Pick a command from the menu, or open the terminal to run it."
+            String(localized: "/\(name) is not in the menu. Pick a command from the menu, or open the terminal to run it.")
         case .commandAwaitsIdle(let name):
-            "/\(name) is available once the Agent is idle."
+            String(localized: "/\(name) is available once the Agent is idle.")
         case .commandUnavailable(let reason):
             reason
         case .inputNotReady(let reason):
             reason
         case .programNotAcceptingPaste:
-            "The program is not accepting a paste right now, so nothing was sent."
+            String(localized: "The program is not accepting a paste right now, so nothing was sent.")
         case .notSubmitted(let reason):
             reason
         }

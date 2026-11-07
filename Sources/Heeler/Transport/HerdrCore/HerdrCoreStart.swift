@@ -30,7 +30,7 @@ enum HerdrCoreStart {
 
     /// `herdr-core update` by the probed path, for a terminal on a Unix Host.
     static func updateCommand(executablePath: String) -> String {
-        "\(shellWord(executablePath)) update"
+        String(localized: "\(shellWord(executablePath)) update")
     }
 
     /// What to run in a terminal on a machine where the app starts no core.
@@ -43,13 +43,13 @@ enum HerdrCoreStart {
     /// Windows Host. `HC_SESSION` is how `server start` takes a session there too.
     static func windowsManualCommand(executablePath: String, session: String) -> String {
         let name = HerdrCoreSessionName.normalized(session)
-        let run = "\(windowsProgramWord(executablePath)) server start"
+        let run = String(localized: "\(windowsProgramWord(executablePath)) server start")
         return name == "default" ? run : "$env:HC_SESSION=\(PowerShellCommand.literal(name)); \(run)"
     }
 
     /// `herdr-core update` by the probed path, for the same window.
     static func windowsUpdateCommand(executablePath: String) -> String {
-        "\(windowsProgramWord(executablePath)) update"
+        String(localized: "\(windowsProgramWord(executablePath)) update")
     }
 
     /// A path that needs quoting needs `&` to run: PowerShell reads a bare quoted

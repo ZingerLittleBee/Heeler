@@ -212,7 +212,7 @@ enum CodexTimelineProjector {
             case .reply(let replies):
                 content = .notice(
                     ChatNotice(
-                        kind: .answered, title: "Answered",
+                        kind: .answered, title: String(localized: "Answered"),
                         questions: replies.map {
                             ChatQuestion(
                                 id: $0.questionItemID, text: $0.question,
@@ -275,7 +275,7 @@ enum CodexTimelineProjector {
                         rolloutID: entry.rolloutID, offset: entry.sourceOffset, entryID: entry.id, kind: .compaction))
             }
         case .item(.hook(let text)):
-            content = .notice(ChatNotice(kind: .hook, title: "Hook", detail: text.isEmpty ? nil : text))
+            content = .notice(ChatNotice(kind: .hook, title: String(localized: "Hook"), detail: text.isEmpty ? nil : text))
         case .item(.review(let title, let detail)):
             content = .notice(ChatNotice(kind: .review, title: title, detail: detail))
         case .item(.tool(let snapshot)):
@@ -303,9 +303,9 @@ enum CodexTimelineProjector {
                 status = .succeeded
             } else if state.isClosed {
                 status = .notCompleted
-                note = "Question closed"
+                note = String(localized: "Question closed")
             }
-            let title = state.questions.first?.text ?? "Question"
+            let title = state.questions.first?.text ?? String(localized: "Question")
             content = .tool(
                 ChatToolActivity(
                     kind: .question, name: "request_user_input", title: title, status: status, note: note,
@@ -319,12 +319,12 @@ enum CodexTimelineProjector {
         case .stopped(let reason, let error):
             content = .notice(
                 ChatNotice(
-                    kind: .stopped, title: reason == .budgetLimited ? "Stopped (budget)" : "Stopped", detail: error))
+                    kind: .stopped, title: reason == .budgetLimited ? String(localized: "Stopped (budget)") : String(localized: "Stopped"), detail: error))
         case .failed(let message):
             let display = message.map(CodexToolSummary.errorDisplay)
             content = .notice(
                 ChatNotice(
-                    kind: .error, title: "Turn failed", detail: display,
+                    kind: .error, title: String(localized: "Turn failed"), detail: display,
                     rawDetail: display == message ? nil : message))
         case .divider(let divider):
             content = .divider(divider)

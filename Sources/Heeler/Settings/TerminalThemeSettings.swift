@@ -42,23 +42,23 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .followSystem: "Default"
+        case .followSystem: String(localized: "Default")
         case .vesper: "Vesper"
-        case .appleSystemColors: "Apple System Colors"
+        case .appleSystemColors: String(localized: "Apple System Colors")
         case .dracula: "Dracula"
         case .solarized: "Solarized"
         case .catppuccin: "Catppuccin"
-        case .tokyoNight: "Tokyo Night"
+        case .tokyoNight: String(localized: "Tokyo Night")
         case .gruvbox: "Gruvbox"
         case .nord: "Nord"
-        case .monokaiPro: "Monokai Pro"
-        case .rosePine: "Rosé Pine"
+        case .monokaiPro: String(localized: "Monokai Pro")
+        case .rosePine: String(localized: "Rosé Pine")
         case .ayu: "Ayu"
-        case .oneHalf: "One Half"
+        case .oneHalf: String(localized: "One Half")
         case .kanagawa: "Kanagawa"
         case .everforest: "Everforest"
         case .github: "GitHub"
-        case .nightOwl: "Night Owl"
+        case .nightOwl: String(localized: "Night Owl")
         case .iceberg: "Iceberg"
         case .flexoki: "Flexoki"
         case .selenized: "Selenized"
@@ -66,9 +66,9 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
         case .tomorrow: "Tomorrow"
         case .melange: "Melange"
         case .zenbones: "Zenbones"
-        case .atomOneDark: "One Dark"
+        case .atomOneDark: String(localized: "One Dark")
         case .snazzy: "Snazzy"
-        case .oceanicNext: "Oceanic Next"
+        case .oceanicNext: String(localized: "Oceanic Next")
         case .poimandres: "Poimandres"
         case .horizon: "Horizon"
         case .zenburn: "Zenburn"
@@ -77,36 +77,36 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
 
     var detail: String {
         switch self {
-        case .followSystem: "Alabaster in Light Mode, Afterglow in Dark Mode"
-        case .vesper: "A warm, low-contrast dark theme"
-        case .appleSystemColors: "Apple's terminal palette for each appearance"
-        case .dracula: "The classic high-contrast dark palette"
-        case .solarized: "Paired iTerm2 Solarized light and dark themes"
-        case .catppuccin: "Latte in Light Mode, Mocha in Dark Mode"
-        case .tokyoNight: "Day in Light Mode, Night in Dark Mode"
-        case .gruvbox: "A warm retro palette for both appearances"
-        case .nord: "A calm arctic palette for both appearances"
-        case .monokaiPro: "The popular editor palette for both appearances"
-        case .rosePine: "Dawn in Light Mode, the classic in Dark Mode"
-        case .ayu: "Light and dark halves of the Ayu palette"
-        case .oneHalf: "One Half Light and One Half Dark"
-        case .kanagawa: "Lotus in Light Mode, Wave in Dark Mode"
-        case .everforest: "Forest greens for each appearance"
-        case .github: "GitHub's default palettes for each appearance"
-        case .nightOwl: "Owlish Light in Light Mode, Night Owl in Dark Mode"
-        case .iceberg: "Paired Iceberg light and dark themes"
-        case .flexoki: "Paired inky light and dark themes"
-        case .selenized: "A Solarized descendant for each appearance"
-        case .modus: "Operandi in Light Mode, Vivendi in Dark Mode"
-        case .tomorrow: "Tomorrow in Light Mode, Tomorrow Night in Dark Mode"
-        case .melange: "Warm paired light and dark themes"
-        case .zenbones: "Paired low-contrast light and dark themes"
-        case .atomOneDark: "Atom's One Dark for both appearances"
-        case .snazzy: "A vivid dark theme for both appearances"
-        case .oceanicNext: "A deep sea-blue dark theme for both appearances"
-        case .poimandres: "A cool minimal dark theme for both appearances"
-        case .horizon: "A warm dusk dark theme for both appearances"
-        case .zenburn: "The classic low-contrast dark theme for both appearances"
+        case .followSystem: String(localized: "Alabaster in Light Mode, Afterglow in Dark Mode")
+        case .vesper: String(localized: "A warm, low-contrast dark theme")
+        case .appleSystemColors: String(localized: "Apple's terminal palette for each appearance")
+        case .dracula: String(localized: "The classic high-contrast dark palette")
+        case .solarized: String(localized: "Paired iTerm2 Solarized light and dark themes")
+        case .catppuccin: String(localized: "Latte in Light Mode, Mocha in Dark Mode")
+        case .tokyoNight: String(localized: "Day in Light Mode, Night in Dark Mode")
+        case .gruvbox: String(localized: "A warm retro palette for both appearances")
+        case .nord: String(localized: "A calm arctic palette for both appearances")
+        case .monokaiPro: String(localized: "The popular editor palette for both appearances")
+        case .rosePine: String(localized: "Dawn in Light Mode, the classic in Dark Mode")
+        case .ayu: String(localized: "Light and dark halves of the Ayu palette")
+        case .oneHalf: String(localized: "One Half Light and One Half Dark")
+        case .kanagawa: String(localized: "Lotus in Light Mode, Wave in Dark Mode")
+        case .everforest: String(localized: "Forest greens for each appearance")
+        case .github: String(localized: "GitHub's default palettes for each appearance")
+        case .nightOwl: String(localized: "Owlish Light in Light Mode, Night Owl in Dark Mode")
+        case .iceberg: String(localized: "Paired Iceberg light and dark themes")
+        case .flexoki: String(localized: "Paired inky light and dark themes")
+        case .selenized: String(localized: "A Solarized descendant for each appearance")
+        case .modus: String(localized: "Operandi in Light Mode, Vivendi in Dark Mode")
+        case .tomorrow: String(localized: "Tomorrow in Light Mode, Tomorrow Night in Dark Mode")
+        case .melange: String(localized: "Warm paired light and dark themes")
+        case .zenbones: String(localized: "Paired low-contrast light and dark themes")
+        case .atomOneDark: String(localized: "Atom's One Dark for both appearances")
+        case .snazzy: String(localized: "A vivid dark theme for both appearances")
+        case .oceanicNext: String(localized: "A deep sea-blue dark theme for both appearances")
+        case .poimandres: String(localized: "A cool minimal dark theme for both appearances")
+        case .horizon: String(localized: "A warm dusk dark theme for both appearances")
+        case .zenburn: String(localized: "The classic low-contrast dark theme for both appearances")
         }
     }
 
@@ -121,31 +121,31 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
         case .followSystem: isDark ? "Afterglow" : "Alabaster"
         case .vesper: "Vesper"
         case .appleSystemColors:
-            isDark ? "Apple System Colors" : "Apple System Colors Light"
+            isDark ? String(localized: "Apple System Colors") : String(localized: "Apple System Colors Light")
         case .dracula: "Dracula"
-        case .solarized: isDark ? "iTerm2 Solarized Dark" : "iTerm2 Solarized Light"
-        case .catppuccin: isDark ? "Catppuccin Mocha" : "Catppuccin Latte"
-        case .tokyoNight: isDark ? "TokyoNight Night" : "TokyoNight Day"
-        case .gruvbox: isDark ? "Gruvbox Dark" : "Gruvbox Light"
+        case .solarized: isDark ? String(localized: "iTerm2 Solarized Dark") : String(localized: "iTerm2 Solarized Light")
+        case .catppuccin: isDark ? String(localized: "Catppuccin Mocha") : String(localized: "Catppuccin Latte")
+        case .tokyoNight: isDark ? String(localized: "TokyoNight Night") : String(localized: "TokyoNight Day")
+        case .gruvbox: isDark ? String(localized: "Gruvbox Dark") : String(localized: "Gruvbox Light")
         case .nord: isDark ? "Nord" : "Nord Light"
-        case .monokaiPro: isDark ? "Monokai Pro" : "Monokai Pro Light"
-        case .rosePine: isDark ? "Rose Pine" : "Rose Pine Dawn"
+        case .monokaiPro: isDark ? String(localized: "Monokai Pro") : String(localized: "Monokai Pro Light")
+        case .rosePine: isDark ? String(localized: "Rose Pine") : String(localized: "Rose Pine Dawn")
         case .ayu: isDark ? "Ayu" : "Ayu Light"
-        case .oneHalf: isDark ? "One Half Dark" : "One Half Light"
-        case .kanagawa: isDark ? "Kanagawa Wave" : "Kanagawa Lotus"
-        case .everforest: isDark ? "Everforest Dark Hard" : "Everforest Light Med"
-        case .github: isDark ? "GitHub Dark Default" : "GitHub Light Default"
-        case .nightOwl: isDark ? "Night Owl" : "Night Owlish Light"
-        case .iceberg: isDark ? "Iceberg Dark" : "Iceberg Light"
-        case .flexoki: isDark ? "Flexoki Dark" : "Flexoki Light"
-        case .selenized: isDark ? "Selenized Dark" : "Selenized Light"
-        case .modus: isDark ? "Modus Vivendi" : "Modus Operandi"
+        case .oneHalf: isDark ? String(localized: "One Half Dark") : String(localized: "One Half Light")
+        case .kanagawa: isDark ? String(localized: "Kanagawa Wave") : String(localized: "Kanagawa Lotus")
+        case .everforest: isDark ? String(localized: "Everforest Dark Hard") : String(localized: "Everforest Light Med")
+        case .github: isDark ? String(localized: "GitHub Dark Default") : String(localized: "GitHub Light Default")
+        case .nightOwl: isDark ? String(localized: "Night Owl") : String(localized: "Night Owlish Light")
+        case .iceberg: isDark ? String(localized: "Iceberg Dark") : String(localized: "Iceberg Light")
+        case .flexoki: isDark ? String(localized: "Flexoki Dark") : String(localized: "Flexoki Light")
+        case .selenized: isDark ? String(localized: "Selenized Dark") : String(localized: "Selenized Light")
+        case .modus: isDark ? String(localized: "Modus Vivendi") : String(localized: "Modus Operandi")
         case .tomorrow: isDark ? "Tomorrow Night" : "Tomorrow"
-        case .melange: isDark ? "Melange Dark" : "Melange Light"
-        case .zenbones: isDark ? "Zenbones Dark" : "Zenbones Light"
-        case .atomOneDark: "Atom One Dark"
+        case .melange: isDark ? String(localized: "Melange Dark") : String(localized: "Melange Light")
+        case .zenbones: isDark ? String(localized: "Zenbones Dark") : String(localized: "Zenbones Light")
+        case .atomOneDark: String(localized: "Atom One Dark")
         case .snazzy: "Snazzy"
-        case .oceanicNext: "Oceanic Next"
+        case .oceanicNext: String(localized: "Oceanic Next")
         case .poimandres: "Poimandres"
         case .horizon: "Horizon"
         case .zenburn: "Zenburn"

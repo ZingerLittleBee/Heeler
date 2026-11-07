@@ -96,8 +96,7 @@ enum ServerKind: String, Codable, Hashable, Sendable {
         case .herdrTUI:
             let name = value.trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty, !HerdrSessionName.isValid(name) else { return nil }
-            return "herdr refuses the session name \"\(name)\". Its names use letters, digits, "
-                + "\".\", \"_\" and \"-\", up to \(HerdrSessionName.maximumUTF8Length) bytes."
+            return String(localized: "herdr refuses the session name \"\(name)\". Its names use letters, digits, \".\", \"_\" and \"-\", up to \(HerdrSessionName.maximumUTF8Length) bytes.")
         case .herdrCore:
             return HerdrCoreSessionName.refusal(value)
         case .unconfirmed:
@@ -114,9 +113,9 @@ enum ServerKind: String, Codable, Hashable, Sendable {
 
     var displayName: String {
         switch self {
-        case .herdrTUI: "Herdr TUI"
+        case .herdrTUI: String(localized: "Herdr TUI")
         case .herdrCore: "herdr-core"
-        case .unconfirmed: "Not confirmed"
+        case .unconfirmed: String(localized: "Not confirmed")
         }
     }
 }
@@ -270,7 +269,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
                     // Absent in Hosts saved before jump-host support; a blank
                     // address decodes as the direct connection they had.
                     jumpAddress: try container.decodeIfPresent(String.self, forKey: .jumpAddress)
-                        ?? "",
+                        ?? String(localized: ""),
                     jumpPort: try container.decodeIfPresent(Int.self, forKey: .jumpPort) ?? 22,
                     jumpUsername: try container.decodeIfPresent(
                         String.self, forKey: .jumpUsername) ?? "",
@@ -283,7 +282,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         guard serverKind.isValidSessionName(sessionName) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .sessionName, in: container,
-                debugDescription: "Invalid session name for this Server Kind")
+                debugDescription: String(localized: "Invalid session name for this Server Kind"))
         }
     }
 
@@ -352,7 +351,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// could show one that did not answer; the line names the routes instead.
     var connectionSummary: String {
         guard routes.count == 1 else {
-            return "\(username) · \(routes.count) routes"
+            return String(localized: "\(username) · \(routes.count) routes")
         }
         return port == 22 ? "\(username)@\(address)" : "\(username)@\(address):\(port)"
     }

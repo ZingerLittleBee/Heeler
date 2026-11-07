@@ -323,15 +323,15 @@ final class HostAccountsStore {
         switch error {
         case let error as AgentAccountError: error.message
         case NotificationRegistrationError.pluginNotInstalled:
-            "Enable the Heeler plugin on this Host to change its Accounts."
+            String(localized: "Enable the Heeler plugin on this Host to change its Accounts.")
         case NotificationRegistrationError.readFailed, NotificationRegistrationError.pluginProbeFailed:
-            "Heeler could not read this Host’s Accounts. Try again."
+            String(localized: "Heeler could not read this Host’s Accounts. Try again.")
         case NotificationRegistrationError.writeFailed:
-            "Heeler could not save this Host’s Accounts. Try again."
+            String(localized: "Heeler could not save this Host’s Accounts. Try again.")
         case TransportError.hostFeatureUnavailable:
-            "Accounts are not available on this Host."
+            String(localized: "Accounts are not available on this Host.")
         default:
-            "Could not change the Accounts. Check the Host connection and try again."
+            String(localized: "Could not change the Accounts. Check the Host connection and try again.")
         }
     }
 
@@ -355,7 +355,7 @@ final class HostAccountsStore {
     private func onHostValue<Value: Sendable>(
         _ operation: @escaping @Sendable (any HostServices & HostNotificationFiles) async throws -> Value
     ) async throws -> Value {
-        guard let onHost else { throw TransportError.hostFeatureUnavailable(feature: "Accounts") }
+        guard let onHost else { throw TransportError.hostFeatureUnavailable(feature: String(localized: "Accounts")) }
         let result = OSAllocatedUnfairLock<Value?>(initialState: nil)
         try await onHost { transport in
             let value = try await operation(transport)
@@ -384,7 +384,7 @@ final class HostAccountsStore {
         _ change: Change, checking: (directory: String, kind: SupportedAgentKind)? = nil,
         _ edit: @escaping @Sendable (inout UsageAccountFile, String?) throws -> Void
     ) async throws {
-        guard let onHost else { throw TransportError.hostFeatureUnavailable(feature: "Accounts") }
+        guard let onHost else { throw TransportError.hostFeatureUnavailable(feature: String(localized: "Accounts")) }
         guard pendingChanges.insert(change).inserted else { throw AgentAccountError.busy }
         defer { pendingChanges.remove(change) }
         let kind = Self.kind(of: change)

@@ -140,7 +140,7 @@ struct DiffLine: Sendable, Equatable, Identifiable {
         case .context: action = "Unchanged"; number = newNumber
         }
         let location = number.map { ", line \($0)" } ?? ""
-        let suffix = missingNewline ? ". No newline at end of file." : ""
-        return "\(action)\(location): \(text)\(suffix)"
+        let suffix = missingNewline ? String(localized: ". No newline at end of file.") : ""
+        return String(localized: "\(action)\(location): \(text)\(suffix)")
     }
 }

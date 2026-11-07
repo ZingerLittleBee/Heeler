@@ -67,7 +67,7 @@ struct ChatImageThumbnail: View {
                 thumbnails?.load(path)
             } label: {
                 placeholder {
-                    note(size, action: "Tap to Load", symbol: "arrow.down.circle")
+                    note(size, action: String(localized: "Tap to Load"), symbol: "arrow.down.circle")
                 }
             }
             .buttonStyle(.plain)
@@ -75,7 +75,7 @@ struct ChatImageThumbnail: View {
             .accessibilityIdentifier("chat.image-thumbnail.large")
         case .offline:
             placeholder {
-                note("Connect to the Host to show this image", symbol: "wifi.slash")
+                note(String(localized: "Connect to the Host to show this image"), symbol: "wifi.slash")
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("chat.image-thumbnail.offline")
@@ -84,7 +84,7 @@ struct ChatImageThumbnail: View {
                 thumbnails?.load(path)
             } label: {
                 placeholder {
-                    note(message, action: "Try Again", symbol: "exclamationmark.triangle")
+                    note(message, action: String(localized: "Try Again"), symbol: "exclamationmark.triangle")
                 }
             }
             .buttonStyle(.plain)

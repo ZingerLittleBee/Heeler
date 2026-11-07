@@ -78,17 +78,17 @@ enum LicenseNoticeCatalogError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .inventoryMissing:
-            "Notices/inventory.json is missing from the app bundle"
+            String(localized: "Notices/inventory.json is missing from the app bundle")
         case .inventoryUnreadable(let detail):
-            "Notices/inventory.json could not be read: \(detail)"
+            String(localized: "Notices/inventory.json could not be read: \(detail)")
         case .inventoryMalformed(let detail):
-            "Notices/inventory.json is malformed: \(detail)"
+            String(localized: "Notices/inventory.json is malformed: \(detail)")
         case .noticeMissing(let componentID, let fileName):
-            "Notice for \(componentID) is missing: Notices/\(fileName)"
+            String(localized: "Notice for \(componentID) is missing: Notices/\(fileName)")
         case .noticeNotUTF8(let componentID, let fileName):
-            "Notice for \(componentID) is not valid UTF-8: Notices/\(fileName)"
+            String(localized: "Notice for \(componentID) is not valid UTF-8: Notices/\(fileName)")
         case .noticeEmpty(let componentID, let fileName):
-            "Notice for \(componentID) is empty: Notices/\(fileName)"
+            String(localized: "Notice for \(componentID) is empty: Notices/\(fileName)")
         }
     }
 }
@@ -219,7 +219,7 @@ enum LicenseNoticeCatalog {
 
         guard dto.schemaVersion == 1 else {
             throw LicenseNoticeCatalogError.inventoryMalformed(
-                "unsupported schemaVersion \(dto.schemaVersion)")
+                String(localized: "unsupported schemaVersion \(dto.schemaVersion)"))
         }
         guard !dto.components.isEmpty else {
             throw LicenseNoticeCatalogError.inventoryMalformed("components is empty")
@@ -234,11 +234,11 @@ enum LicenseNoticeCatalog {
             let notice = component.notice.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !id.isEmpty, !displayName.isEmpty, !spdx.isEmpty, !notice.isEmpty else {
                 throw LicenseNoticeCatalogError.inventoryMalformed(
-                    "component is missing a required field")
+                    String(localized: "component is missing a required field"))
             }
             guard seen.insert(id).inserted else {
                 throw LicenseNoticeCatalogError.inventoryMalformed(
-                    "duplicate component id \(id)")
+                    String(localized: "duplicate component id \(id)"))
             }
             entries.append(
                 LicenseInventory.Entry(
@@ -270,11 +270,11 @@ enum LicenseNoticeCatalog {
                 let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !key.isEmpty else {
                     throw LicenseNoticeCatalogError.inventoryMalformed(
-                        "dependencyCoverage.\(label) has an empty key")
+                        String(localized: "dependencyCoverage.\(label) has an empty key"))
                 }
                 guard !rawIDs.isEmpty else {
                     throw LicenseNoticeCatalogError.inventoryMalformed(
-                        "dependencyCoverage.\(label)[\(key)] is empty")
+                        String(localized: "dependencyCoverage.\(label)[\(key)] is empty"))
                 }
                 var ids: [String] = []
                 var seenIDs = Set<String>()
@@ -282,21 +282,21 @@ enum LicenseNoticeCatalog {
                     let id = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !id.isEmpty else {
                         throw LicenseNoticeCatalogError.inventoryMalformed(
-                            "dependencyCoverage.\(label)[\(key)] has an empty id")
+                            String(localized: "dependencyCoverage.\(label)[\(key)] has an empty id"))
                     }
                     guard knownIDs.contains(id) else {
                         throw LicenseNoticeCatalogError.inventoryMalformed(
-                            "dependencyCoverage.\(label)[\(key)] references unknown component \(id)")
+                            String(localized: "dependencyCoverage.\(label)[\(key)] references unknown component \(id)"))
                     }
                     guard seenIDs.insert(id).inserted else {
                         throw LicenseNoticeCatalogError.inventoryMalformed(
-                            "dependencyCoverage.\(label)[\(key)] duplicates component \(id)")
+                            String(localized: "dependencyCoverage.\(label)[\(key)] duplicates component \(id)"))
                     }
                     ids.append(id)
                 }
                 guard result[key] == nil else {
                     throw LicenseNoticeCatalogError.inventoryMalformed(
-                        "dependencyCoverage.\(label) has duplicate key \(key)")
+                        String(localized: "dependencyCoverage.\(label) has duplicate key \(key)"))
                 }
                 result[key] = ids
             }

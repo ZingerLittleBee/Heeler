@@ -51,7 +51,7 @@ struct ChatBackgroundWorkStrip: View {
 enum ChatBackgroundWorkStyle {
     /// Rounder than a banner, less than the Composer card below it.
     static let card = RoundedRectangle(cornerRadius: 18, style: .continuous)
-    static let hint = "Shows all background work."
+    static let hint = String(localized: "Shows all background work.")
 }
 
 private struct ChatBackgroundWorkRows: View {

@@ -755,7 +755,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         guard
             let installed = try? HerdrCoreLaunch.installedAgents(stdout: result.stdout, nonce: nonce)
         else {
-            throw TransportError.malformedResponse("The Host's shell did not finish looking for Agents.")
+            throw TransportError.malformedResponse(String(localized: "The Host's shell did not finish looking for Agents."))
         }
         openCodeVersion = installed.openCodeVersion
         return installed.kinds
@@ -773,7 +773,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             .posixScript(
                 HerdrCoreShellLaunch.versionScript(program: program, path: path, directory: directory, nonce: nonce)))
         guard let found = try? HerdrCoreShellLaunch.parseDiscovery(stdout: result.stdout, nonce: nonce) else {
-            throw TransportError.malformedResponse("The Host's shell did not finish reading OpenCode's version.")
+            throw TransportError.malformedResponse(String(localized: "The Host's shell did not finish reading OpenCode's version."))
         }
         return found.version
     }
@@ -976,7 +976,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 firstSeenDirectories: memory.firstSeenDirectories(for: host.id))
         else {
             throw TransportError.hostFeatureUnavailable(
-                feature: "This Workspace has no Terminals left")
+                feature: String(localized: "This Workspace has no Terminals left"))
         }
         return HerdrCoreLaunch.Placement(cwd: try await directoryOrHome(key.isEmpty ? nil : key))
     }
@@ -996,7 +996,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// With no inventory, as across a reconnect, nothing says what the Tab holds.
     func closeTab(_ tabID: String) async throws {
         guard !isAwaitingSnapshot else {
-            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
         do {
             try await endTerminals(
@@ -1140,7 +1140,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let identity = request.identity
         guard identity.hostID == host.id else { throw WorktreeRemovalError.staleIdentity }
         guard !isAwaitingSnapshot else {
-            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
         guard worktreesBeingRemoved.insert(identity).inserted else {
             throw WorktreeRemovalError.alreadyInProgress
@@ -1736,7 +1736,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     func windowsExtensionFolders() async throws -> [String] {
         let transport = try await session.withTransport { $0 }
         guard let home = await transport.locatedWindowsHome() else {
-            throw TransportError.hostFeatureUnavailable(feature: "Heeler's extension on this Host")
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Heeler's extension on this Host"))
         }
         let services = transport.hostServices
         let profiles = RemoteFilePath.join(RemoteFilePath.windowsForSFTP(home), ".omp", "profiles")
