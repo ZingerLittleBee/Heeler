@@ -12,6 +12,11 @@ Entries reference the pull request that made the change.
 - Choose Voice Input languages independently of the device language, with automatic detection by default, multiple OpenAI hints and one optional DeepInfra language. Custom services gain per-URL/model request fields with multiple values, validation and migration of the previous Send Language setting. (PR #643)
 - Rename an Agent's conversation from its existing More menu or the Agents list's long-press menu on Herdr TUI Hosts. Save a manual title for Claude Code, Codex, Pi, Oh My Pi, Grok Build, or OpenCode; generate and apply a new title with Claude Code, Codex, or Oh My Pi. Busy Agents, existing terminal drafts, changed conversations, and unconfirmed results are reported without retrying the command. (#645)
 
+### Changed
+
+- Show user commands in Chat with the same right-aligned bubble and text size
+  as other user messages, keeping command output below the bubble. (#648)
+
 ### Fixed
 
 - Clear an unsaved Voice Input API key when its service or Custom URL changes, and report Keychain deletion failures without switching the saved destination or withdrawing its agreement. (PR #643)
@@ -63,9 +68,6 @@ Entries reference the pull request that made the change.
   preset are each Host's home folder. (#632)
 
 ### Changed
-
-- Show user commands in Chat with the same right-aligned bubble and text size
-  as other user messages, keeping command output below the bubble. (#648)
 
 - Accounts moved out of Usage into Settings › Agents & Accounts. Usage's
   notice about Account folders it found opens the same screen. (#632)
