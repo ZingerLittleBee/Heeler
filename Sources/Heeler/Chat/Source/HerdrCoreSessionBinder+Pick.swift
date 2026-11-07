@@ -87,6 +87,8 @@ extension HerdrCoreSessionBinder {
         case .grok: ConversationReference.lowercaseUUID(hint.session)
         case .opencode: OpenCodeSessionID(hint.session)?.rawValue
         case .pi, .omp: hint.piSession(onWindows: isOnWindows)
+        // Its binding is not implemented, so a pick names nothing it reads.
+        case .agy: nil
         }
     }
 }

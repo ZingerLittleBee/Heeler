@@ -42,6 +42,8 @@ extension ChatTranscriptAdapter {
                 echoesByEntry: true)
         case .grok:
             .grok
+        case .agy:
+            .agy
         case .opencode:
             // Read by query from OpenCode's session store (ADR 0025).
             openCode

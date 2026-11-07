@@ -42,11 +42,15 @@ extension ChatUnavailableReason {
             "herdr hasn't reported a Grok Build session ID for this Agent. Grok Build reports one when a session starts, including after /new or /clear. Chat keeps checking; you can continue in the Agent terminal."
         case .noSession(.opencode):
             "herdr hasn't reported an OpenCode conversation for this Agent yet. OpenCode reports one once a conversation is open: send a first message in the terminal, or open a session there. Chat will keep checking, and you can continue in the Agent terminal."
+        case .noSession(.agy):
+            "herdr hasn't reported an Antigravity CLI conversation for this Agent yet. Antigravity CLI reports one with its first message, and after /clear only once a message follows. Chat will keep checking, and you can continue in the Agent terminal."
         case .unidentifiedSession(.claude), .unidentifiedSession(.codex), .unidentifiedSession(.pi),
             .unidentifiedSession(.omp), .unidentifiedSession(.grok):
             "herdr names this Agent's session without an id, which happens after resuming a conversation by name. Chat can't tell which transcript is its own."
         case .unidentifiedSession(.opencode):
             "herdr reports a session name that isn't an OpenCode session id, so Chat can't tell which conversation is this Agent's."
+        case .unidentifiedSession(.agy):
+            "herdr reports a session name that isn't an Antigravity CLI conversation id, so Chat can't tell which conversation is this Agent's."
         case .unsupportedSession:
             "herdr reports a session Chat doesn't read."
         case .notFound(let searchedAll):
@@ -432,6 +436,7 @@ extension ChatProgram {
         case .omp: "Oh My Pi"
         case .grok: "Grok Build"
         case .opencode: "OpenCode"
+        case .agy: "Antigravity CLI"
         }
     }
 
@@ -447,6 +452,8 @@ extension ChatProgram {
             "OpenCode says which conversation it shows when Heeler starts OpenCode 2.1 or later from New Agent, or through Heeler's plugin, which takes one change to its configuration."
         case .claude, .pi, .omp:
             "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal."
+        case .agy:
+            "Heeler can't yet read which conversation Antigravity CLI shows on this Host. You can continue in the Agent terminal."
         }
     }
 

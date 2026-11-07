@@ -6,7 +6,7 @@ import Testing
 @MainActor
 @Suite("Native Agent title rename")
 struct AgentTitleRenameTests {
-    @Test(arguments: ChatProgram.allCases)
+    @Test(arguments: ChatProgram.allCases.filter(AgentTitleNaming.supportsRename))
     func savesNativeTitleAndRefreshes(program: ChatProgram) async throws {
         let rig = try Rig(program)
         let store = rig.store()
@@ -32,6 +32,14 @@ struct AgentTitleRenameTests {
         #expect(rig.commands == ["/rename"])
         #expect(rig.keys == (program == .codex ? [["enter"]] : []))
         #expect(rig.refreshes == 1)
+    }
+
+    /// How Antigravity CLI names a conversation is not known yet, so Rename
+    /// is not offered for it, nor generation.
+    @Test func antigravityOffersNoRename() {
+        #expect(!AgentTitleNaming.supportsRename(.agy))
+        #expect(!AgentTitleNaming.supportsGeneration(.agy))
+        #expect(ChatProgram.allCases.filter { !AgentTitleNaming.supportsRename($0) } == [.agy])
     }
 
     @Test(arguments: [ChatProgram.pi, .grok, .opencode])
@@ -195,6 +203,8 @@ struct AgentTitleRenameTests {
         #expect(AgentTitleNaming.matches(agent, program: .codex, title: "Guide"))
     }
 
+    private struct RenameNotOffered: Error {}
+
     @MainActor
     private final class Rig {
         let program: ChatProgram
@@ -222,6 +232,7 @@ struct AgentTitleRenameTests {
             case .omp: "omp-08-empty-120-after-first"
             case .grok: "grok-01-idle-empty"
             case .opencode: "opencode-02-session-empty-180"
+            case .agy: throw RenameNotOffered()
             }
             empty = try ScreenFixture.screen(fixture)
         }
@@ -234,6 +245,7 @@ struct AgentTitleRenameTests {
             case .omp: "π > 📝 MANUAL: " + title
             case .grok: title + " - grok"
             case .opencode: OpenCodeTerminalTitle.expected(sessionTitle: title)
+            case .agy: title
             }
             return Agent(terminalID: "term-one", kind: program.rawValue, title: displayed, status: status,
                 workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1", cwd: "/project", revision: 1,

@@ -128,6 +128,8 @@ extension HerdrCoreSessionBinder {
         case .claude, .codex, .pi, .omp: ConversationReference.canonicalUUID(key)
         case .grok: ConversationReference.lowercaseUUID(key)
         case .opencode: OpenCodeSessionID(key)?.rawValue
+        // Its binding is not implemented.
+        case .agy: nil
         }
     }
 
@@ -166,7 +168,7 @@ extension HerdrCoreSessionBinder {
         case .pi, .omp:
             guard let session = Self.piSession(inFileName: leaf), RemoteFilePath.isAcceptable(path) else { return nil }
             return Found(session: session, file: path)
-        case .codex:
+        case .codex, .agy:
             return nil
         }
     }
@@ -199,6 +201,7 @@ extension HerdrCoreSessionBinder {
         case .grok: return try await recentGrokBuild(root: root, directories: directories)
         case .opencode: return try await recentOpenCode(directories: directories)
         case .pi, .omp: return try await recentPiFamily(root: root, process: process, directories: directories)
+        case .agy: return []
         }
     }
 

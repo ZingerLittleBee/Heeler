@@ -101,6 +101,10 @@ extension InputBoxState {
                 // OpenCode's `/undo` puts the undone prompt back in the box,
                 // and Up recalls an earlier one.
                 "The Agent's input box already has text, such as a draft, a prompt /undo put back, or one recalled with Up. Send or clear it in the terminal first."
+            case .agy:
+                // Esc puts a message queued during the turn back in the box
+                // (Antigravity CLI 1.5.3).
+                "Antigravity CLI's input box already has text, such as a draft or a queued message Stop put back. Send or clear it in the terminal first."
             }
         case .shellMode:
             "The Agent's input box is in shell mode. Leave it in the terminal first."

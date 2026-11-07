@@ -35,6 +35,11 @@ below.
 | `grok/pending-permission.jsonl` | The same (2026-10-19), lines 90–92 of a capture taken while Grok waited for permission to run a command: herdr's `session_start` record, the prompt, and the bare `tool_call` |
 | `grok/background-tasks.jsonl` | Written for the test, not captured: a command started in the background, a command Grok moved to the background while it ran, and a subagent spawned in the background, with their `task_backgrounded` and `subagent_spawned` records, then the commands' `task_completed` records (one exited 0, one was killed) and the subagent's `subagent_finished`; then a monitor, whose `task_backgrounded` comes before its input update, whose result holds no output, and whose output comes with a `task_completed` of kind `monitor`. The records take the shapes Grok Build's source writes |
 | `grok/failed-tools.jsonl` | Written for the test, not captured: one turn of failed calls, a `tool_execution_failed` error, the tagged failures `FileNotFound`, `FileTooLarge`, `NotADirectory`, `NotFound`, `NoMatchesFound`, `MultipleMatchesFound` and `InvalidInput`, and an MCP call that returned an error. The records take the shapes a census of real failures found; some carry no content |
+| `agy/core-turns.jsonl` | Antigravity CLI 1.5.3 on herdr 0.9.5 (2026-11-07): steps 0–31 of a scratch conversation's `transcript_full.jsonl`, every line in that range: one-line and two-line prompts, long replies, a turn with a `read_file` and a `run_command` call and their results, a `write_file` that created `notes.txt` and an `edit_file` that changed it, and two foreground `sleep` commands, one stopped with Esc and one with Ctrl+C. agy wrote nothing for either stop and skipped a step number after each (24 and 27) |
+| `agy/tasks-question-compact.jsonl` | The same conversation, steps 32–60: a background `run_command` and a `manage_task` call, each task's end in a `SYSTEM_MESSAGE` (one inside its turn, one after the reply), an `ask_question` call answered with an option, a manual `/compact` and its `CHECKPOINT`, a `read_file` of a long file, and two prompts each followed by a restart notice that stopped no running task |
+| `agy/approvals.jsonl` | The same agy and herdr (2026-11-07), steps 0–68 of another scratch conversation, every line in that range: a background command and a prompt queued while it ran, three prompts in a row with no reply between them, two `ask_question` calls (one with two questions), an `edit_file`, command permission dialogs left with Esc, with Esc from the Amend field and with Ctrl+C (none writes a step) and one declined (`GENERIC` with status `ERROR`), a `/compact`, a `/plan` prompt whose plan `write_file` was approved as `[Approved] implementation_plan.md`, and a declined edit of `calc.py` |
+| `agy/fork-head.jsonl` | Antigravity CLI 1.5.3 outside herdr (2026-11-07): the whole file of a conversation made with `/fork`, two lines that start at step 2 |
+| `agy/written-for-tests.jsonl` | Written for the test, not captured: a `view_file` of an image with its `media`, a failed `replace_file_content`, an `ERROR_MESSAGE`, a background command and its end, an unknown tool, a reminder, an `EPHEMERAL_MESSAGE`, a step type agy never wrote, a restart notice that stopped a running task, a canceled task, and a command that exited 1. The steps take the shapes the captures show |
 
 `host-evidence/` is a separate recording, for the herdr-core session binding of
 ADR 0034. `HerdrCoreProgramBinderTests` reads the `.json` scenes of `codex/`, `grok/`
@@ -117,6 +122,22 @@ the one `cancel-takeover.jsonl` keeps under a renamed run; herdr's
 from the same range only. Searching `grok/` for a UUID outside that range, a
 `global/settings` run or the account name, in text or in a byte array, finds
 nothing.
+
+Antigravity CLI captures keep whole steps byte for byte, apart from these
+replacements:
+
+- Each conversation id becomes `00000000-0000-4000-8000-00000000000N`
+  (1 for the conversation of `core-turns.jsonl` and
+  `tasks-question-compact.jsonl`, 2 for `approvals.jsonl`, 3 for
+  `fork-head.jsonl`), wherever it appears: in `brain/` paths and in task ids
+  like `<id>/task-4`. `written-for-tests.jsonl` uses 4.
+- The account name becomes `developer`.
+- The scratch projects the probes ran in become `/Users/developer/projects/demo`
+  and `/Users/developer/projects/fruits`. These are shorter than captured, so
+  byte counts in a tool result no longer match its paths.
+
+Searching `agy/` for a UUID outside that range, a `/Users/` path other than
+`/Users/developer`, or the account name finds nothing.
 
 Host evidence captures were rebuilt from raw recordings, so unlike the above
 they are not byte for byte and offsets do not hold:

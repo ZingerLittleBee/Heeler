@@ -418,7 +418,7 @@ struct HerdrCoreMacOSSessionBinderTests {
         switch program {
         case .opencode: openCodeID
         case .pi, .omp: "\(lab)/s/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.jsonl"
-        case .claude, .codex, .grok: "0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11"
+        case .claude, .codex, .grok, .agy: "0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11"
         }
     }
 
@@ -485,6 +485,19 @@ struct HerdrCoreMacOSSessionBinderTests {
 
         let linux = await rig.linuxBinder(entry.program, startOverride: Self.linuxStarts[entry.program])
         #expect(try await linux.check(try rig.record()) == entry.evidence)
+    }
+
+    /// No macOS recording read Antigravity CLI, and its presence-lock binding
+    /// is not implemented, so a macOS Host never binds it exactly, and
+    /// neither does any other: it can't tell.
+    @Test func antigravityIsNotBoundExactly() async throws {
+        #expect(HostCapabilities.macOSExactCoreChatPrograms == Set(ChatProgram.allCases).subtracting([.agy]))
+        let rig = try await Rig("claude-direct")
+
+        let shipped = rig.binder(.agy, exact: HostCapabilities.macOSExactCoreChatPrograms)
+        #expect(try await shipped.check(try rig.record()) == Self.cannotTell(.agy))
+        #expect(try await rig.binder(.agy).check(try rig.record()) == Self.cannotTell(.agy))
+        #expect(await rig.log.cleared.isEmpty)
     }
 
     /// The one confirmation still works there.

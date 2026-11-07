@@ -3,10 +3,20 @@ import Observation
 
 /// Native conversation titles, separate from herdr's restricted Agent aliases.
 enum AgentTitleNaming {
+    /// Whether Rename is offered for the program. How Antigravity CLI names
+    /// a conversation, and where its terminal shows the name, is not known
+    /// yet.
+    static func supportsRename(_ program: ChatProgram) -> Bool {
+        switch program {
+        case .claude, .codex, .pi, .omp, .grok, .opencode: true
+        case .agy: false
+        }
+    }
+
     static func supportsGeneration(_ program: ChatProgram) -> Bool {
         switch program {
         case .claude, .codex, .omp: true
-        case .pi, .grok, .opencode: false
+        case .pi, .grok, .opencode, .agy: false
         }
     }
 
@@ -36,6 +46,8 @@ enum AgentTitleNaming {
             if title.hasSuffix(" - grok") { title.removeLast(7) }
         case .opencode:
             if title.hasPrefix("OC | ") { title.removeFirst(5) }
+        case .agy:
+            break
         }
         return title
     }

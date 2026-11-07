@@ -121,6 +121,7 @@ enum ScreenFixture {
         if stem.hasPrefix("omp-") { return .omp }
         if stem.hasPrefix("grok-") { return .grok }
         if stem.hasPrefix("opencode-") { return .opencode }
+        if stem.hasPrefix("agy-") { return .agy }
         return .claude
     }
 

@@ -86,7 +86,7 @@ extension ChatProgram {
     var writesNewConversationWithFirstReply: Bool {
         switch self {
         case .pi, .omp: true
-        case .claude, .codex, .grok, .opencode: false
+        case .claude, .codex, .grok, .opencode, .agy: false
         }
     }
 }
@@ -893,6 +893,23 @@ actor ChatConversationEngine {
             case .failure(.notFound(let searchedAll)):
                 return .unavailable(.notFound(searchedAll: searchedAll))
             case .failure(.mismatched): return .unavailable(.mismatched)
+            }
+        case .agy:
+            switch try await AgyTranscriptLocator(files: files).locate(
+                sessionID: reference.sessionID, configRoot: transcriptRoot)
+            {
+            case .success(let path): return .found(path)
+            case .failure(.notWritten):
+                // A file shown before, or saved on the device, that is gone
+                // now is not a conversation still to start.
+                guard !hasFollowed, cached == nil, !lostAMessage else {
+                    return .unavailable(.notFound(searchedAll: true))
+                }
+                return .unavailable(.awaitingFirstMessage(.agy))
+            case .failure(.notFound) where mayStillBeToStart:
+                return .unavailable(.awaitingFirstMessage(.agy))
+            case .failure(.notFound):
+                return .unavailable(.notFound(searchedAll: true))
             }
         case .opencode:
             // Its store is read by query, so `open` never looks for a file.

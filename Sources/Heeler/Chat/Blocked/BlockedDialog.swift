@@ -359,7 +359,8 @@ enum BlockedDialogParser {
         case .omp: OMPDialogParser.parse(screen)
         case .grok: GrokDialogParser.parse(screen)
         case .opencode: OpenCodeDialogParser.parse(screen)
-        case .pi: .none
+        // Neither has a dialog parser yet.
+        case .pi, .agy: .none
         }
     }
 }

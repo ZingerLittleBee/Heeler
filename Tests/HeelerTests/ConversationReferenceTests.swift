@@ -121,6 +121,35 @@ struct ConversationReferenceTests {
                 == .unidentified)
     }
 
+    /// herdr reports an Antigravity CLI conversation by the id its folder
+    /// under `brain` is named for, which agy writes lowercase.
+    @Test func antigravityBindsItsConversationID() {
+        let id = "95739799-ba8d-4e64-90ee-04991d45f22d"
+        #expect(
+            ConversationReference.resolve(Self.session(source: "herdr:antigravity_cli", agent: "agy", value: id))
+                == .bound(ConversationReference(program: .agy, sessionID: id)))
+        #expect(
+            ConversationReference.resolve(
+                Self.session(source: "herdr:antigravity_cli", agent: "agy", value: id.uppercased()))
+                == .bound(ConversationReference(program: .agy, sessionID: id)))
+    }
+
+    /// herdr never reports a transcript path for Antigravity CLI, and only
+    /// its own source and agent name it.
+    @Test(arguments: [
+        ("herdr:antigravity_cli", "agy", AgentSessionRefKind.path),
+        ("herdr:antigravity_cli", "antigravity", .id),
+        ("herdr:agy", "agy", .id),
+        ("herdr:antigravity", "agy", .id),
+        ("herdr:antigravity_cli", "grok", .id),
+    ])
+    func antigravityRefusesOtherReports(source: String, agent: String, kind: AgentSessionRefKind) {
+        let value = kind == .path ? "/home/dev/.gemini/antigravity-cli/brain/x/transcript.jsonl" : Self.codexID
+        #expect(
+            ConversationReference.resolve(Self.session(source: source, agent: agent, kind: kind, value: value))
+                == .unsupported)
+    }
+
     /// herdr never reports a transcript path for Grok Build.
     @Test func grokRefusesPathReports() {
         let path = "/home/dev/.grok/sessions/%2Fhome%2Fdev%2Fapp/\(Self.grokID)/updates.jsonl"

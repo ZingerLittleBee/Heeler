@@ -52,6 +52,7 @@ enum InputBoxStateDetector {
         case .pi, .omp: return PiInputBoxDetector.detect(screen, program: program)
         case .grok: return GrokInputBoxDetector.detect(screen)
         case .opencode: return OpenCodeScreenReader.read(screen).state
+        case .agy: return .unknown("Chat can't read Antigravity CLI's input box yet.")
         }
     }
 

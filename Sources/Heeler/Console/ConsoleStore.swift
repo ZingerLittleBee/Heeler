@@ -1377,7 +1377,8 @@ final class ConsoleStore {
     }
 
     func offersTitleRename(for agent: ConsoleAgent) -> Bool {
-        capabilities(for: agent.hostID).renameAgent && ChatProgram(rawValue: agent.agent.kind) != nil
+        capabilities(for: agent.hostID).renameAgent
+            && ChatProgram(rawValue: agent.agent.kind).map(AgentTitleNaming.supportsRename) == true
     }
 
     func titleRenameStore(for agent: ConsoleAgent) -> AgentTitleRenameStore? {

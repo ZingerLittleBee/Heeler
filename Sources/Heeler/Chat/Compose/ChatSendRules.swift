@@ -45,7 +45,9 @@ enum ChatCommandMenu {
         case .claude: skill.isUserInvocable
         case .codex: true
         case .grok: skill.isUserInvocable && !GrokSlashCommands.builtIns.contains(skill.name.lowercased())
-        case .opencode: false
+        // Which Antigravity CLI skills a message can invoke is not known
+        // yet, so none are offered.
+        case .opencode, .agy: false
         }
     }
 
@@ -142,6 +144,10 @@ struct ChatSendProfile: Sendable {
         switch program {
         case .claude:
             // Claude Code runs `/exit` for these whole inputs.
+            ChatSendProfile(exitWords: ["exit", "quit", ":q", ":q!", ":wq", ":wq!"])
+        case .agy:
+            // Which whole inputs make Antigravity CLI quit is not known yet;
+            // Claude Code's words are the widest set Chat holds back.
             ChatSendProfile(exitWords: ["exit", "quit", ":q", ":q!", ":wq", ":wq!"])
         case .grok:
             // Grok Build quits at once for these whole inputs, and reads

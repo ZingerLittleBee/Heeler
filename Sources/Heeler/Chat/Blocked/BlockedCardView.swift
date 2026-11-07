@@ -613,7 +613,7 @@ extension DialogOption {
             return "Grok Build won't ask about edits again in this session."
         case .grok:
             return "Grok Build saves this rule for the project and won't ask again."
-        case .claude, .codex, .pi:
+        case .claude, .codex, .pi, .agy:
             return "Saves a rule, so this isn't asked again."
         case .opencode:
             return "Saves an OpenCode rule for this project that can allow more than this request."

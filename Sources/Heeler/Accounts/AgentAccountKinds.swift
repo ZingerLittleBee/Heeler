@@ -36,6 +36,8 @@ extension SupportedAgentKind {
                 .init(name: "sessions", kind: .directory),
             ]
         case .grok, .pi, .omp: [.init(name: "sessions", kind: .directory)]
+        // Antigravity CLI keeps each conversation's logs under `brain`.
+        case .antigravity: [.init(name: "brain", kind: .directory)]
         default: []
         }
     }

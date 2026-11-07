@@ -95,7 +95,7 @@ extension ChatProgram {
     /// is not necessarily the message.
     var mayRefillInputBoxAfterSend: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .opencode: false
+        case .claude, .codex, .pi, .omp, .opencode, .agy: false
         case .grok: true
         }
     }

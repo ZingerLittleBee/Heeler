@@ -2427,7 +2427,9 @@ extension ChatProgram {
     /// turn ran, never the turn's opener.
     var stopReturnsUntakenSends: Bool {
         switch self {
-        case .pi, .omp: true
+        // Antigravity CLI 1.5.3's Esc puts a message queued during the turn
+        // back in the box, and its transcript never records it.
+        case .pi, .omp, .agy: true
         case .claude, .codex, .grok: false
         // OpenCode 2.0.32's Esc interrupt resumes: a steer still waiting
         // runs after the stop rather than coming back to the box.
@@ -2442,7 +2444,9 @@ extension ChatProgram {
     var recordsCompactionBeforeNextPrompt: Bool {
         switch self {
         case .pi, .omp, .grok, .opencode: true
-        case .claude, .codex: false
+        // Antigravity CLI 1.5.3 records `/compact` as a prompt and then its
+        // checkpoint; a refused one was not observed.
+        case .claude, .codex, .agy: false
         }
     }
 
@@ -2456,7 +2460,7 @@ extension ChatProgram {
     var declinesCompactOnScreen: Bool {
         switch self {
         case .pi, .omp, .grok: true
-        case .claude, .codex, .opencode: false
+        case .claude, .codex, .opencode, .agy: false
         }
     }
 
@@ -2468,7 +2472,7 @@ extension ChatProgram {
     /// says why it is Blocked instead (`BlockedCardStore.unreadableNote`).
     var offersKeysWhenBlockedWithoutDialog: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok: true
+        case .claude, .codex, .pi, .omp, .grok, .agy: true
         case .opencode: false
         }
     }
@@ -2482,7 +2486,7 @@ extension ChatProgram {
     /// Herdr TUI only: a core has no record to re-read (ADR 0034).
     var leavesSessionWithoutReport: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok: false
+        case .claude, .codex, .pi, .omp, .grok, .agy: false
         case .opencode: true
         }
     }
@@ -2493,7 +2497,7 @@ extension ChatProgram {
     /// needs the program's terminal title in the check.
     var confirmsSessionBeforeSend: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok: false
+        case .claude, .codex, .pi, .omp, .grok, .agy: false
         case .opencode: true
         }
     }
@@ -2504,7 +2508,7 @@ extension ChatProgram {
     var mayShareSessionServer: Bool {
         switch self {
         case .codex: true
-        case .claude, .pi, .omp, .grok, .opencode: false
+        case .claude, .pi, .omp, .grok, .opencode, .agy: false
         }
     }
 }

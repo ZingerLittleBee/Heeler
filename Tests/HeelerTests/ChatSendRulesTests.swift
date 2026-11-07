@@ -12,10 +12,11 @@ struct ChatSendRulesTests {
     ]
 
     /// How each program invokes a skill: Pi and Oh My Pi skills are
-    /// `/skill:name`. OpenCode's menu offers none, whatever the prefix.
+    /// `/skill:name`. OpenCode's and Antigravity CLI's menus offer none,
+    /// whatever the prefix.
     private static func skillPrefix(_ program: ChatProgram) -> String {
         switch program {
-        case .claude, .opencode: "/"
+        case .claude, .opencode, .agy: "/"
         case .codex: "$"
         case .pi, .omp: "/skill:"
         case .grok: "/"
@@ -400,7 +401,7 @@ struct ChatSendRulesTests {
             #expect(rules.validate("/e2e-hidden") == .unknownCommand("e2e-hidden"))
         case .codex, .pi, .omp:
             #expect(names == ["compact", "review", "e2e-hidden"])
-        case .opencode:
+        case .opencode, .agy:
             #expect(names == ["compact"])
         }
     }

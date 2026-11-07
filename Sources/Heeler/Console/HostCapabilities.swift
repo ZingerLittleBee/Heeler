@@ -161,7 +161,9 @@ extension HostCapabilities {
     /// The programs a macOS core Host binds exactly, each from reads the macOS
     /// recordings saw it through (ADR 0034, `host-evidence/macos`). Taking one out
     /// leaves it to the candidate list on macOS, and changes nothing on Linux.
-    static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases)
+    /// Antigravity CLI is left out: no recording read it, and its binding is not
+    /// implemented.
+    static let macOSExactCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp, .grok, .opencode]
 }
 
 extension Host {

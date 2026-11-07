@@ -21,7 +21,7 @@ enum DialogActionPlanner {
         case .codex: try CodexDialogPlanner(dialog: dialog).plan(action)
         case .omp: try OMPDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         case .opencode: try OpenCodeDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
-        case .pi: throw .unsupported("Answer this dialog in the Agent terminal.")
+        case .pi, .agy: throw .unsupported("Answer this dialog in the Agent terminal.")
         case .grok: try GrokDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         }
     }

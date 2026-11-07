@@ -139,6 +139,9 @@ struct HerdrCoreSessionBinder: Sendable {
                 case .grok: try await checkGrokBuild(tree)
                 case .opencode: try await checkOpenCode(record, tree: tree)
                 case .pi, .omp: try await checkPiFamily(record, tree: tree)
+                // Antigravity CLI holds a presence lock named for its
+                // conversation; binding by it is not implemented yet.
+                case .agy: cannotTell
                 }
         }
         return await applyingPick(to: evidence, record: record, tree: tree)
@@ -192,7 +195,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 namesOf: ChatTranscriptOffVariable.allCases.map(\.rawValue))
         case .codex: codexProcessAsk
         case .grok: grokProcessAsk
-        case .opencode: ProcessAsk()
+        case .opencode, .agy: ProcessAsk()
         case .pi, .omp: piFamilyProcessAsk
         }
     }
@@ -213,6 +216,8 @@ struct HerdrCoreSessionBinder: Sendable {
                 ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" })
         case .opencode: tree.agent(isAgent: { $0?.name == "opencode" })
         case .pi, .omp: piFamilyAgent(in: tree)
+        // Not implemented with the presence-lock binding.
+        case .agy: nil
         }
     }
 
@@ -223,7 +228,7 @@ struct HerdrCoreSessionBinder: Sendable {
         case .claude: Self.configRoot(of: process, variable: Self.configVariable, underHome: ".claude")
         case .codex: codexHome(of: process)
         case .grok: grokHome(of: process)
-        case .opencode: nil
+        case .opencode, .agy: nil
         case .pi, .omp: piFamilySessions(of: process)
         }
     }

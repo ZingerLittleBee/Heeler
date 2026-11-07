@@ -73,7 +73,7 @@ struct HerdrCoreChatPickBinderTests {
         case .grok: "\(home)/.grok"
         case .pi: "\(home)/.pi/agent/sessions"
         case .omp: "\(home)/.omp/agent/sessions"
-        case .opencode: nil
+        case .opencode, .agy: nil
         }
     }
 
