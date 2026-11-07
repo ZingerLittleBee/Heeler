@@ -74,7 +74,7 @@ jobs:
     # rather than macos-latest for reproducibility.
     runs-on: macos-26
     # The job limit leaves the setup and upload steps room around the test step.
-    timeout-minutes: ${{ inputs.layout == 'serial' && 65 || 60 }}
+    timeout-minutes: ${{ inputs.layout == 'serial' && 80 || (matrix.shard == 'ordinary' && 70 || 60) }}
     strategy:
       fail-fast: false
       matrix:
@@ -92,9 +92,10 @@ jobs:
       # Leave room for runner variance without treating this safety deadline
       # as a runtime target; cold and warm measurements use the same limit.
       HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '1800'
-      # The ordinary lane's full test call can pass every test and still
-      # exceed 10 minutes before xcodebuild exits.
-      HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '900'
+      # The ordinary target grew from 5,030 to over 7,200 tests. Its one
+      # complete-target call needs room for execution and Simulator startup;
+      # the smaller fixture shards retain their 15-minute watchdog (refs #630).
+      HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: ${{ (matrix.shard == 'ordinary' || matrix.shard == 'all') && '1500' || '900' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -198,12 +199,12 @@ jobs:
       #
       # A step timeout signals only the step shell, so the script's cleanup and
       # failure diagnostics survive only when its own watchdogs fire first. The
-      # limit therefore nests the worst sharded budget: preparation (about 3
-      # minutes), the 30-minute build deadline, a passing first suite (about 4),
-      # and a hung second suite's 15-minute watchdog with sampling and cleanup.
-      # Serial runs every phase once and has its own wider limit.
+      # ordinary budget nests preparation (about 3 minutes), the 30-minute build
+      # deadline and its 25-minute test watchdog, plus sampling and cleanup.
+      # Fixture shards retain 55 minutes; serial adds the passing fixture phases
+      # before the full target. The job limit reserves another 5 minutes for uploads.
       - name: Build and test
-        timeout-minutes: ${{ inputs.layout == 'serial' && 60 || 55 }}
+        timeout-minutes: ${{ inputs.layout == 'serial' && 75 || (matrix.shard == 'ordinary' && 65 || 55) }}
         # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
         # privileged part (the real-password sshd) a hard requirement here
         # rather than something full verification may quietly run without.

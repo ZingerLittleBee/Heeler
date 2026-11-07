@@ -2443,14 +2443,20 @@ struct HerdrCoreTerminalStoreTests {
 
     /// A closed window's detail may get a late update while the app comes
     /// back; it must not take back the terminal it has let go of.
-    @Test func aClosedWindowsDetailDoesNotTakeItsTerminalBack() async throws {
+    @Test(arguments: [false, true])
+    func aClosedWindowsDetailDoesNotTakeItsTerminalBack(whileOpening: Bool) async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
+        if whileOpening { await fixture.scripted.holdAttachReplies() }
         let agent = try #require(fixture.console.agents.first)
         let closing = UUID()
         let window = try await fixture.showDetail(of: agent, sceneID: closing)
         let held = try await fixture.waitForAttach(1, laying: window)
-        try await fixture.deliverOutput("x", on: held)
+        if !whileOpening {
+            try await fixture.deliverOutput("x", on: held)
+            _ = await held.socket.waitForFrame(channel: held.channel, kind: .focus)
+        }
         fixture.console.sceneDidEnd(closing)
+        if whileOpening { await fixture.scripted.releaseAttachReplies() }
         try await Self.until("the closed window's terminal to go quiet") {
             await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0])
         }
@@ -2659,14 +2665,20 @@ struct HerdrCoreTerminalStoreTests {
 
     /// `.task(id:)` runs again when the app comes back, in a screen whose
     /// window closed without telling it.
-    @Test func aClosedWindowsScreenDoesNotTakeItsTerminalBack() async throws {
+    @Test(arguments: [false, true])
+    func aClosedWindowsScreenDoesNotTakeItsTerminalBack(whileOpening: Bool) async throws {
         let fixture = try await Fixture(terminals: [Self.shellRecord])
+        if whileOpening { await fixture.scripted.holdAttachReplies() }
         let terminal = try #require(fixture.console.terminals.first)
         let closing = UUID()
         let window = try await fixture.showShell(of: terminal, sceneID: closing)
         let held = try await fixture.waitForAttach(1, laying: window)
-        try await fixture.deliverOutput("x", on: held)
+        if !whileOpening {
+            try await fixture.deliverOutput("x", on: held)
+            _ = await held.socket.waitForFrame(channel: held.channel, kind: .focus)
+        }
         fixture.console.sceneDidEnd(closing)
+        if whileOpening { await fixture.scripted.releaseAttachReplies() }
         try await Self.until("the closed window's terminal to go quiet") {
             await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0])
         }

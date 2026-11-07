@@ -324,6 +324,22 @@ targets:
       - package: HeelerOverlay
       - package: GhosttyTerminal
 
+  # Operator-authorized tests against disposable live Agents. These are not
+  # members of HeelerTests or its complete CI coverage contract.
+  HeelerLiveTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/HeelerLiveTests
+      - Tests/HeelerTests/Support/RealSSHFixture.swift
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.live-tests
+    dependencies:
+      - target: Heeler
+      - package: HeelerSSH
+
 schemes:
   Heeler:
     build:
@@ -342,3 +358,10 @@ schemes:
         HEELER_SSH_E2E_REQUIRED: $(HEELER_SSH_E2E_REQUIRED)
     run:
       config: Debug
+  HeelerLiveTests:
+    build:
+      targets:
+        Heeler: all
+    test:
+      targets:
+        - HeelerLiveTests
