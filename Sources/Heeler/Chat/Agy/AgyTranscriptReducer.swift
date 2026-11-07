@@ -437,7 +437,8 @@ extension ChatTranscriptAdapter {
     /// live ones. agy writes a prompt sent while it works only once the
     /// turn ends, so the echo clock stops while herdr reports it busy. A
     /// turn of large file reads can fill several MB, so the timeline reads
-    /// at most 4 MiB of earlier history by itself.
+    /// at most 4 MiB of earlier history by itself. agy's prompt log tells a
+    /// send another conversation took (`AgyPromptHistoryWitness`).
     static var agy: ChatTranscriptAdapter {
         var limits = TranscriptFollower.Limits()
         limits.automaticOlderSearch = 4 << 20
@@ -447,6 +448,7 @@ extension ChatTranscriptAdapter {
             joinsCachedHistory: false,
             makeReducer: { _ in AgyTranscriptReducer() },
             echoKey: { AgyTranscriptReducer.echoKey($0) },
-            echoClockStopsWhileWorking: true)
+            echoClockStopsWhileWorking: true,
+            sendWitness: AgyPromptHistoryWitness.witness)
     }
 }

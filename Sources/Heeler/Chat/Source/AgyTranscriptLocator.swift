@@ -62,4 +62,10 @@ struct AgyTranscriptLocator: Sendable {
     static func transcriptPath(inFolder folder: String) -> String {
         RemoteFilePath.join(folder, ".system_generated", "logs", "transcript_full.jsonl")
     }
+
+    /// The directory a transcript at `transcriptPath(inFolder:)` is under,
+    /// which also holds agy's prompt log.
+    static func root(ofTranscript path: String) -> String {
+        path.split(separator: "/", omittingEmptySubsequences: false).dropLast(5).joined(separator: "/")
+    }
 }
