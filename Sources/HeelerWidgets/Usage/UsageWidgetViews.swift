@@ -168,11 +168,6 @@ struct UsageWidgetView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    if let note = scope.excludedNote {
-                        Text(note)
-                            .font(.caption).foregroundStyle(.secondary)
-                            .padding(.leading, 16).padding(.top, 4)
-                    }
                 }
             }
             .padding(.top, 12)
@@ -190,9 +185,11 @@ struct UsageWidgetView: View {
             VStack(spacing: 0) {
                 Image(systemName: "chart.bar.fill")
                     .font(.system(size: 10, weight: .semibold))
-                Text(UsageWidgetText.short(total, metric: entry.metric, locale: locale))
-                    .font(.system(size: 15, weight: .semibold).monospacedDigit())
-                    .minimumScaleFactor(0.6)
+                UsageFittedFigure(
+                    variants: entry.metric == .cost
+                        ? UsageWidgetText.costVariants(total.cost, cents: false, locale: locale)
+                        : [UsageWidgetText.short(total, metric: entry.metric, locale: locale)],
+                    size: 15, minimumScale: 0.6, alignment: .center)
                 Text(UsageWidgetText.rangeShort(entry.range))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
@@ -785,17 +782,44 @@ struct UsageFigure: View {
     @Environment(\.locale) private var locale
 
     var body: some View {
-        Group {
-            switch metric {
-            case .cost:
-                Text(UsageWidgetText.cost(summary.cost, locale: locale))
-            case .tokens:
-                Text(AgentUsageStyle.tokens(summary.tokens, locale: locale))
-                    + Text(" tokens").font(.system(size: size * 0.5, weight: .semibold))
+        switch metric {
+        case .cost:
+            UsageFittedFigure(variants: UsageWidgetText.costVariants(summary.cost, locale: locale), size: size)
+        case .tokens:
+            (Text(AgentUsageStyle.tokens(summary.tokens, locale: locale))
+                + Text(" tokens").font(.system(size: size * 0.5, weight: .semibold)))
+                .font(.system(size: size, weight: .semibold).monospacedDigit())
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+        }
+    }
+}
+
+/// A figure that never truncates: the first of `variants` that fits once
+/// shrunk to `minimumScale`, drawn as large as the width allows.
+struct UsageFittedFigure: View {
+    let variants: [String]
+    let size: CGFloat
+    var minimumScale: CGFloat = 0.5
+    var alignment: Alignment = .leading
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            ForEach(Array(variants.enumerated()), id: \.offset) { _, variant in
+                ZStack(alignment: alignment) {
+                    // A widget cannot measure text, so the variant at its
+                    // smallest scale is what ViewThatFits compares.
+                    Text(variant)
+                        .font(.system(size: size * minimumScale, weight: .semibold).monospacedDigit())
+                        .hidden()
+                        .accessibilityHidden(true)
+                    Text(variant)
+                        .font(.system(size: size, weight: .semibold).monospacedDigit())
+                        .minimumScaleFactor(minimumScale)
+                        .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: alignment)
+                }
             }
         }
-        .font(.system(size: size, weight: .semibold).monospacedDigit())
-        .minimumScaleFactor(0.5)
         .lineLimit(1)
     }
 }
@@ -1072,14 +1096,17 @@ struct UsageProgramRow: View {
         HStack(spacing: 6) {
             UsageProgramDot(program: program)
             Text(name).frame(maxWidth: .infinity, alignment: .leading)
-            Text(value).fontWeight(.semibold).monospacedDigit().fixedSize()
+            Text(value).fontWeight(.semibold).monospacedDigit()
+                .minimumScaleFactor(0.5)
+                .layoutPriority(1)
         }
     }
 }
 
 /// A large Usage widget's row: the figure, and the other metric beside it.
-/// Each figure column is as wide as its widest entry in the table, so a
-/// long name truncates rather than a figure.
+/// Each figure column is as wide as its widest entry in the table. A long
+/// name truncates first; figures that still do not fit shrink rather than
+/// truncate.
 struct UsageTableRow<Leading: View>: View {
     @ViewBuilder let leading: () -> Leading
     let name: String
@@ -1120,7 +1147,8 @@ struct UsageTableRow<Leading: View>: View {
             .accessibilityHidden(true)
             Text(text(summary))
         }
-        .fixedSize()
+        .minimumScaleFactor(0.5)
+        .layoutPriority(1)
     }
 }
 
@@ -1384,6 +1412,16 @@ enum UsageWidgetText {
 
     static func cost(_ value: Double?, locale: Locale) -> String {
         AgentUsageStyle.cost(value, locale: locale)
+    }
+
+    /// A cost from its cents, or with `cents` off its whole dollars, down
+    /// to "US$1.23M", for a figure that shortens rather than truncates.
+    static func costVariants(_ value: Double?, cents: Bool = true, locale: Locale) -> [String] {
+        guard let value else { return [cost(nil, locale: locale)] }
+        let compact = value.formatted(
+            .currency(code: "USD").notation(.compactName).precision(.significantDigits(1...3)).locale(locale))
+        let whole = AgentUsageStyle.shortCost(value, locale: locale)
+        return cents ? [cost(value, locale: locale), whole, compact] : [whole, compact]
     }
 
     static func tokens(_ value: Int64, locale: Locale) -> String {
