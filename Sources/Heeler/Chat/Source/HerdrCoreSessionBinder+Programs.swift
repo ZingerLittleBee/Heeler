@@ -373,7 +373,8 @@ extension HerdrCoreSessionBinder {
     }
 
     /// `~/.gemini/antigravity-cli` under the Agent's own `HOME`. No variable is known
-    /// to move it (agy 1.5.3), so nothing else is asked.
+    /// to move it: agy 1.5.3 kept it under `ANTIGRAVITY_APP_DATA_DIR`, and the binary's
+    /// other `ANTIGRAVITY_*` names were not tried. So nothing else is asked.
     func antigravityRoot(of process: HostProcessReader.Facts) -> String? {
         guard case .value(let home)? = process.variables[Self.homeVariable], RemoteFilePath.isAcceptable(home) else {
             return nil

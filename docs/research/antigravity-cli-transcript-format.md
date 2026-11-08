@@ -8,6 +8,10 @@ Versioned observations:
   process during and between turns, pane reads, and a hook dumper placed in a
   scratch workspace for one launch.
 - The same agy outside herdr on the same day, for `/clear` and `/fork`.
+- The same agy through herdr 0.9.5 on macOS 27.0.1 on 2026-11-08, for Vim
+  mode, `ANTIGRAVITY_APP_DATA_DIR` and a background command that ended
+  inside its turn (pane reads about 0.14 s apart, beside the transcript),
+  and in a herdr-core 0.1.18 Terminal for one that ended after its turn.
 - A structure-only census of one Host's `~/.gemini/antigravity-cli`: 28
   conversations with a transcript (13 top-level, 15 subagents), 3,502 lines
   in each of the two transcript files, first steps from 2026-10-13 to
@@ -64,7 +68,13 @@ Files, under the data root `~/.gemini/antigravity-cli`:
 
 agy's background updater runs with `--app_data_dir=antigravity-cli
 --gemini_dir=.gemini`, and the agy process carried no `GEMINI_*`,
-`ANTIGRAVITY_*`, `JETSKI_*` or `AGY_*` variable. Heeler reads the default
+`ANTIGRAVITY_*`, `JETSKI_*` or `AGY_*` variable. Started with
+`ANTIGRAVITY_APP_DATA_DIR` naming a scratch folder, agy opened its files
+under `~/.gemini/antigravity-cli` as before (its log, `history.jsonl`,
+`settings.json`, `conversation_summaries.db`, `brain` and `presence`) and
+never made the folder (2026-11-08). The binary's other names,
+`ANTIGRAVITY_GEMINI_DIR`, `ANTIGRAVITY_CONFIG_REL_DIR` and
+`ANTIGRAVITY_EXECUTABLE_DATA_DIR`, were not tried. Heeler reads the default
 root, then each Account directory (one holding a `brain` folder).
 
 The conversation does not exist before its first prompt: no folder, lock or
@@ -190,7 +200,16 @@ past it. The `RUNNING` body tells the model how to follow the task (`YOU
 MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS …` on a command), so Chat shows
 none of it as output. A `manage_task` call can report the status too. When the turn has already
 ended, agy starts one on its own: the system message, then a planner
-response, with no `USER_INPUT` and no history line.
+response, with no `USER_INPUT` and no history line (a herdr-core Terminal
+showed one again on 2026-11-08, with no prompt before it). When the command
+ends while its turn still runs, the system message waited for that turn's
+reply in one run through herdr (2026-11-08): a command sent to the
+background ended 8 s after it started, the turn's reply came 79 s after
+that, and the system message and the planner response answering it started
+in the reply's second. From the command's allow to that response's text
+every pane read showed the spinner or `esc to cancel` and herdr read
+`working`, then `done`, with no idle box between; one 5 s gap in the reads
+fell just after the reply.
 
 **System messages.** `content` opens with a preamble that names the tag
 (`The following is a <SYSTEM_MESSAGE> not actually sent by the user. …`),
@@ -305,6 +324,25 @@ rule of its own palette, the screen's full width when colorless. Without
 colors a mode's hint reads as the box's hint, not a draft, only when it is
 one of the three hints, or the start of one that ends in `...` at the
 screen's edge, and the footer keeps its hint.
+
+### Vim mode
+
+agy 1.5.3 turns Vim mode on in `/settings` (alias `/config`) under Editor
+Mode, which writes `"editorMode": "vim"` to `settings.json` and adds an
+`Editor Mode › Insert First` row, off by default; set back to `default`,
+the key goes (herdr 0.9.5, 2026-11-08). With Insert First off the prompt
+opens in Normal mode; with it on, agy's changelog says, it opens in Insert
+mode, where a bare Enter submits. Insert mode draws `-- INSERT --` in bold
+grey before `? for shortcuts` on the footer's row, and Visual mode
+`-- VISUAL --` the same way: footers Chat doesn't know, so it holds there.
+Normal mode draws no badge: its box and footer read as the idle box's,
+differing only in where an SGR reset falls, so Chat sends into it. herdr's
+`agent prompt` there (the paste, then Enter) was submitted as typed: the
+first read after herdr's answer showed the prompt sent and `Loading...`,
+the text arrived whole rather than as Normal mode keys, no read showed an
+Insert badge, and the turn ran to its reply. Heeler reads no agy setting,
+so it never knows Vim mode is on. `-- V-LINE --`, in agy's strings, and
+Normal mode's Ctrl+S and Ctrl+Enter, from its changelog, were not tried.
 
 ### Keys
 
@@ -436,9 +474,10 @@ Chat sends only into an empty box with nothing under it and an idle footer
 it knows (`? for shortcuts`, nothing at the left, or an armed exit); a
 mode's hint is not a draft, and an armed exit does not hold. A draft,
 bash mode, a popup or panel under the box, another footer (code search
-mode's or a Vim badge from agy's strings, if drawn there), a dialog, an
-exited agy and any unreadable screen hold the message. agy's strings hold
-no badge for Vim's Normal mode (Open questions).
+mode's from agy's strings, if drawn there, or Vim's Insert and Visual
+badges), a dialog, an exited agy and any unreadable screen hold the
+message. Vim's Normal mode reads as idle and takes the send (Vim mode,
+above).
 
 A running turn holds it too: the footer `esc to cancel` or `Press up to
 edit queued messages`, or a braille spinner leading one of the bottom rows,
@@ -456,7 +495,8 @@ so Chat does not hold on it. What remains is a turn that starts after
 Chat's read and opens a dialog before herdr's Enter: one sent from another
 client, or the turn agy starts by itself when a background command ends
 (Background tasks, above). No probe caught either race; both follow from
-the timings above.
+the timings above. agy was seen going on by itself on 2026-11-08, after
+its turn had ended and inside a running one, with nothing sent meanwhile.
 
 Stop sends one Esc, never Ctrl+C. It reads the screen first and sends
 nothing while bash mode holds a command, which Esc would drop (93); what
@@ -478,8 +518,9 @@ its `/` popup and from `/name` (agy's changelog, 1.1.12).
   write, not as a plan.
 - A line cut at Heeler's line cap. The step's index, type and status survive,
   but an unfinished string is dropped whole, so its text is lost.
-- An environment variable that moves the data root. None was found, and
-  Heeler reads only the default root and Accounts.
+- An environment variable that moves the data root. `ANTIGRAVITY_APP_DATA_DIR`
+  does not (Identity and location), the binary's other `ANTIGRAVITY_*` names
+  were not tried, and Heeler reads only the default root and Accounts.
 - A queued message delivered inside a running turn. One was seen arriving as
   a new prompt while a background command ran, rather than at the turn's end;
   where its turn should start is not settled.
@@ -487,21 +528,11 @@ its `/` popup and from `/name` (agy's changelog, 1.1.12).
 - What herdr reports after `/fork` and `/resume` before the next prompt.
   Only `/clear` was run under herdr; the old id after `/fork` is inferred
   (see [Identity and location](#identity-and-location)).
-- Screens not captured: two queued messages, code search mode, Vim mode,
-  and the background prompt `press %s again to send command to background`.
-  If they show as agy's strings suggest, Chat holds code search mode, Vim's
-  Insert and Visual badges and the background prompt as unknown footers,
-  and two queued messages as a running turn.
-- Vim mode's Normal state. agy 1.5.3's strings carry the badges
-  `-- INSERT --`, `-- VISUAL --` and `-- V-LINE --` but none for Normal
-  mode. Its changelog (1.1.11) puts the badge in the status line;
-  `Editor Mode > Insert First` opens the prompt in Insert mode, where a
-  bare Enter submits, and Ctrl+S and Ctrl+Enter submit from Normal mode.
-  Inferred from those: without Insert First the prompt opens in Normal
-  mode, a box there looks like an idle box, and Chat sends into it. Whether
-  herdr's Enter then submits, or leaves the message in the box for Chat's
-  re-read to report as not delivered, is not known. Heeler reads no agy
-  setting that says Vim mode is on.
+- Screens not captured: two queued messages, code search mode, and the
+  background prompt `press %s again to send command to background`. If they
+  show as agy's strings suggest, Chat holds code search mode and the
+  background prompt as unknown footers, and two queued messages as a
+  running turn.
 - Dialogs not captured: `multi_replace_file_content`'s edit, Tab on an
   `always allow` row, a typed answer on a multi-select question, and Esc on
   the trust prompt. Chat leaves the last three to the terminal: the card

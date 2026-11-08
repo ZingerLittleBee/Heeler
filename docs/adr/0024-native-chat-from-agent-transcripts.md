@@ -238,10 +238,12 @@ only into an empty box with nothing under it and an idle footer it knows; a
 mode's hint is not a draft, and an armed exit does not hold, since the
 paste disarms it. A draft, bash mode, a popup or panel under the box,
 another footer, a running turn, an exited agy and any screen without the
-box hold the message, whatever herdr reports. agy's strings hold no badge
-for Vim mode's Normal state, so Chat most likely cannot tell a box in it
-from an idle one (see the research note's open questions). Every agy
-dialog takes the box's place, and herdr
+box hold the message, whatever herdr reports. Vim mode (`/settings` >
+Editor Mode) draws `-- INSERT --` or `-- VISUAL --` before the footer's
+hint, a footer Chat doesn't know, and nothing in Normal mode, whose box
+reads as idle. herdr 0.9.5's `agent.prompt` into Normal mode was submitted
+as typed and started a turn (2026-11-08), so Chat need not tell Normal
+mode from idle. Every agy dialog takes the box's place, and herdr
 0.9.5 reports some of them done or idle (see Blocked cards), where the
 prompt's Enter answers the dialog: an `agent.prompt` sent into a file edit
 dialog was swallowed, and its Enter accepted the edit (1.5.3). A dialog can
@@ -255,6 +257,10 @@ footer and spinner, so its status can only lag Chat's read, and Chat does
 not hold on it. What remains is a turn that starts after Chat's read and
 opens a dialog before herdr's Enter: one sent from another client, or the
 turn agy starts by itself when a background command it left running ends.
+agy then injects the task's `SYSTEM_MESSAGE` and starts a step with no
+user input: after its turn has ended, or, while the turn still runs, as
+its reply finishes, with no idle frame seen between (one 5 s gap in the
+reads remains). No send raced either (2026-11-08).
 A message that loses that race to a turn without a dialog is queued, and
 Stop's Esc puts it back in the box. agy takes `exit`,
 `quit`, `:q`, a leading `?` or `:` and a `/btw` after the start as text, so
