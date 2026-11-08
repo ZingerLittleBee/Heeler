@@ -4,9 +4,10 @@ import Foundation
 /// `brain/<id>/.system_generated/logs/transcript_full.jsonl` under
 /// `~/.gemini/antigravity-cli`, then under each added Account's directory.
 /// No environment variable is known to move that directory (agy 1.5.3 kept
-/// it under `ANTIGRAVITY_APP_DATA_DIR`; the binary's other `ANTIGRAVITY_*`
-/// names were not tried), so on Herdr TUI another one is searched only once
-/// it is an Account. On herdr-core `configRoot` is the one directory searched.
+/// it in place with `ANTIGRAVITY_APP_DATA_DIR` set; the binary's other
+/// `ANTIGRAVITY_*` names were not tried), so on Herdr TUI another one is
+/// searched only once it is an Account. On herdr-core `configRoot` is the
+/// one directory searched.
 ///
 /// The folder is named for the conversation's id, so the lookup is direct:
 /// no directory is bucketed by project. Chat reads the full file, whose tool

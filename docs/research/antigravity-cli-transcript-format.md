@@ -293,9 +293,13 @@ holds scrollback above the box.
 
 ### Without colors
 
-agy 1.5.3 honors `NO_COLOR`. Started as `NO_COLOR=1 agy`, it draws no color
-at all, foreground or background, but keeps bold (SGR 1) and dim (SGR 2),
-and lays the screen out as before (herdr 0.9.5, 2026-11-08, 116 to 153):
+agy 1.5.3 honors `NO_COLOR`. Started as `NO_COLOR=1 agy`, it draws no
+color, foreground or background, but keeps its text attributes: bold
+(SGR 1), dim (SGR 2), italic (SGR 3, a skipped answer's `(skipped)`, 148 to
+151) and underline (SGR 4, a file name in a reply and the help's selected
+tab, 132 and 141 to 151). It lays the screen out as before (herdr 0.9.5,
+2026-11-08, 116 to 153). The colored `NO_COLOR=1 agy` above the box in 116
+to 122 is fish's echo of the command, not agy's drawing.
 
 - The box's rules are plain `─` with no SGR. The prompt's `>` is plain and
   shares one run with the typed text, as the `/` popup's selected
@@ -305,8 +309,11 @@ and lays the screen out as before (herdr 0.9.5, 2026-11-08, 116 to 153):
   columns (122). The footer then reads `? for shortcuts`, which a typed
   draft clears (123 to 129). At the footer's right the mode's name is
   plain, the model and effort dim.
-- Past prompts in the scrollback are bold rows under a plain rule
-  `min(60, columns − 3)` wide. A reply's markdown rules and blockquote are
+- Past prompts in the scrollback are bold rows under a plain rule 60
+  columns wide at 92 columns, the only width that caught one without
+  colors. At narrower widths the rule is taken to be `columns − 3`, as agy
+  draws it in its colors (59 at 62 columns, 37 at 40: 31, 42, 48), but no
+  capture without colors shows it. A reply's markdown rules and blockquote are
   drawn indented two cells, as a short rule and a `│` row (138), so a reply
   draws no full-width rule at column 0.
 - Each dialog title is one bold run at column 0, with a plain full-width
@@ -315,15 +322,20 @@ and lays the screen out as before (herdr 0.9.5, 2026-11-08, 116 to 153):
   row's keys. The selected `> N.` row is plain, and the changed lines have
   no red or green background and no padding to the edge. A declined
   dialog's title stays bold at column 0 over `⎿  User declined the tool
-  call`, with no rule under it (143). herdr reported the file creation
-  dialog idle (139), as in agy's colors.
+  call`, with no rule under it (143). With `2. No, reject this change`
+  selected, the file edit dialog's hint row offers `tab Amend` (142), as
+  in the table below.
 
 Heeler reads each structure in one palette: a box whose rules and marker
 are all in agy's colors or all without color, and a dialog's title over a
 rule of its own palette, the screen's full width when colorless. Without
 colors a mode's hint reads as the box's hint, not a draft, only when it is
 one of the three hints, or the start of one that ends in `...` at the
-screen's edge, and the footer keeps its hint.
+screen's edge, over `? for shortcuts` or a running turn's footer. A typed
+key clears `? for shortcuts` (117, 129). A draft keeps `esc to cancel`
+(33), but a running turn holds a send either way. It also keeps an armed
+exit's `press ctrl+c again to exit` (07), so over that footer the same text
+reads as a draft, which holds.
 
 ### Vim mode
 
@@ -385,7 +397,7 @@ it (Without colors, above).
 | Trust, at start (00, 10 to 12) | `Do you trust the contents of this project?`, which wraps at 40 columns; `↑/↓ Navigate · enter Confirm`; two options without numbers | Arrows and Enter | Blocked at 190 and 62 columns, **idle at 40** |
 | Command (30, 31, 55, 77, 108) | `Run this command?`; `↑/↓ Navigate · tab Amend · ctrl+g edit/expand command`; `Yes, run command`, two `always allow` rules (this conversation, or saved in settings.json), `No, cancel` | A digit picks and confirms at once; Esc or Ctrl+C stops the whole turn; Tab opens Amend on the selected row | Blocked |
 | Command's Amend field (52, 109 to 111) | `    > ` under the row, whose label becomes `Yes, and tell Antigravity CLI what to do next` or `No, and tell Antigravity CLI what to do differently`; `enter Submit` | On Yes, Enter runs the command and sends the text as a prompt after the turn (empty, it just runs); on No, Enter declines (`user denied permission`) and sends the text at once. Esc stops the turn | **done** |
-| File edit (47, 48, 82) | The path in bold, `N  -  old` and `N  +  new` rows, `shift+tab to auto-approve file edits`, `Accept this file edit?`; `↑/↓ Navigate · f full diff` | As for a command, without Amend | **done** |
+| File edit (47, 48, 82, 141, 142) | The path in bold, `N  -  old` and `N  +  new` rows, `shift+tab to auto-approve file edits`, `Accept this file edit?`; `↑/↓ Navigate · f full diff`, or `↑/↓ Navigate · tab Amend · f full diff` while `2. No, reject this change` is selected (142) | As for a command. Tab on `No` offers Amend, whose field was not captured; `AgyDialogParser` reads no field on a file dialog, so one there would show the generic card | **done** with `Yes` selected; not recorded with `No` |
 | File creation (99) | The path, `N  +  line` rows, `Allow creation of this file?`; `↑/↓ Navigate · f full diff`; `Yes, allow creation`, `No, deny creation` | As for a file edit | **done** |
 | Question (41, 42, 44, 45) | `Question N/M: …`; `↑/↓ Navigate · enter Select · esc Skip`; the answers, then `Write-in...` | A digit answers; on a page of several it turns to the next, and on the last it submits them all. Esc skips one question (`User Skipped`) and the turn goes on | Blocked |
 | Multi-select question (100 to 103, 113, 114) | Answers drawn `N. [ ] x`; `↑/↓ Navigate · space Toggle · enter Submit · esc Skip`, with `→ Next` on a page of several | A digit selects its answer and toggles it; Enter submits the checked answers (`A1: apple, plum`) or turns the page | Blocked; **done** at 62 columns on a page of several, whose cut hint row loses `esc Skip` |
@@ -393,7 +405,9 @@ it (Without colors, above).
 
 **An Enter in the file edit dialog accepts the edit.** herdr's
 `permission_prompt` rule needs `tab amend`, which this dialog's hint row
-lacks, so herdr reports it done. An `agent prompt` sent then was swallowed,
+lacks while `Yes` is selected, so herdr reports it done. With `No` selected
+the row offers `tab Amend` (142), which the rule may match; herdr's status
+there was not recorded. An `agent prompt` sent then was swallowed,
 never reached the model or `history.jsonl`, and its Enter chose
 `1. Yes, accept this change` (47, 49, 50). Chat therefore holds any screen
 without the box whatever herdr reports, and reads a dialog from its hint row

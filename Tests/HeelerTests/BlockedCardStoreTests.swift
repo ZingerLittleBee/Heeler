@@ -1522,10 +1522,10 @@ struct BlockedCardStoreTests {
         #expect(card.request?.callID == callID)
     }
 
-    /// agy under `NO_COLOR` draws the same dialogs without colors, herdr
-    /// reports its file creation idle, and the open call stands in for
-    /// Blocked there as it does in agy's colors. The file dialogs cut the
-    /// path at 92 columns, so the call's whole path matches by its start.
+    /// agy under `NO_COLOR` draws the same dialogs without colors, and with
+    /// agy read as idle the open call stands in for Blocked there as it
+    /// does in agy's colors. The file dialogs cut the path at 92 columns,
+    /// so the call's whole path matches by its start.
     @Test(arguments: [
         ("agy-139-nocolor-perm-file-create-92x47", BlockedDialogKind.agyFileCreate),
         ("agy-141-nocolor-perm-file-edit-92x47", .agyFileEdit),

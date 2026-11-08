@@ -8,20 +8,21 @@ import Foundation
 /// agy draws in one of two palettes. By default it uses 256-color indexes,
 /// which stay the same whatever the terminal's theme: rules and hints in 8
 /// (grey), the prompt's `>` in 12 (bright blue), and bash mode's `!` in
-/// bold 4 (blue). Under `NO_COLOR` it draws no color at all but keeps bold
-/// and dim: plain rules, the prompt's `>` plain in one run with the draft,
-/// a bold `!`, and a mode's hint as plain as a draft. A box reads only when
-/// its rules and marker share one palette. Past prompts in the scrollback
-/// are bold rows (blue 4, or without color) under a rule at most 60 columns
-/// wide, never the full width, so they never read as the box. Every reader
-/// of an agy screen goes through it, so a rule changes in one place.
+/// bold 4 (blue). Under `NO_COLOR` it draws no color but keeps its text
+/// attributes, bold, dim, italic and underline: plain rules, the prompt's
+/// `>` plain in one run with the draft, a bold `!`, and a mode's hint as
+/// plain as a draft. A box reads only when its rules and marker share one
+/// palette. Past prompts in the scrollback are bold rows (blue 4, or
+/// without color) under a rule at most 60 columns wide, never the full
+/// width, so they never read as the box. Every reader of an agy screen
+/// goes through it, so a rule changes in one place.
 struct AgyScreen: Sendable {
     /// How agy colors what it draws.
     enum Palette: Equatable, Sendable {
         /// agy's 256-color indexes.
         case colored
-        /// No color, bold and dim kept: agy 1.5.3 under `NO_COLOR`, as
-        /// herdr 0.9.5 reads it (2026-11-08).
+        /// No color, bold, dim, italic and underline kept: agy 1.5.3
+        /// under `NO_COLOR`, as herdr 0.9.5 reads it (2026-11-08).
         case colorless
     }
 

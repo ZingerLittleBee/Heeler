@@ -564,13 +564,15 @@ struct AgyInputBoxDetectorTests {
         InputBoxStateDetector.detect(screen, program: .agy)
     }
 
-    /// A footer Chat doesn't know holds: code search mode's, Vim's Insert
-    /// badge and the background prompt, spelled as in agy 1.5.3's strings
-    /// and drawn where the footer's hint goes, which no capture shows. Vim's
-    /// Normal mode has no badge in those strings, so this says nothing
-    /// about it.
+    /// A footer Chat doesn't know holds: code search mode's and the
+    /// background prompt, spelled as in agy 1.5.3's strings and drawn where
+    /// the footer's hint goes, which no capture shows, and Vim mode's
+    /// Insert and Visual badges, drawn before `? for shortcuts` on the
+    /// footer's row (captured 2026-11-08). Vim's Normal mode draws no
+    /// badge, so its box reads as idle and takes the send.
     @Test(arguments: [
-        "activated code search mode", "-- INSERT --", "press ctrl+b again to send command to background",
+        "activated code search mode", "-- INSERT -- ? for shortcuts", "-- VISUAL -- ? for shortcuts",
+        "press ctrl+b again to send command to background",
     ])
     func anUnknownFooterHolds(footer: String) {
         #expect(!Self.detect(Self.box(footer: footer)).isSendable)

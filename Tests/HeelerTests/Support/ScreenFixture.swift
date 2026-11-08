@@ -150,7 +150,9 @@ enum ScreenFixture {
         "agy-109-perm-run-command-amend-62x41", "agy-110-perm-run-command-amend-typed-62x41",
         "agy-111-perm-run-command-tab-on-no-62x41", "agy-113-ask-question-multiselect-q1-of-2-62x41",
         "agy-114-ask-question-multiselect-q1-after-enter-62x41", "agy-115-ask-question-single-after-esc-62x41",
-        // agy under `NO_COLOR` (herdr 0.9.5): no color at all, bold and dim kept.
+        // agy under `NO_COLOR` (herdr 0.9.5): no color, bold, dim, italic and
+        // underline kept. Above agy in 116 to 122, fish's echo of
+        // `NO_COLOR=1 agy` is colored.
         "agy-116-nocolor-idle-empty-45x45", "agy-117-nocolor-idle-draft-45x45", "agy-118-nocolor-draft-cleared-45x45",
         "agy-119-nocolor-bash-mode-empty-45x45", "agy-120-nocolor-bash-mode-with-text-45x45",
         "agy-121-nocolor-after-bash-mode-45x45", "agy-122-nocolor-accept-edits-hint-cut-45x45",

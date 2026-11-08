@@ -232,9 +232,10 @@ another conversation took a message.
 
 agy's input box is two full-width grey rules with a `>` row between them,
 drawn inline on the normal screen; under `NO_COLOR` agy 1.5.3 draws no
-colors, only bold and dim, so the rules and the `>` are plain and Chat
-reads a box only when its rules and marker share one palette. Chat sends
-only into an empty box with nothing under it and an idle footer it knows; a
+colors but keeps bold, dim, italic and underline, so the rules and the `>`
+are plain and Chat reads a box only when its rules and marker share one
+palette. Chat sends only into an empty box with nothing under it and an
+idle footer it knows; a
 mode's hint is not a draft, and an armed exit does not hold, since the
 paste disarms it. A draft, bash mode, a popup or panel under the box,
 another footer, a running turn, an exited agy and any screen without the
