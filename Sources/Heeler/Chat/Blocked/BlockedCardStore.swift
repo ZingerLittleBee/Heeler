@@ -764,10 +764,11 @@ final class BlockedCardStore {
 
     /// Keeps the Antigravity CLI permission a call's card shows, as the
     /// read that cut the least of it: a read cut at a narrower width shows
-    /// too little to tell the next dialog from this one.
+    /// too little to tell the next dialog from this one. A read that
+    /// shows every row as far as the kept one takes its place.
     private func noteShown(_ dialog: BlockedDialog, forCall id: String) {
         guard Self.answersOneCall.contains(dialog.kind) else { return }
-        if let kept = shownDialogs[id], !kept.subject.isCut || dialog.subject.isCut { return }
+        if let kept = shownDialogs[id], !BlockedRequestMatch.agyRead(dialog, showsAsMuchAs: kept) { return }
         shownDialogs[id] = dialog
     }
 

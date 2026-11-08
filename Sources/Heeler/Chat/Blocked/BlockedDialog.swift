@@ -260,12 +260,12 @@ struct DialogSubject: Sendable, Hashable {
     /// `…`) or the file's path (it reaches the dialog's right edge), so the
     /// call it asks about only starts with it.
     var isRequestCut = false
-    /// Antigravity CLI file permission: a changed line reaches the dialog's
-    /// right edge, where agy cuts it without a mark.
-    var changesAreCut = false
-    /// Antigravity CLI permission: the screen cut the request or a changed
-    /// line.
-    var isCut: Bool { isRequestCut || changesAreCut }
+    /// Antigravity CLI file permission: the changed lines, by their place
+    /// among them, that reach the dialog's right edge, where agy cuts a
+    /// line without a mark.
+    var cutChanges: Set<Int> = []
+    /// Antigravity CLI file permission: the screen cut a changed line.
+    var changesAreCut: Bool { !cutChanges.isEmpty }
 
     struct ReviewAnswer: Sendable, Hashable {
         var question: String

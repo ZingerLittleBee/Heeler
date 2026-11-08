@@ -120,7 +120,7 @@ enum AgyDialogParser {
         subject.filePath = path
         let pathEnd = last.endColumn - last.text.reversed().prefix(while: ScreenRow.isBlank).count
         subject.isRequestCut = pathEnd >= frame.edge
-        subject.changesAreCut = changeRows.contains { $0.contentWidth >= frame.edge }
+        subject.cutChanges = Set(changeRows.indices.filter { changeRows[$0].contentWidth >= frame.edge })
         return dialog(
             kind, title: asked, body: [path] + changes, progress: nil, options: options, focus: sheet.focus,
             frame: frame, subject: subject)

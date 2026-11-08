@@ -196,36 +196,57 @@ enum BlockedRequestMatch {
 
     /// Whether two reads of Antigravity CLI permissions can show one
     /// dialog: alike fingerprints, or the same kind and rows, each row the
-    /// same or, where a read cut it at the screen's edge, the start of the
-    /// other's. A pane resized between the reads cuts the path and the
-    /// changed lines at another column, which changes the fingerprint; the
-    /// next call's dialog differs in a row both reads show.
+    /// same or, where a read cut that row at the screen's edge, the start
+    /// of the other's. A pane resized between the reads cuts the path and
+    /// the changed lines at another column, which changes the fingerprint;
+    /// the next call's dialog differs in a row both reads show whole or
+    /// cut at the same place.
     static func agyMayShowOneDialog(_ one: BlockedDialog, _ other: BlockedDialog) -> Bool {
         if one.fingerprint.matches(other.fingerprint) { return true }
-        guard one.kind == other.kind, one.title == other.title, one.body.count == other.body.count else {
-            return false
+        guard one.kind == other.kind, one.title == other.title else { return false }
+        let a = agyShownRows(one)
+        let b = agyShownRows(other)
+        return a.count == b.count && zip(a, b).allSatisfy { $0.agrees(with: $1) }
+    }
+
+    /// Whether `read`, a read of the permission `kept` showed, shows each
+    /// of its rows at least as far: whole, or cut no sooner. A wider pane
+    /// cuts every row later.
+    static func agyRead(_ read: BlockedDialog, showsAsMuchAs kept: BlockedDialog) -> Bool {
+        let new = agyShownRows(read)
+        let old = agyShownRows(kept)
+        return new.count == old.count && zip(new, old).allSatisfy { $0.reaches($1) }
+    }
+
+    /// A row of an Antigravity CLI permission as one read shows it: its
+    /// text without spaces, which wrapping moves, and whether the screen
+    /// cut it.
+    private struct AgyShownRow {
+        let text: String
+        let isCut: Bool
+
+        /// Two reads of a row agree: the same text, or where a read cut
+        /// it, the start of the other's.
+        func agrees(with other: AgyShownRow) -> Bool {
+            text == other.text || (isCut && other.text.hasPrefix(text)) || (other.isCut && text.hasPrefix(other.text))
         }
-        let a = one.subject
-        let b = other.subject
-        guard
-            agyRowsAgree(
-                a.command ?? a.filePath ?? "", cut: a.isRequestCut, b.command ?? b.filePath ?? "",
-                cut: b.isRequestCut)
-        else { return false }
-        return zip(one.body.dropFirst(), other.body.dropFirst()).allSatisfy {
-            agyRowsAgree($0, cut: a.changesAreCut, $1, cut: b.changesAreCut)
+
+        /// This read shows the row as far as `other` does: whole, or both
+        /// cut and this one no sooner.
+        func reaches(_ other: AgyShownRow) -> Bool {
+            !isCut || (other.isCut && text.count >= other.text.count)
         }
     }
 
-    /// Two reads of a row agree: the same text, or where a read cut it,
-    /// the start of the other's. Wrapping moves spaces, so they do not
-    /// count.
-    private static func agyRowsAgree(_ one: String, cut oneIsCut: Bool, _ other: String, cut otherIsCut: Bool)
-        -> Bool
-    {
-        let a = DialogRowScanner.comparable(one)
-        let b = DialogRowScanner.comparable(other)
-        return a == b || (oneIsCut && b.hasPrefix(a)) || (otherIsCut && a.hasPrefix(b))
+    /// The request, then each changed line.
+    private static func agyShownRows(_ dialog: BlockedDialog) -> [AgyShownRow] {
+        let subject = dialog.subject
+        let request = AgyShownRow(
+            text: DialogRowScanner.comparable(subject.command ?? subject.filePath ?? ""), isCut: subject.isRequestCut)
+        let changes = dialog.body.dropFirst().enumerated().map { index, row in
+            AgyShownRow(text: DialogRowScanner.comparable(row), isCut: subject.cutChanges.contains(index))
+        }
+        return [request] + changes
     }
 
     /// `text` without a leading `12.` or `12)`.
