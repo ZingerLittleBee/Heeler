@@ -14,6 +14,7 @@ make testflight-retry TAG=builds/0.2.0/39
 make release-check VERSION=0.2.0        # signing/validation rehearsal only
 make testflight-notes TAG=builds/0.2.0/39  # changelog entries external testers have not had
 make testflight-beta TAG=builds/0.2.0/39 NOTES=notes.txt  # release to external testers
+gh release edit builds/0.2.0/39 --prerelease=false --latest --title "0.2.0 (39)"  # after the App Store releases it
 ```
 
 Numbers are illustrative; migration must establish the real counter first.
@@ -123,7 +124,8 @@ draft release body. Losing the upload response or failing to save the next
 checkpoint cannot authorize another upload. After Apple reports `VALID`,
 `release` verifies the retained symbols, attaches `build-manifest.json`, and
 publishes the record and symbols as a **prerelease**, never Latest, titled
-`X.Y.Z (N) - TestFlight`. No store submission is made. TestFlight groups, export
+`X.Y.Z (N) - TestFlight`, until [its App Store release](#app-store-release)
+promotes it. No store submission is made. TestFlight groups, export
 compliance, and external beta review may still need attention.
 
 The draft is a durable checkpoint, not an invitation to publish by hand. Keep
@@ -195,6 +197,20 @@ security add-generic-password -U -s heeler-app-store-connect -a ASC_API_KEY_ID -
 security add-generic-password -U -s heeler-app-store-connect -a ASC_API_ISSUER_ID -w <issuer id>
 security add-generic-password -U -s heeler-app-store-connect -a ASC_API_KEY_P8 -w "$(base64 -i AuthKey_<key id>.p8)"
 ```
+
+## App Store release
+
+Once Apple releases a version on the App Store, promote the selected build's
+record to the repository's formal Latest release, so GitHub matches the store:
+
+```sh
+gh release edit builds/0.2.0/39 --prerelease=false --latest --title "0.2.0 (39)"
+```
+
+GitHub moves Latest away from the previous store build, which stays a formal
+release. Change only the flags and title, never the body: it holds the
+machine-readable build record. Cuts and `release-status` accept a promoted
+record.
 
 ## Signing and credentials
 
@@ -273,7 +289,8 @@ Shared settings, dispatches and uploads require maintainer authorization.
    Verify one subsequent build retains the marketing version and advances the
    global build number.
 7. Select a tested build in App Store Connect and complete review/publication
-   there. No Git-side formal-release step follows.
+   there. No tag or build follows; once it is released, promote its record as
+   in [App Store release](#app-store-release).
 
 ## Publishing the herdr plugin
 
