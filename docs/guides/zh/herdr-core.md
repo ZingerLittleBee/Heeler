@@ -114,7 +114,7 @@ Heeler 会在不启动任何服务的情况下检查一次，随后请你确认 
 | Grok Build | 支持 macOS、Linux 和 Windows。当 Grok Build 的进程只列出一个对话时绑定。执行 `/new` 后，请重启，或在 macOS 和 Linux 上使用 **Choose a Conversation**。 |
 | Pi | 支持 macOS、Linux 和 Windows。搭配 [Host Helper](#host-helper)、在 Windows 上搭配 Heeler 的扩展，或由 Heeler 启动时绑定。否则请使用 **Choose a Conversation**。 |
 | Oh My Pi | 支持 macOS、Linux 和 Windows。搭配 [Host Helper](#host-helper)、在 Windows 上搭配 Heeler 的扩展，或在首条消息使其持有会话文件后绑定。否则请使用 **Choose a Conversation**。 |
-| Antigravity CLI | 支持 macOS。在终端中发送首条消息后绑定，并跟随 `/clear`。 |
+| Antigravity CLI | 支持 macOS 和 Linux。在终端中发送首条消息后绑定，并跟随 `/clear`。 |
 | OpenCode | 在 herdr-core Host 上关闭。仅提供终端视图。 |
 
 - **Can't Tell the Conversation：** 当 Chat 无法证实当前对话时，会显示 **Can't Tell the Conversation** 以及解决方法和 **Check Again**。在 macOS 和 Linux 上，轻点 **Choose a Conversation**，预览对话后轻点 **Use This Conversation**。
