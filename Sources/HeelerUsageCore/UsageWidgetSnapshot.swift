@@ -224,7 +224,7 @@ extension AgentUsageExclusion: Codable {
 }
 
 /// One Usage widget's reading of the snapshot: All Hosts, or one Host.
-/// Token Usage adds up across the Hosts that report; the others are listed.
+/// Token Usage adds up across the Hosts that report; the others are left out.
 struct UsageWidgetScope: Equatable, Sendable {
     struct Program: Equatable, Sendable, Identifiable {
         let program: String
@@ -298,12 +298,6 @@ struct UsageWidgetScope: Equatable, Sendable {
         return count == 1
             ? String(localized: "\(included.count) of \(count) Host")
             : String(localized: "\(included.count) of \(count) Hosts")
-    }
-
-    /// The Hosts left out, as All Hosts' large widget names them.
-    var excludedNote: String? {
-        guard hostID == nil, !excluded.isEmpty else { return nil }
-        return String(localized: "Not included: \(excluded.map(\.name).formatted(.list(type: .and)))")
     }
 
     private static func programs(in hosts: [UsageWidgetSnapshot.Host]) -> [Program] {

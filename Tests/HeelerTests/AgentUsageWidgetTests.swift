@@ -140,11 +140,11 @@ struct AgentUsageWidgetTests {
         #expect(all.programs.first?.days["2026-10-25"] == .init(cost: 4, tokens: 400))
         #expect(all.updatedAt == Self.now.addingTimeInterval(-60))
         #expect(all.coverage == "2 of 3 Hosts")
-        #expect(all.excludedNote == "Not included: Pi Lab")
+        #expect(all.excluded.map(\.name) == ["Pi Lab"])
         #expect(all.chartDates(.today) == ["2026-10-25", "2026-10-26"])
 
         let one = try #require(UsageWidgetScope(snapshot: snapshot, hostID: pi))
-        #expect(one.isEmpty && one.coverage == nil && one.excludedNote == nil)
+        #expect(one.isEmpty && one.coverage == nil)
         #expect(UsageWidgetScope(snapshot: snapshot, hostID: UUID()) == nil)
         // Unpriced throughout stays unpriced rather than reading $0.
         #expect(UsageWidgetSnapshot.Summary.sum([.init(cost: nil, tokens: 5)]).cost == nil)
@@ -206,6 +206,14 @@ struct AgentUsageWidgetTests {
         #expect(changes == 2)
         store.invalidate()
         #expect(store.readAt == nil && changes == 3)
+    }
+
+    @Test func aCostThatDoesNotFitDropsItsCentsThenReadsInMillions() {
+        let english = Locale(identifier: "en_US")
+        #expect(UsageWidgetText.costVariants(1_234_567.89, locale: english)
+            == ["$1,234,567.89", "$1,234,568", "$1.23M"])
+        #expect(UsageWidgetText.costVariants(1_234_567.89, cents: false, locale: english) == ["$1,234,568", "$1.23M"])
+        #expect(UsageWidgetText.costVariants(nil, locale: english) == ["Unpriced"])
     }
 
     @Test func widgetLinksRoundTrip() throws {
