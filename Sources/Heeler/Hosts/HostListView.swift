@@ -214,6 +214,8 @@ final class HostRemovalStore {
 struct HostListView: View {
     let store: HostStore
     private let initialHostID: Host.ID?
+    /// Opens `initialHostID`'s Host Helper sheet over its detail.
+    private let opensHostHelper: Bool
     private let usageStore: ((Host.ID) -> AgentUsageStore)?
     /// Shows a Host on the Usage tab.
     private let openUsage: ((Host.ID) -> Void)?
@@ -264,6 +266,7 @@ struct HostListView: View {
     init(
         store: HostStore,
         initialHostID: Host.ID? = nil,
+        opensHostHelper: Bool = false,
         usageStore: ((Host.ID) -> AgentUsageStore)? = nil,
         openUsage: ((Host.ID) -> Void)? = nil,
         showsSetupGuide: Bool = false,
@@ -282,6 +285,7 @@ struct HostListView: View {
     ) {
         self.store = store
         self.initialHostID = initialHostID
+        self.opensHostHelper = opensHostHelper
         self.usageStore = usageStore
         self.openUsage = openUsage
         _isShowingSetupGuide = State(initialValue: showsSetupGuide)
@@ -299,7 +303,9 @@ struct HostListView: View {
         self.onDone = onDone
         // On the stack from the first frame, so the requested detail never
         // renders with the list's back button first.
-        _path = State(initialValue: Self.requestedRoute(initialHostID, in: store).map { [$0] } ?? [])
+        _path = State(
+            initialValue: Self.requestedRoute(initialHostID, opensHostHelper: opensHostHelper, in: store)
+                .map { [$0] } ?? [])
         _removal = State(initialValue: HostRemovalStore(store: store))
         _collapsedGroups = State(initialValue: HostHealthGroup.collapsed(in: .standard))
     }
@@ -397,6 +403,7 @@ struct HostListView: View {
                         isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                         retryConnection: retryAction(for: id),
                         stopConnecting: stopAction(for: id),
+                        opensHostHelper: route.opensHostHelper,
                         dependencies: onboardingDependencies)
                         .id(id)
                         .modifier(ReturnToOrigin(origin: route.isRequested ? origin : nil))
@@ -506,7 +513,9 @@ struct HostListView: View {
             // A caller that keeps this view's identity across requests
             // still lands on the new one.
             .onChange(of: initialHostID) { _, id in
-                if let route = Self.requestedRoute(id, in: store) { path = [route] }
+                if let route = Self.requestedRoute(id, opensHostHelper: opensHostHelper, in: store) {
+                    path = [route]
+                }
             }
         }
         // Covers Host detail too.
@@ -514,10 +523,10 @@ struct HostListView: View {
     }
 
     private static func requestedRoute(
-        _ id: Host.ID?, in store: HostStore
+        _ id: Host.ID?, opensHostHelper: Bool, in store: HostStore
     ) -> HostDetailDestination? {
         guard let id, store.hosts.contains(where: { $0.id == id }) else { return nil }
-        return HostDetailDestination(hostID: id, isRequested: true)
+        return HostDetailDestination(hostID: id, isRequested: true, opensHostHelper: opensHostHelper)
     }
 
     private var removalConfirmationPresented: Binding<Bool> {
@@ -642,6 +651,8 @@ struct HostListView: View {
 private struct HostDetailDestination: Hashable {
     let hostID: Host.ID
     var isRequested = false
+    /// Opens the Host Helper sheet over the detail on arrival.
+    var opensHostHelper = false
 }
 
 /// The screen that opened a Host's detail from outside the Hosts list.
