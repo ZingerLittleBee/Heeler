@@ -123,7 +123,7 @@ Heeler 会在不启动任何服务的情况下检查一次，随后请你确认 
 
 连接和日常使用不需要 Host Helper。如需 **Agent Notifications**、应用内横幅、**Live Activity**、**Usage**，以及准确的 **Pi** 与 **Oh My Pi** Chat，请在 macOS 或 Linux 上安装它。
 
-Host Helper 在 Host 的 Node.js 上运行，在 Linux 上作为 `systemd` 用户服务，在 macOS 上作为 `launchd` LaunchAgent，跟随 herdr-core 而不主动启动 core。
+Host Helper 在 Host 上的 Node.js 20 或更新版本上运行，在 Linux 上作为 `systemd` 用户服务，在 macOS 上作为 `launchd` LaunchAgent，跟随 herdr-core 而不主动启动 core。
 
 ### 1. 查看将写入的文件
 
@@ -150,7 +150,18 @@ macOS 可能会提示 `node` 可在后台运行，并将其列在“登录项”
 | **Service Failed** | 已停止或无法持续运行。轻点 **Repair**。 |
 | **Not Available** | 原生 Windows 与无 `systemd` 的 Linux 不提供 Host Helper。 |
 
-如需卸载，打开 **Host Helper** 并轻点 **Remove**，即可停止服务并删除其文件、扩展与目录。
+### 3. 开启通知
+
+1. 前往 **Settings > Notifications**。如果出现 **Enable Notifications**，请轻点它，再轻点 **Continue**，并在 iOS 询问时允许通知。
+2. 在该 Host 的名称下开启 **Notifications**。开启后，下方会出现 **Done Notifications** 和 **Live Activity**。
+
+**成功的标志是** **Notifications** 保持开启，且该 Host 下没有 **Host Helper:** 提示。此后即使关闭 Heeler，这台设备也会收到 **Blocked**、**Error** 和 **Done** 通知，轻点通知即可打开对应的 Agent。
+
+如果出现 **Host Helper:** 提示，请对照上表在该 Host 的页面中处理对应状态。
+
+### 移除 Helper
+
+打开 **Host Helper** 并轻点 **Remove**，即可停止服务并删除其文件、扩展与目录。
 
 ## Native Windows
 

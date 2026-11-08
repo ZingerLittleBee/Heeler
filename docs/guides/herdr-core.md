@@ -122,7 +122,7 @@ In **Chat**, you can read conversations, send messages, stop a turn, and answer 
 
 Connecting and everyday use do not need the Host Helper. Install it on macOS or Linux for **Agent Notifications**, in-app banners, **Live Activity**, **Usage**, and exact **Pi** and **Oh My Pi** Chat.
 
-The Host Helper runs on the Host's Node.js as a `systemd` user service on Linux or a `launchd` LaunchAgent on macOS, following herdr-core without starting a core.
+The Host Helper runs on the Host's Node.js 20 or newer as a `systemd` user service on Linux or a `launchd` LaunchAgent on macOS, following herdr-core without starting a core.
 
 ### 1. Review the files
 
@@ -149,7 +149,18 @@ macOS may notify that `node` can run in the background and list it under Login I
 | **Service Failed** | Stopped or not staying up. Tap **Repair**. |
 | **Not Available** | Native Windows and Linux without `systemd` have no Host Helper. |
 
-To uninstall, open **Host Helper** and tap **Remove** to stop the service and delete its files, extensions, and directory.
+### 3. Turn on notifications
+
+1. Go to **Settings > Notifications**. If **Enable Notifications** appears, tap it, tap **Continue**, and allow notifications when iOS asks.
+2. Under the Host's name, turn on **Notifications**. **Done Notifications** and **Live Activity** appear below it.
+
+**It worked if** **Notifications** stays on and no **Host Helper:** note shows under the Host. **Blocked**, **Error**, and **Done** then reach this device with Heeler closed, and a tap opens the Agent.
+
+When a **Host Helper:** note shows, fix that status on the Host's page using the table above.
+
+### Remove the Helper
+
+Open **Host Helper** and tap **Remove** to stop the service and delete its files, extensions, and directory.
 
 ## Native Windows
 
