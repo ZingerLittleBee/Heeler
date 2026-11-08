@@ -17,6 +17,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Lead the Host Helper sheet with its status and a prominent Install, and list what it writes as Helper, LaunchAgent or systemd Unit, and Pi & Oh My Pi with file counts. Each opens one folder at a time, subfolders first, with the folder's path below, instead of every absolute path in one list.
 - Select terminal text inline with handles and the system edit menu, using libghostty-spm 2.2.2026103001. Chat's Select Text sheet is unchanged. (PR #650)
 - Show user commands in Chat with the same right-aligned bubble and text size
   as other user messages, keeping command output below the bubble. (#648)

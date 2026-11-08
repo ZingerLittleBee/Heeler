@@ -127,7 +127,7 @@ The Host Helper runs on the Host's Node.js 20 or newer as a `systemd` user servi
 ### 1. Review the files
 
 1. Open the Host in **Hosts** and tap **Host Helper**.
-2. Review **Files This Writes**: `~/.local/share/heeler/host-helper` on Linux or `~/Library/Application Support/heeler/host-helper` on macOS, the service file, and Pi and Oh My Pi `agent/extensions` folders.
+2. Under **Files This Writes**, tap **Helper**, **systemd Unit** on Linux or **LaunchAgent** on macOS, and **Pi & Oh My Pi** to browse their folders: `~/.local/share/heeler/host-helper` on Linux or `~/Library/Application Support/heeler/host-helper` on macOS, the service file, and Pi and Oh My Pi `agent/extensions` folders.
 
 ### 2. Install the Helper
 
