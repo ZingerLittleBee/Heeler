@@ -2579,6 +2579,36 @@ struct TerminalAttachTests {
         try #require(await Self.eventually { inset.height == 402 })
     }
 
+    /// A presentation moves the ride at once and the height only after its
+    /// coalesce. Switching to Tools inside that window lands the presentation
+    /// instead of dropping it, so the dock keeps the keyboard that was on
+    /// screen and the ride stays with the height.
+    @MainActor
+    @Test func pausingCaptureLandsAPresentationStillCoalescing() async throws {
+        let center = NotificationCenter()
+        let clock = ManualClock()
+        let inset = Self.makeInset(center: center, clock: clock) { frame in
+            frame.height == 436 ? 402 : 365
+        }
+        let completeFrame = CGRect(x: 0, y: 554, width: 440, height: 436)
+        let withoutCandidateRow = CGRect(x: 0, y: 591, width: 440, height: 399)
+
+        try await Self.present(withoutCandidateRow, on: center, clock: clock)
+        try #require(await Self.eventually { inset.height == 365 })
+
+        center.post(
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: completeFrame])
+        try #require(await clock.parks(for: TerminalKeyboardInset.coalesceDelay))
+        #expect(inset.keyboardRideTarget == 402)
+        #expect(inset.height == 365)
+
+        inset.pauseHeightCapture()
+        #expect(inset.height == 402)
+        #expect(inset.lastPresentedHeight == 402)
+        #expect(inset.keyboardRideTarget == 402)
+    }
+
     /// Moving a visible system keyboard between Composer and Direct Input can
     /// emit a transient hide followed by a smaller frame. Neither may move the
     /// app-owned chrome before the destination responder settles.

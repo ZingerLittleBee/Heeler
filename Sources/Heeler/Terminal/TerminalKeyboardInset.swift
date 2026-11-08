@@ -348,10 +348,16 @@ final class TerminalKeyboardInset {
     /// system keyboard. Tools mode keeps the last complete measurement and
     /// ignores those transition-only frames; an actual hide still clears the
     /// current overlap through `keyboardWillDismiss()`.
+    ///
+    /// Callers pause before the mode change that publishes those frames, so
+    /// a presentation still coalescing here is the keyboard on screen at the
+    /// switch. It lands now: the ride already moved to it, and dropping it
+    /// would leave the ride off the height the dock keeps (#634).
     func pauseHeightCapture() {
         capturesPresentedHeight = false
+        guard coalesceTask != nil else { return }
         coalesceTask?.cancel()
-        coalesceTask = nil
+        apply(coalescingHeight)
     }
 
     func resumeHeightCapture() {
