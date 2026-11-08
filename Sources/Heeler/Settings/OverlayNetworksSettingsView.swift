@@ -668,11 +668,11 @@ enum OverlayStatusCopy {
             // The overlay's own detail leads; the advice is one key with it,
             // so the two never join as pieces localized apart.
             case .notReady(let detail):
-                return String(localized: "\(sentence(detail)) If an admin must approve this device, authorize it in the network's admin console.")
+                return String(localized: "\(detail.asSentence) If an admin must approve this device, authorize it in the network's admin console.")
             case .misconfigured(let detail):
-                return String(localized: "\(sentence(detail)) Edit the network to fix it.")
+                return String(localized: "\(detail.asSentence) Edit the network to fix it.")
             case .startFailed(let detail):
-                return String(localized: "\(sentence(detail)) Check the network's settings.")
+                return String(localized: "\(detail.asSentence) Check the network's settings.")
             case .unreachable(let detail):
                 return detail
             case .timedOut:
@@ -681,14 +681,10 @@ enum OverlayStatusCopy {
         }
         switch status ?? .stopped {
         case .failed(let detail) where !detail.isEmpty, .waiting(let detail) where !detail.isEmpty:
-            return sentence(detail)
+            return detail.asSentence
         default:
             return nil
         }
-    }
-
-    private static func sentence(_ text: String) -> String {
-        text.hasSuffix(".") ? text : text + "."
     }
 
     /// "Online · Direct · 12 ms": whatever the overlay reports, in order.

@@ -255,6 +255,11 @@ struct TransportErrorPresentationTests {
         #expect(
             TransportError.attachExited(status: 1, output: nil).presentation.message
                 == "herdr exited with status 1.")
+        // Only a full stop is herdr's to drop; a question keeps its mark and
+        // gets no period after it.
+        #expect(
+            TransportError.attachExited(status: 3, output: "Error: is the server running?")
+                .presentation.message == "herdr exited with status 3: Error: is the server running?")
         // A line cut short at its ellipsis gets no period after it.
         let cut = try #require(
             AttachExitDiagnostic.line(

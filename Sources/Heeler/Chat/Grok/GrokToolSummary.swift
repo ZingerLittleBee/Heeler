@@ -411,21 +411,20 @@ struct GrokToolCall: Sendable {
     /// A finished subagent's work: `2 tool calls · 1 turn · 7s`.
     static func stats(_ end: GrokUpdateRecord.SubagentFinished) -> String? {
         var parts: [String] = []
-        if let calls = end.toolCalls { parts.append("\(calls) tool \(calls == 1 ? "call" : "calls")") }
-        if let turns = end.turns { parts.append("\(turns) \(turns == 1 ? "turn" : "turns")") }
+        if let calls = end.toolCalls {
+            parts.append(String(localized: "\(calls) tool calls", comment: "How many tools a finished Grok Build subagent called"))
+        }
+        if let turns = end.turns {
+            parts.append(String(localized: "\(turns) turns", comment: "How many turns a finished Grok Build subagent took"))
+        }
         if let milliseconds = end.durationMilliseconds { parts.append(duration(milliseconds)) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// `38s`, `2m 18s` or `1h 5m`, rounded down.
+    /// `38s`, `2m 18s` or `1h 5m` in the user's language, rounded down.
     static func duration(_ milliseconds: Int64) -> String {
-        let seconds = max(milliseconds, 0) / 1_000
-        if seconds < 60 { return "\(seconds)s" }
-        if seconds < 3_600 {
-            return seconds % 60 == 0 ? "\(seconds / 60)m" : "\(seconds / 60)m \(seconds % 60)s"
-        }
-        let minutes = seconds / 60 % 60
-        return minutes == 0 ? "\(seconds / 3_600)h" : "\(seconds / 3_600)h \(minutes)m"
+        ChatBackgroundWorkPresentation.duration(
+            TimeInterval(milliseconds) / 1_000, width: .narrow, locale: .autoupdatingCurrent)
     }
 
     /// The answer to `question` in Grok's `"<question>"="<answer>", …`

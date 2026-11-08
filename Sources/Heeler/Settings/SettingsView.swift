@@ -190,6 +190,13 @@ struct SettingsView: View {
                     } label: {
                         Label("Appearance", systemImage: "paintpalette")
                     }
+                    // iOS keeps an app's language in the app's own Settings page.
+                    if let appSettings = URL(string: UIApplication.openSettingsURLString) {
+                        ExternalLinkRow(
+                            "Language", systemImage: "globe", destination: appSettings,
+                            value: Self.languageName)
+                            .accessibilityIdentifier("settings.language")
+                    }
                     if let voiceInput {
                         NavigationLink {
                             VoiceInputSettingsView(settings: voiceInput.settings)
@@ -310,29 +317,44 @@ struct SettingsView: View {
         let build = info?["CFBundleVersion"] as? String
         return build.map { "\(version) (\($0))" } ?? version
     }
+
+    /// The language Heeler shows, named in that language: the localization
+    /// iOS chose from the user's preferences and the app's catalog.
+    static var languageName: String {
+        let identifier = Bundle.main.preferredLocalizations.first ?? "en"
+        return Locale(identifier: identifier).localizedString(forIdentifier: identifier) ?? identifier
+    }
 }
 
 /// A Settings row that leaves the app. The title stays primary like its
 /// navigation siblings; a default `Link` would tint the whole row as a button.
-/// The trailing arrow says the row opens outside Heeler.
+/// The trailing arrow says the row opens outside Heeler; a `value` before it
+/// says what the setting there is now.
 struct ExternalLinkRow: View {
     let title: LocalizedStringKey
     let systemImage: String
     let destination: URL
+    let value: String?
 
-    init(_ title: LocalizedStringKey, systemImage: String, destination: URL) {
+    init(_ title: LocalizedStringKey, systemImage: String, destination: URL, value: String? = nil) {
         self.title = title
         self.systemImage = systemImage
         self.destination = destination
+        self.value = value
     }
 
     var body: some View {
         Link(destination: destination) {
             LabeledContent {
-                Image(systemName: "arrow.up.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                    .accessibilityHidden(true)
+                HStack(spacing: 6) {
+                    if let value {
+                        Text(value).foregroundStyle(Color.secondary)
+                    }
+                    Image(systemName: "arrow.up.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                        .accessibilityHidden(true)
+                }
             } label: {
                 Label {
                     Text(title).foregroundStyle(Color.primary)

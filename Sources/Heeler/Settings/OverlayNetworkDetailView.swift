@@ -483,7 +483,7 @@ struct OverlayNetworkDetailView: View {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Not running")
-                        Text(error.hasSuffix(".") ? error : error + ".")
+                        Text(error.asSentence)
                             .font(.footnote)
                             .foregroundStyle(.red)
                     }

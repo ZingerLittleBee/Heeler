@@ -57,7 +57,7 @@ struct VoiceInputLanguagesSection: View {
 
     private var languageSummary: String {
         languages.isEmpty
-            ? String(localized: "Automatic") : languages.map(VoiceInputLanguage.name).joined(separator: ", ")
+            ? String(localized: "Automatic") : languages.map(VoiceInputLanguage.name).joinedAsPhrases()
     }
 
     private func choice(_ title: String, selected: Bool) -> some View {

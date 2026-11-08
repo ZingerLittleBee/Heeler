@@ -12,17 +12,17 @@ struct TransportErrorPresentation: Equatable, Sendable {
     let recoverySuggestion: String?
 
     /// `summary` [+ ": " + `detail`] + "." — what happened, no instruction.
-    /// A detail that already ends its sentence, with a period (a full-width
-    /// one in a localized detail) or an ellipsis where it was cut short, gets
-    /// no second one. The joining formats are catalog entries, so a locale
-    /// closes the sentence with its own mark: Japanese ends it with "。".
+    /// A detail that already ends its sentence, with a closing mark of its
+    /// script or an ellipsis where it was cut short, gets no second one. The
+    /// joining formats are catalog entries, so a locale closes the sentence
+    /// with its own mark: Japanese ends it with "。".
     var explanation: String {
         if let detail {
-            return detail.hasSuffix("…") || detail.hasSuffix(".") || detail.hasSuffix("。")
+            return detail.endsSentence
                 ? String(localized: "\(summary): \(detail)")
                 : String(localized: "\(summary): \(detail).")
         }
-        return String(localized: "\(summary).")
+        return summary.asSentence
     }
 
     /// `explanation` [+ " " + `recoverySuggestion`] — the whole presentation.
@@ -297,11 +297,17 @@ extension TransportError {
     }
 
     /// herdr's own sentence, or a localized detail, may already end in a
-    /// period; `explanation` supplies the closing one.
+    /// full stop of its script; `explanation` supplies the closing one. A
+    /// question or exclamation mark stays, since it says something.
     private static func droppingTrailingPeriods(_ text: String) -> String {
         var text = Substring(text)
-        while text.last == "." || text.last == "。" { text = text.dropLast() }
+        while let last = text.unicodeScalars.last, isFullStop(last) { text = text.dropLast() }
         return String(text)
+    }
+
+    private static func isFullStop(_ scalar: Unicode.Scalar) -> Bool {
+        guard scalar.properties.isSentenceTerminal, let name = scalar.properties.name else { return false }
+        return !name.contains("QUESTION") && !name.contains("EXCLAMATION") && name != "INTERROBANG"
     }
 
     /// A changed host key is a security refusal, not an ordinary outage.
