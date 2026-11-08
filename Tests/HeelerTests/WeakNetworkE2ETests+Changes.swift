@@ -12,7 +12,8 @@ extension WeakNetworkE2ETests {
     /// then over the cellular-like profile, directly and behind the Jump Host.
     /// The link's part of every read must finish inside the production git
     /// deadline: a read that overruns it shows no Changes at all. The Host's
-    /// own git time is the runner's, not the link's, so it is left out.
+    /// own git time is the runner's, not the link's, so it is left out of
+    /// that deadline and held only to ``hostRunLimit``.
     @Test("a status past its cap and a 1 MiB patch read inside the git deadline over the cellular-like profile")
     func largeChangesReadsFitTheGitDeadlineOverACellularLink() async throws {
         let rawIterations = ProcessInfo.processInfo.environment["HEELER_WEAK_CHANGES_ITERATIONS"] ?? "1"
@@ -214,6 +215,9 @@ extension WeakNetworkE2ETests {
         #expect(
             changes.elapsed - changes.host < deadline,
             "\(route.label): the Changes read took \(changes.elapsed), \(changes.host) of it the Host's own run, leaving more than the \(deadline) git deadline")
+        #expect(
+            changes.host < Self.hostRunLimit,
+            "\(route.label): the Host's own run of the Changes script took \(changes.host)")
         print(
             "[changes-field] route=\(route.label) read=changes"
                 + " elapsed=\(ChangesFieldCheckout.milliseconds(changes.elapsed))"
@@ -236,6 +240,9 @@ extension WeakNetworkE2ETests {
         #expect(
             patchRead.elapsed - patchRead.host < deadline,
             "\(route.label): the patch read took \(patchRead.elapsed), \(patchRead.host) of it the Host's own run, leaving more than the \(deadline) git deadline")
+        #expect(
+            patchRead.host < Self.hostRunLimit,
+            "\(route.label): the Host's own run of the patch script took \(patchRead.host)")
         print(
             "[changes-field] route=\(route.label) read=patch-extended"
                 + " elapsed=\(ChangesFieldCheckout.milliseconds(patchRead.elapsed))"
@@ -251,20 +258,29 @@ extension WeakNetworkE2ETests {
     /// about 15 s, past the deadline with no link at all (#634). That share
     /// is the runner's; the rest is what the link and the transport added.
     ///
-    /// The split holds while the script never waits on the link: its output
-    /// (under 1.1 MB at today's GitProbe caps) fits the 2 MiB receive window
-    /// the exec channel opens with. Output past that window would block the
-    /// script on the link and count the wait as the Host's.
+    /// The script's stdout goes to a file on the Host and crosses the link
+    /// only once the script is done, so the two shares never overlap: a slow
+    /// Host cannot hide link time by streaming its output while it runs.
+    /// Its stderr still streams, as it does in production.
     private static func hostTimedRead<Value>(
         on transport: HeelerSSHTransport,
         script: (_ nonce: String) -> Data,
         parse: (_ stdout: Data, _ stderr: Data, _ nonce: String) throws -> Value
     ) async throws -> (value: Value, elapsed: Duration, host: Duration) {
         let nonce = GitProbe.makeNonce()
-        let timed = Data("__heeler_field_t0=$(\(hostClock))\n".utf8)
+        let timed = Data("""
+            __heeler_field_out=$(mktemp "${TMPDIR:-/tmp}/heeler-field.XXXXXX") || exit 1
+            __heeler_field_t0=$(\(hostClock))
+            {
+
+            """.utf8)
             + script(nonce)
             + Data("""
+
+                } >"$__heeler_field_out"
                 __heeler_field_t1=$(\(hostClock))
+                cat "$__heeler_field_out"
+                rm -f "$__heeler_field_out"
                 printf '\\n%s%s,%s\\n' '\(hostTimeMarker)' "$__heeler_field_t0" "$__heeler_field_t1" >&2
 
                 """.utf8)
@@ -282,6 +298,12 @@ extension WeakNetworkE2ETests {
         let stderr = result.stderr[..<marker.lowerBound]
         return (try parse(result.stdout, Data(stderr), nonce), elapsed, host)
     }
+
+    /// The Host's own run of a script is the runner's, so it is held only
+    /// loosely: a loaded runner kept one loopback exec alive about 15 s, and
+    /// a script past twice that is a GitProbe regression, not load. On an
+    /// unloaded runner the Changes script takes under a second.
+    private static let hostRunLimit = Duration.seconds(30)
 
     /// Milliseconds since the epoch. The fixture Host is macOS, whose sh has
     /// no sub-second clock of its own.
