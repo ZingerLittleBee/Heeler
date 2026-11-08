@@ -365,10 +365,13 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   conversation that the Terminal foreground's argv names with `--conversation <id>`
   or `--conversation=<id>`, read from the core's record and counted only while that
   foreground is the agy the check found: on Linux (2026-11-09, Ubuntu 24.04.5,
-  herdr-core 0.1.18, agy 1.5.3), read through `/proc/<pid>/fd`, neither agy held
-  that conversation's folder open, and each held its database only for about 30 s
-  after it started, the first then holding only its lock, so without the argv a
-  list opened after that named nothing. The check's exec still
+  herdr-core 0.1.18, agy 1.5.3), read through `/proc/<pid>/fd`, no agy held that
+  conversation's folder open. A second and a third agy on it held its database,
+  never the lock, for about 30 s after they started (one let it go between 23 s and
+  53 s, the other at 31 s), then none of its files, so without the argv a list
+  opened after that named nothing. The first, itself started with `--conversation`,
+  held the database 27 s after its start, and 9 min after it only its lock. The
+  check's exec still
   learns nothing of agy's argv. Its list has nothing from a directory: agy files
   conversations by id, and `history.jsonl`, which names a workspace, is one log for
   every agy on the data root and names no id for a fresh launch's first prompt.
@@ -412,16 +415,23 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   `/proc/<pid>/fd` bound an agy from New Agent, drawn in color, a typed `agy` and a
   typed `NO_COLOR=1 agy`, which drew none, each from its first prompt sent in the
   terminal, and `/clear` moved Chat to the new conversation before any Send, in
-  color and under `NO_COLOR`. No agy there held a conversation's folder open, and
-  one held its database (with `-wal` and `-shm`) only for a while, right after a
-  first prompt but not 41 s after one, and for about 30 s after a start with
-  `--conversation`, then its lock alone. A second agy on a conversation already open
-  listed it from the argv, above, in both forms, and choosing it showed that
-  conversation. A start at the trust prompt, from New Agent or typed, sent no
-  `kind=auth`: the core's first status was the prompt's `blocked` `kind=permission`,
-  for New Agent 0.4 s after its Terminal's creation, so no unreadable card showed. A
-  trusted start with `--conversation` sent `kind=auth` and `idle` 0.8 s later, and
-  the second and third agy on that conversation sent `idle` alone. In color and
+  color and under `NO_COLOR`. No agy there held a conversation's folder open. The
+  agy from New Agent held its new conversation's database (with `-wal` and `-shm`)
+  when read within 30 s of its first prompt, and only its lock 42 min after it; the
+  typed `NO_COLOR=1 agy` held no database 41 s or 2 min after its first prompt. An
+  agy started with `--conversation` held its database 27 s after its start, and
+  9 min after it only its lock; a second and a third on that conversation held
+  its database for about 30 s after they started, then none of its files. A second
+  agy on a conversation already open listed it from the argv, above, in both forms,
+  and choosing it showed that conversation. A start at the trust prompt, from New
+  Agent or typed, sent no `kind=auth`: the core's first status was the prompt's
+  `blocked` `kind=permission`, for New Agent 0.4 s after its Terminal's creation, so
+  there was no auth report behind an unreadable card. Heeler had opened New Agent's
+  Terminal page, not Chat, so its start went unseen in Chat; the typed `agy`, whose
+  Chat Heeler opened as it started, showed the native trust card in Chat's first
+  capture. A trusted start with `--conversation` sent `kind=auth` and `idle` 0.8 s
+  later, and the second and third agy on that conversation sent `idle` alone. In
+  color and
   under `NO_COLOR`, Chat answered the trust prompt, a command, a file creation and
   edit, a two-question form with Skip and a multi-select question from cards, sent
   from Chat with no hold for the input box, held a message while agy worked and
