@@ -260,7 +260,7 @@ extension AgentStatus {
         case .idle: String(localized: "Idle")
         case .working: String(localized: "Working")
         case .blocked: String(localized: "Blocked")
-        case .done: String(localized: "Done")
+        case .done: String(localized: "Agent status Done", defaultValue: "Done", comment: "Agent status, not the button that closes a sheet")
         case .error: String(localized: "Error")
         default: rawValue.capitalized
         }

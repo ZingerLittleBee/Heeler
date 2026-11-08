@@ -68,7 +68,7 @@ enum AgentNotificationRenderer {
     private static func body(for status: AgentStatus) -> String {
         switch status {
         case .blocked: String(localized: "Blocked — waiting for input")
-        case .done: String(localized: "Done")
+        case .done: String(localized: "Agent status Done", defaultValue: "Done", comment: "Agent status, not the button that closes a sheet")
         // Only a herdr-core Host sends it, under the Blocked trigger. Nothing is
         // waiting for an answer, so it reads as what it is.
         case AgentStatus(rawValue: "error"): String(localized: "Error")

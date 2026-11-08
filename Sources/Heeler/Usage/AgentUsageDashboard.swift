@@ -685,16 +685,22 @@ struct AgentUsageDashboard: View {
         }
         for host in hosts {
             // Several Hosts name the one each note is about.
-            let name = count == 1 ? "" : "\(host.name): "
+            func note(_ text: String) -> String {
+                count == 1
+                    ? text
+                    : String(
+                        localized: "Usage note about one Host", defaultValue: "\(host.name): \(text)",
+                        comment: "A note about one of several Hosts: the Host's name, then the note")
+            }
             let scan = host.report.scan
-            if scan?.state == "partial" { parts.append(name + String(localized: "Token Usage is still being summarized.")) }
+            if scan?.state == "partial" { parts.append(note(String(localized: "Token Usage is still being summarized."))) }
             if let skipped = scan?.skippedArchives, skipped > 0 {
-                parts.append(name + (skipped == 1
+                parts.append(note(skipped == 1
                     ? String(localized: "\(skipped.formatted()) compressed archive skipped.")
                     : String(localized: "\(skipped.formatted()) compressed archives skipped.")))
             }
             if let unreadable = scan?.unreadableFiles, unreadable > 0 {
-                parts.append(name + (unreadable == 1
+                parts.append(note(unreadable == 1
                     ? String(localized: "\(unreadable.formatted()) Transcript or folder could not be read. It is retried on the next refresh.")
                     : String(localized: "\(unreadable.formatted()) Transcripts or folders could not be read. They are retried on the next refresh.")))
             }

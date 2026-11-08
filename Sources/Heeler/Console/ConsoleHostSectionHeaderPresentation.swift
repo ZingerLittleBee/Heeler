@@ -139,7 +139,7 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
 
     static func statusText(items: [ConsoleHostAgentStatusCount]) -> String? {
         guard !items.isEmpty else { return nil }
-        return items.map(countText).joined(separator: ", ")
+        return items.map(countText).joinedAsPhrases()
     }
 
     private static func countText(_ item: ConsoleHostAgentStatusCount) -> String {

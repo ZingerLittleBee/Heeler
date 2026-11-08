@@ -55,7 +55,7 @@ struct HostNotificationSettings {
     var rowNote: (text: String, tone: RowTone) {
         switch state {
         case nil, .loading:
-            return ("Checking", .quiet)
+            return (String(localized: "Checking"), .quiet)
         case .unavailable(let message):
             return (message, .attention)
         case .failed(let message, _):
@@ -64,15 +64,28 @@ struct HostNotificationSettings {
             if let requirement = preferences.helperRequirement(for: host.id) {
                 return (requirement, .attention)
             }
-            guard settings.isRegistered else { return ("Off", .quiet) }
+            guard settings.isRegistered else { return (String(localized: "Off"), .quiet) }
             if let plugin = pluginRequirements.first {
                 return (plugin.note, .attention)
             }
-            var parts = settings.notify.done ? "Blocked, Done" : "Blocked"
-            if offersLiveActivity, liveActivities.isEnabled(for: host.id) {
-                parts += " · Live Activity"
-            }
-            return (parts, .quiet)
+            let liveActivity = offersLiveActivity && liveActivities.isEnabled(for: host.id)
+            // Whole phrases, so each language words and orders them its own way.
+            let text =
+                switch (settings.notify.done, liveActivity) {
+                case (false, false):
+                    String(localized: "Blocked", comment: "Agent status")
+                case (true, false):
+                    String(localized: "Blocked, Done", comment: "What notifies on a Host: Agent statuses")
+                case (false, true):
+                    String(
+                        localized: "Blocked · Live Activity",
+                        comment: "What notifies on a Host: an Agent status, then the Live Activity")
+                case (true, true):
+                    String(
+                        localized: "Blocked, Done · Live Activity",
+                        comment: "What notifies on a Host: Agent statuses, then the Live Activity")
+                }
+            return (text, .quiet)
         }
     }
 

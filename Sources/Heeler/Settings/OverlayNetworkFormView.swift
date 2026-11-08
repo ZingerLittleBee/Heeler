@@ -348,7 +348,7 @@ struct OverlayNetworkFormView: View {
         } else if hasStoredSecret {
             parts.append(String(localized: "Auth key saved"))
         }
-        return parts.isEmpty ? String(localized: "Optional") : parts.joined(separator: ", ")
+        return parts.isEmpty ? String(localized: "Optional") : parts.joinedAsPhrases()
     }
 
     /// The moons and custom planet, beside Advanced.
@@ -361,7 +361,7 @@ struct OverlayNetworkFormView: View {
         if draft.planet != nil {
             parts.append(String(localized: "Custom planet"))
         }
-        return parts.isEmpty ? String(localized: "Optional") : parts.joined(separator: ", ")
+        return parts.isEmpty ? String(localized: "Optional") : parts.joinedAsPhrases()
     }
 
     /// The fixed address, or DHCP, beside Advanced.

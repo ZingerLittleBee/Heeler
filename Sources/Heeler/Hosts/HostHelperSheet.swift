@@ -243,6 +243,6 @@ struct HostHelperFolderView: View {
     }
 
     static func count(_ files: Int) -> String {
-        files == 1 ? "1 file" : "\(files) files"
+        String(localized: "\(files) files", comment: "Files in a Host Helper folder")
     }
 }

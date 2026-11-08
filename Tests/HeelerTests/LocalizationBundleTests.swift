@@ -3,6 +3,20 @@ import Testing
 
 @testable import Heeler
 
+/// The `.lproj` tables the String Catalogs compile into the app bundle.
+enum LocalizationTables {
+    /// Every language Heeler ships besides English, as its `.lproj` names it.
+    /// A language added to the catalogs joins every test that iterates it.
+    static let translations = Bundle.main.localizations.filter { $0 != "en" && $0 != "Base" }.sorted()
+
+    static func table(_ name: String, localization: String) -> [String: String]? {
+        guard let path = Bundle.main.path(
+            forResource: name, ofType: "strings", inDirectory: nil, forLocalization: localization)
+        else { return nil }
+        return NSDictionary(contentsOfFile: path) as? [String: String]
+    }
+}
+
 /// The compiled String Catalogs inside the app bundle.
 ///
 /// These read the built `.lproj` tables directly, so they hold whichever
@@ -15,19 +29,16 @@ struct LocalizationBundleTests {
         "NSLocalNetworkUsageDescription",
     ]
 
-    private static func table(_ name: String, localization: String) -> [String: String]? {
-        guard let path = Bundle.main.path(
-            forResource: name, ofType: "strings", inDirectory: nil, forLocalization: localization)
-        else { return nil }
-        return NSDictionary(contentsOfFile: path) as? [String: String]
+    @Test func theAppShipsTranslations() {
+        #expect(!LocalizationTables.translations.isEmpty)
     }
 
     /// An InfoPlist catalog entry without an English value compiles to an
     /// English table that maps the key to its own name, which iOS then shows
-    /// in the permission prompt instead of the purpose string.
+    /// in the permission prompt instead of the purpose string. Unlike other
+    /// text, a permission prompt is translated in every language Heeler ships.
     @Test func permissionPromptsShowTheirPurposeInEveryLanguage() throws {
-        let english = Self.table("InfoPlist", localization: "en") ?? [:]
-        let japanese = try #require(Self.table("InfoPlist", localization: "ja"))
+        let english = LocalizationTables.table("InfoPlist", localization: "en") ?? [:]
         for key in Self.usageDescriptionKeys {
             let purpose = try #require(Bundle.main.infoDictionary?[key] as? String)
             #expect(purpose.hasPrefix("Heeler "), "\(key) in Info.plist")
@@ -37,18 +48,26 @@ struct LocalizationBundleTests {
             if let shown = Bundle.main.localizedInfoDictionary?[key] as? String {
                 #expect(shown != key, "\(key) in the running localization")
             }
-            let translated = try #require(japanese[key], "\(key) in ja.lproj")
-            #expect(translated != key && translated != purpose)
+            for language in LocalizationTables.translations {
+                let translated = LocalizationTables.table("InfoPlist", localization: language)?[key]
+                #expect(
+                    translated.map { $0 != key && $0 != purpose } == true,
+                    "\(key) in \(language).lproj: \(translated ?? "missing")")
+            }
         }
     }
 
     /// A translation that drops, adds or retypes a format specifier garbles
-    /// the text or crashes when the value is formatted.
-    @Test func japaneseTranslationsKeepTheFormatSpecifiersOfTheirKey() throws {
-        let japanese = try #require(Self.table("Localizable", localization: "ja"))
-        #expect(!japanese.isEmpty)
-        let mismatches = japanese.compactMap { key, value -> String? in
-            Self.specifiersMatch(key: key, value: value) ? nil : "\(key) => \(value)"
+    /// the text or crashes when the value is formatted. A key with its own
+    /// English value, as `String(localized:defaultValue:)` writes, is checked
+    /// against that value.
+    @Test(arguments: LocalizationTables.translations)
+    func translationsKeepTheFormatSpecifiersOfTheirSource(language: String) throws {
+        let english = LocalizationTables.table("Localizable", localization: "en") ?? [:]
+        let table = try #require(LocalizationTables.table("Localizable", localization: language))
+        #expect(!table.isEmpty)
+        let mismatches = table.compactMap { key, value -> String? in
+            Self.specifiersMatch(source: english[key] ?? key, value: value) ? nil : "\(key) => \(value)"
         }
         #expect(mismatches.isEmpty, "\(mismatches.sorted().joined(separator: "\n"))")
     }
@@ -68,8 +87,8 @@ struct LocalizationBundleTests {
         }
     }
 
-    private static func specifiersMatch(key: String, value: String) -> Bool {
-        let expected = specifiers(in: key).map(\.type)
+    private static func specifiersMatch(source: String, value: String) -> Bool {
+        let expected = specifiers(in: source).map(\.type)
         let found = specifiers(in: value)
         guard found.contains(where: { $0.position != nil }) else {
             return found.map(\.type) == expected

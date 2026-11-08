@@ -696,6 +696,6 @@ enum AgentListFieldsRowLabel {
         parts += trailing.enumerated().map { offset, token in
             AgentListFieldsChipLabel.text(index: offset, count: trailing.count, token: token, side: .trailing)
         }
-        return parts.joined(separator: ", ")
+        return parts.joinedAsPhrases()
     }
 }

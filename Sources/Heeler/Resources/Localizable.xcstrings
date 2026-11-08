@@ -1199,7 +1199,7 @@
       }
     },
     "%@." : {
-      "comment" : "Closes a transport error summary as a sentence (TransportErrorPresentation.explanation)",
+      "comment" : "Closes a text as a sentence when it has no closing mark yet",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
@@ -1424,6 +1424,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "失敗 %lld"
+          }
+        }
+      }
+    },
+    "%lld files" : {
+      "comment" : "Files in a Host Helper folder",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld file"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld files"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個のファイル"
           }
         }
       }
@@ -1904,12 +1933,70 @@
         }
       }
     },
+    "%lld tool calls" : {
+      "comment" : "How many tools a finished Grok Build subagent called",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tool call"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tool calls"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 回のツール呼び出し"
+          }
+        }
+      }
+    },
     "%lld tool uses" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 回のツール使用"
+          }
+        }
+      }
+    },
+    "%lld turns" : {
+      "comment" : "How many turns a finished Grok Build subagent took",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld turn"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld turns"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld ターン"
           }
         }
       }
@@ -3616,6 +3703,24 @@
         }
       }
     },
+    "Agent status Done" : {
+      "comment" : "Agent status, not the button that closes a sheet",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Done"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了"
+          }
+        }
+      }
+    },
     "Agent update" : {
       "localizations" : {
         "ja" : {
@@ -4864,12 +4969,45 @@
         }
       }
     },
+    "Blocked · Live Activity" : {
+      "comment" : "What notifies on a Host: an Agent status, then the Live Activity",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "対応待ち · ライブアクティビティ"
+          }
+        }
+      }
+    },
     "Blocked — waiting for input" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "対応待ち — 入力が必要です"
+          }
+        }
+      }
+    },
+    "Blocked, Done" : {
+      "comment" : "What notifies on a Host: Agent statuses",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "対応待ち、完了"
+          }
+        }
+      }
+    },
+    "Blocked, Done · Live Activity" : {
+      "comment" : "What notifies on a Host: Agent statuses, then the Live Activity",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "対応待ち、完了 · ライブアクティビティ"
           }
         }
       }
@@ -16286,6 +16424,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heeler の通知はオフになっています。"
+          }
+        }
+      }
+    },
+    "Notifications for %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の通知"
           }
         }
       }
@@ -29412,6 +29560,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用量には Host Helper が必要です。このホストの詳細を確認してください。"
+          }
+        }
+      }
+    },
+    "Usage note about one Host" : {
+      "comment" : "A note about one of several Hosts: the Host's name, then the note",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%@: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: %2$@"
           }
         }
       }

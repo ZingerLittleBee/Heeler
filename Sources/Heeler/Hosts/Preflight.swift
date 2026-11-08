@@ -69,9 +69,7 @@ struct PreflightReport: Equatable, Sendable {
         switch error {
         case .hostFeatureUnavailable(let feature):
             check = .remoteEnvironment
-            hint =
-                feature.hasSuffix(".") || feature.hasSuffix("。")
-                ? feature : String(localized: "\(feature).")
+            hint = feature.asSentence
         case .sshUnreachable(let detail):
             check = .connection
             hint = String(localized: "Could not reach the Host over SSH. Check the address and port. (\(detail))")
