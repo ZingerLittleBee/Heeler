@@ -93,7 +93,7 @@ extension ChatSessionCandidate {
         if origins.contains(.heldOpen) {
             parts.append("Open in the program")
         } else if origins.contains(.commandLine) {
-            parts.append("Named in the program's command")
+            parts.append("Named on the program's command line")
         } else if origins.contains(.programStatus) {
             parts.append("Named by the program's status")
         } else {
