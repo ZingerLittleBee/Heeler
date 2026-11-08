@@ -810,6 +810,8 @@ struct ChatNotice: Equatable, Codable, Sendable {
         case review
         /// Answers to questions asked outside a tool.
         case answered
+        /// A scheduled task fired and started a turn of its own.
+        case scheduledTask
         /// Anything else worth a line.
         case system
     }
@@ -1213,6 +1215,12 @@ struct ChatTranscript: Equatable, Sendable {
     var entries: [ChatEntry]
     /// The conversation's title, when the program records one.
     var title: String?
+    /// The model of the newest reply, when the program records one.
+    var model: String? = nil
+    /// The reasoning effort of the newest reply, when the program records one.
+    var effort: String? = nil
+    /// The program's own permission mode (Claude Code's `permissionMode`).
+    var permissionMode: String? = nil
     /// True when the loaded lines need older history to be complete: the
     /// window does not start at the file's head, or the current branch's
     /// chain continues above it.

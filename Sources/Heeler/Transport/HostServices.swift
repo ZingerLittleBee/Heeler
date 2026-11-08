@@ -71,6 +71,9 @@ protocol HostServices: Sendable {
     /// resolved the remote environment.
     func hostPlatform() async throws -> HostPlatform
 
+    /// Reads selected process facts, filtering arguments and variables on the Host.
+    func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts]
+
     /// Lists the files inside one untracked directory: one git script over
     /// one exec, using the top level from the latest Changes read. Entries
     /// carry no line counts. Git-level outcomes throw `ChangesReadError`; a
@@ -188,6 +191,10 @@ extension HostServices {
     }
 
     func hostPlatform() async throws -> HostPlatform { .posix }
+
+    func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
+        throw TransportError.hostFeatureUnavailable(feature: "Process facts")
+    }
 
     /// A transport without Host commands cannot list an untracked directory.
     func listUntrackedDirectory(

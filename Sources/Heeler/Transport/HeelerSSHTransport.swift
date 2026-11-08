@@ -3883,6 +3883,18 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
             timeoutMarkerPrefix: "__HEELER_CORE_START_TIMEOUT_", timedOut: .timedOut)
     }
 
+    func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
+        // Windows' existing reader does not expose argv. Unknown stays hidden.
+        guard try await hostPlatform() == .posix else { return [:] }
+        let nonce = HostProcessReader.makeNonce()
+        let result = try await runBoundedScript(
+            HostProcessReader.script(request, nonce: nonce), feature: "Agent permission modes",
+            deadline: .seconds(12), remoteSeconds: 8,
+            timeoutMarkerPrefix: "__HEELER_PROCESS_READ_TIMEOUT_", timedOut: .hostFileTimedOut)
+        guard result.exitStatus == 0 else { return [:] }
+        return try HostProcessReader.parse(stdout: result.stdout, nonce: nonce, request: request)
+    }
+
     /// One bounded exec. A process read takes a shell, `od` and `awk`, or `perl`.
     func runHostProcessRead(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(

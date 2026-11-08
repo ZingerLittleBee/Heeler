@@ -16,6 +16,7 @@ final actor ScriptedTransport: Transport {
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
+    private(set) var agentReadCount = 0
     private var chatFiles: ChatHostFiles?
     private var chatAgent: Agent?
     private(set) var chatAgentReads: [AgentTarget] = []
@@ -655,9 +656,10 @@ final actor ScriptedTransport: Transport {
     }
 
     func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult {
+        agentReadCount += 1
         return PaneReadResult(
             format: params.format ?? .text, paneID: params.target, revision: 0,
-            source: params.source, tabID: "t", text: "",
+            source: params.source, tabID: "t", text: paneTexts[params.target] ?? "",
             truncated: false, workspaceID: "w")
     }
 

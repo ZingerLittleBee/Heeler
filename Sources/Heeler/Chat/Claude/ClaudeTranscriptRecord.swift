@@ -78,6 +78,10 @@ struct ClaudeRecord: Sendable, Equatable {
     /// The API message an assistant block belongs to. Claude Code writes
     /// each block of one response as its own record.
     var messageID: String?
+    /// The model an assistant record names (`message.model`).
+    var model: String?
+    /// The reasoning effort the reply ran at (top-level `effort`, 2.1.3xx).
+    var effort: String?
     var apiBlockIndex: Int?
     var thinkingDurationMilliseconds: Int?
     var isAPIError = false
@@ -266,6 +270,8 @@ struct ClaudeSystemDetails: Sendable, Equatable {
     var fallbackModel: String?
     /// `commandRun` on a local command record.
     var commandRun: ChatCommandInvocation?
+    /// `prompt` on a `scheduled_task_fire`: what the scheduled task asks.
+    var scheduledPrompt: String?
 }
 
 /// `compactMetadata` of a `compact_boundary`.
@@ -380,6 +386,8 @@ extension ClaudeRecord {
         case .user, .assistant:
             blocks = raw.message?.content.map(ClaudeContentBlock.init) ?? []
             messageID = raw.message?.id
+            model = raw.message?.model
+            effort = raw.effort
             apiBlockIndex = raw.apiBlockIndex
             thinkingDurationMilliseconds = raw.thinkingDurationMs
             isAPIError = raw.isApiErrorMessage ?? false
@@ -407,7 +415,8 @@ extension ClaudeRecord {
                         ChatCommandInvocation(
                             name: $0.hasPrefix("/") ? String($0.dropFirst()) : $0, arguments: run.args ?? "")
                     }
-                })
+                },
+                scheduledPrompt: raw.prompt.map { String($0.prefix(Self.systemContentCap)) })
         case .attachment(let attachmentType):
             guard let rawAttachment = raw.attachment else { break }
             var details = ClaudeAttachmentDetails(planFilePath: rawAttachment.planFilePath)
@@ -593,6 +602,7 @@ private struct RawLine: Decodable {
     var message: RawMessage?
     var apiBlockIndex: Int?
     var thinkingDurationMs: Int?
+    var effort: String?
     var isApiErrorMessage: Bool?
     var promptSource: String?
     var origin: RawOrigin?
@@ -609,6 +619,7 @@ private struct RawLine: Decodable {
     var retractedMessageUuids: [String]?
     var originalModel: String?
     var fallbackModel: String?
+    var prompt: String?
     var commandRun: RawCommandRun?
     var attachment: RawAttachment?
     var customTitle: String?
@@ -623,11 +634,11 @@ private struct RawLine: Decodable {
 
     private enum CodingKeys: String, CodingKey {
         case type, subtype, uuid, parentUuid, logicalParentUuid, isSidechain, isMeta, teamName
-        case agentId, sessionId, message, apiBlockIndex, thinkingDurationMs, isApiErrorMessage
+        case agentId, sessionId, message, apiBlockIndex, thinkingDurationMs, effort, isApiErrorMessage
         case promptSource, origin, sourceToolUseID, isCompactSummary, isVisibleInTranscriptOnly
         case interruptedMessageId
         case toolUseResult, toolDenialKind, userFeedback, toolDenialUnanswered, content
-        case compactMetadata, retractedMessageUuids, originalModel, fallbackModel, commandRun
+        case compactMetadata, retractedMessageUuids, originalModel, fallbackModel, commandRun, prompt
         case attachment, customTitle, aiTitle, summary, permissionMode, relocatedCwd
         case continuedInSessionId, operation, cwd, timestamp
     }
@@ -648,6 +659,7 @@ private struct RawLine: Decodable {
         message = c.lenient(RawMessage.self, .message)
         apiBlockIndex = c.lenient(Int.self, .apiBlockIndex)
         thinkingDurationMs = c.lenient(Int.self, .thinkingDurationMs)
+        effort = c.lenient(String.self, .effort)
         isApiErrorMessage = c.lenient(Bool.self, .isApiErrorMessage)
         promptSource = c.lenient(String.self, .promptSource)
         origin = c.lenient(RawOrigin.self, .origin)
@@ -667,6 +679,7 @@ private struct RawLine: Decodable {
         retractedMessageUuids = c.lenient([String].self, .retractedMessageUuids)
         originalModel = c.lenient(String.self, .originalModel)
         fallbackModel = c.lenient(String.self, .fallbackModel)
+        prompt = c.lenient(String.self, .prompt)
         commandRun = c.lenient(RawCommandRun.self, .commandRun)
         attachment = c.lenient(RawAttachment.self, .attachment)
         customTitle = c.lenient(String.self, .customTitle)
@@ -694,13 +707,15 @@ private struct RawOrigin: Decodable {
 /// A message's content: a string, or an array of blocks.
 private struct RawMessage: Decodable {
     var id: String?
+    var model: String?
     var content: [RawBlock] = []
 
-    private enum CodingKeys: String, CodingKey { case id, content }
+    private enum CodingKeys: String, CodingKey { case id, model, content }
 
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = c.lenient(String.self, .id)
+        model = c.lenient(String.self, .model)
         content = RawBlock.blocks(in: c, .content) ?? []
     }
 }

@@ -12,6 +12,8 @@ const CREATIVE = {
 const TEXT_FIELDS = {
   "whats-new": { attribute: "whatsNew", limit: 4000 },
   promo: { attribute: "promotionalText", limit: 170 },
+  keywords: { attribute: "keywords", limit: 100 },
+  description: { attribute: "description", limit: 4000 },
 };
 const HEADERS = { "content-type": "application/json", "x-csrf-itc": "[asc-ui]" };
 const BASE = `https://appstoreconnect.apple.com/apps/${ARGS.appId}/distribution/ios/version/inflight`;
@@ -29,20 +31,37 @@ async function api(path, options) {
 const write = (method, path, data) =>
   api(path, { method, headers: HEADERS, body: data === undefined ? undefined : JSON.stringify({ data }) });
 
-async function goto(url, ready) {
-  await page.goto(url);
+async function waitFor(ready, url = /./) {
   for (let i = 0; i < 60; i++) {
     await pause(1000);
-    if (ready.test(await page.evaluate(() => document.body.innerText))) return;
+    const here = await page.evaluate(() => [location.href, document.body.innerText]);
+    if (url.test(here[0]) && ready.test(here[1])) return;
   }
-  throw new Error(`Page never showed ${ready}: ${url}`);
+  throw new Error(`Page never showed ${ready} at ${url}`);
+}
+
+async function goto(url, ready) {
+  await page.goto(url);
+  await waitFor(ready);
+}
+
+// A direct media-manager URL lands on the version page, so follow the page's own links.
+async function openMediaManager(slot) {
+  await goto(BASE, /App Previews and Screenshots/);
+  await page.evaluate(() => [...document.querySelectorAll("[role=tab]")].find((e) => e.innerText.trim() === "App Previews and Screenshots").click());
+  await waitFor(/View All Sizes in Media Manager/);
+  await page.evaluate(() => [...document.querySelectorAll("a")].find((e) => /View All Sizes in Media Manager/.test(e.innerText)).click());
+  await waitFor(/of 10 App Screenshots/, /media-manager\/iphone/);
+  if (slot.page === "iphone") return;
+  await page.evaluate((tab) => [...document.querySelectorAll("[role=tab], a, button")].find((e) => e.innerText.trim() === tab).click(), "iPad");
+  await waitFor(/of 10 App Screenshots/, new RegExp(`media-manager/${slot.page}`));
 }
 
 async function findVersion() {
   const list = await api(`apps/${ARGS.appId}/appStoreVersions?limit=10&fields[appStoreVersions]=versionString,appStoreState`);
   const version = list.data.find((v) => v.attributes.versionString === ARGS.version);
   if (!version) throw new Error(`No store version ${ARGS.version}`);
-  const locales = await api(`appStoreVersions/${version.id}/appStoreVersionLocalizations?fields[appStoreVersionLocalizations]=locale,whatsNew,promotionalText`);
+  const locales = await api(`appStoreVersions/${version.id}/appStoreVersionLocalizations?fields[appStoreVersionLocalizations]=locale,whatsNew,promotionalText,keywords,description`);
   const localization = locales.data.find((l) => l.attributes.locale === ARGS.locale);
   if (!localization) throw new Error(`No ${ARGS.locale} localization; found ${locales.data.map((l) => l.attributes.locale)}`);
   return { version, localization, locales: locales.data };
@@ -80,6 +99,8 @@ async function status({ version, localization, locales }) {
   for (const l of locales) {
     console.log(`\nPromotional Text (${l.attributes.locale})\n${l.attributes.promotionalText ?? "(empty)"}`);
     console.log(`\nWhat's New (${l.attributes.locale})\n${l.attributes.whatsNew ?? "(empty)"}`);
+    console.log(`\nKeywords (${l.attributes.locale})\n${l.attributes.keywords ?? "(empty)"}`);
+    console.log(`\nDescription (${l.attributes.locale})\n${l.attributes.description ?? "(empty)"}`);
   }
 }
 
@@ -103,10 +124,21 @@ async function replaceScreenshots({ localization }) {
     (added.length ? ` at position ${at}` : ""));
   if (!ARGS.apply) return console.log("Plan only; pass --apply.");
 
+  // Reach the upload page before deleting anything, then reopen it so its count is current.
+  await openMediaManager(slot);
   for (const old of [...replaced, ...removed]) await write("DELETE", `appScreenshots/${old.id}`);
-  await goto(`${BASE}/media-manager/${slot.page}`, /of 10 App Screenshots/);
-  await page.evaluate((index) => document.querySelectorAll("input[type=file]")[index].setAttribute("data-store-shots", "1"), slot.input);
-  await page.setInputFiles('input[data-store-shots="1"]', ARGS.files.map((f) => f.path));
+  await openMediaManager(slot);
+  // The page can re-render and drop the mark between the two calls.
+  for (let attempt = 1; ; attempt++) {
+    await page.evaluate((index) => document.querySelectorAll("input[type=file]")[index].setAttribute("data-store-shots", "1"), slot.input);
+    try {
+      await page.setInputFiles('input[data-store-shots="1"]', ARGS.files.map((f) => f.path));
+      break;
+    } catch (error) {
+      if (attempt === 3) throw error;
+      await pause(2000);
+    }
+  }
 
   const previous = new Set(before.map((s) => s.id));
   let fresh = [];
@@ -170,7 +202,7 @@ async function setText({ localization }) {
 try {
   await goto(BASE, /Distribution/);
   const found = await findVersion();
-  const action = { status, screenshots: replaceScreenshots, creative: replaceCreative, "whats-new": setText, promo: setText }[ARGS.action];
+  const action = { status, screenshots: replaceScreenshots, creative: replaceCreative, "whats-new": setText, promo: setText, keywords: setText, description: setText }[ARGS.action];
   await action(found);
 } finally {
   await task.finish({ keep: [] });

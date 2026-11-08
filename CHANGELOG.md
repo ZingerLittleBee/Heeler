@@ -9,17 +9,27 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Switch Claude Code's model and effort through Chat's title menu, under Model, with the current model on its second line beside a folder icon and the launch directory's last component. Permission mode stays beside the Composer. The native menu opens locally with fixed Opus, Sonnet, Haiku and Fable shortcuts, without probing the session or adding `/model` to the conversation merely by opening it. The title remains tappable while busy or switching; choices are enabled only while the Agent is Idle or Done and no send or switch is underway. Selecting sends `/model <alias>`; Claude Code resolves any user-configured third-party mapping and saves the selection as it normally does. Heeler does not configure mappings or verify provider availability. Permission modes cycle with Shift+Tab, bypass asks first, and effort uses `/effort`. The label changes only once the terminal confirms. (PR #647)
+- Filter the Agents list from its filter icon, with a height-limited, independently scrolling Host section above Agent Status and a double-down chevron while more Hosts remain below. Hosts support multiple selections across Agents and Terminals; All Hosts clears only the Host selection. All Status clears only the status selection; Blocked, Working, Done and Idle show counts and allow multiple selections. The status filter is kept across launches, and a list it empties offers Show All. (PR #647)
+- Pick up to 10 images at once in the Composer, staged one after another. The note that an image path was inserted and copied goes by itself after 2 seconds. (PR #647)
 - Read Heeler in Japanese. On a Japanese device, or with Japanese chosen in the app's per-app language setting, the Console's tabs and lists, Chat, Changes, Settings, Alerts, permission prompts, and Live Activities present in Japanese, while Terminal theme and font names, program names, commands, and content Agents write keep their original form. Translations live in String Catalogs (`Localizable.xcstrings` and `InfoPlist.xcstrings`) and keep current as code changes through build-time string extraction. (PR #652)
-
 - Choose Voice Input languages independently of the device language, with automatic detection by default, multiple OpenAI hints and one optional DeepInfra language. Custom services gain per-URL/model request fields with multiple values, validation and migration of the previous Send Language setting. (PR #643)
 - Rename an Agent's conversation from its existing More menu or the Agents list's long-press menu on Herdr TUI Hosts. Save a manual title for Claude Code, Codex, Pi, Oh My Pi, Grok Build, or OpenCode; generate and apply a new title with Claude Code, Codex, or Oh My Pi. Busy Agents, existing terminal drafts, changed conversations, and unconfirmed results are reported without retrying the command. (#645)
 
 ### Changed
 
 - Select terminal text inline with handles and the system edit menu, using libghostty-spm 2.2.2026103001. Chat's Select Text sheet is unchanged. (PR #650)
+- Show user commands in Chat with the same right-aligned bubble and text size
+  as other user messages, keeping command output below the bubble. (#648)
 
 ### Fixed
 
+- Release a herdr-core terminal's focus when its window closes while the attach is still opening, so a retained terminal does not keep claiming the closed window's size. (PR #654)
+- Keep Chat's task title in its original foreground color without a dropdown arrow, and increase the header glass opacity from 80% to 90%. The second line leads with the harness's Agent List mark in plain gray, without its background or status ring, followed by a middle dot, the folder and any reported model and effort in matching secondary gray. Compensate for the Claude Code mark's padding so its visible height matches the folder icon. Without model information, omit the model text and its separator rather than substituting the harness name or a placeholder. (PR #647)
+- Align Chat's permission, model and effort menus with native selection checkmarks in a separate leading column, keeping unselected labels aligned. Match Claude Code's standard light and dark permission colors, label the default mode Manual, offer Auto, and hide bypass unless the running Claude Code process opts in or its live footer shows bypass. Permission switches show an inline loading indicator over the current mode's symbol until they finish, wait for each terminal update, and stop at the original mode when a full cycle cannot reach the requested mode. Launch flags are a hint, not a guarantee against runtime policy restrictions; unreadable launches stay hidden. (PR #647)
+- Show a new Claude Code session's permission mode and welcome-banner model before its first reply. An unpainted terminal no longer reads as Manual, and Chat retries the screen without sending input. (PR #647)
+- A Send of an image path followed by text settles once Claude Code records it, rather than staying as not yet in the conversation. (PR #647)
+- A Claude Code scheduled task shows as a small notice opening its own turn, rather than its reply folding into the turn before, and no longer waits as an unsent message. (PR #647)
 - Clear an unsaved Voice Input API key when its service or Custom URL changes, and report Keychain deletion failures without switching the saved destination or withdrawing its agreement. (PR #643)
 
 ## [0.1.18]
@@ -69,9 +79,6 @@ Entries reference the pull request that made the change.
   preset are each Host's home folder. (#632)
 
 ### Changed
-
-- Show user commands in Chat with the same right-aligned bubble and text size
-  as other user messages, keeping command output below the bubble. (#648)
 
 - Accounts moved out of Usage into Settings › Agents & Accounts. Usage's
   notice about Account folders it found opens the same screen. (#632)

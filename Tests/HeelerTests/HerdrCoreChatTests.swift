@@ -213,6 +213,30 @@ struct HerdrCoreChatTests {
 
     // MARK: The offer
 
+    @Test func bypassLaunchFollowsTheLiveProcessRatherThanTheTerminalRecord() async throws {
+        let rig = Rig(host: host)
+        try await rig.start()
+        defer { rig.store.setHosts([]) }
+        let agent = try #require(rig.agent)
+        let pin = rig.store.composerSession(for: agent).corePin
+        // A saved launch command is not the current process's capability.
+        await rig.transport.setTerminalRecords([
+            .success(Self.record(foreground: ["claude", "--allow-dangerously-skip-permissions"]))
+        ])
+        let normal = try await rig.store.claudePermissionLaunch(for: agent, corePin: pin)
+        #expect(normal?.optsIntoBypass == false)
+
+        await rig.transport.processTable.add(.init(
+            pid: Self.pid, name: "claude", start: "987654322", environment: ["HC_SCOPE": "scope"],
+            argv: ["claude", "--permission-mode", "manual", "--allow-dangerously-skip-permissions"]))
+        let allowed = try await rig.store.claudePermissionLaunch(for: agent, corePin: pin)
+        #expect(allowed?.optsIntoBypass == true)
+        #expect(allowed?.process != normal?.process)
+
+        await rig.transport.processTable.remove(Self.pid)
+        #expect(try await rig.store.claudePermissionLaunch(for: agent, corePin: pin) == nil)
+    }
+
     @Test func chatIsOfferedForClaudeCodeOnLinux() async throws {
         let rig = Rig(host: host)
         try await rig.start()

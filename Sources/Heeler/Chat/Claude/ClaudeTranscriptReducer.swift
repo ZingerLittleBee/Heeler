@@ -21,7 +21,7 @@ struct ClaudeTranscriptReducer: ChatTranscriptReducer {
     /// Bumped whenever the same lines start projecting to different entries,
     /// so a device cache written by an older build is dropped instead of
     /// mixed with new entries.
-    static let revision = 14
+    static let revision = 15
 
     let role: Role
     /// The file being read, whose sidecar directory holds the outputs

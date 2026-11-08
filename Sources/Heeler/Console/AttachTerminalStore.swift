@@ -525,6 +525,7 @@ final class AttachTerminalStore {
     }
 
     private func attach(cols: Int, rows: Int) async throws {
+        let wasViewed = isViewed
         let viewer = isViewed ? nextViewer : .resumed
         // A viewer back from a dropped line takes the size only once someone
         // acts on it. One attached hidden that came into view while it was
@@ -540,7 +541,8 @@ final class AttachTerminalStore {
                 return
             }
             try await self.consume(
-                session, reportsOnceOpen: reportsOnceOpen, initialCols: cols, initialRows: rows)
+                session, wasViewed: wasViewed, reportsOnceOpen: reportsOnceOpen,
+                initialCols: cols, initialRows: rows)
         }
         let transportReady: @MainActor @Sendable (UInt64) -> Void = { [weak self] generation in
             guard let self else { return }
@@ -588,6 +590,7 @@ final class AttachTerminalStore {
 
     private func consume(
         _ session: TerminalAttachSession,
+        wasViewed: Bool,
         reportsOnceOpen: Bool,
         initialCols: Int,
         initialRows: Int
@@ -626,6 +629,10 @@ final class AttachTerminalStore {
         }
         if isViewed, reportsOnceOpen {
             session.setPresence(.viewed(feed.displayFacts))
+        } else if !isViewed, wasViewed {
+            // The window left while the attach was opening, before there was
+            // a session to receive setViewed(false). Retain it without focus.
+            session.setPresence(.hidden)
         }
 
         do {

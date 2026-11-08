@@ -52,7 +52,8 @@ its contract.
   [ADR 0040](../adr/0040-conversation-titles-use-native-agent-commands.md) records native commands,
   generation capabilities, same-session checks and one-shot delivery. Focused tests:
   [AgentTitleRenameTests](../../Tests/HeelerTests/AgentTitleRenameTests.swift) and opt-in
-  [AgentTitleRenameLiveTests](../../Tests/HeelerTests/AgentTitleRenameLiveTests.swift).
+  [AgentTitleRenameLiveTests](../../Tests/HeelerLiveTests/AgentTitleRenameLiveTests.swift)
+  in the separate `HeelerLiveTests` scheme.
 
 | Task | Follow these owners | Contract and focused coverage |
 | --- | --- | --- |

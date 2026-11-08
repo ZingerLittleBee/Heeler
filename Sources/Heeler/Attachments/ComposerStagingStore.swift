@@ -251,6 +251,16 @@ final class ComposerStagingStore {
         return currentID
     }
 
+    /// Stages several picks one after another, as if each were picked once
+    /// the last was in the draft; stops at the first that does not complete.
+    func beginAll(_ sources: [Source]) async {
+        for source in sources {
+            guard begin(source) != nil else { return }
+            await operationTask?.value
+            guard case .completed = state else { return }
+        }
+    }
+
     func perform(_ command: Command) {
         switch command {
         case .cancel:
@@ -435,6 +445,20 @@ final class ComposerStagingStore {
         state = .completed(
             Outcome(medium: staged.medium, path: staged.path, copied: copied))
         publish(.completed(id: operationID, path: staged.path))
+        // Nothing is left to do with a path that was copied: the line goes by itself.
+        if copied { dismissCompleted(operationID, after: Self.completedLinger) }
+    }
+
+    /// How long a copied path's line stays before it goes by itself.
+    static let completedLinger: Duration = .seconds(2)
+
+    private func dismissCompleted(_ id: UInt64, after delay: Duration) {
+        Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard let self, id == self.operationID, case .completed(let outcome) = self.state, outcome.copied
+            else { return }
+            self.dismiss()
+        }
     }
 
     private func finish(error: any Error, medium: Medium, operationID: UInt64) {
