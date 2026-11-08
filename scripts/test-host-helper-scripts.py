@@ -28,6 +28,7 @@ LAUNCHCTL_FIXTURES = ROOT / "plugin/test/fixtures/launchctl"
 SOURCES = [
     ROOT / "Sources/Heeler/Transport/HostHelperScript.swift",
     ROOT / "Sources/Heeler/Transport/NodeToolchainProbe.swift",
+    ROOT / "scripts/fixtures/string-localized-shim.swift",
 ]
 
 STUB = """

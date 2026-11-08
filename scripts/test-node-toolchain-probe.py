@@ -21,6 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PROBE = ROOT / "Sources/Heeler/Transport/NodeToolchainProbe.swift"
+SHIM = ROOT / "scripts/fixtures/string-localized-shim.swift"
 
 STUB = """
 enum HerdrHostPath {
@@ -74,7 +75,7 @@ class ProbeTests(unittest.TestCase):
         (cls.build / "main.swift").write_text(MAIN)
         cls.binary = cls.build / "probe"
         subprocess.run(
-            ["swiftc", str(PROBE), str(cls.build / "stub.swift"),
+            ["swiftc", str(PROBE), str(SHIM), str(cls.build / "stub.swift"),
              str(cls.build / "main.swift"), "-o", str(cls.binary)],
             check=True,
         )
