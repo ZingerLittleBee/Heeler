@@ -1787,10 +1787,10 @@ struct TerminalAttachTests {
 
         // The handoff itself: the replacement surface claims the keyboard as
         // it reaches the window, and freezes its grid until that settles.
-        // This test drives the settle explicitly, so the wall-clock fallback
-        // must stay out of it: on a loaded runner the steps below stretched
-        // past its 500ms and it thawed the freeze mid-handoff (#225).
-        terminal.keyboardTransitionFallbackDelay = 60
+        // This test drives the settle explicitly, so the fallback waits on a
+        // clock the test never moves: on a loaded runner the steps below
+        // stretched past its 500ms and it thawed the freeze mid-handoff (#225).
+        terminal.keyboardTransitionSleep = ManualClock().parkedSleep(for:)
         terminal.removeFromSuperview()
         terminal.raisesKeyboardWhenReady = true
         host.view.addSubview(terminal)
@@ -1843,7 +1843,7 @@ struct TerminalAttachTests {
         let initialRows = try #require(reportedGrids.last?.rows)
         reportedGrids.removeAll()
 
-        terminal.keyboardTransitionFallbackDelay = 60
+        terminal.keyboardTransitionSleep = ManualClock().parkedSleep(for:)
         terminal.removeFromSuperview()
         terminal.raisesKeyboardWhenReady = true
         host.view.addSubview(terminal)
@@ -1900,7 +1900,8 @@ struct TerminalAttachTests {
         let initialRows = try #require(reportedGrids.last?.rows)
         reportedGrids.removeAll()
 
-        terminal.keyboardTransitionFallbackDelay = 0.1
+        let leash = ManualClock()
+        terminal.keyboardTransitionSleep = leash.parkedSleep(for:)
         terminal.removeFromSuperview()
         terminal.raisesKeyboardWhenReady = true
         host.view.addSubview(terminal)
@@ -1913,7 +1914,11 @@ struct TerminalAttachTests {
         terminal.setNeedsLayout()
         terminal.layoutIfNeeded()
 
-        // No settle signal, no explicit finish — only the fallback ends this.
+        // No settle signal, no explicit finish — only the fallback ends this,
+        // and only once the resize is in: a real leash could run out on a
+        // loaded runner before the resize and thaw twice.
+        #expect(reportedGrids.isEmpty)
+        try #require(await leash.pass(HeelerTerminalView.keyboardTransitionFallbackDelay))
         try await waitForGridReportsToSettle { reportedGrids.count }
 
         #expect(reportedGrids.count == 1)
@@ -2481,10 +2486,9 @@ struct TerminalAttachTests {
         #expect(inset.isConfirmingDismissal)
     }
 
-    /// A terminal destination's own handoff timeout: the default
-    /// `keyboardTransitionFallbackDelay`, which the Agent passes on when the
-    /// terminal accepts.
-    private static let terminalLeash = Duration.milliseconds(500)
+    /// A terminal destination's own handoff timeout, which the Agent passes
+    /// on when the terminal accepts.
+    private static let terminalLeash = HeelerTerminalView.keyboardTransitionFallbackDelay
 
     /// An inset whose timers all wait on `clock`, so only the test moves
     /// time: a deadline it does not pass never fires, however slow the

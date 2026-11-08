@@ -584,7 +584,7 @@ struct AgentDirectInputTests {
         // The terminal's acceptance replaced the switch's guard with one
         // past its own leash.
         let terminalGuard =
-            Duration.seconds(terminal.keyboardTransitionFallbackDelay)
+            HeelerTerminalView.keyboardTransitionFallbackDelay
             + TerminalKeyboardInset.destinationResponderHandoffGrace
         #expect(
             try await Self.eventually {

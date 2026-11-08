@@ -528,9 +528,7 @@ struct AgentTerminalView: View {
                 // The terminal that accepted is the one the request was
                 // delivered to; its leash starts with the request.
                 keyboardInset.acceptResponderHandoff(
-                    id,
-                    destinationTimeout: .seconds(
-                        keyboardControl.terminal?.keyboardTransitionFallbackDelay ?? 0))
+                    id, destinationTimeout: HeelerTerminalView.keyboardTransitionFallbackDelay)
                 applyInputMode(.direct, preservingKeyboardHandoff: true)
             } else {
                 cancelKeyboardHandoff(id)

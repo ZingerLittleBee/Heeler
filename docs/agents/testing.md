@@ -193,7 +193,10 @@ UIKit's real notification cadence passes only `handoffSleep`, so the guards
 hold while presentations coalesce in real time. Hosted handoff tests keep both
 real. The hosted transfer passes a recording `handoffSleep` that still sleeps
 for real, and checks that each destination's acceptance re-armed the switch's
-guard.
+guard. `HeelerTerminalView` waits out its own keyboard leash through
+`keyboardTransitionSleep` the same way: a test holds the leash on a
+`ManualClock` it never moves, or passes the leash at the step where it should
+run out, instead of stretching or shrinking the delay.
 
 ### Backspace hold timing
 
