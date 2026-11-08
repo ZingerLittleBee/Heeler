@@ -26,6 +26,7 @@ Entries reference the pull request that made the change.
 ### Fixed
 
 - Keep Settings > Notifications steady while Hosts reconnect. A Host being read again keeps showing its last state, and one Host's connection retries no longer read every other Host again. (PR #661)
+- Show the Host detail's 30-day Usage cost on its own line with the token count beneath it, so a large figure no longer wraps its last digit. The Usage widgets keep every cost whole: a long Host or program name truncates first, and a cost that still does not fit shrinks, drops its cents, then reads in thousands or millions, rather than ending in an ellipsis. The large widget no longer lists the Hosts it leaves out. (PR #660)
 - Switch between the Composer and Direct Input when the keyboard is slow to move: the switch now waits up to two seconds for the other input to take the keyboard, rather than dropping the tap after one, and a handoff that times out or is cancelled settles the input on the keyboard actually on screen instead of leaving it above or behind it. (PR #657)
 - Size the Tools keyboard to the system keyboard on screen when switching to Tools while that keyboard is still changing height, rather than to the keyboard before it. (PR #657)
 - Release a herdr-core terminal's focus when its window closes while the attach is still opening, so a retained terminal does not keep claiming the closed window's size. (PR #654)
