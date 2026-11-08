@@ -57,51 +57,11 @@ struct LocalizationBundleTests {
         }
     }
 
-    /// A translation that drops, adds or retypes a format specifier garbles
-    /// the text or crashes when the value is formatted. A key with its own
-    /// English value, as `String(localized:defaultValue:)` writes, is checked
-    /// against that value.
+    /// Format specifiers are checked in the catalog by
+    /// `scripts/check-localizations.py`: the English of a
+    /// `String(localized:defaultValue:)` key lives in code, never in a table.
     @Test(arguments: LocalizationTables.translations)
-    func translationsKeepTheFormatSpecifiersOfTheirSource(language: String) throws {
-        let english = LocalizationTables.table("Localizable", localization: "en") ?? [:]
-        let table = try #require(LocalizationTables.table("Localizable", localization: language))
-        #expect(!table.isEmpty)
-        let mismatches = table.compactMap { key, value -> String? in
-            Self.specifiersMatch(source: english[key] ?? key, value: value) ? nil : "\(key) => \(value)"
-        }
-        #expect(mismatches.isEmpty, "\(mismatches.sorted().joined(separator: "\n"))")
-    }
-
-    private static let specifier = try? NSRegularExpression(
-        pattern: #"%(?:(\d+)\$)?[-+0#']*\d*(?:\.\d+)?(hh|h|ll|l|q|z|t|j)?([@dDiuUxXoOfFeEgGaAcCsSp])"#)
-
-    /// Specifiers in order as (position, type); a literal `%%` is ignored.
-    private static func specifiers(in text: String) -> [(position: Int?, type: String)] {
-        let text = text.replacingOccurrences(of: "%%", with: "")
-        let range = NSRange(text.startIndex..., in: text)
-        return (specifier?.matches(in: text, range: range) ?? []).map { match in
-            func group(_ index: Int) -> String {
-                Range(match.range(at: index), in: text).map { String(text[$0]) } ?? ""
-            }
-            return (Int(group(1)), group(2) + group(3))
-        }
-    }
-
-    private static func specifiersMatch(source: String, value: String) -> Bool {
-        let expected = specifiers(in: source).map(\.type)
-        let found = specifiers(in: value)
-        guard found.contains(where: { $0.position != nil }) else {
-            return found.map(\.type) == expected
-        }
-        // Positional forms let the translation reorder arguments; each
-        // argument must still appear exactly once with its key's type.
-        let positions = found.compactMap(\.position)
-        guard !expected.isEmpty, positions.count == found.count,
-              positions.sorted() == Array(1...expected.count)
-        else { return false }
-        return found.allSatisfy { item in
-            guard let position = item.position, expected.indices.contains(position - 1) else { return false }
-            return expected[position - 1] == item.type
-        }
+    func everyLanguageShipsItsTable(language: String) {
+        #expect(LocalizationTables.table("Localizable", localization: language)?.isEmpty == false)
     }
 }
