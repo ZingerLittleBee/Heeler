@@ -364,15 +364,32 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   status or the check before a Send, which moves Chat and holds that Send once.
   Seen on 2026-11-07 on one signed-in Mac, macOS 27.0.1, in a plain PTY outside herdr
   and herdr-core, the open files through `HostProcessReader`'s own macOS read
-  (`host-evidence/agy`). Not seen: the lock through Linux's `/proc/<pid>/fd` (the
-  lock's source file is `lock_unix.go`, the same on both), a core Terminal's
-  `HC_SCOPE` reaching agy, `/resume` and `/rewind`, and whether `--remote-control`
-  leaves a second process named `agy` in the Terminal. agy reports Program Status
-  from 1.4.0 as `app=antigravity`, which the Agent rule now reads as agy's, and at
-  every start sends `blocked` with `kind=auth` about 50 ms before `idle`, signed in;
-  whether a core keeps that report long enough to show Blocked or notify is unknown
-  without a core capture, so nothing debounces it. Antigravity CLI joins a kernel's
-  list once the owner's check passes there.
+  (`host-evidence/agy`). In herdr-core 0.1.18 Terminals on macOS 27.0.1, with the
+  Herdr desktop app 0.1.13 (2026-11-08), the same held: a fresh agy, from New Agent
+  or typed in a Terminal, held no lock before its first prompt and exactly one from
+  it, `/clear` moved the lock at once, and a second agy opened with `--conversation`
+  on a conversation another agy had open held its folder and database but not the
+  lock, and its Chat listed that one conversation for one confirmation. A `/clear`
+  after a finished turn had Chat on the new conversation before any Send, so the
+  check before a Send went unexercised. agy's environment there carries the Terminal's
+  `HC_SCOPE` and whatever the core's `herdr-core hold` process carries
+  ([herdr compatibility](../agents/herdr-compatibility.md)), a `NO_COLOR` among
+  them, under which agy draws no colors (ADR 0024). An agy typed in a Terminal lists
+  as an Agent titled with the Terminal's title, where New Agent's reads
+  `Antigravity`. Not seen: the lock through Linux's `/proc/<pid>/fd` (the lock's
+  source file is `lock_unix.go`, the same on both), `/resume` and `/rewind`, and
+  whether `--remote-control` leaves a second process named `agy` in the Terminal.
+  agy reports Program Status from 1.4.0 as `app=antigravity`, which the Agent rule
+  now reads as agy's, and at every start sends `blocked` with `kind=auth` about
+  50 ms before `idle`, signed in. On a core it reports each dialog as `blocked`:
+  `kind=permission` for the trust prompt, a command and a file creation or edit
+  (herdr 0.9.5 reads the file dialogs from the screen as done), and `kind=question`
+  for a question. A start at the trust prompt sent `kind=auth`, then the prompt's
+  `kind=permission`, with no `idle` between, so the auth report was not timed on a
+  core: whether a core keeps it long enough to show Blocked or notify stays unknown,
+  and nothing debounces it. Antigravity CLI joins a kernel's list once the owner's
+  check passes there. On macOS its Blocked cards and Sends from Chat are to be
+  checked again on a core whose hold carries no `NO_COLOR`.
 - A Transcript locator takes the config root from the Agent's own process
   environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and the like),
   not from the Host's Default Account, which follows the core's environment.

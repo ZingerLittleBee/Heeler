@@ -198,6 +198,7 @@ The [Done step](#done-per-device) below does the same for the turn-end vector.
 | OpenCode 2.x | `opencode` | `opencode` | `opencode` | The same |
 | Oh My Pi | `omp` | `omp` | `omp` | The same |
 | Grok Build | `grok` | `grok-build` | `grok` | The same. With its Program Status off it stays **Unknown**, and [the edit](#grok-build-edit) is offered |
+| Antigravity CLI | `agy` on a signed-in Mac ([Chat on a Mac](#chat-on-a-mac)) | `antigravity` | `agy` | The same. Its trust prompt, permission dialogs and questions read **Blocked** |
 
 Each Agent lists on Agents, By Host and By Workspace, and under the Host filter. It
 leaves the Terminals tab while it holds the foreground, its row opens its detail, and
@@ -363,6 +364,8 @@ On a Mac Host with signed-in harnesses and the Host Helper installed as a Launch
 
 The run of 2026-11-02, on macOS 27.0.1 with herdr-core 0.1.13, Claude Code 2.1.316, codex-cli 0.165.0, Grok Build 1.0.70, Pi 1.4.0 and Oh My Pi 18.12.3, passed the Claude Code, SIP on, Codex, Pi and Grok Build rows, Oh My Pi with the extension, and Moved on under zsh ([herdr compatibility](../agents/herdr-compatibility.md)). OpenCode 2.0.32 from New Agent could only be chosen and 2.1 or later was not run, so it stays off on macOS. It stays in `macOSExactCoreChatPrograms`, since no read failed and Heeler's plugin label bound it exactly in the same run.
 
+The run of 2026-11-08, on macOS 27.0.1 with herdr-core 0.1.18, the Herdr desktop app 0.1.13 and Antigravity CLI 1.5.3, passed agy's Program Status row and the binding in the Antigravity CLI row: Chat could not tell the conversation before the first message and followed it after, showed the new conversation after `/clear` before any Send, bound the typed `agy`, and offered the second one its one conversation to choose ([ADR 0034](../adr/0034-herdr-core-chat-binds-sessions-from-host-evidence.md)). Every agy there carried `NO_COLOR` from the core's `herdr-core hold` ([herdr compatibility](../agents/herdr-compatibility.md)), so its Blocked cards and Sends from Chat are to be run again on a core without it, and Antigravity CLI stays off on macOS.
+
 | Check | Do | Expect |
 | --- | --- | --- |
 | Claude Code | Open Chat on a `claude` at its prompt, from zsh and from New Agent | It follows that conversation. `sessions/<pid>.json`'s `procStart` equals `TZ=UTC LC_ALL=C ps -o lstart= -p <pid>`. Update ADR 0034's Unverified list. Read that file by name and never a `.key` file |
@@ -372,6 +375,7 @@ The run of 2026-11-02, on macOS 27.0.1 with herdr-core 0.1.13, Claude Code 2.1.3
 | Grok Build | Start `grok`, then read `active_sessions.json` | It binds. `pid_start` divided by a million is the second of that read. The VM saw one sample |
 | OpenCode, Oh My Pi | OpenCode 2.1 or later from New Agent. Oh My Pi before and after the first message, with the extension and without it | OpenCode binds. Oh My Pi with the extension shows **No Messages Yet** until the first reply, without it can't tell, and then binds |
 | Moved on | After Use This Conversation on any Agent, exit it and start another program in the same Terminal, then check Chat | The choice is dropped, and no banner stays. Under a shell with withheld variables too |
+| Antigravity CLI | First run `printenv NO_COLOR` in a core Terminal, which prints nothing on a clean core. Start `agy` from New Agent in a folder it does not trust yet, answer its trust prompt, open Chat, and send the first message in the terminal. Run `/clear`. Type `agy` in a New Terminal and send one message there, then type `agy --conversation <its id>` in another | Chat can't tell the conversation until the first message, then follows it. After `/clear` it shows the new conversation. The typed `agy` lists as an Agent titled with its Terminal's title and binds the same way. The second one can't tell, and **Choose a Conversation** lists only that conversation |
 | Any read that failed | Note which row above could not bind | That program shows **Can't Tell the Conversation** and **Choose a Conversation**. Take it out of `HostCapabilities.macOSExactCoreChatPrograms` and note why |
 
 ### Choosing a conversation
