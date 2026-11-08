@@ -358,14 +358,15 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   resumed by id. `/clear` and `/fork` move it at once and keep the folder and database
   of the conversation left behind open, so only a held lock binds and those never do;
   `/exit` releases it. Lock files stay after their process, so one on disk proves
-  nothing. A second agy opened on a conversation already open holds its folder and
-  database and never the lock, so it says it cannot tell and lists those for one
-  confirmation. Its list also holds the conversation that the Terminal foreground's
-  argv names with `--conversation <id>` or `--conversation=<id>`, read from the
-  core's record and counted only while that foreground is the agy the check found:
-  on Linux (2026-11-09, Ubuntu 24.04.5, herdr-core 0.1.18, agy 1.5.3) neither agy
-  held that conversation's folder or database open, the first holding only its
-  lock, so without the argv the second listed nothing. The check's exec still
+  nothing. A second agy opened on a conversation already open never holds the lock,
+  so it says it cannot tell; on macOS it holds that conversation's folder and
+  database, and lists those for one confirmation. Its list also holds the
+  conversation that the Terminal foreground's argv names with `--conversation <id>`
+  or `--conversation=<id>`, read from the core's record and counted only while that
+  foreground is the agy the check found: on Linux (2026-11-09, Ubuntu 24.04.5,
+  herdr-core 0.1.18, agy 1.5.3), read through `/proc/<pid>/fd`, neither agy held
+  that conversation's folder or database open, the first holding only its lock, so
+  without the argv the second listed nothing. The check's exec still
   learns nothing of agy's argv. Its list has nothing from a directory: agy files
   conversations by id, and `history.jsonl`, which names a workspace, is one log for
   every agy on the data root and names no id for a fresh launch's first prompt.
@@ -402,11 +403,10 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   in color, and 0.03 s apart under `NO_COLOR`. Through the 4.8 s Heeler showed
   Blocked, for about 2 s of it with an unreadable Waiting for Input card, since
   nothing in Heeler debounces the report. Antigravity CLI joins Linux's list once
-  the owner's check passes there. Not seen: the lock through Linux's
-  `/proc/<pid>/fd` (the lock's source file is `lock_unix.go`, the same on both),
-  `/resume` and `/rewind`, whether `--remote-control` leaves a second process
-  named `agy` in the Terminal, a trusted start's `kind=auth` and `idle` on a core,
-  and whether the Host Helper notifies on the auth report.
+  the owner's check passes there. Not seen: `/resume` and `/rewind`, whether
+  `--remote-control` leaves a second process named `agy` in the Terminal, a trusted
+  start's `kind=auth` and `idle` on a core, and whether the Host Helper notifies on
+  the auth report.
 - A Transcript locator takes the config root from the Agent's own process
   environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and the like),
   not from the Host's Default Account, which follows the core's environment.
