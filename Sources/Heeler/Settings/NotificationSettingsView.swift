@@ -25,10 +25,13 @@ struct NotificationSettingsView: View {
             }
 
             // Per-Host preferences (#75): registration on/off plus the
-            // separate Done flag, once this device holds a push token.
-            if pushRegistration.deviceToken != nil {
-                ForEach(notificationPreferences.hosts) { @Sendable host in
-                    MainActorContent { hostNotificationSection(host) }
+            // separate Done flag, once this device holds a push token. One
+            // steady row per Host; its page has the rest.
+            if pushRegistration.deviceToken != nil, !notificationPreferences.hosts.isEmpty {
+                Section("Hosts") {
+                    ForEach(notificationPreferences.hosts) { @Sendable host in
+                        MainActorContent { HostNotificationRow(model: settings(for: host)) }
+                    }
                 }
             }
 
@@ -115,122 +118,10 @@ struct NotificationSettingsView: View {
         }
     }
 
-    private func hostNotificationSection(_ host: Host) -> some View {
-        Section {
-            switch notificationPreferences.states[host.id] {
-            case nil, .loading:
-                HStack {
-                    Text("Checking this Host")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    ProgressView()
-                }
-            case .unavailable(let message):
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(message)
-                        .foregroundStyle(.secondary)
-                    Button("Check Again") {
-                        Task { await notificationPreferences.refresh() }
-                    }
-                }
-            case .idle(let settings):
-                hostToggles(host: host, settings: settings, isUpdating: false)
-            case .updating(let settings):
-                hostToggles(host: host, settings: settings, isUpdating: true)
-            case .failed(_, let settings):
-                hostToggles(host: host, settings: settings, isUpdating: false)
-            }
-        } header: {
-            Text(host.displayName)
-        } footer: {
-            hostSectionFooter(host)
-        }
-    }
-
-    @ViewBuilder
-    private func hostToggles(
-        host: Host,
-        settings: NotificationPreferencesStore.HostSettings,
-        isUpdating: Bool
-    ) -> some View {
-        Toggle(
-            "Notifications",
-            isOn: Binding(
-                get: { settings.isRegistered },
-                set: { enabled in
-                    Task {
-                        await notificationPreferences.setNotificationsEnabled(
-                            enabled, for: host)
-                    }
-                }))
-            .disabled(isUpdating)
-        if settings.isRegistered {
-            Toggle(
-                "Done Notifications",
-                isOn: Binding(
-                    get: { settings.notify.done },
-                    set: { enabled in
-                        Task {
-                            await notificationPreferences.setDoneEnabled(enabled, for: host)
-                        }
-                    }))
-                .disabled(isUpdating)
-            if notificationPreferences.offersLiveActivity(for: host) {
-                Toggle(
-                    "Live Activity",
-                    isOn: Binding(
-                        get: { liveActivities.isEnabled(for: host.id) },
-                        set: { liveActivities.setEnabled($0, for: host.id) }))
-                    .disabled(isUpdating)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func hostSectionFooter(_ host: Host) -> some View {
-        let registered: Bool = {
-            switch notificationPreferences.states[host.id] {
-            case .idle(let settings), .updating(let settings), .failed(_, let settings):
-                settings.isRegistered
-            case .loading, .unavailable, nil:
-                false
-            }
-        }()
-        VStack(alignment: .leading, spacing: 6) {
-            if let requirement = notificationPreferences.helperRequirement(for: host.id) {
-                Text(requirement)
-                    .accessibilityIdentifier("settings.notifications.helperRequirement.\(host.id.uuidString)")
-            }
-            if registered, notificationPreferences.offersLiveActivity(for: host) {
-                Text(NotificationPrivacyCopy.liveActivityFooter)
-                if !liveActivities.areActivitiesEnabled {
-                    Text(NotificationPrivacyCopy.liveActivityDisabledHint)
-                }
-                if liveActivities.isEnabled(for: host.id),
-                    let note = liveActivities.reconcileNotes[host.id]
-                {
-                    Text("Live Activity: \(note)")
-                }
-                ForEach(pluginRequirements(for: host), id: \.feature) { @Sendable requirement in
-                    PluginRequirementNote(text: requirement.note)
-                        .accessibilityIdentifier(
-                            "settings.notifications.pluginRequirement.\(host.id.uuidString)"
-                                + ".\(requirement.feature)")
-                }
-            }
-            // Fail loudly (#75): a toggle that could not reach the Host
-            // says so and stays on the Host's confirmed value.
-            if case .failed(let message, _) = notificationPreferences.states[host.id] {
-                Text(message)
-                    .foregroundStyle(.red)
-            }
-        }
-    }
-
-    private func pluginRequirements(for host: Host) -> [HeelerPluginRequirement] {
-        guard host.serverKind == .herdrTUI else { return [] }
-        return pluginStatuses.status(for: host.id)?.notificationRequirements(
-            liveActivityEnabled: liveActivities.isEnabled(for: host.id)) ?? []
+    private func settings(for host: Host) -> HostNotificationSettings {
+        HostNotificationSettings(
+            host: host, preferences: notificationPreferences, liveActivities: liveActivities,
+            pluginStatuses: pluginStatuses)
     }
 
     @ViewBuilder

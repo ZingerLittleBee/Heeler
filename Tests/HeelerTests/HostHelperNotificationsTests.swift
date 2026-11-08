@@ -366,6 +366,30 @@ struct HostHelperNotificationsTests {
             relayBaseURL: { Self.relay }, ceremony: NotificationRegistrationCeremony(keys: keys))
     }
 
+    @Test func aReReadKeepsShowingWhatTheHostLastSettledOn() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        let hold = FileAccessHold()
+        let preferences = heldPreferences(over: rig.console, hold: hold)
+        preferences.setHosts([host])
+        #expect(preferences.shownState(for: host.id) == nil)
+        await preferences.refresh()
+        let settled = try #require(preferences.states[host.id])
+        #expect(settled != .loading)
+
+        await hold.close()
+        let reread = Task { await preferences.refresh([host.id]) }
+        try await waitUntil("the re-read to begin") { preferences.states[host.id] == .loading }
+
+        #expect(preferences.shownState(for: host.id) == settled)
+        #expect(preferences.isReading(host.id))
+
+        await hold.open()
+        await reread.value
+        #expect(!preferences.isReading(host.id))
+        #expect(preferences.shownState(for: host.id) == settled)
+    }
+
     @Test func aBannerDueDuringAReReadOfARegisteredHostStillShows() async throws {
         let rig = try await registeredRig()
         defer { rig.console.setHosts([]) }
@@ -388,7 +412,7 @@ struct HostHelperNotificationsTests {
         #expect(store.banner?.alert.body == "Error")
         // Only the banner's gate holds: the toggles wait for the read.
         #expect(preferences.liveActivityGate(forCoreHost: host.id) == .unknown)
-        #expect(preferences.helperRequirement(for: host.id) == nil)
+        #expect(preferences.isReading(host.id))
 
         await hold.open()
         await reread.value
@@ -1208,6 +1232,60 @@ struct HostHelperNotificationsTests {
 
         // The move into reconnecting may be heard after the count above, once.
         #expect(await helper.steps.filter { $0 == .probe }.count <= probesBefore + 1)
+    }
+
+    /// Through the app's own observers: another Host's retries read that Host's
+    /// registration again, never this one's, so its row in Settings stays put.
+    @Test func anotherHostsRetriesDoNotReadThisHostsRegistrationAgain() async throws {
+        let helper = try await installedHelper()
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let offline = Host(address: "offline.example", username: "dev", serverKind: .herdrTUI)
+        let attempts = OSAllocatedUnfairLock(initialState: 0)
+        let console = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: {
+                        attempts.withLock { $0 += 1 }
+                        throw TransportError.sshUnreachable(detail: "no route")
+                    },
+                    reconnectPolicy: ReconnectPolicy(
+                        initialDelay: .milliseconds(5), multiplier: 1, maxDelay: .milliseconds(5)),
+                    keepalive: nil)
+            },
+            connectCore: { _ in core.transport() },
+            makeCoreSession: { _ in
+                HerdrCoreHostSession(
+                    connect: { throw Self.stoppedCore },
+                    reconnectPolicy: ReconnectPolicy(
+                        initialDelay: .seconds(60), multiplier: 1, maxDelay: .seconds(60)),
+                    keepalive: nil)
+            })
+        defer { console.setHosts([]) }
+        let registration = PushRegistrationStore(client: ScriptedPushRegistrationClient(), environment: .sandbox)
+        registration.deviceTokenDidArrive(Data([0x0A, 0x1B, 0x2C, 0x3D]))
+        let app = HeelerAppModel(
+            pushRegistration: registration, sceneDirectory: AgentSceneDirectory(),
+            hostStore: HostStore(volatileHosts: [host, offline]), console: console)
+        app.start()
+        let host = host
+        try await waitUntil("the first read") {
+            switch app.notificationPreferences.states[host.id] {
+            case .idle, .unavailable: true
+            default: false
+            }
+        }
+        try await waitUntil("the other Host to retry") {
+            if case .reconnecting = console.hostStatuses[offline.id] { return true }
+            return false
+        }
+        let probesBefore = await helper.steps.filter { $0 == .probe }.count
+        let attemptsBefore = attempts.withLock { $0 }
+
+        try await waitUntil("twenty more retries") { attempts.withLock { $0 } >= attemptsBefore + 20 }
+
+        #expect(await helper.steps.filter { $0 == .probe }.count == probesBefore)
+        #expect(app.notificationPreferences.shownState(for: host.id) != nil)
     }
 
     @Test func aDeviceRegisteredOnAHelperThatStoppedWorkingCanStillLeave() async throws {

@@ -92,11 +92,11 @@ selects the rows that fit. Wire shapes and eligibility belong to the existing
 [Live Activity contract](live-activity-contract.md).
 
 For a real activity on an agreed test Host, enable Notifications in
-**Settings > Notifications**, allow the system permission, then enable that
-Host's **Notifications** and **Live Activity** switches. Keep Heeler foregrounded
-while its Agent inventory settles. A start also needs a push device token and
-that Host's Notification Key; the same screen's diagnostic note reports the
-blocker or `active — started`. Registration writes to the test Host are part
+**Settings > Notifications**, allow the system permission, then turn on that
+Host's switch under **Hosts** and **Live Activity** on the Host's page. Keep
+Heeler foregrounded while its Agent inventory settles. A start also needs a push
+device token and that Host's Notification Key; the diagnostic note on the Host's
+page reports the blocker or `active — started`. Registration writes to the test Host are part
 of this setup. Background the app for compact presentation, and long press
 the island for expanded presentation.
 

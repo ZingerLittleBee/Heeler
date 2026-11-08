@@ -152,9 +152,9 @@ macOS may notify that `node` can run in the background and list it under Login I
 ### 3. Turn on notifications
 
 1. Go to **Settings > Notifications**. If **Enable Notifications** appears, tap it, tap **Continue**, and allow notifications when iOS asks.
-2. Under the Host's name, turn on **Notifications**. **Done Notifications** and **Live Activity** appear below it.
+2. Under **Hosts**, turn on the Host's switch. Tap the Host for **Done Notifications** and **Live Activity**.
 
-**It worked if** **Notifications** stays on and no **Host Helper:** note shows under the Host. **Blocked**, **Error**, and **Done** then reach this device with Heeler closed, and a tap opens the Agent.
+**It worked if** the switch stays on and the Host's row shows no **Host Helper:** note. **Blocked**, **Error**, and **Done** then reach this device with Heeler closed, and a tap opens the Agent.
 
 When a **Host Helper:** note shows, fix that status on the Host's page using the table above.
 

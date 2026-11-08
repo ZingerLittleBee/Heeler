@@ -80,6 +80,9 @@ final class NotificationPreferencesStore {
     /// again. Reads repeat with the connection and a Helper's takes seconds; Herdr
     /// TUI's gate still fails closed for its read.
     private var settingsDuringReRead: [Host.ID: HostSettings] = [:]
+    /// What each Host last settled on, shown while it is read again so Settings
+    /// keeps its rows steady. Display only: no gate reads it.
+    private var settledBeforeReRead: [Host.ID: HostState] = [:]
     /// A catalog edit/removal invalidates every result captured for that Host.
     private var operations: [Host.ID: UUID] = [:]
     /// Seen marks waiting for a core Host's registration to be known, or for the
@@ -123,6 +126,7 @@ final class NotificationPreferencesStore {
         helperRequirements = helperRequirements.filter { unchanged.contains($0.key) }
         helperDrivesLiveActivity = helperDrivesLiveActivity.filter { unchanged.contains($0.key) }
         settingsDuringReRead = settingsDuringReRead.filter { unchanged.contains($0.key) }
+        settledBeforeReRead = settledBeforeReRead.filter { unchanged.contains($0.key) }
         operations = operations.filter { unchanged.contains($0.key) }
         pendingSeenMarks = pendingSeenMarks.filter { unchanged.contains($0.key) }
     }
@@ -133,8 +137,9 @@ final class NotificationPreferencesStore {
 
     /// A note beside a core Host's toggles: what its Helper still needs while they
     /// work without it. With no toggles to show, the unavailable state says it.
+    /// Like the toggles, it stays as last read while the Host is read again.
     func helperRequirement(for hostID: Host.ID) -> String? {
-        switch states[hostID] {
+        switch shownState(for: hostID) {
         case .idle, .updating, .failed: helperRequirements[hostID]
         case .loading, .unavailable, nil: nil
         }
@@ -143,11 +148,30 @@ final class NotificationPreferencesStore {
     /// Re-reads every Host's registration file so the toggles reflect what
     /// each Host actually holds.
     func refresh() async {
+        await refresh(hosts.map(\.id))
+    }
+
+    /// Re-reads only these Hosts', as their connections change.
+    func refresh(_ hostIDs: some Collection<Host.ID>) async {
+        let ids = Set(hostIDs)
         await withTaskGroup { group in
-            for host in hosts {
+            for host in hosts where ids.contains(host.id) {
                 group.addTask { await self.load(host) }
             }
         }
+    }
+
+    /// What Settings shows for a Host: its state, or while it is read again what
+    /// it last settled on. Nil until a first read settles.
+    func shownState(for hostID: Host.ID) -> HostState? {
+        let state = states[hostID]
+        guard state == .loading else { return state }
+        return settledBeforeReRead[hostID]
+    }
+
+    /// Whether a Host is being read, so its switches cannot act yet.
+    func isReading(_ hostID: Host.ID) -> Bool {
+        states[hostID] == .loading
     }
 
     /// The per-Host on/off (registration add/remove). Enabling registers
@@ -257,6 +281,7 @@ final class NotificationPreferencesStore {
     /// updating is left for its own read or write to settle.
     private func markUnregistered(_ hostID: Host.ID) {
         settingsDuringReRead[hostID] = nil
+        settledBeforeReRead[hostID] = nil
         guard confirmedSettings(for: hostID) != nil else { return }
         states[hostID] = .idle(
             HostSettings(isRegistered: false, notify: NotificationTriggerPreferences()))
@@ -274,6 +299,7 @@ final class NotificationPreferencesStore {
         operations[host.id] = operation
         if states[host.id] != .loading {
             settingsDuringReRead[host.id] = host.serverKind == .herdrCore ? confirmedSettings(for: host.id) : nil
+            settledBeforeReRead[host.id] = states[host.id]
         }
         states[host.id] = .loading
         defer { writeSeenMarks(for: host.id) }

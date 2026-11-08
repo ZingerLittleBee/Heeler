@@ -553,6 +553,7 @@
 		8668C3C60FB9539A7DD1A4EC /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32413805C1AA874DBEE37547 /* Base64URL.swift */; };
 		86EA13918F2EE2103B2DEFB3 /* AgentLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A9489C21BDCFA7616782BF /* AgentLiveActivityWidget.swift */; };
 		875053C38A03704E29431ED4 /* FakeCoreSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7286C0E9A8E33F442F0160E5 /* FakeCoreSocket.swift */; };
+		87D572B8B3B322A002F81335 /* HostNotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6193A6A2CF583FB1A4F070D /* HostNotificationSettingsView.swift */; };
 		88084FF5E3CBAF501DAFEF44 /* RemoteFiles+HeelerSSH.swift in Sources */ = {isa = PBXBuildFile; fileRef = C153200B3B3D2360D295D806 /* RemoteFiles+HeelerSSH.swift */; };
 		88220BCAD04ECDAB3B68AFA9 /* UsageAccountFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 678D3789A0A391D06D88AB98 /* UsageAccountFileTests.swift */; };
 		8852391AB553C278DECC94AB /* AppearanceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 710F0F2EAD8E14489F3454CA /* AppearanceSettingsView.swift */; };
@@ -2073,6 +2074,7 @@
 		F5B92065BE7F11009B4284CD /* GrokPromptHistoryWitnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokPromptHistoryWitnessTests.swift; sourceTree = "<group>"; };
 		F5DFB755AC2022C61C4A661C /* HerdrCoreVectorFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreVectorFile.swift; sourceTree = "<group>"; };
 		F5F796BFD9CB085A6B54A597 /* ClaudeToolSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeToolSummary.swift; sourceTree = "<group>"; };
+		F6193A6A2CF583FB1A4F070D /* HostNotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostNotificationSettingsView.swift; sourceTree = "<group>"; };
 		F61A04DBA56C56925B594FF1 /* NotificationEnvelope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationEnvelope.swift; sourceTree = "<group>"; };
 		F63F7D63E32AA0C85E9F8FBC /* PushRegistrationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationStore.swift; sourceTree = "<group>"; };
 		F641C391CC59D30055B5F85F /* AgentInputModeSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentInputModeSettings.swift; sourceTree = "<group>"; };
@@ -3553,6 +3555,7 @@
 				75AD4D2E9AF7A381719AB084 /* ChatCacheSettingsSection.swift */,
 				F9255BA36958DA6DB7BF58CF /* ChatTextSettings.swift */,
 				12FBBE02202C285590EC5736 /* EdgeDockSettings.swift */,
+				F6193A6A2CF583FB1A4F070D /* HostNotificationSettingsView.swift */,
 				B6C5732C32E96A6C433D82B7 /* LicenseNotices.swift */,
 				5416AE7B7A89E2987620E65E /* NotificationDisclosureView.swift */,
 				90A97F1827BC65B4A271F28C /* NotificationRelaySettings.swift */,
@@ -4202,6 +4205,7 @@
 				A2DE15E21439EDC3B04F5DFA /* HostListView.swift in Sources */,
 				F0A8E77693C3508A42EBF75F /* HostLiveActivityCoordinator.swift in Sources */,
 				07B77728E97988116B07B8F8 /* HostNotificationFiles.swift in Sources */,
+				87D572B8B3B322A002F81335 /* HostNotificationSettingsView.swift in Sources */,
 				B71854386F1CF79B863F15FE /* HostOnboardingStore.swift in Sources */,
 				D868123FC703E505D48AFD85 /* HostOnboardingView.swift in Sources */,
 				B725CB2B8159E6AE84D41F4E /* HostProcessReader+Windows.swift in Sources */,

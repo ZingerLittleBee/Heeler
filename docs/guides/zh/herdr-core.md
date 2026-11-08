@@ -153,9 +153,9 @@ macOS 可能会提示 `node` 可在后台运行，并将其列在“登录项”
 ### 3. 开启通知
 
 1. 前往 **Settings > Notifications**。如果出现 **Enable Notifications**，请轻点它，再轻点 **Continue**，并在 iOS 询问时允许通知。
-2. 在该 Host 的名称下开启 **Notifications**。开启后，下方会出现 **Done Notifications** 和 **Live Activity**。
+2. 在 **Hosts** 下打开该 Host 的开关。轻点该 Host 可设置 **Done Notifications** 和 **Live Activity**。
 
-**成功的标志是** **Notifications** 保持开启，且该 Host 下没有 **Host Helper:** 提示。此后即使关闭 Heeler，这台设备也会收到 **Blocked**、**Error** 和 **Done** 通知，轻点通知即可打开对应的 Agent。
+**成功的标志是**开关保持开启，且该 Host 的行中没有 **Host Helper:** 提示。此后即使关闭 Heeler，这台设备也会收到 **Blocked**、**Error** 和 **Done** 通知，轻点通知即可打开对应的 Agent。
 
 如果出现 **Host Helper:** 提示，请对照上表在该 Host 的页面中处理对应状态。
 
