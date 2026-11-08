@@ -126,6 +126,10 @@ struct UsageWidgetView: View {
     private func large(_ scope: UsageWidgetScope) -> some View {
         let total = scope.total(entry.range)
         let dates = scope.chartDates(entry.range)
+        let hostSummaries = scope.hostID == nil
+            ? scope.included.map { host in UsageWidgetSnapshot.Summary.sum(host.programs.map { $0.summary(entry.range) }) }
+            : []
+        let table = scope.programs.map { $0.summary(entry.range) } + hostSummaries
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
                 UsageWidgetHeader(title: UsageWidgetText.range(entry.range), detail: scope.title)
@@ -147,11 +151,12 @@ struct UsageWidgetView: View {
                 ForEach(scope.programs) { program in
                     UsageTableRow(
                         leading: { UsageProgramDot(program: program.program) },
-                        name: program.name, summary: program.summary(entry.range), metric: entry.metric)
+                        name: program.name, summary: program.summary(entry.range), metric: entry.metric,
+                        table: table)
                 }
                 if scope.hostID == nil {
                     Divider().padding(.leading, 16).padding(.vertical, 6)
-                    ForEach(scope.included) { host in
+                    ForEach(Array(zip(scope.included, hostSummaries)), id: \.0.id) { host, summary in
                         Link(destination: UsageWidgetLink.usageURL(hostID: host.id) ?? URL(fileURLWithPath: "/")) {
                             UsageTableRow(
                                 leading: {
@@ -159,9 +164,7 @@ struct UsageWidgetView: View {
                                         .font(.system(size: 9))
                                         .foregroundStyle(.secondary)
                                 },
-                                name: host.name,
-                                summary: .sum(host.programs.map { $0.summary(entry.range) }),
-                                metric: entry.metric)
+                                name: host.name, summary: summary, metric: entry.metric, table: table)
                         }
                         .buttonStyle(.plain)
                     }
@@ -1069,34 +1072,55 @@ struct UsageProgramRow: View {
         HStack(spacing: 6) {
             UsageProgramDot(program: program)
             Text(name).frame(maxWidth: .infinity, alignment: .leading)
-            Text(value).fontWeight(.semibold).monospacedDigit()
+            Text(value).fontWeight(.semibold).monospacedDigit().fixedSize()
         }
     }
 }
 
 /// A large Usage widget's row: the figure, and the other metric beside it.
+/// Each figure column is as wide as its widest entry in the table, so a
+/// long name truncates rather than a figure.
 struct UsageTableRow<Leading: View>: View {
     @ViewBuilder let leading: () -> Leading
     let name: String
     let summary: UsageWidgetSnapshot.Summary
     let metric: AgentUsageMetric
+    /// Every row's summary in the table, which sizes the figure columns.
+    let table: [UsageWidgetSnapshot.Summary]
     @Environment(\.locale) private var locale
 
     var body: some View {
         HStack(spacing: 8) {
             leading().frame(width: 8)
             Text(name).frame(maxWidth: .infinity, alignment: .leading)
-            Text(metric == .cost
-                ? AgentUsageStyle.tokens(summary.tokens, locale: locale)
-                : UsageWidgetText.cost(summary.cost, locale: locale))
-                .foregroundStyle(.secondary)
-                .frame(width: 64, alignment: .trailing)
-            Text(UsageWidgetText.value(summary, metric: metric, locale: locale))
-                .fontWeight(.semibold)
-                .frame(width: 84, alignment: .trailing)
+            column(other).foregroundStyle(.secondary)
+            column(figure).fontWeight(.semibold)
         }
         .font(.footnote.monospacedDigit())
         .frame(height: 20)
+    }
+
+    private func figure(_ summary: UsageWidgetSnapshot.Summary) -> String {
+        UsageWidgetText.value(summary, metric: metric, locale: locale)
+    }
+
+    private func other(_ summary: UsageWidgetSnapshot.Summary) -> String {
+        metric == .cost
+            ? AgentUsageStyle.tokens(summary.tokens, locale: locale)
+            : UsageWidgetText.cost(summary.cost, locale: locale)
+    }
+
+    /// A widget cannot measure its rows, so the column's every entry,
+    /// hidden, holds this row's entry to the widest width.
+    private func column(_ text: (UsageWidgetSnapshot.Summary) -> String) -> some View {
+        ZStack(alignment: .trailing) {
+            ForEach(Set(table.map(text)).sorted(), id: \.self) { entry in
+                Text(entry).hidden()
+            }
+            .accessibilityHidden(true)
+            Text(text(summary))
+        }
+        .fixedSize()
     }
 }
 
