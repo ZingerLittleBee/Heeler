@@ -113,9 +113,11 @@ struct HerdrCoreProgramChatTests {
         let host: Host
         private var titleSequence = 100
 
+        /// `offering` is both kernels' list, unless `macOSOffering` gives macOS its own.
         init(
             host: Host, record: JSONValue, openCodeStore: OpenCodeStoreStub? = nil,
-            offering programs: Set<ChatProgram> = Set(ChatProgram.allCases)
+            offering programs: Set<ChatProgram> = Set(ChatProgram.allCases),
+            macOSOffering: Set<ChatProgram>? = nil
         ) {
             self.host = host
             let result = JSONValue.object([
@@ -134,7 +136,7 @@ struct HerdrCoreProgramChatTests {
                         keepalive: nil)
                 },
                 makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) },
-                coreLinuxChatPrograms: programs, coreMacOSChatPrograms: programs)
+                coreLinuxChatPrograms: programs, coreMacOSChatPrograms: macOSOffering ?? programs)
         }
 
         func start(_ rows: [ScriptedProcessTable.Process], kernel: String = "Linux") async throws {
@@ -322,17 +324,16 @@ struct HerdrCoreProgramChatTests {
 
     // MARK: Antigravity CLI
 
-    /// agy waits for the owner's check in a core Terminal on Linux and on a Mac
-    /// (ADR 0034), and Windows reads hold none of the open files it binds from, so no
-    /// shipped list offers it, whatever a Windows list says. Herdr TUI offers it.
-    @Test func noShippedListOffersAntigravityCLIUntilTheOwnersCheck() {
+    /// agy passed the owner's check in a macOS core Terminal (ADR 0034). On Linux it
+    /// waits for its own, and Windows reads hold none of the open files it binds from,
+    /// so no Windows list offers it, whatever that list says. Herdr TUI offers it.
+    @Test func onlyTheShippedMacOSListOffersAntigravityCLI() {
+        #expect(HostCapabilities.confirmedMacOSCoreChatPrograms.contains(.agy))
         #expect(!HostCapabilities.confirmedLinuxCoreChatPrograms.contains(.agy))
-        #expect(!HostCapabilities.confirmedMacOSCoreChatPrograms.contains(.agy))
         #expect(!HostCapabilities.confirmedWindowsCoreChatPrograms.contains(.agy))
         #expect(!HostCapabilities.windowsCoreChatCandidates.contains(.agy))
-        for kernel in ["Linux", "Darwin"] {
-            #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: kernel).offersChat(for: .agy))
-        }
+        #expect(HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Darwin").offersChat(for: .agy))
+        #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Linux").offersChat(for: .agy))
         #expect(
             !HostCapabilities(
                 serverKind: .herdrCore, platform: .nativeWindows, coreKernel: "Windows",
@@ -341,16 +342,32 @@ struct HerdrCoreProgramChatTests {
         #expect(HostCapabilities(serverKind: .herdrTUI).offersChat(for: .agy))
     }
 
+    /// Through the shipped lists, an agy Agent on a macOS core Host offers Chat and
+    /// one on a Linux core Host offers the terminal alone.
+    @Test(arguments: [("Darwin", true), ("Linux", false)])
+    func theShippedListsOfferAntigravityCLIChatOnAMacOSCoreHostOnly(_ kernel: String, _ offered: Bool) async throws {
+        let rig = Rig(
+            host: host, record: Self.record(foreground: ["agy"], name: "agy", app: "antigravity"),
+            offering: HostCapabilities.confirmedLinuxCoreChatPrograms,
+            macOSOffering: HostCapabilities.confirmedMacOSCoreChatPrograms)
+        try await rig.start([Self.process(name: "agy", environment: [:], argv: ["agy"])], kernel: kernel)
+
+        let agent = try #require(rig.agent)
+        #expect(rig.store.chatProgram(for: agent) == (offered ? .agy : nil))
+        #expect((rig.store.chatStore(for: agent, program: .agy) != nil) == offered)
+        rig.store.setHosts([])
+    }
+
     private static let agyRoot = "\(home)/.gemini/antigravity-cli"
 
     private static func agyTranscript(_ session: String) -> String {
         AgyTranscriptLocator.transcriptPath(inFolder: AgyTranscriptLocator.folder(in: agyRoot, id: session))
     }
 
-    /// Offered by this test's own list, as the owner's check would turn it on: Chat
-    /// follows the conversation whose presence lock agy holds, and after `/clear`,
-    /// which reports no status from idle, the check before a Send finds the moved
-    /// lock and holds that Send.
+    /// Offered by this test's own list, as macOS's offers it and Linux's would once its
+    /// owner's check passes: Chat follows the conversation whose presence lock agy
+    /// holds, and after `/clear`, which reports no status from idle, the check before a
+    /// Send finds the moved lock and holds that Send.
     @Test(arguments: ["Linux", "Darwin"])
     func anAntigravityCLIOfferedByATestsListFollowsItsHeldLock(_ kernel: String) async throws {
         let first = "00000000-0000-4000-8000-000000000102"

@@ -22,8 +22,10 @@ Entries reference the pull request that made the change.
   multi-select or written) and its trust prompt from cards. It holds a
   message, with the reason, while Antigravity CLI is working or its screen
   shows no empty input box, since a permission dialog that opened as the
-  message went in would take it as its answer. herdr-core Hosts don't offer
-  Chat for Antigravity CLI yet. (#644)
+  message went in would take it as its answer. macOS herdr-core Hosts offer
+  it too, following the conversation once its first message is sent in the
+  terminal. Linux and Windows herdr-core Hosts don't offer Chat for
+  Antigravity CLI yet. (#644)
 
 ### Changed
 

@@ -522,11 +522,11 @@ struct HerdrCoreMacOSSessionBinderTests {
         return (binder, record, files)
     }
 
-    /// The reader's own macOS read of a probe's agy is what the macOS Host binds from.
-    /// The owner's check in a core Terminal has not run, so no Mac offers it yet.
+    /// The reader's own macOS read of a probe's agy is what the macOS Host binds from,
+    /// and the owner's check in a core Terminal passed, so a Mac offers it.
     @Test func antigravityBindsExactlyFromItsMacOSRead() async throws {
         #expect(HostCapabilities.macOSExactCoreChatPrograms.contains(.agy))
-        #expect(!HostCapabilities.confirmedMacOSCoreChatPrograms.contains(.agy))
+        #expect(HostCapabilities.confirmedMacOSCoreChatPrograms.contains(.agy))
         let (binder, record, files) = try await Self.agyBinder("after-first-prompt")
 
         #expect(

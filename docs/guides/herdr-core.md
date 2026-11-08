@@ -113,6 +113,7 @@ In **Chat**, you can read conversations, send messages, stop a turn, and answer 
 | Grok Build | Opens on macOS, Linux, and Windows. Binds while Grok Build's process lists one conversation. After `/new`, restart or use **Choose a Conversation** on macOS and Linux. |
 | Pi | Opens on macOS, Linux, and Windows. Binds with the [Host Helper](#host-helper), on Windows with Heeler's extension, or when Heeler started it. Otherwise use **Choose a Conversation**. |
 | Oh My Pi | Opens on macOS, Linux, and Windows. Binds with the [Host Helper](#host-helper), on Windows with Heeler's extension, or once the first message makes it hold its session file. Otherwise use **Choose a Conversation**. |
+| Antigravity CLI | Opens on macOS. Binds after you send the first message in the terminal, and follows `/clear`. |
 | OpenCode | Off for herdr-core Hosts. Offers the terminal only. |
 
 - **Can't Tell the Conversation:** When Chat cannot prove the conversation, it shows **Can't Tell the Conversation** with the fix and **Check Again**. On macOS and Linux, tap **Choose a Conversation**, preview a conversation, and tap **Use This Conversation**.
