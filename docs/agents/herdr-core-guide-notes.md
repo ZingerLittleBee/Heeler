@@ -6,7 +6,7 @@ Architecture and protocol decisions live in [ADR 0031](../adr/0031-herdr-core-ho
 
 ## Verification scope
 
-- **macOS:** Checked against herdr-core 0.1.13 and 0.1.18 with the Herdr desktop app 0.1.13 on macOS 27.0.1 (26A434, SIP on, signed-in harnesses), and in a throwaway macOS 26.5 Tart VM (SIP off). Neither macOS environment ran OpenCode 2.1 or later, a Template in Chat, `/new` in Codex or Grok Build, or a Pi started by Heeler without the extension.
+- **macOS:** Checked against herdr-core 0.1.13 and 0.1.18 with the Herdr desktop app 0.1.13 on macOS 27.0.1 (26A434, SIP on, signed-in harnesses; Antigravity CLI 1.5.3 on 0.1.18 only), and in a throwaway macOS 26.5 Tart VM (SIP off). Neither macOS environment ran OpenCode 2.1 or later, `/resume` or `/rewind` in Antigravity CLI, a Template in Chat, `/new` in Codex or Grok Build, or a Pi started by Heeler without the extension.
 - **Linux:** Checked on `hc-lab` (Debian 13, Linux 6.18.54, systemd 257) against herdr-core 0.1.13 and Host Helper 0.5.3 with Claude Code 2.1.316, Codex 0.165.0 (`--no-daemon`), Grok Build 1.0.70, Pi 1.4.0, Oh My Pi 18.13.3, and OpenCode 2.2.2 and 1.19.5.
 - **Native Windows:** Checked on one machine (Windows 11 25H2 build 26200, Windows PowerShell 5.1.26100.9711, OpenSSH_for_Windows_9.5p2) against herdr-core 0.1.16 and the Herdr desktop app 0.1.12 with Claude Code 2.1.286 and 2.1.316 (including `npx`), Pi 1.4.0, Grok Build 1.0.70, and Oh My Pi 18.13.3.
 
