@@ -39,28 +39,29 @@ struct AgentUsageLimitsTests {
                 let size = controller.sizeThatFits(in: CGSize(width: 390, height: 5_000))
                 let bounds = CGRect(origin: .zero, size: size)
                 controller.view.frame = bounds
-                let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
-                defer { window.isHidden = true }
-                controller.view.layoutIfNeeded()
-                let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: "\n")
-                #expect(labels.contains("Claude Code limits"))
-                if state == "disabled" { #expect(labels.contains("Usage Limits are off.")) }
-                if state == "ok" || state == "throttled" {
-                    #expect(labels.contains("Weekly · Opus"))
-                    #expect(labels.contains("Weekly · Sonnet"))
-                    #expect(labels.contains("Custom model"))
-                    #expect(labels.contains("Expired · current usage unknown"))
+                try await withTestWindow(frame: bounds, rootViewController: controller) { _ in
+                    controller.view.layoutIfNeeded()
+                    let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
+                        .joined(separator: "\n")
+                    #expect(labels.contains("Claude Code limits"))
+                    if state == "disabled" { #expect(labels.contains("Usage Limits are off.")) }
+                    if state == "ok" || state == "throttled" {
+                        #expect(labels.contains("Weekly · Opus"))
+                        #expect(labels.contains("Weekly · Sonnet"))
+                        #expect(labels.contains("Custom model"))
+                        #expect(labels.contains("Expired · current usage unknown"))
+                    }
+                    if state == "throttled" { #expect(labels.contains("Retry after")) }
+                    if state == "unavailable" { #expect(labels.contains("Update Claude Code")) }
+                    let format = UIGraphicsImageRendererFormat()
+                    format.scale = 2
+                    let image = UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
+                        #expect(controller.view.drawHierarchy(in: bounds, afterScreenUpdates: true))
+                    }
+                    let filename = "claude-\(state)-accessible-\(accessible).png"
+                    Attachment.record(image, named: filename, as: .png)
+                    try #require(image.pngData()).write(to: directory.appendingPathComponent(filename))
                 }
-                if state == "throttled" { #expect(labels.contains("Retry after")) }
-                if state == "unavailable" { #expect(labels.contains("Update Claude Code")) }
-                let format = UIGraphicsImageRendererFormat()
-                format.scale = 2
-                let image = UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
-                    #expect(controller.view.drawHierarchy(in: bounds, afterScreenUpdates: true))
-                }
-                let filename = "claude-\(state)-accessible-\(accessible).png"
-                Attachment.record(image, named: filename, as: .png)
-                try #require(image.pngData()).write(to: directory.appendingPathComponent(filename))
             }
         }
     }
@@ -77,26 +78,26 @@ struct AgentUsageLimitsTests {
                 AgentUsageHostEntry(id: UUID(), name: "Studio Mac", store: store, isConnected: true),
             ]))
             let controller = UIHostingController(rootView: content.environment(\.locale, Locale(identifier: "en_US")))
-            let window = try await makeTestWindow(
-                frame: CGRect(x: 0, y: 0, width: 390, height: 844), rootViewController: controller)
-            defer { window.isHidden = true }
-            try await Task.sleep(for: .milliseconds(150))
-            controller.view.layoutIfNeeded()
-            let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: "\n")
-            #expect(labels.contains("Claude Code limits"))
-            #expect(labels.contains("The plugin asks Claude Code on this computer for your plan limits."))
-            #expect(labels.contains("Neither the plugin nor Heeler handles your sign-in."))
-            #expect(labels.contains("This automated use is not officially supported."))
-            let directory = URL.documentsDirectory.appendingPathComponent("usage-claude-surfaces")
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = 2
-            let image = UIGraphicsImageRenderer(bounds: controller.view.bounds, format: format).image { _ in
-                #expect(controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true))
+            try await withTestWindow(
+                frame: CGRect(x: 0, y: 0, width: 390, height: 844), rootViewController: controller
+            ) { _ in
+                let labels = try await shownLabels(
+                    in: controller, once: "This automated use is not officially supported.")
+                #expect(labels.contains("Claude Code limits"))
+                #expect(labels.contains("The plugin asks Claude Code on this computer for your plan limits."))
+                #expect(labels.contains("Neither the plugin nor Heeler handles your sign-in."))
+                #expect(labels.contains("This automated use is not officially supported."))
+                let directory = URL.documentsDirectory.appendingPathComponent("usage-claude-surfaces")
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 2
+                let image = UIGraphicsImageRenderer(bounds: controller.view.bounds, format: format).image { _ in
+                    #expect(controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true))
+                }
+                let filename = "limits-sheet.png"
+                Attachment.record(image, named: filename, as: .png)
+                try #require(image.pngData()).write(to: directory.appendingPathComponent(filename))
             }
-            let filename = "limits-sheet.png"
-            Attachment.record(image, named: filename, as: .png)
-            try #require(image.pngData()).write(to: directory.appendingPathComponent(filename))
         }
     }
 
@@ -114,15 +115,15 @@ struct AgentUsageLimitsTests {
                 id: UUID(), name: "Studio Mac", store: store, isConnected: true, readsOverHostHelper: true),
         ]))
         let controller = UIHostingController(rootView: content.environment(\.locale, Locale(identifier: "en_US")))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 844), rootViewController: controller)
-        defer { window.isHidden = true }
-        try await Task.sleep(for: .milliseconds(150))
-        controller.view.layoutIfNeeded()
-        let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: "\n")
-        #expect(labels.contains("The Host Helper asks Claude Code on this computer for your plan limits."))
-        #expect(labels.contains("Neither the Helper nor Heeler handles your sign-in."))
-        #expect(!labels.contains("plugin"))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 844), rootViewController: controller
+        ) { _ in
+            let labels = try await shownLabels(
+                in: controller, once: "The Host Helper asks Claude Code on this computer for your plan limits.")
+            #expect(labels.contains("The Host Helper asks Claude Code on this computer for your plan limits."))
+            #expect(labels.contains("Neither the Helper nor Heeler handles your sign-in."))
+            #expect(labels.contains("plugin") == false)
+        }
     }
 
     @Test func turningClaudeLimitsOnReadsThemInsteadOfSayingTheyAreOff() async throws {
@@ -145,13 +146,15 @@ struct AgentUsageLimitsTests {
         #expect(pending.programs?.last == withoutLimits.programs?.last)
         let controller = UIHostingController(rootView: AgentUsageLimitsView(program: "claude", limits: reading)
             .padding(20).frame(width: 390).environment(\.locale, Locale(identifier: "en_US")))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 400), rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
-        let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: "\n")
-        #expect(labels.contains("Reading Usage Limits…"))
-        #expect(!labels.contains("Usage Limits are off."))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 400), rootViewController: controller
+        ) { _ in
+            controller.view.layoutIfNeeded()
+            let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
+                .joined(separator: "\n")
+            #expect(labels.contains("Reading Usage Limits…"))
+            #expect(labels.contains("Usage Limits are off.") == false)
+        }
         await store.refresh()
         #expect(requested == [false, true])
         #expect(store.state == .available(withLimits))
@@ -165,15 +168,17 @@ struct AgentUsageLimitsTests {
         let limits = try #require(report.programs?.last?.usageLimits)
         let controller = UIHostingController(rootView: AgentUsageLimitsView(program: "codex", limits: limits)
             .padding(20).frame(width: 390).environment(\.locale, Locale(identifier: "en_US")))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 600), rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
-        let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: "\n")
-        #expect(labels.contains("Expired · current usage unknown"))
-        #expect(labels.contains("Reset "))
-        #expect(!labels.contains("Resets "))
-        #expect(!labels.contains("64%"))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 600), rootViewController: controller
+        ) { _ in
+            controller.view.layoutIfNeeded()
+            let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
+                .joined(separator: "\n")
+            #expect(labels.contains("Expired · current usage unknown"))
+            #expect(labels.contains("Reset "))
+            #expect(labels.contains("Resets ") == false)
+            #expect(labels.contains("64%") == false)
+        }
     }
 
     @Test func aProgramThisBuildDoesNotKnowKeepsItsOwnName() async throws {
@@ -192,22 +197,15 @@ struct AgentUsageLimitsTests {
             ])),
         ] {
             let controller = UIHostingController(rootView: surface.environment(\.locale, Locale(identifier: "en_US")))
-            let window = try await makeTestWindow(
-                frame: CGRect(x: 0, y: 0, width: 390, height: 2_400), rootViewController: controller)
-            defer { window.isHidden = true }
-            var labels = ""
-            var budget = PollBudget(.seconds(5))
-            while budget.hasTimeLeft {
-                controller.view.layoutIfNeeded()
-                labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: "\n")
-                if labels.contains("gemini is not installed") { break }
-                try await Task.sleep(for: .milliseconds(50))
-                budget.charge()
+            try await withTestWindow(
+                frame: CGRect(x: 0, y: 0, width: 390, height: 2_400), rootViewController: controller
+            ) { _ in
+                let labels = try await shownLabels(in: controller, once: "gemini is not installed")
+                #expect(labels.contains("gemini is not installed or cannot run on this Host."), "\(labels)")
+                #expect(labels.contains("Codex is not installed") == false)
+                #expect(labels.split(separator: "\n").contains { $0 == "Codex" || $0.hasPrefix("Codex,") } == false,
+                    "\(labels)")
             }
-            #expect(labels.contains("gemini is not installed or cannot run on this Host."), "\(labels)")
-            #expect(!labels.contains("Codex is not installed"))
-            #expect(labels.split(separator: "\n").contains { $0 == "Codex" || $0.hasPrefix("Codex,") } == false,
-                "\(labels)")
         }
     }
 
@@ -230,16 +228,18 @@ struct AgentUsageLimitsTests {
         let limits = try #require(ClaudeUsageFixture.report(state: "throttled").programs?.first?.usageLimits)
         let controller = UIHostingController(rootView: AgentUsageLimitsView(program: "claude", limits: limits)
             .padding(20).frame(width: 390).environment(\.locale, Locale(identifier: "en_US")))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 1_200), rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
-        let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: "\n")
-        #expect(labels.contains("Weekly · Opus"))
-        #expect(labels.contains("Weekly · Sonnet"))
-        #expect(labels.contains("12%"))
-        #expect(labels.contains("Last reading"))
-        #expect(labels.contains("Retry after"))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 1_200), rootViewController: controller
+        ) { _ in
+            controller.view.layoutIfNeeded()
+            let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
+                .joined(separator: "\n")
+            #expect(labels.contains("Weekly · Opus"))
+            #expect(labels.contains("Weekly · Sonnet"))
+            #expect(labels.contains("12%"))
+            #expect(labels.contains("Last reading"))
+            #expect(labels.contains("Retry after"))
+        }
     }
 
     @Test func theStoreKeepsLimitSourcesAndExpiredWindowsFromThePlugin() async throws {
@@ -269,18 +269,20 @@ struct AgentUsageLimitsTests {
         let report = try AgentUsageLimitFixture.report(source: "lastSession")
         let controller = UIHostingController(rootView: AgentUsageContent(state: .available(report))
             .padding(20).frame(width: 390).environment(\.locale, Locale(identifier: "en_US")))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 1_200), rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
-        let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: "\n")
-        #expect(labels.contains("Weekly"))
-        #expect(labels.contains("5-hour"))
-        #expect(labels.contains("18%"))
-        #expect(labels.contains("Expired · current usage unknown"))
-        #expect(labels.contains("as of"))
-        #expect(!labels.contains("primary"))
-        #expect(!labels.contains("secondary"))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 1_200), rootViewController: controller
+        ) { _ in
+            controller.view.layoutIfNeeded()
+            let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
+                .joined(separator: "\n")
+            #expect(labels.contains("Weekly"))
+            #expect(labels.contains("5-hour"))
+            #expect(labels.contains("18%"))
+            #expect(labels.contains("Expired · current usage unknown"))
+            #expect(labels.contains("as of"))
+            #expect(labels.contains("primary") == false)
+            #expect(labels.contains("secondary") == false)
+        }
     }
 
     @Test func theSharedNodeVectorCarriesDefaultGroupWindowsWithAnExpiredReading() throws {
@@ -337,26 +339,43 @@ struct AgentUsageLimitsTests {
                 let size = controller.sizeThatFits(in: CGSize(width: 390, height: 5_000))
                 let bounds = CGRect(origin: .zero, size: size)
                 controller.view.frame = bounds
-                let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
-                defer { window.isHidden = true }
-                controller.view.layoutIfNeeded()
-                let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: "\n")
-                for text in expected { #expect(labels.contains(text), "\(name): \(text)") }
-                if name == "not-read-yet" { #expect(!labels.contains("not installed")) }
-                #expect(labels.contains("Codex shows only its default limit group."))
-                #expect(!labels.contains("new-window-id"))
-                #expect(!labels.contains("label-id"))
-                let format = UIGraphicsImageRendererFormat()
-                format.scale = 2
-                let image = UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
-                    controller.view.drawHierarchy(in: bounds, afterScreenUpdates: true)
+                try await withTestWindow(frame: bounds, rootViewController: controller) { _ in
+                    controller.view.layoutIfNeeded()
+                    let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
+                        .joined(separator: "\n")
+                    for text in expected { #expect(labels.contains(text), "\(name): \(text)") }
+                    if name == "not-read-yet" { #expect(labels.contains("not installed") == false) }
+                    #expect(labels.contains("Codex shows only its default limit group."))
+                    #expect(labels.contains("new-window-id") == false)
+                    #expect(labels.contains("label-id") == false)
+                    let format = UIGraphicsImageRendererFormat()
+                    format.scale = 2
+                    let image = UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
+                        controller.view.drawHierarchy(in: bounds, afterScreenUpdates: true)
+                    }
+                    #expect(image.size.width == 390)
+                    let filename = "\(name)-accessible-\(accessible).png"
+                    Attachment.record(image, named: filename, as: .png)
+                    try #require(image.pngData()).write(to: directory.appendingPathComponent(filename))
                 }
-                #expect(image.size.width == 390)
-                let filename = "\(name)-accessible-\(accessible).png"
-                Attachment.record(image, named: filename, as: .png)
-                try #require(image.pngData()).write(to: directory.appendingPathComponent(filename))
             }
         }
+    }
+
+    /// `controller`'s labels, one per line, once they include `text`, or
+    /// after five seconds without it. A List fills its cells after its
+    /// window appears.
+    private func shownLabels(in controller: UIViewController, once text: String) async throws -> String {
+        var labels = ""
+        var budget = PollBudget(.seconds(5))
+        while budget.hasTimeLeft {
+            controller.view.layoutIfNeeded()
+            labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: "\n")
+            if labels.contains(text) { break }
+            try await Task.sleep(for: .milliseconds(50))
+            budget.charge()
+        }
+        return labels
     }
 }
 

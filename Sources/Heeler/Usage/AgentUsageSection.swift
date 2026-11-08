@@ -170,15 +170,15 @@ struct AgentUsageSection: View {
             Text("Estimated API cost · Last 30 days")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(AgentUsageStyle.cost(total.estimatedCostUSD, locale: locale))
-                    .font(.system(size: 28, weight: .semibold))
-                    .monospacedDigit()
-                Text("\(AgentUsageStyle.tokens(total.tokens.total, locale: locale)) tokens on this Host")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
+            Text(AgentUsageStyle.cost(total.estimatedCostUSD, locale: locale))
+                .font(.system(size: 28, weight: .semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            Text("\(AgentUsageStyle.tokens(total.tokens.total, locale: locale)) tokens on this Host")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
             if !scope.dates.isEmpty {
                 AgentUsageDayStrip(scope: scope).padding(.top, 10)
             }

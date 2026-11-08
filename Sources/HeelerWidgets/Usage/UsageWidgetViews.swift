@@ -126,6 +126,10 @@ struct UsageWidgetView: View {
     private func large(_ scope: UsageWidgetScope) -> some View {
         let total = scope.total(entry.range)
         let dates = scope.chartDates(entry.range)
+        let hostSummaries = scope.hostID == nil
+            ? scope.included.map { host in UsageWidgetSnapshot.Summary.sum(host.programs.map { $0.summary(entry.range) }) }
+            : []
+        let table = scope.programs.map { $0.summary(entry.range) } + hostSummaries
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
                 UsageWidgetHeader(title: UsageWidgetText.range(entry.range), detail: scope.title)
@@ -147,11 +151,12 @@ struct UsageWidgetView: View {
                 ForEach(scope.programs) { program in
                     UsageTableRow(
                         leading: { UsageProgramDot(program: program.program) },
-                        name: program.name, summary: program.summary(entry.range), metric: entry.metric)
+                        name: program.name, summary: program.summary(entry.range), metric: entry.metric,
+                        table: table)
                 }
                 if scope.hostID == nil {
                     Divider().padding(.leading, 16).padding(.vertical, 6)
-                    ForEach(scope.included) { host in
+                    ForEach(Array(zip(scope.included, hostSummaries)), id: \.0.id) { host, summary in
                         Link(destination: UsageWidgetLink.usageURL(hostID: host.id) ?? URL(fileURLWithPath: "/")) {
                             UsageTableRow(
                                 leading: {
@@ -159,16 +164,9 @@ struct UsageWidgetView: View {
                                         .font(.system(size: 9))
                                         .foregroundStyle(.secondary)
                                 },
-                                name: host.name,
-                                summary: .sum(host.programs.map { $0.summary(entry.range) }),
-                                metric: entry.metric)
+                                name: host.name, summary: summary, metric: entry.metric, table: table)
                         }
                         .buttonStyle(.plain)
-                    }
-                    if let note = scope.excludedNote {
-                        Text(note)
-                            .font(.caption).foregroundStyle(.secondary)
-                            .padding(.leading, 16).padding(.top, 4)
                     }
                 }
             }
@@ -187,9 +185,11 @@ struct UsageWidgetView: View {
             VStack(spacing: 0) {
                 Image(systemName: "chart.bar.fill")
                     .font(.system(size: 10, weight: .semibold))
-                Text(UsageWidgetText.short(total, metric: entry.metric, locale: locale))
-                    .font(.system(size: 15, weight: .semibold).monospacedDigit())
-                    .minimumScaleFactor(0.6)
+                UsageFittedFigure(
+                    variants: entry.metric == .cost
+                        ? UsageWidgetText.costVariants(total.cost, cents: false, locale: locale)
+                        : [UsageWidgetText.short(total, metric: entry.metric, locale: locale)],
+                    size: 15, minimumScale: 0.6, alignment: .center)
                 Text(UsageWidgetText.rangeShort(entry.range))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
@@ -782,17 +782,44 @@ struct UsageFigure: View {
     @Environment(\.locale) private var locale
 
     var body: some View {
-        Group {
-            switch metric {
-            case .cost:
-                Text(UsageWidgetText.cost(summary.cost, locale: locale))
-            case .tokens:
-                Text(AgentUsageStyle.tokens(summary.tokens, locale: locale))
-                    + Text(" tokens").font(.system(size: size * 0.5, weight: .semibold))
+        switch metric {
+        case .cost:
+            UsageFittedFigure(variants: UsageWidgetText.costVariants(summary.cost, locale: locale), size: size)
+        case .tokens:
+            (Text(AgentUsageStyle.tokens(summary.tokens, locale: locale))
+                + Text(" tokens").font(.system(size: size * 0.5, weight: .semibold)))
+                .font(.system(size: size, weight: .semibold).monospacedDigit())
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+        }
+    }
+}
+
+/// A figure that never truncates: the first of `variants` that fits once
+/// shrunk to `minimumScale`, drawn as large as the width allows.
+struct UsageFittedFigure: View {
+    let variants: [String]
+    let size: CGFloat
+    var minimumScale: CGFloat = 0.5
+    var alignment: Alignment = .leading
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            ForEach(Array(variants.enumerated()), id: \.offset) { _, variant in
+                ZStack(alignment: alignment) {
+                    // A widget cannot measure text, so the variant at its
+                    // smallest scale is what ViewThatFits compares.
+                    Text(variant)
+                        .font(.system(size: size * minimumScale, weight: .semibold).monospacedDigit())
+                        .hidden()
+                        .accessibilityHidden(true)
+                    Text(variant)
+                        .font(.system(size: size, weight: .semibold).monospacedDigit())
+                        .minimumScaleFactor(minimumScale)
+                        .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: alignment)
+                }
             }
         }
-        .font(.system(size: size, weight: .semibold).monospacedDigit())
-        .minimumScaleFactor(0.5)
         .lineLimit(1)
     }
 }
@@ -1070,33 +1097,58 @@ struct UsageProgramRow: View {
             UsageProgramDot(program: program)
             Text(name).frame(maxWidth: .infinity, alignment: .leading)
             Text(value).fontWeight(.semibold).monospacedDigit()
+                .minimumScaleFactor(0.5)
+                .layoutPriority(1)
         }
     }
 }
 
 /// A large Usage widget's row: the figure, and the other metric beside it.
+/// Each figure column is as wide as its widest entry in the table. A long
+/// name truncates first; figures that still do not fit shrink rather than
+/// truncate.
 struct UsageTableRow<Leading: View>: View {
     @ViewBuilder let leading: () -> Leading
     let name: String
     let summary: UsageWidgetSnapshot.Summary
     let metric: AgentUsageMetric
+    /// Every row's summary in the table, which sizes the figure columns.
+    let table: [UsageWidgetSnapshot.Summary]
     @Environment(\.locale) private var locale
 
     var body: some View {
         HStack(spacing: 8) {
             leading().frame(width: 8)
             Text(name).frame(maxWidth: .infinity, alignment: .leading)
-            Text(metric == .cost
-                ? AgentUsageStyle.tokens(summary.tokens, locale: locale)
-                : UsageWidgetText.cost(summary.cost, locale: locale))
-                .foregroundStyle(.secondary)
-                .frame(width: 64, alignment: .trailing)
-            Text(UsageWidgetText.value(summary, metric: metric, locale: locale))
-                .fontWeight(.semibold)
-                .frame(width: 84, alignment: .trailing)
+            column(other).foregroundStyle(.secondary)
+            column(figure).fontWeight(.semibold)
         }
         .font(.footnote.monospacedDigit())
         .frame(height: 20)
+    }
+
+    private func figure(_ summary: UsageWidgetSnapshot.Summary) -> String {
+        UsageWidgetText.value(summary, metric: metric, locale: locale)
+    }
+
+    private func other(_ summary: UsageWidgetSnapshot.Summary) -> String {
+        metric == .cost
+            ? AgentUsageStyle.tokens(summary.tokens, locale: locale)
+            : UsageWidgetText.cost(summary.cost, locale: locale)
+    }
+
+    /// A widget cannot measure its rows, so the column's every entry,
+    /// hidden, holds this row's entry to the widest width.
+    private func column(_ text: (UsageWidgetSnapshot.Summary) -> String) -> some View {
+        ZStack(alignment: .trailing) {
+            ForEach(Set(table.map(text)).sorted(), id: \.self) { entry in
+                Text(entry).hidden()
+            }
+            .accessibilityHidden(true)
+            Text(text(summary))
+        }
+        .minimumScaleFactor(0.5)
+        .layoutPriority(1)
     }
 }
 
@@ -1360,6 +1412,16 @@ enum UsageWidgetText {
 
     static func cost(_ value: Double?, locale: Locale) -> String {
         AgentUsageStyle.cost(value, locale: locale)
+    }
+
+    /// A cost from its cents, or with `cents` off its whole dollars, down
+    /// to "US$1.23M", for a figure that shortens rather than truncates.
+    static func costVariants(_ value: Double?, cents: Bool = true, locale: Locale) -> [String] {
+        guard let value else { return [cost(nil, locale: locale)] }
+        let compact = value.formatted(
+            .currency(code: "USD").notation(.compactName).precision(.significantDigits(1...3)).locale(locale))
+        let whole = AgentUsageStyle.shortCost(value, locale: locale)
+        return cents ? [cost(value, locale: locale), whole, compact] : [whole, compact]
     }
 
     static func tokens(_ value: Int64, locale: Locale) -> String {

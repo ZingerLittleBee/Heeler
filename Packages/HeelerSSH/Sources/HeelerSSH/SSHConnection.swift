@@ -427,8 +427,16 @@ public final class SSHConnection: Sendable {
         await driver.waitForInboundBeforeNextExchangeStderrReadForTesting()
     }
 
+    func exchangeStderrReadTookReplyForTesting() async -> Bool {
+        await driver.exchangeStderrReadTookReplyForTesting()
+    }
+
     func waitForInboundBeforeNextExecStdoutReadForTesting() async {
         await driver.waitForInboundBeforeNextExecStdoutReadForTesting()
+    }
+
+    func execStdoutReadTookReplyForTesting() async -> Bool {
+        await driver.execStdoutReadTookReplyForTesting()
     }
 
     func failNextExecStderrReadForTesting(_ error: SSHError) async {

@@ -1823,8 +1823,8 @@ private actor LeaveStageCounter {
 @Suite("Agent Composer send button")
 struct AgentComposerSendButtonTests {
     @Test
-    func buttonKeepsOriginalVisualDiameter() async throws {
-        let image = try await Self.render(isEnabled: true, colorScheme: .dark)
+    func buttonKeepsOriginalVisualDiameter() throws {
+        let image = try Self.render(isEnabled: true, colorScheme: .dark)
         let bounds = try #require(Self.visibleContentBounds(in: image))
         let width = bounds.width / image.scale
 
@@ -1834,16 +1834,15 @@ struct AgentComposerSendButtonTests {
     }
 
     @Test
-    func buttonKeepsItsArrowVisibleAcrossStatesAndAppearances() async throws {
+    func buttonKeepsItsArrowVisibleAcrossStatesAndAppearances() throws {
         for isEnabled in [false, true] {
             for colorScheme in [ColorScheme.light, .dark] {
-                let image = try await Self.render(
+                let image = try Self.render(
                     isEnabled: isEnabled,
                     colorScheme: colorScheme)
-                let range = try #require(
-                    Self.luminanceRange(
-                        in: image,
-                        unitRect: CGRect(x: 0.35, y: 0.35, width: 0.3, height: 0.3)))
+                let range = Self.luminanceRange(
+                    in: image,
+                    unitRect: CGRect(x: 0.35, y: 0.35, width: 0.3, height: 0.3))
 
                 #expect(
                     range > 0.12,
@@ -1853,9 +1852,9 @@ struct AgentComposerSendButtonTests {
     }
 
     @Test
-    func stopKeepsSendsDiameterInRedWithAVisibleSquare() async throws {
+    func stopKeepsSendsDiameterInRedWithAVisibleSquare() throws {
         for colorScheme in [ColorScheme.light, .dark] {
-            let image = try await Self.render(colorScheme: colorScheme) {
+            let image = try Self.render(colorScheme: colorScheme) {
                 AgentComposerStopButton(isStopping: false) {}
             }
             let bounds = try #require(Self.visibleContentBounds(in: image))
@@ -1863,22 +1862,21 @@ struct AgentComposerSendButtonTests {
             #expect(
                 (30...34).contains(width),
                 "Stop should keep Send's 32pt diameter; rendered width was \(width) in \(colorScheme)")
-            let fill = try #require(Self.color(in: image, unitPoint: CGPoint(x: 0.5, y: 0.33)))
+            let fill = Self.color(in: image, unitPoint: CGPoint(x: 0.5, y: 0.33))
             #expect(
                 fill.red > 0.8 && fill.green < 0.45 && fill.blue < 0.45,
                 "Stop should fill system red in \(colorScheme); sampled \(fill)")
-            let range = try #require(
-                Self.luminanceRange(
-                    in: image,
-                    unitRect: CGRect(x: 0.35, y: 0.35, width: 0.3, height: 0.3)))
+            let range = Self.luminanceRange(
+                in: image,
+                unitRect: CGRect(x: 0.35, y: 0.35, width: 0.3, height: 0.3))
             #expect(
                 range > 0.12,
                 "Stop center has no visible square in \(colorScheme); luminance range was \(range)")
         }
     }
 
-    private static func render(isEnabled: Bool, colorScheme: ColorScheme) async throws -> UIImage {
-        try await render(colorScheme: colorScheme) {
+    private static func render(isEnabled: Bool, colorScheme: ColorScheme) throws -> RenderedBitmap {
+        try render(colorScheme: colorScheme) {
             AgentComposerSendButton(isEnabled: isEnabled) {}
         }
     }
@@ -1886,44 +1884,26 @@ struct AgentComposerSendButtonTests {
     private static func render(
         colorScheme: ColorScheme,
         @ViewBuilder button: () -> some View
-    ) async throws -> UIImage {
-        let bounds = CGRect(x: 0, y: 0, width: 64, height: 64)
-        let renderer = ImageRenderer(
-            content: ZStack {
+    ) throws -> RenderedBitmap {
+        try RenderedBitmap(
+            ZStack {
                 Color(uiColor: .secondarySystemBackground)
                 button()
             }
-            .environment(\.colorScheme, colorScheme))
-        renderer.proposedSize = ProposedViewSize(width: bounds.width, height: bounds.height)
-        renderer.scale = 1
-        return try #require(renderer.uiImage)
+            .environment(\.colorScheme, colorScheme),
+            proposedSize: ProposedViewSize(width: 64, height: 64))
     }
 
-    private static func luminanceRange(in image: UIImage, unitRect: CGRect) -> Double? {
-        guard let cgImage = image.cgImage else { return nil }
-        let width = cgImage.width, height = cgImage.height
-        var pixels = [UInt8](repeating: 0, count: width * height * 4)
-        guard
-            let context = CGContext(
-                data: &pixels, width: width, height: height, bitsPerComponent: 8,
-                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return nil }
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        let minX = max(0, Int(unitRect.minX * CGFloat(width)))
-        let maxX = min(width, Int(unitRect.maxX * CGFloat(width)))
-        let minY = max(0, Int(unitRect.minY * CGFloat(height)))
-        let maxY = min(height, Int(unitRect.maxY * CGFloat(height)))
+    private static func luminanceRange(in image: RenderedBitmap, unitRect: CGRect) -> Double {
+        let minX = max(0, Int(unitRect.minX * CGFloat(image.width)))
+        let maxX = min(image.width, Int(unitRect.maxX * CGFloat(image.width)))
+        let minY = max(0, Int(unitRect.minY * CGFloat(image.height)))
+        let maxY = min(image.height, Int(unitRect.maxY * CGFloat(image.height)))
         var minimum = Double.greatestFiniteMagnitude
         var maximum = -Double.greatestFiniteMagnitude
         for y in minY..<maxY {
             for x in minX..<maxX {
-                let offset = (y * width + x) * 4
-                let luminance =
-                    (0.2126 * Double(pixels[offset])
-                        + 0.7152 * Double(pixels[offset + 1])
-                        + 0.0722 * Double(pixels[offset + 2])) / 255
+                let luminance = image.luminance(x: x, y: y)
                 minimum = min(minimum, luminance)
                 maximum = max(maximum, luminance)
             }
@@ -1931,26 +1911,12 @@ struct AgentComposerSendButtonTests {
         return maximum - minimum
     }
 
-    private static func visibleContentBounds(in image: UIImage) -> CGRect? {
-        guard let cgImage = image.cgImage else { return nil }
-        let width = cgImage.width, height = cgImage.height
-        var pixels = [UInt8](repeating: 0, count: width * height * 4)
-        guard
-            let context = CGContext(
-                data: &pixels, width: width, height: height, bitsPerComponent: 8,
-                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return nil }
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        let background = Self.luminance(at: 0, in: pixels)
-        var minX = width, minY = height, maxX = -1, maxY = -1
-        for y in 0..<height {
-            for x in 0..<width {
-                let offset = (y * width + x) * 4
-                guard abs(Self.luminance(at: offset, in: pixels) - background) > 0.25 else {
-                    continue
-                }
+    private static func visibleContentBounds(in image: RenderedBitmap) -> CGRect? {
+        let background = image.luminance(x: 0, y: 0)
+        var minX = image.width, minY = image.height, maxX = -1, maxY = -1
+        for y in 0..<image.height {
+            for x in 0..<image.width {
+                guard abs(image.luminance(x: x, y: y) - background) > 0.25 else { continue }
                 minX = min(minX, x)
                 minY = min(minY, y)
                 maxX = max(maxX, x)
@@ -1961,32 +1927,12 @@ struct AgentComposerSendButtonTests {
         return CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
     }
 
-    private static func luminance(at offset: Int, in pixels: [UInt8]) -> Double {
-        (0.2126 * Double(pixels[offset])
-            + 0.7152 * Double(pixels[offset + 1])
-            + 0.0722 * Double(pixels[offset + 2])) / 255
-    }
-
     private static func color(
-        in image: UIImage, unitPoint: CGPoint
-    ) -> (red: Double, green: Double, blue: Double)? {
-        guard let cgImage = image.cgImage else { return nil }
-        let width = cgImage.width, height = cgImage.height
-        var pixels = [UInt8](repeating: 0, count: width * height * 4)
-        guard
-            let context = CGContext(
-                data: &pixels, width: width, height: height, bitsPerComponent: 8,
-                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return nil }
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-        let x = min(width - 1, Int(unitPoint.x * CGFloat(width)))
-        let y = min(height - 1, Int(unitPoint.y * CGFloat(height)))
-        let offset = (y * width + x) * 4
-        return (
-            Double(pixels[offset]) / 255,
-            Double(pixels[offset + 1]) / 255,
-            Double(pixels[offset + 2]) / 255
-        )
+        in image: RenderedBitmap, unitPoint: CGPoint
+    ) -> (red: Double, green: Double, blue: Double) {
+        let pixel = image.pixel(
+            x: min(image.width - 1, Int(unitPoint.x * CGFloat(image.width))),
+            y: min(image.height - 1, Int(unitPoint.y * CGFloat(image.height))))
+        return (Double(pixel.red) / 255, Double(pixel.green) / 255, Double(pixel.blue) / 255)
     }
 }

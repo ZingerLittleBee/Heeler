@@ -135,7 +135,7 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
 }
 
 /// One Usage widget's reading of the snapshot: All Hosts, or one Host.
-/// Token Usage adds up across the Hosts that report; the others are listed.
+/// Token Usage adds up across the Hosts that report; the others are left out.
 struct UsageWidgetScope: Equatable, Sendable {
     struct Program: Equatable, Sendable, Identifiable {
         let program: String
@@ -207,12 +207,6 @@ struct UsageWidgetScope: Equatable, Sendable {
         guard hostID == nil else { return nil }
         let count = included.count + excluded.count
         return "\(included.count) of \(count) \(count == 1 ? "Host" : "Hosts")"
-    }
-
-    /// The Hosts left out, as All Hosts' large widget names them.
-    var excludedNote: String? {
-        guard hostID == nil, !excluded.isEmpty else { return nil }
-        return "Not included: \(excluded.map(\.name).formatted(.list(type: .and)))"
     }
 
     private static func programs(in hosts: [UsageWidgetSnapshot.Host]) -> [Program] {
