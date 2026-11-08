@@ -170,11 +170,11 @@ struct GitProbeFailureStateTests {
     }
 
     @Test func theSharedLimitNoticeSupportsDirectoryListings() {
-        #expect(CheckoutChanges.limitNotice(shown: 2_000, total: 2_345, isLowerBound: false, noun: "files")
+        #expect(CheckoutChanges.limitNotice(shown: 2_000, total: 2_345, isLowerBound: false, noun: .files)
             == "Showing \(2_000.formatted()) of \(2_345.formatted()) files.")
-        #expect(CheckoutChanges.limitNotice(shown: 2_000, total: 2_345, isLowerBound: true, noun: "files")
+        #expect(CheckoutChanges.limitNotice(shown: 2_000, total: 2_345, isLowerBound: true, noun: .files)
             == "Showing \(2_000.formatted()) of more than \(2_345.formatted()) files.")
-        #expect(CheckoutChanges.limitNotice(shown: 0, total: 0, isLowerBound: true, noun: "files")
+        #expect(CheckoutChanges.limitNotice(shown: 0, total: 0, isLowerBound: true, noun: .files)
             == "The Host's reply was truncated before any files could be listed.")
     }
 

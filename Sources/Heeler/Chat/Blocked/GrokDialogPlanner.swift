@@ -24,7 +24,7 @@ struct GrokDialogPlanner {
         // Esc left the keyboard in the scrollback, or a field of the card
         // has it, where keys miss the options.
         guard !dialog.focus.keysMissOptions else {
-            throw .unsupported("Grok Build's card doesn't have focus. Answer it in the terminal.")
+            throw .unsupported(String(localized: "Grok Build's card doesn't have focus. Answer it in the terminal."))
         }
         switch dialog.kind {
         case .grokPermission:
@@ -43,7 +43,7 @@ struct GrokDialogPlanner {
         }
     }
 
-    private static let notGrok = DialogPlanError.unsupported("Not a Grok Build dialog.")
+    private static let notGrok = DialogPlanError.unsupported(String(localized: "Not a Grok Build dialog."))
 
     /// A row's digit. Stop and the folded card's Deny press the reject row,
     /// which ends the turn.
@@ -54,13 +54,13 @@ struct GrokDialogPlanner {
             return try press(option)
         case .dismiss:
             guard let reject = dialog.options.first(where: { $0.role == .decline }) else {
-                throw .unsupported("The permission has no reject row.")
+                throw .unsupported(String(localized: "The permission has no reject row."))
             }
             return try press(reject)
         case .amend, .respond:
-            throw .unsupported("Heeler doesn't type feedback into Grok Build's permissions. Add it in the terminal.")
+            throw .unsupported(String(localized: "Heeler doesn't type feedback into Grok Build's permissions. Add it in the terminal."))
         case .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The permission has no such action.")
+            throw .unsupported(String(localized: "The permission has no such action."))
         }
     }
 
@@ -74,21 +74,20 @@ struct GrokDialogPlanner {
             guard option.role == .answer else { throw Self.typedAnswer }
             guard let focused = dialog.focus.focusedOrdinal else {
                 throw .unsupported(
-                    "Heeler can't see Grok Build's cursor, which may be on the answer field, where a key would be "
-                        + "typed. Answer in the terminal.")
+                    String(localized: "Heeler can't see Grok Build's cursor, which may be on the answer field, where a key would be typed. Answer in the terminal."))
             }
             guard dialog.option(focused)?.role != .otherText else { throw Self.cursorOnField }
             guard let key = option.shortcut, Self.answerKeys.contains(key) else {
-                throw .unsupported("Grok Build binds no key to this answer. Answer it in the terminal.")
+                throw .unsupported(String(localized: "Grok Build binds no key to this answer. Answer it in the terminal."))
             }
             return Self.plan(key)
         case .respond, .amend:
             throw Self.typedAnswer
         case .skipQuestion:
             // Shift+X skips, unconfirmed on 1.0.62.
-            throw .unsupported("Skip Grok Build's question in the terminal.")
+            throw .unsupported(String(localized: "Skip Grok Build's question in the terminal."))
         case .dismiss, .approvePlan, .submitSelection, .expandQuestions:
-            throw .unsupported("The question has no such action.")
+            throw .unsupported(String(localized: "The question has no such action."))
         }
     }
 
@@ -109,21 +108,23 @@ struct GrokDialogPlanner {
         case .respond, .amend:
             throw Self.typedAnswer
         case .dismiss, .skipQuestion, .approvePlan, .submitSelection, .expandQuestions:
-            throw .unsupported("The fork question has no such action.")
+            throw .unsupported(String(localized: "The fork question has no such action."))
         }
     }
 
     /// `1` stops the turn and its subagents; `2` ends the turn and keeps
     /// them running. Esc would keep the turn running.
     private func cancelPanel(_ action: DialogAction) throws(DialogPlanError) -> DialogActionPlan {
-        guard case .choose(let ordinal) = action else { throw .unsupported("The panel has no such action.") }
+        guard case .choose(let ordinal) = action else {
+            throw .unsupported(String(localized: "The panel has no such action."))
+        }
         guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
         return try press(option)
     }
 
     private func press(_ option: DialogOption) throws(DialogPlanError) -> DialogActionPlan {
         guard let key = DialogActionPlanner.digitKey(option.number) else {
-            throw .unsupported("Option \(option.ordinal) has no digit key.")
+            throw .unsupported(String(localized: "Option \(option.ordinal) has no digit key."))
         }
         return Self.plan(key)
     }
@@ -136,7 +137,7 @@ struct GrokDialogPlanner {
     private static let answerKeys: Set<String> = Set("123456789abcdef".map(String.init))
 
     private static let typedAnswer = DialogPlanError.unsupported(
-        "Heeler doesn't type into Grok Build's questions. Write your own answer in the terminal.")
+        String(localized: "Heeler doesn't type into Grok Build's questions. Write your own answer in the terminal."))
     private static let cursorOnField = DialogPlanError.unsupported(
-        "Grok Build's cursor is on its answer field, where a key would be typed. Answer in the terminal.")
+        String(localized: "Grok Build's cursor is on its answer field, where a key would be typed. Answer in the terminal."))
 }

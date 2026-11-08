@@ -2810,7 +2810,7 @@ struct OverlayNetworkConfigServerTests {
             #expect(error == .overlayFailed(network: "Console", reason: .notReady("No network is assigned")))
             #expect(error.isRetryable)
         }
-        #expect(OverlayStatusCopy.summary(.waiting("x"), failure: nil) == "Waiting")
+        #expect(OverlayStatusCopy.summary(.waiting("x"), failure: nil) == "Waiting to join")
         #expect(OverlayStatusCopy.explanation(.waiting("No network is assigned"), failure: nil)
             == "No network is assigned.")
     }

@@ -222,7 +222,7 @@ actor OverlayNetworkRuntime {
     /// fails with `.notConfigured` instead of reaching a stale node.
     nonisolated func route(for networkID: UUID) -> OverlayRoute {
         let name = catalog.withLock { $0.networks[networkID]?.network.displayName }
-        return OverlayRoute(networkName: name ?? "Overlay network") { host, port, timeout in
+        return OverlayRoute(networkName: name ?? String(localized: "Overlay network")) { host, port, timeout in
             try await self.dial(networkID: networkID, host: host, port: port, timeout: timeout)
         }
     }
@@ -520,7 +520,7 @@ actor OverlayNetworkRuntime {
             }
             guard startIfNeeded else {
                 throw TransportError.overlayFailed(
-                    network: network.displayName, reason: .notReady("The network is not connected"))
+                    network: network.displayName, reason: .notReady(String(localized: "The network is not connected")))
             }
             try await start(networkID: networkID, timeout: timeout)
             try checkCancellation()
@@ -533,10 +533,10 @@ actor OverlayNetworkRuntime {
             case .waiting(let detail), .failed(let detail):
                 throw TransportError.overlayFailed(
                     network: network.displayName,
-                    reason: .notReady(detail.isEmpty ? "The network is not ready yet" : detail))
+                    reason: .notReady(detail.isEmpty ? String(localized: "The network is not ready yet") : detail))
             case .stopped, .starting:
                 throw TransportError.overlayFailed(
-                    network: network.displayName, reason: .notReady("The network is still connecting"))
+                    network: network.displayName, reason: .notReady(String(localized: "The network is still connecting")))
             }
         }
         return await details(networkID: networkID).peers ?? []
@@ -592,7 +592,7 @@ actor OverlayNetworkRuntime {
             guard published.network.kind == .tailscale else {
                 throw TransportError.overlayFailed(
                     network: published.network.displayName,
-                    reason: .misconfigured("Only Tailscale networks have a sign-in to sign out of"))
+                    reason: .misconfigured(String(localized: "Only Tailscale networks have a sign-in to sign out of")))
             }
             if let existing = nodes[networkID] {
                 return (existing.node, published)
@@ -656,7 +656,7 @@ actor OverlayNetworkRuntime {
                 guard await Self.waitForRetirement(retirement.task, until: deadline) else {
                     throw TransportError.overlayFailed(
                         network: published.network.displayName,
-                        reason: .notReady("Its previous session is still shutting down"))
+                        reason: .notReady(String(localized: "Its previous session is still shutting down")))
                 }
                 if retirements[networkID]?.task == retirement.task {
                     retirements[networkID] = nil
@@ -694,9 +694,9 @@ actor OverlayNetworkRuntime {
         if let published { return published }
         if case .unreadable = state {
             throw TransportError.overlayFailed(
-                network: "Overlay network", reason: .catalogUnreadable)
+                network: String(localized: "Overlay network"), reason: .catalogUnreadable)
         }
-        throw TransportError.overlayFailed(network: "Overlay network", reason: .notConfigured)
+        throw TransportError.overlayFailed(network: String(localized: "Overlay network"), reason: .notConfigured)
     }
 
     // MARK: ZeroTier device state
@@ -744,7 +744,7 @@ actor OverlayNetworkRuntime {
     private func adoptGeneratedZeroTierIdentity(_ minted: Data) throws -> Data {
         if let known = try knownZeroTierIdentity() { return known }
         guard ZeroTierIdentity.nodeID(of: minted) != nil else {
-            throw OverlayError.invalidConfiguration("The generated identity is malformed")
+            throw OverlayError.invalidConfiguration(String(localized: "The generated identity is malformed"))
         }
         try secrets.write(minted, account: OverlaySecretAccount.zeroTierIdentity)
         return minted
@@ -894,7 +894,7 @@ actor OverlayNetworkRuntime {
         case OverlayError.loginRequired(let url) where !network.acceptsLoginURL(url):
             return TransportError.overlayFailed(
                 network: network.displayName,
-                reason: .misconfigured("The coordination server sent a sign-in link that is not https"))
+                reason: .misconfigured(String(localized: "The coordination server sent a sign-in link that is not https")))
         case let error as OverlayError:
             return TransportError(overlay: error, network: network.displayName)
         case is CancellationError:
@@ -919,7 +919,7 @@ actor OverlayNetworkRuntime {
                 }
                 return String(decoding: data, as: UTF8.self)
             } catch {
-                throw misconfigured("Its secret could not be read from the Keychain")
+                throw misconfigured(String(localized: "Its secret could not be read from the Keychain"))
             }
         }
 
@@ -931,7 +931,7 @@ actor OverlayNetworkRuntime {
             } catch {
                 throw TransportError.overlayFailed(
                     network: name,
-                    reason: .startFailed("Its state directory could not be created"))
+                    reason: .startFailed(String(localized: "Its state directory could not be created")))
             }
             return .tailscale(
                 TailscaleConfiguration(
@@ -943,20 +943,20 @@ actor OverlayNetworkRuntime {
                         "tailscale-\(network.id.uuidString).log", isDirectory: false)))
         case .zerotier(let networkIDText, let moons, let planet):
             guard let networkID = OverlayNetwork.zeroTierNetworkID(networkIDText) else {
-                throw misconfigured("The network ID must be 16 hexadecimal digits")
+                throw misconfigured(String(localized: "The network ID must be 16 hexadecimal digits"))
             }
             let identity: Data?
             do {
                 identity = try secrets.read(account: OverlaySecretAccount.zeroTierIdentity)
             } catch {
-                throw misconfigured("Its identity could not be read from the Keychain")
+                throw misconfigured(String(localized: "Its identity could not be read from the Keychain"))
             }
             return .zerotier(
                 ZeroTierConfiguration(
                     networkID: networkID, identity: identity, roots: planet, moons: moons))
         case .easytier(let networkName, let peers, let hostname, let ipv4):
             guard let networkSecret = try secret(OverlaySecretAccount.secret(for: network)) else {
-                throw misconfigured("The network secret is missing")
+                throw misconfigured(String(localized: "The network secret is missing"))
             }
             return .easytier(
                 EasyTierConfiguration(
@@ -968,7 +968,7 @@ actor OverlayNetworkRuntime {
                     instanceKey: network.id.uuidString))
         case .easytierConfigServer(_, let machineID, let hostname, let requireEncryption):
             guard let url = try secret(OverlaySecretAccount.secret(for: network)) else {
-                throw misconfigured("The config server address is missing")
+                throw misconfigured(String(localized: "The config server address is missing"))
             }
             return .easytier(
                 EasyTierConfiguration(
@@ -979,7 +979,7 @@ actor OverlayNetworkRuntime {
         }
     }
 
-    static let zeroTierRestartAdvice = "Quit and reopen Heeler to apply it."
+    static let zeroTierRestartAdvice = String(localized: "Quit and reopen Heeler to apply it.")
 
     // MARK: State directories
 

@@ -44,7 +44,7 @@ final class FileDiffStore {
 
     /// The footer and VoiceOver share the counts from the opened file.
     var tooLargeMessage: String {
-        "This file is too large to display in full."
+        String(localized: "This file is too large to display in full.")
             + (file.lineCounts.map { " " + $0.summary } ?? "")
     }
 

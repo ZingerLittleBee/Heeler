@@ -11,33 +11,28 @@ struct HostRemovalRequest: Equatable {
 
     var title: String {
         if hosts.count == 1, let host = hosts.first {
-            return "Remove \(host.displayName)?"
+            return String(localized: "Remove \(host.displayName)?")
         }
-        return "Remove \(hosts.count) Hosts?"
+        return String(localized: "Remove \(hosts.count) Hosts?")
     }
 
     var actionTitle: String {
-        hosts.count == 1 ? "Remove Host" : "Remove Hosts"
+        hosts.count == 1 ? String(localized: "Remove Host") : String(localized: "Remove Hosts")
     }
 
     var message: String {
         var sentences = [
             deletesNotificationKey
-                ? "This permanently deletes the Host configuration, its trusted host key, any "
-                    + "saved password, and the Notification Key from the Keychain."
-                : "This permanently deletes the Host configuration, its trusted host key, and "
-                    + "any saved password from the Keychain."
+                ? String(localized: "This permanently deletes the Host configuration, its trusted host key, any saved password, and the Notification Key from the Keychain.")
+                : String(localized: "This permanently deletes the Host configuration, its trusted host key, and any saved password from the Keychain.")
         ]
         if leavesNotificationsBehind {
             sentences.append(
                 hosts.count == 1
-                    ? "Heeler can't reach this Host, so it may keep sending notifications "
-                        + "to this device. Connect to it first to stop them."
-                    : "Heeler can't reach some of these Hosts, so they may keep sending "
-                        + "notifications to this device. Connect to them first to stop "
-                        + "those notifications.")
+                    ? String(localized: "Heeler can't reach this Host, so it may keep sending notifications to this device. Connect to it first to stop them.")
+                    : String(localized: "Heeler can't reach some of these Hosts, so they may keep sending notifications to this device. Connect to them first to stop those notifications."))
         }
-        sentences.append("This cannot be undone.")
+        sentences.append(String(localized: "This cannot be undone."))
         return sentences.joined(separator: " ")
     }
 }
@@ -195,7 +190,7 @@ final class HostRemovalStore {
             } catch HostStoreError.unknownHost {
                 // Already gone from the catalog: nothing left to keep.
             } catch {
-                errorMessage = "The Host could not be removed. Its saved credentials may still be in the Keychain."
+                errorMessage = String(localized: "The Host could not be removed. Its saved credentials may still be in the Keychain.")
                 return
             }
             dependencies.didRemoveHost(host.id)
@@ -318,8 +313,7 @@ struct HostListView: View {
                         Label("Hosts Unavailable", systemImage: "externaldrive.badge.exclamationmark")
                     } description: {
                         Text(
-                            "The saved Host catalog could not be read. Its original data was preserved; "
-                                + "reinstalling or adding a Host would risk losing it.")
+                            String(localized: "The saved Host catalog could not be read. Its original data was preserved; reinstalling or adding a Host would risk losing it."))
                     }
                 } else if store.hosts.isEmpty, store.coreCatalogLoadError == nil {
                     ContentUnavailableView {
@@ -341,8 +335,7 @@ struct HostListView: View {
                         if store.coreCatalogLoadError != nil {
                             Section {
                                 Label(
-                                    "The saved herdr-core Hosts could not be read. Their original "
-                                        + "data was preserved, and no herdr-core Host can be added.",
+                                    String(localized: "The saved herdr-core Hosts could not be read. Their original data was preserved, and no herdr-core Host can be added."),
                                     systemImage: "externaldrive.badge.exclamationmark")
                             }
                         }
@@ -479,7 +472,7 @@ struct HostListView: View {
                 }
             }
             .alert(
-                removal.pendingRequest?.title ?? "Remove Host?",
+                removal.pendingRequest?.title ?? String(localized: "Remove Host?"),
                 isPresented: removalConfirmationPresented,
                 presenting: removal.pendingRequest
             ) { request in
@@ -706,10 +699,10 @@ enum HostHealthGroup: Int, CaseIterable, Comparable {
 
     var title: String {
         switch self {
-        case .cannotConnect: "Can't Connect"
-        case .trying: "Trying"
-        case .connected: "Connected"
-        case .notConnected: "Not Connected"
+        case .cannotConnect: String(localized: "Can't Connect")
+        case .trying: String(localized: "Trying")
+        case .connected: String(localized: "Connected")
+        case .notConnected: String(localized: "Not Connected")
         }
     }
 
@@ -773,9 +766,12 @@ private struct HostGroupHeader: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(group.title), \(count) \(count == 1 ? "Host" : "Hosts")")
+        .accessibilityLabel(
+            count == 1
+                ? String(localized: "\(group.title), 1 Host")
+                : String(localized: "\(group.title), \(count) Hosts"))
         .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
-        .accessibilityHint(isCollapsed ? "Shows these Hosts." : "Hides these Hosts.")
+        .accessibilityHint(isCollapsed ? String(localized: "Shows these Hosts.") : String(localized: "Hides these Hosts."))
         .accessibilityAddTraits(.isHeader)
     }
 }
@@ -811,7 +807,7 @@ struct HostRowPresentation: Equatable {
         guard host.serverKind.isConfirmed else {
             group = .notConnected
             tone = .paused
-            detail = "Confirm its Server Kind"
+            detail = String(localized: "Confirm its Server Kind")
             isProblem = false
             trailing = nil
             offersRetry = false
@@ -853,12 +849,14 @@ struct HostRowPresentation: Equatable {
             group = .connected
             var address = host.connectionSummary
             if let endpoint = host.herdrEndpoint {
-                if !endpoint.session.isEmpty { address += " · session \(endpoint.session)" }
+                if !endpoint.session.isEmpty {
+                    address += " · " + String(localized: "session \(endpoint.session)")
+                }
             } else if case .namedSession(let session) = host.socketLocation {
-                address += " · session \(session)"
+                address += " · " + String(localized: "session \(session)")
             }
             // The reason itself is in Host detail, a tap away.
-            detail = isOutOfSync ? "Sync issue" : address
+            detail = isOutOfSync ? String(localized: "Sync issue") : address
             isProblem = false
             offersRetry = false
         case .suspended, .ended:
@@ -974,37 +972,37 @@ struct HostConnectionPresentation: Equatable {
             if let latency {
                 let formattedLatency = HostLatencyFormatting.formatted(latency)
                 title = formattedLatency
-                accessibilityLabel = "Connected, latency \(formattedLatency)"
+                accessibilityLabel = String(localized: "Connected, latency \(formattedLatency)")
             } else {
-                title = "Measuring…"
-                accessibilityLabel = "Connected, measuring latency"
+                title = String(localized: "Measuring…")
+                accessibilityLabel = String(localized: "Connected, measuring latency")
             }
             tone = .connected
         case .reconnecting:
-            title = "Reconnecting…"
-            accessibilityLabel = "Reconnecting"
+            title = String(localized: "Reconnecting…")
+            accessibilityLabel = String(localized: "Reconnecting")
             tone = .reconnecting
         case .connecting:
             if standingFailure != nil {
-                title = "Unavailable"
-                accessibilityLabel = "Unavailable"
+                title = String(localized: "Unavailable")
+                accessibilityLabel = String(localized: "Unavailable")
                 tone = .unavailable
             } else {
-                title = "Connecting…"
-                accessibilityLabel = "Connecting"
+                title = String(localized: "Connecting…")
+                accessibilityLabel = String(localized: "Connecting")
                 tone = .pending
             }
         case .failed, .ended:
-            title = "Unavailable"
-            accessibilityLabel = "Unavailable"
+            title = String(localized: "Unavailable")
+            accessibilityLabel = String(localized: "Unavailable")
             tone = .unavailable
         case .suspended:
-            title = "Paused"
-            accessibilityLabel = "Connection paused"
+            title = String(localized: "Paused")
+            accessibilityLabel = String(localized: "Connection paused")
             tone = .paused
         case nil:
-            title = "Connecting…"
-            accessibilityLabel = "Connecting"
+            title = String(localized: "Connecting…")
+            accessibilityLabel = String(localized: "Connecting")
             tone = .pending
         }
     }

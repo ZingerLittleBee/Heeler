@@ -216,9 +216,7 @@ struct HostOnboardingView: View {
             Button("Don't Trust", role: .cancel) { store.confirmFingerprint(trusted: false) }
         } message: { candidate in
             Text(
-                "First connection to \(candidate.host):\(String(candidate.port)).\n\n"
-                    + "Key fingerprint:\n\(candidate.fingerprint.displayString)\n\n"
-                    + "Verify it matches the Host's key before trusting.")
+                String(localized: "First connection to \(candidate.host):\(String(candidate.port)).\n\nKey fingerprint:\n\(candidate.fingerprint.displayString)\n\nVerify it matches the Host's key before trusting."))
         }
         // An alert, which also opens on its own after a route edit: iOS 26
         // shows a confirmation dialog as a popover without Cancel.
@@ -301,11 +299,8 @@ struct HostOnboardingView: View {
                 // newer than this build is usable, just not fully known.
                 Text(
                     info.exceedsGeneratedProtocol
-                        ? "herdr \(info.version) · protocol \(info.protocolVersion) — "
-                            + "newer than this app was built against, so features added "
-                            + "after protocol \(HeelerSSHTransport.generatedProtocolVersion) "
-                            + "may be unavailable."
-                        : "herdr \(info.version) · protocol \(info.protocolVersion)")
+                        ? String(localized: "herdr \(info.version) · protocol \(info.protocolVersion) — newer than this app was built against, so features added after protocol \(HeelerSSHTransport.generatedProtocolVersion) may be unavailable.")
+                        : String(localized: "herdr \(info.version) · protocol \(info.protocolVersion)"))
             }
         }
     }
@@ -364,9 +359,9 @@ struct HostOnboardingView: View {
 
     private var authenticationLabel: String {
         switch store.host.authMethod {
-        case .deviceKey: "Device Key"
-        case .rsaKey: "RSA Key"
-        case .password: "Password"
+        case .deviceKey: String(localized: "Device Key")
+        case .rsaKey: String(localized: "RSA Key")
+        case .password: String(localized: "Password")
         }
     }
 
@@ -390,7 +385,7 @@ struct HostOnboardingView: View {
     }
 
     private func networkName(_ id: UUID) -> String {
-        overlayNetworks?.network(id: id)?.displayName ?? "Unavailable overlay network"
+        overlayNetworks?.network(id: id)?.displayName ?? String(localized: "Unavailable overlay network")
     }
 
     private var sessionLine: String {
@@ -445,9 +440,10 @@ struct HostOnboardingView: View {
         }
         if route.usesJumpHost {
             let jump = route.jumpAddress.trimmingCharacters(in: .whitespaces)
-            parts.append("via \(route.jumpPort == 22 ? jump : "\(jump):\(route.jumpPort)")")
+            let jumpEndpoint = route.jumpPort == 22 ? jump : "\(jump):\(route.jumpPort)"
+            parts.append(String(localized: "via \(jumpEndpoint)"))
         }
-        return parts.isEmpty ? "Direct" : parts.joined(separator: " · ")
+        return parts.isEmpty ? String(localized: "Direct") : parts.joined(separator: " · ")
     }
 
     /// The status card with its one action, and the failure's whole message
@@ -490,8 +486,7 @@ struct HostOnboardingView: View {
             }
             .accessibilityLabel("Stop Connecting")
             .accessibilityHint(
-                "Stops trying to connect without waiting for a timeout. "
-                    + "The Host stays paused until you reconnect.")
+                String(localized: "Stops trying to connect without waiting for a timeout. The Host stays paused until you reconnect."))
         } else if isManualReconnectInFlight {
             HostCircleActionLabel(systemImage: nil)
                 .accessibilityHidden(true)
@@ -553,9 +548,9 @@ struct HostOnboardingView: View {
                         Text(failure ?? routeDescription(route))
                     } trailing: {
                         if route.id == status.inUseRouteID {
-                            HostRouteTag(text: "In Use", tint: .green)
+                            HostRouteTag(text: String(localized: "In Use"), tint: .green)
                         } else if failure != nil {
-                            HostRouteTag(text: "Failed", tint: .red)
+                            HostRouteTag(text: String(localized: "Failed"), tint: .red)
                         }
                     }
                 }
@@ -565,8 +560,7 @@ struct HostOnboardingView: View {
         } footer: {
             if store.host.routes.count > 1 {
                 Text(
-                    "Heeler tries every route each time it connects and keeps the first that "
-                        + "reaches the Host.")
+                    String(localized: "Heeler tries every route each time it connects and keeps the first that reaches the Host."))
             }
         }
     }
@@ -792,7 +786,7 @@ struct HostOnboardingView: View {
         do {
             try store.selectSession(session, in: catalog)
         } catch {
-            sessionSelectionError = "The selected session could not be saved."
+            sessionSelectionError = String(localized: "The selected session could not be saved.")
         }
     }
 }
@@ -811,36 +805,37 @@ extension HostKeyReplacement {
             } else {
                 "ed25519"
             }
+        // A command the user runs, not copy: it stays the same in every locale.
         return "ssh-keygen -lf /etc/ssh/ssh_host_\(keyType)_key.pub"
     }
 
     fileprivate var trustActionTitle: String {
-        jumpHost == nil ? "Trust New Host Key" : "Trust New Jump Host Key"
+        jumpHost == nil ? String(localized: "Trust New Host Key") : String(localized: "Trust New Jump Host Key")
     }
 
     fileprivate var checkPrompt: String {
-        jumpHost == nil ? "On the Host, run" : "On the Jump Host, run"
+        jumpHost == nil ? String(localized: "On the Host, run") : String(localized: "On the Jump Host, run")
     }
 
     fileprivate var verificationNote: String {
-        "Trust the new key only if this prints the same fingerprint. On Windows, the key "
-            + "is under %ProgramData%\\ssh."
+        // The folder goes in as an argument: a `%` in the catalog key would
+        // read as a format specifier.
+        let windowsFolder = #"%ProgramData%\ssh"#
+        return String(
+            localized: "Trust the new key only if this prints the same fingerprint. On Windows, the key is under \(windowsFolder).")
     }
 
     fileprivate var confirmationTitle: String {
-        jumpHost == nil ? "Replace the trusted Host key?" : "Replace the Jump Host's trusted key?"
+        jumpHost == nil ? String(localized: "Replace the trusted Host key?") : String(localized: "Replace the Jump Host's trusted key?")
     }
 
     /// Leaves the fingerprint to the page: an alert wraps it with hyphens
     /// that are not in it.
     fileprivate var confirmationMessage: String {
         guard let jumpHost else {
-            return "Compare the new key with what the command prints on the Host first. "
-                + "A changed key can indicate a reinstalled Host or an attack."
+            return String(localized: "Compare the new key with what the command prints on the Host first. A changed key can indicate a reinstalled Host or an attack.")
         }
-        return "Jump Host: \(jumpHost.endpointDescription)\n\n"
-            + "Compare the new key with what the command prints on the Jump Host first. "
-            + "A changed key can indicate a reinstalled Jump Host or an attack."
+        return String(localized: "Jump Host: \(jumpHost.endpointDescription)\n\nCompare the new key with what the command prints on the Jump Host first. A changed key can indicate a reinstalled Jump Host or an attack.")
     }
 }
 
@@ -878,38 +873,38 @@ struct HostRouteStatusPresentation: Equatable {
         switch status {
         case _ where isManualReconnectInFlight:
             tone = .connecting
-            title = "Connecting…"
+            title = String(localized: "Connecting…")
             subtitle = nil
             inUseRouteID = nil
             failure = nil
         case .connected:
             tone = .connected
-            title = "Connected"
+            title = String(localized: "Connected")
             let route = routes.first { $0.id == connectedRouteID }
             subtitle = route.map { "\($0.endpointDescription) · \(describe($0))" }
             inUseRouteID = route?.id
             failure = nil
         case .connecting:
             tone = .connecting
-            title = "Connecting…"
+            title = String(localized: "Connecting…")
             subtitle = nil
             inUseRouteID = nil
             failure = nil
         case .reconnecting(_, _, let reconnectFailure):
             tone = .retrying
-            title = "Reconnecting…"
+            title = String(localized: "Reconnecting…")
             subtitle = reconnectFailure.presentation.summary
             inUseRouteID = nil
             failure = reconnectFailure
         case .failed(let stopFailure):
             tone = .failed
-            title = "Can't Connect"
+            title = String(localized: "Can't Connect")
             subtitle = stopFailure.presentation.summary
             inUseRouteID = nil
             failure = stopFailure
         case .suspended, .ended, nil:
             tone = .idle
-            title = "Not Connected"
+            title = String(localized: "Not Connected")
             subtitle = nil
             inUseRouteID = nil
             failure = nil

@@ -22,15 +22,16 @@ enum TerminalFontOption: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .jetBrainsMono: "JetBrains Mono"
-        case .ibmPlexMono: "IBM Plex Mono"
+        case .jetBrainsMono: String(localized: "JetBrains Mono")
+        case .ibmPlexMono: String(localized: "IBM Plex Mono")
         case .menlo: "Menlo"
-        case .courierNew: "Courier New"
+        case .courierNew: String(localized: "Courier New")
         }
     }
 
-    /// The CoreText family name ghostty resolves. `nil` sets no `font-family`
-    /// at all, leaving libghostty's embedded default in place.
+    /// The CoreText family name ghostty resolves, never localized. `nil`
+    /// sets no `font-family` at all, leaving libghostty's embedded default
+    /// in place.
     var familyName: String? {
         switch self {
         case .jetBrainsMono: nil

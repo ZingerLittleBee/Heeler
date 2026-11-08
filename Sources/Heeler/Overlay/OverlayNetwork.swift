@@ -303,6 +303,7 @@ extension Character {
 }
 
 extension OverlayKind {
+    /// Product names, the same in every language.
     var displayName: String {
         switch self {
         case .tailscale: "Tailscale"
@@ -315,9 +316,9 @@ extension OverlayKind {
     /// when the user never types one (ZeroTier mints its own identity).
     var secretLabel: String? {
         switch self {
-        case .tailscale: "Auth key"
+        case .tailscale: String(localized: "Auth key")
         case .zerotier: nil
-        case .easytier: "Network secret"
+        case .easytier: String(localized: "Network secret")
         }
     }
 }

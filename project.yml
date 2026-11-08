@@ -11,6 +11,10 @@ settings:
     # Swift 6 language mode implies complete strict concurrency checking.
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
+    # Let the compiler hand SwiftUI `Text("…")` literals and friends to the
+    # String Catalog at build time, so `Localizable.xcstrings` keeps its key
+    # list current as code changes (String Catalog auto-extraction).
+    SWIFT_EMIT_LOC_STRINGS: "YES"
     DEVELOPMENT_TEAM: 9VM4RM39R3
     CODE_SIGN_STYLE: Automatic
 
@@ -172,6 +176,10 @@ targets:
     sources:
       - Sources/HeelerNotificationService
       - Sources/HeelerNotificationCore
+      # The extension renders notification copy from HeelerNotificationCore,
+      # and an extension only localizes against the resources inside its own
+      # bundle.
+      - Sources/Heeler/Resources/Localizable.xcstrings
       - Sources/Heeler/Support/Base64URL.swift
       - Sources/Heeler/Transport/SecretStore.swift
       # For AgentStatus; Foundation-only by construction (JSONValue is the
@@ -216,6 +224,10 @@ targets:
     platform: iOS
     sources:
       - Sources/HeelerWidgets
+      # The app's String Catalog, compiled into this extension's bundle too:
+      # the widgets and the Live Activity render their text here, and an
+      # extension only localizes against the resources inside its own bundle.
+      - Sources/Heeler/Resources/Localizable.xcstrings
       - Sources/HeelerActivityCore
       - Sources/HeelerNotificationCore
       # Usage formats and the snapshot the app writes for the Usage widgets.
@@ -356,6 +368,11 @@ schemes:
       # shell has not exported it, and would shadow the launchd value.
       environmentVariables:
         HEELER_SSH_E2E_REQUIRED: $(HEELER_SSH_E2E_REQUIRED)
+      # Tests assert English copy. Pin the language so a Simulator set to
+      # another language (Japanese is localized) runs the same suite;
+      # `xcodebuild -testLanguage` still overrides it for a localized run.
+      language: en
+      region: US
     run:
       config: Debug
   HeelerLiveTests:
@@ -365,3 +382,5 @@ schemes:
     test:
       targets:
         - HeelerLiveTests
+      language: en
+      region: US

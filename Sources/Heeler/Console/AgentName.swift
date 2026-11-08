@@ -13,8 +13,7 @@ enum AgentName {
     /// the rename sheet).
     static func validationError(_ name: String) -> String? {
         let message =
-            "Agent names are 1–32 characters: lowercase letters, digits, "
-            + "- or _, starting with a lowercase letter."
+            String(localized: "Agent names are 1–32 characters: lowercase letters, digits, - or _, starting with a lowercase letter.")
         guard !name.isEmpty, name.count <= 32 else { return message }
         for (offset, character) in name.enumerated() {
             guard character.unicodeScalars.count == 1,

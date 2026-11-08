@@ -71,6 +71,8 @@ enum AgentQuickKey: Hashable {
     case pageUp
     case pageDown
 
+    /// Key-cap legends stay as keyboards print them in every language (Esc,
+    /// Tab, Home, End, PgUp); only legends that are words are translated.
     var title: String? {
         switch self {
         case .escape: "Esc"
@@ -78,13 +80,13 @@ enum AgentQuickKey: Hashable {
         case .shiftTab: "⇧Tab"
         case .shiftEnter: "⇧Enter"
         case .enter: "Enter"
-        case .backspace: "Backspace"
+        case .backspace: String(localized: "Backspace")
         case .home: "Home"
         case .end: "End"
         case .insert: "Insert"
-        case .forwardDelete: "Forward Delete"
+        case .forwardDelete: String(localized: "Forward Delete")
         case .function(let key): key.title
-        case .character(let character): character == " " ? "Space" : String(character)
+        case .character(let character): character == " " ? String(localized: "Space") : String(character)
         case .pageUp: "PgUp"
         case .pageDown: "PgDn"
         case .left, .up, .down, .right: nil
@@ -103,24 +105,26 @@ enum AgentQuickKey: Hashable {
 
     var accessibilityLabel: String {
         switch self {
-        case .escape: "Escape"
-        case .tab: "Tab"
-        case .shiftTab: "Shift Tab"
-        case .shiftEnter: "Shift Enter"
-        case .left: "Left Arrow"
-        case .up: "Up Arrow"
-        case .down: "Down Arrow"
-        case .right: "Right Arrow"
-        case .enter: "Enter"
-        case .backspace: "Backspace"
-        case .home: "Home"
-        case .end: "End"
-        case .insert: "Insert"
-        case .forwardDelete: "Forward Delete"
+        case .escape: String(localized: "Escape")
+        // Tab, Home, Insert and End also name other things; the keys get
+        // their own entries.
+        case .tab: String(localized: "Tab key", defaultValue: "Tab", comment: "VoiceOver label of the Tab key")
+        case .shiftTab: String(localized: "Shift Tab")
+        case .shiftEnter: String(localized: "Shift Enter")
+        case .left: String(localized: "Left Arrow")
+        case .up: String(localized: "Up Arrow")
+        case .down: String(localized: "Down Arrow")
+        case .right: String(localized: "Right Arrow")
+        case .enter: String(localized: "Enter")
+        case .backspace: String(localized: "Backspace")
+        case .home: String(localized: "Home key", defaultValue: "Home", comment: "VoiceOver label of the Home key")
+        case .end: String(localized: "End key", defaultValue: "End", comment: "VoiceOver label of the End key")
+        case .insert: String(localized: "Insert key", defaultValue: "Insert", comment: "VoiceOver label of the Insert key")
+        case .forwardDelete: String(localized: "Forward Delete")
         case .function(let key): key.title
-        case .character(let character): character == " " ? "Space" : String(character)
-        case .pageUp: "Page Up"
-        case .pageDown: "Page Down"
+        case .character(let character): character == " " ? String(localized: "Space") : String(character)
+        case .pageUp: String(localized: "Page Up")
+        case .pageDown: String(localized: "Page Down")
         }
     }
 }

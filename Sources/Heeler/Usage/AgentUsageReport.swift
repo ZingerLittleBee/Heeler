@@ -106,8 +106,8 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
         /// borrowing a known program's name.
         static func displayName(for program: String) -> String {
             switch program {
-            case "claude": "Claude Code"
-            case "codex": "Codex"
+            case "claude": String(localized: "Claude Code")
+            case "codex": String(localized: "Codex")
             default: program
             }
         }

@@ -90,7 +90,7 @@ struct AgentDirectInputChrome: View {
     private var shortcutRow: some View {
         InputShortcutStripRow(
             strip: strip,
-            keyAccessibilityHint: "Sends this key directly to the Agent",
+            keyAccessibilityHint: String(localized: "Sends this key directly to the Agent"),
             sendKey: interactions.sendQuickKey
         ) { item in
             switch item {

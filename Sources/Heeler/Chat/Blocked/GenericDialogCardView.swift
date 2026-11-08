@@ -15,7 +15,7 @@ struct GenericDialogCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                title: "Waiting for Input", detail: nil, isActing: store.progress == .acting,
+                title: String(localized: "Waiting for Input"), detail: nil, isActing: store.progress == .acting,
                 collapse: { store.isCollapsed = true })
             if !excerpt.reason.isEmpty {
                 BlockedCardText(excerpt.reason)
@@ -62,13 +62,13 @@ struct UnreadableDialogCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                title: "Waiting for Input", detail: nil, isActing: store.progress == .acting,
+                title: String(localized: "Waiting for Input"), detail: nil, isActing: store.progress == .acting,
                 collapse: { store.isCollapsed = true })
             if let note = store.unreadableNote {
                 BlockedCardText(note)
             } else {
                 BlockedCardText(
-                    "The Agent is waiting on something Heeler can't read. Answer with these keys or in the terminal.")
+                    String(localized: "The Agent is waiting on something Heeler can't read. Answer with these keys or in the terminal."))
                 BlockedKeyPad(store: store)
             }
             BlockedCardFooter(notice: store.notice, isReady: store.progress == .ready, openTerminal: openTerminal)

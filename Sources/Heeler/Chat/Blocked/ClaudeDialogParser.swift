@@ -11,6 +11,12 @@ import Foundation
 /// Anything that does not fit a known dialog comes back as an excerpt for
 /// the generic card, never as a guess.
 enum ClaudeDialogParser {
+    /// Claude's title for the page after several questions, as it draws it.
+    /// The parser gives it as that page's title and progress, and the
+    /// planner expects it after the last question, so it stays Claude's own
+    /// English; the card shows its own words for the page.
+    static let reviewPage = "Review your answers"
+
     static func parse(_ screen: ANSIScreen) -> DialogParseResult {
         if ClaudeInputBox.locate(in: screen) != nil { return .none }
         if let trust = ClaudeTrustDialogReader.read(screen) { return trust }
@@ -260,19 +266,18 @@ private struct ClaudeDialogReader {
         "Read file": .claudeFileRead, "Fetch": .claudeFetch,
     ]
     private static let planQuestionPrefix = "Claude has written up a plan"
-    private static let reviewTitle = "Review your answers"
 
     func read() -> DialogParseResult {
         guard let firstOption = block.rows.first else { return .none }
         let firstRow = firstOption.rowIndex
         guard firstOption.number == 1 else {
-            return unrecognized(from: nil, "The options do not start at 1, so the list may be scrolled.")
+            return unrecognized(from: nil, String(localized: "The options do not start at 1, so the list may be scrolled."))
         }
         guard let top = topRule(above: firstRow) else {
-            return unrecognized(from: nil, "The top of the dialog is off screen.")
+            return unrecognized(from: nil, String(localized: "The top of the dialog is off screen."))
         }
         guard let headerRow = (top + 1..<firstRow).first(where: { !rows[$0].isBlank }) else {
-            return unrecognized(from: top, "The dialog has no title.")
+            return unrecognized(from: top, String(localized: "The dialog has no title."))
         }
         let header = rows[headerRow]
         if let tabs = QuestionTabs(row: header) {
@@ -283,8 +288,8 @@ private struct ClaudeDialogReader {
         }
         let title = Self.title(of: header)
         guard let kind = Self.permissionTitles[title.text] else {
-            guard !title.text.isEmpty else { return unrecognized(from: top, "The dialog's title could not be read.") }
-            return unrecognized(from: top, "Heeler does not know the dialog \u{201C}\(title.text)\u{201D}.")
+            guard !title.text.isEmpty else { return unrecognized(from: top, String(localized: "The dialog's title could not be read.")) }
+            return unrecognized(from: top, String(localized: "Heeler does not know the dialog \u{201C}\(title.text)\u{201D}."))
         }
         return readPermission(
             kind: kind, top: top, titleRow: headerRow, title: title, firstOption: firstRow)
@@ -297,7 +302,7 @@ private struct ClaudeDialogReader {
         firstOption: Int
     ) -> DialogParseResult {
         guard let scan = scanOptions(from: firstOption, isQuestionPage: false) else {
-            return unrecognized(from: top, "The rows after the options are not a footer.")
+            return unrecognized(from: top, String(localized: "The rows after the options are not a footer."))
         }
         if let problem = scan.problem { return unrecognized(from: top, problem, scan: scan) }
         var options: [DialogOption] = []
@@ -306,11 +311,14 @@ private struct ClaudeDialogReader {
             guard !draft.labelIsInactive, let role = DialogRowScanner.permissionRole(for: label, shortcut: shortcut)
             else {
                 return unrecognized(
-                    from: top, "Option \(draft.number ?? index + 1) reads \u{201C}\(label)\u{201D}, which is not a label Heeler knows.",
+                    from: top,
+                    String(localized: "Option \(draft.number ?? index + 1) reads \u{201C}\(label)\u{201D}, which is not a label Heeler knows."),
                     scan: scan)
             }
             if draft.field != nil, !draft.isFeedback {
-                return unrecognized(from: top, "Option \(index + 1) is a text field Heeler does not expect here.", scan: scan)
+                return unrecognized(
+                    from: top, String(localized: "Option \(index + 1) is a text field Heeler does not expect here."),
+                    scan: scan)
             }
             options.append(
                 DialogOption(
@@ -318,7 +326,7 @@ private struct ClaudeDialogReader {
                     role: role, isFocused: draft.isFocused, input: draft.field?.inputRowState))
         }
         guard options.contains(where: { $0.role == .decline }), options.contains(where: { $0.role != .decline })
-        else { return unrecognized(from: top, "The dialog lacks a Yes or a No option.", scan: scan) }
+        else { return unrecognized(from: top, String(localized: "The dialog lacks a Yes or a No option."), scan: scan) }
 
         let sections = bodySections(from: titleRow + 1, to: firstOption)
         var subject = DialogSubject()
@@ -364,7 +372,7 @@ private struct ClaudeDialogReader {
 
     private func readPlan(lowerRule: Int, questionRow: Int, firstOption: Int) -> DialogParseResult {
         guard let scan = scanOptions(from: firstOption, isQuestionPage: false) else {
-            return unrecognized(from: lowerRule, "The rows after the options are not a footer.")
+            return unrecognized(from: lowerRule, String(localized: "The rows after the options are not a footer."))
         }
         if let problem = scan.problem { return unrecognized(from: lowerRule, problem, scan: scan) }
         var options: [DialogOption] = []
@@ -375,7 +383,7 @@ private struct ClaudeDialogReader {
                 // until the user types into it.
                 let field = draft.field ?? (draft.labelIsInactive ? .placeholder(draft.label) : .typed(draft.label))
                 let label =
-                    if case .placeholder(let text) = field, !text.isEmpty { text } else { "Tell Claude what to change" }
+                    if case .placeholder(let text) = field, !text.isEmpty { text } else { String(localized: "Tell Claude what to change") }
                 options.append(
                     DialogOption(
                         ordinal: index + 1, number: draft.number, label: label, detail: draft.detail, role: .otherText,
@@ -388,7 +396,7 @@ private struct ClaudeDialogReader {
             else {
                 return unrecognized(
                     from: lowerRule,
-                    "Option \(draft.number ?? index + 1) reads \u{201C}\(label)\u{201D}, which is not a label Heeler knows.",
+                    String(localized: "Option \(draft.number ?? index + 1) reads \u{201C}\(label)\u{201D}, which is not a label Heeler knows."),
                     scan: scan)
             }
             options.append(
@@ -396,7 +404,9 @@ private struct ClaudeDialogReader {
                     ordinal: index + 1, number: draft.number, label: label, detail: draft.detail, shortcut: shortcut,
                     role: role, isFocused: draft.isFocused))
         }
-        guard options.count >= 2 else { return unrecognized(from: lowerRule, "The plan dialog has too few options.", scan: scan) }
+        guard options.count >= 2 else {
+            return unrecognized(from: lowerRule, String(localized: "The plan dialog has too few options."), scan: scan)
+        }
 
         let question = paragraphs(in: questionRow..<firstOption).joined(separator: " ")
         let upper = planUpperBox(above: lowerRule)
@@ -408,19 +418,19 @@ private struct ClaudeDialogReader {
             progress: nil, options: options, top: upper.top ?? lowerRule, scan: scan, subject: subject)
     }
 
-    private static let previewsReason = "Heeler does not handle questions with previews yet."
+    private static let previewsReason = String(localized: "Heeler does not handle questions with previews yet.")
 
     private func readQuestion(top: Int, tabsRow: Int, tabs: QuestionTabs, firstOption: Int) -> DialogParseResult {
         let titleRows = (tabsRow + 1..<firstOption).drop { rows[$0].isBlank }.prefix { !rows[$0].isBlank }
         let title = joinRows(titleRows.map { rows[$0] })
-        let isReview = title == Self.reviewTitle || tabs.active == "Submit"
+        let isReview = title == ClaudeDialogParser.reviewPage || tabs.active == "Submit"
         guard let scan = scanOptions(from: firstOption, isQuestionPage: !isReview) else {
             // Claude Code 2.1.301 draws the previews beside the options,
             // which no option scan reads; its notes hint still names them.
             if rows[firstOption...].contains(where: { $0.text.contains("to add notes") }) {
                 return unrecognized(from: top, Self.previewsReason, offersDigits: false)
             }
-            return unrecognized(from: top, "The rows after the options are not a footer.")
+            return unrecognized(from: top, String(localized: "The rows after the options are not a footer."))
         }
         if let problem = scan.problem { return unrecognized(from: top, problem, scan: scan) }
         if let footer = scan.footer, footer.hints.contains(where: { $0.key == "n" && $0.action.hasPrefix("add notes") }) {
@@ -441,7 +451,8 @@ private struct ClaudeDialogReader {
                     }
                 guard let role, draft.field == nil else {
                     return unrecognized(
-                        from: top, "The review page offers \u{201C}\(draft.label)\u{201D}, which Heeler does not know.",
+                        from: top,
+                        String(localized: "The review page offers \u{201C}\(draft.label)\u{201D}, which Heeler does not know."),
                         scan: scan)
                 }
                 options.append(
@@ -452,12 +463,15 @@ private struct ClaudeDialogReader {
             let bodyRows = (titleRows.last.map { $0 + 1 } ?? tabsRow + 1)..<firstOption
             let body = bodyRows.map { rows[$0].trimmedText }.filter { !$0.isEmpty }
             subject.reviewAnswers = reviewAnswers(in: bodyRows)
+            // Claude's own title, which the planner's page check expects;
+            // the card names the page in the user's language.
             return dialog(
-                kind: .claudeQuestionReview, title: Self.reviewTitle, sourceSuffix: nil, positionLabel: nil, body: body,
-                progress: Self.reviewTitle, options: options, top: top, scan: scan, subject: subject)
+                kind: .claudeQuestionReview, title: ClaudeDialogParser.reviewPage, sourceSuffix: nil,
+                positionLabel: nil, body: body, progress: ClaudeDialogParser.reviewPage, options: options, top: top,
+                scan: scan, subject: subject)
         }
 
-        guard !title.isEmpty else { return unrecognized(from: top, "The question's text is not on screen.", scan: scan) }
+        guard !title.isEmpty else { return unrecognized(from: top, String(localized: "The question's text is not on screen."), scan: scan) }
         // The last numbered option before the rule is "Type something":
         // its placeholder until the user types into it.
         let numberedBeforeRule = scan.drafts.filter { $0.number != nil && !$0.isChat }
@@ -472,7 +486,7 @@ private struct ClaudeDialogReader {
                     if case .placeholder(let text) = field, !text.isEmpty {
                         text
                     } else {
-                        isMultiSelect ? "Type something" : "Type something."
+                        isMultiSelect ? String(localized: "Type something") : String(localized: "Type something.")
                     }
                 options.append(
                     DialogOption(
@@ -482,7 +496,7 @@ private struct ClaudeDialogReader {
                 continue
             }
             if draft.field != nil || draft.droppedResidue && draft.label.isEmpty {
-                return unrecognized(from: top, "Option \(ordinal) could not be read.", scan: scan)
+                return unrecognized(from: top, String(localized: "Option \(ordinal) could not be read."), scan: scan)
             }
             let role: DialogOptionRole = draft.isButton ? .next : draft.isChat ? .chat : .answer
             options.append(
@@ -492,7 +506,7 @@ private struct ClaudeDialogReader {
                     isChecked: role == .answer ? (isMultiSelect ? (draft.isChecked ?? false) : draft.isChecked) : nil))
         }
         guard options.contains(where: { $0.role == .answer }) else {
-            return unrecognized(from: top, "The question has no answers Heeler can read.", scan: scan)
+            return unrecognized(from: top, String(localized: "The question has no answers Heeler can read."), scan: scan)
         }
         subject.question = title
         return dialog(
@@ -549,7 +563,7 @@ private struct ClaudeDialogReader {
         }
         var scan = OptionScan(drafts: drafts, end: row)
         if !numbered.isEmpty {
-            scan.problem = "Option \(numbered.first?.number ?? 0) is not where the list continues."
+            scan.problem = String(localized: "Option \(numbered.first?.number ?? 0) is not where the list continues.")
         }
 
         var footerRows: [ScreenRow] = []
@@ -582,11 +596,12 @@ private struct ClaudeDialogReader {
             let footer = ClaudeFooter(rows: footerRows)
             scan.footer = footer
             if scan.problem == nil, let rebinding = footer.rebinding {
-                scan.problem = "The footer shows \u{201C}\(rebinding)\u{201D}; Heeler only sends Claude's default keys."
+                scan.problem = String(
+                    localized: "The footer shows \u{201C}\(rebinding)\u{201D}; Heeler only sends Claude's default keys.")
             }
         }
         if scan.problem == nil, let stray = drafts.firstIndex(where: \.hasStrayRow) {
-            scan.problem = "Option \(stray + 1) has a row Heeler could not place."
+            scan.problem = String(localized: "Option \(stray + 1) has a row Heeler could not place.")
         }
         return scan
     }
@@ -1054,10 +1069,10 @@ private enum ClaudeTrustDialogReader {
         }
 
         guard footerStart > optionsEnd + 1, optionRows.count == 2 else {
-            return unrecognized("The trust dialog's options are not where Heeler expects them.")
+            return unrecognized(String(localized: "The trust dialog's options are not where Heeler expects them."))
         }
         if let rebinding = footer.rebinding {
-            return unrecognized("The footer shows \u{201C}\(rebinding)\u{201D}; Heeler only sends Claude's default keys.")
+            return unrecognized(String(localized: "The footer shows \u{201C}\(rebinding)\u{201D}; Heeler only sends Claude's default keys."))
         }
         var options: [DialogOption] = []
         for (index, row) in optionRows.enumerated() {
@@ -1073,12 +1088,12 @@ private enum ClaudeTrustDialogReader {
                     nil
                 }
             guard let role else {
-                return unrecognized("The trust dialog offers \u{201C}\(label)\u{201D}, which Heeler does not know.")
+                return unrecognized(String(localized: "The trust dialog offers \u{201C}\(label)\u{201D}, which Heeler does not know."))
             }
             options.append(DialogOption(ordinal: index + 1, number: nil, label: label, role: role, isFocused: isFocused))
         }
         guard Set(options.map(\.role)) == [.exitProgram, .trust] else {
-            return unrecognized("The trust dialog's options are not a Yes and a No.")
+            return unrecognized(String(localized: "The trust dialog's options are not a Yes and a No."))
         }
 
         var body: [String] = []
@@ -1157,6 +1172,6 @@ private enum ClaudeLooseDialogReader {
         return .unrecognized(
             ClaudeExcerpt.make(
                 rows: Array(rows[top...last]), footerRows: [last], numbered: [:],
-                reason: "The dialog's options are not numbered."))
+                reason: String(localized: "The dialog's options are not numbered.")))
     }
 }

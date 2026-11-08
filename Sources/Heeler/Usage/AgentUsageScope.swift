@@ -35,7 +35,10 @@ struct AgentUsageScope: Equatable {
     struct ExcludedHost: Equatable, Identifiable {
         let id: Host.ID
         let name: String
-        let reason: String
+        let exclusion: AgentUsageExclusion
+
+        /// The short line the Host shows in place of its figures.
+        var reason: String { exclusion.reason }
     }
 
     struct Directory: Equatable, Identifiable {
@@ -75,12 +78,12 @@ struct AgentUsageScope: Equatable {
                     isRetryingRefresh: reading.isRetryingRefresh,
                     last30Days: Self.sum((report.programs ?? []).compactMap(\.okTotals?.last30Days))))
             case _ where !reading.isConnected:
-                excluded.append(ExcludedHost(id: reading.id, name: reading.name, reason: "Not connected"))
+                excluded.append(ExcludedHost(id: reading.id, name: reading.name, exclusion: .notConnected))
             case .idle, .loading:
                 loading.append(reading)
             default:
                 excluded.append(ExcludedHost(
-                    id: reading.id, name: reading.name, reason: Self.reason(for: reading.state)))
+                    id: reading.id, name: reading.name, exclusion: Self.exclusion(for: reading.state)))
             }
         }
         self.included = included
@@ -105,9 +108,9 @@ struct AgentUsageScope: Equatable {
     var dayNote: String? {
         let zones = timeZones
         if zones.count > 1 {
-            return "Days follow each Host’s time zone (\(zones.joined(separator: ", ")))."
+            return String(localized: "Days follow each Host’s time zone (\(zones.joined(separator: ", "))).")
         }
-        return zones.first.map { "Days shown in \($0)." }
+        return zones.first.map { String(localized: "Days shown in \($0).") }
     }
 
     /// Every program's totals for a range.
@@ -157,18 +160,18 @@ struct AgentUsageScope: Equatable {
         }
     }
 
-    /// The short line a Host that cannot be added up shows in place of its
-    /// figures.
-    static func reason(for state: AgentUsageStore.State) -> String {
+    /// Why a Host that cannot be added up is left out. A Host still on its
+    /// first read lists as loading and one that reports is added up, so
+    /// neither is left out; both read as not read yet here.
+    static func exclusion(for state: AgentUsageStore.State) -> AgentUsageExclusion {
         switch state {
-        case .idle, .loading: "Loading…"
-        case .requirement: "Needs the Heeler plugin"
-        case .unsupportedPlatform: "Not supported on Windows"
-        case .hostHelper(let need): need.reason
-        case .runtimeMissing: "No Agent activity yet"
-        case .updateRequired: "Update Heeler"
-        case .failed: "Could not read Usage"
-        case .available: ""
+        case .idle, .loading, .available: .notReadYet
+        case .requirement: .needsPlugin
+        case .unsupportedPlatform: .unsupportedPlatform
+        case .hostHelper(let need): need.exclusion
+        case .runtimeMissing: .noAgentActivity
+        case .updateRequired: .updateRequired
+        case .failed: .readFailed
         }
     }
 

@@ -158,8 +158,7 @@ struct NotificationSettingsView: View {
                     .foregroundStyle(.red)
             } else if relaySettings.hasInsecureHTTPEntry {
                 Text(
-                    "HTTP exposes the device token and notification metadata. "
-                        + "Use HTTPS except for local development."
+                    String(localized: "HTTP exposes the device token and notification metadata. Use HTTPS except for local development.")
                 )
                 .font(.caption)
                 .foregroundStyle(.orange)
@@ -168,8 +167,7 @@ struct NotificationSettingsView: View {
             Text("Custom Push Relay")
         } footer: {
             Text(
-                "Leave blank to use \(NotificationRelayEndpoint.productionBaseURLString). "
-                    + NotificationPrivacyCopy.customRelayCaveat)
+                "Leave blank to use \(NotificationRelayEndpoint.productionBaseURLString). \(NotificationPrivacyCopy.customRelayCaveat)")
         }
     }
 }

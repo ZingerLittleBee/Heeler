@@ -81,7 +81,7 @@ extension GitProbe {
             isSeparateRepository: isSeparateRepository,
             limitNotice: CheckoutChanges.limitNotice(
                 shown: shown.count, total: paths.count,
-                isLowerBound: section.isTruncated, noun: "files"))
+                isLowerBound: section.isTruncated, noun: .files))
     }
 
     /// `? <path>`. Tracked rows, headers and ignored records are not entries.

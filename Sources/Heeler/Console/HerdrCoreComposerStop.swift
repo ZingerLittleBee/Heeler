@@ -18,13 +18,13 @@ struct HerdrCoreComposerStop {
     /// How long a cancelled interrupt gets to say how far it went.
     static let cancelWait: Duration = .seconds(1)
 
-    static let notSent = "The Host is not connected, so Stop wasn't sent."
-    static let notTakenInTime = "The Host did not take Stop in time, so it wasn't sent."
+    static let notSent = String(localized: "The Host is not connected, so Stop wasn't sent.")
+    static let notTakenInTime = String(localized: "The Host did not take Stop in time, so it wasn't sent.")
     static let outcomeUnknown =
-        "The Host did not answer, so Stop may or may not have reached the Agent. Check the terminal."
+        String(localized: "The Host did not answer, so Stop may or may not have reached the Agent. Check the terminal.")
     static let coreGone = TransportError.herdrCoreTerminalGone.presentation.message
     static let readFailed =
-        "Stop went, but the Host did not say whether the Agent still runs. Check the terminal."
+        String(localized: "Stop went, but the Host did not say whether the Agent still runs. Check the terminal.")
 
     let address: String
     let projection: @MainActor () -> HerdrCoreConsoleProjection?
@@ -104,6 +104,6 @@ struct HerdrCoreComposerStop {
     }
 
     private static func refused(_ refusal: HerdrAPIError) -> String {
-        "The Host refused Stop: \(refusal.message)"
+        String(localized: "The Host refused Stop: \(refusal.message)")
     }
 }

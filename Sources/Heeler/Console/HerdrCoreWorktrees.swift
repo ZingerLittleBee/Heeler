@@ -96,13 +96,13 @@ enum HerdrCoreWorktreeError: Error, Equatable {
         case .invalidBranch(let problem):
             problem
         case .noFolderName(let branch):
-            "\"\(branch)\" leaves no folder name for the checkout. Use a branch with ASCII letters or digits in it."
+            String(localized: "\"\(branch)\" leaves no folder name for the checkout. Use a branch with ASCII letters or digits in it.")
         case .notInGitRepository:
-            "This workspace is not inside a Git repository, so no worktree can be created from it."
+            String(localized: "This workspace is not inside a Git repository, so no worktree can be created from it.")
         case .addRefused(let reason):
-            "Creating the worktree failed: \(reason)"
+            String(localized: "Creating the worktree failed: \(reason)")
         case .addUnconfirmed(let path):
-            "The Host did not confirm the worktree. Check whether \(path) is on the Host before trying again."
+            String(localized: "The Host did not confirm the worktree. Check whether \(path) is on the Host before trying again.")
         }
     }
 }
@@ -117,9 +117,9 @@ enum HerdrCoreTemplateError: Error, Equatable {
     var message: String {
         switch self {
         case .gone(let name):
-            "\(name) is no longer a Template on this Host, so nothing started. Detect Again refreshes the list."
+            String(localized: "\(name) is no longer a Template on this Host, so nothing started. Detect Again refreshes the list.")
         case .ranAsProgram(let name, let directory):
-            "\(name) is no longer a Template on this Host, so the core ran a program of that name in a Terminal at \(directory). Close it if you did not mean to run it."
+            String(localized: "\(name) is no longer a Template on this Host, so the core ran a program of that name in a Terminal at \(directory). Close it if you did not mean to run it.")
         }
     }
 }
@@ -176,7 +176,7 @@ struct HerdrCoreWorktreeGit: Sendable {
             HerdrCoreWorktrees.branchExistsArguments(branch: branch), in: mainCheckout)
         guard lookup.status <= 1 else {
             throw HerdrCoreWorktreeError.addRefused(
-                lookup.message ?? "git exited with status \(lookup.status).")
+                lookup.message ?? String(localized: "git exited with status \(lookup.status)."))
         }
         let result: GitCommandResult
         do {
@@ -190,7 +190,7 @@ struct HerdrCoreWorktreeGit: Sendable {
         }
         guard result.status == 0 else {
             throw HerdrCoreWorktreeError.addRefused(
-                result.message ?? "git exited with status \(result.status).")
+                result.message ?? String(localized: "git exited with status \(result.status)."))
         }
         return Created(path: path, mainCheckout: mainCheckout)
     }
@@ -213,7 +213,7 @@ struct HerdrCoreWorktreeGit: Sendable {
         let status = try await read(["status", "--porcelain"], in: path)
         guard status.status == 0 || status.isTruncated else {
             throw WorktreeRemovalError.riskUnread(
-                status.message ?? "git exited with status \(status.status).")
+                status.message ?? String(localized: "git exited with status \(status.status)."))
         }
         let submodules = try await read(["submodule", "status"], in: path)
         return WorktreeRemovalRisk(
@@ -229,7 +229,7 @@ struct HerdrCoreWorktreeGit: Sendable {
         } catch WorktreeRemovalError.riskUnread(let reason) {
             throw WorktreeRemovalError.removeRefused(reason)
         } catch {
-            throw WorktreeRemovalError.removeRefused("The Host did not say what the checkout holds.")
+            throw WorktreeRemovalError.removeRefused(String(localized: "The Host did not say what the checkout holds."))
         }
     }
 
@@ -246,7 +246,7 @@ struct HerdrCoreWorktreeGit: Sendable {
         }
         guard result.status == 0 else {
             throw WorktreeRemovalError.removeRefused(
-                result.message ?? "git exited with status \(result.status).")
+                result.message ?? String(localized: "git exited with status \(result.status)."))
         }
     }
 
@@ -254,7 +254,7 @@ struct HerdrCoreWorktreeGit: Sendable {
         let result = try await read(HerdrCoreWorktrees.listArguments, in: checkout)
         guard result.status == 0 else {
             throw TransportError.malformedResponse(
-                result.message ?? "git exited with status \(result.status).")
+                result.message ?? String(localized: "git exited with status \(result.status)."))
         }
         return HerdrCoreWorktrees.parseList(result.output)
     }

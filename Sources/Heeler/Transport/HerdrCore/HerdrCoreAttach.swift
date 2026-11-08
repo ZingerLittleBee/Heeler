@@ -52,7 +52,7 @@ enum HerdrCoreAttach {
 
     static func params(for request: TerminalAttachRequest) throws -> JSONValue {
         guard isValidGeometry(columns: request.cols, rows: request.rows) else {
-            throw TransportError.channelFailed(detail: "Invalid herdr-core terminal geometry.")
+            throw TransportError.channelFailed(detail: String(localized: "Invalid herdr-core terminal geometry."))
         }
         var params: [String: JSONValue] = [
             "terminal": .string(try HerdrCoreWire.address(request.target.identifier)),

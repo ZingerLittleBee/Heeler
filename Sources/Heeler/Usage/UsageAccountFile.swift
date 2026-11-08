@@ -28,31 +28,35 @@ enum AgentAccountError: Error, Equatable, Sendable {
     var message: String {
         switch self {
         case .unsupportedFileVersion:
-            "A newer version of Heeler saved this Host’s Accounts. Update Heeler to change them."
+            String(localized: "A newer version of Heeler saved this Host’s Accounts. Update Heeler to change them.")
         case .limitReached:
-            "A harness can have up to four Accounts on a Host. Remove one to add another."
+            String(localized: "A harness can have up to four Accounts on a Host. Remove one to add another.")
         case .alreadyListed:
-            "This directory is already an Account."
+            String(localized: "This directory is already an Account.")
         case .notAbsolute:
-            "Choose a directory by its full path."
+            String(localized: "Choose a directory by its full path.")
         case .notHarnessDirectory(let kind):
             kind.accountMarkers.isEmpty
-                ? "Choose a folder for \(kind.displayName)’s settings."
-                : "This folder has none of \(kind.displayName)’s files. Choose one that holds "
-                    + ListFormatter.localizedString(byJoining: kind.accountMarkers.map(\.label)) + "."
+                ? String(localized: "Choose a folder for \(kind.displayName)’s settings.")
+                : String(localized: "This folder has none of \(kind.displayName)’s files. Choose one that holds \(Self.markerList(kind)).")
         case .emptyName:
-            "Enter a name for this Account."
+            String(localized: "Enter a name for this Account.")
         case .nameTaken(let name):
-            "Another Account on this Host is named \(name)."
+            String(localized: "Another Account on this Host is named \(name).")
         case .accountNotFound:
-            "This Account was already removed. Refresh Usage to see the current list."
+            String(localized: "This Account was already removed. Refresh Usage to see the current list.")
         case .pluginRequirement(let note):
             note
         case .busy:
-            "The last change here is still being saved. Try again in a moment."
+            String(localized: "The last change here is still being saved. Try again in a moment.")
         case .invalidVariable:
-            "Enter a variable name of letters, digits and underscores, such as AMP_HOME."
+            String(localized: "Enter a variable name of letters, digits and underscores, such as AMP_HOME.")
         }
+    }
+
+    /// The harness's own files, as a list in the current language.
+    private static func markerList(_ kind: SupportedAgentKind) -> String {
+        ListFormatter.localizedString(byJoining: kind.accountMarkers.map(\.label))
     }
 }
 

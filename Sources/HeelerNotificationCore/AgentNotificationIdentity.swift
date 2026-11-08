@@ -37,7 +37,7 @@ enum AgentNotificationIdentity {
         case "maki": "Maki"
         case "muse": "Muse"
         case "qwen": "Qwen Code"
-        case "unknown": "Unknown"
+        case "unknown": String(localized: "Unknown")
         default: rawValue
         }
     }

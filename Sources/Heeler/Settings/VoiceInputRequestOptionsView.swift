@@ -7,7 +7,7 @@ struct VoiceInputLanguagesSection: View {
     var body: some View {
         Section {
             if preset == .siliconFlowCN {
-                LabeledContent("Languages", value: "Automatic")
+                LabeledContent("Languages", value: String(localized: "Automatic"))
             } else if preset == .deepInfra {
                 Picker("Language", selection: Binding(
                     get: { languages.first ?? "" },
@@ -24,7 +24,7 @@ struct VoiceInputLanguagesSection: View {
                         Button {
                             languages = []
                         } label: {
-                            choice("Automatic", selected: languages.isEmpty)
+                            choice(String(localized: "Automatic"), selected: languages.isEmpty)
                         }
                         ForEach(VoiceInputLanguage.choices(for: preset), id: \.self) { code in
                             Button {
@@ -56,7 +56,8 @@ struct VoiceInputLanguagesSection: View {
     }
 
     private var languageSummary: String {
-        languages.isEmpty ? "Automatic" : languages.map(VoiceInputLanguage.name).joined(separator: ", ")
+        languages.isEmpty
+            ? String(localized: "Automatic") : languages.map(VoiceInputLanguage.name).joined(separator: ", ")
     }
 
     private func choice(_ title: String, selected: Bool) -> some View {
@@ -84,7 +85,7 @@ struct VoiceInputCustomFieldsSection: View {
                         Text(field.values.joined(separator: ", "))
                             .lineLimit(1)
                     } label: {
-                        Text(field.name.isEmpty ? "New Field" : field.name)
+                        Text(field.name.isEmpty ? String(localized: "New Field") : field.name)
                             .font(.body.monospaced())
                     }
                 }
@@ -96,9 +97,7 @@ struct VoiceInputCustomFieldsSection: View {
         } header: {
             Text("Advanced Request Fields")
         } footer: {
-            Text("Use the service's exact form field names, such as language or languages[]. "
-                + "Multiple values repeat that name. These fields override Prompt and the default response_format=json. "
-                + "File and model cannot be changed here. Use API Key for authentication.")
+            Text(String(localized: "Use the service's exact form field names, such as language or languages[]. Multiple values repeat that name. These fields override Prompt and the default response_format=json. File and model cannot be changed here. Use API Key for authentication."))
         }
     }
 }

@@ -65,7 +65,8 @@ struct HostRoute: Identifiable, Codable, Hashable, Sendable {
         var summary = endpointDescription
         if usesJumpHost {
             let jump = jumpAddress.trimmingCharacters(in: .whitespaces)
-            summary += " via \(jumpPort == 22 ? jump : "\(jump):\(jumpPort)")"
+            let jumpEndpoint = jumpPort == 22 ? jump : "\(jump):\(jumpPort)"
+            summary = String(localized: "\(summary) via \(jumpEndpoint)")
         }
         if let overlayNetworkID {
             summary += " · \(networkName(overlayNetworkID))"
@@ -96,8 +97,7 @@ enum ServerKind: String, Codable, Hashable, Sendable {
         case .herdrTUI:
             let name = value.trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty, !HerdrSessionName.isValid(name) else { return nil }
-            return "herdr refuses the session name \"\(name)\". Its names use letters, digits, "
-                + "\".\", \"_\" and \"-\", up to \(HerdrSessionName.maximumUTF8Length) bytes."
+            return String(localized: "herdr refuses the session name \"\(name)\". Its names use letters, digits, \".\", \"_\" and \"-\", up to \(HerdrSessionName.maximumUTF8Length) bytes.")
         case .herdrCore:
             return HerdrCoreSessionName.refusal(value)
         case .unconfirmed:
@@ -114,9 +114,9 @@ enum ServerKind: String, Codable, Hashable, Sendable {
 
     var displayName: String {
         switch self {
-        case .herdrTUI: "Herdr TUI"
+        case .herdrTUI: String(localized: "Herdr TUI")
         case .herdrCore: "herdr-core"
-        case .unconfirmed: "Not confirmed"
+        case .unconfirmed: String(localized: "Not confirmed")
         }
     }
 }
@@ -352,7 +352,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// could show one that did not answer; the line names the routes instead.
     var connectionSummary: String {
         guard routes.count == 1 else {
-            return "\(username) · \(routes.count) routes"
+            return String(localized: "\(username) · \(routes.count) routes")
         }
         return port == 22 ? "\(username)@\(address)" : "\(username)@\(address):\(port)"
     }

@@ -167,33 +167,33 @@ extension HostServices {
     /// Transports without Host files decline Chat outright, never with a
     /// link-failure error that would make the Host reconnect.
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     func hostHomeDirectory() async throws -> String {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     func listDirectories(at path: String) async throws -> RemoteDirectoryListing {
-        throw TransportError.hostFeatureUnavailable(feature: "Browsing directories")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Browsing directories"))
     }
 
     func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     func hostPlatform() async throws -> HostPlatform { .posix }
 
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
-        throw TransportError.hostFeatureUnavailable(feature: "Process facts")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Process facts"))
     }
 
     /// A transport without Host commands cannot list an untracked directory.
@@ -226,14 +226,14 @@ extension HostServices {
 
     /// A transport without Host files writes nothing, and says so.
     func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
-        throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
     }
 
     func createHostFolder(path: String) async throws {
-        throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
     }
 
     func removeEmptyHostFolder(path: String) async throws {
-        throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
     }
 }

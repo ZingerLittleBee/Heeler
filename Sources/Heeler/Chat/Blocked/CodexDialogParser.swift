@@ -117,18 +117,18 @@ private struct CodexDialogReader {
 
     private func readApproval(footer: ClosedRange<Int>) -> DialogParseResult {
         guard let optionRange = blockAbove(footer.lowerBound) else {
-            return unrecognized(top: nil, end: footer.upperBound, footer: footer, "The approval's options are not on screen.")
+            return unrecognized(top: nil, end: footer.upperBound, footer: footer, String(localized: "The approval's options are not on screen."))
         }
         let drafts = readOptions(in: optionRange, isQuestion: false)
         guard let title = titleAbove(optionRange.lowerBound) else {
             return unrecognized(
-                top: nil, end: footer.upperBound, footer: footer, "The top of the approval is off screen.")
+                top: nil, end: footer.upperBound, footer: footer, String(localized: "The top of the approval is off screen."))
         }
         let top = title.rows.lowerBound
         func fail(_ reason: String) -> DialogParseResult {
             unrecognized(top: top, end: footer.upperBound, footer: footer, reason)
         }
-        guard let drafts else { return fail("The approval's options could not be read.") }
+        guard let drafts else { return fail(String(localized: "The approval's options could not be read.")) }
 
         let kind: BlockedDialogKind
         var subject = DialogSubject()
@@ -141,14 +141,14 @@ private struct CodexDialogReader {
             kind = .codexNetwork
             subject.host = text.split(separator: "\"").dropFirst().first.map(String.init)
         default:
-            return fail("Heeler does not know the approval \u{201C}\(title.text)\u{201D}.")
+            return fail(String(localized: "Heeler does not know the approval \u{201C}\(title.text)\u{201D}."))
         }
 
         var options: [DialogOption] = []
         for (index, draft) in drafts.enumerated() {
             let (label, shortcut) = DialogRowScanner.splitShortcut(draft.label)
             guard let role = DialogRowScanner.permissionRole(for: label, shortcut: shortcut) else {
-                return fail("Option \(draft.number) reads \u{201C}\(label)\u{201D}, which is not a label Heeler knows.")
+                return fail(String(localized: "Option \(draft.number) reads \u{201C}\(label)\u{201D}, which is not a label Heeler knows."))
             }
             options.append(
                 DialogOption(
@@ -156,7 +156,7 @@ private struct CodexDialogReader {
                     isFocused: draft.isFocused))
         }
         guard options.contains(where: { $0.role == .decline }), options.contains(where: { $0.role != .decline })
-        else { return fail("The approval lacks a Yes or a No option.") }
+        else { return fail(String(localized: "The approval lacks a Yes or a No option.")) }
 
         let entries = headerEntries(in: (title.rows.upperBound)..<optionRange.lowerBound)
         for entry in entries {
@@ -187,10 +187,10 @@ private struct CodexDialogReader {
         let titleEnd = (headerRow + 1..<footer.lowerBound).first { rows[$0].isBlank } ?? footer.lowerBound
         let title = joinRows(Array(rows[(headerRow + 1)..<titleEnd]))
         guard !title.isEmpty, let optionStart = (titleEnd..<footer.lowerBound).first(where: { !rows[$0].isBlank })
-        else { return fail("The question's options are not on screen.") }
+        else { return fail(String(localized: "The question's options are not on screen.")) }
         let optionEnd = (optionStart..<footer.lowerBound).first { rows[$0].isBlank } ?? footer.lowerBound
         guard let drafts = readOptions(in: optionStart...(optionEnd - 1), isQuestion: true) else {
-            return fail("The question's options could not be read.")
+            return fail(String(localized: "The question's options could not be read."))
         }
 
         // A notes field opens between the options and the footer on Tab
@@ -203,7 +203,7 @@ private struct CodexDialogReader {
             let row = rows[index]
             let indent = row.indent ?? 0
             if let previous = lastNotesRow {
-                guard indent > notesIndent else { return fail("Rows between the options and the footer are unknown.") }
+                guard indent > notesIndent else { return fail(String(localized: "Rows between the options and the footer are unknown.")) }
                 notes = DialogRowScanner.join(
                     notes ?? "", row.trimmedText, wrap: .codex, previousRow: previous, columns: columns,
                     boxColumn: indent)
@@ -211,7 +211,7 @@ private struct CodexDialogReader {
                 continue
             }
             guard row.trimmedText.hasPrefix("›") else {
-                return fail("Rows between the options and the footer are unknown.")
+                return fail(String(localized: "Rows between the options and the footer are unknown."))
             }
             notesIndent = indent
             lastNotesRow = row
@@ -227,7 +227,7 @@ private struct CodexDialogReader {
                 role: draft.label == "None of the above" ? .otherText : .answer, isFocused: draft.isFocused)
         }
         guard options.contains(where: { $0.role == .answer }) else {
-            return fail("The question has no answers Heeler can read.")
+            return fail(String(localized: "The question has no answers Heeler can read."))
         }
         var subject = DialogSubject()
         subject.question = title
@@ -239,7 +239,7 @@ private struct CodexDialogReader {
     private func readAsyncQuestion(footer: ClosedRange<Int>) -> DialogParseResult {
         guard let optionRange = blockAbove(footer.lowerBound), let titleBlock = blockAbove(optionRange.lowerBound)
         else {
-            return unrecognized(top: nil, end: footer.upperBound, footer: footer, "The question is not on screen.")
+            return unrecognized(top: nil, end: footer.upperBound, footer: footer, String(localized: "The question is not on screen."))
         }
         let top = titleBlock.lowerBound
         func fail(_ reason: String) -> DialogParseResult {
@@ -255,12 +255,12 @@ private struct CodexDialogReader {
             } else if row.visibleRuns.allSatisfy(\.style.isBold) {
                 titleRows.append(row)
             } else {
-                return fail("The question's title could not be read.")
+                return fail(String(localized: "The question's title could not be read."))
             }
         }
         let title = joinRows(titleRows)
         guard !title.isEmpty, let drafts = readOptions(in: optionRange, isQuestion: false) else {
-            return fail("The question's options could not be read.")
+            return fail(String(localized: "The question's options could not be read."))
         }
         let options = drafts.enumerated().map { index, draft in
             DialogOption(
@@ -291,7 +291,7 @@ private struct CodexDialogReader {
             unrecognized(top: titleRow, end: footer.upperBound, footer: footer, reason)
         }
         guard let drafts = readOptions(in: optionRange, isQuestion: false), drafts.count == 2 else {
-            return fail("The trust screen's options could not be read.")
+            return fail(String(localized: "The trust screen's options could not be read."))
         }
         var options: [DialogOption] = []
         for (index, draft) in drafts.enumerated() {
@@ -301,7 +301,7 @@ private struct CodexDialogReader {
             case "Quit": role = .exitProgram
             case "Back to Agent Command Center": role = .decline
             default:
-                return fail("The trust screen offers \u{201C}\(draft.label)\u{201D}, which Heeler does not know.")
+                return fail(String(localized: "The trust screen offers \u{201C}\(draft.label)\u{201D}, which Heeler does not know."))
             }
             options.append(
                 DialogOption(
@@ -309,7 +309,7 @@ private struct CodexDialogReader {
                     isFocused: draft.isFocused))
         }
         guard options.contains(where: { $0.role == .trust }), options.contains(where: { $0.role != .trust }) else {
-            return fail("The trust screen's options are not a Trust and a Quit.")
+            return fail(String(localized: "The trust screen's options are not a Trust and a Quit."))
         }
 
         // Paragraphs split where their rows turn dim or back: the folder
@@ -340,10 +340,10 @@ private struct CodexDialogReader {
         flush()
 
         guard let folder = segments.first, folder.isDim else {
-            return fail("The trust screen's folder is not on screen.")
+            return fail(String(localized: "The trust screen's folder is not on screen."))
         }
         guard segments.contains(where: { !$0.isDim && $0.text.hasPrefix("Trust this folder?") }) else {
-            return fail("The trust screen's question is not on screen.")
+            return fail(String(localized: "The trust screen's question is not on screen."))
         }
         var subject = DialogSubject()
         subject.workspacePath = folder.text
@@ -393,7 +393,7 @@ private struct CodexDialogReader {
             rows[index].isBlank && (index == 0 || rows[index - 1].isBlank)
         }.map { $0 + 1 } ?? min(pointed.rowIndex, max(0, footer.upperBound - 16))
         return unrecognized(
-            top: top, end: footer.upperBound, footer: footer, "Heeler does not know this list.")
+            top: top, end: footer.upperBound, footer: footer, String(localized: "Heeler does not know this list."))
     }
 
     // MARK: Options

@@ -10,17 +10,17 @@ struct LiveInAnotherWindowPresentation: Equatable {
     /// be handed over without losing it.
     let showsTakeOver: Bool
 
-    static let takeOverTitle = "Take Over Here"
+    static let takeOverTitle = String(localized: "Take Over Here")
 
     /// Nil while this window holds the channel.
     init?(access: HostTerminalAccess) {
         guard case .liveInAnotherWindow(let canTakeOver) = access else { return nil }
-        title = "Live in Another Window"
+        title = String(localized: "Live in Another Window")
         systemImage = "rectangle.on.rectangle"
         showsTakeOver = canTakeOver
         message =
             canTakeOver
-            ? "This Host's terminal is open in another Heeler window, and input continues there."
-            : "A Shell Terminal on this Host is open in another Heeler window, and input continues there. Close it to use the terminal here."
+            ? String(localized: "This Host's terminal is open in another Heeler window, and input continues there.")
+            : String(localized: "A Shell Terminal on this Host is open in another Heeler window, and input continues there. Close it to use the terminal here.")
     }
 }

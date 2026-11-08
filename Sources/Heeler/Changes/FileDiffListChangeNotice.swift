@@ -15,8 +15,8 @@ struct FileDiffListChangeNotice: View {
                 VStack(alignment: .leading, spacing: 4) {
                     if let change {
                         Text(change == .changed
-                            ? "This file changed since this diff was read."
-                            : "This file is no longer in Changes.")
+                            ? String(localized: "This file changed since this diff was read.")
+                            : String(localized: "This file is no longer in Changes."))
                     }
                     Text(ChangesFreshness.readTime(readAt, relativeTo: context.date, locale: locale))
                         .foregroundStyle(.secondary)

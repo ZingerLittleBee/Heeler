@@ -74,8 +74,7 @@ struct ChatCacheSettingsSection: View {
             Text("Chat")
         } footer: {
             Text(
-                "Recent Chat messages stay on this device for up to 30 days, within 300 MB. "
-                    + "Removing a Host deletes its messages.")
+                String(localized: "Recent Chat messages stay on this device for up to 30 days, within 300 MB. Removing a Host deletes its messages."))
         }
         .task { await model.refresh() }
     }

@@ -50,17 +50,17 @@ struct ComposerVoiceButton: View {
 
     private var accessibilityValue: String {
         switch voice.phase {
-        case .starting: "Starting"
-        case .recording: "Recording"
-        case .transcribing: "Transcribing"
+        case .starting: String(localized: "Starting")
+        case .recording: String(localized: "Recording")
+        case .transcribing: String(localized: "Transcribing")
         case .idle, .failed: ""
         }
     }
 
     private var accessibilityHint: String {
         switch voice.phase {
-        case .idle, .failed: "Records speech and adds its text to the draft"
-        case .recording: "Stops recording and adds its text to the draft"
+        case .idle, .failed: String(localized: "Records speech and adds its text to the draft")
+        case .recording: String(localized: "Stops recording and adds its text to the draft")
         case .starting, .transcribing: ""
         }
     }

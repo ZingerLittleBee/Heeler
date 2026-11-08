@@ -205,7 +205,7 @@ struct HostHelperInstaller: Sendable {
         if layout.manager == .launchd { record.launchAgentLabel = HostHelperLaunchAgent.label }
         do {
             try await write(
-                try Self.encoded(record), to: layout.record, in: layout.directory, step: "Writing the install record")
+                try Self.encoded(record), to: layout.record, in: layout.directory, step: String(localized: "Writing the install record"))
         } catch {
             await takeBack(created)
             throw error
@@ -225,11 +225,11 @@ struct HostHelperInstaller: Sendable {
             }
         }
         for file in plan.extensionFiles {
-            try await write(extensionText, to: file, in: nil, step: "Placing the Pi and Oh My Pi extensions")
+            try await write(extensionText, to: file, in: nil, step: String(localized: "Placing the Pi and Oh My Pi extensions"))
         }
         switch layout.manager {
         case .systemd:
-            try await write(Data(plan.unitText.utf8), to: layout.unit, in: nil, step: "Writing the service unit")
+            try await write(Data(plan.unitText.utf8), to: layout.unit, in: nil, step: String(localized: "Writing the service unit"))
             try await startService()
         case .launchd:
             try await startLaunchAgent(plan)
@@ -263,9 +263,9 @@ struct HostHelperInstaller: Sendable {
         case .systemd:
             // No user manager means nothing runs, and nothing can be asked to stop.
             if let health = probe.health, health.isLoaded {
-                try await systemctl(["disable", "--now", HostHelperScript.unitName], step: "Stopping the service")
+                try await systemctl(["disable", "--now", HostHelperScript.unitName], step: String(localized: "Stopping the service"))
             }
-            try await check(.removeFiles(record.safeFiles), step: "Deleting the files")
+            try await check(.removeFiles(record.safeFiles), step: String(localized: "Deleting the files"))
             if probe.health != nil {
                 _ = try await run(.systemctl(["daemon-reload"]))
                 _ = try await run(.systemctl(["reset-failed", HostHelperScript.unitName]))
@@ -277,16 +277,16 @@ struct HostHelperInstaller: Sendable {
                 .bootOutAndRemove(
                     service: "\(HostHelperLaunchAgent.domain(uid: probe.uid))/\(label)",
                     propertyList: layout.launchAgent))
-            try await check(.removeFiles(record.safeFiles), step: "Deleting the files")
+            try await check(.removeFiles(record.safeFiles), step: String(localized: "Deleting the files"))
         }
         let folders = record.safeFolders.sorted(by: Self.deepestFirst)
         try await check(
-            .removeEmptyFolders(folders.filter { !layout.holdsDirectory($0) }), step: "Deleting the folders")
+            .removeEmptyFolders(folders.filter { !layout.holdsDirectory($0) }), step: String(localized: "Deleting the folders"))
         try await undoingEdits()
-        try await check(.removeTree(layout.directory), step: "Deleting the Host Helper directory")
+        try await check(.removeTree(layout.directory), step: String(localized: "Deleting the Host Helper directory"))
         // Those above the Helper directory only empty once it has gone.
         try await check(
-            .removeEmptyFolders(folders.filter { layout.holdsDirectory($0) }), step: "Deleting the folders")
+            .removeEmptyFolders(folders.filter { layout.holdsDirectory($0) }), step: String(localized: "Deleting the folders"))
     }
 
     /// Asks once and never waits for a password: a Host that wants an
@@ -311,7 +311,7 @@ struct HostHelperInstaller: Sendable {
             .map { String($0.dropFirst("created ".count)) }
         guard result.exitStatus == 0 else {
             await takeBack(created)
-            throw HostHelperError.stepFailed(step: "Creating the folders", detail: Self.detail(of: result))
+            throw HostHelperError.stepFailed(step: String(localized: "Creating the folders"), detail: Self.detail(of: result))
         }
         guard lines != nil else { throw HostHelperError.unreadableHost }
         return created
@@ -360,15 +360,15 @@ struct HostHelperInstaller: Sendable {
             .prepareStaging(
                 directory: layout.directory, staging: staging,
                 folders: bundle.folders.map { "\(staging)/\($0)" }),
-            step: "Preparing the upload")
+            step: String(localized: "Preparing the upload"))
         do {
             for file in bundle.manifest.files {
                 guard let contents = bundle.files[file.path] else { throw HostHelperError.bundleUnavailable }
-                try await write(contents, to: "\(staging)/\(file.path)", in: nil, step: "Uploading the Host Helper")
+                try await write(contents, to: "\(staging)/\(file.path)", in: nil, step: String(localized: "Uploading the Host Helper"))
             }
             try await write(
                 bundle.manifestData, to: "\(staging)/\(HostHelperScript.manifestFileName)", in: nil,
-                step: "Uploading the Host Helper")
+                step: String(localized: "Uploading the Host Helper"))
             let script = HostHelperScript(.hashTree(root: staging), nonce: nonce())
             let result = try await host.runHostHelperScript(script)
             let hashes: [String: String]?
@@ -384,7 +384,7 @@ struct HostHelperInstaller: Sendable {
             _ = try? await run(.removeTree(staging))
             throw error
         }
-        try await check(.promote(staging: staging, app: layout.app), step: "Putting the Host Helper in place")
+        try await check(.promote(staging: staging, app: layout.app), step: String(localized: "Putting the Host Helper in place"))
     }
 
     /// A process goes on running the code it loaded, and the next read would call
@@ -395,18 +395,18 @@ struct HostHelperInstaller: Sendable {
         guard reading.probe?.health?.isLoaded == true else { return }
         switch plan.layout.manager {
         case .systemd:
-            try await systemctl(["stop", HostHelperScript.unitName], step: "Stopping the service")
+            try await systemctl(["stop", HostHelperScript.unitName], step: String(localized: "Stopping the service"))
         case .launchd:
             try await checkBootOut(.launchctl(["bootout", HostHelperLaunchAgent.service(uid: plan.uid)]))
         }
     }
 
     private func startService() async throws {
-        try await systemctl(["daemon-reload"], step: "Reloading systemd")
+        try await systemctl(["daemon-reload"], step: String(localized: "Reloading systemd"))
         // A unit that failed for good refuses to start until this clears it.
         _ = try await run(.systemctl(["reset-failed", HostHelperScript.unitName]))
-        try await systemctl(["enable", HostHelperScript.unitName], step: "Enabling the service")
-        try await systemctl(["restart", HostHelperScript.unitName], step: "Starting the service")
+        try await systemctl(["enable", HostHelperScript.unitName], step: String(localized: "Enabling the service"))
+        try await systemctl(["restart", HostHelperScript.unitName], step: String(localized: "Starting the service"))
     }
 
     /// The property list with the Node.js the Host has now, and an empty log
@@ -417,23 +417,23 @@ struct HostHelperInstaller: Sendable {
     /// the `bootstrap`'s answer.
     private func startLaunchAgent(_ plan: HostHelperInstallPlan) async throws {
         let layout = plan.layout
-        try await write(Data(), to: layout.log, in: layout.directory, step: "Creating the log")
+        try await write(Data(), to: layout.log, in: layout.directory, step: String(localized: "Creating the log"))
         let list: Data
         do {
             list = try plan.launchAgentPropertyList()
         } catch {
-            throw HostHelperError.stepFailed(step: "Writing the property list", detail: "\(error)")
+            throw HostHelperError.stepFailed(step: String(localized: "Writing the property list"), detail: "\(error)")
         }
-        try await write(list, to: layout.launchAgent, in: nil, step: "Writing the property list")
+        try await write(list, to: layout.launchAgent, in: nil, step: String(localized: "Writing the property list"))
         _ = try await run(.launchctl(["bootout", HostHelperLaunchAgent.service(uid: plan.uid)]))
         let result = try await run(
             .launchctl(["bootstrap", HostHelperLaunchAgent.domain(uid: plan.uid), layout.launchAgent]))
         guard result.exitStatus == 0 else {
             var detail = Self.detail(of: result)
             if result.exitStatus == Self.bootstrapRefused {
-                detail += " launchd answers this for more than one cause, such as another copy already loaded."
+                detail += String(localized: " launchd answers this for more than one cause, such as another copy already loaded.")
             }
-            throw HostHelperError.stepFailed(step: "Starting the service", detail: detail)
+            throw HostHelperError.stepFailed(step: String(localized: "Starting the service"), detail: detail)
         }
     }
 
@@ -443,7 +443,7 @@ struct HostHelperInstaller: Sendable {
     private func checkBootOut(_ step: HostHelperScript.Step) async throws {
         let result = try await run(step)
         guard HostHelperLaunchAgent.bootoutDone.contains(result.exitStatus) else {
-            throw HostHelperError.stepFailed(step: "Stopping the service", detail: Self.detail(of: result))
+            throw HostHelperError.stepFailed(step: String(localized: "Stopping the service"), detail: Self.detail(of: result))
         }
     }
 

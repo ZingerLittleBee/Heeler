@@ -357,7 +357,7 @@ struct AgentCardPresentation: Equatable, Sendable {
     /// Agent as its kind word would.
     let isMarked: Bool
 
-    var headline: String { rows.first?.map(\.text).joined() ?? "Agent" }
+    var headline: String { rows.first?.map(\.text).joined() ?? String(localized: "Agent") }
     var additionalRows: [String] { rows.dropFirst().map { $0.map(\.text).joined() } }
 
     /// `leadsWithMark` for an Agents list row, which leads with the
@@ -381,7 +381,7 @@ struct AgentCardPresentation: Equatable, Sendable {
             let name = agent.agent.displayName
             rows = [[RenderedToken(
                 token: .agent,
-                text: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Agent" : name,
+                text: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? String(localized: "Agent") : name,
                 fg: nil, bold: nil, dim: nil)]]
             slots = [0]
         } else {

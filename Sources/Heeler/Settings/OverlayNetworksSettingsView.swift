@@ -60,9 +60,7 @@ struct OverlayNetworksSettingsView: View {
                     }
                 } footer: {
                     Text(
-                        "Hosts connect their network on their own; the switch keeps one "
-                            + "connected. Heeler joins without turning on a VPN, and a network "
-                            + "stays connected only while Heeler is open.")
+                        String(localized: "Hosts connect their network on their own; the switch keeps one connected. Heeler joins without turning on a VPN, and a network stays connected only while Heeler is open."))
                 }
             }
         }
@@ -78,7 +76,7 @@ struct OverlayNetworksSettingsView: View {
             }
         }
         .confirmationDialog(
-            pendingDeletion.map { "Delete \($0.displayName)?" } ?? "",
+            pendingDeletion.map { String(localized: "Delete \($0.displayName)?") } ?? "",
             isPresented: Binding(
                 get: { pendingDeletion != nil },
                 set: { if !$0 { pendingDeletion = nil } }),
@@ -131,8 +129,7 @@ struct OverlayNetworksSettingsView: View {
                 Label("No Networks", systemImage: OverlayKind.glyphSymbol)
             } description: {
                 Text(
-                    "Reach a Mac outside your local network through Tailscale, ZeroTier, or "
-                        + "EasyTier. Heeler joins on its own, without a VPN.")
+                    String(localized: "Reach a Mac outside your local network through Tailscale, ZeroTier, or EasyTier. Heeler joins on its own, without a VPN."))
             } actions: {
                 Button("Add Network") { isAdding = true }
                     .buttonStyle(.bordered)
@@ -147,7 +144,7 @@ struct OverlayNetworksSettingsView: View {
             try store.remove(network.id)
         } catch {
             deleteError = (error as? OverlayNetworkStoreError)?.message
-                ?? "The network could not be deleted."
+                ?? String(localized: "The network could not be deleted.")
         }
     }
 }
@@ -213,14 +210,14 @@ struct OverlayNetworkControlView: View {
             }
         case .connecting:
             OverlayActivityButton(
-                title: "Cancel", isLoading: true,
-                accessibilityLabel: "Cancel connecting \(network.displayName)"
+                title: String(localized: "Cancel"), isLoading: true,
+                accessibilityLabel: String(localized: "Cancel connecting \(network.displayName)")
             ) {
                 if let onCancel { onCancel() } else { store.cancelConnect(id) }
             }
             .fixedSize()
         case .signingOut:
-            OverlayActivityButton(title: "Signing Out", isLoading: true) {}
+            OverlayActivityButton(title: String(localized: "Signing Out"), isLoading: true) {}
                 .fixedSize()
                 .disabled(true)
         case .toggle(let isOn):
@@ -239,7 +236,7 @@ struct OverlayNetworkControlView: View {
                     })
             )
             .labelsHidden()
-            .accessibilityHint(isOn ? "Disconnects the network" : "Connects the network")
+            .accessibilityHint(isOn ? String(localized: "Disconnects the network") : String(localized: "Connects the network"))
         }
     }
 }
@@ -303,36 +300,37 @@ struct OverlayNetworkHeadline: Equatable {
         if network.kind == .tailscale, case .waiting = status {
             isAwaitingApproval = true
         }
-        let deviceName = network.deviceName ?? "this device"
 
         if store.signingOut.contains(id) {
-            title = "Signing out…"
-            subtitle = "Leaving the tailnet"
+            title = String(localized: "Signing out…")
+            subtitle = String(localized: "Leaving the tailnet")
             rowSummary = title
         } else if isStartingSignIn {
-            title = "Preparing sign-in…"
-            subtitle = "Your browser opens when it is ready."
+            title = String(localized: "Preparing sign-in…")
+            subtitle = String(localized: "Your browser opens when it is ready.")
             rowSummary = title
         } else if let waitReason, waitReason != .configServerConnection {
             // Shown while a Connect still runs, too: the wait is for
             // someone else, and the step it needs is known already.
             switch waitReason {
             case .zeroTierAuthorization:
-                title = "Waiting for authorization"
-                subtitle = "An admin must authorize this device on \(network.zeroTierNetworkID ?? "the network")."
+                title = String(localized: "Waiting for authorization")
+                subtitle = network.zeroTierNetworkID.map {
+                    String(localized: "An admin must authorize this device on \($0).")
+                } ?? String(localized: "An admin must authorize this device on the network.")
             case .configServerAssignment, .configServerConnection:
-                title = "Waiting for a network"
-                subtitle = "Assign one to this device in the EasyTier console."
+                title = String(localized: "Waiting for a network")
+                subtitle = String(localized: "Assign one to this device in the EasyTier console.")
             }
             rowSummary = title
             symbol = "hourglass"
             tone = .attention
         } else if store.connecting.contains(id) || status == .starting || waitReason != nil {
-            title = "Connecting…"
+            title = String(localized: "Connecting…")
             if let server = network.configServerHost {
                 subtitle = server
             } else {
-                subtitle = network.deviceName.map { "Joining as \($0)" }
+                subtitle = network.deviceName.map { String(localized: "Joining as \($0)") }
             }
             rowSummary = title
             if waitReason != nil {
@@ -341,19 +339,22 @@ struct OverlayNetworkHeadline: Equatable {
                 tone = .busy
             }
         } else if isAwaitingApproval {
-            title = "Waiting for approval"
-            subtitle = "An admin must approve \(deviceName) before it joins."
+            title = String(localized: "Waiting for approval")
+            subtitle = network.deviceName.map {
+                String(localized: "An admin must approve \($0) before it joins.")
+            } ?? String(localized: "An admin must approve this device before it joins.")
             rowSummary = title
             symbol = "hourglass"
             tone = .attention
         } else if needsSignIn {
             if signedOut {
-                title = "Signed out"
+                title = String(localized: "Signed out")
                 subtitle =
-                    "Hosts on \(network.displayName) stay disconnected until you sign in again."
+                    String(localized: "Hosts on \(network.displayName) stay disconnected until you sign in again.")
             } else {
-                title = "Sign in to \(network.tailscaleControlURL?.host() ?? "Tailscale")"
-                subtitle = "Use the account your Mac is signed in with."
+                let server = network.tailscaleControlURL?.host() ?? "Tailscale"
+                title = String(localized: "Sign in to \(server)")
+                subtitle = String(localized: "Use the account your Mac is signed in with.")
             }
             rowSummary = summary
         } else {
@@ -361,21 +362,22 @@ struct OverlayNetworkHeadline: Equatable {
             title = summary
             subtitle = OverlayStatusCopy.explanation(status, failure: failure)
                 ?? peers.flatMap { OverlayStatusCopy.peerCount($0, kind: network.kind) }
-                ?? (status == .stopped && failure == nil ? "Connects when a Host needs it." : nil)
+                ?? (status == .stopped && failure == nil ? String(localized: "Connects when a Host needs it.") : nil)
             rowSummary = peers
                 .flatMap { OverlayStatusCopy.shortPeerCount($0, kind: network.kind) }
                 .map { "\(summary) · \($0)" } ?? summary
             let assigned = status.isOnline ? store.details[id]?.assignedNetworks ?? [] : []
             let refused = assigned.filter { $0.error != nil }
             if !refused.isEmpty {
-                title = "\(assigned.count - refused.count) of \(assigned.count) networks running"
+                title = String(localized: "\(assigned.count - refused.count) of \(assigned.count) networks running")
                 let names = refused.map(OverlayStatusCopy.assignedNetworkName).formatted(.list(type: .and))
-                subtitle = "\(names) can't run here."
+                subtitle = String(localized: "\(names) can't run here.")
                 rowSummary = title
                 symbol = "exclamationmark"
                 tone = .attention
             } else if assigned.count > 1 {
-                subtitle = ["\(assigned.count) networks", subtitle].compactMap { $0 }.joined(separator: " · ")
+                subtitle = [String(localized: "\(assigned.count) networks"), subtitle].compactMap { $0 }
+                    .joined(separator: " · ")
             }
         }
     }
@@ -439,7 +441,7 @@ extension OverlayNetwork {
 /// Wording the list and a network's screen share.
 enum OverlayNetworkCopy {
     static let deleteMessage =
-        "Hosts that use this network stop connecting until you choose another network for them."
+        String(localized: "Hosts that use this network stop connecting until you choose another network for them.")
 }
 
 extension OverlayNodeStatus {
@@ -542,12 +544,9 @@ enum OverlayStatusCopy {
     /// roots are infrastructure, not peers.
     static func peerCount(_ peers: [OverlayPeer], kind: OverlayKind) -> String? {
         let members = members(peers, kind: kind)
-        guard !members.isEmpty else {
-            return "No other \(peerNoun(2, kind: kind)) yet"
-        }
-        let noun = peerNoun(members.count, kind: kind)
-        guard let online = onlineCount(members) else { return "\(members.count) \(noun)" }
-        return "\(online) of \(members.count) \(noun) online"
+        guard !members.isEmpty else { return noOtherPeers(kind: kind) }
+        guard let online = onlineCount(members) else { return peerTotal(members.count, kind: kind) }
+        return onlinePeers(online, of: members.count, kind: kind)
     }
 
     /// `peerCount` for a row beside "Connected": "2 of 9 online"; nil
@@ -555,10 +554,8 @@ enum OverlayStatusCopy {
     static func shortPeerCount(_ peers: [OverlayPeer], kind: OverlayKind) -> String? {
         let members = members(peers, kind: kind)
         guard !members.isEmpty else { return nil }
-        guard let online = onlineCount(members) else {
-            return "\(members.count) \(peerNoun(members.count, kind: kind))"
-        }
-        return "\(online) of \(members.count) online"
+        guard let online = onlineCount(members) else { return peerTotal(members.count, kind: kind) }
+        return String(localized: "\(online) of \(members.count) online")
     }
 
     private static func members(_ peers: [OverlayPeer], kind: OverlayKind) -> [OverlayPeer] {
@@ -577,13 +574,38 @@ enum OverlayStatusCopy {
         return peer.addresses.filter { seen.insert($0).inserted }
     }
 
-    private static func peerNoun(_ count: Int, kind: OverlayKind) -> String {
-        let noun = switch kind {
-        case .tailscale: "machine"
-        case .zerotier: "member"
-        case .easytier: "peer"
+    // What the overlay calls its peers (a tailnet's machines, a ZeroTier
+    // network's members, EasyTier's peers), in whole phrases per kind and
+    // count so a translation never takes the noun on its own.
+
+    private static func noOtherPeers(kind: OverlayKind) -> String {
+        switch kind {
+        case .tailscale: String(localized: "No other machines yet")
+        case .zerotier: String(localized: "No other members yet")
+        case .easytier: String(localized: "No other peers yet")
         }
-        return count == 1 ? noun : noun + "s"
+    }
+
+    private static func peerTotal(_ count: Int, kind: OverlayKind) -> String {
+        switch (kind, count == 1) {
+        case (.tailscale, true): String(localized: "1 machine")
+        case (.tailscale, false): String(localized: "\(count) machines")
+        case (.zerotier, true): String(localized: "1 member")
+        case (.zerotier, false): String(localized: "\(count) members")
+        case (.easytier, true): String(localized: "1 peer")
+        case (.easytier, false): String(localized: "\(count) peers")
+        }
+    }
+
+    private static func onlinePeers(_ online: Int, of count: Int, kind: OverlayKind) -> String {
+        switch (kind, count == 1) {
+        case (.tailscale, true): String(localized: "\(online) of 1 machine online")
+        case (.tailscale, false): String(localized: "\(online) of \(count) machines online")
+        case (.zerotier, true): String(localized: "\(online) of 1 member online")
+        case (.zerotier, false): String(localized: "\(online) of \(count) members online")
+        case (.easytier, true): String(localized: "\(online) of 1 peer online")
+        case (.easytier, false): String(localized: "\(online) of \(count) peers online")
+        }
     }
 
     /// nil when the overlay does not say who is online.
@@ -601,28 +623,30 @@ enum OverlayStatusCopy {
         needsSignIn: Bool = false
     ) -> String {
         if let failure {
-            guard case .overlayFailed(_, let reason) = failure else { return "Failed" }
+            guard case .overlayFailed(_, let reason) = failure else { return String(localized: "Failed") }
             switch reason {
-            case .notConfigured: return "Removed"
-            case .catalogUnreadable: return "Unreadable"
-            case .misconfigured: return "Misconfigured"
-            case .loginRequired: return "Needs sign-in"
-            case .signedOut: return "Signed out"
-            case .notReady: return "Not ready"
-            case .startFailed: return "Failed"
-            case .unreachable: return "Unreachable"
-            case .timedOut: return "Timed out"
+            case .notConfigured: return String(localized: "Removed")
+            case .catalogUnreadable: return String(localized: "Unreadable")
+            case .misconfigured: return String(localized: "Misconfigured")
+            case .loginRequired: return String(localized: "Needs sign-in")
+            case .signedOut: return String(localized: "Signed out")
+            case .notReady: return String(localized: "Not ready")
+            case .startFailed: return String(localized: "Failed")
+            case .unreachable: return String(localized: "Unreachable")
+            case .timedOut: return String(localized: "Timed out")
             }
         }
         switch status ?? .stopped {
         case .stopped:
-            if signedOut { return "Signed out" }
-            return needsSignIn ? "Not signed in" : "Not connected"
-        case .starting: return "Connecting…"
-        case .needsLogin: return "Needs sign-in"
-        case .waiting: return "Waiting"
-        case .online: return "Connected"
-        case .failed: return "Failed"
+            if signedOut { return String(localized: "Signed out") }
+            return needsSignIn ? String(localized: "Not signed in") : String(localized: "Not connected")
+        case .starting: return String(localized: "Connecting…")
+        case .needsLogin: return String(localized: "Needs sign-in")
+        // Not the Chat approval "Waiting": an overlay waits on an admin's
+        // approval or on a config server to assign it a network.
+        case .waiting: return String(localized: "Waiting to join")
+        case .online: return String(localized: "Connected")
+        case .failed: return String(localized: "Failed")
         }
     }
 
@@ -638,20 +662,21 @@ enum OverlayStatusCopy {
             case .notConfigured, .catalogUnreadable:
                 return failure.presentation.summary
             case .loginRequired:
-                return "Sign in to add this device to the tailnet."
+                return String(localized: "Sign in to add this device to the tailnet.")
             case .signedOut:
-                return "Sign in to add this device to the tailnet again."
+                return String(localized: "Sign in to add this device to the tailnet again.")
+            // The overlay's own detail leads; the advice is one key with it,
+            // so the two never join as pieces localized apart.
             case .notReady(let detail):
-                return sentence(detail) + " If an admin must approve this device, authorize it "
-                    + "in the network's admin console."
+                return String(localized: "\(sentence(detail)) If an admin must approve this device, authorize it in the network's admin console.")
             case .misconfigured(let detail):
-                return sentence(detail) + " Edit the network to fix it."
+                return String(localized: "\(sentence(detail)) Edit the network to fix it.")
             case .startFailed(let detail):
-                return sentence(detail) + " Check the network's settings."
+                return String(localized: "\(sentence(detail)) Check the network's settings.")
             case .unreachable(let detail):
                 return detail
             case .timedOut:
-                return "The network did not answer in time."
+                return String(localized: "The network did not answer in time.")
             }
         }
         switch status ?? .stopped {
@@ -670,10 +695,10 @@ enum OverlayStatusCopy {
     static func peerSummary(_ peer: OverlayPeer) -> String {
         var parts: [String] = []
         if let isOnline = peer.isOnline {
-            parts.append(isOnline ? "Online" : "Offline")
+            parts.append(isOnline ? String(localized: "Online") : String(localized: "Offline"))
         }
         if let isDirect = peer.isDirect {
-            parts.append(isDirect ? "Direct" : "Relayed")
+            parts.append(isDirect ? String(localized: "Direct") : String(localized: "Relayed"))
         }
         if let latency = peer.latency {
             parts.append(latencyText(latency))
@@ -684,10 +709,10 @@ enum OverlayStatusCopy {
     /// How a machine is reached, after its address: "Direct · 12 ms", or
     /// "Offline"; empty when the overlay does not say.
     static func peerReachability(_ peer: OverlayPeer) -> String {
-        if peer.isOnline == false { return "Offline" }
+        if peer.isOnline == false { return String(localized: "Offline") }
         var parts: [String] = []
         if let isDirect = peer.isDirect {
-            parts.append(isDirect ? "Direct" : "Relayed")
+            parts.append(isDirect ? String(localized: "Direct") : String(localized: "Relayed"))
         }
         if let latency = peer.latency {
             parts.append(latencyText(latency))
@@ -705,14 +730,14 @@ enum OverlayStatusCopy {
     static func addressTitle(_ address: String, among addresses: [String]) -> String {
         let isIPv6: (String) -> Bool = { $0.contains(":") }
         guard addresses.contains(where: isIPv6), addresses.contains(where: { !isIPv6($0) }) else {
-            return "Address"
+            return String(localized: "Address")
         }
         return isIPv6(address) ? "IPv6" : "IPv4"
     }
 
     static func latencyText(_ latency: Duration) -> String {
         let milliseconds = latency / .milliseconds(1)
-        return milliseconds < 1 ? "<1 ms" : "\(Int(milliseconds.rounded())) ms"
+        return milliseconds < 1 ? String(localized: "<1 ms") : String(localized: "\(Int(milliseconds.rounded())) ms")
     }
 }
 
@@ -730,7 +755,7 @@ struct OverlayCopyableRow: View {
         Button {
             UIPasteboard.general.string = value
             copied = true
-            AccessibilityNotification.Announcement("Copied").post()
+            AccessibilityNotification.Announcement(String(localized: "Copied")).post()
         } label: {
             LabeledContent {
                 HStack(spacing: 6) {
@@ -765,5 +790,5 @@ struct OverlayCopyableRow: View {
 
 enum ZeroTierNodeIDCopy {
     static let authorizationHint =
-        "On a private network, an admin authorizes this node ID before it can join."
+        String(localized: "On a private network, an admin authorizes this node ID before it can join.")
 }

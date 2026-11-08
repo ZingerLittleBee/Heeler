@@ -53,6 +53,10 @@ Native iOS companion app for [herdr](https://herdr.dev), an agent console over S
   `plugin/test-vectors/` change with their Swift/Node consumers and
   [Live Activity contract](docs/agents/live-activity-contract.md).
 - Swift 6 strict concurrency. No force unwraps or `try!` outside tests.
+- User-visible text is a SwiftUI literal or `String(localized:)` where it is
+  created, and lands with its `ja` catalog entry; text that is matched,
+  persisted, or sent to a program stays a plain literal
+  ([ADR 0041](docs/adr/0041-localize-display-text-where-it-is-created.md)).
 - Private SSH keys stay in the Keychain. Per-Host Notification Keys are copied
   over SSH for encrypted notifications; host-key policy is TOFU with fingerprint
   confirmation. Preserve these boundaries when changing authentication.

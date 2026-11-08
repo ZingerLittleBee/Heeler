@@ -5,7 +5,7 @@ import Foundation
 /// OpenCode's config directory, and that folder added to OpenCode's plugin list.
 enum OpenCodePluginEdit {
     static let id = "opencode.plugin"
-    static let offerTitle = "Let Chat Follow OpenCode…"
+    static let offerTitle = String(localized: "Let Chat Follow OpenCode…")
     static let harness = "OpenCode"
     static let folderName = "heeler-opencode"
     /// Relative to the file that lists it, as OpenCode resolves it in both forms.
@@ -14,26 +14,22 @@ enum OpenCodePluginEdit {
     static let bundleFolder = "extensions/opencode"
     static let fileNames = ["package.json", "index.js", "tui.js"]
 
-    private static let pluginCopy = "with a copy of Heeler's plugin in a folder of that name beside the file"
-
     /// The list and the file are the release's own: under the wrong key the entry
     /// does nothing, and looks as if it did.
     static func manualInstruction(fileName: String, form: ConfigForm) -> String {
-        "Add \"\(entryValue)\" to \(form.listKey) in \(fileName), \(pluginCopy)."
+        String(localized: "Add \"\(entryValue)\" to \(form.listKey) in \(fileName), with a copy of Heeler's plugin in a folder of that name beside the file.")
     }
 
     /// A top-level list flattens over the one inside this section, so the entry has
     /// to go inside it (herdr compatibility, OpenCode 1.19.5).
     static func manualInstruction(fileName: String, form: ConfigForm, inside section: String) -> String {
-        "Add \"\(entryValue)\" to \(form.listKey) inside \(section) in \(fileName), not at the top of the file, "
-            + "where a list would replace the one inside \(section), \(pluginCopy)."
+        String(localized: "Add \"\(entryValue)\" to \(form.listKey) inside \(section) in \(fileName), not at the top of the file, where a list would replace the one inside \(section), with a copy of Heeler's plugin in a folder of that name beside the file.")
     }
 
     /// For an Agent whose release Heeler can't read.
     static var manualInstructionForEitherRelease: String {
         let (tui, cli) = (ConfigForm.tuiConfig, ConfigForm.cliConfig)
-        return "Add \"\(entryValue)\" to \(tui.listKey) in \(tui.fileNames[0]) on OpenCode 1.x, "
-            + "or to \(cli.listKey) in \(cli.fileNames[0]) on 2.x, \(pluginCopy)."
+        return String(localized: "Add \"\(entryValue)\" to \(tui.listKey) in \(tui.fileNames[0]) on OpenCode 1.x, or to \(cli.listKey) in \(cli.fileNames[0]) on 2.x, with a copy of Heeler's plugin in a folder of that name beside the file.")
     }
 
     /// Where a release of OpenCode lists its TUI plugins (herdr compatibility,
@@ -145,9 +141,9 @@ enum OpenCodePluginEdit {
     }
 
     private static let unreadableReason =
-        "Heeler can't read this file with certainty, so it won't change it."
+        String(localized: "Heeler can't read this file with certainty, so it won't change it.")
     private static let notAListReason =
-        "This file sets OpenCode's plugin list in a form Heeler won't change."
+        String(localized: "This file sets OpenCode's plugin list in a form Heeler won't change.")
 
     static func transform(
         form: ConfigForm, folderPath: String, fileName: String

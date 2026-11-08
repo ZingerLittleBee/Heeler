@@ -253,10 +253,11 @@ struct AgentSessionSettings: Equatable, Sendable {
         return family.prefix(1).uppercased() + family.dropFirst() + (version.isEmpty ? "" : " " + version)
     }
 
-    /// Short words the way Claude Code's own footer says them.
+    /// Short words the way Claude Code's own footer says them, kept in the
+    /// program's terms; only the placeholder for an unread mode is Heeler's.
     static func permissionTitle(_ mode: String) -> String {
         switch mode {
-        case "": "Permission"
+        case "": String(localized: "Permission")
         case "default": "manual"
         case "bypassPermissions": "bypass"
         case "acceptEdits": "accept edits"
@@ -398,7 +399,7 @@ struct AgentPermissionModeLabel: View {
             .disabled(!controls.isEnabled)
             .accessibilityLabel("Permission mode")
             .accessibilityValue(isSwitching
-                ? "Switching from \(AgentSessionSettings.permissionTitle(mode))"
+                ? String(localized: "Switching from \(AgentSessionSettings.permissionTitle(mode))")
                 : AgentSessionSettings.permissionTitle(mode))
             .accessibilityIdentifier("agent-status-permission")
         } else {

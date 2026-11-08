@@ -287,6 +287,14 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   Host by address or name, and [AgentActivityLink+Hosts](../../Sources/Heeler/Notifications/AgentActivityLink+Hosts.swift)
   resolves it against the saved Hosts before `AgentSceneDirectory` routes it.
   Start with [AgentActivityLinkTests](../../Tests/HeelerTests/AgentActivityLinkTests.swift).
+- **Localization (English, Japanese):** [Localizable.xcstrings](../../Sources/Heeler/Resources/Localizable.xcstrings)
+  and [InfoPlist.xcstrings](../../Sources/Heeler/Resources/InfoPlist.xcstrings),
+  also compiled into the widget and notification-service extensions. Display
+  text uses `String(localized:)` where it is created; match tokens, identifiers
+  and persisted values stay plain ([ADR 0041](../adr/0041-localize-display-text-where-it-is-created.md)).
+  [LocalizationBundleTests](../../Tests/HeelerTests/LocalizationBundleTests.swift)
+  checks the compiled tables; `xcodebuild -testLanguage ja` runs a suite under
+  Japanese.
 
 ## Sibling deliverables and generated files
 

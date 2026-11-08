@@ -24,12 +24,12 @@ final class LaunchPresetStore {
     /// Why `preset` cannot be saved as it stands; nil when it can.
     func problem(with preset: LaunchPreset) -> String? {
         let name = preset.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return "Enter a name for this preset." }
+        guard !name.isEmpty else { return String(localized: "Enter a name for this preset.") }
         if presets.contains(where: {
             $0.id != preset.id && $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 .caseInsensitiveCompare(name) == .orderedSame
         }) {
-            return "Another preset is named \(name)."
+            return String(localized: "Another preset is named \(name).")
         }
         if case .failure(let error) = StartAgentStore.parseArguments(
             StartAgentStore.normalizeSmartPunctuation(preset.arguments))
@@ -39,9 +39,9 @@ final class LaunchPresetStore {
         var seen: Set<String> = []
         for variable in preset.environment where !variable.isBlank {
             let variableName = variable.name.trimmingCharacters(in: .whitespaces)
-            guard !variableName.isEmpty else { return "Enter a name for each variable." }
-            guard UsageAccountFile.isVariable(variableName) else { return "\(variableName) is not a variable name." }
-            guard seen.insert(variableName).inserted else { return "\(variableName) is set twice." }
+            guard !variableName.isEmpty else { return String(localized: "Enter a name for each variable.") }
+            guard UsageAccountFile.isVariable(variableName) else { return String(localized: "\(variableName) is not a variable name.") }
+            guard seen.insert(variableName).inserted else { return String(localized: "\(variableName) is set twice.") }
         }
         return nil
     }

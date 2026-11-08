@@ -148,7 +148,7 @@ extension ConsoleHostProjection {
     func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String { asked }
 
     func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent {
-        throw TransportError.hostFeatureUnavailable(feature: "Templates")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Templates"))
     }
 
     func programExit(ofPane paneID: String) -> ProgramExit? { nil }

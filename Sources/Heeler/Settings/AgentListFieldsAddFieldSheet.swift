@@ -174,7 +174,7 @@ struct AgentListFieldsAddFieldSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "\(token.rawValue), \(AgentLayoutTokensEditing.description(for: token))")
+            String(localized: "\(token.rawValue), \(AgentLayoutTokensEditing.description(for: token))"))
         .accessibilityAddTraits(.isButton)
     }
 

@@ -290,12 +290,12 @@ final class HerdrCoreChatTyping {
     // MARK: What Chat says
 
     private static let coreGone = TransportError.herdrCoreTerminalGone.presentation.message
-    private static let agentLeft = "The Agent no longer holds this terminal, so Heeler pressed nothing."
+    private static let agentLeft = String(localized: "The Agent no longer holds this terminal, so Heeler pressed nothing.")
     private static let holderChanged =
-        "Another process took over the terminal after Heeler read the screen, so Heeler pressed nothing."
+        String(localized: "Another process took over the terminal after Heeler read the screen, so Heeler pressed nothing.")
     private static let holderChangedWhileOpening =
-        "Another process took over the terminal as Heeler reached it, so Heeler pressed nothing."
-    private static let notSampledYet = "The Agent is still starting, so Heeler pressed nothing. Try again in a moment."
-    private static let noAnswer = "The Host did not answer, so Heeler pressed nothing. Check the connection and retry."
-    private static let unknownKey = "Heeler can't press this key in this terminal, so it pressed nothing."
+        String(localized: "Another process took over the terminal as Heeler reached it, so Heeler pressed nothing.")
+    private static let notSampledYet = String(localized: "The Agent is still starting, so Heeler pressed nothing. Try again in a moment.")
+    private static let noAnswer = String(localized: "The Host did not answer, so Heeler pressed nothing. Check the connection and retry.")
+    private static let unknownKey = String(localized: "Heeler can't press this key in this terminal, so it pressed nothing.")
 }

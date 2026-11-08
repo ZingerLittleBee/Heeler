@@ -60,7 +60,7 @@ struct AgentUsageStoreTests {
         }
         await store.refresh()
         #expect(store.state == .hostHelper(.notInstalled))
-        #expect(AgentUsageScope.reason(for: store.state) == "Needs the Host Helper")
+        #expect(AgentUsageScope.exclusion(for: store.state) == .needsHostHelper)
     }
 
     @Test func windowsIsExplainedWithoutStartingAQuery() async {

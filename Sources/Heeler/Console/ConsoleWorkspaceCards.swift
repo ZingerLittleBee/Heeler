@@ -222,7 +222,7 @@ struct ConsoleCheckoutSummary: Identifiable, Sendable {
 
     /// "iOS App, worktree, branch attach-polish, 2 Agents, 1 working, 1 done".
     var accessibilityText: String {
-        let count = agents.count == 1 ? "1 Agent" : "\(agents.count) Agents"
+        let count = agents.count == 1 ? String(localized: "1 Agent") : String(localized: "\(agents.count) Agents")
         return [title.accessibilityLabel, count,
                 ConsoleHostSectionHeaderPresentation.statusText(
                     items: ConsoleHostAgentStatusCounts(agents: agents).items)]
@@ -265,7 +265,7 @@ struct ConsoleWorkspaceCardHeader: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: "\(title), \(subtitle)"))
         .accessibilityValue(accessibilityValue)
-        .accessibilityHint(card.isCollapsed ? "Expands this Workspace." : "Collapses this Workspace.")
+        .accessibilityHint(card.isCollapsed ? String(localized: "Expands this Workspace.") : String(localized: "Collapses this Workspace."))
         .accessibilityAddTraits(.isHeader)
         .textCase(nil)
     }

@@ -97,8 +97,8 @@ private struct SideBySideRowReferenceActions: ViewModifier {
     @ViewBuilder func body(content: Content) -> some View {
         if let left = row.left, let right = row.right, left.id != right.id {
             content
-                .diffLineAccessibilityActions(left, qualifier: "Removed")
-                .diffLineAccessibilityActions(right, qualifier: "Added")
+                .diffLineAccessibilityActions(left, qualifier: .removed)
+                .diffLineAccessibilityActions(right, qualifier: .added)
         } else if let left = row.left {
             content.diffLineAccessibilityActions(left)
         } else if let right = row.right {

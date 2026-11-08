@@ -35,9 +35,9 @@ struct BlockedScreenIO: Sendable {
 
     /// For a Chat that cannot reach the pane: every call fails.
     static let unavailable = BlockedScreenIO(
-        readScreen: { throw TransportError.hostFeatureUnavailable(feature: "Chat") },
-        sendKeys: { _ in throw TransportError.hostFeatureUnavailable(feature: "Chat") },
-        paste: { _ in throw TransportError.hostFeatureUnavailable(feature: "Chat") })
+        readScreen: { throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat")) },
+        sendKeys: { _ in throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat")) },
+        paste: { _ in throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat")) })
 }
 
 /// Time as a Blocked card waits on it. Tests pass a clock that moves only
@@ -371,11 +371,14 @@ final class BlockedCardStore {
         await waitOutGrace(for: page)
         waitingWhenSent = waitingCalls(answering: page)
         for index in form.questions.indices {
-            let stopped =
-                "Heeler stopped at question \(index + 1): the dialog didn't respond the way it expected. "
-                + Self.finishThere
-            let next = index == form.questions.count - 1 ? "Claude's review" : "question \(index + 2)"
-            let answered = "Heeler answered question \(index + 1) and can't read \(next). " + Self.finishThere
+            let stopped = String(
+                localized: "Heeler stopped at question \(index + 1): the dialog didn't respond the way it expected. Finish here or in the terminal.")
+            let answered =
+                index == form.questions.count - 1
+                ? String(
+                    localized: "Heeler answered question \(index + 1) and can't read Claude's review. Finish here or in the terminal.")
+                : String(
+                    localized: "Heeler answered question \(index + 1) and can't read question \(index + 2). Finish here or in the terminal.")
             let plan: DialogActionPlan
             do {
                 plan = try DialogActionPlanner.plan(
@@ -384,7 +387,7 @@ final class BlockedCardStore {
                 if index == 0 {
                     finish(notice: error.message)
                 } else {
-                    stopPartWay(on: page.fingerprint, last: current, reason: "\(error.message) \(Self.finishThere)")
+                    stopPartWay(on: page.fingerprint, last: current, reason: Self.finishThere(after: error.message))
                 }
                 return
             }
@@ -409,8 +412,7 @@ final class BlockedCardStore {
             try? await clock.sleep(timing.grace)
         }
         let reviewProblem =
-            "Claude's review lists other answers than the card's, so Heeler didn't submit them. "
-            + "Check them here or in the terminal."
+            String(localized: "Claude's review lists other answers than the card's, so Heeler didn't submit them. Check them here or in the terminal.")
         guard form.review(page, shows: answers), let submitOption = page.options.first(where: { $0.role == .submit }),
             let plan = try? DialogActionPlanner.plan(
                 .choose(ordinal: submitOption.ordinal), for: page, toolUseID: toolUseID)
@@ -663,7 +665,7 @@ final class BlockedCardStore {
             if let last = confirmation.last?.result.fingerprint, last.matches(fingerprint) {
                 unconfirmedFingerprint = fingerprint.merging(last)
             }
-            notice = "The Agent hasn't responded yet. Answer in the terminal if it stays."
+            notice = String(localized: "The Agent hasn't responded yet. Answer in the terminal if it stays.")
             // A start the transcript showed while the effect was checked.
             releaseIfAWaitingCallStarted()
             return false
@@ -775,17 +777,19 @@ final class BlockedCardStore {
     private func whyBlocked(on screen: ANSIScreen?) -> String? {
         guard !program.offersKeysWhenBlockedWithoutDialog else { return nil }
         if let screen, OpenCodeScreenReader.read(screen).route == .subagentPanel {
-            return "OpenCode's subagent panel covers its request. Close the panel in the terminal to answer it."
+            return String(localized: "OpenCode's subagent panel covers its request. Close the panel in the terminal to answer it.")
         }
         if let latestFailure {
-            // A question, an exclamation or an ellipsis ends the sentence
-            // by itself.
-            let end = ["?", "!", "…"].contains { latestFailure.hasSuffix($0) } ? "" : "."
-            return "OpenCode stopped with an error: \(latestFailure)\(end) herdr holds Chat's messages while it "
-                + "reports Blocked, so continue in the terminal."
+            // A question, an exclamation, an ellipsis or a full-width
+            // period ends the sentence by itself; otherwise the note's own
+            // period, in the note's language, ends it.
+            return Self.endsSentence(latestFailure)
+                ? String(
+                    localized: "OpenCode stopped with an error: \(latestFailure) herdr holds Chat's messages while it reports Blocked, so continue in the terminal.")
+                : String(
+                    localized: "OpenCode stopped with an error: \(latestFailure). herdr holds Chat's messages while it reports Blocked, so continue in the terminal.")
         }
-        return "OpenCode reports Blocked, but its screen shows no question. This usually means the model request "
-            + "failed. Check the terminal."
+        return String(localized: "OpenCode reports Blocked, but its screen shows no question. This usually means the model request failed. Check the terminal.")
     }
 
     /// Within the moment around a dialog appearing or going, when Blocked
@@ -849,17 +853,29 @@ final class BlockedCardStore {
         return notice.title
     }
 
-    static let changedMessage = "This prompt changed. Check it before answering."
-    private static let unreadMessage = "Heeler couldn't read the Agent's screen, so nothing was sent."
-    private static let finishThere = "Finish here or in the terminal."
-    private static let stoppedMessage =
-        "The dialog didn't respond the way Heeler expected, so it stopped. " + finishThere
+    /// Whether `text` already ends its sentence, in English or Japanese
+    /// punctuation, so the note adds no period of its own.
+    private static func endsSentence(_ text: String) -> Bool {
+        ["?", "!", "…", "。", "？", "！"].contains { text.hasSuffix($0) }
+    }
+
+    static let changedMessage = String(localized: "This prompt changed. Check it before answering.")
+    private static let unreadMessage = String(localized: "Heeler couldn't read the Agent's screen, so nothing was sent.")
+    private static let stoppedMessage = String(
+        localized: "The dialog didn't respond the way Heeler expected, so it stopped. Finish here or in the terminal.")
+
+    /// Why the answers stopped part way, then where to finish them.
+    private static func finishThere(after reason: String) -> String {
+        String(localized: "\(reason) Finish here or in the terminal.")
+    }
 
     private static func sendFailure(_ error: any Error) -> String {
         if let refusal = error as? HerdrCoreChatTyping.Refusal { return refusal.message }
-        let prefix = "Heeler couldn't reach the Agent, so the answer may not have gone."
-        guard let error = error as? TransportError else { return prefix }
-        return "\(prefix) \(error.presentation.explanation)"
+        guard let error = error as? TransportError else {
+            return String(localized: "Heeler couldn't reach the Agent, so the answer may not have gone.")
+        }
+        return String(
+            localized: "Heeler couldn't reach the Agent, so the answer may not have gone. \(error.presentation.explanation)")
     }
 }
 
@@ -868,18 +884,17 @@ extension DialogPlanError {
     var message: String {
         switch self {
         case .unsupported(let reason): reason
-        case .noSuchOption: "That option isn't on the screen any more."
-        case .noFocus: "Heeler can't tell which option is selected. Answer in the terminal."
+        case .noSuchOption: String(localized: "That option isn't on the screen any more.")
+        case .noFocus: String(localized: "Heeler can't tell which option is selected. Answer in the terminal.")
         case .textFieldNotEmpty:
-            "The dialog holds text typed in the terminal. Finish it there; Heeler never clears it."
-        case .needsText: "Type an answer for this option first."
-        case .emptyText: "Type something first."
-        case .multilineText: "Use one line. A line break would answer early."
-        case .unsafeText: "Remove tabs and control characters. The program would read them as keys."
-        case .emptySelection: "Pick at least one answer."
+            String(localized: "The dialog holds text typed in the terminal. Finish it there; Heeler never clears it.")
+        case .needsText: String(localized: "Type an answer for this option first.")
+        case .emptyText: String(localized: "Type something first.")
+        case .multilineText: String(localized: "Use one line. A line break would answer early.")
+        case .unsafeText: String(localized: "Remove tabs and control characters. The program would read them as keys.")
+        case .emptySelection: String(localized: "Pick at least one answer.")
         case .composerDraft:
-            "Oh My Pi's input box holds a draft, so keys would go into it. Press Enter in the terminal to queue it, "
-                + "or clear it, then answer."
+            String(localized: "Oh My Pi's input box holds a draft, so keys would go into it. Press Enter in the terminal to queue it, or clear it, then answer.")
         }
     }
 }

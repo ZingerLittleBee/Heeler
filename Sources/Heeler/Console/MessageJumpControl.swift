@@ -472,8 +472,8 @@ struct MessageJumpControlView: View {
                     jumpButton(
                         .older,
                         systemImage: "chevron.up",
-                        label: "Earlier message",
-                        hint: "Scrolls the Agent to the previous message you sent",
+                        label: String(localized: "Earlier message"),
+                        hint: String(localized: "Scrolls the Agent to the previous message you sent"),
                         action: onOlder)
                 }
                 if availability.showsOlder, availability.showsNewer {
@@ -489,8 +489,8 @@ struct MessageJumpControlView: View {
                     jumpButton(
                         .newer,
                         systemImage: "chevron.down",
-                        label: "Newer message",
-                        hint: "Scrolls the Agent to the next message you sent, then back to live output",
+                        label: String(localized: "Newer message"),
+                        hint: String(localized: "Scrolls the Agent to the next message you sent, then back to live output"),
                         action: onNewer)
                 }
             }

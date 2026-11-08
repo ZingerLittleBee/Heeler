@@ -71,9 +71,16 @@ extension View {
         modifier(DiffLineContextMenu(lineID: line.id))
     }
 
-    func diffLineAccessibilityActions(_ line: DiffLine, qualifier: String? = nil) -> some View {
+    func diffLineAccessibilityActions(_ line: DiffLine, qualifier: DiffLineActionQualifier? = nil) -> some View {
         modifier(DiffLineAccessibilityActions(lineID: line.id, qualifier: qualifier))
     }
+}
+
+/// Which line of a changed side-by-side pair an accessibility action
+/// targets, as "Copy Removed Line".
+enum DiffLineActionQualifier: Sendable {
+    case removed
+    case added
 }
 
 private struct ChangedFileReferenceMenu: ViewModifier {
@@ -160,8 +167,15 @@ private struct DiffLineContextMenu: ViewModifier {
 
 private struct DiffLineAccessibilityActions: ViewModifier {
     let lineID: DiffLine.ID
-    let qualifier: String?
+    let qualifier: DiffLineActionQualifier?
     @Environment(\.changesReferenceActions) private var actions
+
+    private enum Action {
+        case copyLine
+        case copyHunk
+        case copyPath
+        case insertLineReference
+    }
 
     @ViewBuilder func body(content: Content) -> some View {
         if let actions {
@@ -170,30 +184,41 @@ private struct DiffLineAccessibilityActions: ViewModifier {
             switch actions.pathAvailability {
             case .copyAndInsert:
                 content
-                    .accessibilityAction(named: name("Copy", "Line")) { actions.copyLine(lineID) }
-                    .accessibilityAction(named: name("Copy", "Hunk")) { actions.copyHunk(containingLine: lineID) }
-                    .accessibilityAction(named: name("Copy", "Path")) { actions.copyPath() }
-                    .accessibilityAction(named: name("Insert", "Line Reference")) { actions.insertLine(lineID) }
+                    .accessibilityAction(named: name(.copyLine)) { actions.copyLine(lineID) }
+                    .accessibilityAction(named: name(.copyHunk)) { actions.copyHunk(containingLine: lineID) }
+                    .accessibilityAction(named: name(.copyPath)) { actions.copyPath() }
+                    .accessibilityAction(named: name(.insertLineReference)) { actions.insertLine(lineID) }
             case .copy:
                 content
-                    .accessibilityAction(named: name("Copy", "Line")) { actions.copyLine(lineID) }
-                    .accessibilityAction(named: name("Copy", "Hunk")) { actions.copyHunk(containingLine: lineID) }
-                    .accessibilityAction(named: name("Copy", "Path")) { actions.copyPath() }
+                    .accessibilityAction(named: name(.copyLine)) { actions.copyLine(lineID) }
+                    .accessibilityAction(named: name(.copyHunk)) { actions.copyHunk(containingLine: lineID) }
+                    .accessibilityAction(named: name(.copyPath)) { actions.copyPath() }
             case .unavailable:
                 content
-                    .accessibilityAction(named: name("Copy", "Line")) { actions.copyLine(lineID) }
-                    .accessibilityAction(named: name("Copy", "Hunk")) { actions.copyHunk(containingLine: lineID) }
+                    .accessibilityAction(named: name(.copyLine)) { actions.copyLine(lineID) }
+                    .accessibilityAction(named: name(.copyHunk)) { actions.copyHunk(containingLine: lineID) }
             }
         } else {
             content
         }
     }
 
-    private func name(_ verb: String, _ noun: String) -> Text {
-        if let qualifier {
-            Text("\(verb) \(qualifier) \(noun)")
-        } else {
-            Text("\(verb) \(noun)")
+    /// One whole name per action and side, so each reads naturally once
+    /// translated.
+    private func name(_ action: Action) -> Text {
+        switch (action, qualifier) {
+        case (.copyLine, nil): Text("Copy Line")
+        case (.copyLine, .removed?): Text("Copy Removed Line")
+        case (.copyLine, .added?): Text("Copy Added Line")
+        case (.copyHunk, nil): Text("Copy Hunk")
+        case (.copyHunk, .removed?): Text("Copy Removed Hunk")
+        case (.copyHunk, .added?): Text("Copy Added Hunk")
+        case (.copyPath, nil): Text("Copy Path")
+        case (.copyPath, .removed?): Text("Copy Removed Path")
+        case (.copyPath, .added?): Text("Copy Added Path")
+        case (.insertLineReference, nil): Text("Insert Line Reference")
+        case (.insertLineReference, .removed?): Text("Insert Removed Line Reference")
+        case (.insertLineReference, .added?): Text("Insert Added Line Reference")
         }
     }
 }

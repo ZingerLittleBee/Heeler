@@ -15,7 +15,8 @@ actor BootstrappedExecChannel: WindowsTerminalExecChannel {
     init(
         channel: any WindowsTerminalExecChannel,
         marker: String = PowerShellCommand.streamMarker,
-        startupFailure: String = "The Windows herdr command exited before starting its stream"
+        startupFailure: String = String(
+            localized: "The Windows herdr command exited before starting its stream")
     ) {
         self.channel = channel
         self.marker = Data((marker + "\r\n").utf8)

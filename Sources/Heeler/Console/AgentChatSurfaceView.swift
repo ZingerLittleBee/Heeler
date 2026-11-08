@@ -285,7 +285,7 @@ struct AgentChatSurfaceView: View {
         }
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
-                title: "Rename Agent",
+                title: String(localized: "Rename Agent"),
                 store: RenameStore(
                     subject: .agent(detectedKind: agent.agent.kind),
                     currentValue: agent.agent.name ?? ""
@@ -297,7 +297,7 @@ struct AgentChatSurfaceView: View {
         }
         .sheet(isPresented: $isRenamingWorkspace) {
             RenameSheetView(
-                title: "Rename Workspace",
+                title: String(localized: "Rename Workspace"),
                 store: RenameStore.workspace(
                     currentLabel: agent.workspaceLabel ?? ""
                 ) { [console, agent] label in
@@ -350,7 +350,7 @@ struct AgentChatSurfaceView: View {
         .onDisappear {
             closer.didLeaveScreen(
                 reportingTo: console.outcomeReporter(
-                    on: agent.hostID, title: "Couldn't Close Agent"))
+                    on: agent.hostID, title: String(localized: "Couldn't Close Agent")))
             // SwiftUI also hands out disappears nobody caused; the router
             // says whether Chat really left.
             stageExit?.cancel()
@@ -751,7 +751,7 @@ struct AgentChatSurfaceView: View {
             case .connecting, .notConnected:
                 break
             case .readFailure:
-                banner.actionTitle = "Retry"
+                banner.actionTitle = String(localized: "Retry")
                 banner.action = { chat?.retry() }
             case .unavailable(let reason, _):
                 if offersCandidates {
@@ -772,7 +772,7 @@ struct AgentChatSurfaceView: View {
             // is happening and how to fix it.
             case .launch(let notice):
                 if let guide = notice.guideURL {
-                    banner.actionTitle = "Read More"
+                    banner.actionTitle = String(localized: "Read More")
                     banner.action = { openURL(guide) }
                 }
             }
@@ -902,9 +902,9 @@ struct AgentChatSurfaceView: View {
     /// be: saved entries keep no tool output, and a row expanded before the
     /// transcript opens is read once it does.
     private var missingOutputText: String {
-        guard console.hostStatuses[agent.hostID] == .connected else { return "Output is available when connected." }
+        guard console.hostStatuses[agent.hostID] == .connected else { return String(localized: "Output is available when connected.") }
         if case .unavailable = chat?.conversation.phase { return ChatToolOutputFailure.gone.message }
-        return "Loading output…"
+        return String(localized: "Loading output…")
     }
 
     private var pendingEchoes: [ChatPendingEcho] {
@@ -948,7 +948,9 @@ struct AgentChatSurfaceView: View {
         let isSwitching = { isSwitchingSetting }
         let settle = settleUnansweredSwitch
         policy.preflight = { text in
-            if isSwitching() { return .inputNotReady("Claude Code is switching a setting. Try again in a moment.") }
+            if isSwitching() {
+                return .inputNotReady(String(localized: "Claude Code is switching a setting. Try again in a moment."))
+            }
             if let reason = await settle() { return .inputNotReady(reason) }
             return await preflight?(text)
         }
@@ -1136,10 +1138,10 @@ struct AgentChatSurfaceView: View {
         return {
             guard overrides.lastSwitchHasNoAnswer else { return nil }
             guard let io, (try? await io.readScreen()) != nil else {
-                return "The Host has not answered the last setting change."
+                return String(localized: "The Host has not answered the last setting change.")
             }
             overrides.lastSwitchHasNoAnswer = false
-            return "The last setting command may still be in the Agent's input. Check the terminal."
+            return String(localized: "The last setting command may still be in the Agent's input. Check the terminal.")
         }
     }
 
@@ -1198,11 +1200,11 @@ struct AgentChatSurfaceView: View {
         let screen = try? await io.readScreen()
         overrides.refreshPermissionLaunch(launch, liveMode: screen.flatMap { AgentSessionSettings.permissionMode(onScreen: $0) })
         guard previous == nil || previous == launch?.process else {
-            permissionErrorMessage = "The Agent's process changed. Open the permission menu again."
+            permissionErrorMessage = String(localized: "The Agent's process changed. Open the permission menu again.")
             return
         }
         guard target != "bypassPermissions" || overrides.allowsBypassPermissions else {
-            permissionErrorMessage = "Bypass is not available for this session. No keys were sent."
+            permissionErrorMessage = String(localized: "Bypass is not available for this session. No keys were sent.")
             return
         }
         let result = await ClaudePermissionMode.switchTo(
@@ -1229,8 +1231,8 @@ struct AgentChatSurfaceView: View {
         if !result.reachedTarget {
             if result.completedCycle, target == "bypassPermissions" { overrides.bypassWasMissingFromCycle() }
             permissionErrorMessage = result.completedCycle
-                ? "This session does not offer that mode. The original permission mode is restored."
-                : "The terminal did not confirm the change. Check its current mode before trying again."
+                ? String(localized: "This session does not offer that mode. The original permission mode is restored.")
+                : String(localized: "The terminal did not confirm the change. Check its current mode before trying again.")
             UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
     }

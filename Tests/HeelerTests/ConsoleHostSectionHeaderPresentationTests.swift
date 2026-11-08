@@ -189,6 +189,18 @@ struct ConsoleHostSectionHeaderPresentationTests {
         #expect(collapsed.disclosureSystemImage == "chevron.right")
     }
 
+    /// Each status says its count in a phrase of its own, never the raw
+    /// herdr status after a number.
+    @Test func statusTextCountsErrorsInWholePhrases() {
+        #expect(
+            ConsoleHostSectionHeaderPresentation.statusText(
+                items: ConsoleHostAgentStatusCounts(error: 1).items) == "1 error")
+        #expect(
+            ConsoleHostSectionHeaderPresentation.statusText(
+                items: ConsoleHostAgentStatusCounts(blocked: 2, error: 3).items) == "2 blocked, 3 errors")
+        #expect(ConsoleHostSectionHeaderPresentation.statusText(items: []) == nil)
+    }
+
     @Test func accessibilityLabelNamesHostAndReadiness() {
         let presentation = ConsoleHostSectionHeaderPresentation(
             section: section(status: .connected))

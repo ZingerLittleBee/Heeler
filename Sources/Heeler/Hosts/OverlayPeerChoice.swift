@@ -18,8 +18,8 @@ struct OverlayPeerCandidate: Identifiable, Equatable, Sendable {
 
         var title: String {
             switch self {
-            case .ipAddress: "IP Address"
-            case .machineName: "Machine Name"
+            case .ipAddress: String(localized: "IP Address")
+            case .machineName: String(localized: "Machine Name")
             }
         }
     }
@@ -92,7 +92,7 @@ enum OverlayPeerList {
 
     /// The sheet's entry point label: "Choose from Tailnet…".
     static func chooseTitle(for kind: OverlayKind) -> String {
-        kind == .tailscale ? "Choose from Tailnet…" : "Choose from Network…"
+        kind == .tailscale ? String(localized: "Choose from Tailnet…") : String(localized: "Choose from Network…")
     }
 
     /// Peers with at least one overlay address, online (or unknown) before
@@ -143,7 +143,7 @@ enum OverlayPeerList {
         for group in groupedByNetwork(remaining) {
             groups.append(
                 OverlayAssignedPeerGroup(
-                    id: "peers/" + (group.network ?? ""), name: group.network ?? "Peers",
+                    id: "peers/" + (group.network ?? ""), name: group.network ?? String(localized: "Peers"),
                     subnet: nil, error: nil, isRunning: true, peers: group.peers))
         }
         return groups

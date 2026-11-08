@@ -16,7 +16,7 @@ struct WorkspaceTerminalDetailView: View {
     /// out to an Agent the drawer routes to; see `ShellTerminalView`.
     var keyboardHandoff: TerminalKeyboardHandoff? = nil
     /// Where Back goes: the Console, or the Agent this was pushed over.
-    var backTitle = "Back to Console"
+    var backTitle = String(localized: "Back to Console")
     let onBack: () -> Void
 
     @State private var ownerID = UUID()
@@ -73,9 +73,9 @@ struct WorkspaceTerminalDetailView: View {
                 terminalSurface {
                     TerminalStatusDialog(
                         glyph: .symbol("terminal"),
-                        title: "Terminal Closed",
+                        title: String(localized: "Terminal Closed"),
                         message: console.terminalEndedMessage(keepingTo: corePin, on: terminal.hostID)
-                            ?? "This pane is no longer available on the Host.",
+                            ?? String(localized: "This pane is no longer available on the Host."),
                         palette: themePalette,
                         dimsBackground: false
                     ) {
@@ -107,7 +107,7 @@ struct WorkspaceTerminalDetailView: View {
                 terminalSurface {
                     TerminalStatusDialog(
                         glyph: .symbol("exclamationmark.triangle"),
-                        title: "Couldn't Open Terminal",
+                        title: String(localized: "Couldn't Open Terminal"),
                         message: failure,
                         palette: themePalette,
                         dimsBackground: false
@@ -121,7 +121,7 @@ struct WorkspaceTerminalDetailView: View {
             } else {
                 terminalSurface {
                     TerminalStatusDialog(
-                        glyph: .progress, title: "Opening Terminal…",
+                        glyph: .progress, title: String(localized: "Opening Terminal…"),
                         palette: themePalette, dimsBackground: false)
                 }
                 // The keyboard this screen inherits must not drop while
@@ -218,7 +218,7 @@ struct WorkspaceTerminalDetailView: View {
                     $0.hostID == terminal.hostID && $0.terminalID == created.terminalID
                 }) else {
                     keyboardHandoff?.cancelShellTerminal()
-                    createFailure = "The terminal was created, but its Workspace hasn't refreshed yet."
+                    createFailure = String(localized: "The terminal was created, but its Workspace hasn't refreshed yet.")
                     return
                 }
                 onSelectTerminal(target)

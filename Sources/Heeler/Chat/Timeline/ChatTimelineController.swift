@@ -15,7 +15,7 @@ struct ChatTimelineActions {
     /// An expanded tool row has no output to show, or only its start.
     var loadOutput: @MainActor (ChatEntryID) -> Void = { _ in }
     /// Shown in an expanded tool row whose output was never read.
-    var missingOutputText: String = "Output is available when connected."
+    var missingOutputText: String = String(localized: "Output is available when connected.")
     var loadImage: ChatImagePreviewController.Loader = { _ in throw ChatImagePreviewError.unavailable }
     /// The pictures image rows show; nil without a conversation store.
     var thumbnails: ChatImageThumbnails?
@@ -1092,14 +1092,14 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         return UIContextMenuConfiguration(identifier: path as NSString?, previewProvider: preview) { [weak self] _ in
             var items: [UIMenuElement] = []
             if let path {
-                items.append(UIAction(title: "Preview Image", image: UIImage(systemName: "photo")) { [weak self] _ in
+                items.append(UIAction(title: String(localized: "Preview Image"), image: UIImage(systemName: "photo")) { [weak self] _ in
                     self?.previewImage(path, thumbnail: thumbnail)
                 })
             }
             // The images a message names, by file name when it names several.
             let previews = named.map { path in
                 UIAction(
-                    title: named.count == 1 ? "Preview Image" : RemoteHostPath.lastComponent(of: path),
+                    title: named.count == 1 ? String(localized: "Preview Image") : RemoteHostPath.lastComponent(of: path),
                     image: UIImage(systemName: "photo")
                 ) { [weak self] _ in
                     self?.previewImage(path, thumbnail: self?.actions.thumbnails?.image(of: path))
@@ -1108,13 +1108,13 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             if previews.count == 1 {
                 items += previews
             } else if !previews.isEmpty {
-                items.append(UIMenu(title: "Preview Image", image: UIImage(systemName: "photo"), children: previews))
+                items.append(UIMenu(title: String(localized: "Preview Image"), image: UIImage(systemName: "photo"), children: previews))
             }
             items += [
-                UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in
+                UIAction(title: String(localized: "Copy"), image: UIImage(systemName: "doc.on.doc")) { _ in
                     UIPasteboard.general.string = text
                 },
-                UIAction(title: "Select Text", image: UIImage(systemName: "selection.pin.in.out")) { _ in
+                UIAction(title: String(localized: "Select Text"), image: UIImage(systemName: "selection.pin.in.out")) { _ in
                     self?.selectText(text)
                 },
             ]

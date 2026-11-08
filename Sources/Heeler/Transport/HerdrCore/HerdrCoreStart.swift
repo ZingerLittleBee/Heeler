@@ -30,6 +30,7 @@ enum HerdrCoreStart {
 
     /// `herdr-core update` by the probed path, for a terminal on a Unix Host.
     static func updateCommand(executablePath: String) -> String {
+        // A command line, not UI copy: it must stay identical in every locale.
         "\(shellWord(executablePath)) update"
     }
 
@@ -43,12 +44,14 @@ enum HerdrCoreStart {
     /// Windows Host. `HC_SESSION` is how `server start` takes a session there too.
     static func windowsManualCommand(executablePath: String, session: String) -> String {
         let name = HerdrCoreSessionName.normalized(session)
+        // A command line, not UI copy: it must stay identical in every locale.
         let run = "\(windowsProgramWord(executablePath)) server start"
         return name == "default" ? run : "$env:HC_SESSION=\(PowerShellCommand.literal(name)); \(run)"
     }
 
     /// `herdr-core update` by the probed path, for the same window.
     static func windowsUpdateCommand(executablePath: String) -> String {
+        // A command line, not UI copy: it must stay identical in every locale.
         "\(windowsProgramWord(executablePath)) update"
     }
 

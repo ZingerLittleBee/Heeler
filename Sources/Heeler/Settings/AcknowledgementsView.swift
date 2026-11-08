@@ -39,7 +39,7 @@ struct AcknowledgementsView: View {
                     systemImage: "exclamationmark.triangle",
                     description: Text(
                         failureMessage
-                            ?? "This build is missing its licence notices. Please report it."))
+                            ?? String(localized: "This build is missing its licence notices. Please report it.")))
             }
         }
         .navigationTitle("Acknowledgements")

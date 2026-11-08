@@ -113,7 +113,9 @@ struct AgentUsageLimitsView: View {
             }
             if let reset {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("\(expired ? "Reset" : "Resets") \(timestamp(reset))")
+                    Text(expired
+                        ? String(localized: "Reset \(timestamp(reset))")
+                        : String(localized: "Resets \(timestamp(reset))"))
                         .fixedSize(horizontal: false, vertical: true)
                     if !expired {
                         Spacer(minLength: 8)
@@ -218,22 +220,22 @@ struct AgentUsageLimitsView: View {
         if let label = window.label, !label.isEmpty { return label }
         if program == "claude" {
             switch window.id {
-            case "sevenDayOpus": return "Weekly · Opus"
-            case "sevenDaySonnet": return "Weekly · Sonnet"
+            case "sevenDayOpus": return String(localized: "Weekly · Opus")
+            case "sevenDaySonnet": return String(localized: "Weekly · Sonnet")
             default: break
             }
         }
-        guard let minutes = window.durationMinutes, minutes > 0 else { return "Usage window" }
-        if minutes == 10_080 { return "Weekly" }
-        if minutes == 1_440 { return "Daily" }
-        if minutes.isMultiple(of: 1_440) { return "\(minutes / 1_440)-day" }
-        if minutes.isMultiple(of: 60) { return "\(minutes / 60)-hour" }
-        return "\(minutes)-minute"
+        guard let minutes = window.durationMinutes, minutes > 0 else { return String(localized: "Usage window") }
+        if minutes == 10_080 { return String(localized: "Weekly") }
+        if minutes == 1_440 { return String(localized: "Daily") }
+        if minutes.isMultiple(of: 1_440) { return String(localized: "\(minutes / 1_440)-day") }
+        if minutes.isMultiple(of: 60) { return String(localized: "\(minutes / 60)-hour") }
+        return String(localized: "\(minutes)-minute")
     }
 
     private var retrySummary: String {
-        guard let retry = date(limits.retryAt) else { return "Waiting to retry" }
-        return "Retry after \(timestamp(retry))"
+        guard let retry = date(limits.retryAt) else { return String(localized: "Waiting to retry") }
+        return String(localized: "Retry after \(timestamp(retry))")
     }
 
     private var programName: String { AgentUsageReport.Program.displayName(for: program) }
@@ -245,18 +247,17 @@ struct AgentUsageLimitsView: View {
         _ limits: AgentUsageReport.Program.UsageLimits, program: String
     ) -> String {
         let programName = AgentUsageReport.Program.displayName(for: program)
-        if limits.state == "disabled" { return "Usage Limits are off." }
+        if limits.state == "disabled" { return String(localized: "Usage Limits are off.") }
         switch limits.reason {
-        case "programMissing": return "\(programName) is not installed or cannot run on this Host."
-        case "programTooOld": return "Update \(programName) on this Host to read Usage Limits."
-        case "notSignedIn": return "Sign in to \(programName) on this Host to read Usage Limits."
-        case "noPlanLimits": return "This sign-in has no plan Usage Limits."
+        case "programMissing": return String(localized: "\(programName) is not installed or cannot run on this Host.")
+        case "programTooOld": return String(localized: "Update \(programName) on this Host to read Usage Limits.")
+        case "notSignedIn": return String(localized: "Sign in to \(programName) on this Host to read Usage Limits.")
+        case "noPlanLimits": return String(localized: "This sign-in has no plan Usage Limits.")
         case "keychainUnavailable":
-            return "\(programName) could not use this Mac’s keychain. Start herdr from a terminal on the Mac, then refresh."
+            return String(localized: "\(programName) could not use this Mac’s keychain. Start herdr from a terminal on the Mac, then refresh.")
         case AgentUsageReport.Program.UsageLimits.keychainNeedsUserLogin:
-            return "\(programName)’s Usage Limits need your own login on this Mac. "
-                + "The Host Helper and SSH cannot reach its login keychain."
-        default: return "Usage Limits could not be read. Try refreshing."
+            return String(localized: "\(programName)’s Usage Limits need your own login on this Mac. The Host Helper and SSH cannot reach its login keychain.")
+        default: return String(localized: "Usage Limits could not be read. Try refreshing.")
         }
     }
 
@@ -267,9 +268,9 @@ struct AgentUsageLimitsView: View {
         relative.unitsStyle = .full
         let age = relative.localizedString(for: observed, relativeTo: now)
         if limits.source == "lastSession" {
-            return "Last session · as of \(timestamp(observed)) (\(age))"
+            return String(localized: "Last session · as of \(timestamp(observed)) (\(age))")
         }
-        return "From \(programName) · updated \(age)"
+        return String(localized: "From \(programName) · updated \(age)")
     }
 
     private func timestamp(_ value: Date) -> String {

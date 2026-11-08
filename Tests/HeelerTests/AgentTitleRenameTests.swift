@@ -127,6 +127,20 @@ struct AgentTitleRenameTests {
         #expect(store.state == .renamed)
     }
 
+    /// The acknowledgement is matched against the Agent's own English output,
+    /// so it never follows the app's language.
+    @Test func nativeAcknowledgementIsTheAgentsOwnLine() {
+        #expect(
+            AgentTitleRenameStore.nativeAcknowledgement(program: .claude, title: "Original")
+                == "Session renamed to: Original")
+        #expect(
+            AgentTitleRenameStore.nativeAcknowledgement(program: .omp, title: "π > 📝 MANUAL: Original")
+                == "Session renamed to \"📝 MANUAL: Original\".")
+        for program in [ChatProgram.codex, .pi, .grok, .opencode] {
+            #expect(AgentTitleRenameStore.nativeAcknowledgement(program: program, title: "Original") == nil)
+        }
+    }
+
     @Test func sessionChangeAfterPromptNeverConfirmsDialog() async throws {
         let rig = try Rig(.codex)
         rig.afterCommand = { rig.session = "changed" }

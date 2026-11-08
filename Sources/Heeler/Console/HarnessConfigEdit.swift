@@ -231,21 +231,21 @@ enum HarnessConfigEditError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .changedSinceRead:
-            "The file changed after Heeler read it, so nothing was written. Review the change again."
+            String(localized: "The file changed after Heeler read it, so nothing was written. Review the change again.")
         case .changedSinceWritten:
-            "The file changed after Heeler edited it, so nothing was written. Undo the edit by hand if you still want to."
+            String(localized: "The file changed after Heeler edited it, so nothing was written. Undo the edit by hand if you still want to.")
         case .tooLarge:
-            "The file is too large for Heeler to edit, so nothing was written."
+            String(localized: "The file is too large for Heeler to edit, so nothing was written.")
         case .unreadable:
-            "Heeler couldn't read the whole file, so nothing was written."
+            String(localized: "Heeler couldn't read the whole file, so nothing was written.")
         case .unresolvedPath:
-            "This Agent's configuration folder isn't an absolute path, so Heeler can't tell which file to change."
+            String(localized: "This Agent's configuration folder isn't an absolute path, so Heeler can't tell which file to change.")
         case .agentEnvironmentUnavailable:
-            "Heeler couldn't read this Agent's environment, so it can't tell which file to change. Nothing was written."
+            String(localized: "Heeler couldn't read this Agent's environment, so it can't tell which file to change. Nothing was written.")
         case .openCodeVersionUnknown:
-            "Heeler couldn't read which OpenCode this Agent runs, so it can't tell which file to change. Nothing was written. \(OpenCodePluginEdit.manualInstructionForEitherRelease)"
+            String(localized: "Heeler couldn't read which OpenCode this Agent runs, so it can't tell which file to change. Nothing was written. \(OpenCodePluginEdit.manualInstructionForEitherRelease)")
         case .folderChangedDuringUndo:
-            "Heeler took its change out of the file, but a file changed while Heeler was removing its folder, so the folder stays. Undo again to finish."
+            String(localized: "Heeler took its change out of the file, but a file changed while Heeler was removing its folder, so the folder stays. Undo again to finish.")
         }
     }
 }

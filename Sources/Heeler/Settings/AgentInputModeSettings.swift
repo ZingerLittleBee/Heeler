@@ -14,8 +14,8 @@ enum AgentInputMode: String, CaseIterable, Identifiable, Sendable {
     /// value under the "Input mode" label.
     var segmentTitle: String {
         switch self {
-        case .composer: "Composer"
-        case .direct: "Keyboard"
+        case .composer: String(localized: "Composer")
+        case .direct: String(localized: "Keyboard")
         }
     }
 }

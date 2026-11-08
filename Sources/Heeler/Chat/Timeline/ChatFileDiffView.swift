@@ -96,12 +96,14 @@ extension ChatFileChanges {
     /// What shows instead of files when Claude Code says only one thing: it
     /// skipped the diff, or took none and names no file.
     var soleNote: String? {
-        if isSkipped { return "File diff skipped for this git command." }
+        if isSkipped { return String(localized: "File diff skipped for this git command.") }
         guard files.isEmpty, isUnavailable || isShared else { return nil }
         guard isUnavailable else { return Self.sharedNote }
-        return moreFiles > 0
-            ? "File diff unavailable for this command; \(Self.count(moreFiles)) changed."
-            : "File diff unavailable for this command."
+        switch moreFiles {
+        case 0: return String(localized: "File diff unavailable for this command.")
+        case 1: return String(localized: "File diff unavailable for this command; 1 file changed.")
+        default: return String(localized: "File diff unavailable for this command; \(moreFiles) files changed.")
+        }
     }
 
     /// The lines under the files: how many more changed, then why the
@@ -110,24 +112,52 @@ extension ChatFileChanges {
         guard soleNote == nil else { return [] }
         var notes: [String] = []
         if moreFiles > 0 {
-            let more =
-                files.isEmpty
-                ? "\(Self.count(moreFiles)) changed (binary, mode only or too large to show)"
-                : "… \(moreFiles) more \(moreFiles == 1 ? "file" : "files") changed"
-            notes.append(isUnavailable ? more + " (part of the diff is unavailable)" : more)
+            notes.append(Self.moreNote(moreFiles, afterFiles: !files.isEmpty, partUnavailable: isUnavailable))
         }
         if movesWorkingTree {
-            notes.append("A git step in this command can move the working tree, so these may be its changes, not edits.")
+            notes.append(String(localized: "A git step in this command can move the working tree, so these may be its changes, not edits."))
         }
         if isShared { notes.append(Self.sharedNote) }
         return notes
     }
 
     static let sharedNote =
-        "Another command ran in this repository at the same time; a change made by either may show under either result."
+        String(localized: "Another command ran in this repository at the same time; a change made by either may show under either result.")
 
-    private static func count(_ files: Int) -> String {
-        "\(files) \(files == 1 ? "file" : "files")"
+    /// How many more files changed than the list shows, after the files it
+    /// lists or in their place, and whether part of the diff is missing:
+    /// one whole line per case, so each language words the count its way.
+    private static func moreNote(_ count: Int, afterFiles: Bool, partUnavailable: Bool) -> String {
+        switch (afterFiles, count == 1, partUnavailable) {
+        case (true, true, false):
+            String(localized: "… 1 more file changed")
+        case (true, false, false):
+            String(localized: "… \(count) more files changed")
+        case (true, true, true):
+            String(localized: "… 1 more file changed (part of the diff is unavailable)")
+        case (true, false, true):
+            String(localized: "… \(count) more files changed (part of the diff is unavailable)")
+        case (false, true, false):
+            String(localized: "1 file changed (binary, mode only or too large to show)")
+        case (false, false, false):
+            String(localized: "\(count) files changed (binary, mode only or too large to show)")
+        case (false, true, true):
+            String(localized: "1 file changed (binary, mode only or too large to show) (part of the diff is unavailable)")
+        case (false, false, true):
+            String(localized: "\(count) files changed (binary, mode only or too large to show) (part of the diff is unavailable)")
+        }
+    }
+}
+
+extension ChatFileChange.Kind {
+    /// `label` in the app's language, as a changed file's line shows it.
+    fileprivate var localizedLabel: String {
+        switch self {
+        case .updated: String(localized: "Updated", comment: "A file a command changed")
+        case .created: String(localized: "Created", comment: "A file a command created")
+        case .deleted: String(localized: "Deleted", comment: "A file a command deleted")
+        case .written: String(localized: "Wrote", comment: "A file a command wrote whole")
+        }
     }
 }
 
@@ -213,7 +243,7 @@ private struct ChatFileChangeLabel: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("\(Text(file.kind.label).foregroundStyle(.secondary)) \(Text(verbatim: path).fontDesign(.monospaced))")
+            Text("\(Text(verbatim: file.kind.localizedLabel).foregroundStyle(.secondary)) \(Text(verbatim: path).fontDesign(.monospaced))")
                 .font(.footnote)
                 .lineLimit(lineLimit)
                 .truncationMode(.middle)
@@ -239,7 +269,7 @@ private struct ChatFileChangeLine: View {
             }
             .buttonStyle(.plain)
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-            .accessibilityHint(isExpanded ? "Hides the diff" : "Shows the diff")
+            .accessibilityHint(isExpanded ? String(localized: "Hides the diff") : String(localized: "Shows the diff"))
         } else {
             label
                 .accessibilityElement(children: .combine)
@@ -328,7 +358,7 @@ struct ChatFileDiffFooter: Equatable {
     init(file: ChatFileChange, read: ChatToolActivity.OutputRead?, missingOutputText: String?) {
         let shown = file.keeping(ChatFileChanges.rowLimits)
         let hidden = max(file.lineCount - shown.heldLineCount, 0)
-        if hidden > 0 { moreLines = "… \(hidden) more \(hidden == 1 ? "line" : "lines")" }
+        if hidden > 0 { moreLines = Self.hiddenLinesNote(hidden) }
         let canShowAll = shown.heldLineCount < file.heldLineCount || shown.isLineCut && !file.isLineCut
         if canShowAll { action = .viewAll }
         guard !file.isComplete else { return }
@@ -338,7 +368,7 @@ struct ChatFileDiffFooter: Equatable {
             // can't be read has no text.
             status = missingOutputText
         case .loading?:
-            status = "Loading output…"
+            status = String(localized: "Loading output…")
         case .read?:
             break
         case .failed(let message)?:
@@ -347,6 +377,11 @@ struct ChatFileDiffFooter: Equatable {
         case .unavailable(let message)?:
             status = message
         }
+    }
+
+    /// "… 3 more lines": the lines a diff leaves out.
+    static func hiddenLinesNote(_ count: Int) -> String {
+        count == 1 ? String(localized: "… 1 more line") : String(localized: "… \(count) more lines")
     }
 }
 
@@ -403,7 +438,7 @@ struct ChatFileDiffSheet: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("\(Text(file.kind.label).foregroundStyle(.secondary)) \(Text(verbatim: path).fontDesign(.monospaced))")
+                    Text("\(Text(verbatim: file.kind.localizedLabel).foregroundStyle(.secondary)) \(Text(verbatim: path).fontDesign(.monospaced))")
                         .font(.footnote)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     ChatDiffBadge(diff: ChatDiffStats(added: file.added, removed: file.removed))
@@ -413,7 +448,7 @@ struct ChatFileDiffSheet: View {
                 .padding(.vertical, 12)
                 ChatFileDiffRows(diff: diff)
                 if diff.hiddenLines > 0 {
-                    Text(verbatim: "… \(diff.hiddenLines) more \(diff.hiddenLines == 1 ? "line" : "lines")")
+                    Text(verbatim: ChatFileDiffFooter.hiddenLinesNote(diff.hiddenLines))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding(16)

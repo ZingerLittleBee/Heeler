@@ -102,7 +102,7 @@ struct SettingsView: View {
     /// list; the Acknowledgements entry is a navigation destination, not a
     /// static label, and its id is `acknowledgementsRouteID`.
     static let usageFooter =
-        "Turn off to hide the Usage tab and stop reading usage from your Hosts. Usage widgets clear their figures."
+        String(localized: "Turn off to hide the Usage tab and stop reading usage from your Hosts. Usage widgets clear their figures.")
 
     static var aboutRows: [AboutRow] {
         var rows: [AboutRow] = [.version, .setupGuide]
@@ -195,7 +195,7 @@ struct SettingsView: View {
                             VoiceInputSettingsView(settings: voiceInput.settings)
                         } label: {
                             LabeledContent {
-                                Text(voiceInput.settings.service?.displayName ?? "Off")
+                                Text(voiceInput.settings.service?.displayName ?? String(localized: "Off"))
                             } label: {
                                 Label("Voice Input", systemImage: "mic")
                             }

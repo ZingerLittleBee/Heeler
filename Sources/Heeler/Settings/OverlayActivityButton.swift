@@ -52,7 +52,7 @@ struct OverlayActivityButton: UIViewRepresentable {
         // strength, unlike a disabled one, but takes no second tap.
         button.isUserInteractionEnabled = !(isLoading && style == .filled)
         button.accessibilityLabel = accessibilityLabel ?? title
-        button.accessibilityValue = isLoading ? "In progress" : nil
+        button.accessibilityValue = isLoading ? String(localized: "In progress") : nil
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIButton, context: Context) -> CGSize? {

@@ -87,12 +87,27 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
     /// ones above its live window. Nil in documents saved before Chat
     /// recorded them.
     var turns: [ChatTurn]?
+    /// The app localization the entries' own words are in. Reducers word
+    /// notices, tool rows and Background Work as they read, so a document
+    /// saved under another language is discarded rather than shown beside
+    /// what the live window reads now. Nil in documents saved before Chat
+    /// recorded it, which predate Heeler's translations and are English.
+    var localization: String?
+
+    /// The localization this launch words entries in.
+    static var currentLocalization: String {
+        Bundle.main.preferredLocalizations.first ?? untranslatedLocalization
+    }
+
+    /// The localization of documents that record none.
+    static let untranslatedLocalization = "en"
 
     init(
         key: ChatCacheKey, adapterRevision: Int, transcriptPath: String, head: Data,
         coverageStart: UInt64, coverageEnd: UInt64, reachedStart: Bool, title: String?,
         entries: [ChatEntry], savedAt: Date, backgroundWork: [ChatBackgroundWorkItem]? = nil,
-        latestPromptOffset: UInt64? = nil, turns: [ChatTurn]? = nil
+        latestPromptOffset: UInt64? = nil, turns: [ChatTurn]? = nil,
+        localization: String? = ChatCacheDocument.currentLocalization
     ) {
         formatVersion = Self.currentFormatVersion
         self.key = key
@@ -108,6 +123,12 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
         self.backgroundWork = backgroundWork
         self.latestPromptOffset = latestPromptOffset
         self.turns = turns
+        self.localization = localization
+    }
+
+    /// Whether the entries are worded in `localization`.
+    func isWorded(in localization: String) -> Bool {
+        (self.localization ?? Self.untranslatedLocalization) == localization
     }
 }
 

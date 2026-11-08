@@ -563,7 +563,7 @@ struct ConsoleView: View {
                         allowsColumns: true)
                         .navigationTitle(
                             usageScopeHostID.flatMap { id in hosts.consoleHosts.first { $0.id == id }?.displayName }
-                                ?? "All Hosts")
+                                ?? String(localized: "All Hosts"))
                         .toolbarTitleDisplayMode(.inlineLarge)
                 }
             }
@@ -950,7 +950,7 @@ struct ConsoleView: View {
                 isPresented: tab == .terminals
                     ? $isTerminalSearchPresented : $isAgentSearchPresented,
                 placement: .navigationBarDrawer(displayMode: .automatic),
-                prompt: tab == .terminals ? "Search Terminals" : "Search Agents")
+                prompt: tab == .terminals ? String(localized: "Search Terminals") : String(localized: "Search Agents"))
             .searchFocused($focusedSearch, equals: tab)
             .sidebarSearchDrawer(following: tab)
             // The title's list menu opens from here rather than from the
@@ -1660,7 +1660,11 @@ struct ConsoleView: View {
         case .noAgentsOnHost(let hostName):
             ContentUnavailableView {
                 Label(
-                    "No Agents on \(hostName)",
+                    !hostName.isEmpty
+                        ? String(localized: "No Agents on \(hostName)")
+                        : hostFilter.count == 1
+                            ? String(localized: "No Agents on this Host")
+                            : String(localized: "No Agents on the Selected Hosts"),
                     systemImage: "line.3.horizontal.decrease.circle")
             } actions: {
                 Button("Show All Hosts") { hostFilter.removeAll() }
@@ -2079,7 +2083,7 @@ struct ConsoleView: View {
                 } else if offers.closes {
                     Divider()
                     Button(
-                        "Close \(closeScope(for: agent))", systemImage: "trash",
+                        closeScope(for: agent).actionTitle, systemImage: "trash",
                         role: .destructive
                     ) {
                         pendingTabClose = agent
@@ -2117,7 +2121,7 @@ struct ConsoleView: View {
                         pendingTabClose = agent
                     }
                 } label: {
-                    Label(isSaved ? SavedChatRemovalCopy.confirm : "Close", systemImage: "trash")
+                    Label(isSaved ? SavedChatRemovalCopy.confirm : String(localized: "Close"), systemImage: "trash")
                 }
                 .tint(.red)
             }
@@ -2182,18 +2186,19 @@ struct ConsoleView: View {
     }
 
     /// What closing this Agent takes down, widest first.
-    private func closeScope(for agent: ConsoleAgent) -> String {
-        if console.closesWorkspaceWithTab(of: agent) { return "Workspace" }
-        return console.closesTab(of: agent) ? "Tab" : "Pane"
+    private func closeScope(for agent: ConsoleAgent) -> TerminalCloseScope {
+        if console.closesWorkspaceWithTab(of: agent) { return .workspace }
+        return console.closesTab(of: agent) ? .tab : .pane
     }
 
-    private var pendingCloseScope: String {
-        pendingTabClose.map(closeScope(for:)) ?? "Tab"
+    /// The pending close's reach; a Tab's while the alert dismisses.
+    private var pendingCloseScope: TerminalCloseScope {
+        pendingTabClose.map(closeScope(for:)) ?? .tab
     }
 
-    private var tabCloseDialogTitle: String { "Close \(pendingCloseScope)?" }
+    private var tabCloseDialogTitle: String { pendingCloseScope.confirmationTitle }
 
-    private var tabCloseConfirmLabel: String { "Close \(pendingCloseScope)" }
+    private var tabCloseConfirmLabel: String { pendingCloseScope.actionTitle }
 
     /// Confirmation copy naming the Agent as its row does, and the
     /// workspace when it dies with the tab.
@@ -2202,13 +2207,15 @@ struct ConsoleView: View {
             agent: agent, layout: console.rowLayout(for: agent.hostID)
         ).switcherTitle
         if console.closesWorkspaceWithTab(of: agent) {
-            let workspace = agent.workspaceLabel ?? "this workspace"
-            return "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab."
+            guard let workspace = agent.workspaceLabel else {
+                return String(localized: "Are you sure you want to also close this workspace? It is the workspace's last tab.")
+            }
+            return String(localized: "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab.")
         }
         if console.closesTab(of: agent) {
-            return "Closes the tab running \u{201C}\(name)\u{201D}."
+            return String(localized: "Closes the tab running \u{201C}\(name)\u{201D}.")
         }
-        return "Closes the pane running \u{201C}\(name)\u{201D}. The tab's other panes stay open."
+        return String(localized: "Closes the pane running \u{201C}\(name)\u{201D}. The tab's other panes stay open.")
     }
 
     /// A window already showing this Agent comes forward instead of a second
@@ -2347,9 +2354,11 @@ struct ConsoleView: View {
         return hostIssues.filter { hostFilter.contains($0.hostID) }
     }
 
+    /// The one selected Host's name, which the empty state names; empty for
+    /// several Hosts, or one no longer listed.
     private var filteredHostName: String {
-        guard hostFilter.count == 1 else { return "Selected Hosts" }
-        return hosts.consoleHosts.first(where: { hostFilter.contains($0.id) })?.displayName ?? "this Host"
+        guard hostFilter.count == 1 else { return "" }
+        return hosts.consoleHosts.first(where: { hostFilter.contains($0.id) })?.displayName ?? ""
     }
 
     private struct HostsTabRequest {
@@ -2540,7 +2549,7 @@ struct ConsoleListFilterChoices: View {
                 heading("Host")
                 ScrollView {
                     VStack(spacing: 0) {
-                        choice("All Hosts", selected: hostFilter.isEmpty) { hostFilter.removeAll() }
+                        choice(String(localized: "All Hosts"), selected: hostFilter.isEmpty) { hostFilter.removeAll() }
                         ForEach(hosts) { @Sendable host in
                             MainActorContent {
                                 choice(host.displayName, selected: hostFilter.contains(host.id)) {
@@ -2578,14 +2587,14 @@ struct ConsoleListFilterChoices: View {
                 heading("Agent Status")
                 ScrollView {
                     VStack(spacing: 0) {
-                        choice("All Status", selected: agentStatuses.statusFilter.isEmpty) {
+                        choice(String(localized: "All Status"), selected: agentStatuses.statusFilter.isEmpty) {
                             agentStatuses.clearStatusFilter()
                         }
                         .accessibilityIdentifier("agents.status-filter.all")
                         ForEach(ConsoleAgentStatusFilter.allCases) { @Sendable filter in
                             MainActorContent {
                                 choice(
-                                    "\(filter.status.displayTitle ?? filter.rawValue) (\(counts[filter] ?? 0))",
+                                    filter.title(count: counts[filter] ?? 0),
                                     selected: agentStatuses.statusFilter.contains(filter)
                                 ) {
                                     agentStatuses.toggleStatusFilter(filter)
@@ -2604,7 +2613,7 @@ struct ConsoleListFilterChoices: View {
         .frame(width: 300)
     }
 
-    private func heading(_ title: String) -> some View {
+    private func heading(_ title: LocalizedStringKey) -> some View {
         Text(title)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
@@ -2930,7 +2939,7 @@ struct MissingAgentPresentation: Equatable {
         ) {
             (
                 .hostFailed,
-                "Host Unavailable",
+                String(localized: "Host Unavailable"),
                 failure.isHostKeySecurityFailure
                     ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill",
                 named(failure.presentation(usesHerdrEndpoint: usesHerdrEndpoint).message)
@@ -2941,21 +2950,21 @@ struct MissingAgentPresentation: Equatable {
         switch hostStatus {
         case .suspended:
             cause = .hostSuspended
-            title = "Connection Paused"
+            title = String(localized: "Connection Paused")
             systemImage = "pause.circle"
-            message = named("The connection is paused until Heeler becomes active.")
+            message = named(String(localized: "The connection is paused until Heeler becomes active."))
         case .connecting:
             if let standingFailure {
                 (cause, title, systemImage, message) = applyFailed(standingFailure)
             } else {
                 cause = .hostConnecting
-                title = "Connecting…"
+                title = String(localized: "Connecting…")
                 systemImage = "dot.radiowaves.left.and.right"
-                message = named("Opening the connection.")
+                message = named(String(localized: "Opening the connection."))
             }
         case .reconnecting(_, _, let failure):
             cause = .hostReconnecting
-            title = "Reconnecting…"
+            title = String(localized: "Reconnecting…")
             systemImage = "arrow.trianglehead.2.clockwise"
             message = named(failure.presentation.summary)
         case .failed(let failure):
@@ -2963,12 +2972,12 @@ struct MissingAgentPresentation: Equatable {
         case .connected:
             if hostsAwaitingSnapshot.contains(agentID.hostID) {
                 cause = .hostLoadingAgents
-                title = "Loading Agents…"
+                title = String(localized: "Loading Agents…")
                 systemImage = "hourglass"
-                message = named("Fetching the latest Agents.")
+                message = named(String(localized: "Fetching the latest Agents."))
             } else {
                 cause = .paneGone
-                title = "Agent Gone"
+                title = String(localized: "Agent Gone")
                 systemImage = "rectangle.on.rectangle.slash"
                 message = Self.paneGoneMessage
             }
@@ -2976,7 +2985,7 @@ struct MissingAgentPresentation: Equatable {
             // No live inventory says why: an ended session, or a deleted
             // Host whose projection is gone, where no Agent comes back.
             cause = .paneGone
-            title = "Agent Gone"
+            title = String(localized: "Agent Gone")
             systemImage = "rectangle.on.rectangle.slash"
             message = Self.unreportedMessage
         }
@@ -2986,9 +2995,9 @@ struct MissingAgentPresentation: Equatable {
     /// it does one whose pane closed; the same pane rebinds when an Agent
     /// starts in it again.
     static let paneGoneMessage =
-        "The Agent in this pane has exited, or the pane was closed. It shows here again if an Agent starts in the pane."
+        String(localized: "The Agent in this pane has exited, or the pane was closed. It shows here again if an Agent starts in the pane.")
 
-    static let unreportedMessage = "This Agent's pane is no longer reported."
+    static let unreportedMessage = String(localized: "This Agent's pane is no longer reported.")
 
     /// What the Console's detail column shows when the selected Agent is not
     /// in the list.
@@ -3173,7 +3182,7 @@ struct ConsoleHostStatusCountPills: View {
 
     private var pills: some View {
         ForEach(items) { @Sendable item in
-            Text("\(item.count) \(item.status.rawValue)")
+            Text(item.text)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color(item.status.inkUIColor))
                 .fixedSize()

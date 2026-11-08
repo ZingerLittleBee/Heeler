@@ -30,11 +30,8 @@ struct HostHelperSheet: View {
         }
     }
 
-    private static let removalDeletes =
-        "This stops its service and deletes its files, its Pi and Oh My Pi extensions "
-        + "and this Host's notification registrations, and undoes the OpenCode edit this device made. "
-    static let removalMessage = removalDeletes + "Systemd linger and the Grok Build setting stay as they are."
-    static let macOSRemovalMessage = removalDeletes + "The Grok Build setting stays as it is."
+    static let removalMessage = String(localized: "This stops its service and deletes its files, its Pi and Oh My Pi extensions and this Host's notification registrations, and undoes the OpenCode edit this device made. Systemd linger and the Grok Build setting stay as they are.")
+    static let macOSRemovalMessage = String(localized: "This stops its service and deletes its files, its Pi and Oh My Pi extensions and this Host's notification registrations, and undoes the OpenCode edit this device made. The Grok Build setting stays as it is.")
 
     private var doneButton: some ToolbarContent {
         ToolbarItem(placement: .confirmationAction) {

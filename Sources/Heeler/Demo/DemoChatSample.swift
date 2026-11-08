@@ -135,8 +135,7 @@
                 dashed,
                 " Do you want to proceed?",
                 " \(accent)❯ \(reset)\(inactive)1. \(reset)\(accent)Yes\(reset)",
-                "   \(inactive)2. \(reset)Yes, and don't ask again for \(bold)swift test\(reset) commands in "
-                    + "\(bold)/workspace/storefront\(reset)",
+                "   \(inactive)2. \(reset)Yes, and don't ask again for \(bold)swift test\(reset) commands in \(bold)/workspace/storefront\(reset)",
                 "   \(inactive)3. \(reset)No",
                 "",
                 " \(inactive)Esc to cancel · Tab to amend\(reset)",

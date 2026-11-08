@@ -50,8 +50,8 @@ struct TerminalListView: View {
             case .byHost: byHost
             }
         }
-        .alert(closeTitle, isPresented: isPresented($pendingClose)) {
-            Button(closeTitle.replacingOccurrences(of: "?", with: ""), role: .destructive) {
+        .alert(pendingCloseScope.confirmationTitle, isPresented: isPresented($pendingClose)) {
+            Button(pendingCloseScope.actionTitle, role: .destructive) {
                 confirmClose()
             }
             Button("Cancel", role: .cancel) { pendingClose = nil }
@@ -267,7 +267,7 @@ struct TerminalListView: View {
         .modifier(
             ConsoleRowContextMenu(liftsCard: liftsCard) {
                 Section(
-                    "\(terminal.displayTabTitle) · \(terminal.workspaceLabel ?? "Workspace") · \(terminal.hostName)"
+                    "\(terminal.displayTabTitle) · \(terminal.workspaceLabel ?? String(localized: "Workspace")) · \(terminal.hostName)"
                 ) {
                     if capabilities(of: terminal).startsIn(terminal.cwd) {
                         if capabilities(of: terminal).startsTerminals {
@@ -385,7 +385,7 @@ struct TerminalListView: View {
                 guard let terminal = await console.waitForTerminal(identity, on: id.hostID)
                 else {
                     createFailure =
-                        "The terminal was created, but its Workspace hasn't refreshed yet."
+                        String(localized: "The terminal was created, but its Workspace hasn't refreshed yet.")
                     return
                 }
                 onOpen(terminal)
@@ -403,11 +403,12 @@ struct TerminalListView: View {
     }
 
     private func closeLabel(for terminal: ConsoleTerminal) -> String {
-        "Close \(closeScope(for: terminal).rawValue)"
+        closeScope(for: terminal).actionTitle
     }
 
-    private var closeTitle: String {
-        pendingClose.map { "\(closeLabel(for: $0))?" } ?? "Close Tab?"
+    /// The pending close's reach; a Tab's while the alert dismisses.
+    private var pendingCloseScope: TerminalCloseScope {
+        pendingClose.map(closeScope(for:)) ?? .tab
     }
 
     private func closeMessage(for terminal: ConsoleTerminal) -> String {
@@ -466,9 +467,16 @@ struct TerminalRowView: View {
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(presentation.title)
-        .accessibilityValue(
-            "\(terminal.isRestarting ? "Restarting, " : "")\(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd), \(terminal.displayTabTitle)"
-        )
+        .accessibilityValue(spokenValue)
+    }
+
+    /// The path and Tab, after "Restarting" while the shell restarts.
+    private var spokenValue: String {
+        let path = terminal.displayCwd.isEmpty ? String(localized: "Path unavailable") : terminal.displayCwd
+        let tab = terminal.displayTabTitle
+        return terminal.isRestarting
+            ? String(localized: "Restarting, \(path), \(tab)")
+            : "\(path), \(tab)"
     }
 }
 
@@ -665,8 +673,8 @@ private struct TerminalHostHeader: View {
             group.opensConnectionDetail ? "" : group.isCollapsed ? "Collapsed" : "Expanded")
         .accessibilityHint(
             group.opensConnectionDetail
-                ? "Shows why this Host can't connect."
-                : group.isCollapsed ? "Expands this Host." : "Collapses this Host.")
+                ? String(localized: "Shows why this Host can't connect.")
+                : group.isCollapsed ? String(localized: "Expands this Host.") : String(localized: "Collapses this Host."))
         .accessibilityAddTraits(.isHeader)
     }
 

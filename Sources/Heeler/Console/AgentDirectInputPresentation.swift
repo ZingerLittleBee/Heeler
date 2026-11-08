@@ -48,12 +48,12 @@ struct AgentDirectInputPresentation: Equatable, Sendable {
             layout: layout)
     }
 
-    static let hideComposerAccessibilityLabel = "Hide Composer"
+    static let hideComposerAccessibilityLabel = String(localized: "Hide Composer")
     static let hideComposerAccessibilityHint =
-        "Hides the Composer and types into the Agent with the iOS keyboard."
-    static let showComposerAccessibilityLabel = "Show Composer"
+        String(localized: "Hides the Composer and types into the Agent with the iOS keyboard.")
+    static let showComposerAccessibilityLabel = String(localized: "Show Composer")
     static let showComposerAccessibilityHint =
-        "Restores the Composer. The draft is unchanged."
+        String(localized: "Restores the Composer. The draft is unchanged.")
 
     /// Single production predicate for arming Direct Input keyboard handoff
     /// across terminal replacement/reactivation and Agent-switch paths. Intent,

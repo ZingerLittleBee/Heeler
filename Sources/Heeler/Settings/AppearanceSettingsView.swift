@@ -73,9 +73,7 @@ private struct TerminalAppearanceSection: View {
             Text("Terminal")
         } footer: {
             Text(
-                "Pinching a terminal to zoom changes its text size too, and it sticks. "
-                    + "Each appearance has its own theme: a dark theme for Light Mode keeps "
-                    + "the terminal dark under a light system.")
+                String(localized: "Pinching a terminal to zoom changes its text size too, and it sticks. Each appearance has its own theme: a dark theme for Light Mode keeps the terminal dark under a light system."))
         }
     }
 
@@ -90,7 +88,7 @@ private struct TerminalAppearanceSection: View {
                 )
                 .frame(width: 54, height: 38)
                 .accessibilityHidden(true)
-                Text(scheme == .dark ? "Dark Mode" : "Light Mode")
+                Text(scheme == .dark ? String(localized: "Dark Mode") : String(localized: "Light Mode"))
                 Spacer(minLength: 12)
                 Text(terminal.themes.selection(for: scheme).title)
                     .foregroundStyle(.secondary)
@@ -140,9 +138,7 @@ private struct ChatAppearanceSection: View {
             Text("Chat")
         } footer: {
             Text(
-                "Code stays monospaced, and the text size follows the system's from there. "
-                    + "A finished turn's steps fold behind one line above its answer; a turn stays "
-                    + "open while it runs or while its background work does.")
+                String(localized: "Code stays monospaced, and the text size follows the system's from there. A finished turn's steps fold behind one line above its answer; a turn stays open while it runs or while its background work does."))
         }
     }
 

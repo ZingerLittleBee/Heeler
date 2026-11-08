@@ -82,11 +82,11 @@ struct AgentUsageLimitChip: Identifiable, Equatable {
             if let tightest, limits.state == "ok" || limits.state == "throttled" {
                 title = AgentUsageLimitsView.windowName(tightest, program: program)
             } else if limits.state == "disabled" {
-                title = "Limits off"
+                title = String(localized: "Limits off")
             } else if limits.state == "unavailable" && limits.reason == "notReadYet" {
-                title = "Reading…"
+                title = String(localized: "Reading…")
             } else {
-                title = "Unavailable"
+                title = String(localized: "Unavailable")
             }
             let isLive = limits.state == "ok" || limits.state == "throttled"
             return Self(
@@ -157,9 +157,18 @@ struct AgentUsageBreakdown: View {
         var id: Self { self }
         var title: String {
             switch self {
-            case .models: "Models"
-            case .directories: "Directories"
-            case .days: "Days"
+            case .models: String(localized: "Models")
+            case .directories: String(localized: "Directories")
+            case .days: String(localized: "Days")
+            }
+        }
+
+        /// The link to every row of a breakdown cut short.
+        func showAll(_ count: Int) -> String {
+            switch self {
+            case .models: String(localized: "Show All \(count.formatted()) Models")
+            case .directories: String(localized: "Show All \(count.formatted()) Directories")
+            case .days: String(localized: "Show All \(count.formatted()) Days")
             }
         }
     }
@@ -208,7 +217,7 @@ struct AgentUsageBreakdown: View {
                     .navigationBarTitleDisplayMode(.inline)
                 } label: {
                     HStack {
-                        Text("Show All \(rows.count.formatted()) \(kind.title)")
+                        Text(kind.showAll(rows.count))
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.footnote.weight(.semibold))
@@ -247,7 +256,7 @@ struct AgentUsageBreakdown: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(AgentUsageStyle.value(row.summary, metric: metric, locale: locale))
                     .font(.subheadline.weight(.semibold))
-                Text("\(AgentUsageStyle.share(value, of: total, locale: locale)) · \(metric == .cost ? "\(AgentUsageStyle.tokens(row.summary.tokens.total, locale: locale)) tokens" : AgentUsageStyle.cost(row.summary.estimatedCostUSD, locale: locale))")
+                Text("\(AgentUsageStyle.share(value, of: total, locale: locale)) · \(metric == .cost ? String(localized: "\(AgentUsageStyle.tokens(row.summary.tokens.total, locale: locale)) tokens") : AgentUsageStyle.cost(row.summary.estimatedCostUSD, locale: locale))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if !row.priced {
@@ -350,7 +359,7 @@ struct AgentUsageDaySheet: View {
                     includesYear: false, includesWeekday: true))
                     .font(.title2.bold())
                 Text(scope.included.count == 1
-                    ? "Token Usage on this Host" : "Token Usage on these \(scope.included.count.formatted()) Hosts")
+                    ? String(localized: "Token Usage on this Host") : String(localized: "Token Usage on these \(scope.included.count.formatted()) Hosts"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -421,7 +430,7 @@ struct AgentUsageDaySheet: View {
                         Spacer(minLength: 8)
                         Text(summary.map { AgentUsageStyle.cost($0.estimatedCostUSD, locale: locale) } ?? "–")
                             .font(.subheadline.weight(.semibold))
-                        Text(summary.map { "\(AgentUsageStyle.tokens($0.tokens.total, locale: locale)) tokens" } ?? "")
+                        Text(summary.map { String(localized: "\(AgentUsageStyle.tokens($0.tokens.total, locale: locale)) tokens") } ?? "")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .frame(minWidth: 84, alignment: .trailing)
@@ -621,7 +630,8 @@ struct AgentUsageHostLimits: View {
             }
         } else {
             Section {
-                AgentUsageContent(state: entry.isConnected ? entry.store.state : .failed("Not connected"))
+                AgentUsageContent(
+                    state: entry.isConnected ? entry.store.state : .failed(String(localized: "Not connected")))
             } header: {
                 header
             }

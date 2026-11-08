@@ -45,7 +45,7 @@ enum HerdrCoreStaging {
     /// The path as the core reports it: it may clean or number the name.
     static func path(in result: JSONValue, for source: Source) throws -> String {
         guard let path = result["path"]?.stringValue else {
-            throw TransportError.malformedResponse("herdr-core: terminal.put named no path.")
+            throw TransportError.malformedResponse(String(localized: "herdr-core: terminal.put named no path."))
         }
         guard HerdrCoreWire.integer(result["bytes"]) == Int(source.byteCount) else {
             throw AttachmentStagingError.byteCountMismatch

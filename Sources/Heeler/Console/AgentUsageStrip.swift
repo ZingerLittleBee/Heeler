@@ -67,11 +67,11 @@ struct AgentUsageStrip: View {
     /// that separate them on screen carry no meaning to a screen reader.
     private var accessibilityLabel: String {
         var parts: [String] = []
-        if let model { parts.append("model \(model)") }
-        if let contextText { parts.append("context \(contextText)") }
-        if let costText { parts.append("session cost \(costText)") }
-        if let rateText { parts.append("generation rate \(rateText)") }
-        return "Agent usage: " + parts.joined(separator: ", ")
+        if let model { parts.append(String(localized: "model \(model)")) }
+        if let contextText { parts.append(String(localized: "context \(contextText)")) }
+        if let costText { parts.append(String(localized: "session cost \(costText)")) }
+        if let rateText { parts.append(String(localized: "generation rate \(rateText)")) }
+        return String(localized: "Agent usage: \(parts.formatted(.list(type: .and)))")
     }
 
     /// The glyph names the figure; the value carries the weight, because it is

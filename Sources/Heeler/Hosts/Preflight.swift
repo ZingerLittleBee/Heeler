@@ -18,13 +18,15 @@ enum PreflightCheck: CaseIterable, Sendable {
 
     func title(for serverKind: ServerKind) -> String {
         switch (self, serverKind) {
-        case (.connection, _): "SSH connection"
-        case (.remoteEnvironment, _): "remote environment"
-        case (.herdrInstalled, .herdrTUI), (.herdrInstalled, .unconfirmed): "herdr installed"
-        case (.herdrInstalled, .herdrCore): "herdr-core installed"
-        case (.serverRunning, .herdrTUI), (.serverRunning, .unconfirmed): "herdr server running"
-        case (.serverRunning, .herdrCore): "herdr-core running"
-        case (.protocolCompatible, _): "protocol compatible"
+        case (.connection, _): String(localized: "SSH connection")
+        case (.remoteEnvironment, _): String(localized: "remote environment")
+        case (.herdrInstalled, .herdrTUI), (.herdrInstalled, .unconfirmed):
+            String(localized: "herdr installed")
+        case (.herdrInstalled, .herdrCore): String(localized: "herdr-core installed")
+        case (.serverRunning, .herdrTUI), (.serverRunning, .unconfirmed):
+            String(localized: "herdr server running")
+        case (.serverRunning, .herdrCore): String(localized: "herdr-core running")
+        case (.protocolCompatible, _): String(localized: "protocol compatible")
         }
     }
 }
@@ -67,108 +69,90 @@ struct PreflightReport: Equatable, Sendable {
         switch error {
         case .hostFeatureUnavailable(let feature):
             check = .remoteEnvironment
-            hint = feature.hasSuffix(".") ? feature : feature + "."
+            hint =
+                feature.hasSuffix(".") || feature.hasSuffix("。")
+                ? feature : String(localized: "\(feature).")
         case .sshUnreachable(let detail):
             check = .connection
-            hint = "Could not reach the Host over SSH. Check the address and port. (\(detail))"
+            hint = String(localized: "Could not reach the Host over SSH. Check the address and port. (\(detail))")
         case .authenticationFailed:
             check = .connection
             switch authMethod {
             case .deviceKey:
                 hint =
-                    "The Host rejected the device key. Copy this Host's key line "
-                    + "into ~/.ssh/authorized_keys on the Host, or for an administrator account "
-                    + #"on Windows into C:\ProgramData\ssh\administrators_authorized_keys, "#
-                    + "which only Administrators and SYSTEM may access, then run the checks again."
+                    String(localized: "The Host rejected the device key. Copy this Host's key line into ~/.ssh/authorized_keys on the Host, or for an administrator account on Windows into C:\\ProgramData\\ssh\\administrators_authorized_keys, which only Administrators and SYSTEM may access, then run the checks again.")
             case .rsaKey:
                 hint =
-                    "The Host rejected the RSA Key. Copy its public key from Edit Host and "
-                    + "register it wherever that Host accepts SSH identities."
+                    String(localized: "The Host rejected the RSA Key. Copy its public key from Edit Host and register it wherever that Host accepts SSH identities.")
             case .password:
-                hint = "The Host rejected the login. Check the username and password."
+                hint = String(localized: "The Host rejected the login. Check the username and password.")
             }
         case .deviceKeyCorrupt:
             check = .connection
             hint =
-                "The Device Key is corrupted. Edit this Host and choose Replace Device Key, "
-                + "then add the new public key to ~/.ssh/authorized_keys on every Device Key Host, "
-                + #"or C:\ProgramData\ssh\administrators_authorized_keys for an administrator "#
-                + "account on Windows."
+                String(localized: "The Device Key is corrupted. Edit this Host and choose Replace Device Key, then add the new public key to ~/.ssh/authorized_keys on every Device Key Host, or C:\\ProgramData\\ssh\\administrators_authorized_keys for an administrator account on Windows.")
         case .rsaKeyCorrupt:
             check = .connection
             hint =
-                "The RSA Key is corrupted. Edit this Host and choose Replace RSA Key, then "
-                + "register the new public key on every Host that uses it."
+                String(localized: "The RSA Key is corrupted. Edit this Host and choose Replace RSA Key, then register the new public key on every Host that uses it.")
         case .rsaSignatureUnsupported:
             check = .connection
             hint =
-                "The Host does not offer RSA-SHA2-512 signatures, which RSA Key requires. "
-                + "Registering the key again will not help; enable rsa-sha2-512 on the Host "
-                + "or choose another authentication method."
+                String(localized: "The Host does not offer RSA-SHA2-512 signatures, which RSA Key requires. Registering the key again will not help; enable rsa-sha2-512 on the Host or choose another authentication method.")
         case .hostKeyRejected:
             check = .connection
-            hint = "The host key was not confirmed. Run the checks again and confirm the fingerprint."
+            hint = String(localized: "The host key was not confirmed. Run the checks again and confirm the fingerprint.")
         case .hostKeyMismatch(let known, let presented):
             check = .connection
             hint =
-                "Host key changed: trusted \(known.displayString), the Host presented "
-                + "\(presented.displayString). This can be a reinstalled server or an attack — "
-                + "verify with the Host's owner before trusting it."
+                String(localized: "Host key changed: trusted \(known.displayString), the Host presented \(presented.displayString). This can be a reinstalled server or an attack — verify with the Host's owner before trusting it.")
         case .socketNotFound(let path):
             check = .herdrInstalled
             if usesHerdrEndpoint {
                 hint =
-                    "No herdr socket at \(path). Start the herdr instance configured for this Host "
-                    + "and verify its socket path, then run the checks again."
+                    String(localized: "No herdr socket at \(path). Start the herdr instance configured for this Host and verify its socket path, then run the checks again.")
             } else {
                 hint =
-                    "No herdr socket at \(path). Install and start herdr on the Host, "
-                    + "or fix the session name."
+                    String(localized: "No herdr socket at \(path). Install and start herdr on the Host, or fix the session name.")
             }
         case .homeDirectoryUnresolvable(let detail):
             check = .remoteEnvironment
             hint =
-                "Could not resolve the remote home directory, so the herdr socket "
-                + "path is unknown. (\(detail))"
+                String(localized: "Could not resolve the remote home directory, so the herdr socket path is unknown. (\(detail))")
         case .invalidDirectoryPath(let path):
             check = .remoteEnvironment
-            hint = "That folder path cannot be opened: \(path)."
+            hint = String(localized: "That folder path cannot be opened: \(path).")
         case .streamLocalOpenFailed(let path):
             check = .serverRunning
             if usesHerdrEndpoint {
                 hint =
-                    "Could not open the herdr socket at \(path). Start the herdr instance "
-                    + "configured for this Host, or enable SSH stream-local forwarding and run the "
-                    + "checks again."
+                    String(localized: "Could not open the herdr socket at \(path). Start the herdr instance configured for this Host, or enable SSH stream-local forwarding and run the checks again.")
             } else {
                 hint =
-                    "Could not open the herdr socket at \(path). Start herdr on the Host, "
-                    + "or enable SSH stream-local forwarding and run the checks again."
+                    String(localized: "Could not open the herdr socket at \(path). Start herdr on the Host, or enable SSH stream-local forwarding and run the checks again.")
             }
         case .tcpForwardingUnavailable:
             check = .connection
             hint =
-                "The Jump Host refused TCP forwarding. Enable AllowTcpForwarding "
-                + "in its SSH server configuration and try again."
+                String(localized: "The Jump Host refused TCP forwarding. Enable AllowTcpForwarding in its SSH server configuration and try again.")
         case .protocolVersionMismatch(let server, let supported):
             check = .protocolCompatible
             // Only reachable below the floor now: a newer Host connects and
             // carries an advisory notice instead of failing here.
             let update =
                 usesHerdrEndpoint
-                ? "Update the herdr instance configured for this Host." : "Update herdr on the Host."
+                ? String(localized: "Update the herdr instance configured for this Host.") : String(localized: "Update herdr on the Host.")
             hint =
-                "The Host speaks herdr protocol \(server); this app needs at least "
-                + "\(supported). \(update)"
+                String(localized: "The Host speaks herdr protocol \(server); this app needs at least \(supported). \(update)")
         case .malformedResponse(let detail):
             check = .protocolCompatible
-            hint = "The server's reply did not parse as herdr protocol. (\(detail))"
+            hint = String(localized: "The server's reply did not parse as herdr protocol. (\(detail))")
         case .timedOut:
             check = .connection
-            hint = "The Host did not answer in time. Check the connection and try again."
+            hint = String(localized: "The Host did not answer in time. Check the connection and try again.")
         case .coreMutationOutcomeUnknown:
             check = .connection
-            hint = "The Host did not confirm the action. Check its state before trying again."
+            hint = String(localized: "The Host did not confirm the action. Check its state before trying again.")
         case .herdrCoreInventoryStale, .herdrCoreTerminalGone:
             // Preflight has no inventory; keep the closed taxonomy total.
             check = .connection
@@ -188,20 +172,21 @@ struct PreflightReport: Equatable, Sendable {
         case .gitTimedOut:
             // Preflight never reads Changes; keep the closed taxonomy total.
             check = .connection
-            hint = "Reading Changes timed out."
+            hint = String(localized: "Reading Changes timed out.")
         case .hostFileTimedOut, .hostFileUnreadable, .hostStoreUnreadable:
             // Preflight never reads transcripts; keep the closed taxonomy total.
             check = .connection
-            hint = "Reading a Host file failed."
+            hint = String(localized: "Reading a Host file failed.")
         case .cancelled:
             check = .connection
-            hint = "The check was cancelled before it finished."
+            hint = String(localized: "The check was cancelled before it finished.")
         case .apiRejected(let code, let message):
             check = .serverRunning
-            hint = "herdr answered but rejected the check: \(message) (\(code))"
+            hint = String(localized: "herdr answered but rejected the check: \(message) (\(code))")
         case .channelFailed(let detail):
             check = .connection
-            hint = "The connection failed unexpectedly. (\(detail))"
+            hint = String(
+                localized: "The connection failed unexpectedly. (\(TransportError.displayedChannelDetail(detail)))")
         case .attachExited:
             // Not reachable from a connect+ping preflight; keep the closed
             // taxonomy total anyway.
@@ -211,17 +196,15 @@ struct PreflightReport: Equatable, Sendable {
             // Not reachable from a connect+ping preflight; keep the closed
             // taxonomy total anyway.
             check = .connection
-            hint = "The connection is busy. Try again."
+            hint = String(localized: "The connection is busy. Try again.")
         case .herdrBinaryNotFound:
             // Windows preflight verifies the official CLI bridge capability.
             check = .herdrInstalled
-            hint = "The herdr CLI was not found on the Host's non-interactive SSH PATH."
+            hint = String(localized: "The herdr CLI was not found on the Host's non-interactive SSH PATH.")
         case .herdrLauncherNotFound(let path):
             check = .herdrInstalled
             hint =
-                "The herdr launcher at \(path) could not run. "
-                + "Check that this launcher exists, is executable, and can start herdr. "
-                + "Pair the Host again if its path changed."
+                String(localized: "The herdr launcher at \(path) could not run. Check that this launcher exists, is executable, and can start herdr. Pair the Host again if its path changed.")
         case .jumpHostFailed(let underlying):
             // The first hop broke, so the Host itself was never contacted and
             // nothing about it has been disproved. Name the Jump Host as the
@@ -254,75 +237,55 @@ struct PreflightReport: Equatable, Sendable {
     ) -> String {
         switch error {
         case .sshUnreachable(let detail):
-            "Could not reach the Jump Host. Check its address and port. (\(detail))"
+            String(localized: "Could not reach the Jump Host. Check its address and port. (\(detail))")
         case .authenticationFailed:
             switch authMethod {
             case .deviceKey:
-                "The Jump Host rejected the Device Key. Add this Host's key line to "
-                    + "~/.ssh/authorized_keys there, then run the checks again."
+                String(localized: "The Jump Host rejected the Device Key. Add this Host's key line to ~/.ssh/authorized_keys there, then run the checks again.")
             case .rsaKey:
-                "The Jump Host rejected the RSA Key. Register its public key on the Jump Host, "
-                    + "then run the checks again."
+                String(localized: "The Jump Host rejected the RSA Key. Register its public key on the Jump Host, then run the checks again.")
             case .password:
-                "The Jump Host rejected the login. It must accept the same password configured "
-                    + "for this Host; separate passwords are not supported."
+                String(localized: "The Jump Host rejected the login. It must accept the same password configured for this Host; separate passwords are not supported.")
             }
         case .hostKeyRejected:
-            "The Jump Host's key was not confirmed. Run the checks again and confirm "
-                + "the fingerprint."
+            String(localized: "The Jump Host's key was not confirmed. Run the checks again and confirm the fingerprint.")
         case .hostKeyMismatch(let known, let presented):
-            "Jump Host key changed: trusted \(known.displayString), it presented "
-                + "\(presented.displayString). This can be a reinstalled server or an "
-                + "attack — verify with its owner before trusting it."
+            String(localized: "Jump Host key changed: trusted \(known.displayString), it presented \(presented.displayString). This can be a reinstalled server or an attack — verify with its owner before trusting it.")
         case .deviceKeyCorrupt:
-            "The Device Key is corrupted, so the Jump Host could not be reached. Edit "
-                + "this Host and choose Replace Device Key."
+            String(localized: "The Device Key is corrupted, so the Jump Host could not be reached. Edit this Host and choose Replace Device Key.")
         case .rsaKeyCorrupt:
-            "The RSA Key is corrupted, so the Jump Host could not be reached. Edit this Host "
-                + "and choose Replace RSA Key."
+            String(localized: "The RSA Key is corrupted, so the Jump Host could not be reached. Edit this Host and choose Replace RSA Key.")
         case .rsaSignatureUnsupported:
-            "The Jump Host does not offer RSA-SHA2-512 signatures, which RSA Key requires on "
-                + "both hops. Enable rsa-sha2-512 there or choose another authentication method."
+            String(localized: "The Jump Host does not offer RSA-SHA2-512 signatures, which RSA Key requires on both hops. Enable rsa-sha2-512 there or choose another authentication method.")
         case .timedOut:
-            "The Jump Host did not answer in time. Check the connection and try again."
+            String(localized: "The Jump Host did not answer in time. Check the connection and try again.")
         case .cancelled:
-            "The check was cancelled before it finished."
+            String(localized: "The check was cancelled before it finished.")
         default:
-            "Could not connect through the Jump Host. (\(String(describing: error)))"
+            String(localized: "Could not connect through the Jump Host. (\(String(describing: error)))")
         }
     }
 
     private static func overlayHint(network: String, reason: OverlayFailure) -> String {
         switch reason {
         case .notConfigured:
-            "This Host uses an overlay network that no longer exists. Edit the Host and "
-                + "choose another network, or Direct."
+            String(localized: "This Host uses an overlay network that no longer exists. Edit the Host and choose another network, or Direct.")
         case .catalogUnreadable:
-            "The saved overlay networks could not be read, so this Host's network is "
-                + "unknown. Update Heeler, then run the checks again."
+            String(localized: "The saved overlay networks could not be read, so this Host's network is unknown. Update Heeler, then run the checks again.")
         case .notReady(let detail):
-            "Overlay network “\(network)” is not online yet. If it is waiting for "
-                + "approval, authorize this device in the network's admin console, then run "
-                + "the checks again. (\(detail))"
+            String(localized: "Overlay network “\(network)” is not online yet. If it is waiting for approval, authorize this device in the network's admin console, then run the checks again. (\(detail))")
         case .misconfigured(let detail):
-            "Overlay network “\(network)” is misconfigured. Fix it in Settings › "
-                + "Overlay Networks. (\(detail))"
+            String(localized: "Overlay network “\(network)” is misconfigured. Fix it in Settings › Overlay Networks. (\(detail))")
         case .loginRequired:
-            "Overlay network “\(network)” needs sign-in. Open the sign-in link, "
-                + "then run the checks again."
+            String(localized: "Overlay network “\(network)” needs sign-in. Open the sign-in link, then run the checks again.")
         case .signedOut:
-            "This device is signed out of overlay network “\(network)”. Connect it "
-                + "again in Settings › Overlay Networks, then run the checks again."
+            String(localized: "This device is signed out of overlay network “\(network)”. Connect it again in Settings › Overlay Networks, then run the checks again.")
         case .startFailed(let detail):
-            "Overlay network “\(network)” could not start. Check its auth key or "
-                + "secret in Settings › Overlay Networks. (\(detail))"
+            String(localized: "Overlay network “\(network)” could not start. Check its auth key or secret in Settings › Overlay Networks. (\(detail))")
         case .unreachable(let detail):
-            "Could not reach the address over overlay network “\(network)”. Check "
-                + "that the machine has joined the network and that the address is its "
-                + "overlay address or name. (\(detail))"
+            String(localized: "Could not reach the address over overlay network “\(network)”. Check that the machine has joined the network and that the address is its overlay address or name. (\(detail))")
         case .timedOut:
-            "Overlay network “\(network)” did not connect in time. Check this "
-                + "device's internet connection and try again."
+            String(localized: "Overlay network “\(network)” did not connect in time. Check this device's internet connection and try again.")
         }
     }
 
