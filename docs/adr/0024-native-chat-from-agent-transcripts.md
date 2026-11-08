@@ -699,11 +699,18 @@ as the screen draws them, and takes from the call only what the screen cut:
 the command or path, and for a changed line cut at the edge the call's
 change, a line diff of its target and replacement that can draw
 differently (agy draws the whole target removed and the whole replacement
-added). A call a confirmed answer went to matches no later card until the
-transcript resolves it, since agy can draw the next dialog, such as a
-second edit of the same file, before Chat reads the first call's result.
-Whether agy shortens a tall diff is not captured. A permission's option
-presses its digit, which picks and confirms at once; the two `always
+added). agy can draw the next dialog, such as a second edit of the same
+file, before Chat reads the first call's result, wherever the first was
+answered. So until the transcript resolves it, a call a confirmed answer
+went to matches no later card, and a call whose dialog a card showed
+matches only a read of that dialog, so one answered in the terminal or
+another client doesn't take the next card either. A read that fails, or
+shows no dialog or one Heeler can't read, changes nothing, and the dialog
+read again at another width, its path or a changed line cut at the new
+edge, keeps its call. After an answer outside the card, a next dialog just
+like the answered one still goes to the first call, since the screen can't
+tell them apart. Whether agy shortens a tall diff is not captured. A
+permission's option presses its digit, which picks and confirms at once; the two `always
 allow` rows carry captions saying whether the rule lasts for the
 conversation or is saved in agy's settings, and No ends the turn, so the card then focuses the Composer. A note with
 the command's Yes or No moves to that row, opens Amend with Tab, pastes the

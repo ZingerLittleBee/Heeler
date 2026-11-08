@@ -161,7 +161,7 @@ struct BlockedCardStoreTests {
         let store = BlockedCardStore(
             program: .claude,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { _ in
                     await pane.show(after)
                     throw TransportError.channelFailed(detail: "timed out")
@@ -182,7 +182,7 @@ struct BlockedCardStoreTests {
         let store = BlockedCardStore(
             program: .claude,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { _ in throw TransportError.channelFailed(detail: "timed out") },
                 paste: { await pane.paste($0) }),
             clock: ManualClock().clock)
@@ -201,7 +201,7 @@ struct BlockedCardStoreTests {
         let store = BlockedCardStore(
             program: .claude,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { keys in
                     await pane.send(keys)
                     // The program records the result; the dialog still shows.
@@ -861,7 +861,7 @@ struct BlockedCardStoreTests {
         let store = BlockedCardStore(
             program: .grok,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { keys in
                     await pane.send(keys)
                     await MainActor.run {
@@ -1746,6 +1746,145 @@ struct BlockedCardStoreTests {
         #expect(resolved.request?.callID == "agy:24:tool:1")
     }
 
+    /// A dialog answered in the terminal or another client leaves its call
+    /// open too, until agy writes the result, and agy can draw the next
+    /// dialog first: a second edit of the same file. That card takes its
+    /// own call, so its answer is kept under that call, and the line the
+    /// screen cut never shows the first call's change.
+    @Test func anAgyCallAnsweredInTheTerminalNeverStandsInForTheNextDialog() async throws {
+        let date = try BlockedRequestMatchTests.agyEditCall()
+        let fig = Self.agyCall("agy:24:tool:1", "edit_file", .fileEdit, date.summary)
+        let pane = FakePane(try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40"))
+        await pane.react(to: ["1"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(transcript: Self.agyTranscript(open: [date, fig], status: .awaitingApproval))
+        store.update(activity: .idle)
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        #expect(card.request?.callID == "agy:24:tool:0")
+
+        // Answered in the terminal: the next edit's dialog, its added line
+        // cut at the screen's edge.
+        let cut = "fig " + String(repeating: "x", count: 120)
+        await pane.show(try Self.agyEdit("agy-47-perm-file-edit-default-120x40", width: 120, adding: cut))
+        await store.refresh()
+        guard case .card(let next) = store.content else {
+            Issue.record("Expected the next card, got \(store.content)")
+            return
+        }
+        #expect(next.dialog.subject.changesAreCut)
+        #expect(next.request?.callID == "agy:24:tool:1")
+        #expect(BlockedRequestMatch.agyChanges(on: next.dialog, call: next.request) == Array(next.dialog.body.dropFirst()))
+
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys == [["1"]])
+        #expect(store.history.calls == ["agy:24:tool:1": .allowed])
+    }
+
+    /// A read can miss a dialog that still waits: it fails, or catches a
+    /// redraw without the dialog or with one Heeler can't read, or the pane
+    /// was resized and cut the dialog's changed line at its new edge. None
+    /// of these lets the next call take the dialog's card, and a call left
+    /// out of another dialog's card takes its own dialog again.
+    @Test func aWaitingAgyCallKeepsItsDialogThroughReadsThatMissIt() async throws {
+        let path = "/Users/developer/projects/fruits/fruits.txt"
+        let line = "date and a line long enough to be cut at forty columns"
+        let wide = try Self.agyEdit("agy-47-perm-file-edit-default-120x40", width: 120, adding: line)
+        let narrow = try Self.agyEdit("agy-48-perm-file-edit-default-40x30", width: 40, adding: line)
+        let next = try Self.agyEdit("agy-47-perm-file-edit-default-120x40", width: 120, adding: "fig")
+        let text = try ScreenFixture.text("agy-47-perm-file-edit-default-120x40")
+        try #require(text.contains("Pending edit"))
+        let unknown = ANSIScreenDecoder.decode(text.replacingOccurrences(of: "Pending edit", with: "Pending edits"))
+        let pane = FakePane(wide)
+        let store = Self.store(.agy, pane: pane)
+        let first = "agy:24:tool:0"
+        let second = "agy:24:tool:1"
+        store.update(
+            transcript: Self.agyTranscript(
+                open: [Self.agyCall(first, "edit_file", .fileEdit, path), Self.agyCall(second, "edit_file", .fileEdit, path)],
+                status: .awaitingApproval))
+        store.update(activity: .idle)
+        func shownCall(_ screen: ANSIScreen) async -> String? {
+            await pane.show(screen)
+            await store.refresh()
+            guard case .card(let card) = store.content else { return nil }
+            return card.request?.callID
+        }
+        #expect(await shownCall(wide) == first)
+
+        let shown = store.content
+        await pane.failReads(true)
+        await store.refresh()
+        await pane.failReads(false)
+        #expect(store.content == shown)
+        #expect(await shownCall(wide) == first)
+
+        await pane.show(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        await store.refresh()
+        #expect(store.content == .none)
+        #expect(await shownCall(wide) == first)
+
+        await pane.show(unknown)
+        await store.refresh()
+        guard case .generic = store.content else {
+            Issue.record("Expected the generic card, got \(store.content)")
+            return
+        }
+        #expect(await shownCall(wide) == first)
+
+        #expect(await shownCall(narrow) == first)
+        guard case .card(let resized) = store.content else { return }
+        #expect(resized.dialog.subject.changesAreCut)
+        let whole = try #require(AgyDialogParser.parse(wide).dialog)
+        #expect(resized.dialog.fingerprint != whole.fingerprint)
+        #expect(await shownCall(wide) == first)
+
+        #expect(await shownCall(next) == second)
+        #expect(await shownCall(wide) == first)
+    }
+
+    /// An answer the card sent that showed no effect may still land, so
+    /// its call keeps the dialog's card while it stays, and the next
+    /// dialog takes its own call once it shows.
+    @Test func anAgyAnswerThatShowedNoEffectKeepsItsCallOnItsDialogAlone() async throws {
+        let path = "/Users/developer/projects/fruits/fruits.txt"
+        let pane = FakePane(try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(
+            transcript: Self.agyTranscript(
+                open: [
+                    Self.agyCall("agy:24:tool:0", "edit_file", .fileEdit, path),
+                    Self.agyCall("agy:24:tool:1", "edit_file", .fileEdit, path),
+                ],
+                status: .awaitingApproval))
+        store.update(activity: .idle)
+        await store.refresh()
+
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys == [["1"]])
+        #expect(store.progress == .unconfirmed)
+        await store.refresh()
+        guard case .card(let waiting) = store.content else {
+            Issue.record("Expected the card, got \(store.content)")
+            return
+        }
+        #expect(waiting.request?.callID == "agy:24:tool:0")
+
+        await pane.show(try Self.agyEdit("agy-47-perm-file-edit-default-120x40", width: 120, adding: "fig"))
+        await store.refresh()
+        #expect(store.progress == .ready)
+        guard case .card(let next) = store.content else {
+            Issue.record("Expected the next card, got \(store.content)")
+            return
+        }
+        #expect(next.request?.callID == "agy:24:tool:1")
+    }
+
     /// Skip on the form's second page goes out on the second page: the
     /// first question gets its digit, never Esc, and Esc on the last page
     /// submits the set (agy-46 records the season `(skipped)`).
@@ -1856,7 +1995,7 @@ struct BlockedCardStoreTests {
         BlockedCardStore(
             program: program,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { await pane.send($0) },
                 paste: { await pane.paste($0) }),
             clock: clock.clock)
@@ -1879,6 +2018,20 @@ struct BlockedCardStoreTests {
         }
         _ = try #require(QuestionForm(card: card))
         return store
+    }
+
+    /// agy's edit dialog captured in `stem`, a pane `width` cells wide,
+    /// adding `line` where it added `date`: padded to the dialog's edge, or
+    /// cut there as agy cuts a long line.
+    private static func agyEdit(_ stem: String, width: Int, adding line: String) throws -> ANSIScreen {
+        let text = try ScreenFixture.text(stem)
+        // `  2  +  ` leads the row.
+        let room = width - 8
+        let date = "date" + String(repeating: " ", count: room - 4)
+        try #require(text.contains(date))
+        let shown = String(line.prefix(room))
+        return ANSIScreenDecoder.decode(
+            text.replacingOccurrences(of: date, with: shown + String(repeating: " ", count: room - shown.count)))
     }
 
     private static func agyCall(
@@ -1958,14 +2111,22 @@ private actor FakePane {
     private(set) var keys: [[String]] = []
     private(set) var pastes: [String] = []
     private(set) var reads = 0
+    private var failsReads = false
 
     init(_ screen: ANSIScreen) {
         self.screen = screen
     }
 
-    func read() -> ANSIScreen {
+    func read() throws -> ANSIScreen {
         reads += 1
+        if failsReads { throw TransportError.channelFailed(detail: "timed out") }
         return screen
+    }
+
+    /// Every read throws, as a timed-out `agent.read` does, until called
+    /// with false.
+    func failReads(_ fails: Bool) {
+        failsReads = fails
     }
 
     func show(_ screen: ANSIScreen) {
@@ -2039,7 +2200,7 @@ struct BlockedCardHostedTests {
         let store = BlockedCardStore(
             program: .opencode,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { await pane.send($0) },
                 paste: { await pane.paste($0) }),
             clock: ManualClock().clock)
@@ -2353,6 +2514,48 @@ struct BlockedRequestMatchTests {
         #expect(BlockedRequestMatch.agyChanges(on: long, call: nil) == Array(long.body.dropFirst()))
     }
 
+    /// A permission read again at another width, its path or a changed
+    /// line cut at the new edge, can be the same dialog; the next call's,
+    /// which differs in a row both reads show, can't.
+    @Test func agyReadsOfOneDialogAgreeWhereTheScreenCutThem() throws {
+        let edit = try dialog("agy-47-perm-file-edit-default-120x40")
+        for stem in [
+            "agy-48-perm-file-edit-default-40x30", "agy-48-perm-file-edit-default-62x20",
+            "agy-48-perm-file-edit-default-62x41",
+        ] {
+            #expect(BlockedRequestMatch.agyMayShowOneDialog(edit, try dialog(stem)))
+        }
+        let line = "date and a line long enough to be cut at forty columns"
+        let wide = try agyDialog(
+            "agy-47-perm-file-edit-default-120x40", replacing: "date" + String(repeating: " ", count: 108),
+            with: line.padding(toLength: 112, withPad: " ", startingAt: 0))
+        let narrow = try agyDialog(
+            "agy-48-perm-file-edit-default-40x30", replacing: "date" + String(repeating: " ", count: 28),
+            with: String(line.prefix(32)))
+        #expect(!wide.subject.changesAreCut && narrow.subject.changesAreCut)
+        #expect(wide.fingerprint != narrow.fingerprint)
+        #expect(BlockedRequestMatch.agyMayShowOneDialog(wide, narrow))
+        #expect(BlockedRequestMatch.agyMayShowOneDialog(narrow, wide))
+        // The next edit of the file adds another line, and a whole line
+        // that only starts the same is another.
+        let fig = try agyDialog(
+            "agy-48-perm-file-edit-default-40x30", replacing: "date" + String(repeating: " ", count: 28),
+            with: String("fig and a line long enough to be cut at forty columns".prefix(32)))
+        #expect(!BlockedRequestMatch.agyMayShowOneDialog(wide, fig))
+        #expect(!BlockedRequestMatch.agyMayShowOneDialog(edit, wide))
+        #expect(!BlockedRequestMatch.agyMayShowOneDialog(edit, try dialog("agy-99-perm-file-create-default-120x40")))
+
+        let command = try dialog("agy-30-perm-run-command-default-120x40")
+        #expect(BlockedRequestMatch.agyMayShowOneDialog(command, try dialog("agy-31-perm-run-command-default-40x30")))
+        let cut = try agyDialog(
+            "agy-30-perm-run-command-default-120x40", replacing: "   sleep 40; echo probe-done", with: "   sleep 40; echo pro…")
+        #expect(BlockedRequestMatch.agyMayShowOneDialog(command, cut))
+        let other = try agyDialog(
+            "agy-30-perm-run-command-default-120x40", replacing: "   sleep 40; echo probe-done",
+            with: "   sleep 40; echo probe-fail")
+        #expect(!BlockedRequestMatch.agyMayShowOneDialog(command, other))
+    }
+
     /// The call's change in the dialog's row format, from the real
     /// pending call: a line diff of its target and replacement, which keeps
     /// `cherry` as context where agy draws it removed and added again.
@@ -2379,7 +2582,7 @@ struct BlockedRequestMatchTests {
 
     /// approvals.jsonl's edit_file call at step 24 while it waits on its
     /// dialog (agy-47): `cherry` becomes `cherry` and `date`.
-    private static func agyEditCall() throws -> ChatPendingRequest {
+    fileprivate static func agyEditCall() throws -> ChatPendingRequest {
         let transcript = try AgyTranscriptReducerTests.fixture("approvals.jsonl", steps: 21...24)
         return try #require(transcript.pendingRequests.first { $0.callID == "agy:24:tool:0" })
     }

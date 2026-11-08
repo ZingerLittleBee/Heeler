@@ -263,6 +263,9 @@ struct DialogSubject: Sendable, Hashable {
     /// Antigravity CLI file permission: a changed line reaches the dialog's
     /// right edge, where agy cuts it without a mark.
     var changesAreCut = false
+    /// Antigravity CLI permission: the screen cut the request or a changed
+    /// line.
+    var isCut: Bool { isRequestCut || changesAreCut }
 
     struct ReviewAnswer: Sendable, Hashable {
         var question: String

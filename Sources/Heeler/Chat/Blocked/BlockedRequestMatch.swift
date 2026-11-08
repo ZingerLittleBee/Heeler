@@ -194,6 +194,40 @@ enum BlockedRequestMatch {
         return rows
     }
 
+    /// Whether two reads of Antigravity CLI permissions can show one
+    /// dialog: alike fingerprints, or the same kind and rows, each row the
+    /// same or, where a read cut it at the screen's edge, the start of the
+    /// other's. A pane resized between the reads cuts the path and the
+    /// changed lines at another column, which changes the fingerprint; the
+    /// next call's dialog differs in a row both reads show.
+    static func agyMayShowOneDialog(_ one: BlockedDialog, _ other: BlockedDialog) -> Bool {
+        if one.fingerprint.matches(other.fingerprint) { return true }
+        guard one.kind == other.kind, one.title == other.title, one.body.count == other.body.count else {
+            return false
+        }
+        let a = one.subject
+        let b = other.subject
+        guard
+            agyRowsAgree(
+                a.command ?? a.filePath ?? "", cut: a.isRequestCut, b.command ?? b.filePath ?? "",
+                cut: b.isRequestCut)
+        else { return false }
+        return zip(one.body.dropFirst(), other.body.dropFirst()).allSatisfy {
+            agyRowsAgree($0, cut: a.changesAreCut, $1, cut: b.changesAreCut)
+        }
+    }
+
+    /// Two reads of a row agree: the same text, or where a read cut it,
+    /// the start of the other's. Wrapping moves spaces, so they do not
+    /// count.
+    private static func agyRowsAgree(_ one: String, cut oneIsCut: Bool, _ other: String, cut otherIsCut: Bool)
+        -> Bool
+    {
+        let a = DialogRowScanner.comparable(one)
+        let b = DialogRowScanner.comparable(other)
+        return a == b || (oneIsCut && b.hasPrefix(a)) || (otherIsCut && a.hasPrefix(b))
+    }
+
     /// `text` without a leading `12.` or `12)`.
     private static func droppingListNumber(_ text: String) -> Substring {
         let trimmed = text.drop(while: \.isWhitespace)

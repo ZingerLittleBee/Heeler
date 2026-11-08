@@ -421,7 +421,14 @@ long enough to be cut, or a diff taller than the dialog. A call a
 confirmed answer went to matches no later card until the transcript
 resolves it: agy writes the result only after the call ran, so with two
 calls in one response the second's dialog can show before Chat reads the
-first's result.
+first's result. A dialog answered in the terminal or another client leaves
+its call open the same way, so a call whose dialog a card showed matches
+only a read of that dialog until its result. The dialog read again at
+another width, its path or a changed line cut at the new edge, keeps the
+call, and the next call's dialog differs in a row both reads show. After
+an answer outside the card, a next dialog just like the answered one (the
+same file and lines) still goes to the first call, since the screen can't
+tell them apart.
 
 ### What Chat sends into
 

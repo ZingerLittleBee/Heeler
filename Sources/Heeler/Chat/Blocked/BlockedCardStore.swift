@@ -151,8 +151,21 @@ final class BlockedCardStore {
     /// the transcript resolves them. agy writes a call's result only once
     /// it has run, and can draw the next dialog before Chat reads that
     /// result: a second edit of the same file would match the answered
-    /// call first.
+    /// call first. The answer took the dialog, so even one just like it
+    /// is the next call's.
     @ObservationIgnored private var answeredCalls: Set<String> = []
+    /// The Antigravity CLI permission each open call's card showed, by
+    /// call: until the transcript resolves it, the call matches only a
+    /// read of that dialog. A dialog answered in the terminal or another
+    /// client, or dismissed there, leaves its call open just as a card's
+    /// answer does (`answeredCalls`), and the next dialog for the same file
+    /// or command must not take it. A read that fails, or shows no dialog
+    /// or one Heeler can't read, changes nothing, and the dialog read
+    /// again, resized or with a line cut, keeps its call
+    /// (`BlockedRequestMatch.agyMayShowOneDialog`). After an answer
+    /// elsewhere, a next dialog just like the answered one still goes to
+    /// its call: the screen can't tell them apart.
+    @ObservationIgnored private var shownDialogs: [String: BlockedDialog] = [:]
     /// Why the newest turn failed, for a program whose card explains a
     /// block without a dialog.
     @ObservationIgnored private var latestFailure: String?
@@ -235,7 +248,9 @@ final class BlockedCardStore {
     func update(transcript: ChatTranscript) {
         let waiting = Set(pendingRequests.compactMap(\.callID))
         pendingRequests = transcript.pendingRequests
-        answeredCalls.formIntersection(pendingRequests.compactMap(\.callID))
+        let openCalls = Set(pendingRequests.compactMap(\.callID))
+        answeredCalls.formIntersection(openCalls)
+        shownDialogs = shownDialogs.filter { openCalls.contains($0.key) }
         if !program.offersKeysWhenBlockedWithoutDialog { latestFailure = Self.latestFailure(in: transcript) }
         var resolved: Set<String> = []
         var started: Set<String> = []
@@ -253,7 +268,7 @@ final class BlockedCardStore {
         // A request is open whatever its row says: Antigravity CLI offers
         // every call without a result, and an idle agy's command row reads
         // `no result` while its dialog may still be on screen.
-        resolved.subtract(pendingRequests.compactMap(\.callID))
+        resolved.subtract(openCalls)
         startedToolUseIDs = started
         releaseIfAWaitingCallStarted()
         // Two identical dialogs in a row look unchanged on screen, so an
@@ -324,11 +339,10 @@ final class BlockedCardStore {
     /// resend.
     func perform(_ action: DialogAction) async {
         guard progress == .ready || (action == .dismiss && canStop), case .card(let shown) = content else { return }
-        let requests = matchableRequests
         var answered: BlockedCard?
         let isConfirmed = await act(on: shown.dialog.fingerprint) { observation throws(DialogPlanError) in
             guard let dialog = observation.result.dialog else { throw .unsupported(Self.changedMessage) }
-            let request = BlockedRequestMatch.request(for: dialog, in: requests)
+            let request = matchingRequest(for: dialog)
             answered = BlockedCard(dialog: dialog, request: request)
             // Each program's planner decides whether the call's result
             // confirms the answer.
@@ -721,10 +735,40 @@ final class BlockedCardStore {
     /// A question's call shows a page per question.
     private static let answersOneCall: Set<BlockedDialogKind> = [.agyCommand, .agyFileEdit, .agyFileCreate]
 
-    /// The open calls a dialog on screen can be asking about.
-    private var matchableRequests: [ChatPendingRequest] {
-        guard !answeredCalls.isEmpty else { return pendingRequests }
-        return pendingRequests.filter { request in request.callID.map { !answeredCalls.contains($0) } ?? true }
+    /// The open call `dialog` on screen asks about.
+    private func matchingRequest(for dialog: BlockedDialog) -> ChatPendingRequest? {
+        BlockedRequestMatch.request(for: dialog, in: matchableRequests(for: dialog))
+    }
+
+    /// The open calls `dialog` can be asking about, any whose card showed
+    /// it first: not one a confirmed answer went to, nor one whose card
+    /// showed another dialog (`shownDialogs`).
+    private func matchableRequests(for dialog: BlockedDialog) -> [ChatPendingRequest] {
+        guard !answeredCalls.isEmpty || !shownDialogs.isEmpty else { return pendingRequests }
+        var own: [ChatPendingRequest] = []
+        var others: [ChatPendingRequest] = []
+        for request in pendingRequests {
+            guard let id = request.callID else {
+                others.append(request)
+                continue
+            }
+            if answeredCalls.contains(id) { continue }
+            if let shown = shownDialogs[id] {
+                if BlockedRequestMatch.agyMayShowOneDialog(shown, dialog) { own.append(request) }
+            } else {
+                others.append(request)
+            }
+        }
+        return own + others
+    }
+
+    /// Keeps the Antigravity CLI permission a call's card shows, as the
+    /// read that cut the least of it: a read cut at a narrower width shows
+    /// too little to tell the next dialog from this one.
+    private func noteShown(_ dialog: BlockedDialog, forCall id: String) {
+        guard Self.answersOneCall.contains(dialog.kind) else { return }
+        if let kept = shownDialogs[id], !kept.subject.isCut || dialog.subject.isCut { return }
+        shownDialogs[id] = dialog
     }
 
     private func finish(notice: String) {
@@ -808,7 +852,8 @@ final class BlockedCardStore {
             if let degraded, degraded.fingerprint.matches(dialog.fingerprint) {
                 next = .generic(Self.excerpt(of: dialog, on: observation.screen, reason: degraded.reason))
             } else {
-                let request = BlockedRequestMatch.request(for: dialog, in: matchableRequests)
+                let request = matchingRequest(for: dialog)
+                if let id = request?.callID { noteShown(dialog, forCall: id) }
                 next = .card(BlockedCard(dialog: dialog, request: request))
             }
         case .unrecognized(let excerpt):
