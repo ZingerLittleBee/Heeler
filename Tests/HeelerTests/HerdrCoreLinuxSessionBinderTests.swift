@@ -128,9 +128,10 @@ struct HerdrCoreLinuxSessionBinderTests {
 
     // MARK: Antigravity CLI
 
-    /// No Linux run has shown agy yet. Its lock is `jetski/presence/lock_unix.go`'s
-    /// on both systems, so these take the macOS recording (`host-evidence/agy`) with
-    /// its paths moved under this Host's home, read the way a Linux Host reads them:
+    /// The Linux run of 2026-11-09 read agy's lock through `/proc/<pid>/fd` but kept
+    /// no recording here. Its lock is `jetski/presence/lock_unix.go`'s on both
+    /// systems, so these take the macOS recording (`host-evidence/agy`) with its paths
+    /// moved under this Host's home, read the way a Linux Host reads them:
     /// `/proc/<pid>/fd` targets, which name the same files.
     private nonisolated static func agyRig(_ scene: String) async throws -> (ScriptedProcessTable, HerdrCoreTerminalRecord) {
         let row = try #require(try HostEvidenceFixture.named("agy/presence-lock-1.5.3").scene(scene).processes?.first)

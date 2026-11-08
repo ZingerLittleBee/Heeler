@@ -599,7 +599,8 @@ struct HerdrCoreChatPickBinderTests {
     }
 
     /// Linux, 2026-11-09 (agy 1.5.3, herdr-core 0.1.18): a second agy on a
-    /// conversation another agy had open held none of its files, and the core's
+    /// conversation another agy had open held none of its files once about 30 s
+    /// after its start had passed, and the core's
     /// record of the Terminal's foreground carried its argv. agy prints the `=` form
     /// on exit. Choosing it binds as any pick does.
     @Test(arguments: [

@@ -151,9 +151,12 @@ extension HostCapabilities {
     /// and Oh My Pi 18.13.3 on an API-key provider. OpenCode stays off, since this list
     /// turns a program on for every release: 2.2.2 passed, but on the recheck
     /// (2026-11-04) a 1.19.5 Agent's last turn never ended in Chat, and every Send from
-    /// Chat found no input box on screen. Antigravity CLI binds there from its
-    /// presence lock, which no Linux run has shown yet, and waits for its own check.
-    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp]
+    /// Chat found no input box on screen. Antigravity CLI 1.5.3 passed in core
+    /// Terminals on Ubuntu 24.04.5 with herdr-core 0.1.18 (2026-11-09), started with
+    /// colors and with `NO_COLOR`: each bound from the presence lock read through
+    /// `/proc/<pid>/fd`, sent from Chat and answered its trust prompt, permissions and
+    /// questions from cards, and both followed `/clear`.
+    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy]
 
     /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in
     /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New

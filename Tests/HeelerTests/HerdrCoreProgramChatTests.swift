@@ -324,16 +324,16 @@ struct HerdrCoreProgramChatTests {
 
     // MARK: Antigravity CLI
 
-    /// agy passed the owner's check in a macOS core Terminal (ADR 0034). On Linux it
-    /// waits for its own, and Windows reads hold none of the open files it binds from,
-    /// so no Windows list offers it, whatever that list says. Herdr TUI offers it.
-    @Test func onlyTheShippedMacOSListOffersAntigravityCLI() {
+    /// agy passed the owner's check in macOS and Linux core Terminals (ADR 0034).
+    /// Windows reads hold none of the open files it binds from, so no Windows list
+    /// offers it, whatever that list says. Herdr TUI offers it.
+    @Test func theShippedMacOSAndLinuxListsOfferAntigravityCLIAndWindowsNever() {
         #expect(HostCapabilities.confirmedMacOSCoreChatPrograms.contains(.agy))
-        #expect(!HostCapabilities.confirmedLinuxCoreChatPrograms.contains(.agy))
+        #expect(HostCapabilities.confirmedLinuxCoreChatPrograms.contains(.agy))
         #expect(!HostCapabilities.confirmedWindowsCoreChatPrograms.contains(.agy))
         #expect(!HostCapabilities.windowsCoreChatCandidates.contains(.agy))
         #expect(HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Darwin").offersChat(for: .agy))
-        #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Linux").offersChat(for: .agy))
+        #expect(HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Linux").offersChat(for: .agy))
         #expect(
             !HostCapabilities(
                 serverKind: .herdrCore, platform: .nativeWindows, coreKernel: "Windows",
@@ -342,10 +342,10 @@ struct HerdrCoreProgramChatTests {
         #expect(HostCapabilities(serverKind: .herdrTUI).offersChat(for: .agy))
     }
 
-    /// Through the shipped lists, an agy Agent on a macOS core Host offers Chat and
-    /// one on a Linux core Host offers the terminal alone.
-    @Test(arguments: [("Darwin", true), ("Linux", false)])
-    func theShippedListsOfferAntigravityCLIChatOnAMacOSCoreHostOnly(_ kernel: String, _ offered: Bool) async throws {
+    /// Through the shipped lists, an agy Agent offers Chat on a macOS core Host and
+    /// on a Linux one.
+    @Test(arguments: ["Darwin", "Linux"])
+    func theShippedListsOfferAntigravityCLIChatOnMacOSAndLinuxCoreHosts(_ kernel: String) async throws {
         let rig = Rig(
             host: host, record: Self.record(foreground: ["agy"], name: "agy", app: "antigravity"),
             offering: HostCapabilities.confirmedLinuxCoreChatPrograms,
@@ -353,8 +353,8 @@ struct HerdrCoreProgramChatTests {
         try await rig.start([Self.process(name: "agy", environment: [:], argv: ["agy"])], kernel: kernel)
 
         let agent = try #require(rig.agent)
-        #expect(rig.store.chatProgram(for: agent) == (offered ? .agy : nil))
-        #expect((rig.store.chatStore(for: agent, program: .agy) != nil) == offered)
+        #expect(rig.store.chatProgram(for: agent) == .agy)
+        #expect(rig.store.chatStore(for: agent, program: .agy) != nil)
         rig.store.setHosts([])
     }
 
@@ -364,10 +364,10 @@ struct HerdrCoreProgramChatTests {
         AgyTranscriptLocator.transcriptPath(inFolder: AgyTranscriptLocator.folder(in: agyRoot, id: session))
     }
 
-    /// Offered by this test's own list, as macOS's offers it and Linux's would once its
-    /// owner's check passes: Chat follows the conversation whose presence lock agy
-    /// holds, and after `/clear`, which reports no status from idle, the check before a
-    /// Send finds the moved lock and holds that Send.
+    /// Offered by this test's own list, as the shipped macOS and Linux lists offer
+    /// it: Chat follows the conversation whose presence lock agy holds, and after
+    /// `/clear`, which reports no status from idle, the check before a Send finds the
+    /// moved lock and holds that Send.
     @Test(arguments: ["Linux", "Darwin"])
     func anAntigravityCLIOfferedByATestsListFollowsItsHeldLock(_ kernel: String) async throws {
         let first = "00000000-0000-4000-8000-000000000102"

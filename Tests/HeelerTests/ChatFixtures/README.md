@@ -44,7 +44,7 @@ below.
 `host-evidence/` is a separate recording, for the herdr-core session binding of
 ADR 0034. `HerdrCoreProgramBinderTests` reads the `.json` scenes of `codex/`, `grok/`,
 `opencode/` and `agy/`, which the macOS and Linux binder suites also read, the Linux one
-with its paths moved under that Host's home since no Linux run recorded agy,
+with its paths moved under that Host's home since the Linux run of agy kept no recording,
 `OpenCodeStoreQueryTests` the schemas, and the Pi and Oh My Pi binder
 tests the scenes and core event streams of `pi/` and `omp/` through `PiHostEvidence`.
 No test reads `reply-held.json`, `omp/session-lock-by-id.json`, since no check reads a

@@ -278,11 +278,10 @@ struct HerdrCoreChatTests {
         #expect(windowsPlatform.chatPrograms == HostCapabilities.confirmedWindowsCoreChatPrograms)
         #expect(!windowsPlatform.offersChat(for: .codex))
         #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "FreeBSD").chat)
-        // Each kernel offers what passed its owner's check there: on hc-lab every
-        // program but OpenCode and Antigravity CLI, and on the owner's Mac every
-        // program but OpenCode.
+        // Each kernel offers what passed its owner's check there: on Linux and on
+        // the owner's Mac every program but OpenCode.
         let shipped: [(kernel: String, offered: Set<ChatProgram>)] = [
-            ("Linux", [.claude, .codex, .grok, .pi, .omp]), ("Darwin", [.claude, .codex, .grok, .pi, .omp, .agy]),
+            ("Linux", [.claude, .codex, .grok, .pi, .omp, .agy]), ("Darwin", [.claude, .codex, .grok, .pi, .omp, .agy]),
         ]
         for (kernel, offered) in shipped {
             let capabilities = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: kernel)

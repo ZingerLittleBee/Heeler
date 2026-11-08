@@ -142,10 +142,11 @@ extension HerdrCoreSessionBinder {
     /// The conversation `agy --conversation <id>` or `--conversation=<id>` opened,
     /// from the argv the core reports for the Terminal's foreground, the check's own
     /// exec reading none. It counts only while that foreground is the Agent's process,
-    /// so a shell's, launcher's or wrapper's argv never does. A second agy on a
-    /// conversation already open holds none of its files on Linux (agy 1.5.3,
-    /// herdr-core 0.1.18, ADR 0034), so this is what names it there. `agy -c` names
-    /// none. The last flag counts, as a later flag replaces an earlier one.
+    /// so a shell's, launcher's or wrapper's argv never does. On Linux a second agy on
+    /// a conversation already open holds its database for about 30 s after it starts,
+    /// then none of its files (agy 1.5.3, herdr-core 0.1.18, ADR 0034), so this is
+    /// what names it there. `agy -c` names none. The last flag counts, as a later flag
+    /// replaces an earlier one.
     private func commandLineConversation(of record: HerdrCoreTerminalRecord, agent pid: String) -> String? {
         guard program == .agy, let foreground = record.foreground, foreground.pid.map(String.init) == pid else {
             return nil
