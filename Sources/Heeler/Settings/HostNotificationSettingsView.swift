@@ -7,6 +7,8 @@ struct HostNotificationSettings {
     let preferences: NotificationPreferencesStore
     let liveActivities: HostLiveActivityCoordinator
     let pluginStatuses: HeelerPluginStatusStore
+    /// Opens the Host's page in Hosts with its Host Helper sheet up.
+    let openHostHelper: (@MainActor (Host.ID) -> Void)?
 
     /// Shown while the Host is read again too, so a re-read keeps the row steady.
     var state: NotificationPreferencesStore.HostState? { preferences.shownState(for: host.id) }
@@ -26,6 +28,12 @@ struct HostNotificationSettings {
     }
 
     var offersLiveActivity: Bool { preferences.offersLiveActivity(for: host) }
+
+    /// A core Host's Helper as its Host page shows it, once a read has seen it.
+    var helper: HostHelperPresentation? {
+        guard host.serverKind == .herdrCore else { return nil }
+        return preferences.helperPresentation(for: host.id)
+    }
 
     var pluginRequirements: [HeelerPluginRequirement] {
         guard host.serverKind == .herdrTUI else { return [] }
@@ -155,10 +163,41 @@ struct HostNotificationSettingsView: View {
             } footer: {
                 footer
             }
+            if let helper = model.helper, let open = model.openHostHelper {
+                Section {
+                    hostHelperRow(helper) { open(model.host.id) }
+                }
+            }
         }
         .readableColumnPage()
         .navigationTitle(model.host.displayName)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// The Helper's status, read as on the Host page; it opens that page's sheet.
+    private func hostHelperRow(
+        _ helper: HostHelperPresentation, open: @escaping @MainActor () -> Void
+    ) -> some View {
+        Button(action: open) {
+            LabeledContent {
+                HStack(spacing: 6) {
+                    Text(helper.value)
+                    if helper.needsAttention {
+                        PluginNoticeIcon(tone: .warning)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+            } label: {
+                // Not the button tint: the row reads like its neighbors.
+                Text("Host Helper")
+                    .foregroundStyle(Color.primary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("settings.notifications.hostHelper.\(model.host.id.uuidString)")
     }
 
     @ViewBuilder

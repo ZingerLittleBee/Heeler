@@ -76,6 +76,9 @@ final class NotificationPreferencesStore {
     /// Whether a core Host's Helper can drive a Live Activity, from its last read.
     /// Nil on a read that failed, and on any other Host.
     private var helperDrivesLiveActivity: [Host.ID: Bool] = [:]
+    /// How a core Host's Helper reads on its Host page, from its last read. Nil
+    /// on a read that failed, and on any other Host.
+    private var helperPresentations: [Host.ID: HostHelperPresentation] = [:]
     /// What a core Host last confirmed, held for its banner gate while it is read
     /// again. Reads repeat with the connection and a Helper's takes seconds; Herdr
     /// TUI's gate still fails closed for its read.
@@ -125,6 +128,7 @@ final class NotificationPreferencesStore {
         states = states.filter { unchanged.contains($0.key) }
         helperRequirements = helperRequirements.filter { unchanged.contains($0.key) }
         helperDrivesLiveActivity = helperDrivesLiveActivity.filter { unchanged.contains($0.key) }
+        helperPresentations = helperPresentations.filter { unchanged.contains($0.key) }
         settingsDuringReRead = settingsDuringReRead.filter { unchanged.contains($0.key) }
         settledBeforeReRead = settledBeforeReRead.filter { unchanged.contains($0.key) }
         operations = operations.filter { unchanged.contains($0.key) }
@@ -143,6 +147,12 @@ final class NotificationPreferencesStore {
         case .idle, .updating, .failed: helperRequirements[hostID]
         case .loading, .unavailable, nil: nil
         }
+    }
+
+    /// A core Host's Helper as its Host page shows it, kept while the Host is
+    /// read again. Nil on any other Host, and after a read that failed.
+    func helperPresentation(for hostID: Host.ID) -> HostHelperPresentation? {
+        helperPresentations[hostID]
     }
 
     /// Re-reads every Host's registration file so the toggles reflect what
@@ -309,6 +319,7 @@ final class NotificationPreferencesStore {
             var file = try NotificationRegistrationFile.decode(read.registration)
             helperRequirements[host.id] = read.standing?.requirement
             helperDrivesLiveActivity[host.id] = read.standing?.drivesLiveActivity
+            helperPresentations[host.id] = read.helper
             // Only an entry carrying this Host's Notification Key is its own;
             // another Host of the same remote user shares this file (#412).
             let owner = try ceremony.registrationOwner(for: host, deviceToken: token)
@@ -329,6 +340,7 @@ final class NotificationPreferencesStore {
         } catch {
             guard isCurrent(operation, for: host) else { return }
             helperDrivesLiveActivity[host.id] = nil
+            helperPresentations[host.id] = nil
             states[host.id] = .unavailable(message: Self.message(for: error))
         }
     }
@@ -340,11 +352,11 @@ final class NotificationPreferencesStore {
         try await transports.withNotificationFiles(for: hostID) { files in
             guard let reading = try await files.readHostHelper() else {
                 return RegistrationRead(
-                    registration: try await files.readNotificationRegistration(), standing: nil)
+                    registration: try await files.readNotificationRegistration(), standing: nil, helper: nil)
             }
             return RegistrationRead(
                 registration: reading.offersRemoval ? try await files.readNotificationRegistration() : nil,
-                standing: reading.notificationStanding)
+                standing: reading.notificationStanding, helper: reading.presentation)
         }
     }
 
@@ -590,6 +602,7 @@ private struct RegistrationRead: Sendable {
     let registration: Data?
     /// Nil on a Host whose notifications come from the plugin.
     let standing: HostHelperNotificationStanding?
+    let helper: HostHelperPresentation?
 }
 
 private struct PendingSeenMarks: Sendable {

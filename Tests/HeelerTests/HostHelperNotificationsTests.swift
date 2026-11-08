@@ -376,12 +376,14 @@ struct HostHelperNotificationsTests {
         await preferences.refresh()
         let settled = try #require(preferences.states[host.id])
         #expect(settled != .loading)
+        let helper = try #require(preferences.helperPresentation(for: host.id))
 
         await hold.close()
         let reread = Task { await preferences.refresh([host.id]) }
         try await waitUntil("the re-read to begin") { preferences.states[host.id] == .loading }
 
         #expect(preferences.shownState(for: host.id) == settled)
+        #expect(preferences.helperPresentation(for: host.id) == helper)
         #expect(preferences.isReading(host.id))
 
         await hold.open()
@@ -1314,6 +1316,20 @@ struct HostHelperNotificationsTests {
         let message = try #require(unavailableMessage(rig))
         #expect(message.hasPrefix("Host Helper: Not Installed."))
         #expect(message.contains("See this Host's page in Hosts."))
+        // The Host's page in Settings still links to the Helper, as Host detail reads it.
+        #expect(rig.preferences.helperPresentation(for: host.id) == HostHelperPresentation(.notInstalled))
+    }
+
+    @Test func aRunningHelperReadsAsHostDetailShowsIt() async throws {
+        let rig = try await rig(try await installedHelper())
+        defer { rig.console.setHosts([]) }
+
+        await rig.preferences.refresh()
+
+        let helper = try #require(rig.preferences.helperPresentation(for: host.id))
+        #expect(helper.value == "\(HostHelperCompatibility.bundled)")
+        #expect(helper.detail == "The Host Helper is running.")
+        #expect(!helper.needsAttention)
     }
 
     @Test func aHostWithoutNodeSaysNodeIsMissing() async throws {

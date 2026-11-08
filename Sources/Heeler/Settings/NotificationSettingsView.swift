@@ -11,6 +11,9 @@ struct NotificationSettingsView: View {
     let liveActivities: HostLiveActivityCoordinator
     let pluginStatuses: HeelerPluginStatusStore
     let refreshPluginStatuses: @MainActor ([Host.ID]) async -> Void
+    /// Opens a core Host's page in Hosts with its Host Helper sheet up; nil
+    /// leaves the Host pages without that row.
+    var openHostHelper: (@MainActor (Host.ID) -> Void)? = nil
     @Environment(\.openURL) private var openURL
     @State private var isShowingExplainer = false
 
@@ -121,7 +124,7 @@ struct NotificationSettingsView: View {
     private func settings(for host: Host) -> HostNotificationSettings {
         HostNotificationSettings(
             host: host, preferences: notificationPreferences, liveActivities: liveActivities,
-            pluginStatuses: pluginStatuses)
+            pluginStatuses: pluginStatuses, openHostHelper: openHostHelper)
     }
 
     @ViewBuilder

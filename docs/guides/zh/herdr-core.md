@@ -157,7 +157,7 @@ macOS 可能会提示 `node` 可在后台运行，并将其列在“登录项”
 
 **成功的标志是**开关保持开启，且该 Host 的行中没有 **Host Helper:** 提示。此后即使关闭 Heeler，这台设备也会收到 **Blocked**、**Error** 和 **Done** 通知，轻点通知即可打开对应的 Agent。
 
-如果出现 **Host Helper:** 提示，请对照上表在该 Host 的页面中处理对应状态。
+如果出现 **Host Helper:** 提示，请轻点该 Host，再轻点 **Host Helper**，并对照上表处理对应状态。
 
 ### 移除 Helper
 

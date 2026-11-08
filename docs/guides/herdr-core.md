@@ -156,7 +156,7 @@ macOS may notify that `node` can run in the background and list it under Login I
 
 **It worked if** the switch stays on and the Host's row shows no **Host Helper:** note. **Blocked**, **Error**, and **Done** then reach this device with Heeler closed, and a tap opens the Agent.
 
-When a **Host Helper:** note shows, fix that status on the Host's page using the table above.
+When a **Host Helper:** note shows, tap the Host, then **Host Helper**, and fix that status using the table above.
 
 ### Remove the Helper
 
