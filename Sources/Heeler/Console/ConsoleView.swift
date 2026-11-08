@@ -157,6 +157,7 @@ struct ConsoleView: View {
     /// the other tab with its own stale state.
     @State private var splitVisibilities: [ConsoleTab: ConsoleSplitVisibilityState] = [:]
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -768,6 +769,7 @@ struct ConsoleView: View {
         Binding(
             get: { splitVisibility(for: tab).visibility },
             set: {
+                guard scenePhase != .background else { return }
                 splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
                     .systemDidChangeVisibility($0, presentation: presentation)
             })
@@ -906,7 +908,17 @@ struct ConsoleView: View {
             // The detail column swapping its content dissolves from the
             // leaving screen to the arriving one; see `DetailCrossfade`.
             .environment(\.detailCrossfade, detailCrossfade)
+            // iOS lays a backgrounded scene out in the other orientation for
+            // its app switcher snapshot. Applying that layout's default would
+            // leave the split view to report it back on return, as if the
+            // user had chosen it, so the layout waits for the scene's return.
             .onChange(of: presentation, initial: true) { _, presentation in
+                guard scenePhase != .background else { return }
+                splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
+                    .update(from: presentation)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase != .background else { return }
                 splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
                     .update(from: presentation)
             }
