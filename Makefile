@@ -124,6 +124,8 @@ test-tools: check-agent-docs check-test-membership ## Test agent tooling without
 	python3 scripts/test-native-test-lifecycle.py
 	python3 scripts/test-check-agent-docs.py
 	python3 scripts/test-check-test-target-membership.py
+	python3 scripts/check-localizations.py
+	python3 scripts/test-check-localizations.py
 	python3 scripts/test-run-app-simulator-tests.py
 	python3 scripts/test-simulator-ui.py
 	python3 scripts/test-isolated-herdr-backend.py
