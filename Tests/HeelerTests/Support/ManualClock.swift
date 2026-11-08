@@ -29,14 +29,23 @@ final class ManualClock: @unchecked Sendable {
 
     var sleeps: [Duration] { lock.withLock { recorded } }
 
-    func advance(_ duration: Duration) {
+    /// Moves time on and wakes every parked sleep it passed, earliest
+    /// deadline first (ties in the order they parked), as a real clock
+    /// would. Returns how many woke, so a test can tell that a deadline it
+    /// passed had nothing armed. A woken sleeper still resumes on its own
+    /// executor: a test that needs one deadline's effect before the next
+    /// passes them one at a time.
+    @discardableResult
+    func advance(_ duration: Duration) -> Int {
         let woken = lock.withLock {
             elapsed += duration
             let due = parked.filter { $0.wakeAt <= elapsed }
+                .sorted { ($0.wakeAt, $0.id) < ($1.wakeAt, $1.id) }
             parked.removeAll { $0.wakeAt <= elapsed }
             return due
         }
         for sleep in woken { sleep.continuation.resume() }
+        return woken.count
     }
 
     var clock: BlockedCardClock {
@@ -78,12 +87,40 @@ final class ManualClock: @unchecked Sendable {
         }
     }
 
+    /// Whether a sleep of exactly `duration` from now is parked.
+    func isParked(for duration: Duration) -> Bool {
+        lock.withLock { parked.contains { $0.wakeAt == elapsed + duration } }
+    }
+
     /// Returns once a sleep of exactly `duration` from now is parked, when others
     /// may be parked beside it.
     func untilParked(for duration: Duration) async {
-        while !lock.withLock({ parked.contains { $0.wakeAt == elapsed + duration } }) {
+        while !isParked(for: duration) {
             await Task.yield()
         }
+    }
+
+    /// Waits for a sleep of exactly `duration` from now to park, so a timer
+    /// started by a task that has yet to run counts. False when none parks
+    /// within `timeout`: a timer that is never armed fails the test instead
+    /// of hanging it.
+    func parks(for duration: Duration, within timeout: Duration = .seconds(5)) async -> Bool {
+        var budget = PollBudget(timeout)
+        while !isParked(for: duration) {
+            guard budget.hasTimeLeft else { return false }
+            try? await Task.sleep(for: .milliseconds(1))
+            budget.charge()
+        }
+        return true
+    }
+
+    /// Passes the deadline of a sleep of `duration` armed now, once it parks
+    /// (see ``parks(for:within:)``). False, with time left where it was,
+    /// when it never does.
+    func pass(_ duration: Duration, within timeout: Duration = .seconds(5)) async -> Bool {
+        guard await parks(for: duration, within: timeout) else { return false }
+        advance(duration)
+        return true
     }
 
     /// Returns once at least `count` sleeps are parked, so a test can advance

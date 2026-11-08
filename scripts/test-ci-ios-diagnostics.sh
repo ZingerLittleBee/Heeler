@@ -160,7 +160,51 @@ if "ios-ci-evidence-" in diagnostics or re.search(r"\bmake test-ci-(?:app|packag
     raise SystemExit("Diagnostic workflow publishes or runs the complete merge gate")
 if not any(line.strip().startswith("name: ios-diagnostic-") for line in diagnostics.splitlines()):
     raise SystemExit("Diagnostic workflow has no distinct artifact name")
-print("Passed fast build, full verification, scheduled alert and diagnostic isolation contracts.")
+
+# Every macOS job builds with the release archive's runner and Xcode, so CI
+# never checks a toolchain that nothing ships with, and every Simulator lane
+# tests the same pinned iOS runtime (#634).
+def settings(body, key):
+    return re.findall(rf"(?m)^\s+{re.escape(key)}: (.+)$", body)
+
+archive = job("archive", release)
+toolchain = (settings(archive, "runs-on"), settings(archive, "DEVELOPER_DIR"))
+if len(toolchain[0]) != 1 or len(toolchain[1]) != 1:
+    raise SystemExit("The release archive must name one runner and one DEVELOPER_DIR")
+simulator_lanes = {}
+for path in sorted(workflows.glob("*.yml")):
+    source = path.read_text()
+    sections = re.split(r"(?m)^jobs:[ \t]*(?:#.*)?\n", source, maxsplit=1)
+    if len(sections) == 1:
+        if re.search(r"(?m)^jobs:", source):
+            raise SystemExit(f"{path.name} has a jobs key this check cannot read")
+        continue
+    jobs = sections[1]
+    headers = re.findall(r"(?m)^  [^\s#][^\n]*$", jobs)
+    parsed = list(re.finditer(r"(?m)^  ([\w-]+):[ \t]*(?:#[^\n]*)?\n(.*?)(?=^  [^\s#]|\Z)", jobs, re.DOTALL))
+    if not parsed or len(parsed) != len(headers):
+        raise SystemExit(f"{path.name} has jobs this check cannot read")
+    for match in parsed:
+        name, body = f"{path.name} {match.group(1)}", match.group(2)
+        runner = settings(body, "runs-on")
+        if len(runner) != 1:
+            raise SystemExit(f"{name} must name one runner")
+        if runner[0].startswith("ubuntu-"):
+            continue
+        if (runner, settings(body, "DEVELOPER_DIR")) != toolchain:
+            raise SystemExit(f"{name} must use the release archive's runner and Xcode")
+        if re.search(r"\bmake test-ci-(?:app|package|diagnostics)\b", body):
+            simulator_lanes[name] = settings(body, "HEELER_CI_SIMULATOR_OS")
+if set(simulator_lanes) != {"ci-diagnostics.yml diagnose", "ci-full.yml app-tests",
+                            "ci-full.yml heelerssh-package-e2e"}:
+    raise SystemExit(f"Unexpected Simulator lanes: {sorted(simulator_lanes)}")
+runtimes = {tuple(values) for values in simulator_lanes.values()}
+if len(runtimes) != 1 or len(next(iter(runtimes))) != 1:
+    raise SystemExit("Every Simulator lane must pin the same HEELER_CI_SIMULATOR_OS")
+runner_script = (workflows.parent.parent / "scripts/run-ci-ios-tests.sh").read_text()
+if not re.search(r"(?m)^ci_simulator_os=\"\$\{HEELER_CI_SIMULATOR_OS:-\}\"$", runner_script):
+    raise SystemExit("run-ci-ios-tests.sh must read the pinned runtime from HEELER_CI_SIMULATOR_OS")
+print("Passed fast build, full verification, scheduled alert, diagnostic isolation and toolchain contracts.")
 PYWORKFLOW
 
 python3 - "$repo_root/Tests/HeelerTests/FileDiffLayoutViewTests.swift" <<'PYLAYOUT'

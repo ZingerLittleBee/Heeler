@@ -27,6 +27,13 @@ every PR, pins each fast workflow's trigger paths and commands.
 Documentation-only edits get the Ubuntu tooling checks; Node and site checks
 keep their own path filters.
 
+Every macOS job runs on the `xcode-27` runner with Xcode 27.2, the toolchain
+that archives releases, and `make test-ci-diagnostic-controls` fails when one
+leaves it. The full and diagnostic lanes test an iPhone 17 on the iOS 27.2
+runtime, which `HEELER_CI_SIMULATOR_OS` pins because the image also has one
+on iOS 27.0. Without it, a local `make test-ci-app` or `make test-ci-package`
+takes any available iPhone 17; pin one with `SIMULATOR_UDID=<UDID>`.
+
 Run focused behavior tests for the feature being changed. The
 [full native workflow](../../.github/workflows/ci-full.yml) retains all app,
 UI, real-SSH and weak-network tests, package E2E and coverage checks. It runs
@@ -126,7 +133,7 @@ test-writing rules follow:
 
 The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml) builds once and repeats the original TOFU, staging recovery, weak-network Changes, or diff-layout assertions with fresh per-round state. `staging` selects the whole nine-method suite to retain preceding window lifecycles and the failed-owner cleanup regression; `staging-method` isolates the recovery method. `layout` selects all eight `FileDiffLayoutViewTests` methods in the ordinary shard and repeats the topmost-line method with a fresh window and settings each round. Defaults are 50 SSH, 20 staging or layout, and 10 weak rounds. `all` selects only SSH, staging, and weak; layout requires an explicit selection and adds no work to the fast build, full verification or the existing `all` diagnostic.
 
-Repeated weak and layout diagnostics have a 30-minute outer deadlock limit. Full verification retains the weak suite's two-minute limit and the layout suite's one-minute limit; every weak read still asserts its original 10-second deadline, and both layout setup waits retain eight seconds. Diagnostic artifacts capture the selected test counts, completion markers and fixture logs; they never establish complete coverage or replace full verification.
+Repeated weak and layout diagnostics have a 30-minute outer deadlock limit. Full verification retains the weak suite's two-minute limit and the layout suite's one-minute limit; every weak read still asserts its original 10-second deadline (the large Changes reads on the time the link and transport add, excluding the Host's own run of the script, which has a loose 30-second limit), and both layout setup waits retain eight seconds. Diagnostic artifacts capture the selected test counts, completion markers and fixture logs; they never establish complete coverage or replace full verification.
 
 ```sh
 gh workflow run ci-diagnostics.yml --ref <candidate-branch> -f target=all
@@ -159,10 +166,37 @@ is a setup failure, not evidence of a geometry regression. Record that failure
 separately; do not remove the presentation precondition.
 
 The sampling probe must observe the current inset and chrome position for the
-whole settling interval. Time before an inset change, including a gap with no
-samples, does not establish stability afterward. The controlled-timestamp
-regression covers this gap; the hosted handoff test still checks the actual
-geometry, responder ownership, draft, and one-point movement tolerance.
+whole settling interval, on display frames. Keyboard-notification samples read
+the model inset before anything renders and do not count, and each gap between
+frames credits at most two frame intervals, so a stall that stops the display
+link cannot supply the interval: the first frames after one can still show the
+old layout. Time before an inset change does not establish stability afterward
+either. The wait also requires the Agent switcher to have moved as far as the
+inset, so a slow render waits and a switcher that never follows times out. At
+10-20 frames a second the stable tail takes about a second, inside the
+`eventually` budget. The controlled-timestamp regression covers the gap and the
+stall; the hosted handoff test still checks the actual geometry, responder
+ownership, draft, and one-point movement tolerance, and its failures list each
+sample's time and source.
+
+### Keyboard inset timers
+
+`TerminalKeyboardInset` sleeps through two injected sleepers: `sleep` for the
+keyboard's own timing (presentation coalesce, dismissal confirmation, tools-dock
+exit) and `handoffSleep` for the responder-handoff guards. Unit tests pass
+`ManualClock.parkedSleep(for:)` to both and move time with `clock.pass(_:)`,
+which waits a bounded time for that deadline to be armed before advancing to
+it. `advance` reports how many sleepers woke, so a deadline that must not fire
+is asserted as `advance(...) == 0`; pick advances that keep two armed deadlines
+from coinciding, or `parks(for:)` can match the wrong one. A test that needs
+UIKit's real notification cadence passes only `handoffSleep`, so the guards
+hold while presentations coalesce in real time. Hosted handoff tests keep both
+real. The hosted transfer passes a recording `handoffSleep` that still sleeps
+for real, and checks that each destination's acceptance re-armed the switch's
+guard. `HeelerTerminalView` waits out its own keyboard leash through
+`keyboardTransitionSleep` the same way: a test holds the leash on a
+`ManualClock` it never moves, or passes the leash at the step where it should
+run out, instead of stretching or shrinking the delay.
 
 ### Backspace hold timing
 

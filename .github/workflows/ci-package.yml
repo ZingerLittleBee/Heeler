@@ -36,10 +36,10 @@ concurrency:
 jobs:
   package-build:
     name: Build HeelerSSH and tests (not run)
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 25
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@v5
       - name: Build HeelerSSH and tests without launching a Simulator

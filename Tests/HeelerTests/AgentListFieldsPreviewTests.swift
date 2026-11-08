@@ -66,13 +66,13 @@ struct AgentListFieldsPreviewTests {
     }
 
     @MainActor
-    private func pixels(_ view: some View) throws -> Data {
-        let renderer = ImageRenderer(content: view
-            .frame(width: 360, height: 160)
-            .background(Color.white)
-            .environment(\.colorScheme, .light))
-        renderer.scale = 1
-        return try #require(renderer.uiImage?.pngData())
+    private func pixels(_ view: some View) throws -> RenderedBitmap {
+        try RenderedBitmap(
+            view
+                .frame(width: 360, height: 160)
+                .background(Color.white)
+                .environment(\.colorScheme, .light),
+            proposedSize: .init(width: 360, height: 160))
     }
 
     @MainActor
