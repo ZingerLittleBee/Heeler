@@ -74,6 +74,8 @@ struct SettingsView: View {
     let console: ConsoleStore
     let hosts: [Host]
     let onHostAdded: (Host.ID) -> Void
+    /// Opens a core Host's page in Hosts with its Host Helper sheet up.
+    var openHostHelper: (@MainActor (Host.ID) -> Void)? = nil
     /// Closes Settings where it is presented as a sheet, as on iPad; nil
     /// where it is a tab.
     var onDone: (@MainActor () -> Void)? = nil
@@ -178,7 +180,8 @@ struct SettingsView: View {
                             pluginStatuses: console.pluginStatuses,
                             refreshPluginStatuses: { [console] in
                                 await console.refreshPluginStatuses(for: $0)
-                            })
+                            },
+                            openHostHelper: openHostHelper)
                     } label: {
                         Label("Notifications", systemImage: "bell.badge")
                     }

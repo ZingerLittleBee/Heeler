@@ -40,6 +40,7 @@ struct HostHelperInstallPlan: Sendable, Equatable {
         }
         uid = reading.probe?.uid ?? ""
         if layout.manager == .launchd, uid.isEmpty { throw HostHelperError.unreadableHost }
+        home = reading.probe?.locations.home ?? ""
         self.layout = layout
         self.nodePath = nodePath
         self.extensionFolders = extensionFolders.map(\.path)
@@ -50,6 +51,7 @@ struct HostHelperInstallPlan: Sendable, Equatable {
 
     private let helperFiles: [String]
     private let extensionFolders: [String]
+    private let home: String
 
     /// Heeler's extension in each folder Pi and Oh My Pi load extensions from.
     var extensionFiles: [String] {
@@ -63,9 +65,18 @@ struct HostHelperInstallPlan: Sendable, Equatable {
     var folderChain: [String] { layout.folderChain(reaching: extensionFolders) }
 
     /// Every file the install leaves on the Host.
-    var files: [String] {
+    var files: [String] { locations.flatMap(\.paths).sorted() }
+
+    /// The same files by where they go, as the sheet lists them.
+    var locations: [HostHelperFileLocation] {
         let log = layout.manager == .launchd ? [layout.log] : []
-        return (helperFiles.map { "\(layout.app)/\($0)" } + [layout.record] + log + outsideFiles).sorted()
+        let helper = helperFiles.map { "\(layout.app)/\($0)" } + [layout.record] + log
+        let all = [
+            HostHelperFileLocation(kind: .helper, paths: helper, home: home),
+            HostHelperFileLocation(kind: .service(layout.manager), paths: layout.serviceFiles, home: home),
+            HostHelperFileLocation(kind: .extensions, paths: extensionFiles, home: home),
+        ]
+        return all.filter { !$0.paths.isEmpty }
     }
 
     var unitText: String {

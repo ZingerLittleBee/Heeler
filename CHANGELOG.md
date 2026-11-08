@@ -18,12 +18,15 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Lead the Host Helper sheet with its status and a prominent Install, and list what it writes as Helper, LaunchAgent or systemd Unit, and Pi & Oh My Pi with file counts. Each opens one folder at a time, subfolders first, with the folder's path below, instead of every absolute path in one list. (PR #661)
+- Show each Host in Settings > Notifications as one row with its switch and a line saying what is on or what it needs. Done Notifications, Live Activity and their notes move to the Host's own page, which on a herdr-core Host also shows the Host Helper's status and opens its sheet on the Host's page in Hosts. (PR #661)
 - Select terminal text inline with handles and the system edit menu, using libghostty-spm 2.2.2026103001. Chat's Select Text sheet is unchanged. (PR #650)
 - Show user commands in Chat with the same right-aligned bubble and text size
   as other user messages, keeping command output below the bubble. (#648)
 
 ### Fixed
 
+- Keep Settings > Notifications steady while Hosts reconnect. A Host being read again keeps showing its last state, and one Host's connection retries no longer read every other Host again. (PR #661)
 - Show the Host detail's 30-day Usage cost on its own line with the token count beneath it, so a large figure no longer wraps its last digit. The Usage widgets keep every cost whole: a long Host or program name truncates first, and a cost that still does not fit shrinks, drops its cents, then reads in thousands or millions, rather than ending in an ellipsis. The large widget no longer lists the Hosts it leaves out. (PR #660)
 - Switch between the Composer and Direct Input when the keyboard is slow to move: the switch now waits up to two seconds for the other input to take the keyboard, rather than dropping the tap after one, and a handoff that times out or is cancelled settles the input on the keyboard actually on screen instead of leaving it above or behind it. (PR #657)
 - Size the Tools keyboard to the system keyboard on screen when switching to Tools while that keyboard is still changing height, rather than to the keyboard before it. (PR #657)

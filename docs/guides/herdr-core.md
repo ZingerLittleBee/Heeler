@@ -127,7 +127,9 @@ The Host Helper runs on the Host's Node.js 20 or newer as a `systemd` user servi
 ### 1. Review the files
 
 1. Open the Host in **Hosts** and tap **Host Helper**.
-2. Review **Files This Writes**: `~/.local/share/heeler/host-helper` on Linux or `~/Library/Application Support/heeler/host-helper` on macOS, the service file, and Pi and Oh My Pi `agent/extensions` folders.
+2. Under **Files This Writes**, tap **Helper**, **systemd Unit** on Linux or **LaunchAgent** on macOS, and **Pi & Oh My Pi** to browse their folders: `~/.local/share/heeler/host-helper` on Linux or `~/Library/Application Support/heeler/host-helper` on macOS, the service file, and Pi and Oh My Pi `agent/extensions` folders.
+
+<a href="images/herdr-core/host-helper-sheet.png"><img src="images/herdr-core/host-helper-sheet.png" width="300" alt="Host Helper sheet before install: Not Installed, an Install button, and Files This Writes listing Helper, LaunchAgent, and Pi & Oh My Pi with file counts"></a>
 
 ### 2. Install the Helper
 
@@ -152,11 +154,15 @@ macOS may notify that `node` can run in the background and list it under Login I
 ### 3. Turn on notifications
 
 1. Go to **Settings > Notifications**. If **Enable Notifications** appears, tap it, tap **Continue**, and allow notifications when iOS asks.
-2. Under the Host's name, turn on **Notifications**. **Done Notifications** and **Live Activity** appear below it.
+2. Under **Hosts**, turn on the Host's switch. Tap the Host for **Done Notifications** and **Live Activity**.
 
-**It worked if** **Notifications** stays on and no **Host Helper:** note shows under the Host. **Blocked**, **Error**, and **Done** then reach this device with Heeler closed, and a tap opens the Agent.
+| Notifications | The Host's page |
+| --- | --- |
+| <a href="images/herdr-core/notifications-hosts.png"><img src="images/herdr-core/notifications-hosts.png" width="260" alt="Notifications with the Host under Hosts, its switch on and Blocked, Done · Live Activity below its name"></a> | <a href="images/herdr-core/notifications-host.png"><img src="images/herdr-core/notifications-host.png" width="260" alt="The Host's notification page with Notifications, Done Notifications, and Live Activity on, and a Host Helper row showing its version"></a> |
 
-When a **Host Helper:** note shows, fix that status on the Host's page using the table above.
+**It worked if** the switch stays on and the Host's row shows no **Host Helper:** note. **Blocked**, **Error**, and **Done** then reach this device with Heeler closed, and a tap opens the Agent.
+
+When a **Host Helper:** note shows, tap the Host, then **Host Helper**, and fix that status using the table above.
 
 ### Remove the Helper
 

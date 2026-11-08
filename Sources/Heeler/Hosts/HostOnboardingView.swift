@@ -48,6 +48,8 @@ struct HostOnboardingView: View {
     @State private var isConsoleRecoveryArmed = false
     @State private var isShowingPluginNotice = false
     @State private var isShowingHostHelper = false
+    /// Asked for by whoever opened this page, until the Helper sheet first shows.
+    @State private var opensHostHelperOnArrival: Bool
     @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
 
     init(
@@ -63,6 +65,7 @@ struct HostOnboardingView: View {
         isManualReconnectInFlight: Bool = false,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil,
         stopConnecting: (@MainActor @Sendable () async -> Void)? = nil,
+        opensHostHelper: Bool = false,
         dependencies: HostOnboardingDependencies = HostOnboardingDependencies()
     ) {
         self.host = host
@@ -79,6 +82,7 @@ struct HostOnboardingView: View {
         self.stopConnecting = stopConnecting
         self.dependencies = dependencies
         _store = State(initialValue: Self.makeStore(host, dependencies))
+        _opensHostHelperOnArrival = State(initialValue: opensHostHelper)
     }
 
     static func makeStore(
@@ -115,6 +119,10 @@ struct HostOnboardingView: View {
             .sheet(isPresented: $isShowingHostHelper) {
                 if let helper = store.hostHelper { HostHelperSheet(store: helper) }
             }
+            .modifier(
+                HostHelperOnArrival(
+                    isReady: store.hostHelper != nil, isRequested: $opensHostHelperOnArrival,
+                    isShowing: $isShowingHostHelper))
             .alert("Could Not Confirm", isPresented: confirmationRefusalPresented) {
                 Button("OK", role: .cancel) { store.dismissConfirmationRefusal() }
             } message: {
@@ -1239,4 +1247,20 @@ private struct PreflightCheckRow: View {
 extension EnvironmentValues {
     /// Where Host detail preflights connect; see `HostOnboardingDependencies`.
     @Entry var hostOnboardingDependencies = HostOnboardingDependencies()
+}
+
+/// Shows the Host Helper sheet once, when the page was opened for it and its
+/// Helper store exists; the store appears as the first checks start.
+private struct HostHelperOnArrival: ViewModifier {
+    let isReady: Bool
+    @Binding var isRequested: Bool
+    @Binding var isShowing: Bool
+
+    func body(content: Content) -> some View {
+        content.onChange(of: isReady, initial: true) { _, isReady in
+            guard isReady, isRequested else { return }
+            isRequested = false
+            isShowing = true
+        }
+    }
 }

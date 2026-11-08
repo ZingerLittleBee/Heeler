@@ -128,7 +128,9 @@ Host Helper 在 Host 上的 Node.js 20 或更新版本上运行，在 Linux 上�
 ### 1. 查看将写入的文件
 
 1. 在 **Hosts** 中打开该 Host，轻点 **Host Helper**。
-2. 查看 **Files This Writes**：Linux 上的 `~/.local/share/heeler/host-helper` 或 macOS 上的 `~/Library/Application Support/heeler/host-helper`、服务文件，以及 Pi 和 Oh My Pi 的 `agent/extensions` 文件夹。
+2. 在 **Files This Writes** 下依次轻点 **Helper**、**systemd Unit**（Linux）或 **LaunchAgent**（macOS）以及 **Pi & Oh My Pi**，浏览它们的文件夹：Linux 上的 `~/.local/share/heeler/host-helper` 或 macOS 上的 `~/Library/Application Support/heeler/host-helper`、服务文件，以及 Pi 和 Oh My Pi 的 `agent/extensions` 文件夹。
+
+<a href="../images/herdr-core/host-helper-sheet.png"><img src="../images/herdr-core/host-helper-sheet.png" width="300" alt="安装前的 Host Helper 面板：显示 Not Installed 和 Install 按钮，Files This Writes 下列出 Helper、LaunchAgent 和 Pi & Oh My Pi 及其文件数"></a>
 
 ### 2. 安装 Helper
 
@@ -153,11 +155,15 @@ macOS 可能会提示 `node` 可在后台运行，并将其列在“登录项”
 ### 3. 开启通知
 
 1. 前往 **Settings > Notifications**。如果出现 **Enable Notifications**，请轻点它，再轻点 **Continue**，并在 iOS 询问时允许通知。
-2. 在该 Host 的名称下开启 **Notifications**。开启后，下方会出现 **Done Notifications** 和 **Live Activity**。
+2. 在 **Hosts** 下打开该 Host 的开关。轻点该 Host 可设置 **Done Notifications** 和 **Live Activity**。
 
-**成功的标志是** **Notifications** 保持开启，且该 Host 下没有 **Host Helper:** 提示。此后即使关闭 Heeler，这台设备也会收到 **Blocked**、**Error** 和 **Done** 通知，轻点通知即可打开对应的 Agent。
+| Notifications | 该 Host 的页面 |
+| --- | --- |
+| <a href="../images/herdr-core/notifications-hosts.png"><img src="../images/herdr-core/notifications-hosts.png" width="260" alt="Notifications 页面的 Hosts 下列出该 Host，开关已开启，名称下方显示 Blocked, Done · Live Activity"></a> | <a href="../images/herdr-core/notifications-host.png"><img src="../images/herdr-core/notifications-host.png" width="260" alt="该 Host 的通知页面：Notifications、Done Notifications 和 Live Activity 均已开启，下方的 Host Helper 行显示版本号"></a> |
 
-如果出现 **Host Helper:** 提示，请对照上表在该 Host 的页面中处理对应状态。
+**成功的标志是**开关保持开启，且该 Host 的行中没有 **Host Helper:** 提示。此后即使关闭 Heeler，这台设备也会收到 **Blocked**、**Error** 和 **Done** 通知，轻点通知即可打开对应的 Agent。
+
+如果出现 **Host Helper:** 提示，请轻点该 Host，再轻点 **Host Helper**，并对照上表处理对应状态。
 
 ### 移除 Helper
 

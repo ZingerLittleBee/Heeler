@@ -158,6 +158,17 @@ struct HostHelperMacOSTests {
         #expect(!reading.offersLinger)
     }
 
+    @Test func theSheetListsTheLogBesideTheRecordAndTheLaunchAgentOnItsOwn() async throws {
+        let host = await ScriptedHelperHost.macOS()
+        let plan = try HostHelperInstallPlan(reading: try await installer(host).read(), bundle: bundle)
+        #expect(plan.locations.map(\.title) == ["Helper", "LaunchAgent", "Pi & Oh My Pi"])
+        let helper = try #require(plan.locations.first).folder
+        #expect(helper.displayPath == "~/Library/Application Support/heeler/host-helper")
+        #expect(helper.files == ["helper.log", "installed.json"])
+        #expect(plan.locations[1].summary == "~/Library/LaunchAgents")
+        #expect(plan.locations[1].folder.files == ["dev.bybee.heeler.host-helper.plist"])
+    }
+
     @Test func theInstallWritesAndRecordsTheListThenBootstrapsItIntoTheDomain() async throws {
         let host = await ScriptedHelperHost.macOS()
         let installer = installer(host)

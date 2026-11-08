@@ -61,9 +61,10 @@ struct ConsoleView: View {
     /// Hosts and Settings where the sidebar navigates instead of a tab bar.
     @State private var isShowingHostsSheet = false
     @State private var isShowingSettingsSheet = false
-    /// A Host added in Settings waits for that sheet to close before the
-    /// Hosts sheet can present onboarding and its trust alert.
-    @State private var pendingSettingsHostID: Host.ID?
+    /// A Host added in Settings, or one whose Host Helper Settings opens,
+    /// waits for that sheet to close before the Hosts sheet can present
+    /// onboarding and its trust alert.
+    @State private var pendingSettingsHost: (id: Host.ID, opensHostHelper: Bool)?
     @State private var isShowingListMenu = false
     /// Where the sidebar's title sits in the window, for its choices to
     /// point at.
@@ -311,9 +312,9 @@ struct ConsoleView: View {
             }
         }
         .sheet(isPresented: $isShowingSettingsSheet, onDismiss: {
-            guard let id = pendingSettingsHostID else { return }
-            pendingSettingsHostID = nil
-            presentHosts(id)
+            guard let pending = pendingSettingsHost else { return }
+            pendingSettingsHost = nil
+            presentHosts(pending.id, opensHostHelper: pending.opensHostHelper)
         }) {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 settingsView(onDone: { isShowingSettingsSheet = false })
@@ -456,6 +457,7 @@ struct ConsoleView: View {
         HostListView(
             store: hosts,
             initialHostID: hostsTabRequest?.hostID,
+            opensHostHelper: hostsTabRequest?.opensHostHelper ?? false,
             usageStore: console.isUsageEnabled ? { console.agentUsageStore(for: $0) } : nil,
             openUsage: { openUsage(for: $0) },
             showsSetupGuide: hostsTabRequest?.showsSetupGuide ?? false,
@@ -486,15 +488,19 @@ struct ConsoleView: View {
             liveActivities: liveActivities,
             console: console,
             hosts: hosts.consoleHosts,
-            onHostAdded: { id in
-                if isShowingSettingsSheet {
-                    pendingSettingsHostID = id
-                    isShowingSettingsSheet = false
-                } else {
-                    presentHosts(id)
-                }
-            },
+            onHostAdded: { openHostFromSettings($0) },
+            openHostHelper: { openHostFromSettings($0, opensHostHelper: true) },
             onDone: onDone)
+    }
+
+    /// A Host page Settings asks for, once a Settings sheet is out of the way.
+    private func openHostFromSettings(_ id: Host.ID, opensHostHelper: Bool = false) {
+        if isShowingSettingsSheet {
+            pendingSettingsHost = (id, opensHostHelper)
+            isShowingSettingsSheet = false
+        } else {
+            presentHosts(id, opensHostHelper: opensHostHelper)
+        }
     }
 
     /// The lists an iPad sidebar's title menu switches between.
@@ -686,7 +692,7 @@ struct ConsoleView: View {
         connectionDetailRequest = nil
         isShowingHostIssues = false
         isShowingHostsSheet = false
-        pendingSettingsHostID = nil
+        pendingSettingsHost = nil
         isShowingSettingsSheet = false
     }
 
@@ -2360,6 +2366,8 @@ struct ConsoleView: View {
         var hostID: Host.ID?
         /// Opens the Setup Guide over the Host list.
         var showsSetupGuide = false
+        /// Opens the Host's Host Helper sheet over its page.
+        var opensHostHelper = false
         /// The tab the Host was opened from; its back button returns there.
         /// Nil when opened from the Hosts tab itself.
         let origin: ConsoleTab?
@@ -2454,12 +2462,14 @@ struct ConsoleView: View {
         }
     }
 
-    /// Opens Hosts, on one Host's detail when `id` is given. A sheet
-    /// closes back where it was opened, so only the tab names its origin.
-    private func presentHosts(_ id: Host.ID? = nil) {
+    /// Opens Hosts, on one Host's detail when `id` is given, with its Host
+    /// Helper sheet up when asked. A sheet closes back where it was opened,
+    /// so only the tab names its origin.
+    private func presentHosts(_ id: Host.ID? = nil, opensHostHelper: Bool = false) {
         if let id {
             hostsTabRequest = HostsTabRequest(
                 hostID: id,
+                opensHostHelper: opensHostHelper,
                 origin: usesSidebarNavigation || currentTab == .hosts ? nil : currentTab)
         }
         showHosts()

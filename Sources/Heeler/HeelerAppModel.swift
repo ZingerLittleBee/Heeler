@@ -299,10 +299,13 @@ final class HeelerAppModel {
         // The banner's preference gate fails closed on unknown flags (#77),
         // so re-read each Host's registration file as its connection comes up
         // (and once the push token lands) instead of waiting for a Settings
-        // visit that may never happen.
-        observe({ console.hostStatuses.mapValues(\.forRegistrationRead) }) { [weak self] _ in
+        // visit that may never happen. Only the Hosts whose connection changed
+        // are read: another Host's retries say nothing about this one's file.
+        observeChange({ console.hostStatuses.mapValues(\.forRegistrationRead) }) { [weak self] old, new in
             guard let self else { return }
-            Task { await self.notificationPreferences.refresh() }
+            let changed = new.keys.filter { old[$0] != new[$0] }
+            guard !changed.isEmpty else { return }
+            Task { await self.notificationPreferences.refresh(changed) }
         }
         observe({ console.hostStatuses }) { [weak self] _ in
             self?.liveActivities.connectionsDidChange()
@@ -326,6 +329,14 @@ final class HeelerAppModel {
         _ read: @escaping @MainActor () -> Value,
         onChange: @escaping @MainActor (Value) -> Void
     ) {
+        observeChange(read) { _, new in onChange(new) }
+    }
+
+    /// Like `observe`, with the value it changed from.
+    private func observeChange<Value: Equatable>(
+        _ read: @escaping @MainActor () -> Value,
+        onChange: @escaping @MainActor (_ old: Value, _ new: Value) -> Void
+    ) {
         observers.append(StoreChangeObserver(read: read, onChange: onChange))
     }
 }
@@ -338,10 +349,10 @@ final class HeelerAppModel {
 @MainActor
 private final class StoreChangeObserver<Value: Equatable> {
     private let read: @MainActor () -> Value
-    private let onChange: @MainActor (Value) -> Void
+    private let onChange: @MainActor (Value, Value) -> Void
     private var lastValue: Value
 
-    init(read: @escaping @MainActor () -> Value, onChange: @escaping @MainActor (Value) -> Void) {
+    init(read: @escaping @MainActor () -> Value, onChange: @escaping @MainActor (Value, Value) -> Void) {
         self.read = read
         self.onChange = onChange
         lastValue = read()
@@ -355,7 +366,8 @@ private final class StoreChangeObserver<Value: Equatable> {
             Task { @MainActor in self?.track() }
         }
         guard value != lastValue else { return }
+        let old = lastValue
         lastValue = value
-        onChange(value)
+        onChange(old, value)
     }
 }

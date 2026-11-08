@@ -290,6 +290,36 @@ struct HostHelperInstallTests {
         #expect(plan.files.count == bundle.files.count + 6)
     }
 
+    @Test func theSheetGroupsThoseFilesByWhereTheyGoFolderByFolder() async throws {
+        let plan = try HostHelperInstallPlan(reading: try await installer.read(), bundle: bundle)
+        let locations = plan.locations
+        #expect(locations.map(\.title) == ["Helper", "systemd Unit", "Pi & Oh My Pi"])
+        #expect(locations.flatMap(\.paths).sorted() == plan.files)
+
+        // The app folder and the record sit side by side, as they do on the Host.
+        let helper = try #require(locations.first).folder
+        #expect(helper.displayPath == "~/.local/share/heeler/host-helper")
+        #expect(helper.folders.map(\.name) == ["app"])
+        #expect(helper.files == ["installed.json"])
+        let app = try #require(helper.folders.first)
+        #expect(app.fileCount == bundle.files.count + 1)
+        #expect(app.files == ["main.js", HostHelperScript.manifestFileName, "package.json", "version.json"])
+        // A folder holding only a folder folds into it.
+        #expect(app.folders.map(\.name) == ["extensions", "shared/delivery"])
+        #expect(app.folders.last?.files == ["push.js"])
+        #expect(app.folders.last?.displayPath == "~/.local/share/heeler/host-helper/app/shared/delivery")
+
+        let unit = locations[1].folder
+        #expect(unit.displayPath == "~/.config/systemd/user")
+        #expect(unit.files == ["heeler-host-helper.service"])
+        #expect(unit.folders.map(\.name) == ["default.target.wants"])
+
+        let extensions = locations[2]
+        #expect(extensions.summary == "~/.omp · ~/.pi")
+        #expect(extensions.folder.folders.map(\.name) == [".omp/agent/extensions", ".pi/agent/extensions"])
+        #expect(extensions.folder.fileCount == 2)
+    }
+
     @Test func refusesToReplaceANewerHelper() async throws {
         _ = try await installOlderBuildOverNewer()
     }
