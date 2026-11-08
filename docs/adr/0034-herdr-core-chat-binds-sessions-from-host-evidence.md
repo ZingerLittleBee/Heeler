@@ -211,8 +211,8 @@ never show or send into a conversation it has guessed.
   candidates are Claude Code and Grok Build (session registry plus the Windows
   process tree and creation times) and Pi and Oh My Pi (their extensions' labels,
   adopted only on a pid and creation-time match); Codex and OpenCode follow
-  later. Antigravity CLI binds on Linux and macOS from its lock and is on macOS's
-  list alone, and never a Windows candidate, since Windows reads no open file.
+  later. Antigravity CLI binds on Linux and macOS from its lock and is on both
+  their lists, and never a Windows candidate, since Windows reads no open file.
   Native Windows Herdr TUI Hosts stay without Chat. Each kernel keeps its
   own list, `HostCapabilities.confirmedLinuxCoreChatPrograms`,
   `confirmedMacOSCoreChatPrograms` and `confirmedWindowsCoreChatPrograms`, and a
@@ -254,7 +254,8 @@ never show or send into a conversation it has guessed.
   Pi. Codex and OpenCode were not run on Windows.
   On 2026-11-08 the owner's Mac passed Antigravity CLI 1.5.3, started with colors
   and with `NO_COLOR` in herdr-core 0.1.18 Terminals, and the owner turned it on
-  for macOS. No Linux run has read its lock, so it stays off on Linux.
+  for macOS. On 2026-11-09 a Linux VM passed it in herdr-core 0.1.18 Terminals,
+  and it joined Linux's list (below).
 
 This amends ADR 0024, and ADR 0025's source of the OpenCode session id, its
 start-screen watch, what its confirmation makes of the title `OpenCode` and its
@@ -365,8 +366,9 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   or `--conversation=<id>`, read from the core's record and counted only while that
   foreground is the agy the check found: on Linux (2026-11-09, Ubuntu 24.04.5,
   herdr-core 0.1.18, agy 1.5.3), read through `/proc/<pid>/fd`, neither agy held
-  that conversation's folder or database open, the first holding only its lock, so
-  without the argv the second listed nothing. The check's exec still
+  that conversation's folder open, and each held its database only for about 30 s
+  after it started, the first then holding only its lock, so without the argv a
+  list opened after that named nothing. The check's exec still
   learns nothing of agy's argv. Its list has nothing from a directory: agy files
   conversations by id, and `history.jsonl`, which names a workspace, is one log for
   every agy on the data root and names no id for a fresh launch's first prompt.
@@ -402,11 +404,32 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   `kind=permission`, with no `idle` between: 4.8 s apart on the second run's start
   in color, and 0.03 s apart under `NO_COLOR`. Through the 4.8 s Heeler showed
   Blocked, for about 2 s of it with an unreadable Waiting for Input card, since
-  nothing in Heeler debounces the report. Antigravity CLI joins Linux's list once
-  the owner's check passes there. Not seen: `/resume` and `/rewind`, whether
-  `--remote-control` leaves a second process named `agy` in the Terminal, a trusted
-  start's `kind=auth` and `idle` on a core, and whether the Host Helper notifies on
-  the auth report.
+  nothing in Heeler debounces the report.
+  On a Linux VM, Ubuntu 24.04.5 on x86_64, with herdr-core 0.1.18 started from
+  Heeler's **Start herdr-core** under user systemd and no desktop app, and agy 1.5.3
+  signed in (2026-11-09), the owner's check passed, and Antigravity CLI joined
+  Linux's list. The hold carried no `NO_COLOR`. The lock read through
+  `/proc/<pid>/fd` bound an agy from New Agent, drawn in color, a typed `agy` and a
+  typed `NO_COLOR=1 agy`, which drew none, each from its first prompt sent in the
+  terminal, and `/clear` moved Chat to the new conversation before any Send, in
+  color and under `NO_COLOR`. No agy there held a conversation's folder open, and
+  one held its database (with `-wal` and `-shm`) only for a while, right after a
+  first prompt but not 41 s after one, and for about 30 s after a start with
+  `--conversation`, then its lock alone. A second agy on a conversation already open
+  listed it from the argv, above, in both forms, and choosing it showed that
+  conversation. A start at the trust prompt, from New Agent or typed, sent no
+  `kind=auth`: the core's first status was the prompt's `blocked` `kind=permission`,
+  for New Agent 0.4 s after its Terminal's creation, so no unreadable card showed. A
+  trusted start with `--conversation` sent `kind=auth` and `idle` 0.8 s later, and
+  the second and third agy on that conversation sent `idle` alone. In color and
+  under `NO_COLOR`, Chat answered the trust prompt, a command, a file creation and
+  edit, a two-question form with Skip and a multi-select question from cards, sent
+  from Chat with no hold for the input box, held a message while agy worked and
+  stopped a turn. That held message showed **Sending** for about 1.5 to 2.5 s before
+  the hold replaced it, and nothing reached agy. Stop ended the turn but not a
+  command agy had moved to the background, which ran to its end. Not seen: `/resume`
+  and `/rewind`, whether `--remote-control` leaves a second process named `agy` in
+  the Terminal, and whether the Host Helper notifies on the auth report.
 - A Transcript locator takes the config root from the Agent's own process
   environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and the like),
   not from the Host's Default Account, which follows the core's environment.
