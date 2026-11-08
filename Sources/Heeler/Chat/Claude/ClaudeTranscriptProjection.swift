@@ -864,7 +864,10 @@ private struct Builder {
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = trimmed.hasPrefix("[Request interrupted by user") ? "Interrupted" : ClaudeText.noticeParts(trimmed).title
+        // 照合する接頭辞は Claude の英語出力のまま。表示する見出しだけを翻訳する。
+        let title = trimmed.hasPrefix("[Request interrupted by user")
+            ? String(localized: "Interrupted")
+            : ClaudeText.noticeParts(trimmed).title
         add("notice:\(record.uuid)", at: record, .notice(ChatNotice(kind: .interrupted, title: title)))
     }
 

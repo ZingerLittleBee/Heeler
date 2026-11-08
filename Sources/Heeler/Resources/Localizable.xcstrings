@@ -2845,6 +2845,17 @@
         }
       }
     },
+    "Agent settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェント設定"
+          }
+        }
+      }
+    },
     "Agent status": {
       "extractionState": "manual",
       "localizations": {
@@ -2962,6 +2973,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "ライトモードでは Alabaster、ダークモードでは Afterglow"
+          }
+        }
+      }
+    },
+    "All": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべて"
           }
         }
       }
@@ -4130,6 +4152,28 @@
         }
       }
     },
+    "Bypass Permissions": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべての確認をスキップ"
+          }
+        }
+      }
+    },
+    "Bypass is not available for this session. No keys were sent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このセッションではバイパスを利用できません。キーは送信されませんでした。"
+          }
+        }
+      }
+    },
     "Cached Messages": {
       "extractionState": "manual",
       "localizations": {
@@ -4968,6 +5012,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Claude Code アカウントにはプラグイン %@ 以降が必要です。このホストには %@ が導入されています。"
+          }
+        }
+      }
+    },
+    "Claude Code is reading or changing a setting. Try again in a moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code が設定を読み取り中または変更中です。少ししてから再試行してください。"
+          }
+        }
+      }
+    },
+    "Claude Code is switching a setting. Try again in a moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code が設定を切り替えています。少ししてから再試行してください。"
           }
         }
       }
@@ -6549,6 +6615,17 @@
         }
       }
     },
+    "Couldn't Change Setting": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定を変更できませんでした"
+          }
+        }
+      }
+    },
     "Couldn't Close Agent": {
       "extractionState": "manual",
       "localizations": {
@@ -7829,6 +7906,17 @@
         }
       }
     },
+    "Effort": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "思考レベル"
+          }
+        }
+      }
+    },
     "Either answer forks this conversation and moves Grok Build to the fork. Chat stays here and holds messages until you switch back with /resume in the terminal.": {
       "extractionState": "manual",
       "localizations": {
@@ -8762,6 +8850,17 @@
         }
       }
     },
+    "Filter Agents": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントを絞り込み"
+          }
+        }
+      }
+    },
     "Filter by Host": {
       "extractionState": "manual",
       "localizations": {
@@ -8780,6 +8879,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "フォルダを絞り込み"
+          }
+        }
+      }
+    },
+    "Filtered": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "絞り込み中"
           }
         }
       }
@@ -12850,6 +12960,17 @@
         }
       }
     },
+    "More Hosts below": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下にもホストがあります"
+          }
+        }
+      }
+    },
     "Move Left": {
       "extractionState": "manual",
       "localizations": {
@@ -13430,6 +13551,17 @@
         }
       }
     },
+    "No Matching Agents": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "条件に一致するエージェントがありません"
+          }
+        }
+      }
+    },
     "No Matching Folders": {
       "extractionState": "manual",
       "localizations": {
@@ -13492,6 +13624,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "まだピアはいません"
+          }
+        }
+      }
+    },
+    "No Results for “%@”": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」に一致する結果はありません"
           }
         }
       }
@@ -13855,6 +13998,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "未コミットの変更はありません"
+          }
+        }
+      }
+    },
+    "No, go back": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "いいえ、戻る"
           }
         }
       }
@@ -16057,6 +16211,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "1日あたり"
+          }
+        }
+      }
+    },
+    "Permission mode": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "権限モード"
           }
         }
       }
@@ -18373,6 +18538,17 @@
         }
       }
     },
+    "Scheduled task": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スケジュールタスク"
+          }
+        }
+      }
+    },
     "Scope": {
       "extractionState": "manual",
       "localizations": {
@@ -18554,6 +18730,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "フォルダを選択"
+          }
+        }
+      }
+    },
+    "Select model and effort for %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ のモデルと思考レベルを選択します"
           }
         }
       }
@@ -19076,6 +19263,17 @@
         }
       }
     },
+    "Show All": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてを表示"
+          }
+        }
+      }
+    },
     "Show All %@ %@": {
       "extractionState": "manual",
       "localizations": {
@@ -19094,6 +19292,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "すべてのホストを表示"
+          }
+        }
+      }
+    },
+    "Show All Statuses": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべての状態を表示"
           }
         }
       }
@@ -19677,6 +19886,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "質問をスキップ"
+          }
+        }
+      }
+    },
+    "Skip every permission prompt?": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべての権限確認をスキップしますか？"
           }
         }
       }
@@ -21256,6 +21476,17 @@
         }
       }
     },
+    "The Agent runs every tool without asking until you switch back.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "元に戻すまで、エージェントはすべてのツールを確認なしに実行します。"
+          }
+        }
+      }
+    },
     "The Agent started asking something before the message was submitted, so nothing was submitted. The text may still be in the Agent's input.": {
       "extractionState": "manual",
       "localizations": {
@@ -21362,6 +21593,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "エージェントの入力が空または準備済みではありません。まずターミナルで下書きやダイアログを完了してください。"
+          }
+        }
+      }
+    },
+    "The Agent's process changed. Open the permission menu again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントのプロセスが変わりました。権限メニューを開き直してください。"
           }
         }
       }
@@ -21989,6 +22231,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "ホストにはこのコード進行中のペアリングがありません。コンピューターで新しいペアリングコードを生成してスキャンしてください。"
+          }
+        }
+      }
+    },
+    "The Host has not answered the last setting change.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホストが直前の設定変更に応答していません。"
           }
         }
       }
@@ -23249,6 +23502,17 @@
         }
       }
     },
+    "The last setting command may still be in the Agent's input. Check the terminal.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直前の設定コマンドがまだエージェントの入力欄にある可能性があります。ターミナルを確認してください。"
+          }
+        }
+      }
+    },
     "The link to %@ couldn't be opened. You can copy it instead.": {
       "extractionState": "manual",
       "localizations": {
@@ -24075,6 +24339,17 @@
         }
       }
     },
+    "The status filter is on.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状態フィルターがオンになっています。"
+          }
+        }
+      }
+    },
     "The step failed": {
       "extractionState": "manual",
       "localizations": {
@@ -24082,6 +24357,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "ステップが失敗しました"
+          }
+        }
+      }
+    },
+    "The terminal did not confirm the change. Check its current mode before trying again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナルが変更を確認しませんでした。現在のモードを確認してから再試行してください。"
           }
         }
       }
@@ -25325,6 +25611,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "このサービスは言語設定を文書けていません。"
+          }
+        }
+      }
+    },
+    "This session does not offer that mode. The original permission mode is restored.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このセッションはそのモードは提供していません。元の権限モードに戻しました。"
           }
         }
       }
