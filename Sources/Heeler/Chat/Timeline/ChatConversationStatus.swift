@@ -43,7 +43,7 @@ extension ChatUnavailableReason {
         case .noSession(.opencode):
             "herdr hasn't reported an OpenCode conversation for this Agent yet. OpenCode reports one once a conversation is open: send a first message in the terminal, or open a session there. Chat will keep checking, and you can continue in the Agent terminal."
         case .noSession(.agy):
-            "herdr hasn't reported an Antigravity CLI conversation for this Agent yet. Antigravity CLI reports one with its first message, and after /clear only once a message follows. Chat will keep checking, and you can continue in the Agent terminal."
+            "herdr hasn't reported an Antigravity CLI conversation for this Agent yet. Antigravity CLI reports one with its first message, and after /clear only once a message follows. If this lasts after a message, check the Antigravity CLI integration on the Host. Chat will keep checking, and you can continue in the Agent terminal."
         case .unidentifiedSession(.claude), .unidentifiedSession(.codex), .unidentifiedSession(.pi),
             .unidentifiedSession(.omp), .unidentifiedSession(.grok):
             "herdr names this Agent's session without an id, which happens after resuming a conversation by name. Chat can't tell which transcript is its own."
