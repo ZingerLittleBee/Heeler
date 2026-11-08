@@ -4,8 +4,9 @@ import Testing
 @testable import Heeler
 
 /// Antigravity CLI's dialogs, read from agy 1.5.3 captures at 190, 120, 62
-/// and 40 columns, and from synthetic screens laid out the way agy draws,
-/// for states no capture shows.
+/// and 40 columns, from captures of agy under `NO_COLOR` at 93 and 92
+/// columns (`nocolor`, herdr 0.9.5), and from synthetic screens laid out
+/// the way agy draws, for states no capture shows.
 @Suite("Antigravity CLI dialog parser")
 struct AgyDialogParserTests {
     private static func dialog(_ stem: String) throws -> BlockedDialog {
@@ -56,6 +57,17 @@ struct AgyDialogParserTests {
         "agy-111-perm-run-command-tab-on-no-62x41": .agyCommand,
         "agy-113-ask-question-multiselect-q1-of-2-62x41": .agyQuestion,
         "agy-114-ask-question-multiselect-q1-after-enter-62x41": .agyQuestion,
+        "agy-135-nocolor-perm-run-command-92x47": .agyCommand,
+        "agy-139-nocolor-perm-file-create-92x47": .agyFileCreate,
+        "agy-141-nocolor-perm-file-edit-92x47": .agyFileEdit,
+        "agy-142-nocolor-perm-file-edit-no-selected-92x47": .agyFileEdit,
+        "agy-144-nocolor-ask-question-multi-q1-92x47": .agyQuestion,
+        "agy-145-nocolor-ask-question-multi-q1-down-92x47": .agyQuestion,
+        "agy-146-nocolor-ask-question-multi-q2-92x47": .agyQuestion,
+        "agy-148-nocolor-ask-question-multiselect-92x47": .agyQuestion,
+        "agy-149-nocolor-ask-question-multiselect-toggled-92x47": .agyQuestion,
+        "agy-152-nocolor-trust-prompt-92x47": .agyWorkspaceTrust,
+        "agy-153-nocolor-trust-prompt-no-selected-93x45": .agyWorkspaceTrust,
     ]
 
     @Test(arguments: ScreenFixture.agy)
@@ -358,6 +370,177 @@ struct AgyDialogParserTests {
 
     /// agy 1.5.3's declined title: bold, blue 4.
     private static let declined = "\(SGR.bold)\u{1B}[38;5;4mCommand"
+
+    // MARK: Without colors
+
+    /// The start of the folder agy ran in under `NO_COLOR`, where the file
+    /// dialogs cut it at 92 columns.
+    private static let colorlessFile =
+        "/Users/developer/projects/heeler-acceptance/mac-core-2026-11-08/no-color-captures-agy-153-he"
+
+    /// agy-135: a command under `NO_COLOR` reads as agy-77 does in agy's
+    /// colors, whose command also starts with `echo`.
+    @Test func readsTheColorlessCommand() throws {
+        let dialog = try Self.dialog("agy-135-nocolor-perm-run-command-92x47")
+        let colored = try Self.dialog("agy-77-accept-edits-run-command-120x40")
+
+        #expect(dialog.title == colored.title)
+        #expect(dialog.subject.command == "echo nc-check")
+        #expect(dialog.subject.isRequestCut == colored.subject.isRequestCut)
+        #expect(dialog.body == ["echo nc-check"])
+        #expect(dialog.options == colored.options)
+        #expect(dialog.focus == colored.focus)
+        #expect(dialog.rows == 17..<30)
+    }
+
+    /// agy-139: a new file under `NO_COLOR`, its path cut at the screen's
+    /// edge, reads as agy-99 does at 40 columns, where agy cut it too.
+    @Test func readsTheColorlessFileCreation() throws {
+        let dialog = try Self.dialog("agy-139-nocolor-perm-file-create-92x47")
+        let colored = try Self.dialog("agy-99-perm-file-create-default-40x30")
+
+        #expect(dialog.title == colored.title)
+        #expect(dialog.subject.filePath == Self.colorlessFile)
+        #expect(dialog.subject.isRequestCut)
+        #expect(dialog.subject.isRequestCut == colored.subject.isRequestCut)
+        #expect(dialog.subject.changesAreCut == colored.subject.changesAreCut)
+        #expect(dialog.body == [Self.colorlessFile, "1  +  one"])
+        #expect(dialog.options == colored.options)
+        #expect(dialog.focus == colored.focus)
+    }
+
+    /// agy-141 and agy-142: an edit under `NO_COLOR`, with a context row,
+    /// reads as agy-47 does; the selection keeps the fingerprint.
+    @Test func readsTheColorlessFileEdit() throws {
+        let dialog = try Self.dialog("agy-141-nocolor-perm-file-edit-92x47")
+        let declining = try Self.dialog("agy-142-nocolor-perm-file-edit-no-selected-92x47")
+        let colored = try Self.dialog("agy-47-perm-file-edit-default-120x40")
+
+        #expect(dialog.title == colored.title)
+        #expect(dialog.subject.filePath == Self.colorlessFile)
+        #expect(dialog.subject.isRequestCut)
+        #expect(!dialog.subject.changesAreCut)
+        #expect(dialog.body == [Self.colorlessFile, "1     one", "2  +  two"])
+        #expect(dialog.options == colored.options)
+        #expect(dialog.focus == colored.focus)
+        #expect(declining.focus == DialogFocusState(focusedOrdinal: 2))
+        #expect(declining.options.map(\.label) == colored.options.map(\.label))
+        #expect(declining.fingerprint == dialog.fingerprint)
+    }
+
+    /// agy-144 to agy-146: two questions under `NO_COLOR`, each page read
+    /// as agy-44 and agy-45 are in agy's colors.
+    @Test func readsColorlessQuestions() throws {
+        let first = try Self.dialog("agy-144-nocolor-ask-question-multi-q1-92x47")
+        let down = try Self.dialog("agy-145-nocolor-ask-question-multi-q1-down-92x47")
+        let second = try Self.dialog("agy-146-nocolor-ask-question-multi-q2-92x47")
+        let colored = try Self.dialog("agy-44-ask-question-multi-120x40")
+
+        #expect(first.progress == "Question 1/2")
+        #expect(first.title == "Which color?")
+        #expect(first.subject.question == "Which color?")
+        #expect(first.body == ["Which color?"])
+        #expect(first.options.map(\.label) == ["red", "green", "blue", "Write-in..."])
+        #expect(first.options.map(\.detail) == ["Recommended", nil, nil, nil])
+        #expect(first.options.map(\.role) == [.answer, .answer, .answer, .otherText])
+        #expect(first.options.map(\.number) == [1, 2, 3, 4])
+        #expect(first.options.map(\.isChecked) == [nil, nil, nil, nil])
+        #expect(first.options.last?.input == colored.options.last?.input)
+        #expect(first.focus == colored.focus)
+        #expect(!first.isMultiSelect)
+        #expect(down.focus == DialogFocusState(focusedOrdinal: 2))
+        #expect(down.fingerprint == first.fingerprint)
+        #expect(second.progress == "Question 2/2")
+        #expect(second.title == "Which size?")
+        #expect(second.options.map(\.label) == ["small", "large", "Write-in..."])
+        #expect(second.fingerprint != first.fingerprint)
+    }
+
+    /// agy-148 and agy-149: a multi-select question under `NO_COLOR`, its
+    /// boxes read as agy-100 and agy-102 are in agy's colors.
+    @Test func readsAColorlessMultiSelectQuestion() throws {
+        let fresh = try Self.dialog("agy-148-nocolor-ask-question-multiselect-92x47")
+        let toggled = try Self.dialog("agy-149-nocolor-ask-question-multiselect-toggled-92x47")
+        let colored = try Self.dialog("agy-100-ask-question-multiselect-62x41")
+
+        #expect(fresh.progress == "Question 1/1")
+        #expect(fresh.title == "Which fruits do you like?")
+        #expect(fresh.options.map(\.label) == ["apple", "banana", "cherry", "Write-in..."])
+        #expect(fresh.options.map(\.detail) == ["Recommended", nil, nil, nil])
+        #expect(fresh.options.map(\.isChecked) == colored.options.map(\.isChecked))
+        #expect(fresh.options.map(\.role) == colored.options.map(\.role))
+        #expect(fresh.isMultiSelect)
+        #expect(fresh.focus == colored.focus)
+        #expect(toggled.focus == DialogFocusState(focusedOrdinal: 3, checked: [1, 3]))
+        #expect(toggled.fingerprint == fresh.fingerprint)
+    }
+
+    /// agy-152 and agy-153: the trust prompt under `NO_COLOR`, its folder
+    /// wrapped over two bold rows, reads as agy-00 and agy-10 do.
+    @Test func readsTheColorlessTrustPrompt() throws {
+        let dialog = try Self.dialog("agy-152-nocolor-trust-prompt-92x47")
+        let exiting = try Self.dialog("agy-153-nocolor-trust-prompt-no-selected-93x45")
+        let colored = try Self.dialog("agy-00-trust-prompt-191x49")
+        let path =
+            "/Users/developer/projects/heeler-acceptance/mac-core-2026-11-08/no-color-captures-agy-153-"
+            + "herdr095workspaceprobefolder/nocolor-trust/untrusted"
+
+        #expect(dialog.title == colored.title)
+        #expect(dialog.subject.workspacePath == path)
+        #expect(dialog.body.first == path)
+        #expect(Array(dialog.body.dropFirst()) == Array(colored.body.dropFirst()))
+        #expect(dialog.options == colored.options)
+        #expect(dialog.focus == colored.focus)
+        #expect(dialog.rows.lowerBound == 0)
+        #expect(exiting.subject.workspacePath == path)
+        #expect(exiting.options == (try Self.dialog("agy-10-trust-prompt-no-selected-190x49")).options)
+    }
+
+    /// Without colors a declined title stays bold, as a live one is, but
+    /// no rule follows it, nor any past prompt's bold rows: with the live
+    /// title's rule gone, nothing frames a dialog.
+    @Test(arguments: ["agy-144-nocolor-ask-question-multi-q1-92x47", "agy-148-nocolor-ask-question-multiselect-92x47"])
+    func aColorlessDeclinedTitleInTheScrollbackIsNoDialog(_ stem: String) throws {
+        let text = try ScreenFixture.text(stem)
+        #expect(text.contains("\(SGR.bold)Pending edit\(SGR.reset)"))
+        #expect(text.contains("User declined the tool call"))
+        let rule = String(repeating: "─", count: 92)
+        try #require(text.components(separatedBy: rule).count == 2)
+
+        let result = AgyDialogParser.parse(ANSIScreenDecoder.decode(text.replacingOccurrences(of: rule, with: "")))
+
+        #expect(result.dialog == nil)
+        #expect(result.excerpt?.reason == "Heeler can't find the top of Antigravity CLI's dialog.")
+    }
+
+    /// A title and its rule share one palette, and without colors the
+    /// rule spans the screen: a bold title over a past prompt's short
+    /// plain rule, a yellow title over a plain rule and a bold title
+    /// without color over a grey rule frame nothing.
+    @Test func aTitleNeedsARuleOfItsPalette() {
+        let yellow = "\(SGR.reset)\(SGR.bold)\u{1B}[38;5;3mCommand\(SGR.reset)"
+        let plain = "\(SGR.reset)\(SGR.bold)Command\(SGR.reset)"
+        let grey = "\(SGR.reset)\u{1B}[38;5;8m" + String(repeating: "─", count: 62) + SGR.reset
+        func command(_ title: String, _ rule: String) -> DialogParseResult {
+            AgyDialogParser.parse(
+                ScreenFixture.synthetic([
+                    title, rule, "", "\(SGR.bold)Requesting permission for:\(SGR.reset)", "   ls", "",
+                    "\(SGR.bold)Run this command?\(SGR.reset)", "> 1. Yes, run command", "  2. No, cancel", "",
+                    "  \(SGR.bold)↑/↓\(SGR.reset) Navigate · \(SGR.bold)tab\(SGR.reset) Amend",
+                    "esc to cancel" + String(repeating: " ", count: 49),
+                ]))
+        }
+
+        #expect(command(plain, String(repeating: "─", count: 62)).dialog?.kind == .agyCommand)
+        #expect(command(yellow, grey).dialog?.kind == .agyCommand)
+        let short = String(repeating: "─", count: 59)
+        let wide = String(repeating: "─", count: 62)
+        for (title, rule) in [(plain, short), (yellow, wide), (plain, grey)] {
+            let result = command(title, rule)
+            #expect(result.dialog == nil)
+            #expect(result.excerpt?.reason == "Heeler can't find the top of Antigravity CLI's dialog.")
+        }
+    }
 
     // MARK: Unknown
 

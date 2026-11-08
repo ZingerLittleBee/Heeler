@@ -150,6 +150,25 @@ enum ScreenFixture {
         "agy-109-perm-run-command-amend-62x41", "agy-110-perm-run-command-amend-typed-62x41",
         "agy-111-perm-run-command-tab-on-no-62x41", "agy-113-ask-question-multiselect-q1-of-2-62x41",
         "agy-114-ask-question-multiselect-q1-after-enter-62x41", "agy-115-ask-question-single-after-esc-62x41",
+        // agy under `NO_COLOR` (herdr 0.9.5): no color at all, bold and dim kept.
+        "agy-116-nocolor-idle-empty-45x45", "agy-117-nocolor-idle-draft-45x45", "agy-118-nocolor-draft-cleared-45x45",
+        "agy-119-nocolor-bash-mode-empty-45x45", "agy-120-nocolor-bash-mode-with-text-45x45",
+        "agy-121-nocolor-after-bash-mode-45x45", "agy-122-nocolor-accept-edits-hint-cut-45x45",
+        "agy-123-nocolor-mode-cycle-accept-edits-92x47", "agy-124-nocolor-mode-cycle-auto-92x47",
+        "agy-125-nocolor-mode-cycle-plan-92x47", "agy-126-nocolor-mode-cycle-default-92x47",
+        "agy-127-nocolor-mode-cycle-accept-edits-again-92x47", "agy-128-nocolor-idle-accept-edits-92x47",
+        "agy-129-nocolor-idle-draft-accept-edits-92x47", "agy-130-nocolor-back-to-default-92x47",
+        "agy-131-nocolor-slash-popup-92x47", "agy-132-nocolor-help-shortcuts-93x45", "agy-133-nocolor-after-help-92x47",
+        "agy-134-nocolor-working-nodraft-92x47", "agy-135-nocolor-perm-run-command-92x47",
+        "agy-136-nocolor-working-after-run-command-92x47", "agy-137-nocolor-working-markdown-prompt-92x47",
+        "agy-138-nocolor-idle-after-markdown-reply-92x47", "agy-139-nocolor-perm-file-create-92x47",
+        "agy-140-nocolor-working-after-file-create-92x47", "agy-141-nocolor-perm-file-edit-92x47",
+        "agy-142-nocolor-perm-file-edit-no-selected-92x47", "agy-143-nocolor-idle-after-file-edit-declined-92x47",
+        "agy-144-nocolor-ask-question-multi-q1-92x47", "agy-145-nocolor-ask-question-multi-q1-down-92x47",
+        "agy-146-nocolor-ask-question-multi-q2-92x47", "agy-147-nocolor-working-after-questions-92x47",
+        "agy-148-nocolor-ask-question-multiselect-92x47", "agy-149-nocolor-ask-question-multiselect-toggled-92x47",
+        "agy-150-nocolor-idle-after-multiselect-92x47", "agy-151-nocolor-exit-with-conversation-92x47",
+        "agy-152-nocolor-trust-prompt-92x47", "agy-153-nocolor-trust-prompt-no-selected-93x45",
     ]
 
     /// The Claude and Codex captures that the dialog and input-box suites walk.

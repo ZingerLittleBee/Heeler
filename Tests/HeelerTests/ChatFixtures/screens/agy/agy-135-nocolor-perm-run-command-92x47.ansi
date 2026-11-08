@@ -1,0 +1,31 @@
+
+      ▄▀▀▄
+     ▀▀▀▀▀▀
+    ▀▀▀▀▀▀▀▀
+   ▄▀▀    ▀▀▄
+  ▄▀▀      ▀▀▄
+
+  [0m[1mAntigravity CLI 1.5.3[0m
+  developer (Google AI Ultra)
+  Gemini 4 Argon (High)
+  /Users/developer/projects/heeler-acceptance/mac-core-2026-11-08/no-color-captures-agy-153-
+
+────────────────────────────────────────────────────────────
+[0m[1m> Run the shell command echo nc-check and tell me its output.[0m
+
+● [0m[1mRan[0m (echo nc-check) (ctrl+o to expand)
+
+[0m[1mCommand[0m
+────────────────────────────────────────────────────────────────────────────────────────────
+
+[0m[1mRequesting permission for:[0m
+   echo nc-check
+
+[0m[1mRun this command?[0m
+> 1. Yes, run command
+  2. Yes, and always allow in this conversation for commands that start with 'echo'
+  3. Yes, and always allow for commands that start with 'echo' (Persist to settings.json)
+  4. No, cancel
+
+  [0m[1m↑/↓[0m Navigate · [0m[1mtab[0m Amend · [0m[1mctrl+g[0m edit/expand command
+esc to cancel                                                          [0m[2mGemini 4 Argon · high[0m

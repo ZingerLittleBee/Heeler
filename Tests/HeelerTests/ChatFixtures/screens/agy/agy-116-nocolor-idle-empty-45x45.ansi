@@ -1,0 +1,45 @@
+in function '_tide_pwd'
+        called on line 1 of file ~/.config/fi
+sh/functions/fish_prompt.fish
+in command substitution
+        called on line 15 of file ~/.config/f
+ish/functions/fish_prompt.fish
+in function 'fish_prompt'
+in command substitution
+
+test: Missing argument at index 3
+-gt 16
+       ^
+
+
+~/.config/fish/functions/_tide_pwd.fish (line
+ 19): 
+        else if test $_tide_pwd_len -gt $dist
+_btwn_sides
+                ^
+in function '_tide_pwd'
+        called on line 1 of file ~/.config/fi
+sh/functions/fish_prompt.fish
+in command substitution
+        called on line 15 of file ~/.config/f
+ish/functions/fish_prompt.fish
+in function 'fish_prompt'
+in command substitution
+
+[0m[38;5;6mNO_COLOR[0m[38;5;14m=[0m[38;5;6m1[0m [0m[38;5;4magy[0m
+
+      ▄▀▀▄
+     ▀▀▀▀▀▀
+    ▀▀▀▀▀▀▀▀
+   ▄▀▀    ▀▀▄
+  ▄▀▀      ▀▀▄
+
+  [0m[1mAntigravity CLI 1.5.3[0m
+  developer
+  Gemini 4 Argon (High)
+  /Users/developer/projects/heeler-acceptance
+
+─────────────────────────────────────────────
+>
+─────────────────────────────────────────────
+? for shortcuts         [0m[2mGemini 4 Argon · high[0m

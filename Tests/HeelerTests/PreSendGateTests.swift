@@ -105,6 +105,15 @@ struct PreSendGateTests {
             "agy-87-perm-after-ctrlc-120x40", "agy-89-warning-notice-bad-model-120x40",
             "agy-90-first-screen-welcome-40x30", "agy-90-first-screen-welcome-62x20",
             "agy-90-first-screen-welcome-62x41",
+            // agy under `NO_COLOR`.
+            "agy-116-nocolor-idle-empty-45x45", "agy-118-nocolor-draft-cleared-45x45",
+            "agy-121-nocolor-after-bash-mode-45x45", "agy-122-nocolor-accept-edits-hint-cut-45x45",
+            "agy-123-nocolor-mode-cycle-accept-edits-92x47", "agy-124-nocolor-mode-cycle-auto-92x47",
+            "agy-125-nocolor-mode-cycle-plan-92x47", "agy-126-nocolor-mode-cycle-default-92x47",
+            "agy-127-nocolor-mode-cycle-accept-edits-again-92x47", "agy-128-nocolor-idle-accept-edits-92x47",
+            "agy-130-nocolor-back-to-default-92x47", "agy-133-nocolor-after-help-92x47",
+            "agy-138-nocolor-idle-after-markdown-reply-92x47", "agy-143-nocolor-idle-after-file-edit-declined-92x47",
+            "agy-150-nocolor-idle-after-multiselect-92x47",
         ]
         let screen = try ScreenFixture.screen(stem)
         let state = InputBoxStateDetector.detect(screen, program: .agy)

@@ -16,6 +16,14 @@ import Foundation
 /// 83). The frame is the bottom-most bold yellow title with a rule under it
 /// above the last hint row, so such a title is never read as a dialog.
 ///
+/// Under `NO_COLOR` agy 1.5.3 draws the same dialogs without colors: the
+/// title bold, its rule plain, the selected row's `> ` plain. A declined
+/// title and a past prompt's rows are bold too, but no rule follows a
+/// declined title (143) and the rule over a past prompt is never the
+/// screen's width, so there the frame is the bottom-most bold title with a
+/// plain full-width rule under it. Every other row is read by its text, so
+/// both palettes read alike.
+///
 /// Tab on a command's `Yes` or `No` row turns it into a note field, `> `
 /// under the row, and its label into `Yes, and tell Antigravity CLI what to
 /// do next` or `No, and tell Antigravity CLI what to do differently`; the
@@ -29,7 +37,7 @@ enum AgyDialogParser {
         let agy = AgyScreen(screen)
         guard agy.composer == nil, agy.showsDialog else { return .none }
         let rows = screen.rows
-        guard let frame = AgyDialogFrame(rows) else {
+        guard let frame = AgyDialogFrame(rows, columns: screen.columns) else {
             return unrecognized(rows, from: nil, "Heeler can't find the top of Antigravity CLI's dialog.")
         }
         let parsed: BlockedDialog?
@@ -99,7 +107,8 @@ enum AgyDialogParser {
             let sheet = AgyOptionSheet(rows, in: (question + 1)..<frame.hintRow, amendable: false),
             let options = permissionOptions(sheet)
         else { return nil }
-        // The path is the bold run; the counts follow in their own colors.
+        // The path is the bold run, under `NO_COLOR` too; the counts follow
+        // in their own colors.
         let bold = rows[pathRow].visibleRuns.filter { $0.style.isBold }
         let path = bold.map(\.text).joined().trimmingCharacters(in: .whitespaces)
         guard !path.isEmpty, let last = bold.last else { return nil }
@@ -209,8 +218,8 @@ enum AgyDialogParser {
     /// At start in a folder agy doesn't trust yet: the folder in bold,
     /// wrapped over as many rows as it takes, the question, agy's note, and
     /// two unnumbered options, `Yes, I trust this folder` and `No, exit`,
-    /// the unselected one grey. Trusting writes the folder into agy's
-    /// settings; `No, exit` quits agy.
+    /// the unselected one grey (plain under `NO_COLOR`). Trusting writes the
+    /// folder into agy's settings; `No, exit` quits agy.
     private static func trust(_ frame: AgyDialogFrame, _ rows: [ScreenRow]) -> BlockedDialog? {
         let content = Array(frame.content)
         let blocks = content.split { rows[$0].isBlank }.map(Array.init)
@@ -300,15 +309,15 @@ private struct AgyDialogFrame {
     var content: Range<Int> { contentStart..<hintRow }
 
     /// The bottom-most title: bold yellow from column 0, with a grey rule
-    /// under it unless it is the trust prompt's. A title the parser doesn't
-    /// know still frames the dialog, so its excerpt starts at the title.
-    init?(_ rows: [ScreenRow]) {
+    /// under it unless it is the trust prompt's, or under `NO_COLOR` bold
+    /// without color over a plain rule the screen's width. A title the
+    /// parser doesn't know still frames the dialog, so its excerpt starts
+    /// at the title.
+    init?(_ rows: [ScreenRow], columns: Int) {
         guard let hint = rows.indices.last(where: { Self.isHint(rows[$0]) }) else { return nil }
         for index in stride(from: hint - 1, through: 0, by: -1) {
             let row = rows[index]
-            guard let first = row.visibleRuns.first, first.column == 0, first.style.isBold,
-                first.style.foreground == .indexed(3), row.visibleRuns.count == 1
-            else { continue }
+            guard let palette = Self.titlePalette(row) else { continue }
             let title = row.trimmedText
             if title == AgyDialogParser.trustTitle {
                 self.init(
@@ -316,7 +325,11 @@ private struct AgyDialogFrame {
                     edge: rows.map(\.contentWidth).max() ?? 0)
                 return
             }
-            guard index + 1 < hint, AgyScreen.isRule(rows[index + 1], width: 8) else { continue }
+            // A past prompt's rule is never the screen's width, so a bold
+            // row over it never frames a dialog without colors.
+            let ruleWidth = palette == .colored ? 8 : AgyScreen.ruleWidth(columns: columns)
+            guard index + 1 < hint, AgyScreen.rulePalette(rows[index + 1], width: ruleWidth) == palette
+            else { continue }
             self.init(
                 title: title, titleRow: index, contentStart: index + 2, hintRow: hint,
                 edge: rows[index + 1].contentWidth)
@@ -331,6 +344,16 @@ private struct AgyDialogFrame {
         self.contentStart = contentStart
         self.hintRow = hintRow
         self.edge = edge
+    }
+
+    /// A title's palette: a single bold run from column 0, yellow 3 or
+    /// without any color.
+    private static func titlePalette(_ row: ScreenRow) -> AgyScreen.Palette? {
+        guard row.visibleRuns.count == 1, let first = row.visibleRuns.first, first.column == 0, first.style.isBold
+        else { return nil }
+        if first.style.foreground == .indexed(3) { return .colored }
+        if row.indent == 0, first.style == ScreenStyle(isBold: true) { return .colorless }
+        return nil
     }
 
     /// A dialog's hint row: `↑/↓ Navigate · …`, or `enter Submit` while one

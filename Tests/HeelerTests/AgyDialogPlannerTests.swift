@@ -35,6 +35,10 @@ struct AgyDialogPlannerTests {
         ("agy-31-perm-run-command-default-40x30", ["1", "2", "3", "4"]),
         ("agy-47-perm-file-edit-default-120x40", ["1", "2"]),
         ("agy-99-perm-file-create-default-62x41", ["1", "2"]),
+        ("agy-135-nocolor-perm-run-command-92x47", ["1", "2", "3", "4"]),
+        ("agy-139-nocolor-perm-file-create-92x47", ["1", "2"]),
+        ("agy-141-nocolor-perm-file-edit-92x47", ["1", "2"]),
+        ("agy-142-nocolor-perm-file-edit-no-selected-92x47", ["1", "2"]),
     ])
     func aPermissionsDigitAnswersIt(_ stem: String, keys: [String]) throws {
         let dialog = try Self.dialog(stem)
@@ -51,7 +55,8 @@ struct AgyDialogPlannerTests {
     @Test(arguments: [
         "agy-30-perm-run-command-default-120x40", "agy-47-perm-file-edit-default-120x40",
         "agy-99-perm-file-create-default-40x30", "agy-109-perm-run-command-amend-62x41",
-        "agy-110-perm-run-command-amend-typed-62x41",
+        "agy-110-perm-run-command-amend-typed-62x41", "agy-135-nocolor-perm-run-command-92x47",
+        "agy-139-nocolor-perm-file-create-92x47", "agy-141-nocolor-perm-file-edit-92x47",
     ])
     func escStopsTheTurn(_ stem: String) throws {
         #expect(try plan(.dismiss, stem) == Self.plan([.keys(["esc"])], focusesComposer: true))
@@ -250,6 +255,92 @@ struct AgyDialogPlannerTests {
         #expect(throws: DialogPlanError.unsupported("The trust prompt has no such action.")) {
             try plan(.dismiss, "agy-00-trust-prompt-191x49")
         }
+    }
+
+    // MARK: Without colors
+
+    private func outcome(_ action: DialogAction, _ stem: String) throws -> Result<DialogActionPlan, DialogPlanError> {
+        let planner = AgyDialogPlanner(dialog: try Self.dialog(stem))
+        do {
+            return .success(try planner.plan(action))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// agy under `NO_COLOR` takes the keys it takes in its colors: every
+    /// action on a colorless permission or trust prompt plans as it does
+    /// on a colored one of the same shape, refusals included.
+    @Test(arguments: [
+        ("agy-135-nocolor-perm-run-command-92x47", "agy-108-perm-run-command-62x41"),
+        ("agy-141-nocolor-perm-file-edit-92x47", "agy-47-perm-file-edit-default-120x40"),
+        ("agy-139-nocolor-perm-file-create-92x47", "agy-99-perm-file-create-default-62x41"),
+        ("agy-152-nocolor-trust-prompt-92x47", "agy-00-trust-prompt-191x49"),
+        ("agy-153-nocolor-trust-prompt-no-selected-93x45", "agy-11-trust-prompt-no-selected-62x41"),
+    ])
+    func aColorlessDialogTakesTheColoredKeys(colorless: String, colored: String) throws {
+        let note = "use ls instead"
+        var actions: [DialogAction] = [.dismiss, .skipQuestion, .submitSelection([1])]
+        for ordinal in 1...5 {
+            actions += [
+                .choose(ordinal: ordinal), .amend(ordinal: ordinal, note: note), .respond(ordinal: ordinal, text: note),
+            ]
+        }
+        for action in actions {
+            #expect(try outcome(action, colorless) == outcome(action, colored), "\(action) on \(colorless)")
+        }
+    }
+
+    /// Questions under `NO_COLOR` (agy-144 to agy-146): a digit answers and
+    /// turns the page, `Write-in...`'s digit opens the field, and Esc skips,
+    /// as on agy-44 and agy-45 in agy's colors.
+    @Test func colorlessQuestionsTakeTheColoredKeys() throws {
+        let first = "agy-144-nocolor-ask-question-multi-q1-92x47"
+        let second = "agy-146-nocolor-ask-question-multi-q2-92x47"
+        let text = "teal"
+        let nextPage = DialogStep.expect(.page("Question 2/2"))
+
+        #expect(try plan(.choose(ordinal: 1), first) == plan(.choose(ordinal: 1), "agy-44-ask-question-multi-120x40"))
+        #expect(try plan(.choose(ordinal: 3), first) == Self.plan([.keys(["3"]), nextPage]))
+        #expect(
+            try plan(.choose(ordinal: 1), "agy-145-nocolor-ask-question-multi-q1-down-92x47")
+                == plan(.choose(ordinal: 1), first))
+        #expect(try plan(.dismiss, first) == plan(.dismiss, "agy-44-ask-question-multi-120x40"))
+        #expect(throws: DialogPlanError.needsText) { try plan(.choose(ordinal: 4), first) }
+        #expect(
+            try plan(.respond(ordinal: 4, text: text), first)
+                == Self.plan([
+                    .keys(["4"]), .expect(.feedbackMode(ordinal: 4)), .paste(text), .expect(.inputText(text)),
+                    .keys(["enter"]), nextPage,
+                ]))
+        #expect(
+            try plan(.choose(ordinal: 2), second) == plan(.choose(ordinal: 2), "agy-45-ask-question-multi-q2-120x40"))
+        #expect(try plan(.dismiss, second) == Self.plan([.keys(["esc"])]))
+        #expect(
+            try plan(.respond(ordinal: 3, text: text), second)
+                == Self.plan([
+                    .keys(["3"]), .expect(.feedbackMode(ordinal: 3)), .paste(text), .expect(.inputText(text)),
+                    .keys(["enter"]),
+                ]))
+    }
+
+    /// A multi-select set under `NO_COLOR`: each digit whose check must
+    /// change, checked after each, then Enter (agy-148, agy-149).
+    @Test func aColorlessSelectionTogglesByDigitThenEnter() throws {
+        #expect(
+            try plan(.submitSelection([1, 3]), "agy-148-nocolor-ask-question-multiselect-92x47")
+                == Self.plan([
+                    .keys(["1"]), .expect(.checked([1])), .keys(["3"]), .expect(.checked([1, 3])), .keys(["enter"]),
+                ]))
+        #expect(
+            try plan(.submitSelection([1, 3]), "agy-149-nocolor-ask-question-multiselect-toggled-92x47")
+                == Self.plan([.keys(["enter"])]))
+        #expect(
+            try plan(.submitSelection([2]), "agy-149-nocolor-ask-question-multiselect-toggled-92x47")
+                == Self.plan([
+                    .keys(["1"]), .expect(.checked([3])), .keys(["2"]), .expect(.checked([2, 3])), .keys(["3"]),
+                    .expect(.checked([2])), .keys(["enter"]),
+                ]))
     }
 
     // MARK: Every plan

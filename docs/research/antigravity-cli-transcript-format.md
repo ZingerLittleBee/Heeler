@@ -234,7 +234,8 @@ Issue #644's claims against these observations:
 
 Observed live on agy 1.5.3 through herdr 0.9.5 (2026-11-07 and 08) at
 120×40, the phone's 62×41, 62×20 and 40×30, the Heeler app's 59×41 and the
-desktop's 190×49. The screen fixtures under
+desktop's 190×49, and under `NO_COLOR` at 92×47, 93×45 and 45×45 (Without
+colors, below). The screen fixtures under
 `Tests/HeelerTests/ChatFixtures/screens/agy/` are those reads; the numbers
 below are their stems. agy draws inline on the normal screen, so a read also
 holds scrollback above the box.
@@ -271,6 +272,40 @@ holds scrollback above the box.
 - After agy exits, its last frame stays above `Resume with -c (or command
   below):`, `agy --conversation=<id>` and the shell's prompt (88).
 
+### Without colors
+
+agy 1.5.3 honors `NO_COLOR`. Started as `NO_COLOR=1 agy`, it draws no color
+at all, foreground or background, but keeps bold (SGR 1) and dim (SGR 2),
+and lays the screen out as before (herdr 0.9.5, 2026-11-08, 116 to 153):
+
+- The box's rules are plain `─` with no SGR. The prompt's `>` is plain and
+  shares one run with the typed text, as the `/` popup's selected
+  `> /add-dir` row right under the box does (131), so the marker alone no
+  longer tells the box. Bash mode's `!` is bold (119, 120).
+- A mode's hint is plain too, as plain as a draft, and cut with `...` at 45
+  columns (122). The footer then reads `? for shortcuts`, which a typed
+  draft clears (123 to 129). At the footer's right the mode's name is
+  plain, the model and effort dim.
+- Past prompts in the scrollback are bold rows under a plain rule
+  `min(60, columns − 3)` wide. A reply's markdown rules and blockquote are
+  drawn indented two cells, as a short rule and a `│` row (138), so a reply
+  draws no full-width rule at column 0.
+- Each dialog title is one bold run at column 0, with a plain full-width
+  rule under every title but the trust prompt's. Bold also marks the
+  question rows, the file path, `Requesting permission for:` and the hint
+  row's keys. The selected `> N.` row is plain, and the changed lines have
+  no red or green background and no padding to the edge. A declined
+  dialog's title stays bold at column 0 over `⎿  User declined the tool
+  call`, with no rule under it (143). herdr reported the file creation
+  dialog idle (139), as in agy's colors.
+
+Heeler reads each structure in one palette: a box whose rules and marker
+are all in agy's colors or all without color, and a dialog's title over a
+rule of its own palette, the screen's full width when colorless. Without
+colors a mode's hint reads as the box's hint, not a draft, only when it is
+one of the three hints, or the start of one that ends in `...` at the
+screen's edge, and the footer keeps its hint.
+
 ### Keys
 
 | State | Key | Result |
@@ -303,7 +338,9 @@ column 0. Scrollback keeps an answered dialog only as a `● Ran …`, `● Edit
 …` or `? <question>` row. A declined one keeps its title at column 0, bold
 blue (4) instead of yellow (3), over `⎿  User declined the tool call` (56,
 69, 83, 88); Heeler frames a dialog by the bottom-most bold yellow title
-with a rule under it, so it never reads that title as one.
+with a rule under it, so it never reads that title as one. Under `NO_COLOR`
+both titles are bold without color, and only the live one has a rule under
+it (Without colors, above).
 
 | Dialog | Question and hint row | Keys | herdr 0.9.5 |
 |---|---|---|---|
@@ -333,13 +370,13 @@ result reads `User Skipped`.
 
 ### The Blocked card
 
-`AgyDialogParser` reads every dialog above into a native card and anything
-else between a bold yellow title and a hint row into the generic card,
-without numbers. The command's Amend field and the Write-in field keep the
-dialog's fingerprint, so a card's step into them checks against the same
-dialog. `AgyDialogPlanner` sends these keys, each sequence sent live through
-`agent send-keys` on 2026-11-08 except the trust prompt's, since answering it
-writes the folder into agy's settings:
+`AgyDialogParser` reads every dialog above into a native card, in agy's
+colors or without them, and anything else between a bold title and a hint
+row into the generic card, without numbers. The command's Amend field and
+the Write-in field keep the dialog's fingerprint, so a card's step into them
+checks against the same dialog. `AgyDialogPlanner` sends these keys, each
+sequence sent live through `agent send-keys` on 2026-11-08 except the trust
+prompt's, since answering it writes the folder into agy's settings:
 
 | Card action | Keys |
 |---|---|
@@ -390,7 +427,7 @@ first's result.
 
 Chat sends only into an empty box with nothing under it and an idle footer
 it knows (`? for shortcuts`, nothing at the left, or an armed exit); a
-mode's grey hint is not a draft, and an armed exit does not hold. A draft,
+mode's hint is not a draft, and an armed exit does not hold. A draft,
 bash mode, a popup or panel under the box, another footer (code search
 mode's or a Vim badge from agy's strings, if drawn there), a dialog, an
 exited agy and any unreadable screen hold the message. agy's strings hold

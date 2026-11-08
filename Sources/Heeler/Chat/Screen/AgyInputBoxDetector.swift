@@ -1,9 +1,10 @@
 import Foundation
 
-/// Reads Antigravity CLI's input box from a screen (agy 1.5.3). Only an
-/// empty box with nothing drawn under it, an idle footer and no running
-/// turn reads `.empty`; a mode's grey hint never counts as typed. Every
-/// other state carries the reason Chat holds a message with.
+/// Reads Antigravity CLI's input box from a screen (agy 1.5.3), in agy's
+/// colors or under `NO_COLOR` (`AgyScreen`). Only an empty box with nothing
+/// drawn under it, an idle footer and no running turn reads `.empty`; a
+/// mode's hint never counts as typed. Every other state carries the reason
+/// Chat holds a message with.
 ///
 /// herdr 0.9.5 reports agy's file edit and file creation dialogs, and its
 /// trust prompt at narrow widths, as idle, and Enter there accepts the

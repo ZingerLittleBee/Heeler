@@ -5,13 +5,26 @@ import Foundation
 /// box or in its place. agy draws inline on the normal screen, so a read
 /// also holds scrollback above the box.
 ///
-/// It reads agy's 256-color indexes, which stay the same whatever the
-/// terminal's theme: rules and hints in 8 (grey), the prompt's `>` in 12
-/// (bright blue), and bash mode's `!` in bold 4 (blue). Past prompts in the
-/// scrollback are bold 4 under a grey rule at most 60 columns wide, never
-/// the full width, so they never read as the box. Every reader of an agy
-/// screen goes through it, so a rule changes in one place.
+/// agy draws in one of two palettes. By default it uses 256-color indexes,
+/// which stay the same whatever the terminal's theme: rules and hints in 8
+/// (grey), the prompt's `>` in 12 (bright blue), and bash mode's `!` in
+/// bold 4 (blue). Under `NO_COLOR` it draws no color at all but keeps bold
+/// and dim: plain rules, the prompt's `>` plain in one run with the draft,
+/// a bold `!`, and a mode's hint as plain as a draft. A box reads only when
+/// its rules and marker share one palette. Past prompts in the scrollback
+/// are bold rows (blue 4, or without color) under a rule at most 60 columns
+/// wide, never the full width, so they never read as the box. Every reader
+/// of an agy screen goes through it, so a rule changes in one place.
 struct AgyScreen: Sendable {
+    /// How agy colors what it draws.
+    enum Palette: Equatable, Sendable {
+        /// agy's 256-color indexes.
+        case colored
+        /// No color, bold and dim kept: agy 1.5.3 under `NO_COLOR`, as
+        /// herdr 0.9.5 reads it (2026-11-08).
+        case colorless
+    }
+
     /// The input box: a full-width rule, the row with the prompt's marker,
     /// the rows that continue it, and a second full-width rule.
     struct Composer: Equatable, Sendable {
@@ -27,13 +40,16 @@ struct AgyScreen: Sendable {
         /// and a typed newline both continue at column 2, so the two read
         /// the same.
         var draft: String
-        /// Grey text in an empty box: the mode's hint in accept-edits, auto
-        /// and plan modes, which stays until a key is typed.
+        /// The mode's hint in an empty box in accept-edits, auto and plan
+        /// modes, which stays until a key is typed: grey, or under
+        /// `NO_COLOR` one of `modeHints` over a footer that keeps its hint.
         var placeholder: String?
         /// The index of the top rule's row.
         var topRule: Int
         /// The index of the bottom rule's row.
         var bottomRule: Int
+        /// The palette the box's rules and marker are drawn in.
+        var palette: Palette
     }
 
     let composer: Composer?
@@ -79,17 +95,16 @@ struct AgyScreen: Sendable {
 
     init(_ screen: ANSIScreen) {
         let rows = screen.rows
-        let ruleWidth = max(8, screen.columns - 2)
-        let composer = Self.composer(in: rows, ruleWidth: ruleWidth)
-        self.composer = composer
+        let ruleWidth = Self.ruleWidth(columns: screen.columns)
+        var composer = Self.composer(in: rows, ruleWidth: ruleWidth)
         var footerHint: String?
         var below: String?
-        if let composer {
-            var index = composer.bottomRule + 1
+        if let box = composer {
+            var index = box.bottomRule + 1
             // The background-task panel: its task rows, then a rule.
             if index < rows.count, Self.isTaskRow(rows[index]) {
                 while index < rows.count, Self.isTaskRow(rows[index]) { index += 1 }
-                if index < rows.count, Self.isRule(rows[index], width: ruleWidth) { index += 1 }
+                if index < rows.count, Self.rulePalette(rows[index], width: ruleWidth) == box.palette { index += 1 }
             }
             let later = rows.indices.contains(index) ? rows[(index + 1)...].filter { !$0.isBlank } : []
             if later.isEmpty {
@@ -98,6 +113,16 @@ struct AgyScreen: Sendable {
                 below = rows[index...].first { !$0.isBlank }?.trimmedText
             }
         }
+        // Without colors a mode's hint is as plain as a draft. It is one of
+        // agy's hints, and the footer keeps its own hint, which a typed key
+        // clears (`? for shortcuts`, or `esc to cancel` while a turn runs).
+        if let box = composer, box.palette == .colorless, footerHint?.isEmpty == false,
+            let hint = Self.modeHint(box.draft, row: rows[box.topRule + 1], ruleWidth: ruleWidth)
+        {
+            composer?.draft = ""
+            composer?.placeholder = hint
+        }
+        self.composer = composer
         self.footerHint = footerHint
         self.below = below
         pendingDoublePress = footerHint.flatMap { hint in
@@ -111,27 +136,38 @@ struct AgyScreen: Sendable {
 
     // MARK: Box
 
+    /// The width a box's rule spans at least: the screen's, which can read
+    /// a cell or two short of the pane's.
+    static func ruleWidth(columns: Int) -> Int {
+        max(8, columns - 2)
+    }
+
     /// The bottom-most box: a full-width rule with the prompt's marker
-    /// right under it, and the next full-width rule below.
+    /// right under it, and the next full-width rule below, all three in
+    /// one palette.
     private static func composer(in rows: [ScreenRow], ruleWidth: Int) -> Composer? {
-        for top in rows.indices.reversed() where top + 2 < rows.count && isRule(rows[top], width: ruleWidth) {
-            guard let mode = mode(of: rows[top + 1]) else { continue }
+        for top in rows.indices.reversed() where top + 2 < rows.count {
+            guard let palette = rulePalette(rows[top], width: ruleWidth),
+                let marker = promptMarker(of: rows[top + 1]), marker.palette == palette
+            else { continue }
             let rest = rows.indices[(top + 2)...].prefix(maximumBoxRows)
-            guard let bottom = rest.first(where: { isRule(rows[$0], width: ruleWidth) }),
+            guard let bottom = rest.first(where: { rulePalette(rows[$0], width: ruleWidth) != nil }),
+                rulePalette(rows[bottom], width: ruleWidth) == palette,
                 rows[(top + 2)..<bottom].allSatisfy({ $0.isBlank || ($0.indent ?? 0) >= 2 })
             else { continue }
             var typed = ""
             var grey = ""
             for run in DialogRowScanner.runs(of: rows[top + 1], from: 2) {
-                if run.style.foreground == grey8 { grey += run.text } else { typed += run.text }
+                if palette == .colored, run.style.foreground == grey8 { grey += run.text } else { typed += run.text }
             }
             let first = ScreenRow.normalizedSpaces(typed).trimmingCharacters(in: .whitespaces)
             let more = rows[(top + 2)..<bottom].map(\.trimmedText).filter { !$0.isEmpty }
             let lines = (first.isEmpty ? [] : [first]) + more
             let hint = ScreenRow.normalizedSpaces(grey).trimmingCharacters(in: .whitespaces)
             return Composer(
-                mode: mode, draft: lines.joined(separator: "\n"),
-                placeholder: lines.isEmpty && !hint.isEmpty ? hint : nil, topRule: top, bottomRule: bottom)
+                mode: marker.mode, draft: lines.joined(separator: "\n"),
+                placeholder: lines.isEmpty && !hint.isEmpty ? hint : nil, topRule: top, bottomRule: bottom,
+                palette: palette)
         }
         return nil
     }
@@ -142,25 +178,53 @@ struct AgyScreen: Sendable {
 
     private static let grey8 = ScreenColor.indexed(8)
 
-    /// A grey `─` rule from column 0 at least `width` cells wide. The box's
-    /// rules span the screen; the rule over a past prompt is at most 60
-    /// columns, and three short of the width on narrower screens.
-    static func isRule(_ row: ScreenRow, width: Int) -> Bool {
-        row.indent == 0 && DialogRowScanner.isRule(row, of: "─", minimumWidth: width)
-            && row.visibleRuns.allSatisfy { $0.style.foreground == grey8 }
+    /// The palette of a `─` rule from column 0 at least `width` cells wide,
+    /// grey or without any style, or nil for any other row. The box's rules
+    /// span the screen; the rule over a past prompt is at most 60 columns,
+    /// and three short of the width on narrower screens.
+    static func rulePalette(_ row: ScreenRow, width: Int) -> Palette? {
+        guard row.indent == 0, DialogRowScanner.isRule(row, of: "─", minimumWidth: width) else { return nil }
+        let styles = row.visibleRuns.map(\.style)
+        if styles.allSatisfy({ $0.foreground == grey8 }) { return .colored }
+        if styles.allSatisfy({ $0 == .plain }) { return .colorless }
+        return nil
     }
 
-    /// The prompt's marker at column 0, in a run of its own: a popup's or a
-    /// dialog's selected row draws `> ` and its label in one run of the same
-    /// blue.
-    private static func mode(of row: ScreenRow) -> Composer.Mode? {
+    /// The prompt's marker at column 0 and its palette. In agy's colors the
+    /// marker is a run of its own, since a popup's or a dialog's selected
+    /// row draws `> ` and its label in one run of the same blue. Without
+    /// colors the prompt's `>` and the draft share one plain run, as a
+    /// selected row's `> ` and label do, so only the rules around it make
+    /// it the box's. A past prompt's `>` is bold in both.
+    private static func promptMarker(of row: ScreenRow) -> (mode: Composer.Mode, palette: Palette)? {
         guard let first = row.runs.first, first.column == 0 else { return nil }
         let marker = first.text.trimmingCharacters(in: .whitespaces)
         let style = first.style
-        if marker == ">", style.foreground == .indexed(12), !style.isBold { return .prompt }
-        if marker == "!", style.foreground == .indexed(4), style.isBold { return .bash }
+        if marker == ">", style.foreground == .indexed(12), !style.isBold { return (.prompt, .colored) }
+        if marker == "!", style.foreground == .indexed(4), style.isBold { return (.bash, .colored) }
+        if marker == "!", style == ScreenStyle(isBold: true) { return (.bash, .colorless) }
+        if style == .plain, first.text == ">" || first.text.hasPrefix("> ") { return (.prompt, .colorless) }
         return nil
     }
+
+    /// The hints accept-edits, auto and plan modes set in an empty box.
+    static let modeHints = [
+        "Accept-edits mode: file edits auto-approved (shift+tab to cycle)",
+        "Auto mode: edits & safe commands auto-approved (shift+tab to cycle)",
+        "Plan mode: research & plan only (shift+tab to cycle)",
+    ]
+
+    /// `text` when it is one of `modeHints`, or the start of one that agy
+    /// cut with `...` at the screen's edge (40 and 45 columns).
+    private static func modeHint(_ text: String, row: ScreenRow, ruleWidth: Int) -> String? {
+        if modeHints.contains(text) { return text }
+        guard text.hasSuffix(cutMark), row.contentWidth >= ruleWidth else { return nil }
+        let start = text.dropLast(cutMark.count)
+        guard !start.isEmpty, modeHints.contains(where: { $0.hasPrefix(start) }) else { return nil }
+        return text
+    }
+
+    private static let cutMark = "..."
 
     // MARK: Under the box
 
@@ -171,10 +235,11 @@ struct AgyScreen: Sendable {
     }
 
     /// The footer's left side: the text up to the gap before the mode,
-    /// model and effort agy sets at the right edge in dim text, or nothing
-    /// when the row starts with those.
+    /// model and effort agy sets at the right edge, or nothing when the row
+    /// starts with those. The model and effort are dim; the mode is colored,
+    /// or under `NO_COLOR` plain in one run with the blanks before it.
     private static func hint(of row: ScreenRow) -> String {
-        guard let first = row.visibleRuns.first, first.column <= 2, !first.style.isDim else { return "" }
+        guard let indent = row.indent, indent <= 2, row.run(at: indent)?.style.isDim == false else { return "" }
         let text = row.trimmedText
         let left = text.components(separatedBy: "  ").first ?? text
         return left.trimmingCharacters(in: .whitespaces)

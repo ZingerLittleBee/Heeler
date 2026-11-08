@@ -1522,6 +1522,68 @@ struct BlockedCardStoreTests {
         #expect(card.request?.callID == callID)
     }
 
+    /// agy under `NO_COLOR` draws the same dialogs without colors, herdr
+    /// reports its file creation idle, and the open call stands in for
+    /// Blocked there as it does in agy's colors. The file dialogs cut the
+    /// path at 92 columns, so the call's whole path matches by its start.
+    @Test(arguments: [
+        ("agy-139-nocolor-perm-file-create-92x47", BlockedDialogKind.agyFileCreate),
+        ("agy-141-nocolor-perm-file-edit-92x47", .agyFileEdit),
+        ("agy-135-nocolor-perm-run-command-92x47", .agyCommand),
+        ("agy-144-nocolor-ask-question-multi-q1-92x47", .agyQuestion),
+        ("agy-148-nocolor-ask-question-multiselect-92x47", .agyQuestion),
+    ])
+    func anIdleColorlessAgyWithAnOpenCallThatAsksShowsItsDialog(stem: String, kind: BlockedDialogKind) async throws {
+        let pane = FakePane(try ScreenFixture.screen(stem))
+        let store = Self.store(.agy, pane: pane)
+        let call = try #require(Self.colorlessCalls[stem])
+        store.update(transcript: Self.agyTranscript(open: [call], status: .noResult))
+        store.update(activity: .idle)
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == kind)
+        #expect(card.request?.callID == call.callID)
+    }
+
+    /// The open call each colorless dialog asks for.
+    private static let colorlessCalls: [String: ChatPendingRequest] = {
+        let file =
+            "/Users/developer/projects/heeler-acceptance/mac-core-2026-11-08/no-color-captures-agy-153-"
+            + "herdr095workspaceprobefolder/agy-research/probe-b/proj2/nc.txt"
+        return [
+            "agy-139-nocolor-perm-file-create-92x47": agyCall("agy:10:tool:0", "write_to_file", .fileWrite, file),
+            "agy-141-nocolor-perm-file-edit-92x47": agyCall("agy:11:tool:0", "replace_file_content", .fileEdit, file),
+            "agy-135-nocolor-perm-run-command-92x47": agyCall(
+                "agy:12:tool:0", "run_command", .command, "echo nc-check"),
+            "agy-144-nocolor-ask-question-multi-q1-92x47": agyCall(
+                "agy:13:tool:0", "ask_question", .question, "Which color?"),
+            "agy-148-nocolor-ask-question-multiselect-92x47": agyCall(
+                "agy:14:tool:0", "ask_question", .question, "Which fruits do you like?"),
+        ]
+    }()
+
+    /// The trust prompt under `NO_COLOR` shows before agy reports a session,
+    /// which an idle agy is read for alone.
+    @Test func anIdleColorlessAgyAwaitingItsSessionShowsTheTrustPrompt() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-152-nocolor-trust-prompt-92x47"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .idle)
+        store.update(awaitingSession: true)
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+    }
+
     /// Without an open call that asks, an idle agy isn't read: a read or a
     /// command sent to the background has no dialog.
     @Test func anIdleAgyWithoutAnOpenCallThatAsksIsNotRead() async throws {
