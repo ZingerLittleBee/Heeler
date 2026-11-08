@@ -175,7 +175,7 @@ struct AgentUsagePresentationTests {
         for (name, state) in states {
             var heights: [CGFloat] = []
             for accessible in [false, true] {
-                let renderer = ImageRenderer(content:
+                let rendered = try RenderedBitmap(
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Usage").font(.title2.bold())
                         AgentUsageContent(state: state)
@@ -185,12 +185,12 @@ struct AgentUsagePresentationTests {
                     .fixedSize(horizontal: false, vertical: true)
                     .background(Color(uiColor: .systemBackground))
                     .environment(\.colorScheme, .light)
-                    .environment(\.dynamicTypeSize, accessible ? .accessibility3 : .large))
-                renderer.scale = 2
-                let image = try #require(renderer.uiImage)
-                #expect(image.size.width == 390)
-                #expect(image.size.height > 60)
-                heights.append(image.size.height)
+                    .environment(\.dynamicTypeSize, accessible ? .accessibility3 : .large),
+                    proposedSize: .unspecified, scale: 2)
+                #expect(rendered.size.width == 390)
+                #expect(rendered.size.height > 60)
+                heights.append(rendered.size.height)
+                let image = try rendered.image()
                 let filename = "\(name)-accessible-\(accessible).png"
                 Attachment.record(image, named: filename, as: .png)
                 try #require(image.pngData()).write(to: directory.appendingPathComponent(filename))

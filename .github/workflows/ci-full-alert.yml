@@ -2,12 +2,11 @@
 #
 # Tests run after merge, so a failed scheduled run opens (or comments on) the
 # tracking issue, and the next passing scheduled run closes it. ci-full.yml
-# cannot do this itself: release.yml calls it with read-only permissions, and
-# a called workflow cannot request more than its caller grants. This listener
-# owns the only write permission and reads nothing from the repository.
+# stays read-only, so this listener owns the only write permission and reads
+# nothing from the repository.
 #
 # `workflows` must match ci-full.yml's `name`; test-ci-ios-diagnostics.sh
-# checks that. Manual, release and cancelled runs are ignored.
+# checks that. Manual and cancelled runs are ignored.
 
 name: iOS full verification alert
 

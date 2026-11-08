@@ -540,9 +540,17 @@ struct HerdrCoreChatTests {
     static func opensASheet(
         from label: String, in controller: UIViewController, sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
+        try await opensASheet(in: controller, sourceLocation: sourceLocation) { $0 == label }
+    }
+
+    /// Activates the first element whose label passes `matches`, until a sheet comes up.
+    static func opensASheet(
+        in controller: UIViewController, sourceLocation: SourceLocation = #_sourceLocation,
+        fromElementWhoseLabel matches: (String) -> Bool
+    ) async throws {
         var budget = PollBudget(.seconds(10))
         while budget.hasTimeLeft, controller.presentedViewController == nil {
-            AccessibilityProbe.elements(labeled: label, in: controller.view).first?.accessibilityActivate()
+            AccessibilityProbe.elements(in: controller.view, whoseLabel: matches).first?.accessibilityActivate()
             try await Task.sleep(for: .milliseconds(50))
             budget.charge()
         }
@@ -597,8 +605,10 @@ struct HerdrCoreChatTests {
             try await rig.waitUntil("Chat to say it cannot tell") { chat.conversation.phase == Self.cannotTell }
             #expect(!chat.conversation.transcript.entries.isEmpty)
             // The banner reads as one element, whose action is its button's.
+            // iOS 27 ends that element's label with the button's title, and
+            // iOS 26 leaves the title out, so the label is matched by its start.
             let banner = ChatBannerLine.unavailable(.cannotTellSession(.claude), showingSavedMessages: true).text
-            try await Self.opensASheet(from: banner, in: controller)
+            try await Self.opensASheet(in: controller) { $0.hasPrefix(banner) }
         }
         chat.end()
         rig.store.setHosts([])

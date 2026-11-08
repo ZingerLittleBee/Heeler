@@ -1,7 +1,7 @@
 # Fast feedback on PRs and pushes to main that change build inputs (refs #23).
-# Full Swift/UI/SSH verification lives in ci-full.yml, which runs daily,
-# manually and before every release. ci-package.yml compiles HeelerSSH's own
-# tests, which this app build compiles only as a library.
+# Full Swift/UI/SSH verification lives in ci-full.yml, which runs daily and
+# manually; releases do not wait for it (ADR 0039). ci-package.yml compiles
+# HeelerSSH's own tests, which this app build compiles only as a library.
 #
 # app-build compiles the committed app, extensions and HeelerTests bundle with
 # build-for-testing against the generic Simulator SDK. It never boots a
@@ -13,7 +13,7 @@
 # tests and shared vectors are compiled here, and the two scripts listed are
 # the ones this job executes. Other script and ci-full.yml changes start only
 # ci-scripts.yml, never an app build. landing/**, LICENSE, prose, plugin/src,
-# plugin/package.json, and relay/** never spend a macos-26 runner.
+# plugin/package.json, and relay/** never spend a macOS runner.
 name: iOS build
 
 on:
@@ -58,10 +58,10 @@ concurrency:
 jobs:
   app-build:
     name: Build app and tests (not run)
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 25
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

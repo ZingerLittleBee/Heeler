@@ -70,9 +70,10 @@ permissions:
 jobs:
   app-tests:
     name: App tests (${{ matrix.shard }})
-    # macos-26 ships Xcode 26.x and the iOS 26 simulator runtimes. Pinned
-    # rather than macos-latest for reproducibility.
-    runs-on: macos-26
+    # Same runner and Xcode as the release archive (release.yml). The xcode-27
+    # image carries an iPhone 17 on more than one iOS runtime, so every
+    # Simulator lane pins the one that ships with Xcode 27.2.
+    runs-on: xcode-27
     # The job limit leaves the setup and upload steps room around the test step.
     timeout-minutes: ${{ inputs.layout == 'serial' && 80 || (matrix.shard == 'ordinary' && 70 || 60) }}
     strategy:
@@ -80,7 +81,8 @@ jobs:
       matrix:
         shard: ${{ fromJSON(inputs.layout == 'serial' && '["all"]' || '["session-weak","transport","ordinary"]') }}
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+      HEELER_CI_SIMULATOR_OS: '27.2'
       HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/test-evidence/app-${{ matrix.shard }}
       HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
       # Each matrix job owns a separate runner, but compiler command paths must
@@ -150,7 +152,7 @@ jobs:
 
       # xcodebuild -version is enough to pin the image. Listing every
       # simulator runtime cold-starts CoreSimulator on the critical path
-      # (~12–29s on hosted macOS-26); the gate's own simctl boot overlaps
+      # (~12–29s measured on macos-26); the gate's own simctl boot overlaps
       # that work with the build instead.
       - name: Show Xcode version
         run: xcodebuild -version
@@ -193,9 +195,9 @@ jobs:
             printf 'app_derived_data=%s\n' "$HEELER_CI_APP_DERIVED_DATA_PATH"
           } > "$HEELER_CI_EVIDENCE_DIR/run-settings.txt"
 
-      # The script selects one available iPhone 17 UDID, boots it, injects the
-      # fixture environment there, and targets that same device for every test
-      # action. The app deployment target is iOS 18.
+      # The script selects one available iPhone 17 on the pinned runtime, boots
+      # it, injects the fixture environment there, and targets that same device
+      # for every test action. The app deployment target is iOS 18.
       #
       # A step timeout signals only the step shell, so the script's cleanup and
       # failure diagnostics survive only when its own watchdogs fire first. The
@@ -252,10 +254,11 @@ jobs:
 
   heelerssh-package-e2e:
     name: HeelerSSH package E2E (iOS Simulator)
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 36
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+      HEELER_CI_SIMULATOR_OS: '27.2'
       HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/test-evidence/package
       HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
       HEELER_CI_DISABLE_COMPILATION_CACHE: '1'

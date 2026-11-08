@@ -438,12 +438,13 @@ struct ChatToolTitleLayoutTests {
             kind: .search, name: "search", title: "cat Sources/Heeler/Images/ImagePreparer.swift | head -160; search files",
             subtitle: "ChatHostFiles", status: .succeeded)
         let row = ChatRow(id: .entry(ChatEntryID("search")), content: .tool(tool), revision: 1, topSpacing: 0)
-        let renderer = ImageRenderer(content: ChatRowView(row: row, isExpanded: false, actions: .init(
-            toggle: { _ in }, loadOlder: {}, copy: { _ in }, selectText: { _ in }, missingOutputText: ""))
-            .padding(.vertical, 16).frame(width: 390).background(Color(uiColor: .systemBackground))
-            .environment(\.colorScheme, .dark))
-        renderer.scale = 2
-        Attachment.record(try #require(renderer.uiImage), named: "chat-search-title-alignment", as: .png)
+        let rendered = try RenderedBitmap(
+            ChatRowView(row: row, isExpanded: false, actions: .init(
+                toggle: { _ in }, loadOlder: {}, copy: { _ in }, selectText: { _ in }, missingOutputText: ""))
+                .padding(.vertical, 16).frame(width: 390).background(Color(uiColor: .systemBackground))
+                .environment(\.colorScheme, .dark),
+            proposedSize: .unspecified, scale: 2)
+        Attachment.record(try rendered.image(), named: "chat-search-title-alignment", as: .png)
     }
 
     /// Image rows in each state their thumbnail can show, for review.
@@ -478,15 +479,15 @@ struct ChatToolTitleLayoutTests {
             await row("deleted.png", files: [:]),
             await row("offline.png", files: [:], connected: false),
         ]
-        let renderer = ImageRenderer(
-            content: VStack(spacing: 0) {
+        let rendered = try RenderedBitmap(
+            VStack(spacing: 0) {
                 ForEach(rows.indices, id: \.self) { index in
                     ChatRowView(row: rows[index].0, isExpanded: false, actions: rows[index].1)
                 }
             }
             .padding(.vertical, 16).frame(width: 390).background(Color(uiColor: .systemBackground))
-            .environment(\.colorScheme, scheme))
-        renderer.scale = 3
-        Attachment.record(try #require(renderer.uiImage), named: "chat-image-rows-\(scheme)", as: .png)
+            .environment(\.colorScheme, scheme),
+            proposedSize: .unspecified, scale: 3)
+        Attachment.record(try rendered.image(), named: "chat-image-rows-\(scheme)", as: .png)
     }
 }

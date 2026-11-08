@@ -110,9 +110,12 @@ struct HandshakeCutoffServer: Sendable {
         try await task.value
     }
 
-    private static let queue = DispatchQueue(label: "heelerssh.handshake-cutoff-server")
-
+    /// Each server blocks a queue of its own. Suites run concurrently, and on
+    /// a shared serial queue a server still waiting out its accept bound for a
+    /// peer that never dials held every other server back, until their
+    /// clients timed out before reaching key exchange (#634).
     private static func serve(listener: Int32, cutoffs: Int) async throws {
+        let queue = DispatchQueue(label: "heelerssh.handshake-cutoff-server")
         try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 continuation.resume(
