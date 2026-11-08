@@ -159,9 +159,9 @@ extension HostCapabilities {
     /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New
     /// Agent reached only candidates there and 2.1 or later was not run, so it stays off.
     /// Antigravity CLI 1.5.3 passed the owner's check in a core Terminal on 2026-11-08
-    /// (macOS 27.0.1, herdr-core 0.1.18), started with colors and with `NO_COLOR`: it
-    /// bound from its presence lock, followed `/clear`, sent from Chat and answered its
-    /// trust prompt, permissions and questions from cards.
+    /// (macOS 27.0.1, herdr-core 0.1.18), started with colors and with `NO_COLOR`: each
+    /// bound from its presence lock, sent from Chat and answered its trust prompt,
+    /// permissions and questions from cards, and the colored one followed `/clear`.
     static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy]
 
     /// The programs a macOS core Host binds exactly, each from reads the macOS
