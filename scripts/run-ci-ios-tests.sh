@@ -467,7 +467,7 @@ run_xcodebuild() {
         failed_udid="$simulator_udid"
     done
     if [[ "$status" != 0 && "$needs_recovery" == 1 ]]; then
-        echo "Simulator destination recovery exhausted for UDID $failed_udid ($ci_simulator_name)." >&2
+        echo "Simulator destination recovery exhausted for UDID $failed_udid ($ci_simulator_label)." >&2
         xcrun simctl list devices available >&2 || true
     fi
     if [[ "${1:-}" == build-for-testing && -n "${evidence_dir:-}" ]]; then
@@ -1386,7 +1386,14 @@ fi
 # as a literal prefix plus " (" so the default "iPhone 17" does not also
 # claim "iPhone 17 Pro", and names with parentheses (iPad Pro 13-inch (M5))
 # stay literal rather than becoming an awk regex.
+#
+# An image can carry the same name on several runtimes, so CI pins one with
+# HEELER_CI_SIMULATOR_OS (for example 27.2): only devices under the
+# "-- iOS 27.2 --" headings qualify, and recovery replaces a lost device from
+# the same runtime. An explicit HEELER_CI_SIMULATOR_UDID still wins.
 ci_simulator_name="${HEELER_CI_SIMULATOR_NAME:-iPhone 17}"
+ci_simulator_os="${HEELER_CI_SIMULATOR_OS:-}"
+ci_simulator_label="${ci_simulator_os:+iOS $ci_simulator_os }$ci_simulator_name"
 requested_simulator_udid="${HEELER_CI_SIMULATOR_UDID:-}"
 # Keeps the raw listing in simulator_listing so a recovery attempt can print
 # what CoreSimulator saw at that moment, not only the filtered candidates.
@@ -1397,8 +1404,10 @@ list_simulator_candidates() {
     while IFS= read -r candidate; do
         [[ -n "$candidate" ]] && simulator_candidates+=("$candidate")
     done < <(printf '%s\n' "$simulator_listing" | awk -v name="$ci_simulator_name" \
-        -v pinned="$requested_simulator_udid" '
-        index($0, name " (") || (pinned != "" && index($0, "(" pinned ")")) {
+        -v os="$ci_simulator_os" -v pinned="$requested_simulator_udid" '
+        BEGIN { in_os = (os == "") }
+        /^-- .* --$/ { in_os = (os == "" || $0 == "-- iOS " os " --"); next }
+        (in_os && index($0, name " (")) || (pinned != "" && index($0, "(" pinned ")")) {
             candidate = ""
             for (field = 1; field <= NF; field += 1) {
                 value = $field
@@ -1419,7 +1428,8 @@ simulator_discovery_started=$SECONDS
 list_simulator_candidates
 record_phase simulator-discovery "$simulator_discovery_started"
 if [[ "${#simulator_candidates[@]}" -eq 0 ]]; then
-    echo "No available ${ci_simulator_name} Simulator was found" >&2
+    printf 'No available %s Simulator was found in:\n%s\n' \
+        "$ci_simulator_label" "$simulator_listing" >&2
     exit 1
 fi
 
@@ -1465,7 +1475,7 @@ recover_simulator_destination() {
     # Bash 3.2 treats an empty array expansion as unbound under nounset.
     # Handle it before iterating so recovery can retry and report diagnostics.
     if [[ "${#simulator_candidates[@]}" == 0 ]]; then
-        echo "No available $ci_simulator_name Simulator during destination recovery." >&2
+        echo "No available $ci_simulator_label Simulator during destination recovery." >&2
         return 1
     fi
     for candidate in "${simulator_candidates[@]}"; do
@@ -1493,7 +1503,7 @@ recover_simulator_destination() {
             fi
         done
         if [[ -z "$simulator_udid" ]]; then
-            echo "Every replacement $ci_simulator_name Simulator is claimed by a live run." >&2
+            echo "Every replacement $ci_simulator_label Simulator is claimed by a live run." >&2
             return 1
         fi
     fi
@@ -1525,7 +1535,7 @@ else
     done
 fi
 if [[ -z "$simulator_udid" ]]; then
-    echo "Every available ${ci_simulator_name} Simulator is claimed by a live run." >&2
+    echo "Every available ${ci_simulator_label} Simulator is claimed by a live run." >&2
     for candidate in "${simulator_candidates[@]}"; do
         printf '  %s: held by pid %s\n' \
             "$candidate" "$(simulator_held_by "$candidate")" >&2
@@ -1533,11 +1543,11 @@ if [[ -z "$simulator_udid" ]]; then
     echo >&2
     echo "A run needs a device of its own: the fixture is delivered through" >&2
     echo "per-device launchctl environment, which two runs would overwrite." >&2
-    echo "Create another ${ci_simulator_name} with 'xcrun simctl create', or pin one" >&2
+    echo "Create another ${ci_simulator_label} with 'xcrun simctl create', or pin one" >&2
     echo "explicitly with HEELER_CI_SIMULATOR_UDID=<udid>." >&2
     exit 1
 fi
-printf 'Claimed simulator %s\n' "$simulator_udid" >&2
+printf 'Claimed simulator %s (%s)\n' "$simulator_udid" "$ci_simulator_label" >&2
 simulator_destination="platform=iOS Simulator,id=$simulator_udid"
 # Password-owning workers defer both boot and compilation until preflight.
 # Other workers keep overlapping boot with fixture preparation and build.

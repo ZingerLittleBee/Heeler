@@ -586,7 +586,7 @@ extension View {
 
     /// Publishes `usesVerticalToolbar` for the screens below, from the
     /// system's vertical bar edge where the SDK and system have one. Behind
-    /// a compiler check while CI builds with Xcode 26.
+    /// a compiler check so Xcode 26 still builds it.
     @ViewBuilder
     func readsVerticalToolbar() -> some View {
         #if compiler(>=6.4)

@@ -525,6 +525,10 @@ struct AgentTerminalView: View {
             guard composerToDirectHandoffID == id else { return }
             if succeeded {
                 settlingKeyboardHandoffID = id
+                // The terminal that accepted is the one the request was
+                // delivered to; its leash starts with the request.
+                keyboardInset.acceptResponderHandoff(
+                    id, destinationTimeout: HeelerTerminalView.keyboardTransitionFallbackDelay)
                 applyInputMode(.direct, preservingKeyboardHandoff: true)
             } else {
                 cancelKeyboardHandoff(id)
@@ -1588,6 +1592,10 @@ struct AgentTerminalView: View {
         }
     }
 
+    /// Drops this view's handoff and releases the inset's freeze. A switch
+    /// the destination already accepted stands. The inset's guard calls this
+    /// after it has released and reconciled the freeze itself, so for an
+    /// accepted handoff this only clears the view's state.
     private func cancelKeyboardHandoff(_ id: UUID) {
         let destinationAccepted = settlingKeyboardHandoffID == id
         var ownsHandoff = false
@@ -1633,6 +1641,8 @@ struct AgentTerminalView: View {
             return
         }
         settlingKeyboardHandoffID = id
+        // The Composer has no timeout of its own; the inset's is its.
+        keyboardInset.acceptResponderHandoff(id)
         applyInputMode(.composer, preservingKeyboardHandoff: true)
     }
 

@@ -370,17 +370,15 @@ struct AgentActivityPresentationTests {
                 let view = AgentActivityLockScreenView(
                     presentation: configuredPresentation(agentCount: count),
                     hostID: "host", isStale: stale)
-                let renderer = ImageRenderer(content: view
-                    .frame(width: 360)
-                    .environment(\.colorScheme, .light))
-                renderer.scale = 2
-                let image = try #require(renderer.uiImage)
-                let height = image.size.height
+                let banner = try RenderedBitmap(
+                    view.frame(width: 360).environment(\.colorScheme, .light),
+                    proposedSize: .unspecified, scale: 2)
+                let height = banner.size.height
                 #expect(height <= 160, "\(count) Agents, stale=\(stale): \(height) pt")
                 // Three three-row cards are drawn, so the banner is far
                 // taller than the two-card layout (about 104 pt).
                 #expect(height > 140, "\(count) Agents, stale=\(stale): \(height) pt")
-                Attachment.record(image,
+                Attachment.record(try banner.image(),
                     named: "activity-fields-\(count)-agents-stale-\(stale)", as: .png)
             }
         }
@@ -401,15 +399,17 @@ struct AgentActivityPresentationTests {
     }
 
     @MainActor
-    private func rowPixels(field: AgentActivityDetails.Field, surface: AgentActivitySurface) throws -> Data {
+    private func rowPixels(
+        field: AgentActivityDetails.Field, surface: AgentActivitySurface
+    ) throws -> RenderedBitmap {
         var agent = agentDetail(paneID: "w1:p1")
         agent.rows = [[field]]
-        let renderer = ImageRenderer(content: AgentActivityRowView(agent: agent, surface: surface)
-            .frame(width: 300, height: 50)
-            .background(surface == .lockScreen ? Color.white : Color.black)
-            .environment(\.colorScheme, surface == .lockScreen ? .light : .dark))
-        renderer.scale = 1
-        return try #require(renderer.uiImage?.pngData())
+        return try RenderedBitmap(
+            AgentActivityRowView(agent: agent, surface: surface)
+                .frame(width: 300, height: 50)
+                .background(surface == .lockScreen ? Color.white : Color.black)
+                .environment(\.colorScheme, surface == .lockScreen ? .light : .dark),
+            proposedSize: .init(width: 300, height: 50))
     }
 
     @MainActor
