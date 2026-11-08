@@ -360,11 +360,18 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   `/exit` releases it. Lock files stay after their process, so one on disk proves
   nothing. A second agy opened on a conversation already open holds its folder and
   database and never the lock, so it says it cannot tell and lists those for one
-  confirmation. Its list has nothing from a directory: agy files conversations by
-  id, and `history.jsonl`, which names a workspace, is one log for every agy on the
-  data root and names no id for a fresh launch's first prompt. `/clear` from idle
-  reports no status, so Chat keeps showing the conversation before it until the next
-  status or the check before a Send, which moves Chat and holds that Send once.
+  confirmation. Its list also holds the conversation that the Terminal foreground's
+  argv names with `--conversation <id>` or `--conversation=<id>`, read from the
+  core's record and counted only while that foreground is the agy the check found:
+  on Linux (2026-11-09, Ubuntu 24.04.5, herdr-core 0.1.18, agy 1.5.3) neither agy
+  held that conversation's folder or database open, the first holding only its
+  lock, so without the argv the second listed nothing. The check's exec still
+  learns nothing of agy's argv. Its list has nothing from a directory: agy files
+  conversations by id, and `history.jsonl`, which names a workspace, is one log for
+  every agy on the data root and names no id for a fresh launch's first prompt.
+  `/clear` from idle reports no status, so Chat keeps showing the conversation before
+  it until the next status or the check before a Send, which moves Chat and holds
+  that Send once.
   Seen on 2026-11-07 on one signed-in Mac, macOS 27.0.1, in a plain PTY outside herdr
   and herdr-core, the open files through `HostProcessReader`'s own macOS read
   (`host-evidence/agy`). In herdr-core 0.1.18 Terminals on macOS 27.0.1, with the
