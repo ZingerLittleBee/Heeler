@@ -39,6 +39,12 @@
             "state" : "translated",
             "value" : "Heeler は、何も入力せずにそのマシンを追加できるよう、コンピューターに表示されたペアリングコードの読み取りにカメラを使用します。"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 使用相机扫描电脑上显示的配对码，这样无需输入任何内容即可添加那台电脑。"
+          }
         }
       }
     },
@@ -56,6 +62,12 @@
             "state" : "translated",
             "value" : "Heeler は、近くにある Tailscale、ZeroTier、EasyTier ネットワーク上のホストへ直接接続するため、および SSH を提供するマシンを探すために、お使いのローカルネットワークを使用します。"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 使用本地网络，在 Tailscale、ZeroTier 或 EasyTier 网络中的主机就在附近时直接连接它们，并查找提供 SSH 的电脑。"
+          }
         }
       }
     },
@@ -72,6 +84,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heeler は、コンポーザーのマイクをタップしたときにあなたの声を録音し、設定で選択した音声サービスに録音を送ってテキストに変換します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当你轻点输入框中的麦克风时，Heeler 会录下你的语音，并将录音发送到你在“设置”中选择的语音服务，转换为文字。"
           }
         }
       }
