@@ -252,9 +252,9 @@ never show or send into a conversation it has guessed.
   recheck there passed Grok Build 1.0.70 and Oh My Pi 18.13.3, with a profile
   and without, so the Windows list holds Claude Code, Grok Build, Pi and Oh My
   Pi. Codex and OpenCode were not run on Windows.
-  On 2026-11-08 the owner's Mac passed Antigravity CLI 1.5.3 in herdr-core 0.1.18
-  Terminals, drawn in color and under `NO_COLOR`, which the owner turned on for
-  macOS. No Linux run has read its lock, so it stays off on Linux.
+  On 2026-11-08 the owner's Mac passed Antigravity CLI 1.5.3, started with colors
+  and with `NO_COLOR` in herdr-core 0.1.18 Terminals, and the owner turned it on
+  for macOS. No Linux run has read its lock, so it stays off on Linux.
 
 This amends ADR 0024, and ADR 0025's source of the OpenCode session id, its
 start-screen watch, what its confirmation makes of the title `OpenCode` and its
@@ -531,9 +531,13 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   trailing spaces trimmed, started from New Agent and by hand under `/bin/zsh -l`,
   as it had in a macOS 26.5 VM with SIP off.
 - Chat on a macOS core Host binds as on Linux, through the macOS forms of the same
-  reads, for the programs in `confirmedMacOSCoreChatPrograms`. Each of the six was
-  seen through those reads in a macOS 26.5 VM with SIP off and no sign-in
-  (`host-evidence/macos`, [herdr compatibility](../agents/herdr-compatibility.md)).
+  reads, for the programs in `confirmedMacOSCoreChatPrograms`. Claude Code, Codex,
+  Grok Build, OpenCode, Pi and Oh My Pi were each seen through those reads in a
+  macOS 26.5 VM with SIP off and no sign-in (`host-evidence/macos`,
+  [herdr compatibility](../agents/herdr-compatibility.md)). Antigravity CLI was not
+  in that VM: its lock was seen through the open-file read on a signed-in Mac
+  outside a core (`host-evidence/agy`) and in the owner's herdr-core runs of
+  2026-11-08, above.
   On the owner's Mac, macOS 27.0.1 with SIP on and signed-in harnesses, Claude
   Code, Codex with `--no-daemon`, Grok Build, Pi and Oh My Pi through Heeler's
   extension, and OpenCode 2.0.32 through Heeler's plugin each bound exactly. A
