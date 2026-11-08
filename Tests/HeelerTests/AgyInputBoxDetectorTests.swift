@@ -446,15 +446,22 @@ struct AgyInputBoxDetectorTests {
     }
 
     /// A mode's hint is plain without colors, so only its text and the
-    /// footer's own hint, which a typed key clears, tell it from a draft:
-    /// the same text over a footer without its hint is typed, as is a
-    /// start that ends in `...` short of the screen's edge.
+    /// footer tell it from a draft: `? for shortcuts`, which a typed key
+    /// clears, or a running turn's footer, which holds anyway. The same
+    /// text over a footer without its hint is typed, as it is over an
+    /// armed exit's, which a draft keeps (07), and so is a start that ends
+    /// in `...` short of the screen's edge.
     @Test func aColorlessModeHintNeedsItsTextAndTheFootersHint() {
         let hint = "Plan mode: research & plan only (shift+tab to cycle)"
 
         #expect(
             Self.detect(Self.colorlessBox(prompt: "> \(hint)", footer: "? for shortcuts")) == .empty(placeholder: hint))
         #expect(Self.detect(Self.colorlessBox(prompt: "> \(hint)", footer: "")) == .text(hint))
+        for exit in ["press ctrl+c again to exit", "press ctrl+d again to exit"] {
+            let armed = Self.colorlessBox(prompt: "> \(hint)", footer: exit)
+            #expect(Self.detect(armed) == .text(hint))
+            #expect(PreSendGate.check(armed, program: .agy, activity: .idle) == .hold(.text(hint)))
+        }
         #expect(
             Self.detect(Self.colorlessBox(prompt: "> Plan mode...", footer: "? for shortcuts")) == .text("Plan mode..."))
         #expect(

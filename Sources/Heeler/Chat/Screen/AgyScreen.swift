@@ -42,7 +42,8 @@ struct AgyScreen: Sendable {
         var draft: String
         /// The mode's hint in an empty box in accept-edits, auto and plan
         /// modes, which stays until a key is typed: grey, or under
-        /// `NO_COLOR` one of `modeHints` over a footer that keeps its hint.
+        /// `NO_COLOR` one of `modeHints` over `? for shortcuts` or a
+        /// running turn's footer.
         var placeholder: String?
         /// The index of the top rule's row.
         var topRule: Int
@@ -114,9 +115,12 @@ struct AgyScreen: Sendable {
             }
         }
         // Without colors a mode's hint is as plain as a draft. It is one of
-        // agy's hints, and the footer keeps its own hint, which a typed key
-        // clears (`? for shortcuts`, or `esc to cancel` while a turn runs).
-        if let box = composer, box.palette == .colorless, footerHint?.isEmpty == false,
+        // agy's hints over `? for shortcuts`, which a typed key clears (117,
+        // 129), or over a running turn's footer, which a draft keeps (33)
+        // but which holds a send either way. An armed exit's footer keeps
+        // a draft too (07), so over it the same text reads as typed.
+        if let box = composer, box.palette == .colorless,
+            let footer = footerHint, Self.modeHintFooters.contains(footer),
             let hint = Self.modeHint(box.draft, row: rows[box.topRule + 1], ruleWidth: ruleWidth)
         {
             composer?.draft = ""
@@ -213,6 +217,9 @@ struct AgyScreen: Sendable {
         "Auto mode: edits & safe commands auto-approved (shift+tab to cycle)",
         "Plan mode: research & plan only (shift+tab to cycle)",
     ]
+
+    /// The footers a colorless box's text can be a mode's hint over.
+    private static let modeHintFooters = workingHints.union(["? for shortcuts"])
 
     /// `text` when it is one of `modeHints`, or the start of one that agy
     /// cut with `...` at the screen's edge (40 and 45 columns).
