@@ -6,6 +6,8 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -129,12 +131,13 @@ class SyncTests(unittest.TestCase):
         self.derived = self.root / "DerivedData"
         self.sources = self.root / "Code"
         self.sources.mkdir()
+        self.commands: list[list[str]] = []
 
     def catalog(self, strings: dict, newline: bool = False) -> None:
         catalog = {"sourceLanguage": "en", "strings": strings, "version": "1.1"}
         (self.root / localizations.LOCALIZABLE).write_text(localizations.dump(catalog, newline), encoding="utf-8")
 
-    def build(self, target: str, source: str, items: list[dict], exists: bool = True) -> None:
+    def build(self, target: str, source: str, items: list[dict], exists: bool = True) -> Path:
         path = self.sources / source
         if exists:
             path.write_text("")
@@ -142,65 +145,80 @@ class SyncTests(unittest.TestCase):
                    / "Debug-iphonesimulator" / f"{target}.build" / "Objects-normal" / "arm64")
         objects.mkdir(parents=True, exist_ok=True)
         data = {"source": str(path), "tables": {"Localizable": items}, "version": 1}
-        (objects / f"{Path(source).stem}.stringsdata").write_text(json.dumps(data))
+        stringsdata = objects / f"{Path(source).stem}.stringsdata"
+        stringsdata.write_text(json.dumps(data))
+        return stringsdata
 
-    def sync(self) -> tuple[int, str, dict]:
+    def fake_xcstringstool(self, strings: dict, returncode: int = 0):
+        """Records the command and writes `strings` as Xcode formats a catalog."""
+        def run(command, **_):
+            self.commands.append(command)
+            text = json.dumps({"sourceLanguage": "en", "strings": strings, "version": "1.1"},
+                              indent=2, separators=(",", " : "), sort_keys=True, ensure_ascii=False)
+            Path(command[3]).write_text(text.replace("{}", "{\n\n    }"))
+            return subprocess.CompletedProcess(command, returncode, "", "it broke" if returncode else "")
+        return run
+
+    def sync(self, run=None) -> tuple[int, str, str]:
         out = io.StringIO()
-        status = localizations.sync(self.derived, root=self.root, out=out)
-        strings = json.loads((self.root / localizations.LOCALIZABLE).read_text())["strings"]
-        return status, out.getvalue(), strings
+        status = localizations.sync(self.derived, root=self.root, out=out, **({"run": run} if run else {}))
+        return status, out.getvalue(), (self.root / localizations.LOCALIZABLE).read_text()
 
-    def test_sync_adds_retires_and_revives_keys(self):
-        self.catalog({
-            "Kept": {"localizations": {"ja": translated("保持")}},
-            "Gone": {"localizations": {"ja": translated("削除")}},
-            "Back": {"extractionState": "stale"},
-            "By hand": {"extractionState": "manual"},
-        })
-        self.build("Heeler", "A.swift", [
-            {"key": "Kept", "comment": ""},
-            {"key": "Back", "comment": ""},
-            {"key": "New %@", "comment": "A new string"},
-        ])
-        self.build("HeelerWidgets", "Widget.swift", [
-            {"key": "Tab key", "comment": "VoiceOver label", "value": "Tab"},
-        ])
-        status, out, strings = self.sync()
-        self.assertEqual(status, 0)
-        self.assertEqual(strings["Kept"], {"localizations": {"ja": translated("保持")}})
-        self.assertEqual(strings["Gone"]["extractionState"], "stale")
-        self.assertNotIn("extractionState", strings["Back"])
-        self.assertEqual(strings["By hand"], {"extractionState": "manual"})
-        self.assertEqual(strings["New %@"], {"comment": "A new string"})
-        self.assertEqual(strings["Tab key"], {
-            "comment": "VoiceOver label", "extractionState": "extracted_with_value",
-            "localizations": {"en": {"stringUnit": {"state": "new", "value": "Tab"}}}})
-        self.assertIn("2 added", out)
-        self.assertIn("1 stale\n  'Gone'", out)
+    def test_sync_passes_the_catalog_targets_strings_whose_source_remains(self):
+        self.catalog({"Kept": {}})
+        app = self.build("Heeler", "A.swift", [{"key": "Kept", "comment": ""}])
+        widget = self.build("HeelerWidgets", "Widget.swift", [])
+        self.build("Heeler", "Deleted.swift", [], exists=False)
+        self.build("HeelerTests", "Test.swift", [])
+        self.sync(self.fake_xcstringstool({"Kept": {}}))
+        self.assertEqual(self.commands, [[
+            "xcrun", "xcstringstool", "sync", str(self.root / localizations.LOCALIZABLE),
+            "--stringsdata", str(app), "--stringsdata", str(widget)]])
 
-    def test_sync_skips_strings_of_deleted_sources_and_other_targets(self):
-        self.catalog({"Old": {}})
-        self.build("Heeler", "Deleted.swift", [{"key": "Old", "comment": ""}], exists=False)
-        self.build("HeelerTests", "Test.swift", [{"key": "Old", "comment": ""}])
-        self.build("Heeler", "Live.swift", [{"key": "Live", "comment": ""}])
-        _, _, strings = self.sync()
-        self.assertEqual(strings["Old"], {"extractionState": "stale"})
-
-    def test_sync_keeps_the_file_ending(self):
+    def test_sync_reports_the_change_and_keeps_the_repository_format(self):
         for newline in (False, True):
-            self.catalog({"Kept": {}}, newline=newline)
-            self.build("Heeler", "A.swift", [{"key": "Kept", "comment": ""}])
-            self.sync()
-            text = (self.root / localizations.LOCALIZABLE).read_text()
+            self.catalog({"Kept": {}, "Gone": {"localizations": {"ja": translated("削除")}}}, newline=newline)
+            self.build("Heeler", "A.swift", [])
+            status, out, text = self.sync(self.fake_xcstringstool({
+                "Kept": {}, "New %@": {"comment": "A new string"},
+                "Gone": {"extractionState": "stale", "localizations": {"ja": translated("削除")}}}))
+            self.assertEqual(status, 0)
+            self.assertIn("1 added\n  'New %@'", out)
+            self.assertIn("1 stale (delete them once no code needs them)\n  'Gone'", out)
+            self.assertIn('"Kept" : {}', text)
             self.assertEqual(text.endswith("\n"), newline)
+
+    def test_a_failed_sync_leaves_the_catalog_as_it_was(self):
+        self.catalog({"Kept": {}}, newline=True)
+        before = (self.root / localizations.LOCALIZABLE).read_text()
+        self.build("Heeler", "A.swift", [])
+        status, out, text = self.sync(self.fake_xcstringstool({}, returncode=1))
+        self.assertEqual(status, 1)
+        self.assertIn("xcstringstool sync failed: it broke", out)
+        self.assertEqual(text, before)
 
     def test_sync_without_a_build_changes_nothing(self):
         self.catalog({"Kept": {}})
         before = (self.root / localizations.LOCALIZABLE).read_text()
-        status, out, _ = self.sync()
+        status, out, text = self.sync(self.fake_xcstringstool({}))
         self.assertEqual(status, 1)
         self.assertIn("build the app first", out)
-        self.assertEqual((self.root / localizations.LOCALIZABLE).read_text(), before)
+        self.assertEqual(self.commands, [])
+        self.assertEqual(text, before)
+
+    @unittest.skipUnless(shutil.which("xcrun"), "xcstringstool ships with Xcode")
+    def test_xcstringstool_adds_and_retires_keys(self):
+        self.catalog({"Gone": {"localizations": {"ja": translated("削除")}}, "Kept": {}}, newline=True)
+        self.build("Heeler", "A.swift", [
+            {"key": "Kept", "comment": "", "location": {"startingLine": 1, "startingColumn": 1}},
+            {"key": "Tab key", "comment": "VoiceOver label", "value": "Tab",
+             "location": {"startingLine": 2, "startingColumn": 1}}])
+        status, out, text = self.sync()
+        self.assertEqual(status, 0, out)
+        strings = json.loads(text)["strings"]
+        self.assertEqual(strings["Gone"]["extractionState"], "stale")
+        self.assertEqual(strings["Tab key"]["localizations"]["en"]["stringUnit"]["value"], "Tab")
+        self.assertTrue(text.endswith("\n"))
 
 
 if __name__ == "__main__":

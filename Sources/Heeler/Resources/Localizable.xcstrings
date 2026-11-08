@@ -29571,7 +29571,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%@: %@"
+            "value" : "%1$@: %2$@"
           }
         },
         "ja" : {

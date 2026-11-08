@@ -10,9 +10,9 @@ garbles the text or crashes when it is formatted, and a permission prompt
 which iOS would show in English.
 
 Xcode syncs Localizable.xcstrings with the code only when it builds in the
-IDE. `--sync` does the same from the `.stringsdata` files a command-line build
-leaves in DerivedData: it adds the keys the code uses, marks keys no code uses
-any more stale, and copies comments and default values from the code.
+IDE. `--sync` runs Xcode's `xcstringstool sync` on the `.stringsdata` files a
+command-line build leaves in DerivedData, so the catalog gains the keys the
+code uses and marks the rest stale, as an IDE build would.
 
     python3 scripts/check-localizations.py                  # summary per language
     python3 scripts/check-localizations.py --list zh-Hans   # and its untranslated keys
@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -155,71 +156,65 @@ def check(root: Path = ROOT, list_language: str | None = None, out=sys.stdout) -
     return len(errors)
 
 
-def emitted(derived_data: Path) -> dict[str, dict]:
-    """The Localizable keys a build extracted, with their comments and default values.
+def stringsdata(derived_data: Path) -> list[Path]:
+    """The `.stringsdata` files a build left for the targets that compile the catalog.
 
-    A `.stringsdata` file outlives its source file in DerivedData, so files
-    whose source is gone are skipped.
+    One outlives its source file in DerivedData, so a file whose source is gone
+    is left out; its strings would otherwise never turn stale.
     """
-    strings: dict[str, dict] = {}
     build = derived_data / "Build" / "Intermediates.noindex"
+    found = []
     for target in CATALOG_TARGETS:
         for path in sorted(build.glob(f"*.build/*/{target}.build/**/*.stringsdata")):
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if not Path(data.get("source", "")).exists():
-                continue
-            for item in data.get("tables", {}).get("Localizable", []):
-                found = strings.setdefault(item["key"], {"comments": set(), "values": set()})
-                if item.get("comment"):
-                    found["comments"].add(item["comment"])
-                if item.get("value") is not None and item["value"] != item["key"]:
-                    found["values"].add(item["value"])
-    return strings
+            source = json.loads(path.read_text(encoding="utf-8")).get("source", "")
+            if source and Path(source).exists():
+                found.append(path)
+    return found
 
 
-def sync(derived_data: Path, root: Path = ROOT, out=sys.stdout) -> int:
-    """Bring Localizable.xcstrings in line with the build's strings; return 1 if none were found."""
-    used = emitted(derived_data)
-    if not used:
+def sync(derived_data: Path, root: Path = ROOT, out=sys.stdout, run=subprocess.run) -> int:
+    """Sync Localizable.xcstrings with the build's strings as Xcode does; return 1 on failure.
+
+    `xcstringstool sync` adds the keys code uses, marks the rest stale, copies
+    comments and default values, and marks a translation `needs_review` when
+    its English changes. The file then keeps the repository's formatting.
+    """
+    files = stringsdata(derived_data)
+    if not files:
         print(f"error: no .stringsdata for {', '.join(CATALOG_TARGETS)} under {derived_data}; "
               "build the app first", file=out)
         return 1
     path = root / LOCALIZABLE
-    catalog, newline = load(path)
-    strings = catalog["strings"]
-    source_language = catalog.get("sourceLanguage", "en")
-    added, revived, retired, changed = [], [], [], []
+    before, newline = load(path)
+    command = ["xcrun", "xcstringstool", "sync", str(path)]
+    for file in files:
+        command += ["--stringsdata", str(file)]
+    try:
+        result = run(command, capture_output=True, text=True)
+    except FileNotFoundError:
+        print("error: xcrun not found; the sync needs Xcode", file=out)
+        return 1
+    if result.returncode != 0:
+        path.write_text(dump(before, newline), encoding="utf-8")
+        print(f"error: xcstringstool sync failed: {result.stderr.strip()}", file=out)
+        return 1
+    after, _ = load(path)
+    path.write_text(dump(after, newline), encoding="utf-8")
 
-    for key, found in sorted(used.items()):
-        entry = strings.get(key)
-        if entry is None:
-            entry = strings[key] = {}
-            added.append(key)
-        elif entry.get("extractionState") == "stale":
-            del entry["extractionState"]
-            revived.append(key)
-        before = json.dumps(entry, sort_keys=True)
-        if found["comments"]:
-            entry["comment"] = "\n".join(sorted(found["comments"]))
-        if len(found["values"]) == 1:
-            value = next(iter(found["values"]))
-            entry["extractionState"] = "extracted_with_value"
-            unit = entry.setdefault("localizations", {}).setdefault(source_language, {}).setdefault("stringUnit", {})
-            if unit.get("value") != value:
-                unit.update(state="new", value=value)
-        if key not in added and json.dumps(entry, sort_keys=True) != before:
-            changed.append(key)
-
-    for key, entry in strings.items():
-        if key not in used and entry.get("extractionState") not in ("manual", "stale"):
-            entry["extractionState"] = "stale"
-            retired.append(key)
-
-    path.write_text(dump(catalog, newline), encoding="utf-8")
-    for label, keys in (("added", added), ("in use again", revived), ("stale", retired),
-                        ("comment or default value updated", changed)):
+    old, new = before["strings"], after["strings"]
+    def state(entry: dict | None) -> str | None:
+        return (entry or {}).get("extractionState")
+    report = (
+        ("added", [key for key in new if key not in old]),
+        ("stale (delete them once no code needs them)",
+         [key for key in new if state(new[key]) == "stale" and state(old.get(key)) != "stale"]),
+        ("in use again", [key for key in new if state(old.get(key)) == "stale" and state(new[key]) != "stale"]),
+        ("changed", [key for key in new if key in old and new[key] != old[key]
+                     and (state(new[key]) == "stale") == (state(old[key]) == "stale")]),
+    )
+    for label, keys in report:
         print(f"{len(keys)} {label}", file=out)
-        for key in keys:
+        for key in sorted(keys):
             print(f"  {key!r}", file=out)
     return 0
 
