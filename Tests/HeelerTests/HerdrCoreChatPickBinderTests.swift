@@ -579,6 +579,127 @@ struct HerdrCoreChatPickBinderTests {
         #expect(await rig.log.cleared == ["heeler.chat"])
     }
 
+    /// An agy typed in a Terminal: the Terminal's shell, with the agy the core reports
+    /// as its foreground under it. `foreground` moves the foreground to another pid.
+    private static func agyTypedRecord(argv: [String], foreground: Int = pid) throws -> HerdrCoreTerminalRecord {
+        var record = try Self.record(.agy, labels: [:])
+        record.pid = 39
+        record.foreground = HerdrCoreForeground(pid: foreground, name: "agy", argv: argv, cwd: "/work/app")
+        return record
+    }
+
+    private static func agyTyped(_ rig: Rig, holding files: [String] = []) async {
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: 39, name: "bash", start: "145500", environment: ["HC_SCOPE": "scope", "HOME": home]))
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: pid, parent: 39, name: "agy", start: start, environment: ["HC_SCOPE": "scope", "HOME": home],
+                openFiles: files))
+    }
+
+    /// Linux, 2026-11-09 (agy 1.5.3, herdr-core 0.1.18): a second agy on a
+    /// conversation another agy had open held none of its files, and the core's
+    /// record of the Terminal's foreground carried its argv. agy prints the `=` form
+    /// on exit. Choosing it binds as any pick does.
+    @Test(arguments: [
+        ["agy", "--conversation", uuid],
+        ["agy", "--conversation=\(uuid)"],
+        ["agy", "--conversation", uuid.uppercased()],
+        ["agy", "--conversation", other, "--conversation=\(uuid)"],
+    ])
+    func antigravityListsTheConversationItsCommandLineNames(_ argv: [String]) async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        await Self.agyTyped(rig, holding: ["\(Self.home)/.gemini/antigravity-cli/log/cli-20261108_202934.log"])
+        let record = try Self.agyTypedRecord(argv: argv)
+
+        #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.agy)))
+        let list = try await Self.list(rig, record: record)
+
+        #expect(list.transcriptRoot == root)
+        #expect(list.pid == Self.pid)
+        #expect(list.candidates.map(\.sessionID) == [Self.uuid])
+        #expect(list.candidates.map(\.origins) == [[.commandLine]])
+        #expect(list.candidates.allSatisfy { $0.file == nil })
+        #expect(await rig.files.listings.isEmpty)
+        #expect(await rig.files.reads.isEmpty)
+        #expect(await rig.log.cleared.isEmpty)
+
+        let label = try #require(
+            HerdrCoreSessionHint.pickLabelValue(session: Self.uuid, file: nil, pid: list.pid, start: list.start))
+        var picked = record
+        picked.labels = ["heeler.chat": label]
+        #expect(try await rig.binder.check(picked) == .picked(sessionID: Self.uuid, transcriptRoot: root))
+    }
+
+    /// `agy -c` continues the newest conversation without naming it, and a flag with
+    /// no conversation id names none.
+    @Test(arguments: [
+        ["agy", "-c"],
+        ["agy"],
+        ["agy", "--conversation"],
+        ["agy", "--conversation="],
+        ["agy", "--conversation", ""],
+        ["agy", "--conversation", "df829e0c"],
+        ["agy", "--conversation", "\(uuid)x"],
+        ["agy", "--conversation", "not-a-conversation"],
+        ["agy", "--conversation", "-c"],
+        ["agy", "--conversations", uuid],
+        ["agy", "--conversation-id=\(uuid)"],
+        ["agy", uuid],
+        [uuid],
+        ["--conversation", uuid],
+    ])
+    func antigravityListsNothingFromACommandLineThatNamesNoConversation(_ argv: [String]) async throws {
+        let rig = await Rig(.agy)
+        await Self.agyTyped(rig)
+
+        let list = try await Self.list(rig, record: try Self.agyTypedRecord(argv: argv))
+        let named = try await Self.list(rig, record: try Self.agyTypedRecord(argv: ["agy", "--conversation", Self.uuid]))
+
+        #expect(list.candidates.isEmpty)
+        #expect(named.candidates.map(\.sessionID) == [Self.uuid])
+    }
+
+    /// A launcher, wrapper or shell in the foreground with the agy under it: the argv
+    /// the core reports is that process's, so it names nothing for the Agent.
+    @Test func antigravityListsNothingFromAnotherProcesssCommandLine() async throws {
+        let rig = await Rig(.agy)
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: 39, name: "agy-launcher", start: "145500", environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, parent: 39, name: "agy", start: Self.start,
+                environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        let argv = ["agy", "--conversation", Self.uuid]
+
+        let wrapped = try await Self.list(rig, record: try Self.agyTypedRecord(argv: argv, foreground: 39))
+        let direct = try await Self.list(rig, record: try Self.agyTypedRecord(argv: argv))
+
+        #expect(wrapped.pid == Self.pid)
+        #expect(wrapped.candidates.isEmpty)
+        #expect(direct.candidates.map(\.sessionID) == [Self.uuid])
+    }
+
+    /// What the process holds open comes first, then what its command line names,
+    /// then what a Program Status record names: a status can be another Terminal's.
+    @Test func antigravityRanksItsCommandLineBetweenHeldOpenAndProgramStatus() async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        let named = "11111111-1111-4111-8111-111111111111"
+        await Self.agyTyped(rig, holding: ["\(root)/brain/\(Self.uuid)"])
+        var record = try Self.agyTypedRecord(argv: ["agy", "--conversation", named])
+        record.records[Self.other] = HerdrCoreTerminalStatus(
+            state: "idle", kind: nil, progress: nil, app: "antigravity", title: "", message: "")
+
+        let list = try await Self.list(rig, record: record)
+
+        #expect(list.candidates.map(\.sessionID) == [Self.uuid, named, Self.other])
+        #expect(list.candidates.map(\.origins) == [[.heldOpen], [.commandLine], [.programStatus]])
+    }
+
     /// The Agent's process is what a confirmation binds to, so no process, no list.
     @Test func noResolvedProcessListsNothing() async throws {
         let rig = await Rig(.grok)

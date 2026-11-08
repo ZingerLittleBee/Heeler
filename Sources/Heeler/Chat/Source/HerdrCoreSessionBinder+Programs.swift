@@ -354,7 +354,8 @@ extension HerdrCoreSessionBinder {
 
     /// A conversation whose files an agy process holds: its lock, its brain folder
     /// or its database. A second agy on a conversation already open holds the last
-    /// two alone, which only a confirmation can take (`host-evidence/agy`).
+    /// two alone on macOS, which only a confirmation can take (`host-evidence/agy`).
+    /// On Linux it holds none, and only its command line names the conversation.
     static func antigravityConversation(held path: String) -> String? {
         if let lock = antigravityLock(held: path) { return lock.session }
         let parts = path.split(separator: "/", omittingEmptySubsequences: false)

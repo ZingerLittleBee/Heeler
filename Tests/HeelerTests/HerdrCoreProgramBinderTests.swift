@@ -891,10 +891,12 @@ struct HerdrCoreProgramBinderTests {
     }
 
     /// A second agy on a conversation already open holds its folder and database and
-    /// never the lock, and neither says which agy shows it.
+    /// never the lock, and neither says which agy shows it. Its `--conversation`
+    /// names the same one, which lists once and ranks as held open.
     @Test func aSecondAntigravityCLIOnAnOpenConversationCannotTell() async throws {
         let (rig, record) = try await Self.agyRig("second-instance")
 
+        #expect(record.foreground?.argv == ["agy", "--conversation", "00000000-0000-4000-8000-000000000102"])
         #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.agy)))
         let answer = try await rig.binder.candidates(of: record)
         guard case .listed(let list) = answer else {
@@ -903,9 +905,25 @@ struct HerdrCoreProgramBinderTests {
         }
         #expect(list.transcriptRoot == Self.agyRoot)
         #expect(list.candidates.map(\.sessionID) == ["00000000-0000-4000-8000-000000000102"])
-        #expect(list.candidates.map(\.origins) == [[.heldOpen]])
+        #expect(list.candidates.map(\.origins) == [[.heldOpen, .commandLine]])
         // agy files conversations by id, so there is no directory to list.
         #expect(await rig.files.listings.isEmpty)
+    }
+
+    /// Edited: the second agy also holds another conversation's folder, whose id
+    /// sorts after the named one's. Held open and named, the named one ranks with
+    /// what is held open, not below it.
+    @Test func aConversationHeldOpenAndNamedRanksAsHeldOpen() async throws {
+        let held = "0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11"
+        let (rig, record) = try await Self.agyRig("second-instance") { $0 + ["\(Self.agyRoot)/brain/\(held)"] }
+
+        let answer = try await rig.binder.candidates(of: record)
+        guard case .listed(let list) = answer else {
+            Issue.record("Expected a list, got \(answer)")
+            return
+        }
+        #expect(list.candidates.map(\.sessionID) == ["00000000-0000-4000-8000-000000000102", held])
+        #expect(list.candidates.map(\.origins) == [[.heldOpen, .commandLine], [.heldOpen]])
     }
 
     /// The recording after `/clear`, with the new lock let go: the folder and database

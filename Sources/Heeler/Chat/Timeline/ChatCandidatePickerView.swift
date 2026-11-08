@@ -92,6 +92,8 @@ extension ChatSessionCandidate {
         var parts: [String] = []
         if origins.contains(.heldOpen) {
             parts.append("Open in the program")
+        } else if origins.contains(.commandLine) {
+            parts.append("Named in the program's command")
         } else if origins.contains(.programStatus) {
             parts.append("Named by the program's status")
         } else {

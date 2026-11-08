@@ -6,6 +6,10 @@ struct ChatSessionCandidate: Identifiable, Equatable, Sendable {
     enum Origin: Hashable, Sendable {
         /// The Agent's process holds its file open.
         case heldOpen
+        /// The Agent's own command line names it, as `agy --conversation <id>` does,
+        /// read from the core's record of the Terminal's foreground. It says what the
+        /// Agent opened, which `/clear` or `/fork` may have left since.
+        case commandLine
         /// A Program Status record names it, which also happens for another
         /// Terminal's session (herdr compatibility).
         case programStatus
@@ -82,6 +86,7 @@ extension HerdrCoreSessionBinder {
         }
 
         for held in try await heldConversations(of: process) { add(held.session, file: held.file, origin: .heldOpen) }
+        if let named = commandLineConversation(of: record, agent: pid) { add(named, origin: .commandLine) }
         for key in record.records.keys {
             if let session = statusChildConversation(key) { add(session, origin: .programStatus) }
         }
@@ -93,7 +98,8 @@ extension HerdrCoreSessionBinder {
         let ordered = found.values.sorted { lhs, rhs in
             func rank(_ candidate: ChatSessionCandidate) -> Int {
                 if candidate.origins.contains(.heldOpen) { return 0 }
-                return candidate.origins.contains(.programStatus) ? 1 : 2
+                if candidate.origins.contains(.commandLine) { return 1 }
+                return candidate.origins.contains(.programStatus) ? 2 : 3
             }
             if rank(lhs) != rank(rhs) { return rank(lhs) < rank(rhs) }
             let (left, right) = (lhs.modified ?? .distantPast, rhs.modified ?? .distantPast)
@@ -129,6 +135,32 @@ extension HerdrCoreSessionBinder {
         case .grok: ConversationReference.lowercaseUUID(key)
         case .opencode: OpenCodeSessionID(key)?.rawValue
         }
+    }
+
+    // MARK: Named on the command line
+
+    /// The conversation `agy --conversation <id>` or `--conversation=<id>` opened,
+    /// from the argv the core reports for the Terminal's foreground, the check's own
+    /// exec reading none. It counts only while that foreground is the Agent's process,
+    /// so a shell's, launcher's or wrapper's argv never does. A second agy on a
+    /// conversation already open holds none of its files on Linux (agy 1.5.3,
+    /// herdr-core 0.1.18, ADR 0034), so this is what names it there. `agy -c` names
+    /// none. The last flag counts, as a later flag replaces an earlier one.
+    private func commandLineConversation(of record: HerdrCoreTerminalRecord, agent pid: String) -> String? {
+        guard program == .agy, let foreground = record.foreground, foreground.pid.map(String.init) == pid else {
+            return nil
+        }
+        let flag = "--conversation"
+        var named: String?
+        var arguments = foreground.argv.dropFirst().makeIterator()
+        while let argument = arguments.next() {
+            if argument == flag {
+                named = arguments.next() ?? ""
+            } else if argument.hasPrefix(flag + "=") {
+                named = String(argument.dropFirst(flag.count + 1))
+            }
+        }
+        return named.flatMap(ConversationReference.canonicalUUID)
     }
 
     // MARK: Held open
@@ -206,7 +238,7 @@ extension HerdrCoreSessionBinder {
         // with no end to its size, and a new conversation's first prompt carries
         // no id, so the conversation just started here is the one it cannot name
         // (agy 1.5.3, `docs/research/antigravity-cli-transcript-format.md`). The
-        // list holds what the process has open.
+        // list holds what the process has open and what its command line names.
         case .agy: return []
         }
     }
