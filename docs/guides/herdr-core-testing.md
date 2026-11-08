@@ -184,7 +184,8 @@ A signed-in hc-lab recheck of 2026-11-04, of the fixes made after the 2026-11-02
 With the Host connected, start each harness in its own Terminal on the box, and
 compare the Agents tab with the event log `scripts/lab/herdr-core-capture.py` records
 for the session. Use the mock API or a harness's local model, and never a real
-credential. Which harness reports what is what this section finds out, so record the
+credential. Antigravity CLI has neither, so it runs signed in on a Mac instead
+([Chat on a Mac](#chat-on-a-mac)). Which harness reports what is what this section finds out, so record the
 version beside each result. Add any case the
 [Agent-rule vector](../../plugin/test-vectors/herdr-core-agent-rule-v1.json) lacks,
 with its source, and clear the vector's `provisional` flag once the captures are in.
