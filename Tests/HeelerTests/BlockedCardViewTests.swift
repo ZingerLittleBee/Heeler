@@ -198,9 +198,9 @@ struct BlockedCardViewTests {
             try await withTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
             ) { _ in
-                // The scroll bar flashes as the options start to run past
-                // the edge; a card that fits shows none.
-                let flashes = await Self.showsScrollIndicator(in: controller, within: .seconds(1))
+                // The scroll bar flashes once the options run past the
+                // edge; a card that fits shows none.
+                let flashes = await Self.showsScrollIndicator(in: controller, within: .seconds(1.5))
                 #expect(flashes == (budget < 600), "scroll bar flash at \(budget)")
                 let scroll = try await Self.settledScrollView(in: controller)
                 let range = (
@@ -261,6 +261,41 @@ struct BlockedCardViewTests {
                 edge = try Self.contrast(image, band: end.maxY - 6, across: end)
                 #expect(edge > 0.06)
             }
+        }
+    }
+
+    /// In Chat the card is inserted into a window that already shows: by
+    /// Show after Minimize, or by the first read while Blocked. Its scroll
+    /// view's first layout already overflows, and the bar still flashes
+    /// once; a card that fits shows none.
+    @Test(arguments: [(true, CGFloat(290)), (true, 600), (false, 290), (false, 600)])
+    func aCardShownInAnOpenWindowFlashesItsScrollBar(afterMinimize: Bool, budget: CGFloat) async throws {
+        let screen = try ScreenFixture.screen("agy-30-perm-run-command-default-120x40")
+        let store = BlockedCardStore(
+            program: .agy, io: BlockedScreenIO(readScreen: { screen }, sendKeys: { _ in }, paste: { _ in }),
+            clock: ManualClock().clock)
+        if afterMinimize {
+            store.update(activity: .blocked)
+            await store.refresh()
+            store.isCollapsed = true
+        }
+        let controller = UIHostingController(
+            rootView: BlockedCardView(store: store, maxHeight: budget, openTerminal: {}).padding(.horizontal, 24))
+        controller.safeAreaRegions = []
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            #expect(await !Self.showsScrollIndicator(in: controller, within: .milliseconds(300)))
+            if afterMinimize {
+                store.isCollapsed = false
+            } else {
+                store.update(activity: .blocked)
+                await store.refresh()
+            }
+
+            let flashes = await Self.showsScrollIndicator(in: controller, within: .seconds(1.5))
+
+            #expect(flashes == (budget < 600), "scroll bar flash at \(budget)")
         }
     }
 
@@ -366,11 +401,12 @@ struct BlockedCardViewTests {
     /// Whether the card's scroll view shows its vertical scroll indicator
     /// within `limit`. Nothing scrolls it meanwhile, so only a flash does.
     /// UIKit draws the indicator as a private `_UIScrollViewScrollIndicator`
-    /// subview, transparent while it rests.
+    /// subview, transparent while it rests. It reads without forcing
+    /// layout: forced passes split the card's first layout over separate
+    /// updates, which shows a flash Chat's single commit never did.
     private static func showsScrollIndicator(in controller: UIViewController, within limit: Duration) async -> Bool {
         var budget = PollBudget(limit)
         while budget.hasTimeLeft {
-            controller.view.layoutIfNeeded()
             let indicators = Self.scrollView(in: controller.view)?.subviews.filter {
                 String(describing: type(of: $0)).contains("ScrollIndicator") && $0.bounds.height > $0.bounds.width
             }

@@ -1111,8 +1111,8 @@ private struct BlockedPlanBox: View {
 /// proposal, such as the room above a keyboard, also limits the viewport.
 /// A flat cut reads as the card's end, so an option cut there would hide
 /// the answers past it, a decline too. An edge fades instead while more
-/// waits past it, and the scroll indicator flashes as the content starts
-/// to overflow. Content that fits draws as it is.
+/// waits past it, and the scroll indicator flashes once the content
+/// overflows, as the card shows or later. Content that fits draws as it is.
 struct BlockedScrollingContent<Content: View>: View {
     let maxHeight: CGFloat
     @ViewBuilder let content: Content
@@ -1131,8 +1131,13 @@ struct BlockedScrollingContent<Content: View>: View {
         .scrollBounceBehavior(.basedOnSize)
         .scrollIndicatorsFlash(trigger: flashes)
         .modifier(BlockedEdgeFade(hidden: $hidden))
-        .onChange(of: hidden.overflows) { _, overflows in
-            if overflows { flashes += 1 }
+        // On appearing as well as on a change, and a beat later: an overflow
+        // read in the commit that inserts the card bumps the trigger before
+        // its scroll view can show the bar (live 2026-11-09). A passing
+        // overflow, such as the 1 pt first layout's, cancels before it.
+        .task(id: hidden.overflows) {
+            guard hidden.overflows, (try? await Task.sleep(for: .milliseconds(300))) != nil else { return }
+            flashes += 1
         }
     }
 }
