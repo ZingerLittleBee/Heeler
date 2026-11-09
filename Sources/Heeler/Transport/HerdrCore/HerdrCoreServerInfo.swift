@@ -75,6 +75,10 @@ struct HerdrCoreServerStatus: Equatable, Sendable {
     let uptimeMilliseconds: Int
     let live: Int
     let finished: Int
+    /// The `herdr-core hold` processes the core's Terminals run under, which
+    /// start them with the hold's environment, not the core's: `holders[].pid`
+    /// and `holder.pid`, each once, in that order. Empty until a first Terminal.
+    let holderPIDs: [Int]
 
     init(result: JSONValue) throws {
         guard let coreID = result["core"]?["id"]?.stringValue,
@@ -89,5 +93,14 @@ struct HerdrCoreServerStatus: Equatable, Sendable {
         version = result["version"]?.stringValue ?? ""
         live = HerdrCoreWire.integer(result["live"]) ?? 0
         finished = HerdrCoreWire.integer(result["finished"]) ?? 0
+        var holders: [JSONValue] = []
+        if case .array(let listed) = result["holders"] { holders = listed }
+        if let current = result["holder"] { holders.append(current) }
+        var holderPIDs: [Int] = []
+        for holder in holders {
+            guard let pid = HerdrCoreWire.integer(holder["pid"]), pid > 0, !holderPIDs.contains(pid) else { continue }
+            holderPIDs.append(pid)
+        }
+        self.holderPIDs = holderPIDs
     }
 }

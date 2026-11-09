@@ -115,6 +115,24 @@ struct HerdrCoreWindowsTransportTests {
         try await transport.close()
     }
 
+    @Test func aWindowsHoldIsReadInTheSameCommandAsTheCore() async throws {
+        let host = Self.runningHost(.init(pid: 9001, holders: [9002]))
+        await host.setWindowsProcesses([
+            .init(pid: 9001, image: "herdr-core.exe", start: "1", environment: ["PATH": #"C:\Windows"#]),
+            .init(
+                pid: 9002, parent: 9001, image: "herdr-core.exe", start: "2",
+                environment: ["TMUX": "x", "PATH": #"C:\Windows"#]),
+        ])
+        let transport = host.transport()
+        _ = try await transport.hello()
+
+        #expect(await transport.leakedEnvironmentNames() == ["TMUX"])
+        #expect(await host.log.filter { $0 == "windows-process-read" }.count == 1)
+        let script = try #require(await host.scripts.last)
+        #expect(script.contains("$ids=@(9001,9002)"))
+        try await transport.close()
+    }
+
     /// Every failure reads as no names: the check says nothing it could not read.
     @Test func aWindowsCoreWhoseEnvironmentCannotBeReadNamesNothing() async throws {
         let unreadable = await Self.runningHost(pid: 9001, environment: nil)

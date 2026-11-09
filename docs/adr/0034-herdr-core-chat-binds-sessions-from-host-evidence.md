@@ -215,9 +215,12 @@ never show or send into a conversation it has guessed.
   title-prefix match rejected in
   [herdr compatibility](../agents/herdr-compatibility.md) stays rejected, and
   only reopening with `--no-daemon` offers Chat.
-- When the core's own environment carries such leaked variables, the Host
-  says what they break and that restarting the core from the user's own
-  terminal fixes it. Heeler does not restart it. A Claude Code Agent started
+- When the environment the core's Terminals start with carries such leaked
+  variables, the Host says what they break and that restarting the core from
+  the user's own terminal fixes it. Heeler does not restart it. Terminals
+  inherit the environment of the core's `herdr-core hold`, which on a Mac can
+  differ from the core's own, so the check reads every hold `server.status`
+  names beside the core, and reads again when a Terminal starts one. A Claude Code Agent started
   with `CLAUDE_CODE_CHILD_SESSION=1` keeps neither a registry entry nor a
   Transcript, and one with `CLAUDE_CODE_SKIP_PROMPT_HISTORY` keeps an entry and
   no Transcript; Chat says so instead of waiting for a file. Claude Code reads

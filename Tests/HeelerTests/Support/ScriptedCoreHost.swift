@@ -24,6 +24,9 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         var sequence = 0
         var terminals: [JSONValue] = []
         var pid = 4242
+        /// The pids of the `herdr-core hold` processes `server.status` names, the
+        /// last one current. None until a first Terminal, as on a real core.
+        var holders: [Int] = []
         /// False: `doc.get` goes unanswered while everything else still works.
         var answersDocumentReads = true
         static let eventsChannel: UInt32 = 1
@@ -46,17 +49,26 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         }
 
         var statusResult: JSONValue {
-            .object([
+            let held = holders.enumerated().map { index, pid in
+                JSONValue.object([
+                    "current": .bool(index == holders.count - 1), "instance": .string("hold-\(pid)"),
+                    "pid": .number(Double(pid)), "terminals": .number(1),
+                ])
+            }
+            return .object([
                 "core": .object(["id": .string(id)]), "pid": .number(Double(pid)), "uptime_ms": .number(1000),
-                "version": .string("0.1.13"),
+                "version": .string("0.1.13"), "holder": held.last ?? .null, "holders": .array(held),
             ])
         }
     }
 
     /// What the exec of a `HostProcessReader` script does. A whole answer is
-    /// framed by the nonce and names the pid the script asked about.
+    /// framed by the nonce and names every pid the script asked about.
     enum ProcessRead: Sendable {
+        /// Every process asked about holds these.
         case names([String])
+        /// Each process holds its own, and one not listed cannot be read.
+        case namesByPID([Int: [String]])
         /// The environment holds these variables.
         case values([String: String])
         /// The reader could not read that process's environment.
@@ -175,6 +187,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var nextLocatorAnswers: [GitExecResult] = []
     private let shellBanner: Data
     private var channel: Channel
+    /// Replaces the scripted core's holds, once a test sets them.
+    private var holders: [Int]?
     private var connected = true
     private let start: StartResponse
     private let channelAfterStart: Channel?
@@ -328,21 +342,33 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         while isProcessReadHeld {
             await withCheckedContinuation { heldProcessReads.append($0) }
         }
-        let pid = body.split(separator: "\n").last { $0.hasPrefix("e ") }?.dropFirst(2) ?? ""
-        let answer: [String]
         switch read {
-        case .names(let names):
-            answer = names.map { "N \(pid) \($0)" } + ["E \(pid) ok"]
-        case .values(let values):
-            answer = values.map { name, value in
-                "V \(pid) \(name) " + value.utf8.map { String(format: "%02x", $0) }.joined()
-            } + ["E \(pid) ok"]
-        case .unreadable:
-            answer = ["E \(pid) -"]
         case .exits(let status, let stdout):
             return GitExecResult(stdout: Data(stdout.utf8), stderr: Data(), exitStatus: status)
         case .throwsError(let error):
             throw error
+        default:
+            break
+        }
+        let pids = body.split(separator: "\n").filter { $0.hasPrefix("e ") }.map { String($0.dropFirst(2)) }
+        var answer: [String] = []
+        for pid in pids {
+            switch read {
+            case .names(let names):
+                answer += names.map { "N \(pid) \($0)" } + ["E \(pid) ok"]
+            case .namesByPID(let held):
+                if let names = Int(pid).flatMap({ held[$0] }) {
+                    answer += names.map { "N \(pid) \($0)" } + ["E \(pid) ok"]
+                } else {
+                    answer.append("E \(pid) -")
+                }
+            case .values(let values):
+                answer += values.map { name, value in
+                    "V \(pid) \(name) " + value.utf8.map { String(format: "%02x", $0) }.joined()
+                } + ["E \(pid) ok"]
+            case .unreadable, .exits, .throwsError:
+                answer.append("E \(pid) -")
+            }
         }
         let lines = ["__HEELER_PROC_BEGIN_\(Self.nonce)"] + answer + ["", "__HEELER_PROC_END_\(Self.nonce)"]
         return GitExecResult(
@@ -685,7 +711,10 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
                 }
             case "templates.list":
                 if let templateList { try? await socket.reply(to: request.id, result: templateList) }
-            case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
+            case "server.status":
+                var status = core
+                if let holders { status.holders = holders }
+                try? await socket.reply(to: request.id, result: status.statusResult)
             // A real core's answer for a name nobody wrote.
             case "doc.get" where core.answersDocumentReads:
                 try? await socket.reply(to: request.id, result: .object(["version": .number(0), "value": .null]))
@@ -722,6 +751,12 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// What the next channel opened to the socket finds.
     func setChannel(_ channel: Channel) {
         self.channel = channel
+    }
+
+    /// What `server.status` names as holds from now on, on every link, as when
+    /// a first Terminal starts one.
+    func setHolders(_ holders: [Int]) {
+        self.holders = holders
     }
 
     /// Whether the SSH connection is up.

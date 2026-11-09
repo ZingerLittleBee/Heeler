@@ -50,7 +50,7 @@ struct HostProcessReaderWindowsTests {
 
     @Test("A prefix prints a whole plain name and never a value, and a read with none matches nothing")
     func namesWithAPrefix() throws {
-        let check = try decoded(HerdrCoreEnvironmentCheck.request(pid: 7868))
+        let check = try decoded(HerdrCoreEnvironmentCheck.request(pids: [7868]))
         let lines = check.split(separator: "\n").map(String.init)
         #expect(lines.contains("$pre='^(?:HERDR_)[A-Z0-9_]*$'"))
         #expect(lines.contains("$want=@()"))
@@ -64,10 +64,13 @@ struct HostProcessReaderWindowsTests {
         #expect(without.contains("$pre=''"))
     }
 
-    @Test("The core's environment check fits the command line")
+    @Test("The core's environment check fits the command line with every hold it reads")
     func theEnvironmentCheckFits() throws {
+        let pids = HerdrCoreEnvironmentCheck.processIDs(
+            core: 4_294_967_295, holders: (1...40).map { 4_294_967_295 - $0 })
+        #expect(pids.count == HerdrCoreEnvironmentCheck.processCap)
         let command = try HostProcessReader.windowsCommand(
-            HerdrCoreEnvironmentCheck.request(pid: 4_294_967_295), nonce: Self.nonce)
+            HerdrCoreEnvironmentCheck.request(pids: pids), nonce: Self.nonce)
         #expect(command.utf8.count <= HostProcessReader.windowsCommandLimit)
     }
 
