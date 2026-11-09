@@ -31,6 +31,9 @@ Entries reference the pull request that made the change.
 - Select terminal text inline with handles and the system edit menu, using libghostty-spm 2.2.2026103001. Chat's Select Text sheet is unchanged. (PR #650)
 - Show user commands in Chat with the same right-aligned bubble and text size
   as other user messages, keeping command output below the bubble. (#648)
+- Codex's question card names its page beside its title, `1 of 2` as a
+  question form does, and none for a single question, instead of a
+  `Question 1/2` line above the question. (#644)
 
 ### Fixed
 

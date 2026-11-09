@@ -36,6 +36,49 @@ struct BlockedCardViewTests {
         #expect(labels.filter { $0 == title || $0 == "\(title)?" } == [title], "\(labels)")
     }
 
+    /// A question card names its page once. Codex's and Antigravity CLI's
+    /// `Question i/n` shows in the header as `i of n`, as a question form
+    /// shows it, and a single question shows none. Claude Code's tab
+    /// header stays above the question: it names the page without
+    /// repeating the title.
+    @Test(arguments: [
+        ("agy-100-ask-question-multiselect-62x41", nil, nil),
+        ("agy-41-ask-question-single-120x40", nil, nil),
+        ("agy-44-ask-question-multi-120x40", "1 of 2", nil),
+        ("agy-45-ask-question-multi-q2-120x40", "2 of 2", nil),
+        ("codex-04-x3-q1", "1 of 2", nil),
+        ("codex-16-x7-phone-question-pointed", nil, nil),
+        ("claude-08-c4-auq-q1", nil, "Colors"),
+    ] as [(String, String?, String?)])
+    func aQuestionCardNamesItsPageOnce(stem: String, page: String?, caption: String?) async throws {
+        let screen = try ScreenFixture.screen(stem)
+        let store = BlockedCardStore(
+            program: ScreenFixture.program(stem),
+            io: BlockedScreenIO(readScreen: { screen }, sendKeys: { _ in }, paste: { _ in }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        let progress = try #require(card.dialog.progress)
+        let question = card.dialog.subject.question ?? card.dialog.title
+
+        let labels = try await Self.labels(
+            of: BlockedCardView(store: store, maxHeight: 600, openTerminal: {}), showing: question)
+
+        #expect(labels.filter { $0 == "Question" } == ["Question"], "\(labels)")
+        let pages = labels.filter { $0.wholeMatch(of: /\d+ of \d+/) != nil }
+        #expect(pages == (page.map { [$0] } ?? []), "\(labels)")
+        if let caption {
+            #expect(progress == caption)
+            #expect(labels.contains(caption), "\(labels)")
+        } else {
+            #expect(!labels.contains(progress), "\(labels)")
+        }
+    }
+
     /// A subagent's question titles its card with every line it wraps to:
     /// at a phone's width a fourth line adds as much height as a third. A
     /// second adds less, since a one-line header is as tall as its

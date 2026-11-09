@@ -67,7 +67,8 @@ private struct BlockedDialogCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                title: dialog.cardTitle, detail: dialog.positionLabel, isActing: store.progress == .acting,
+                title: dialog.cardTitle, detail: dialog.positionLabel ?? dialog.pageLabel,
+                isActing: store.progress == .acting,
                 lineLimit: dialog.asksInTitle ? nil : 2, collapse: { store.isCollapsed = true })
             BlockedScrollingContent(maxHeight: scrollingMaxHeight, fadesEdges: pinsChoices) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -171,8 +172,9 @@ private struct BlockedDialogCard: View {
             .agyQuestion:
             VStack(alignment: .leading, spacing: 4) {
                 // Codex's asynchronous questions name their page by the
-                // question itself.
-                if let progress = dialog.progress, dialog.kind != .codexAsyncQuestion {
+                // question itself, and `Question i/n` shows in the header
+                // as `i of n`, so neither repeats here.
+                if let progress = dialog.progress, dialog.kind != .codexAsyncQuestion, dialog.questionPage == nil {
                     Text(verbatim: progress)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
@@ -650,6 +652,14 @@ extension DialogOption {
 }
 
 private extension BlockedDialog {
+    /// Codex's and Antigravity CLI's `Question i/n` as the header's page
+    /// indicator, `i of n` as a question form shows it; a single question
+    /// has no pages.
+    var pageLabel: String? {
+        guard let page = questionPage, page.count > 1 else { return nil }
+        return "\(page.index) of \(page.count)"
+    }
+
     var cardTitle: String {
         switch kind {
         case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion,
