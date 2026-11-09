@@ -196,6 +196,10 @@ struct AgyBackgroundTaskStop {
 
     // MARK: Notices
 
+    /// Why a Composer send waits while this types.
+    static let sendHold =
+        "Stop is still ending the turn's background commands in Antigravity CLI. Try again in a moment."
+
     static let panelLeftOpen =
         "Stop ended the turn and its background commands, but Antigravity CLI's task list may still be open. Close it in the terminal with Esc."
 

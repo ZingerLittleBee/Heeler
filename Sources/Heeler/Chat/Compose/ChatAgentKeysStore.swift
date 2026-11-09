@@ -46,11 +46,19 @@ final class ChatAgentKeysStore {
         return await enqueue(names, unless: check).value
     }
 
+    /// Whether work queued with `afterQueued` has yet to end. Chat holds a
+    /// Composer send meanwhile, which goes outside this queue and could
+    /// land between two of its keys, such as into a `/tasks` typed for Stop.
+    var isRunningQueuedWork: Bool { queuedWork > 0 }
+    @ObservationIgnored private var queuedWork = 0
+
     /// Runs `work` once the keys queued before it have gone, and holds keys
     /// queued after it until it ends: work that types over several screens,
     /// such as Antigravity CLI's Stop ending a turn's background commands,
     /// where a second Stop's Esc must not land halfway.
     func afterQueued<Result: Sendable>(_ work: @escaping @MainActor () async -> Result) async -> Result {
+        queuedWork += 1
+        defer { queuedWork -= 1 }
         let previous = tail
         let task = Task { @MainActor in
             _ = await previous?.value

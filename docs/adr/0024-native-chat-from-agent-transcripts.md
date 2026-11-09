@@ -298,7 +298,8 @@ in the terminal, with Open in Terminal. The commands are the transcript's
 as Stop is tapped, since agy writes nothing on Esc, and none while a send
 of Chat's waits for its record, when the open turn it shows may be the one
 before. An overdue send does not count: its echo clock stops while agy
-works, so it ran out on a send no turn began with.
+works, so it ran out on a send no turn began with. A Chat send waits while
+the follow-through types, since it would land between two of its keys.
 agy records a kill only with the next prompt, so the row reads Started
 until then (1.5.3, live). The terminal's own Stop stays one Esc.
 

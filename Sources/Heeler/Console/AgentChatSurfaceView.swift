@@ -947,8 +947,13 @@ struct AgentChatSurfaceView: View {
         let preflight = policy.preflight
         let isSwitching = { isSwitchingSetting }
         let settle = settleUnansweredSwitch
+        let keys = agentKeys
         policy.preflight = { text in
             if isSwitching() { return .inputNotReady("Claude Code is switching a setting. Try again in a moment.") }
+            // Stop's follow-through types there too (agy's `/tasks`). Held
+            // before any await: one that starts later finds this send
+            // typing and stops.
+            if keys.isRunningQueuedWork { return .inputNotReady(AgyBackgroundTaskStop.sendHold) }
             if let reason = await settle() { return .inputNotReady(reason) }
             return await preflight?(text)
         }

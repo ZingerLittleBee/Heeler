@@ -395,6 +395,31 @@ struct ChatStopPlanTests {
         #expect(recorder.events == ["panel", "closed", "esc"])
     }
 
+    /// A Composer send goes outside the keys queue, so Chat holds one from
+    /// the moment a follow-through is queued until it ends: typed between
+    /// two of its keys, it would land in its `/tasks`.
+    @Test func aFollowThroughHoldsSendsUntilItEnds() async {
+        let earlier = ScriptedTransportCallGate()
+        let panel = ScriptedTransportCallGate()
+        let keys = Self.agentKeys(StopRecorder(), firstRequestWaitsOn: earlier)
+        #expect(!keys.isRunningQueuedWork)
+
+        let esc = Task { await keys.deliver(["esc"]) }
+        await earlier.waitForEntry()
+        let followThrough = Task { await keys.afterQueued { await panel.waitUntilOpen() } }
+        for _ in 0..<20 { await Task.yield() }
+        #expect(keys.isRunningQueuedWork, "queued behind the Esc")
+
+        await earlier.open()
+        _ = await esc.value
+        await panel.waitForEntry()
+        #expect(keys.isRunningQueuedWork, "typing")
+
+        await panel.open()
+        await followThrough.value
+        #expect(!keys.isRunningQueuedWork)
+    }
+
     // MARK: Helpers
 
     /// What OpenCode's guard says on a capture while herdr reports Working.
