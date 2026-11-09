@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import plistlib
+import re
 import shutil
 import stat
 import subprocess
@@ -162,6 +163,9 @@ SYSTEM_PREFIXES = (
     "/opt/local/bin",
     "/var/lib/systemd/linger/",
 )
+# The system's own bin among them, moved only where the probe names it whole,
+# not in the /usr/bin/env it runs.
+SYSTEM_BIN = re.compile(r"(?<![\w/.-])/usr/bin(?![\w/.-])")
 
 SYSTEMCTL = """#!/bin/sh
 printf 'XDG_RUNTIME_DIR=%s args=%s\\n' "$XDG_RUNTIME_DIR" "$*" >> "$FAKE_LOG"
@@ -299,6 +303,7 @@ class HelperScriptCase(unittest.TestCase):
         if step["step"] == "probe":
             for prefix in SYSTEM_PREFIXES:
                 text = text.replace(prefix, f"{self.root}/abs{prefix}")
+            text = SYSTEM_BIN.sub(f"{self.root}/abs/usr/bin", text)
         return subprocess.run(
             shell.split(), input=text, env=self.env, capture_output=True, text=True, timeout=60,
         )
@@ -466,6 +471,16 @@ class ProbeTests(HelperScriptCase):
         brew = self.root / "abs/opt/homebrew/bin"
         self.node_in(brew, f"{self.root}/abs/opt/homebrew/Cellar/node/24.1.0/bin/node", "24.1.0")
         self.assertEqual(self.probe()["node"], f"found {brew}/node")
+
+    def test_the_systems_bin_is_named_rather_than_the_binary_it_leads_to(self) -> None:
+        # Fedora's /usr/bin/node is the alternatives link dnf keeps on its current Node.js.
+        usr_bin = self.root / "abs/usr/bin"
+        self.node_in(usr_bin, "/usr/bin/node-22")
+        self.assertEqual(self.probe()["node"], f"found {usr_bin}/node")
+        self.env["PATH"] = f"{usr_bin}:{self.env['PATH']}"
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], f"found {usr_bin}/node")
 
     def test_homebrews_bin_on_the_path_is_named_rather_than_its_cellar(self) -> None:
         # A fish config.fish that runs `brew shellenv` puts it on the exec's PATH.

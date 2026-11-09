@@ -28,9 +28,12 @@ that Heeler can read from outside the process.
   plugin and named by its absolute path in the service, since a systemd user
   unit's `PATH` holds only system directories. That path is a manager's own
   stable link where the search finds one (fnm's default alias, nvs's default,
-  nodebrew's `current`, n's and pnpm's directories, Homebrew's and the other
-  system directories), else the binary itself, and never a binary outside a
-  Node.js install's `bin`, such as another program's private runtime. The service restarts whenever
+  nodebrew's `current`, n's and pnpm's directories, Homebrew's `bin` and
+  versioned formulae, `/usr/local/bin`, `/usr/bin`, where Fedora's and
+  openSUSE's `node` is the alternatives link to the current versioned binary,
+  Nix's profiles, snap's and MacPorts' directories), else the binary itself,
+  and never a binary outside a Node.js install's `bin`, such as another
+  program's private runtime. The service restarts whenever
   it stops, not only on failure. A user service does not start with the
   core's environment, so for Usage the Helper reads the variables that locate
   Accounts, such as `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, from the core

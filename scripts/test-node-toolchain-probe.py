@@ -11,6 +11,7 @@ whose /bin/sh is dash); uses only Python's standard library.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -46,6 +47,9 @@ SYSTEM_PREFIXES = (
     "/snap/bin",
     "/opt/local/bin",
 )
+# The system's own bin among them, moved only where the probe names it whole,
+# not in the /usr/bin/env it runs.
+SYSTEM_BIN = re.compile(r"(?<![\w/.-])/usr/bin(?![\w/.-])")
 
 HERDR = """#!/bin/sh
 echo "herdr=$0"
@@ -121,6 +125,8 @@ class ProbeTests(unittest.TestCase):
         for prefix in SYSTEM_PREFIXES:
             self.assertIn(prefix, wrapped)
             wrapped = wrapped.replace(prefix, f"{self.root}/abs{prefix}")
+        self.assertRegex(wrapped, SYSTEM_BIN)
+        wrapped = SYSTEM_BIN.sub(f"{self.root}/abs/usr/bin", wrapped)
         if shell != "/bin/sh":
             wrapped = shell + wrapped[len("/bin/sh"):]
         return subprocess.run(

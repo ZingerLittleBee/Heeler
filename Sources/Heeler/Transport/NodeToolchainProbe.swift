@@ -87,15 +87,16 @@ enum NodeToolchainProbe {
     ///
     /// A directory counts only when the binary its `node` runs sits in a
     /// Node.js install's `bin` under a Node.js name: `node`, `nodejs`, or a
-    /// versioned one, as Fedora's `/usr/bin/node` leads to `node-22`. So another
-    /// program's private runtime, such as cursor-agent's `dist-package/node`
-    /// behind a mise shim, is passed over before its version is read. The path printed is a manager's own stable
-    /// link where the search found one (fnm's default alias, Homebrew's `bin`,
-    /// whether `PATH` or the fixed list reached it), which follows that
-    /// manager's upgrades. Otherwise it is the binary itself: a shim (mise,
-    /// Volta, asdf, nodenv, proto) cannot run under a service, and any other
-    /// directory from `PATH` or the login shell can be one shell's own, as
-    /// fnm's per-shell links are.
+    /// versioned one, as Fedora's `/usr/bin/node` leads to `node-22`. So
+    /// another program's private runtime, such as cursor-agent's
+    /// `dist-package/node` behind a mise shim, is passed over before its
+    /// version is read. The path printed is a manager's own stable link where
+    /// the search found one (fnm's default alias, Homebrew's `bin`,
+    /// `/usr/bin`, whether `PATH` or the fixed list reached it), which follows
+    /// that manager's upgrades. Otherwise it is the binary itself: a shim
+    /// (mise, Volta, asdf, nodenv, proto) cannot run under a service, and any
+    /// other directory from `PATH` or the login shell can be one shell's own,
+    /// as fnm's per-shell links are.
     static let nodeOnlyScript = ([
         "__h_npm=",
         "__h_old=",
@@ -119,14 +120,16 @@ enum NodeToolchainProbe {
     ]).map { $0 + "; " }.joined()
 
     /// Homebrew's, with its versioned formulae, Nix's profiles, snap's and
-    /// MacPorts' directories, and `/usr/local/bin`: each keeps its `node` in
-    /// place across its manager's upgrades, and none is one shell's own, so
-    /// they are named as found however the search reaches them.
+    /// MacPorts' directories, `/usr/local/bin` and `/usr/bin`: each keeps its
+    /// `node` in place across its manager's upgrades, as Fedora's and
+    /// openSUSE's `/usr/bin/node` is the alternatives link to the current
+    /// versioned binary, and none is one shell's own, so they are named as
+    /// found however the search reaches them.
     private static let stableDirectories = [
         "/opt/homebrew/bin", "/usr/local/bin", "/home/linuxbrew/.linuxbrew/bin",
         "/opt/homebrew/opt/node*/bin", "/usr/local/opt/node*/bin", "/home/linuxbrew/.linuxbrew/opt/node*/bin",
         "\"$HOME/.nix-profile/bin\"", "\"/etc/profiles/per-user/$USER/bin\"", "/run/current-system/sw/bin",
-        "/nix/var/nix/profiles/default/bin", "/snap/bin", "/opt/local/bin",
+        "/nix/var/nix/profiles/default/bin", "/snap/bin", "/opt/local/bin", "/usr/bin",
     ]
 
     /// Tries each common install method's directory, in the order the type's
