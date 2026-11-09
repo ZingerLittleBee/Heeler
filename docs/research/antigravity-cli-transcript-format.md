@@ -12,6 +12,10 @@ Versioned observations:
   mode, `ANTIGRAVITY_APP_DATA_DIR` and a background command that ended
   inside its turn (pane reads about 0.14 s apart, beside the transcript),
   and in a herdr-core 0.1.18 Terminal for one that ended after its turn.
+- The same agy on Linux (Ubuntu 24.04.5, x86_64) in a tmux 3.4 session at
+  120×40 on 2026-11-09, without herdr, for a multi-select question's
+  `Write-in...` field: keys through `tmux send-keys` and a bracketed paste,
+  reads through `tmux capture-pane`, beside the transcript.
 - A structure-only census of one Host's `~/.gemini/antigravity-cli`: 28
   conversations with a transcript (13 top-level, 15 subagents), 3,502 lines
   in each of the two transcript files, first steps from 2026-10-13 to
@@ -254,10 +258,11 @@ Issue #644's claims against these observations:
 Observed live on agy 1.5.3 through herdr 0.9.5 (2026-11-07 and 08) at
 120×40, the phone's 62×41, 62×20 and 40×30, the Heeler app's 59×41 and the
 desktop's 190×49, and under `NO_COLOR` at 92×47, 93×45 and 45×45 (Without
-colors, below). The screen fixtures under
-`Tests/HeelerTests/ChatFixtures/screens/agy/` are those reads; the numbers
-below are their stems. agy draws inline on the normal screen, so a read also
-holds scrollback above the box.
+colors, below), and on Linux in tmux at 120×40 for a multi-select
+question's `Write-in...` field (154 to 168, 2026-11-09). The screen fixtures
+under `Tests/HeelerTests/ChatFixtures/screens/agy/` are those reads; the
+numbers below are their stems. agy draws inline on the normal screen, so a
+read also holds scrollback above the box.
 
 ### The box
 
@@ -400,8 +405,8 @@ it (Without colors, above).
 | File edit (47, 48, 82, 141, 142) | The path in bold, `N  -  old` and `N  +  new` rows, `shift+tab to auto-approve file edits`, `Accept this file edit?`; `↑/↓ Navigate · f full diff`, or `↑/↓ Navigate · tab Amend · f full diff` while `2. No, reject this change` is selected (142) | As for a command. Tab on `No` offers Amend, whose field was not captured; `AgyDialogParser` reads no field on a file dialog, so one there would show the generic card | **done** with `Yes` selected; not recorded with `No` |
 | File creation (99) | The path, `N  +  line` rows, `Allow creation of this file?`; `↑/↓ Navigate · f full diff`; `Yes, allow creation`, `No, deny creation` | As for a file edit | **done** |
 | Question (41, 42, 44, 45) | `Question N/M: …`; `↑/↓ Navigate · enter Select · esc Skip`; the answers, then `Write-in...` | A digit answers; on a page of several it turns to the next, and on the last it submits them all. Esc skips one question (`User Skipped`) and the turn goes on | Blocked |
-| Multi-select question (100 to 103, 113, 114) | Answers drawn `N. [ ] x`; `↑/↓ Navigate · space Toggle · enter Submit · esc Skip`, with `→ Next` on a page of several | A digit selects its answer and toggles it; Enter submits the checked answers (`A1: apple, plum`) or turns the page | Blocked; **done** at 62 columns on a page of several, whose cut hint row loses `esc Skip` |
-| Write-in (104, 105) | `  Your answer:` and a field under the answers; `enter Submit · esc Back` | Its digit opens the field; a paste and Enter submit the text | **done** |
+| Multi-select question (100 to 103, 113, 114) | Answers drawn `N. [ ] x`; `↑/↓ Navigate · space Toggle · enter Submit · esc Skip`, with `→ Next` on a page of several | A digit selects its answer and toggles it; Enter submits the checked answers (`A1: apple, plum`) or turns the page. Space toggles the selected answer; on `Write-in...` the hint reads `space Toggle · enter Write-in`, Space does nothing and Enter opens the field (160, 161) | Blocked; **done** at 62 columns on a page of several, whose cut hint row loses `esc Skip` |
+| Write-in (104, 105, 154 to 168) | `  Your answer:` and a field under the answers; `enter Submit · esc Back`. On a multi-select question the boxes stay drawn above it with their checks (156) | Its digit opens the field; a paste and Enter submit the text. On a multi-select question the digit opens it from any row with the checks kept, and Enter submits the checks with the text (`A1: apple, mango`), the text alone (`A1: mango`), or, in an empty field, the checks alone; on a page of several it turns the page (165, 167). Esc closes the field and drops its text, keeping the checks (158) | **done**; on a multi-select question not recorded (tmux) |
 
 **An Enter in the file edit dialog accepts the edit.** herdr's
 `permission_prompt` rule needs `tab amend`, which this dialog's hint row
@@ -428,7 +433,8 @@ row into the generic card, without numbers. The command's Amend field and
 the Write-in field keep the dialog's fingerprint, so a card's step into them
 checks against the same dialog. `AgyDialogPlanner` sends these keys, each
 sequence sent live through `agent send-keys` on 2026-11-08 except the trust
-prompt's, since answering it writes the folder into agy's settings:
+prompt's, since answering it writes the folder into agy's settings, and a
+multi-select set's written answer, sent through tmux on 2026-11-09:
 
 | Card action | Keys |
 |---|---|
@@ -437,6 +443,7 @@ prompt's, since answering it writes the folder into agy's settings:
 | A note with `Yes, run command` or `No, cancel` | Down to the row, each step checked, Tab, a check that the field is open and empty, the paste, a check that it holds the note, Enter |
 | A single-select answer | Its digit, then a check for `Question i+1/n` on a page of several |
 | A multi-select set | The digit of each answer whose check must change, each checked, then Enter |
+| A multi-select set with a written answer | The digits for the checks as above, `Write-in...`'s digit, the field checked, the paste, checked, Enter. Enter in an empty field would submit the checks alone, so the paste's check comes first |
 | A written answer | `Write-in...`'s digit, the field checked, the paste, checked, Enter |
 | Skip on a question | Esc, never while the answer field is open (there Esc is Back). On a form, Esc on the page the card showed, in that page's turn |
 | Trust | Arrows to the option, each checked, then Enter; no Stop |
@@ -548,10 +555,9 @@ its `/` popup and from `/name` (agy's changelog, 1.1.12).
   background prompt as unknown footers, and two queued messages as a
   running turn.
 - Dialogs not captured: `multi_replace_file_content`'s edit, Tab on an
-  `always allow` row, a typed answer on a multi-select question, and Esc on
-  the trust prompt. Chat leaves the last three to the terminal: the card
-  refuses them. It answers a `multi_replace_file_content` edit like any
-  other: agy 1.5.3's strings hold one `Pending edit` title and one `Accept
+  `always allow` row, and Esc on the trust prompt. Chat leaves the last two
+  to the terminal: the card refuses them. It answers a
+  `multi_replace_file_content` edit like any other: agy 1.5.3's strings hold one `Pending edit` title and one `Accept
   this file edit?` question, so the edit most likely asks in that dialog
   (inferred, never captured), and a dialog of any other shape gets the
   generic card. Its call records no change Heeler can draw, so the card

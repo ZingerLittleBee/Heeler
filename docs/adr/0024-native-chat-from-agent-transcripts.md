@@ -726,8 +726,11 @@ permission presses Esc, which stops the whole turn and joins the history
 as Stopped, since agy records nothing. A single answer presses its digit,
 a multi-select set toggles each answer whose check must change and then
 presses Enter, and a written answer opens `Write-in...` by its digit and
-pastes into the field; several questions fill in on one card, page by page,
-and the last page's key submits them all. Skip presses Esc, which agy
+pastes into the field. On a multi-select question the field keeps the
+checks and its Enter submits them with the text, so the card and a form's
+multi-select page take a written answer beside the checks; several
+questions fill in on one card, page by page, and the last page's key
+submits them all. Skip presses Esc, which agy
 records as `User Skipped`, never while the answer field is open, where Esc
 goes back. Esc skips the question on screen, which stays the first while
 the card turns its pages, so a form's Skip marks the page the card shows and
@@ -994,8 +997,8 @@ no Attach at all.
     conversations; its working directory, so the absolute paths it records
     are shown as they are; its plan artifacts, shown as a file write;
     `/rewind`; the dialogs no capture shows that the card refuses (Tab on
-    an `always allow` row, a typed answer on a multi-select question, Esc
-    on the trust prompt), which stay in the terminal;
+    an `always allow` row, Esc on the trust prompt), which stay in the
+    terminal;
     `multi_replace_file_content`'s edit, which no capture shows either and
     the card answers as any edit, on the inference that it asks in the same
     `Pending edit` dialog; and
