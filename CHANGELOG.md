@@ -59,6 +59,7 @@ Entries reference the pull request that made the change.
 - Replace Chat's Composer with a progress indicator as soon as an Agent reports Blocked, until Chat has read the dialog for its card, instead of showing the Composer for a moment first, as before Antigravity CLI's trust prompt. (#644)
 - Keep Chat's messages and its Collapse Steps and Jump to Latest buttons clear of the Workspace terminals handle, instead of the handle covering their right-hand ends, such as a tool's check mark or Allowed. (#644)
 - Open the Workspace terminals handle, and pick from the panel it or the header's Terminals menu opens, on an Agent Ended, Terminal Ended or Session Ended page, instead of the page's dimmed background taking every tap and drag. (#644)
+- On herdr-core Hosts, an Agent started by typing its command in a Terminal shows the directory it runs in, in its Agents row and its header, rather than the one the Terminal started in. Its Workspace still follows where the Terminal started. (#644)
 
 ## [0.1.18]
 

@@ -301,8 +301,8 @@ enum HerdrCoreOrganization {
         directory.isEmpty ? "No directory" : RemoteHostPath.lastComponent(of: directory)
     }
 
-    /// Where the desktop app looks for a Terminal's folder: what runs there
-    /// now, else where it launched.
+    /// Where the desktop app looks for a Terminal's folder, and an Agent's
+    /// directory: what runs there now, else where it launched.
     private static func liveDirectory(of record: HerdrCoreTerminalRecord) -> String {
         if let directory = record.foreground?.cwd, !directory.isEmpty { return directory }
         return record.cwd
@@ -325,7 +325,11 @@ enum HerdrCoreOrganization {
     }
 
     /// An Agent with no title yet reads as its program, so its first row says
-    /// something before the program sets one.
+    /// something before the program sets one. Its directory is where its program
+    /// runs, as on herdr TUI, not where its Terminal started: the core never
+    /// updates a record's `cwd`, so an Agent typed after a `cd` would read the
+    /// shell's starting folder. That `cwd` stands in only until a foreground
+    /// sample. The Agent's Workspace still follows where its Terminal started.
     private static func agentInfo(
         _ record: HerdrCoreTerminalRecord, agent: HerdrCoreAgent, tabID: String, workspaceID: String
     ) -> AgentInfo {
@@ -333,7 +337,8 @@ enum HerdrCoreOrganization {
         let stripped = terminalTitle.map(TerminalTitleGlyphs.strip).flatMap { $0.isEmpty ? nil : $0 }
         return AgentInfo(
             agentStatus: agent.status, focused: false, paneID: record.address, revision: 0, tabID: tabID,
-            terminalID: record.address, workspaceID: workspaceID, agent: agent.kind, cwd: record.cwd,
+            terminalID: record.address, workspaceID: workspaceID, agent: agent.kind,
+            cwd: liveDirectory(of: record),
             foregroundCwd: record.foreground?.cwd, name: record.name, terminalTitle: terminalTitle,
             terminalTitleStripped: stripped ?? AgentNotificationIdentity.kindLabel(agent.kind),
             tokens: record.labels)
