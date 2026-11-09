@@ -276,8 +276,9 @@ final class AgentChatStore {
     @ObservationIgnored private var pickGuardSends: Set<UUID> = []
     @ObservationIgnored private var pickGuardTurnEnd: Date?
     /// When the last read began that reached the end of what the source holds. Only
-    /// such a read shows a message is not there.
-    @ObservationIgnored private var pickGuardReadStart: Date?
+    /// such a read shows a message is not there, or which turn is the open one
+    /// (`hasReadSinceTurnStarted`).
+    @ObservationIgnored private var readToEndStartedAt: Date?
     /// Candidates the user has read, the only ones a confirmation may name.
     @ObservationIgnored private var previewedCandidates: Set<String> = []
     /// Why the last check of the Agent's process bound nothing.
@@ -697,6 +698,18 @@ final class AgentChatStore {
         return true
     }
 
+    /// Whether a read that reached the end of the transcript began after
+    /// herdr last reported a turn starting, so the open turn it shows is the
+    /// running one; with no turn reported, whether any did. A prompt typed in
+    /// the terminal starts a turn that Chat reads seconds later. This takes a
+    /// prompt to be written by the time herdr reports its turn, as Antigravity
+    /// CLI's `USER_INPUT` was when herdr first had its session (live).
+    var hasReadSinceTurnStarted: Bool {
+        guard let read = readToEndStartedAt else { return false }
+        guard let turnStartedAt else { return true }
+        return read >= turnStartedAt
+    }
+
     /// A prompt was just sent: the Agent is about to write, and may start a
     /// session Chat has not seen.
     func noteSent() {
@@ -954,7 +967,7 @@ final class AgentChatStore {
         if polled || opened, case .following = snapshot.phase, snapshot.readFailure == nil {
             lastReadStartedAt = readStart
             lastAppliedRead = read
-            if !snapshot.hasUnreadRecords { pickGuardReadStart = readStart }
+            if !snapshot.hasUnreadRecords { readToEndStartedAt = readStart }
         }
         matchSends()
         // Persist the transcript before optional journal requests can wait
@@ -1391,7 +1404,7 @@ final class AgentChatStore {
         // the one the Agent is in now.
         sessionConcern = nil
         lastReadStartedAt = nil
-        pickGuardReadStart = nil
+        readToEndStartedAt = nil
         engine = target.map(makeEngine)
         restored = false
         appliedRevision = nil
@@ -1580,7 +1593,7 @@ final class AgentChatStore {
     /// of its start since the send may have left it before the window.
     private func judgePickGuard() {
         guard followsPick, let turnEnd = pickGuardTurnEnd, !pickGuardSends.isEmpty,
-            let read = pickGuardReadStart, read >= turnEnd.addingTimeInterval(timing.pickGuardSettle)
+            let read = readToEndStartedAt, read >= turnEnd.addingTimeInterval(timing.pickGuardSettle)
         else { return }
         var missing = false
         for send in sends where pickGuardSends.contains(send.id) {

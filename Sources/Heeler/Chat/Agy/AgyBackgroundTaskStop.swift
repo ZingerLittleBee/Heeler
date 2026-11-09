@@ -59,6 +59,9 @@ struct AgyBackgroundTaskStop {
         /// transcript shows may be the one before.
         var awaitsRecord: @MainActor () -> Bool
         var openTurn: @MainActor () -> OpenTurn
+        /// Whether the open turn read is the running one
+        /// (`AgentChatStore.hasReadSinceTurnStarted`).
+        var isCurrent: @MainActor () -> Bool
         /// `AgentChatStore.readAgain(within:until:)`.
         var readAgain: @MainActor (Duration, @MainActor () -> Bool) async -> Bool
     }
@@ -68,6 +71,14 @@ struct AgyBackgroundTaskStop {
     /// while a send of Chat's waits for its record. Only a send whose echo
     /// still waits can be that turn's prompt; an overdue one would otherwise
     /// keep Stop from every later turn.
+    ///
+    /// A prompt from elsewhere (the terminal page, typing in the terminal,
+    /// another client) starts a turn Chat reads seconds later, while the
+    /// turn before it, ended by an Esc agy records nothing for, still reads
+    /// as open with its commands running. So unless the open turn at the tap
+    /// is current, Chat reads again first, and ends commands only of a turn
+    /// that is then current and still the tapped one; one Chat cannot place
+    /// gets nothing pressed and a notice of what may still run.
     ///
     /// agy writes the step that makes a command a task as it lists the task
     /// under the box, but Chat's read can bring it seconds later, after a
@@ -81,17 +92,33 @@ struct AgyBackgroundTaskStop {
     ) -> ChatStopFollowThrough? {
         guard !transcript.awaitsRecord() else { return nil }
         let tapped = transcript.openTurn()
+        let tappedIsCurrent = transcript.isCurrent()
         func stop(_ turn: OpenTurn) -> AgyBackgroundTaskStop? {
             guard turn.isSameTurn(as: tapped) else { return nil }
             return AgyBackgroundTaskStop(
                 commands: turn.commands, io: io, mayContinue: mayContinue, timing: timing, clock: clock)
         }
-        if let stop = stop(tapped) { return { await stop.run() } }
+        if let stop = stop(tapped) {
+            if tappedIsCurrent { return { await stop.run() } }
+            return {
+                _ = await transcript.readAgain(timing.transcript) { transcript.isCurrent() }
+                guard transcript.isCurrent() else { return Self.notice(for: tapped.commands.filter(\.isStoppable)) }
+                // The Esc stopped a turn Chat had not read.
+                guard transcript.openTurn().isSameTurn(as: tapped) else { return nil }
+                return await stop.run()
+            }
+        }
         return {
             // Only a screen that shows no task spares the wait; one that
             // could not be read says nothing of what runs.
             if let screen = try? await io.readScreen(), !AgyScreen(screen).showsRunningTasks { return nil }
-            _ = await transcript.readAgain(timing.transcript) { stop(transcript.openTurn()) != nil }
+            _ = await transcript.readAgain(timing.transcript) {
+                guard transcript.isCurrent() else { return false }
+                let turn = transcript.openTurn()
+                return stop(turn) != nil || !turn.isSameTurn(as: tapped)
+            }
+            // A read begun before the turn's prompt can bring the turn before.
+            guard transcript.isCurrent() else { return nil }
             return await stop(transcript.openTurn())?.run()
         }
     }
@@ -387,6 +414,7 @@ extension AgyBackgroundTaskStop.Transcript {
                     conversation: chat.conversationGeneration, firstEntry: transcript.turns.last?.firstEntryID,
                     commands: transcript.openTurnBackgroundCommands)
             },
+            isCurrent: { chat.hasReadSinceTurnStarted },
             readAgain: { await chat.readAgain(within: $0, until: $1) })
     }
 }

@@ -687,6 +687,68 @@ struct AgyBackgroundTaskStopTests {
         #expect(pane.typed.isEmpty)
     }
 
+    /// The open turn Chat read at the tap may be one an Esc that writes
+    /// nothing ended, with a prompt from the terminal since: Chat reads again,
+    /// and the turn that read shows is another, which the Esc stopped. The
+    /// earlier turn's command, which Stop's notice may already have named,
+    /// keeps running.
+    @Test func aCommandOfATurnAPromptFromElsewhereEndedIsLeftRunning() async throws {
+        let later = AgyBackgroundTaskStop.OpenTurn(conversation: 1, firstEntry: ChatEntryID("agy:50:user"), commands: [])
+        let chat = ChatReads(Self.turn(1, [Self.command("sleep 60", id: 45)]), then: later, current: false)
+        let pane = try Self.corePane()
+
+        #expect(await Self.tap(chat, pane) == .some(nil))
+        #expect(pane.typed.isEmpty)
+        #expect(chat.readsAgain == 1)
+    }
+
+    /// No read that could place the open turn comes: nothing is pressed,
+    /// and Stop says what may still run.
+    @Test func aTapChatCannotPlaceLeavesItsCommandsWithANotice() async throws {
+        let sleep = Self.command("sleep 60", id: 45)
+        let chat = ChatReads(Self.turn(1, [sleep]), then: nil, current: false, readMakesCurrent: false)
+        let pane = try Self.corePane()
+
+        #expect(await Self.tap(chat, pane) == .some(AgyBackgroundTaskStop.notice(for: [sleep])))
+        #expect(pane.typed.isEmpty)
+        #expect(chat.readsAgain == 1)
+    }
+
+    /// The read again shows the tapped turn still open: its own command is
+    /// ended with the commands known at the tap.
+    @Test func aNotCurrentTapStillEndsItsOwnTurnsCommands() async throws {
+        let chat = ChatReads(Self.turn(1, [Self.command("sleep 60", id: 45)]), then: nil, current: false)
+        let pane = try Self.corePane()
+
+        #expect(await Self.tap(chat, pane) == .some(nil))
+        #expect(pane.typed == ["paste /tasks", "enter", "k", "esc"])
+        #expect(chat.readsAgain == 1)
+    }
+
+    /// With no command known at the tap, a read that places the open turn
+    /// as another ends the wait at once, and with it the send hold.
+    @Test func aStaleTapEndsItsWaitAtOnce() async throws {
+        let later = AgyBackgroundTaskStop.OpenTurn(conversation: 1, firstEntry: ChatEntryID("agy:50:user"), commands: [])
+        let chat = ChatReads(Self.turn(1), then: later, current: false)
+        let pane = try Self.corePane()
+
+        #expect(await Self.tap(chat, pane) == .some(nil))
+        #expect(chat.wasEnough == true)
+        #expect(pane.typed.isEmpty)
+    }
+
+    /// A read begun before the running turn's prompt can bring the earlier
+    /// turn's late task: not current, it ends nothing.
+    @Test func aLateCommandOfATurnChatCannotPlaceIsLeftRunning() async throws {
+        let chat = ChatReads(
+            Self.turn(1), then: Self.turn(1, [Self.command("sleep 60", id: 45)]), current: false,
+            readMakesCurrent: false)
+        let pane = try Self.corePane()
+
+        #expect(await Self.tap(chat, pane) == .some(nil))
+        #expect(pane.typed.isEmpty)
+    }
+
     /// A send of Chat's still waiting for its record: the open turn may be
     /// the one before, so Stop builds nothing, whatever comes later.
     @Test func aSendAwaitingItsRecordBuildsNothing() async throws {
@@ -787,26 +849,41 @@ struct AgyBackgroundTaskStopTests {
 }
 
 /// Chat's conversation as the follow-through reads it: the open turn at the
-/// tap, and what a read again brings, or nothing new.
+/// tap, and what a read again brings, or nothing new. The open turn read is
+/// current at the tap unless `current` says not; a read again makes it so
+/// unless `readMakesCurrent` says not.
 @MainActor
 private final class ChatReads {
     var awaitsRecord = false
     private(set) var readsAgain = 0
+    /// What the follow-through's `until` said once the last read again ended.
+    private(set) var wasEnough: Bool?
     private var turn: AgyBackgroundTaskStop.OpenTurn
     private let next: AgyBackgroundTaskStop.OpenTurn?
+    private var isCurrent: Bool
+    private let readMakesCurrent: Bool
 
-    init(_ turn: AgyBackgroundTaskStop.OpenTurn, then next: AgyBackgroundTaskStop.OpenTurn?) {
+    init(
+        _ turn: AgyBackgroundTaskStop.OpenTurn, then next: AgyBackgroundTaskStop.OpenTurn?, current: Bool = true,
+        readMakesCurrent: Bool = true
+    ) {
         self.turn = turn
         self.next = next
+        isCurrent = current
+        self.readMakesCurrent = readMakesCurrent
     }
 
     var transcript: AgyBackgroundTaskStop.Transcript {
         AgyBackgroundTaskStop.Transcript(
             awaitsRecord: { [self] in awaitsRecord }, openTurn: { [self] in turn },
+            isCurrent: { [self] in isCurrent },
             readAgain: { [self] _, isEnough in
                 readsAgain += 1
                 if let next { turn = next }
-                return next != nil || isEnough()
+                if readMakesCurrent { isCurrent = true }
+                let enough = isEnough()
+                wasEnough = enough
+                return next != nil || enough
             })
     }
 }

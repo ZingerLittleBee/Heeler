@@ -305,13 +305,20 @@ Open in Terminal. The commands are the transcript's open turn's as Stop is
 tapped, since agy writes nothing on Esc, and none while a send of Chat's
 waits for its record, when the open turn it shows may be the one before.
 An overdue send does not count: its echo clock stops while agy works, so
-it ran out on a send no turn began with. agy names a command's task only
-in the step it writes 10 s after the command starts, and a transcript read
-bringing that step took up to 5.8 s live, so a tap can come before Chat
-knows the command. When it knows none, the follow-through reads the screen
-after the Esc and, unless that read shows no task (its row under the box
-or the footer's task count), wakes the transcript read and waits up to 8 s
-for the tapped turn's commands, never another turn's. A Composer send,
+it ran out on a send no turn began with. A prompt from elsewhere (the
+terminal, another client) starts a turn Chat reads seconds later, while a
+turn an Esc ended still reads as open with its commands running. So unless
+a transcript read that reached its end began after herdr last reported the
+turn starting, Chat reads again first, and follows through only once such
+a read shows the tapped turn still open; a turn it cannot place gets
+nothing pressed and a notice of what may still run. agy names a command's
+task only in the step it writes 10 s after the command starts, and a
+transcript read bringing that step took up to 5.8 s live, so a tap can
+come before Chat knows the command. When it knows none, the follow-through
+reads the screen after the Esc and, unless that read shows no task (its
+row under the box or the footer's task count), wakes the transcript read
+and waits up to 8 s for the tapped turn's commands, never another turn's,
+ending the wait once such a read shows another turn open. A Composer send,
 from Chat or the terminal page in any window, waits while the
 follow-through reads and types, since it would land between two of its
 keys: the keys queue is the Agent's, as the Composer is. Its notice ends

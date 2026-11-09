@@ -73,6 +73,25 @@ struct AgentChatStoreTests {
         var now = Date(timeIntervalSince1970: 1_791_266_400)
     }
 
+    /// Once armed, holds the next file status until its gate opens, so a
+    /// read can be under way while the Agent changes.
+    private final class HeldStatus: @unchecked Sendable {
+        private let lock = NSLock()
+        private var gate: ScriptedTransportCallGate?
+
+        func arm(_ gate: ScriptedTransportCallGate) {
+            lock.withLock { self.gate = gate }
+        }
+
+        func pass() async {
+            let gate: ScriptedTransportCallGate? = lock.withLock {
+                defer { self.gate = nil }
+                return self.gate
+            }
+            await gate?.waitUntilOpen()
+        }
+    }
+
     @MainActor
     private struct Fixture {
         let files = VirtualHostFiles()
@@ -81,8 +100,10 @@ struct AgentChatStoreTests {
         let server: Server
         let store: AgentChatStore
 
-        /// - Parameter adapter: how the conversation is read; nil reads
-        ///   `NumberedChatReducer` transcript files.
+        /// - Parameters:
+        ///   - adapter: how the conversation is read; nil reads
+        ///     `NumberedChatReducer` transcript files.
+        ///   - heldStatus: holds a file status the store asks for once armed.
         init(
             session: String?, program: ChatProgram = .claude,
             limits: TranscriptFollower.Limits = TranscriptFollower.Limits(),
@@ -91,18 +112,30 @@ struct AgentChatStoreTests {
             adapter: ChatTranscriptAdapter? = nil,
             cachedSession: @escaping @Sendable (Agent) async -> AgentSessionInfo? = { _ in nil },
             screen: BlockedScreenIO = .unavailable,
-            processInfo: (@Sendable () async throws -> PaneProcessInfo)? = nil
+            processInfo: (@Sendable () async throws -> PaneProcessInfo)? = nil,
+            heldStatus: HeldStatus? = nil
         ) {
             let agent = AgentChatStoreTests.agent(session: session, program: program)
             let server = Server(agent)
             let clock = clock
             self.server = server
+            var hostFiles = files.hostFiles()
+            if let heldStatus {
+                let files = hostFiles
+                hostFiles = ChatHostFiles(
+                    status: { path in
+                        await heldStatus.pass()
+                        return try await files.status(path)
+                    },
+                    list: files.list, read: files.read, home: files.home, queryOpenCode: files.queryOpenCode,
+                    accountDirectories: files.accountDirectories)
+            }
             store = AgentChatStore(
                 agentID: ConsoleAgent.ID(hostID: AgentChatStoreTests.host, paneID: agent.paneID),
                 agent: agent, program: program,
                 source: AgentChatSource(
                     hostID: AgentChatStoreTests.host, socketLocation: .defaultSession,
-                    files: files.hostFiles(), agentInfo: { try await server.read() }, cache: cache,
+                    files: hostFiles, agentInfo: { try await server.read() }, cache: cache,
                     adapter: adapter ?? NumberedChatReducer.adapter(limits: limits, wantsFirstLine: program == .codex),
                     cachedSession: cachedSession, processInfo: processInfo, screen: screen),
                 timing: timing, now: { clock.now })
@@ -443,6 +476,42 @@ struct AgentChatStoreTests {
 
         #expect(await fixture.store.readAgain(within: .seconds(5)))
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+    }
+
+    /// Antigravity CLI's Stop ends a turn's commands only once a read that
+    /// reached the transcript's end began after herdr reported that turn
+    /// starting. One begun before can show the turn before, which a prompt
+    /// from the terminal has since replaced.
+    @Test func aReadBegunBeforeATurnStartsDoesNotCoverIt() async throws {
+        let held = HeldStatus()
+        let fixture = Fixture(session: Self.first, heldStatus: held)
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        #expect(!fixture.store.hasReadSinceTurnStarted, "nothing read yet")
+        await fixture.store.step()
+        #expect(fixture.store.hasReadSinceTurnStarted)
+
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        let gate = ScriptedTransportCallGate()
+        held.arm(gate)
+        let begunBefore = Task { await fixture.store.step() }
+        await gate.waitForEntry()
+        fixture.advance(1)
+        fixture.store.agentDidChange(Self.agent(session: Self.first, status: .working))
+        #expect(!fixture.store.hasReadSinceTurnStarted)
+        await gate.open()
+        await begunBefore.value
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3), "the read reached the end")
+        #expect(!fixture.store.hasReadSinceTurnStarted, "the read began before the turn")
+
+        fixture.advance(1)
+        await fixture.store.step()
+        #expect(fixture.store.hasReadSinceTurnStarted)
+        fixture.advance(1)
+        fixture.store.agentDidChange(Self.agent(session: Self.first, status: .idle))
+        #expect(fixture.store.hasReadSinceTurnStarted, "an idle Agent starts no turn")
+        fixture.advance(1)
+        fixture.store.agentDidChange(Self.agent(session: Self.first, status: .working))
+        #expect(!fixture.store.hasReadSinceTurnStarted)
     }
 
     /// With no loop to read, a read again gives up at its window, unless
