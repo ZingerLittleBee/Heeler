@@ -265,18 +265,28 @@ struct ChatDeliveryPolicyTests {
     }
 
     /// While OpenCode works, herdr's Enter could answer a prompt that shows
-    /// first, so the message waits for the turn to end.
-    @Test func openCodeWorkingHoldsWithItsOwnReason() async throws {
+    /// first, so the message waits for the turn to end. A reported Working
+    /// holds before the read (`reportedWorkingHoldsBeforeTheChecks`); when
+    /// herdr reports anything else, the screen's turn holds it.
+    @Test(arguments: [ChatAgentActivity.idle, .unknown])
+    func openCodeWorkingHoldsWithItsOwnReason(activity: ChatAgentActivity) async throws {
         let working = try ScreenFixture.screen("opencode-08-working-180")
+        let reads = Reads()
         let preflight = try #require(
-            ComposerDeliveryPolicy.chat(rules: Self.openCodeRules, activity: { .working }, readScreen: { working })
-                .preflight)
+            ComposerDeliveryPolicy.chat(
+                rules: Self.openCodeRules, activity: { activity },
+                readScreen: {
+                    reads.count += 1
+                    return working
+                }
+            ).preflight)
 
         #expect(
             await preflight("hello")
                 == .inputNotReady(
                     "The Agent isn't taking messages: OpenCode is working. Send once it's idle, or steer from the terminal."
                 ))
+        #expect(reads.count == 1)
     }
 
     /// Antigravity CLI's command dialog replaced this pending command row
