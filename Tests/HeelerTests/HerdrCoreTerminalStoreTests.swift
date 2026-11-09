@@ -242,7 +242,9 @@ struct HerdrCoreTerminalStoreTests {
                 activity: composition.activity)
             let controller = UIHostingController(
                 rootView: view.environment(
-                    \.agentSceneRouting, AgentSceneRouting(directory: directory, sceneID: sceneID)))
+                    \.agentSceneRouting, AgentSceneRouting(directory: directory, sceneID: sceneID))
+                    // A hosting controller has no SwiftUI scene to activate the Console's layout.
+                    .environment(\.scenePhase, .active))
             if regularWidth { controller.traitOverrides.horizontalSizeClass = .regular }
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: regularWidth ? 1180 : 402, height: regularWidth ? 820 : 874),
