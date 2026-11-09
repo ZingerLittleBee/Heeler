@@ -171,6 +171,21 @@ enum ScreenFixture {
         "agy-148-nocolor-ask-question-multiselect-92x47", "agy-149-nocolor-ask-question-multiselect-toggled-92x47",
         "agy-150-nocolor-idle-after-multiselect-92x47", "agy-151-nocolor-exit-with-conversation-92x47",
         "agy-152-nocolor-trust-prompt-92x47", "agy-153-nocolor-trust-prompt-no-selected-93x45",
+        // A multi-select question's `Write-in...` field, read through tmux
+        // rather than herdr, whose 16 colors come as SGR 3x and 9x.
+        "agy-154-ask-question-multiselect-120x40", "agy-155-ask-question-multiselect-checked-120x40",
+        "agy-156-ask-question-multiselect-writein-open-checked-120x40",
+        "agy-157-ask-question-multiselect-writein-typed-checked-120x40",
+        "agy-158-ask-question-multiselect-writein-after-esc-120x40", "agy-159-working-after-multiselect-writein-120x40",
+        "agy-160-ask-question-multiselect-writein-selected-120x40",
+        "agy-161-ask-question-multiselect-writein-open-by-enter-120x40",
+        "agy-162-ask-question-multiselect-writein-alone-typed-120x40",
+        "agy-163-ask-question-multiselect-q1-of-2-checked-120x40",
+        "agy-164-ask-question-multiselect-q1-of-2-writein-open-120x40",
+        "agy-165-ask-question-q2-after-empty-writein-enter-120x40",
+        "agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40",
+        "agy-167-ask-question-q2-after-multiselect-writein-120x40",
+        "agy-168-idle-after-writein-and-skipped-question-120x40",
     ]
 
     /// The Claude and Codex captures that the dialog and input-box suites walk.

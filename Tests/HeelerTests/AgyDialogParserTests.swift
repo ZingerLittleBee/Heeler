@@ -68,6 +68,19 @@ struct AgyDialogParserTests {
         "agy-149-nocolor-ask-question-multiselect-toggled-92x47": .agyQuestion,
         "agy-152-nocolor-trust-prompt-92x47": .agyWorkspaceTrust,
         "agy-153-nocolor-trust-prompt-no-selected-93x45": .agyWorkspaceTrust,
+        "agy-154-ask-question-multiselect-120x40": .agyQuestion,
+        "agy-155-ask-question-multiselect-checked-120x40": .agyQuestion,
+        "agy-156-ask-question-multiselect-writein-open-checked-120x40": .agyQuestion,
+        "agy-157-ask-question-multiselect-writein-typed-checked-120x40": .agyQuestion,
+        "agy-158-ask-question-multiselect-writein-after-esc-120x40": .agyQuestion,
+        "agy-160-ask-question-multiselect-writein-selected-120x40": .agyQuestion,
+        "agy-161-ask-question-multiselect-writein-open-by-enter-120x40": .agyQuestion,
+        "agy-162-ask-question-multiselect-writein-alone-typed-120x40": .agyQuestion,
+        "agy-163-ask-question-multiselect-q1-of-2-checked-120x40": .agyQuestion,
+        "agy-164-ask-question-multiselect-q1-of-2-writein-open-120x40": .agyQuestion,
+        "agy-165-ask-question-q2-after-empty-writein-enter-120x40": .agyQuestion,
+        "agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40": .agyQuestion,
+        "agy-167-ask-question-q2-after-multiselect-writein-120x40": .agyQuestion,
     ]
 
     @Test(arguments: ScreenFixture.agy)
@@ -305,6 +318,74 @@ struct AgyDialogParserTests {
         #expect(typed.focus == DialogFocusState(focusedOrdinal: 3, inputText: "a small hamster", feedbackOrdinal: 3))
         #expect(typed.fingerprint == question.fingerprint)
         #expect(typed.hasTypedText)
+    }
+
+    /// agy-154 to agy-162: a multi-select question's `Write-in...` opens
+    /// `Your answer:` by its digit or by Enter on the row, under the boxes,
+    /// which keep their checks. Esc closes it and drops the text. None of
+    /// it changes the fingerprint.
+    @Test func readsTheMultiSelectWriteInField() throws {
+        let fresh = try Self.dialog("agy-154-ask-question-multiselect-120x40")
+        let apple = try Self.dialog("agy-155-ask-question-multiselect-checked-120x40")
+        let open = try Self.dialog("agy-156-ask-question-multiselect-writein-open-checked-120x40")
+        let typed = try Self.dialog("agy-157-ask-question-multiselect-writein-typed-checked-120x40")
+        let closed = try Self.dialog("agy-158-ask-question-multiselect-writein-after-esc-120x40")
+        let selected = try Self.dialog("agy-160-ask-question-multiselect-writein-selected-120x40")
+        let entered = try Self.dialog("agy-161-ask-question-multiselect-writein-open-by-enter-120x40")
+        let alone = try Self.dialog("agy-162-ask-question-multiselect-writein-alone-typed-120x40")
+
+        #expect(fresh.progress == "Question 1/1")
+        #expect(fresh.title == "Which fruits do you like?")
+        #expect(fresh.options.map(\.label) == ["apple", "banana", "cherry", "Write-in..."])
+        #expect(fresh.options.map(\.isChecked) == [false, false, false, nil])
+        #expect(fresh.options.last?.input == .placeholder("Write-in..."))
+        #expect(fresh.isMultiSelect)
+        #expect(fresh.focus == DialogFocusState(focusedOrdinal: 1))
+        #expect(apple.focus == DialogFocusState(focusedOrdinal: 1, checked: [1]))
+        #expect(open.focus == DialogFocusState(focusedOrdinal: 4, checked: [1], feedbackOrdinal: 4))
+        #expect(open.isMultiSelect)
+        #expect(!open.hasTypedText)
+        #expect(
+            typed.focus == DialogFocusState(focusedOrdinal: 4, checked: [1], inputText: "mango", feedbackOrdinal: 4))
+        #expect(typed.hasTypedText)
+        #expect(closed.focus == DialogFocusState(focusedOrdinal: 4, checked: [1]))
+        #expect(selected.focus == DialogFocusState(focusedOrdinal: 4))
+        #expect(entered.focus == DialogFocusState(focusedOrdinal: 4, feedbackOrdinal: 4))
+        #expect(alone.focus == DialogFocusState(focusedOrdinal: 4, inputText: "mango", feedbackOrdinal: 4))
+        for dialog in [apple, open, typed, closed, selected, entered, alone] {
+            #expect(dialog.options.map(\.label) == fresh.options.map(\.label))
+            #expect(dialog.options.map(\.role) == fresh.options.map(\.role))
+            #expect(dialog.fingerprint == fresh.fingerprint)
+        }
+    }
+
+    /// agy-163 to agy-167: on the first of two pages the field reads as on
+    /// a single question. Enter in it turns to the second page, whether it
+    /// holds text or not.
+    @Test func readsTheMultiSelectWriteInFieldOnAPageOfTwo() throws {
+        let first = try Self.dialog("agy-163-ask-question-multiselect-q1-of-2-checked-120x40")
+        let open = try Self.dialog("agy-164-ask-question-multiselect-q1-of-2-writein-open-120x40")
+        let typed = try Self.dialog("agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40")
+        let second = try Self.dialog("agy-167-ask-question-q2-after-multiselect-writein-120x40")
+        let afterEmpty = try Self.dialog("agy-165-ask-question-q2-after-empty-writein-enter-120x40")
+
+        #expect(first.progress == "Question 1/2")
+        #expect(first.isMultiSelect)
+        #expect(first.options.map(\.label) == ["apple", "banana", "cherry", "Write-in..."])
+        #expect(first.focus == DialogFocusState(focusedOrdinal: 1, checked: [1]))
+        #expect(open.focus == DialogFocusState(focusedOrdinal: 4, checked: [1], feedbackOrdinal: 4))
+        #expect(
+            typed.focus == DialogFocusState(focusedOrdinal: 4, checked: [1], inputText: "mango", feedbackOrdinal: 4))
+        for dialog in [open, typed] {
+            #expect(dialog.fingerprint == first.fingerprint)
+        }
+        for page in [second, afterEmpty] {
+            #expect(page.progress == "Question 2/2")
+            #expect(page.title == "Which size?")
+            #expect(!page.isMultiSelect)
+            #expect(page.options.map(\.label) == ["small", "large", "Write-in..."])
+            #expect(page.fingerprint != first.fingerprint)
+        }
     }
 
     // MARK: Trust

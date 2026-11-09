@@ -1,0 +1,25 @@
+
+
+      [38;5;179m▄[38;5;208m[48;5;208m▀[38;5;203m[48;5;209m▀[49m▄[39m        [1m[94mAntigravity CLI 1.5.3[0m
+     [38;5;149m[48;5;113m▀[38;5;143m[48;5;107m▀[38;5;173m[48;5;173m▀[38;5;209m[48;5;209m▀[38;5;203m[48;5;167m▀▀[39m[49m       [90mdeveloper (Google AI Ultra)[39m
+    [38;5;107m[48;5;113m▀[38;5;71m[48;5;72m▀[38;5;72m[48;5;68m▀[38;5;67m[49m▀[38;5;103m▀[38;5;98m[48;5;68m▀[38;5;97m[48;5;62m▀[38;5;132m[48;5;97m▀[39m[49m      [90mGemini 4 Argon (Medium)[39m
+   [38;5;78m▄[48;5;74m▀[38;5;73m▀[39m[49m    [38;5;68m[48;5;69m▀▀[49m▄[39m     [90m~/heeler-probe/question[39m
+  [38;5;75m▄[38;5;79m[48;5;75m▀[38;5;75m[49m▀[39m      [38;5;69m▀[48;5;69m▀[49m▄[39m
+
+[90m────────────────────────────────────────────────────────────[39m
+[1m[34m> Use your question tool to ask me which fruits I like, allowing several answers: apple, banana, cherry.[0m
+
+[1m[33m?[0m Which fruits do you like?
+
+[1m[33mQuestion[0m
+[90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[1m[39mQuestion 1/1: Which fruits do you like?[0m
+
+  1. [x] apple
+  2. [ ] banana
+  3. [ ] cherry
+[94m> 4. Write-in...[39m
+
+  [1m[94m↑/↓[0m[90m Navigate · [1m[94mspace[0m[90m Toggle · [1m[94menter[0m[90m Write-in · [1m[94mesc[0m[90m Skip[39m
+[90mesc to cancel[39m                                                                                    [2mGemini 4 Argon · medium

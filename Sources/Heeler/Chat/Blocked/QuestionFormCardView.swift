@@ -116,7 +116,9 @@ struct QuestionFormCard: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !question.isMultiSelect {
+            // Antigravity CLI's multi-select page takes one too: its
+            // `Write-in...` goes with the checks.
+            if !question.isMultiSelect || form.writesInWithSelection {
                 BlockedTextField(
                     placeholder: "Type your own answer",
                     text: Binding(get: { draft.text }, set: { draft.type($0) }), isFocused: $isTextFocused)

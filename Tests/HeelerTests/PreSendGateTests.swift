@@ -114,6 +114,8 @@ struct PreSendGateTests {
             "agy-130-nocolor-back-to-default-92x47", "agy-133-nocolor-after-help-92x47",
             "agy-138-nocolor-idle-after-markdown-reply-92x47", "agy-143-nocolor-idle-after-file-edit-declined-92x47",
             "agy-150-nocolor-idle-after-multiselect-92x47",
+            // Read through tmux.
+            "agy-168-idle-after-writein-and-skipped-question-120x40",
         ]
         let screen = try ScreenFixture.screen(stem)
         let state = InputBoxStateDetector.detect(screen, program: .agy)

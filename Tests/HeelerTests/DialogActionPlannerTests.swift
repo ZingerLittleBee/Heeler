@@ -204,6 +204,10 @@ struct DialogActionPlannerTests {
         #expect(throws: DialogPlanError.unsupported("Heeler does not type into a multi-select question's Other row.")) {
             try plan(.respond(ordinal: 4, text: "Teal"), stem)
         }
+        // Only Antigravity CLI's set takes a written answer.
+        #expect(throws: DialogPlanError.unsupported("Heeler does not type into a multi-select question's Other row.")) {
+            try plan(.submitSelection([1], text: "Teal"), stem)
+        }
         #expect(throws: DialogPlanError.unsupported("Only a multi-select question takes a set of answers.")) {
             try plan(.submitSelection([1]), "claude-11-c4-q2")
         }
@@ -763,9 +767,10 @@ struct DialogActionPlannerTests {
     func planShapes(stem: String) throws {
         let result = BlockedDialogParser.parse(try ScreenFixture.screen(stem), program: ScreenFixture.program(stem))
         guard let dialog = result.dialog else { return }
+        let answers = Set(dialog.options.filter { $0.role == .answer }.map(\.ordinal))
         var actions: [DialogAction] = [
-            .dismiss, .expandQuestions, .skipQuestion, .approvePlan(note: "note"),
-            .submitSelection(Set(dialog.options.filter { $0.role == .answer }.map(\.ordinal))),
+            .dismiss, .expandQuestions, .skipQuestion, .approvePlan(note: "note"), .submitSelection(answers),
+            .submitSelection(answers, text: "note"), .submitSelection(dialog.focus.checked, text: "note"),
         ]
         for option in dialog.options {
             actions += [
@@ -870,6 +875,37 @@ struct DialogExpectationTests {
         #expect(try meets(.page("Question 2/2"), "agy-45-ask-question-multi-q2-120x40", first))
         #expect(try meets(.page("Question 2/2"), "agy-114-ask-question-multiselect-q1-after-enter-62x41", first))
         #expect(try !meets(.page("Question 2/2"), "agy-44-ask-question-multi-120x40", first))
+
+        // A written answer with a selection (2026-11-09, read through tmux).
+        let fresh = "agy-154-ask-question-multiselect-120x40"
+        let checked = "agy-155-ask-question-multiselect-checked-120x40"
+        let open = "agy-156-ask-question-multiselect-writein-open-checked-120x40"
+        let typed = "agy-157-ask-question-multiselect-writein-typed-checked-120x40"
+        let onRow = "agy-160-ask-question-multiselect-writein-selected-120x40"
+        let openedByEnter = "agy-161-ask-question-multiselect-writein-open-by-enter-120x40"
+        let typedAlone = "agy-162-ask-question-multiselect-writein-alone-typed-120x40"
+        let fruits = try fingerprint(fresh)
+        #expect(try meets(.checked([1]), checked, fruits))
+        #expect(try meets(.checked([1]), open, fruits))
+        #expect(try meets(.feedbackMode(ordinal: 4), open, fruits))
+        #expect(try meets(.feedbackMode(ordinal: 4), openedByEnter, fruits))
+        #expect(try !meets(.feedbackMode(ordinal: 4), fresh, fruits))
+        #expect(try !meets(.feedbackMode(ordinal: 4), onRow, fruits))
+        #expect(try !meets(.feedbackMode(ordinal: 4), typed, fruits))
+        #expect(try meets(.inputText("mango"), typed, fruits))
+        #expect(try meets(.inputText("mango"), typedAlone, fruits))
+        #expect(try !meets(.inputText("mango"), open, fruits))
+
+        let firstPage = "agy-163-ask-question-multiselect-q1-of-2-checked-120x40"
+        let pageOpen = "agy-164-ask-question-multiselect-q1-of-2-writein-open-120x40"
+        let pageTyped = "agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40"
+        let page = try fingerprint(firstPage)
+        #expect(try meets(.feedbackMode(ordinal: 4), pageOpen, page))
+        #expect(try !meets(.feedbackMode(ordinal: 4), firstPage, page))
+        #expect(try meets(.inputText("mango"), pageTyped, page))
+        #expect(try !meets(.page("Question 2/2"), pageTyped, page))
+        #expect(try meets(.page("Question 2/2"), "agy-167-ask-question-q2-after-multiselect-writein-120x40", page))
+        #expect(try meets(.page("Question 2/2"), "agy-165-ask-question-q2-after-empty-writein-enter-120x40", page))
     }
 
     /// herdr reports agy idle while a field is open, so only the dialog
@@ -882,6 +918,12 @@ struct DialogExpectationTests {
         }
         #expect(try confirms(.fingerprintChange, "agy-115-ask-question-single-after-esc-62x41", command, activity: .idle))
         #expect(try confirms(.fingerprintChange, "agy-111-perm-run-command-tab-on-no-62x41", command))
+
+        // A multi-select question's field holding text is the same dialog.
+        let fruits = try fingerprint("agy-154-ask-question-multiselect-120x40")
+        let typed = "agy-157-ask-question-multiselect-writein-typed-checked-120x40"
+        #expect(try !confirms(.fingerprintChange, typed, fruits, activity: .idle))
+        #expect(try confirms(.fingerprintChange, "agy-159-working-after-multiselect-writein-120x40", fruits))
     }
 
     @Test("A note cut off at the phone's width still meets its check")

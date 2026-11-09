@@ -399,7 +399,7 @@ final class BlockedCardStore {
         progress = .acting
         notice = nil
         // A text the dialog won't take would stop the answers part way.
-        for case .text(let text) in answers {
+        for text in answers.compactMap(\.typedText) {
             do {
                 _ = try DialogActionPlanner.fieldText(text)
             } catch {

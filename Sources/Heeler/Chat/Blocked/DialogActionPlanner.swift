@@ -190,8 +190,8 @@ private struct ClaudeDialogPlanner {
             try respond(ordinal, text: text, submitKey: "enter")
         case .approvePlan(let note):
             try approvePlan(note: note)
-        case .submitSelection(let ordinals):
-            try submitSelection(ordinals)
+        case .submitSelection(let ordinals, let text):
+            try submitSelection(ordinals, text: text)
         case .expandQuestions, .skipQuestion:
             throw .unsupported("Only Codex queues questions.")
         }
@@ -274,11 +274,13 @@ private struct ClaudeDialogPlanner {
     }
 
     /// Toggles answers by digit (focus stays put), then moves to the page's
-    /// button and presses Enter.
-    private func submitSelection(_ ordinals: Set<Int>) throws(DialogPlanError) -> DialogActionPlan {
+    /// button and presses Enter. A written answer stays in the terminal, as
+    /// `respond` leaves the page's Other row.
+    private func submitSelection(_ ordinals: Set<Int>, text: String?) throws(DialogPlanError) -> DialogActionPlan {
         guard isMultiSelect, let button = dialog.options.first(where: { $0.role == .next }) else {
             throw .unsupported("Only a multi-select question takes a set of answers.")
         }
+        guard text == nil else { throw .unsupported("Heeler does not type into a multi-select question's Other row.") }
         guard !ordinals.isEmpty else { throw .emptySelection }
         for ordinal in ordinals.sorted() {
             guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }

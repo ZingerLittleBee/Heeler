@@ -230,13 +230,76 @@ struct AgyDialogPlannerTests {
         #expect(throws: DialogPlanError.unsupported("Option 4 is not an answer Heeler can check.")) {
             try plan(.submitSelection([1, 4]), stem)
         }
-        #expect(
-            throws: DialogPlanError.unsupported("Heeler doesn't type into a multi-select question's Write-in row.")
-        ) {
+        // Enter in the field submits the checks too, so the text goes with
+        // the set rather than on its own.
+        #expect(throws: DialogPlanError.unsupported("A multi-select question takes its written answer with Submit.")) {
             try plan(.respond(ordinal: 4, text: "kiwi"), stem)
         }
         #expect(throws: DialogPlanError.unsupported("Only a multi-select question takes a set of answers.")) {
             try plan(.submitSelection([1]), "agy-41-ask-question-single-120x40")
+        }
+        #expect(throws: DialogPlanError.unsupported("Only a multi-select question takes a set of answers.")) {
+            try plan(.submitSelection([], text: "kiwi"), "agy-41-ask-question-single-120x40")
+        }
+    }
+
+    /// A written answer goes in last: the digits of the checks that must
+    /// change, each checked, then `Write-in...`'s digit, which opens `Your
+    /// answer:` with the checks kept, the paste, checked, since Enter in an
+    /// empty field would submit the checks alone, and Enter, which submits
+    /// both (`A1: apple, mango`) or turns the page.
+    @Test func aSelectionWithAWrittenAnswerOpensTheFieldLast() throws {
+        let fruits = "agy-154-ask-question-multiselect-120x40"
+        let writeIn: [DialogStep] = [
+            .keys(["4"]), .expect(.feedbackMode(ordinal: 4)), .paste("mango"), .expect(.inputText("mango")),
+            .keys(["enter"]),
+        ]
+
+        #expect(
+            try plan(.submitSelection([1], text: "mango"), fruits)
+                == Self.plan([.keys(["1"]), .expect(.checked([1]))] + writeIn))
+        #expect(try plan(.submitSelection([], text: "mango"), fruits) == Self.plan(writeIn))
+        // The text is trimmed, as the field takes it.
+        #expect(try plan(.submitSelection([], text: "  mango "), fruits) == Self.plan(writeIn))
+        // agy-155 has apple checked from the terminal.
+        #expect(
+            try plan(.submitSelection([], text: "mango"), "agy-155-ask-question-multiselect-checked-120x40")
+                == Self.plan([.keys(["1"]), .expect(.checked([]))] + writeIn))
+        // agy-163 is the first of two pages, apple checked.
+        let firstPage = "agy-163-ask-question-multiselect-q1-of-2-checked-120x40"
+        #expect(
+            try plan(.submitSelection([1], text: "mango"), firstPage)
+                == Self.plan(writeIn + [.expect(.page("Question 2/2"))]))
+        #expect(
+            try plan(.submitSelection([1, 2], text: "mango"), firstPage)
+                == Self.plan([.keys(["2"]), .expect(.checked([1, 2]))] + writeIn + [.expect(.page("Question 2/2"))]))
+        // An empty field already open takes the text without the digit.
+        let open = "agy-156-ask-question-multiselect-writein-open-checked-120x40"
+        let pageOpen = "agy-164-ask-question-multiselect-q1-of-2-writein-open-120x40"
+        #expect(
+            try plan(.submitSelection([1], text: "mango"), open)
+                == Self.plan([.paste("mango"), .expect(.inputText("mango")), .keys(["enter"])]))
+        #expect(
+            try plan(.submitSelection([1], text: "mango"), pageOpen)
+                == Self.plan([
+                    .paste("mango"), .expect(.inputText("mango")), .keys(["enter"]), .expect(.page("Question 2/2")),
+                ]))
+    }
+
+    @Test func aWrittenAnswerWithASelectionRefusesWhatItCantSend() throws {
+        let fruits = "agy-154-ask-question-multiselect-120x40"
+        let open = "agy-156-ask-question-multiselect-writein-open-checked-120x40"
+        let typed = "agy-157-ask-question-multiselect-writein-typed-checked-120x40"
+
+        // With the field open, a digit for another check would be typed.
+        #expect(throws: Self.answerFieldOpen) { try plan(.submitSelection([1, 2], text: "mango"), open) }
+        #expect(throws: Self.answerFieldOpen) { try plan(.submitSelection([1]), open) }
+        #expect(throws: DialogPlanError.textFieldNotEmpty) { try plan(.submitSelection([1], text: "kiwi"), typed) }
+        #expect(throws: DialogPlanError.emptySelection) { try plan(.submitSelection([], text: nil), fruits) }
+        #expect(throws: DialogPlanError.emptyText) { try plan(.submitSelection([1], text: "  "), fruits) }
+        #expect(throws: DialogPlanError.multilineText) { try plan(.submitSelection([1], text: "mango\nkiwi"), fruits) }
+        #expect(throws: DialogPlanError.unsupported("Option 4 is not an answer Heeler can check.")) {
+            try plan(.submitSelection([4], text: "mango"), fruits)
         }
     }
 
@@ -353,6 +416,7 @@ struct AgyDialogPlannerTests {
             (.dismiss, "agy-47-perm-file-edit-default-120x40"),
             (.respond(ordinal: 3, text: "x"), "agy-44-ask-question-multi-120x40"),
             (.submitSelection([1, 2]), "agy-102-ask-question-multiselect-after-3-2-62x41"),
+            (.submitSelection([2], text: "x"), "agy-154-ask-question-multiselect-120x40"),
             (.choose(ordinal: 1), "agy-11-trust-prompt-no-selected-62x41"),
             (.choose(ordinal: 2), "agy-00-trust-prompt-191x49"),
         ]

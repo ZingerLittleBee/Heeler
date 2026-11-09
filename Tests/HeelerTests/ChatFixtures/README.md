@@ -435,6 +435,16 @@ is the Heeler app's own 59×41 attach, and `agy-00`, `agy-09`, `agy-10`,
 | `agy-87` to `agy-98` | The box after Ctrl+C left a permission dialog; agy after it exited, with its resume line and the shell's prompt; a warning above the box for an unknown `--model`; the first screen at the phone's grids; `!` and a command in bash mode; Up on an empty box; a turn at 40×30 running, with a draft, with it queued, and after Esc put it back; a turn at 62×20 |
 | `agy-99` to `agy-107` | Captured 2026-11-08 in the trusted `fruits2` repository: the file creation dialog at 120×40, 62×41 and 40×30; `ask_question` with a multi-select question, after `2` checked an answer, after `3` and `2`, and after Enter submitted it; `Write-in...` after its digit opened the field and with an answer pasted in; two questions after Esc skipped the first, and the second after `2` |
 | `agy-108` to `agy-111`, `agy-113` to `agy-115` | The same day and repository: a command's dialog, its Amend field after Tab, with a note pasted in, and after Down three times and Tab on `No`; a multi-select question on page 1 of 2, whose cut hint row herdr reports done, and after Enter turned the page; a single question after Esc skipped it |
+| `agy-154` to `agy-168` | Captured 2026-11-09 through tmux, not herdr (below): a multi-select question, `apple` checked with Space, `Write-in...`'s digit opening `Your answer:` with the check kept, `mango` typed, Esc closing the field, and the turn after Enter submitted both (`A1: apple, mango`); Down to `Write-in...`, Enter on it opening the field, and `mango` pasted with nothing checked; the first of two questions with `apple` checked, the field opened, Enter in it empty turning the page, `mango` pasted after Left and the digit again, Enter turning the page, and the idle box after Esc skipped the second |
+
+`agy-154` to `agy-168` are `tmux capture-pane -p -e` reads of a 120×40 tmux 3.4
+pane running agy 1.5.3 on Ubuntu 24.04.5. tmux writes agy's 16 colors as SGR
+30–37 and 90–97, which the decoder reads as the indexed colors herdr's `38;5;n`
+gives. Their LF rows became CRLF rows, and the empty rows under agy's footer
+were dropped, as herdr's reads end at the last drawn row. The account became
+`developer`, and the banner keeps the scratch folder, `~/heeler-probe/question`.
+The read of the first of two questions before any key was taken while agy
+still drew `Working...`, so no fixture shows that page untouched.
 
 Help's general tab (it shows the conversation id and the log's path), its
 command pages and a 200-row scrollback read are not kept.

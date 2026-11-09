@@ -82,6 +82,40 @@ struct QuestionFormTests {
         #expect(QuestionForm(card: try Self.card("agy-113-ask-question-multiselect-q1-of-2-62x41", singleSelect)) == nil)
     }
 
+    /// Antigravity CLI's multi-select page takes a written answer with its
+    /// checks or alone, since Enter in its `Write-in...` field submits
+    /// both. Claude Code's form keeps its Other row in the terminal.
+    @Test func anAgyMultiSelectPageTakesAWrittenAnswer() throws {
+        let stem = "agy-163-ask-question-multiselect-q1-of-2-checked-120x40"
+        let form = try #require(QuestionForm(card: try Self.card(stem, Self.fruitsAndSizeRequest)))
+        #expect(form.writesInWithSelection)
+        let fruits = try Self.dialog(stem)
+        #expect(
+            try form.action(.options([0], text: "mango"), forQuestion: 0, on: fruits)
+                == .submitSelection([1], text: "mango"))
+        #expect(
+            try form.action(.options([], text: "mango"), forQuestion: 0, on: fruits)
+                == .submitSelection([], text: "mango"))
+        #expect(form.text(of: .options([0], text: "mango"), for: form.questions[0]) == "apple, mango")
+
+        var draft = QuestionFormDraft(form: form)
+        #expect(draft.answer(at: 0) == nil)
+        draft.type("mango ")
+        #expect(draft.answer(at: 0) == .options([], text: "mango"))
+        draft.toggle(0)
+        #expect(draft.answer(at: 0) == .options([0], text: "mango"))
+        draft.type(" ")
+        #expect(draft.answer(at: 0) == .options([0]))
+
+        let claude = try #require(QuestionForm(card: try Self.card("claude-08-c4-auq-q1", Self.claudeRequest)))
+        #expect(!claude.writesInWithSelection)
+        var claudeDraft = QuestionFormDraft(form: claude)
+        claudeDraft.type("Teal")
+        #expect(claudeDraft.answer(at: 0) == nil)
+        claudeDraft.toggle(0)
+        #expect(claudeDraft.answer(at: 0) == .options([0]))
+    }
+
     /// Antigravity CLI's Esc skips the question on screen, which stays the
     /// first until the answers go out, so Skip on a later page is held as
     /// that page's answer and goes out only once that page shows.
@@ -340,6 +374,16 @@ struct QuestionFormTests {
         questions: [
             ChatQuestion(text: "What is your favorite color?", options: ["Red", "Blue"].map { .init(label: $0) }),
             ChatQuestion(text: "What is your favorite season?", options: ["Summer", "Winter"].map { .init(label: $0) }),
+        ])
+
+    /// The two questions agy-163 to agy-168 ask.
+    private static let fruitsAndSizeRequest = ChatPendingRequest(
+        entryID: ChatEntryID("agy:9:tool:0"), callID: "agy:9:tool:0", kind: .question, toolName: "ask_question",
+        summary: "Which fruits do you like?",
+        questions: [
+            ChatQuestion(
+                text: "Which fruits do you like?", options: ["apple", "banana", "cherry"], isMultiSelect: true),
+            ChatQuestion(text: "Which size?", options: ["small", "large"]),
         ])
 
     private static func card(_ stem: String, _ request: ChatPendingRequest) throws -> BlockedCard {

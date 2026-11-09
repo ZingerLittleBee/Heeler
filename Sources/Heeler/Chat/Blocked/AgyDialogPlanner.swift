@@ -9,11 +9,13 @@ import Foundation
 /// it stops. Esc on a question skips it, and on the last page answers the
 /// question set with what was given. Tab on a command's `Yes` or `No` row
 /// opens a note field; a question's `Write-in...` digit opens `Your
-/// answer:`. In either field digits are typed and Esc steps back (or, on a
-/// command, stops the turn), so only the field's own plan sends keys while
-/// it is open. The trust prompt's options have no digits: arrow keys and
-/// Enter. agy records no approval, and herdr reports the file and field
-/// states idle, so only the dialog leaving the screen confirms an answer.
+/// answer:`, on a multi-select question with its checks kept. In either
+/// field digits are typed and Esc steps back (or, on a command, stops the
+/// turn; on a question it drops the typed text), so only the field's own
+/// plan sends keys while it is open. The trust prompt's options have no
+/// digits: arrow keys and Enter. agy records no approval, and herdr reports
+/// the file and field states idle, so only the dialog leaving the screen
+/// confirms an answer.
 struct AgyDialogPlanner {
     let dialog: BlockedDialog
 
@@ -110,8 +112,8 @@ struct AgyDialogPlanner {
                 throw .unsupported("Option \(ordinal) has no digit key. Answer it in the terminal.")
             }
             return Self.plan([.keys([digit])] + nextPage())
-        case .submitSelection(let ordinals):
-            return try submitSelection(ordinals)
+        case .submitSelection(let ordinals, let text):
+            return try submitSelection(ordinals, writeIn: text)
         case .respond(let ordinal, let text):
             return try writeIn(ordinal, text: text)
         case .dismiss, .skipQuestion:
@@ -123,34 +125,58 @@ struct AgyDialogPlanner {
     }
 
     /// Each answer whose check should change gets its digit, checked after
-    /// every key; Enter then submits from an answer row, since on
-    /// `Write-in...` it would open the field instead.
-    private func submitSelection(_ ordinals: Set<Int>) throws(DialogPlanError) -> DialogActionPlan {
+    /// every key. A written answer then goes into `Write-in...`: its digit
+    /// opens `Your answer:` with the checks kept, the text goes in as a
+    /// paste, and Enter in the field submits the checked answers with it.
+    /// Enter in an empty field submits the checks alone, so the paste is
+    /// checked first. Without one, Enter submits from an answer row, since
+    /// on `Write-in...` it would open the field instead.
+    private func submitSelection(
+        _ ordinals: Set<Int>, writeIn text: String?
+    ) throws(DialogPlanError) -> DialogActionPlan {
         guard dialog.isMultiSelect else {
             throw .unsupported("Only a multi-select question takes a set of answers.")
         }
-        guard !ordinals.isEmpty else { throw .emptySelection }
+        var written: String?
+        if let text { written = try DialogActionPlanner.fieldText(text) }
+        guard !ordinals.isEmpty || written != nil else { throw .emptySelection }
         for ordinal in ordinals.sorted() {
             guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
             guard option.role == .answer else {
                 throw .unsupported("Option \(ordinal) is not an answer Heeler can check.")
             }
         }
-        try answerFieldClosed()
+        guard !dialog.hasTypedText else { throw .textFieldNotEmpty }
+        let toggles = dialog.options.filter {
+            $0.role == .answer && ordinals.contains($0.ordinal) != dialog.focus.checked.contains($0.ordinal)
+        }
+        // An empty field already open takes the text, but a digit for a
+        // check would be typed into it.
+        if written == nil || !toggles.isEmpty { try answerFieldClosed() }
         var builder = StepBuilder(dialog: dialog)
         var checked = dialog.focus.checked
-        var toggled = false
-        for option in dialog.options
-        where option.role == .answer && ordinals.contains(option.ordinal) != checked.contains(option.ordinal) {
+        for option in toggles {
             guard let digit = DialogActionPlanner.digitKey(option.number) else {
                 throw .unsupported("Option \(option.ordinal) has no digit key.")
             }
             checked.formSymmetricDifference([option.ordinal])
             builder.keys(digit)
             builder.expect(.checked(checked))
-            toggled = true
         }
-        if !toggled {
+        if let written {
+            guard let field = dialog.options.first(where: { $0.role == .otherText && $0.input != nil }) else {
+                throw .unsupported("The question has no Write-in row.")
+            }
+            if dialog.focus.feedbackOrdinal != field.ordinal {
+                guard let digit = DialogActionPlanner.digitKey(field.number) else {
+                    throw .unsupported("Option \(field.ordinal) has no digit key. Answer it in the terminal.")
+                }
+                builder.keys(digit)
+                builder.expect(.feedbackMode(ordinal: field.ordinal))
+            }
+            builder.paste(written)
+            builder.expect(.inputText(written))
+        } else if toggles.isEmpty {
             guard let focused = dialog.focus.focusedOrdinal else { throw .noFocus }
             if dialog.option(focused)?.role != .answer,
                 let answer = dialog.options.last(where: { $0.role == .answer })
@@ -164,15 +190,16 @@ struct AgyDialogPlanner {
     }
 
     /// The `Write-in...` digit opens `Your answer:` under the options; the
-    /// text goes in as a paste and Enter submits it. Heeler doesn't type
-    /// into a multi-select question's field, which no capture shows.
+    /// text goes in as a paste and Enter submits it. On a multi-select
+    /// question Enter there submits the checked answers too, so the text
+    /// goes with them (`submitSelection`).
     private func writeIn(_ ordinal: Int, text: String) throws(DialogPlanError) -> DialogActionPlan {
         guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
         guard option.role == .otherText, option.input != nil else {
             throw .unsupported("Option \(ordinal) is not a text field.")
         }
         guard !dialog.isMultiSelect else {
-            throw .unsupported("Heeler doesn't type into a multi-select question's Write-in row.")
+            throw .unsupported("A multi-select question takes its written answer with Submit.")
         }
         let text = try DialogActionPlanner.fieldText(text)
         guard !dialog.hasTypedText else { throw .textFieldNotEmpty }

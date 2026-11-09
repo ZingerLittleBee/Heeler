@@ -1703,6 +1703,73 @@ struct BlockedCardStoreTests {
         #expect(store.content == .none)
     }
 
+    /// A multi-select answer with a written one, on the screens agy drew
+    /// for the same keys: the check's digit, `Write-in...`'s digit, the
+    /// paste and Enter, which submitted `A1: apple, mango`.
+    @Test func anAgySelectionGoesWithItsWrittenAnswer() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-154-ask-question-multiselect-120x40"))
+        await pane.react(to: ["1"], with: try ScreenFixture.screen("agy-155-ask-question-multiselect-checked-120x40"))
+        await pane.react(
+            to: ["4"], with: try ScreenFixture.screen("agy-156-ask-question-multiselect-writein-open-checked-120x40"))
+        await pane.react(
+            toPaste: "mango",
+            with: try ScreenFixture.screen("agy-157-ask-question-multiselect-writein-typed-checked-120x40"))
+        await pane.react(
+            to: ["enter"], with: try ScreenFixture.screen("agy-159-working-after-multiselect-writein-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        let ask = Self.agyCall("agy:1:tool:0", "ask_question", .question, "Which fruits do you like?")
+        store.update(transcript: Self.agyTranscript(open: [ask], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+
+        await store.perform(.submitSelection([1], text: "mango"))
+
+        #expect(await pane.keys == [["1"], ["4"], ["enter"]])
+        #expect(await pane.pastes == ["mango"])
+        #expect(store.progress == .ready)
+        #expect(store.notice == nil)
+        #expect(store.content == .none)
+    }
+
+    /// The probe's two questions filled in on the card, apple already
+    /// checked in the terminal: the first page's written answer goes out
+    /// with that check in one Enter, which turns the page, and the second
+    /// page's Skip in its turn (`A1: apple, mango`, `A2: User Skipped`).
+    @Test func anAgyFormSendsAPagesWrittenAnswerWithItsChecks() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-163-ask-question-multiselect-q1-of-2-checked-120x40"))
+        await pane.react(
+            to: ["4"], with: try ScreenFixture.screen("agy-164-ask-question-multiselect-q1-of-2-writein-open-120x40"))
+        await pane.react(
+            toPaste: "mango",
+            with: try ScreenFixture.screen("agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40"))
+        await pane.react(
+            to: ["enter"], with: try ScreenFixture.screen("agy-167-ask-question-q2-after-multiselect-writein-120x40"))
+        await pane.react(
+            to: ["esc"], with: try ScreenFixture.screen("agy-168-idle-after-writein-and-skipped-question-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        var ask = Self.agyCall("agy:9:tool:0", "ask_question", .question, "Which fruits do you like?")
+        ask.questions = [
+            ChatQuestion(
+                text: "Which fruits do you like?", options: ["apple", "banana", "cherry"], isMultiSelect: true),
+            ChatQuestion(text: "Which size?", options: ["small", "large"]),
+        ]
+        store.update(transcript: Self.agyTranscript(open: [ask], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+        guard case .card(let card) = store.content, QuestionForm(card: card) != nil else {
+            Issue.record("Expected a form, got \(store.content)")
+            return
+        }
+
+        await store.submit([.options([0], text: "mango"), .skipped])
+
+        #expect(await pane.keys == [["4"], ["enter"], ["esc"]])
+        #expect(await pane.pastes == ["mango"])
+        #expect(store.progress == .ready)
+        #expect(store.notice == nil)
+        #expect(store.content == .none)
+    }
+
     /// agy writes a call's result only once it has run, and can draw the
     /// next dialog first: a second edit of the same file. The answered call
     /// stays out of that card's match until the transcript resolves it.
@@ -2145,6 +2212,7 @@ private actor FakePane {
     private var screen: ANSIScreen
     private var reactions: [[String]: ANSIScreen] = [:]
     private var queuedReactions: [[String]: [ANSIScreen]] = [:]
+    private var pasteReactions: [String: ANSIScreen] = [:]
     private(set) var keys: [[String]] = []
     private(set) var pastes: [String] = []
     private(set) var reads = 0
@@ -2189,8 +2257,13 @@ private actor FakePane {
         }
     }
 
+    func react(toPaste text: String, with screen: ANSIScreen) {
+        pasteReactions[text] = screen
+    }
+
     func paste(_ text: String) {
         pastes.append(text)
+        if let next = pasteReactions[text] { screen = next }
     }
 }
 
@@ -2229,6 +2302,56 @@ struct BlockedCardHostedTests {
         try await Self.host(store) { controller in
             #expect(await Self.eventually { Self.labels(in: controller).isSuperset(of: ["Reject", "Stop"]) })
         }
+    }
+
+    /// Antigravity CLI's multi-select card offers its `Write-in...` field
+    /// above Submit, which waits for a check or a written answer. Written
+    /// alone, the answer goes through agy's field: its digit, the paste,
+    /// Enter (`A1: mango`).
+    @Test func anAgyMultiSelectCardTakesAWrittenAnswer() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-154-ask-question-multiselect-120x40"))
+        await pane.react(
+            to: ["4"], with: try ScreenFixture.screen("agy-161-ask-question-multiselect-writein-open-by-enter-120x40"))
+        await pane.react(
+            toPaste: "mango",
+            with: try ScreenFixture.screen("agy-162-ask-question-multiselect-writein-alone-typed-120x40"))
+        await pane.react(to: ["enter"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = BlockedCardStore(
+            program: .agy,
+            io: BlockedScreenIO(
+                readScreen: { try await pane.read() },
+                sendKeys: { await pane.send($0) },
+                paste: { await pane.paste($0) }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+        try await Self.host(store) { controller in
+            let submit = { AccessibilityProbe.elements(labeled: "Submit", in: controller.view).first }
+            #expect(
+                await Self.eventually {
+                    Self.labels(in: controller).isSuperset(of: ["apple", "banana", "cherry", "Write-in...", "Submit"])
+                })
+            #expect(submit()?.accessibilityTraits.contains(.notEnabled) == true)
+
+            let field = try #require(Self.textField(in: controller.view))
+            field.becomeFirstResponder()
+            field.insertText("mango")
+            #expect(await Self.eventually { submit()?.accessibilityTraits.contains(.notEnabled) == false })
+            #expect(submit()?.accessibilityActivate() == true)
+
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft, await pane.keys != [["4"], ["enter"]] {
+                try? await Task.sleep(for: .milliseconds(10))
+                budget.charge()
+            }
+            #expect(await pane.keys == [["4"], ["enter"]])
+            #expect(await pane.pastes == ["mango"])
+        }
+    }
+
+    private static func textField(in view: UIView) -> UITextField? {
+        if let field = view as? UITextField { return field }
+        return view.subviews.lazy.compactMap { textField(in: $0) }.first
     }
 
     /// An OpenCode card for the dialog on `stem`, matched to `pending`.

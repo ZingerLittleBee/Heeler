@@ -300,6 +300,28 @@ private struct BlockedDialogCard: View {
         return dialog.questionPage.map { $0.index < $0.count } == true ? "Next" : "Submit"
     }
 
+    /// Antigravity CLI's `Write-in...` on a multi-select question. Enter in
+    /// its field submits the checked answers with the text, so the field
+    /// goes with Submit rather than a Send of its own.
+    private var writeInWithSelection: DialogOption? {
+        guard dialog.kind == .agyQuestion, isMultiSelect else { return nil }
+        return dialog.options.first { $0.role == .otherText && $0.input != nil }
+    }
+
+    /// Sends the checked answers, with `text` written in where given.
+    private func selectionButton(writing text: String?) -> some View {
+        Button {
+            perform(.submitSelection(selection, text: text))
+        } label: {
+            Text(verbatim: selectionTitle)
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 28)
+        }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.roundedRectangle(radius: 12))
+        .disabled((selection.isEmpty && text == nil) || dialog.answersHeldByDraft)
+    }
+
     @ViewBuilder
     private var choices: some View {
         if isMultiSelect {
@@ -314,16 +336,10 @@ private struct BlockedDialogCard: View {
                     }
                 }
             }
-            Button {
-                perform(.submitSelection(selection))
-            } label: {
-                Text(verbatim: selectionTitle)
-                    .font(.body.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 28)
+            // With a field, Submit goes under it (`textEntry`).
+            if writeInWithSelection == nil {
+                selectionButton(writing: nil)
             }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.roundedRectangle(radius: 12))
-            .disabled(selection.isEmpty || dialog.answersHeldByDraft)
             ForEach(dialog.options.filter { $0.role == .chat }, id: \.ordinal) { @Sendable option in
                 MainActorContent {
                     BlockedOptionButton(option: option, emphasis: .plain) { perform(.choose(ordinal: option.ordinal)) }
@@ -445,7 +461,14 @@ private struct BlockedDialogCard: View {
         case .agyCommand:
             noteEntry
         case .claudeQuestion, .agyQuestion:
-            if !isMultiSelect, let field = dialog.options.first(where: { $0.role == .otherText && $0.input != nil }) {
+            if let field = writeInWithSelection {
+                VStack(alignment: .leading, spacing: 8) {
+                    BlockedTextField(placeholder: field.label, text: $text, isFocused: $isTextFocused)
+                    selectionButton(writing: hasText ? text : nil)
+                }
+            } else if !isMultiSelect,
+                let field = dialog.options.first(where: { $0.role == .otherText && $0.input != nil })
+            {
                 VStack(alignment: .leading, spacing: 8) {
                     BlockedTextField(placeholder: field.label, text: $text, isFocused: $isTextFocused)
                     Button("Send") { perform(.respond(ordinal: field.ordinal, text: text)) }

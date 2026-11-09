@@ -27,8 +27,10 @@ import Foundation
 /// Tab on a command's `Yes` or `No` row turns it into a note field, `> `
 /// under the row, and its label into `Yes, and tell Antigravity CLI what to
 /// do next` or `No, and tell Antigravity CLI what to do differently`; the
-/// hint row becomes `enter Submit`. A question's `Write-in...` row opens
-/// `Your answer:` under the options, with `enter Submit · esc Back`. Either
+/// hint row becomes `enter Submit`. A question's `Write-in...` row, single
+/// or multi-select, opens `Your answer:` under the options by its digit or
+/// by Enter on the row, with `enter Submit · esc Back`; a multi-select
+/// question keeps its boxes drawn above the field. Either
 /// field keeps the dialog's fingerprint, so a card's step into it checks
 /// against the same dialog. A dialog the parser doesn't know, or one it
 /// can't read whole, holds sending as an excerpt without numbers.
