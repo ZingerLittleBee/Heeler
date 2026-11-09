@@ -2328,9 +2328,9 @@ struct BlockedCardHostedTests {
     }
 
     /// Antigravity CLI's multi-select card offers its `Write-in...` field
-    /// above Submit, which waits for a check or a written answer. Written
-    /// alone, the answer goes through agy's field: its digit, the paste,
-    /// Enter (`A1: mango`).
+    /// above Submit, worded as the form's page words it, and Submit waits
+    /// for a check or a written answer. Written alone, the answer goes
+    /// through agy's field: its digit, the paste, Enter (`A1: mango`).
     @Test func anAgyMultiSelectCardTakesAWrittenAnswer() async throws {
         let pane = FakePane(try ScreenFixture.screen("agy-154-ask-question-multiselect-120x40"))
         await pane.react(
@@ -2352,11 +2352,12 @@ struct BlockedCardHostedTests {
             let submit = { AccessibilityProbe.elements(labeled: "Submit", in: controller.view).first }
             #expect(
                 await Self.eventually {
-                    Self.labels(in: controller).isSuperset(of: ["apple", "banana", "cherry", "Write-in...", "Submit"])
+                    Self.labels(in: controller).isSuperset(of: ["apple", "banana", "cherry", "Submit"])
                 })
             #expect(submit()?.accessibilityTraits.contains(.notEnabled) == true)
 
             let field = try #require(Self.textField(in: controller.view))
+            #expect(field.placeholder == "Type your own answer")
             field.becomeFirstResponder()
             field.insertText("mango")
             #expect(await Self.eventually { submit()?.accessibilityTraits.contains(.notEnabled) == false })

@@ -460,9 +460,11 @@ private struct BlockedDialogCard: View {
         case .agyCommand:
             noteEntry
         case .claudeQuestion, .agyQuestion:
-            if let field = writeInWithSelection {
+            if writeInWithSelection != nil {
                 VStack(alignment: .leading, spacing: 8) {
-                    BlockedTextField(placeholder: field.label, text: $text, isFocused: $isTextFocused)
+                    // As the form's multi-select page says it, rather than
+                    // the terminal's `Write-in...`.
+                    BlockedTextField(placeholder: "Type your own answer", text: $text, isFocused: $isTextFocused)
                     selectionButton(writing: hasText ? text : nil)
                 }
             } else if !isMultiSelect,
