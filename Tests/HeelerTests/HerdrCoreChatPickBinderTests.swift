@@ -613,6 +613,7 @@ struct HerdrCoreChatPickBinderTests {
         let rig = await Rig(.agy)
         let root = try #require(Self.root(.agy))
         await Self.agyTyped(rig, holding: ["\(Self.home)/.gemini/antigravity-cli/log/cli-20261108_202934.log"])
+        let written = try await Self.writeAgyTranscript(rig, Self.uuid)
         let record = try Self.agyTypedRecord(argv: argv)
 
         #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.agy)))
@@ -622,6 +623,7 @@ struct HerdrCoreChatPickBinderTests {
         #expect(list.pid == Self.pid)
         #expect(list.candidates.map(\.sessionID) == [Self.uuid])
         #expect(list.candidates.map(\.origins) == [[.commandLine]])
+        #expect(list.candidates.map(\.modified) == [written])
         #expect(list.candidates.allSatisfy { $0.file == nil })
         #expect(await rig.files.listings.isEmpty)
         #expect(await rig.files.reads.isEmpty)
@@ -699,6 +701,49 @@ struct HerdrCoreChatPickBinderTests {
 
         #expect(list.candidates.map(\.sessionID) == [Self.uuid, named, Self.other])
         #expect(list.candidates.map(\.origins) == [[.heldOpen], [.commandLine], [.programStatus]])
+    }
+
+    /// `<root>/brain/<id>/.system_generated/logs/transcript_full.jsonl`, written now,
+    /// and the modification time the Host reports for it.
+    private static func writeAgyTranscript(_ rig: Rig, _ session: String) async throws -> Date {
+        let root = try #require(Self.root(.agy))
+        let path = AgyTranscriptLocator.transcriptPath(inFolder: AgyTranscriptLocator.folder(in: root, id: session))
+        await rig.files.write("{}\n", at: path)
+        let time = try #require(try await rig.files.fileStatus(atPath: path)?.modificationTime)
+        await rig.files.clearRecords()
+        return Date(timeIntervalSince1970: TimeInterval(time))
+    }
+
+    /// agy files conversations by id, so no listing dates a row. Each takes its
+    /// transcript's time from one stat and no read, which orders the conversations
+    /// held open newest first. A conversation with no transcript yet, or whose stat
+    /// fails, is still listed, with no date.
+    @Test func antigravityDatesEachConversationByItsTranscript() async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        let named = "11111111-1111-4111-8111-111111111111"
+        await Self.agyTyped(rig, holding: ["\(root)/brain/\(Self.other)", "\(root)/brain/\(Self.uuid)"])
+        let older = try await Self.writeAgyTranscript(rig, Self.other)
+        let newer = try await Self.writeAgyTranscript(rig, Self.uuid)
+        let record = try Self.agyTypedRecord(argv: ["agy", "--conversation", named])
+        let transcripts = [Self.other, Self.uuid, named].map {
+            AgyTranscriptLocator.transcriptPath(inFolder: AgyTranscriptLocator.folder(in: root, id: $0))
+        }
+
+        let list = try await Self.list(rig, record: record)
+
+        #expect(list.candidates.map(\.sessionID) == [Self.uuid, Self.other, named])
+        #expect(list.candidates.map(\.origins) == [[.heldOpen], [.heldOpen], [.commandLine]])
+        #expect(list.candidates.map(\.modified) == [newer, older, nil])
+        #expect(await rig.files.statuses.sorted() == transcripts.sorted())
+        #expect(await rig.files.reads.isEmpty)
+        #expect(await rig.files.listings.isEmpty)
+
+        await rig.files.failNext(.status, path: transcripts[1], with: TransportError.hostFileTimedOut)
+        let failed = try await Self.list(rig, record: record)
+
+        #expect(failed.candidates.map(\.sessionID) == [Self.other, Self.uuid, named])
+        #expect(failed.candidates.map(\.modified) == [older, nil, nil])
     }
 
     /// The Agent's process is what a confirmation binds to, so no process, no list.

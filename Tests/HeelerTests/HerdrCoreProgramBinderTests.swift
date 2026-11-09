@@ -892,11 +892,17 @@ struct HerdrCoreProgramBinderTests {
 
     /// A second agy on a conversation already open holds its folder and database and
     /// never the lock, and neither says which agy shows it. Its `--conversation`
-    /// names the same one, which lists once and ranks as held open.
+    /// names the same one, which lists once, ranks as held open, and is dated by its
+    /// transcript.
     @Test func aSecondAntigravityCLIOnAnOpenConversationCannotTell() async throws {
         let (rig, record) = try await Self.agyRig("second-instance")
+        let session = "00000000-0000-4000-8000-000000000102"
+        let transcript = AgyTranscriptLocator.transcriptPath(
+            inFolder: AgyTranscriptLocator.folder(in: Self.agyRoot, id: session))
+        await rig.files.write(Data("{}\n".utf8), at: transcript)
+        let written = try #require(try await rig.files.fileStatus(atPath: transcript)?.modificationTime)
 
-        #expect(record.foreground?.argv == ["agy", "--conversation", "00000000-0000-4000-8000-000000000102"])
+        #expect(record.foreground?.argv == ["agy", "--conversation", session])
         #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.agy)))
         let answer = try await rig.binder.candidates(of: record)
         guard case .listed(let list) = answer else {
@@ -904,10 +910,12 @@ struct HerdrCoreProgramBinderTests {
             return
         }
         #expect(list.transcriptRoot == Self.agyRoot)
-        #expect(list.candidates.map(\.sessionID) == ["00000000-0000-4000-8000-000000000102"])
+        #expect(list.candidates.map(\.sessionID) == [session])
         #expect(list.candidates.map(\.origins) == [[.heldOpen, .commandLine]])
+        #expect(list.candidates.map(\.modified) == [Date(timeIntervalSince1970: TimeInterval(written))])
         // agy files conversations by id, so there is no directory to list.
         #expect(await rig.files.listings.isEmpty)
+        #expect(await rig.reads.isEmpty)
     }
 
     /// Edited: the second agy also holds another conversation's folder, whose id

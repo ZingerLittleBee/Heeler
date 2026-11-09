@@ -153,8 +153,10 @@ never show or send into a conversation it has guessed.
   already says it cannot tell offers them, on request. A list costs one exec, as
   a check does, then the listings it takes: a directory's folder, or for OpenCode
   a read-only query of its roots there, whose store problem replaces the list, and for Codex the heads of its newest
-  rollouts, up to 24, since Codex files by day. A process walk past its cap lists
-  nothing, because a launcher would pass for the Agent and a daemon under it would
+  rollouts, up to 24, since Codex files by day. Antigravity CLI files by id and
+  lists no folder; it takes one stat of each listed conversation's transcript,
+  for the row's date, and a failed stat leaves that row undated. A process walk
+  past its cap lists nothing, because a launcher would pass for the Agent and a daemon under it would
   go unseen. A Status child is listed only when
   its key reads as this program's session id, and such a record may name another
   Terminal's session (herdr compatibility), which is why the user reads it first.

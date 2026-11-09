@@ -52,7 +52,8 @@ enum ChatCandidatesAnswer: Equatable, Sendable {
 
 /// Lists what a user could confirm when a check finds no exact evidence. It runs
 /// only when asked for, and nothing it finds binds: the user reads a conversation
-/// before choosing it. One exec, as a check is, then the listings it takes.
+/// before choosing it. One exec, as a check is, then the listings it takes, or for
+/// agy one stat of each listed conversation's transcript.
 extension HerdrCoreSessionBinder {
     /// The newest Transcripts offered per directory.
     static let recentCandidateLimit = 12
@@ -93,6 +94,13 @@ extension HerdrCoreSessionBinder {
         for recent in try await recentConversations(root: root, process: process, directories: directories) {
             add(recent.session, file: recent.file, origin: .recentTranscript, modified: recent.modified)
             if let title = recent.title { found[recent.session]?.title = title }
+        }
+        // agy files conversations by id, so no listing dates its rows the way one
+        // dates a recent Transcript.
+        if program == .agy, let root {
+            for session in found.keys.sorted() where found[session]?.modified == nil {
+                found[session]?.modified = await antigravityTranscriptTime(session, root: root)
+            }
         }
 
         let ordered = found.values.sorted { lhs, rhs in
@@ -239,9 +247,22 @@ extension HerdrCoreSessionBinder {
         // with no end to its size, and a new conversation's first prompt carries
         // no id, so the conversation just started here is the one it cannot name
         // (agy 1.5.3, `docs/research/antigravity-cli-transcript-format.md`). The
-        // list holds what the process has open and what its command line names.
+        // list holds what the process has open and what its command line names,
+        // each dated by one stat of its transcript.
         case .agy: return []
         }
+    }
+
+    /// When an agy conversation last changed: its transcript's modification time, by
+    /// one stat and no read. The date only adds to a row the user previews before
+    /// choosing it, so a failed stat or a transcript not yet written leaves the row
+    /// listed without one, where a failed listing fails the whole list.
+    private func antigravityTranscriptTime(_ session: String, root: String) async -> Date? {
+        let path = AgyTranscriptLocator.transcriptPath(inFolder: AgyTranscriptLocator.folder(in: root, id: session))
+        guard RemoteFilePath.isAcceptable(path), let status = try? await files.status(path),
+            status.kind == nil || status.kind == .regular, let time = status.modificationTime
+        else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(time))
     }
 
     private static func newest(_ found: [Found]) -> [Found] {
