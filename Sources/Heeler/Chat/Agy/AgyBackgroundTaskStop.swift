@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// What Chat's Stop presses in Antigravity CLI after its Esc, for the
 /// commands the stopped turn sent to the background (ADR 0024). agy 1.5.3
@@ -13,16 +14,18 @@ import Foundation
 /// a fresh read passes its check. The panel's top rows must name all of
 /// the turn's background commands, newest first, so a task from an earlier
 /// turn is never selected: rows match by command, since their times are
-/// the Host's local time. A check that fails presses nothing more but an
-/// Esc that closes the panel, and says what still runs.
+/// the Host's local time. A check that fails presses nothing more than what
+/// takes `/tasks` back out, and says what still runs.
 @MainActor
 struct AgyBackgroundTaskStop {
     struct Timing: Sendable {
         /// How long the turn may take to end after the Esc; past it Stop's
         /// own wait says the Agent still works.
         var turnEnd: Duration = .seconds(3)
-        /// How long the popup, the panel or a move may take to show.
-        var step: Duration = .milliseconds(1_500)
+        /// How long the popup, the panel or a move may take to show: a read
+        /// through herdr took 0.8 to 1.65 s live, so a shorter window held a
+        /// single read.
+        var step: Duration = .seconds(3)
         /// How long a killed row may take to stop reading `running`: under
         /// a second, twice, live.
         var kill: Duration = .seconds(2)
@@ -90,8 +93,12 @@ struct AgyBackgroundTaskStop {
         }
     }
 
-    /// Why a step stopped.
-    private struct Halt: Error {}
+    /// Why a step stopped: what it waited for and did not see.
+    private struct Halt: Error {
+        let step: String
+    }
+
+    private static let logger = Logger(subsystem: "dev.bybee.heeler", category: "ChatStop")
 
     /// The turn's background commands, newest first as the panel lists them.
     private let listed: [ChatBackgroundCommand]
@@ -125,51 +132,55 @@ struct AgyBackgroundTaskStop {
     /// Ends the turn's running commands; returns what still runs and how to
     /// end it, or nil when they ended or the turn did not.
     func run() async -> String? {
+        let stoppable = listed.filter(\.isStoppable)
         do {
             // A turn that keeps running is Stop's own wait's to report, and a
             // second tap follows through again.
             guard try await poll(within: timing.turnEnd, until: { !AgyScreen($0).showsRunningTurn }) != nil
             else { return nil }
+            guard mayContinue(), Self.showsIdleBox(try await io.readScreen()) else { throw Halt(step: "the idle box") }
         } catch {
-            return Self.unreadNotice(for: listed.filter(\.isStoppable))
+            Self.log(error)
+            return error is Halt ? Self.notice(for: stoppable) : Self.unreadNotice(for: stoppable)
         }
         var ended: Set<Int> = []
         do {
-            try await press(.paste(Self.tasksCommand), when: Self.showsIdleBox)
-            _ = try await screen(within: timing.step, showing: Self.showsTasksPopup)
-            try await press(.keys(["enter"]), when: Self.showsTasksPopup)
+            try await io.type(.paste(Self.tasksCommand), whileShowing: Self.showsIdleBox)
+            _ = try await screen(within: timing.step, step: "the popup", showing: Self.showsTasksPopup)
+            try await press(.keys(["enter"]), step: "the popup", when: Self.showsTasksPopup)
             let names = names
-            var panel = try await self.panel(within: timing.step) { _ in true }
+            var panel = try await self.panel(within: timing.step, step: "the panel") { _ in true }
             for index in listed.indices where listed[index].isStoppable {
                 let row = panel.rows[index]
                 if row.hasEnded {
                     ended.insert(index)
                     continue
                 }
-                guard row.isRunning else { throw Halt() }
+                guard row.isRunning else { throw Halt(step: "a running row") }
                 while let from = panel.selected, from != index {
                     let to = from < index ? from + 1 : from - 1
-                    try await press(.keys([from < index ? "down" : "up"])) {
+                    try await press(.keys([from < index ? "down" : "up"]), step: "the selected row") {
                         Self.panel(on: $0, naming: names)?.selected == from
                     }
-                    panel = try await self.panel(within: timing.step) { $0.selected == to }
+                    panel = try await self.panel(within: timing.step, step: "the next row") { $0.selected == to }
                 }
-                try await press(.keys(["k"])) { screen in
+                try await press(.keys(["k"]), step: "the row to kill") { screen in
                     guard let panel = Self.panel(on: screen, naming: names), panel.selected == index else { return false }
                     return panel.rows[index].isRunning
                 }
-                panel = try await self.panel(within: timing.kill) { $0.rows[index].hasEnded }
+                panel = try await self.panel(within: timing.kill, step: "the row ended") { $0.rows[index].hasEnded }
                 ended.insert(index)
             }
-            try await press(.keys(["esc"]), when: Self.showsPanel)
+            try await press(.keys(["esc"]), step: "the panel", when: Self.showsPanel)
             guard try await poll(within: timing.step, until: { !Self.showsPanel($0) }) != nil else {
                 return Self.panelLeftOpen
             }
             return nil
         } catch {
-            let closed = await closePanel()
+            Self.log(error)
+            let undone = await undoTasks()
             let left = listed.indices.filter { listed[$0].isStoppable && !ended.contains($0) }
-            if left.isEmpty { return closed ? nil : Self.panelLeftOpen }
+            if left.isEmpty { return undone ? nil : Self.panelLeftOpen }
             return Self.notice(for: left.map { listed[$0] })
         }
     }
@@ -180,56 +191,95 @@ struct AgyBackgroundTaskStop {
     /// screen again itself (`BlockedScreenIO.typeWhileShowing`), that read is
     /// the one it holds to.
     private func press(
-        _ typing: BlockedScreenIO.Typing, when check: @escaping @Sendable (ANSIScreen) -> Bool
+        _ typing: BlockedScreenIO.Typing, step: String, when check: @escaping @Sendable (ANSIScreen) -> Bool
     ) async throws {
-        guard mayContinue(), check(try await io.readScreen()) else { throw Halt() }
+        try await press(typing, on: try await io.readScreen(), step: step, when: check)
+    }
+
+    /// Types if `screen`, just read, passes `check`, unless a send types.
+    private func press(
+        _ typing: BlockedScreenIO.Typing, on screen: ANSIScreen, step: String,
+        when check: @escaping @Sendable (ANSIScreen) -> Bool
+    ) async throws {
+        guard mayContinue(), check(screen) else { throw Halt(step: step) }
         try await io.type(typing, whileShowing: check)
     }
 
-    /// Reads the screen until one passes `isDone`, for up to `window`.
+    /// Reads the screen until one passes `isDone`, for up to `window`. A
+    /// read that fails is tried again until then, so one failing herdr
+    /// read does not stop a step the next would see.
     private func poll(
         within window: Duration, until isDone: (ANSIScreen) -> Bool
     ) async throws -> ANSIScreen? {
         let deadline = clock.now() + window
         while true {
-            let screen = try await io.readScreen()
-            if isDone(screen) { return screen }
+            do {
+                let screen = try await io.readScreen()
+                if isDone(screen) { return screen }
+            } catch {
+                guard clock.now() < deadline else { throw error }
+            }
             guard clock.now() < deadline else { return nil }
             try await clock.sleep(timing.poll)
         }
     }
 
-    private func screen(within window: Duration, showing isDone: (ANSIScreen) -> Bool) async throws -> ANSIScreen {
-        guard let screen = try await poll(within: window, until: isDone) else { throw Halt() }
+    private func screen(
+        within window: Duration, step: String, showing isDone: (ANSIScreen) -> Bool
+    ) async throws -> ANSIScreen {
+        guard let screen = try await poll(within: window, until: isDone) else { throw Halt(step: step) }
         return screen
     }
 
     /// The panel naming the turn's commands, once it also passes `isDone`.
     private func panel(
-        within window: Duration, until isDone: (AgyScreen.TaskPanel) -> Bool
+        within window: Duration, step: String, until isDone: (AgyScreen.TaskPanel) -> Bool
     ) async throws -> AgyScreen.TaskPanel {
         let names = names
-        let screen = try await screen(within: window) { screen in
+        let screen = try await screen(within: window, step: step) { screen in
             Self.panel(on: screen, naming: names).map(isDone) == true
         }
-        guard let panel = Self.panel(on: screen, naming: names) else { throw Halt() }
+        guard let panel = Self.panel(on: screen, naming: names) else { throw Halt(step: step) }
         return panel
     }
 
-    /// After a failed check: Esc while the panel shows, unless a send types.
-    /// Returns whether no panel shows.
-    private func closePanel() async -> Bool {
-        guard let screen = try? await io.readScreen() else { return false }
-        guard Self.showsPanel(screen) else { return true }
-        guard mayContinue(), (try? await io.type(.keys(["esc"]), whileShowing: Self.showsPanel)) != nil else {
+    /// After a failed check or key: takes back what this typed, unless a
+    /// send types. Esc closes the panel, which leaves the box empty; in the
+    /// box, a Backspace for each of `/tasks`'s characters, sent at once,
+    /// clears it and closes its popup. Esc would close the popup but keep
+    /// `/tasks`, and a second Esc open the popup again (agy 1.5.3, live).
+    /// Returns whether neither shows.
+    private func undoTasks() async -> Bool {
+        do {
+            var screen = try await io.readScreen()
+            if Self.showsPanel(screen) {
+                try await press(.keys(["esc"]), on: screen, step: "the panel to close", when: Self.showsPanel)
+                guard let closed = try await poll(within: timing.step, until: { !Self.showsPanel($0) }) else {
+                    return false
+                }
+                screen = closed
+            }
+            guard Self.holdsTasks(screen) else { return true }
+            try await press(.keys(Self.eraseTasks), on: screen, step: "/tasks to erase", when: Self.holdsTasks)
+            return try await poll(within: timing.step, until: { !Self.holdsTasks($0) }) != nil
+        } catch {
+            Self.log(error)
             return false
         }
-        return (try? await poll(within: timing.step, until: { !Self.showsPanel($0) })) != nil
+    }
+
+    private static func log(_ error: any Error) {
+        if let halt = error as? Halt {
+            logger.notice("Stop's follow-through did not see \(halt.step, privacy: .public)")
+        } else {
+            logger.error("Stop's follow-through could not read or type: \(String(describing: error))")
+        }
     }
 
     // MARK: Screens
 
     nonisolated static let tasksCommand = "/tasks"
+    nonisolated static let eraseTasks = Array(repeating: "backspace", count: tasksCommand.count)
 
     /// agy's empty idle box, with no dialog, popup or running turn: what a
     /// Composer send needs too.
@@ -244,8 +294,17 @@ struct AgyBackgroundTaskStop {
             && agy.slashSelection == AgyScreen.SlashSelection(command: tasksCommand, description: "View background tasks")
     }
 
+    /// The panel, whether or not its rows read: `Tasks` under the box, as
+    /// over `No background tasks.`.
     nonisolated static func showsPanel(_ screen: ANSIScreen) -> Bool {
-        AgyScreen(screen).taskPanel != nil
+        let agy = AgyScreen(screen)
+        return agy.taskPanel != nil || agy.below == "Tasks"
+    }
+
+    /// The box holding the `/tasks` this typed, with its popup or not.
+    nonisolated static func holdsTasks(_ screen: ANSIScreen) -> Bool {
+        let box = AgyScreen(screen).composer
+        return box?.mode == .prompt && box?.draft == tasksCommand
     }
 
     /// The panel when its top rows name `names` in order.

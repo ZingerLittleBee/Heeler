@@ -72,6 +72,8 @@ struct AgyTaskPanelTests {
         #expect(agy.composer?.draft == "/tasks")
         #expect(agy.composer?.mode == .prompt)
         #expect(AgyBackgroundTaskStop.showsTasksPopup(screen))
+        #expect(AgyBackgroundTaskStop.holdsTasks(screen))
+        #expect(!AgyBackgroundTaskStop.showsPanel(screen))
     }
 
     /// herdr-core 0.1.18's first paint sends no color for a blank, so the
@@ -102,6 +104,8 @@ struct AgyTaskPanelTests {
         #expect(before.rows[0].isRunning && before.selected == 0)
         #expect(after.rows[0].status == "cancelled" && after.rows[0].hasEnded && after.selected == 0)
         #expect(before.rows.dropFirst().allSatisfy { !$0.isRunning })
+        #expect(AgyBackgroundTaskStop.showsPanel(try Self.captured(killed)))
+        #expect(!AgyBackgroundTaskStop.holdsTasks(try Self.captured(killed)))
     }
 
     /// The idle box after Esc, with the task still listed under it, and
@@ -121,6 +125,7 @@ struct AgyTaskPanelTests {
         #expect(agy.taskPanel == nil)
         #expect(AgyBackgroundTaskStop.showsIdleBox(screen))
         #expect(agy.showsRunningTasks == stem.contains("background-task"))
+        #expect(!AgyBackgroundTaskStop.showsPanel(screen) && !AgyBackgroundTaskStop.holdsTasks(screen))
     }
 
     /// A running task shows under the box, or in the footer's count, which
@@ -393,6 +398,105 @@ struct AgyBackgroundTaskStopTests {
         #expect(pane.typed.isEmpty)
     }
 
+    // MARK: Taking /tasks back
+
+    /// A popup that never reads as `/tasks`'s: once the step gives up,
+    /// six Backspaces in one send take `/tasks` back out of the box and
+    /// close the popup, and the notice still says what runs.
+    @Test func aPopupThatNeverReadsHasTasksErased() async {
+        let pane = AgyPane(
+            reads: ["idle"],
+            screens: [
+                "idle": Self.idle,
+                "unknown": Self.screen(
+                    draft: "/tasks", under: ["> /tasks  List background tasks", Self.right("esc to cancel", Self.model)]),
+            ],
+            answers: ["idle: paste /tasks": "unknown", "unknown: \(Self.erase)": "idle"])
+
+        let left = await Self.stop([Self.command("sleep 40", id: 6)], in: pane, typingChecksTheScreen: true)
+
+        #expect(left?.hasPrefix("Stop ended the turn, but \u{201C}sleep 40\u{201D} still runs") == true)
+        #expect(pane.typed == ["paste /tasks", Self.erase])
+        #expect(pane.shown == "idle")
+    }
+
+    /// Anything but the `/tasks` this typed stays in the box.
+    @Test func aBoxHoldingMoreThanTasksIsLeftAlone() async {
+        let pane = AgyPane(
+            reads: ["idle"],
+            screens: ["idle": Self.idle, "more": Self.screen(draft: "x/tasks", under: [Self.right("", Self.model)])],
+            answers: ["idle: paste /tasks": "more"])
+
+        let left = await Self.stop([Self.command("sleep 40", id: 6)], in: pane)
+
+        #expect(left?.hasPrefix("Stop ended the turn, but \u{201C}sleep 40\u{201D} still runs") == true)
+        #expect(pane.typed == ["paste /tasks"])
+    }
+
+    /// A panel whose rows don't read is still the panel: Esc closes it.
+    @Test func aPanelWhoseRowsDoNotReadIsClosed() async {
+        let pane = AgyPane(
+            reads: ["idle"],
+            screens: [
+                "idle": Self.idle, "popup": Self.popup,
+                "empty": Self.screen(under: ["Tasks", "No background tasks.", "", Self.right("", Self.model)]),
+                "closed": Self.idle,
+            ],
+            answers: ["idle: paste /tasks": "popup", "popup: enter": "empty", "empty: esc": "closed"])
+
+        let left = await Self.stop([Self.command("sleep 40", id: 6)], in: pane)
+
+        #expect(left?.hasPrefix("Stop ended the turn, but \u{201C}sleep 40\u{201D} still runs") == true)
+        #expect(pane.typed == ["paste /tasks", "enter", "esc"])
+        #expect(pane.shown == "closed")
+    }
+
+    /// One read failing while the popup draws is tried again, not a reason
+    /// to stop.
+    @Test func aFailedReadIsTriedAgain() async {
+        let pane = Self.fullPane(failing: [3])
+
+        let left = await Self.stop([Self.command("sleep 40", id: 6)], in: pane)
+
+        #expect(left == nil)
+        #expect(pane.typed == ["paste /tasks", "enter", "k", "esc"])
+    }
+
+    /// herdr's reads took up to 1.65 s live: a popup the second read after
+    /// the paste shows is still in time.
+    @Test func aPopupTheSecondSlowReadShowsIsInTime() async throws {
+        let clock = ManualClock()
+        let pane = Self.fullPane(readTime: (clock, .milliseconds(1_650)))
+        let built = AgyBackgroundTaskStop(
+            commands: [Self.command("sleep 40", id: 6)], io: pane.io(typingChecksTheScreen: false),
+            mayContinue: { true }, clock: clock.clock)
+        let stop = try #require(built)
+
+        let left = await stop.run()
+
+        #expect(left == nil)
+        #expect(pane.typed == ["paste /tasks", "enter", "k", "esc"])
+    }
+
+    /// Esc, the popup drawn a read after the paste, the panel, `k` and Esc.
+    private static func fullPane(
+        failing: Set<Int> = [], readTime: (clock: ManualClock, duration: Duration)? = nil
+    ) -> AgyPane {
+        AgyPane(
+            reads: ["idle"],
+            screens: [
+                "idle": idle, "typed": screen(draft: "/tasks", under: [right("", model)]), "popup": popup,
+                "panel": panel([("sleep 40", "running")]), "killed": panel([("sleep 40", "cancelled")]),
+                "closed": idle,
+            ],
+            answers: [
+                "idle: paste /tasks": "typed", "popup: enter": "panel", "panel: k": "killed", "killed: esc": "closed",
+            ],
+            drawing: ["typed": "popup"], failing: failing, readTime: readTime)
+    }
+
+    private static let erase = Array(repeating: "backspace", count: 6).joined(separator: " ")
+
     @Test func theNoticeNamesWhatStillRuns() {
         let long = "python3 -m http.server 8000 --bind 127.0.0.1 --directory /srv"
 
@@ -595,18 +699,31 @@ private final class ChatReads {
 /// agy's pane as Stop sees it: named screens, a typing that turns the one
 /// shown into the next `answers` names (`"<shown>: <typed>"`), and the
 /// first screens reads show before any typing, as a turn ending after Stop's
-/// Esc. A typing nothing answers leaves the screen as it is.
+/// Esc. A typing nothing answers leaves the screen as it is. A screen
+/// `drawing` names becomes the one it names after one read, as agy
+/// finishing a frame; reads `failing` names (counted from 1) throw, and
+/// each read can take `readTime` on a manual clock.
 private final class AgyPane: @unchecked Sendable {
     private let lock = NSLock()
     private let screens: [String: ANSIScreen]
     private let answers: [String: String]
+    private let drawing: [String: String]
+    private let failing: Set<Int>
+    private let readTime: (clock: ManualClock, duration: Duration)?
     private var upcoming: [String]
     private var current: String
+    private var reads = 0
     private var log: [String] = []
 
-    init(reads: [String], screens: [String: ANSIScreen], answers: [String: String]) {
+    init(
+        reads: [String], screens: [String: ANSIScreen], answers: [String: String], drawing: [String: String] = [:],
+        failing: Set<Int> = [], readTime: (clock: ManualClock, duration: Duration)? = nil
+    ) {
         self.screens = screens
         self.answers = answers
+        self.drawing = drawing
+        self.failing = failing
+        self.readTime = readTime
         upcoming = reads
         current = reads.first ?? ""
     }
@@ -614,10 +731,15 @@ private final class AgyPane: @unchecked Sendable {
     var typed: [String] { lock.withLock { log } }
     var shown: String { lock.withLock { current } }
 
-    func read() -> ANSIScreen {
-        lock.withLock {
+    func read() throws -> ANSIScreen {
+        if let readTime { readTime.clock.advance(readTime.duration) }
+        return try lock.withLock {
+            reads += 1
+            if failing.contains(reads) { throw TransportError.channelFailed(detail: "agent.read failed") }
             if !upcoming.isEmpty { current = upcoming.removeFirst() }
-            return screens[current] ?? ANSIScreen(rows: [])
+            let shown = current
+            if let drawn = drawing[shown] { current = drawn }
+            return screens[shown] ?? ANSIScreen(rows: [])
         }
     }
 
@@ -640,7 +762,7 @@ private final class AgyPane: @unchecked Sendable {
 
     func io(typingChecksTheScreen: Bool) -> BlockedScreenIO {
         var io = BlockedScreenIO(
-            readScreen: { [self] in read() },
+            readScreen: { [self] in try read() },
             sendKeys: { [self] in try type(.keys($0), check: nil) },
             paste: { [self] in try type(.paste($0), check: nil) })
         if typingChecksTheScreen {
