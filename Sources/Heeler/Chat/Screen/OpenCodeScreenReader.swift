@@ -93,13 +93,14 @@ enum OpenCodeScreenReader {
         } else if isRunning {
             // Enter would steer the turn, and a prompt that appears before
             // herdr's Enter would take it as its answer.
-            screenRead.state = .disabled("OpenCode is working. Send once it's idle, or steer from the terminal.")
+            screenRead.state = .disabled(working)
         } else {
             screenRead.state = .empty(placeholder: nil)
         }
         return screenRead
     }
 
+    static let working = "OpenCode is working. Send once it's idle, or steer from the terminal."
     private static let homeReason =
         "OpenCode is on its home screen, where a message starts a new conversation. Open this conversation in the terminal first."
     private static let subagentPanelReason =

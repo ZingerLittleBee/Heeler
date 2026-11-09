@@ -13,8 +13,9 @@ never show or send into a conversation it has guessed.
 ## Decision
 
 - The app binds a herdr-core Agent's session itself, lazily: when Chat opens,
-  before each Send, and on the Terminal's status, turn and foreground events
-  and a change to its `heeler.session` or `heeler.chat` label: OpenCode 1.x
+  before each Send Chat does not hold on its status, and on the Terminal's
+  status, turn and foreground events and a change to its `heeler.session` or
+  `heeler.chat` label: OpenCode 1.x
   reports no status, so its plugin's label is the only thing that says the
   conversation moved, and a label is the only sign of a choice made on another
   device or of a `/new` with no turn yet.
@@ -436,7 +437,9 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   edit, a two-question form with Skip and a multi-select question from cards, sent
   from Chat with no hold for the input box, held a message while agy worked and
   stopped a turn. That held message showed **Sending** for about 1.5 to 2.5 s before
-  the hold replaced it, and nothing reached agy. Stop ended the turn but not a
+  the hold replaced it, and nothing reached agy. Chat has since held such a
+  message on the reported Working before the session check and the read (ADR
+  0024), without the echo. Stop ended the turn but not a
   command agy had moved to the background, which ran to its end. Not seen: `/resume`
   and `/rewind`, whether `--remote-control` leaves a second process named `agy` in
   the Terminal, and whether the Host Helper notifies on the auth report.

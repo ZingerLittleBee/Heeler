@@ -18,6 +18,8 @@ extension ComposerDeliveryPolicy {
     /// and for any on herdr-core (`AgentChatStore.confirmsSessionBeforeSend`),
     /// runs before `willReadScreen` and the screen read: why the message
     /// would land outside the conversation Chat shows, or nil to go on.
+    /// A reported Working holds a program Chat never sends to during a turn
+    /// (`ChatProgram.inputBoxWhileWorking`) before either, as Blocked does.
     static func chat(
         rules: ChatSendRules,
         activity: @escaping @MainActor () -> ChatAgentActivity,
@@ -35,7 +37,16 @@ extension ComposerDeliveryPolicy {
             outgoingText: { rules.outgoingText($0) },
             validate: { rules.validate($0) },
             preflight: { text in
-                if activity() == .blocked { return .agentBlocked }
+                let reported = activity()
+                if reported == .blocked { return .agentBlocked }
+                // The screen would hold too, but on herdr-core the session
+                // check's exec and the read's first paint come first, and
+                // the echo showed Sending until they ended. Returning before
+                // any await takes it back before it renders. A report that
+                // lags the turn's end costs a hold the next status ends.
+                if reported == .working, let working = program.inputBoxWhileWorking {
+                    return .inputNotReady(working.holdReason(for: program))
+                }
                 if let confirmSession, let reason = await confirmSession() { return .inputNotReady(reason) }
                 willReadScreen()
                 let screen: ANSIScreen

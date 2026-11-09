@@ -120,6 +120,60 @@ struct AgentComposerChatRouteTests {
         #expect(store.draft == "next step")
     }
 
+    @MainActor
+    private final class Seen {
+        var steps: [String] = []
+        var echoes: [[AgentComposerStore.DeliveryState]] = []
+    }
+
+    /// The herdr-core run: a Send while Antigravity CLI worked showed
+    /// "Sending" for 1.5 to 2.5 s, while the session check's exec and the
+    /// screen read's paint ran, before the same hold took it back. A
+    /// reported Working now holds before either, so the echo leaves in the
+    /// main-actor turn it came in: a job queued behind the Send never sees
+    /// it, and nothing renders it.
+    @Test func aWorkingHoldNeverShowsTheEcho() async throws {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport, status: .working)
+        let ready = try ScreenFixture.screen("agy-02-idle-empty-120x40")
+        let seen = Seen()
+        let policy = ComposerDeliveryPolicy.chat(
+            rules: ChatSendRules(
+                program: .agy, commands: ChatCommandMenu.commands(skills: [], agentIsIdle: false, program: .agy)),
+            activity: { .working },
+            readScreen: {
+                seen.steps.append("read")
+                // Each is a Host round trip on herdr-core.
+                await Task.yield()
+                return ready
+            },
+            confirmSession: {
+                seen.steps.append("check")
+                await Task.yield()
+                return nil
+            },
+            pause: { _ in })
+        let hold = ComposerRefusal.inputNotReady(
+            "The Agent isn't taking messages: Antigravity CLI is working. Send once it's idle, or steer from the terminal."
+        )
+        store.replaceDraft(with: "hello")
+
+        let send = Task { await store.send(policy: policy) }
+        let look = Task { seen.echoes.append(store.messages.map(\.state)) }
+        let result = await send.value
+        await look.value
+
+        #expect(result == .refused(hold))
+        #expect(seen.echoes == [[]])
+        #expect(seen.steps.isEmpty)
+        #expect(store.draft == "hello")
+        #expect(store.messages.isEmpty)
+        #expect(await transport.agentPromptParams.isEmpty)
+        #expect(store.notice == ComposerNotice(refusal: hold, route: .chat))
+        store.agentStatusDidChange(.idle)
+        #expect(store.notice == nil)
+    }
+
     /// The Mac pick run: "can't tell" stayed in the Composer after the pick
     /// it asked for. A hold about the conversation Chat followed ends once
     /// it follows another; one noted after the Send's own check moved Chat

@@ -130,6 +130,62 @@ struct ChatDeliveryPolicyTests {
         #expect(calls.names == ["check", "check", "read"])
     }
 
+    /// While herdr reports Working, a program Chat never sends to during a
+    /// turn is held before the session check and the screen read, which on
+    /// herdr-core kept the message showing as Sending. The idle screen says
+    /// the report alone held it.
+    @Test(arguments: [ChatProgram.agy, .omp, .opencode])
+    func reportedWorkingHoldsBeforeTheChecks(program: ChatProgram) async throws {
+        let holds: [ChatProgram: String] = [
+            .agy:
+                "The Agent isn't taking messages: Antigravity CLI is working. Send once it's idle, or steer from the terminal.",
+            .omp: "The Agent isn't taking messages: Oh My Pi is working. Send once it's idle, or steer from the terminal.",
+            .opencode:
+                "The Agent isn't taking messages: OpenCode is working. Send once it's idle, or steer from the terminal.",
+        ]
+        let hold = try #require(holds[program])
+        let calls = Calls()
+        let preflight = try Self.checkedPreflight(program, activity: .working, calls: calls)
+
+        #expect(await preflight("hello") == .inputNotReady(hold))
+        #expect(calls.names.isEmpty)
+    }
+
+    /// A program that queues or steers a message sent during a turn still
+    /// gets every check while herdr reports Working, and its screen decides.
+    @Test(arguments: [ChatProgram.claude, .codex, .pi, .grok])
+    func reportedWorkingStillChecksAProgramThatQueues(program: ChatProgram) async throws {
+        let calls = Calls()
+        let preflight = try Self.checkedPreflight(program, activity: .working, calls: calls)
+
+        #expect(await preflight("hello") == nil)
+        #expect(calls.names == ["check", "register", "read"])
+    }
+
+    /// The preflight over the program's idle, empty input box, with a
+    /// session check that passes, noting each step it takes.
+    private static func checkedPreflight(
+        _ program: ChatProgram, activity: ChatAgentActivity, calls: Calls
+    ) throws -> @MainActor (String) async -> ComposerRefusal? {
+        let ready = try ScreenFixture.screen(try #require(readyScreens[program]))
+        return try #require(
+            ComposerDeliveryPolicy.chat(
+                rules: ChatSendRules(
+                    program: program,
+                    commands: ChatCommandMenu.commands(skills: [], agentIsIdle: false, program: program)),
+                activity: { activity },
+                readScreen: {
+                    calls.names.append("read")
+                    return ready
+                },
+                confirmSession: {
+                    calls.names.append("check")
+                    return nil
+                },
+                willReadScreen: { calls.names.append("register") }
+            ).preflight)
+    }
+
     @Test func textAlreadyInTheBoxHoldsTheMessage() async throws {
         let preflight = try #require(Self.policy { Self.draft("half typed") }.preflight)
 
@@ -279,9 +335,11 @@ struct ChatDeliveryPolicyTests {
             program: program, commands: ChatCommandMenu.commands(skills: [], agentIsIdle: false, program: program))
         let blocked = try #require(
             ComposerDeliveryPolicy.chat(rules: busy, activity: { .blocked }, readScreen: { Self.draft("") }).preflight)
+        // Unknown, not Working, which would hold Oh My Pi, OpenCode and
+        // Antigravity CLI before the read.
         let unreadable = try #require(
             ComposerDeliveryPolicy.chat(
-                rules: busy, activity: { .working }, readScreen: { throw TransportError.timedOut }
+                rules: busy, activity: { .unknown }, readScreen: { throw TransportError.timedOut }
             ).preflight)
         let statuses: [AgentStatus] = [.idle, .working, .blocked, .done, .unknown]
         func ending(_ refusal: ComposerRefusal?) throws -> [AgentStatus] {

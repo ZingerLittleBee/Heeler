@@ -511,13 +511,15 @@ reads of 2026-11-07 (about every 160 ms), a pending row (`○ Running (…)`,
 2.4 s before four dialogs replaced the box, and three command dialogs
 opened one read after a spinner row (`Reading file...` or a thought
 summary) with no pending row (67 and 69 show the first kind). Since herdr
-reads Working from the same screen, its status can only lag Chat's read,
-so Chat does not hold on it. What remains is a turn that starts after
-Chat's read and opens a dialog before herdr's Enter: one sent from another
-client, or the turn agy starts by itself when a background command ends
-(Background tasks, above). No probe caught either race; both follow from
-the timings above. agy was seen going on by itself on 2026-11-08, after
-its turn had ended and inside a running one, with nothing sent meanwhile.
+reads Working from the same screen, its status can only lag Chat's read;
+Chat holds on it as well, before the read, which on a herdr-core Host
+spares the message a Sending echo (ADR 0024). What remains is a turn
+that starts after Chat's read and opens a dialog before herdr's Enter:
+one sent from another client, or the turn agy starts by itself when a
+background command ends (Background tasks, above). No probe caught
+either race; both follow from the timings above. agy was seen going on by
+itself on 2026-11-08, after its turn had ended and inside a running one,
+with nothing sent meanwhile.
 
 Stop sends one Esc, never Ctrl+C. It reads the screen first and sends
 nothing while bash mode holds a command, which Esc would drop (93); what

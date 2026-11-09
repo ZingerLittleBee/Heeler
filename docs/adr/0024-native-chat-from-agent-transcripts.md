@@ -254,8 +254,13 @@ herdr's Enter takes that Enter. So although agy would queue a message sent
 during a turn, Chat holds it while the footer reads `esc to cancel` or
 `Press up to edit queued messages` or agy's spinner shows, as for Oh My Pi
 and OpenCode (Stop, below). herdr reads agy's Working from that same
-footer and spinner, so its status can only lag Chat's read, and Chat does
-not hold on it. What remains is a turn that starts after Chat's read and
+footer and spinner, so its status can only lag Chat's read. Chat also
+holds on a reported Working, before the session check and the read: on a
+herdr-core Host those wait for an exec and an attach's first paint, and
+the message showed as Sending for 1.5 to 2.5 s before the screen's hold
+took it back (2026-11-09). A report that lags the turn's end on screen
+can only cost a hold in that moment, and the notice clears on the next
+status change. What remains is a turn that starts after Chat's read and
 opens a dialog before herdr's Enter: one sent from another client, or the
 turn agy starts by itself when a background command it left running ends.
 agy then injects the task's `SYSTEM_MESSAGE` and starts a step with no
@@ -524,7 +529,8 @@ permission or question either raises in between would take it as its answer
 (ADR 0025, and Antigravity CLI above). While Oh My Pi's status band,
 OpenCode's footer, or Antigravity CLI's footer or spinner shows a turn
 running, Chat holds the message and says to send once it is idle or steer
-from the terminal. Esc in
+from the terminal. A reported Working holds it the same way before Chat
+reads the screen (Antigravity CLI above). Esc in
 Pi or Oh My Pi puts a steer the turn has not taken back into the input box,
 and Esc in Codex 0.162.1 does the same with a follow-up queued with Tab, so
 a draft found there says Stop may have left it. A send that empties the draft keeps Stop
