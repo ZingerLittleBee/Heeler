@@ -11,11 +11,12 @@ import os
 /// box, presses Enter on the `/` popup's `/tasks` row, and then, in the
 /// panel, `k` on each of the turn's running commands that is not a daemon,
 /// moving one row at a time, and Esc to close it. Every key goes only after
-/// a fresh read passes its check. The panel's top rows must name all of
-/// the turn's background commands, newest first, so a task from an earlier
-/// turn is never selected: rows match by command, since their times are
-/// the Host's local time. A check that fails presses nothing more than what
-/// takes `/tasks` back out, and says what still runs.
+/// the latest read passes its check: the one its step waited for, when that
+/// shows what the key needs, else a fresh one. The panel's top rows must
+/// name all of the turn's background commands, newest first, so a task from
+/// an earlier turn is never selected: rows match by command, since their
+/// times are the Host's local time. A check that fails presses nothing more
+/// than what takes `/tasks` back out, and says what still runs.
 @MainActor
 struct AgyBackgroundTaskStop {
     struct Timing: Sendable {
@@ -138,9 +139,10 @@ struct AgyBackgroundTaskStop {
         do {
             // A turn that keeps running is Stop's own wait's to report, and a
             // second tap follows through again.
-            guard try await poll(within: timing.turnEnd, until: { !AgyScreen($0).showsRunningTurn }) != nil
+            guard let afterTurn = try await poll(within: timing.turnEnd, until: { !AgyScreen($0).showsRunningTurn })
             else { return nil }
-            guard mayContinue(), Self.showsIdleBox(try await io.readScreen()) else { throw Halt(step: "the idle box") }
+            let box = try await latest(afterTurn, passing: Self.showsIdleBox)
+            guard mayContinue(), Self.showsIdleBox(box) else { throw Halt(step: "the idle box") }
         } catch {
             Self.log(error)
             return error is Halt ? Self.notice(for: stoppable) : Self.unreadNotice(for: stoppable)
@@ -148,32 +150,33 @@ struct AgyBackgroundTaskStop {
         var ended: Set<Int> = []
         do {
             try await io.type(.paste(Self.tasksCommand), whileShowing: Self.showsIdleBox)
-            _ = try await screen(within: timing.step, step: "the popup", showing: Self.showsTasksPopup)
-            try await press(.keys(["enter"]), step: "the popup", when: Self.showsTasksPopup)
+            let popup = try await screen(within: timing.step, step: "the popup", showing: Self.showsTasksPopup)
+            try await press(.keys(["enter"]), after: popup, step: "the popup", when: Self.showsTasksPopup)
             let names = names
-            var panel = try await self.panel(within: timing.step, step: "the panel") { _ in true }
+            var shown = try await self.panel(within: timing.step, step: "the panel") { _ in true }
             for index in listed.indices where listed[index].isStoppable {
-                let row = panel.rows[index]
+                let row = shown.panel.rows[index]
                 if row.hasEnded {
                     ended.insert(index)
                     continue
                 }
                 guard row.isRunning else { throw Halt(step: "a running row") }
-                while let from = panel.selected, from != index {
+                while let from = shown.panel.selected, from != index {
                     let to = from < index ? from + 1 : from - 1
-                    try await press(.keys([from < index ? "down" : "up"]), step: "the selected row") {
+                    let move = from < index ? "down" : "up"
+                    try await press(.keys([move]), after: shown.screen, step: "the selected row") {
                         Self.panel(on: $0, naming: names)?.selected == from
                     }
-                    panel = try await self.panel(within: timing.step, step: "the next row") { $0.selected == to }
+                    shown = try await self.panel(within: timing.step, step: "the next row") { $0.selected == to }
                 }
-                try await press(.keys(["k"]), step: "the row to kill") { screen in
+                try await press(.keys(["k"]), after: shown.screen, step: "the row to kill") { screen in
                     guard let panel = Self.panel(on: screen, naming: names), panel.selected == index else { return false }
                     return panel.rows[index].isRunning
                 }
-                panel = try await self.panel(within: timing.kill, step: "the row ended") { $0.rows[index].hasEnded }
+                shown = try await self.panel(within: timing.kill, step: "the row ended") { $0.rows[index].hasEnded }
                 ended.insert(index)
             }
-            try await press(.keys(["esc"]), step: "the panel", when: Self.showsPanel)
+            try await press(.keys(["esc"]), after: shown.screen, step: "the panel", when: Self.showsPanel)
             guard try await poll(within: timing.step, until: { !Self.showsPanel($0) }) != nil else {
                 return Self.panelLeftOpen
             }
@@ -189,13 +192,23 @@ struct AgyBackgroundTaskStop {
 
     // MARK: Steps
 
-    /// Types after a fresh read passes `check`. Where the typing checks the
-    /// screen again itself (`BlockedScreenIO.typeWhileShowing`), that read is
-    /// the one it holds to.
+    /// The read a key that needs `check` goes on: `screen`, which a step's
+    /// wait just returned, when it passes, else a fresh one. A herdr TUI
+    /// read took 0.8 to 1.65 s live, and a second one before every key made
+    /// each step 3 to 4.5 s.
+    private func latest(_ screen: ANSIScreen, passing check: (ANSIScreen) -> Bool) async throws -> ANSIScreen {
+        if check(screen) { return screen }
+        return try await io.readScreen()
+    }
+
+    /// Types once the latest read passes `check` (`latest`). Where the typing
+    /// checks the screen again itself (`BlockedScreenIO.typeWhileShowing`),
+    /// that read is the one it holds to.
     private func press(
-        _ typing: BlockedScreenIO.Typing, step: String, when check: @escaping @Sendable (ANSIScreen) -> Bool
+        _ typing: BlockedScreenIO.Typing, after screen: ANSIScreen, step: String,
+        when check: @escaping @Sendable (ANSIScreen) -> Bool
     ) async throws {
-        try await press(typing, on: try await io.readScreen(), step: step, when: check)
+        try await press(typing, on: try await latest(screen, passing: check), step: step, when: check)
     }
 
     /// Types if `screen`, just read, passes `check`, unless a send types.
@@ -238,16 +251,17 @@ struct AgyBackgroundTaskStop {
         return screen
     }
 
-    /// The panel naming the turn's commands, once it also passes `isDone`.
+    /// The panel naming the turn's commands, once it also passes `isDone`,
+    /// and the read showing it.
     private func panel(
         within window: Duration, step: String, until isDone: (AgyScreen.TaskPanel) -> Bool
-    ) async throws -> AgyScreen.TaskPanel {
+    ) async throws -> (screen: ANSIScreen, panel: AgyScreen.TaskPanel) {
         let names = names
         let screen = try await screen(within: window, step: step) { screen in
             Self.panel(on: screen, naming: names).map(isDone) == true
         }
         guard let panel = Self.panel(on: screen, naming: names) else { throw Halt(step: step) }
-        return panel
+        return (screen, panel)
     }
 
     /// After a failed check or key: takes back what this typed, unless a

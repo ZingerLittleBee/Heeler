@@ -291,12 +291,14 @@ Esc. The panel lists the conversation's tasks newest first with the Host's
 local start times, so its top rows must name the turn's background commands
 in order, matched by command. A daemon (`IsDaemon`), which agy's own
 headless runs leave running, and a task from an earlier turn are never
-selected. Each key goes only after a fresh read passes its check, which
-herdr-core's typing makes again; a step gives agy 3 s, reading once more
-after them whatever a read takes, and a read that fails is tried again
-within it. A failed check takes back only what the follow-through typed:
-Esc closes the panel, and in the box six Backspaces in one send erase its
-own `/tasks` and close the popup, since Esc there closes the popup but
+selected. Each key goes only after the latest read passes its check, which
+herdr-core's typing makes again. That read is the one its step waited for
+when it shows what the key needs, else a fresh one: a second herdr TUI read
+before every key made each step 3 to 4.5 s live. A step gives agy 3 s,
+reading once more after them whatever a read takes, and a read that fails is
+tried again within it. A failed check takes back only what the follow-through
+typed: Esc closes the panel, and in the box six Backspaces in one send erase
+its own `/tasks` and close the popup, since Esc there closes the popup but
 keeps the text and a second Esc opens it again; any other draft stays.
 Chat then says what still runs and how to end it in the terminal, with
 Open in Terminal. The commands are the transcript's open turn's as Stop is

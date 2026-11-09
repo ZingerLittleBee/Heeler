@@ -175,7 +175,7 @@ struct AgyTaskPanelTests {
 }
 
 /// Chat's Stop after its Esc in Antigravity CLI: the keys it presses in
-/// agy's `/tasks` panel, each after a fresh screen passed its check, and
+/// agy's `/tasks` panel, each after the latest screen passed its check, and
 /// what it says when one did not.
 @MainActor
 @Suite("Antigravity CLI background task stop")
@@ -268,6 +268,69 @@ struct AgyBackgroundTaskStopTests {
 
         #expect(left == nil)
         #expect(pane.typed == ["paste /tasks", "enter", "k", "down", "k", "esc"])
+    }
+
+    /// Each herdr TUI read took 0.8 to 1.65 s live, and reading again before
+    /// every key made a step 3 to 4.5 s. A key goes on the read its step
+    /// waited for, which already shows what the key needs: one command
+    /// reads the turn's end, the popup, the panel, `cancelled` and the
+    /// closed panel; two also read the row moved to and its `cancelled`.
+    @Test func eachKeyGoesOnTheReadItsStepWaitedFor() async {
+        let one = AgyPane(
+            reads: ["idle"],
+            screens: [
+                "idle": Self.idle, "popup": Self.popup, "panel": Self.panel([("sleep 40", "running")]),
+                "killed": Self.panel([("sleep 40", "cancelled")]), "closed": Self.idle,
+            ],
+            answers: [
+                "idle: paste /tasks": "popup", "popup: enter": "panel", "panel: k": "killed", "killed: esc": "closed",
+            ])
+        let two = AgyPane(
+            reads: ["idle"],
+            screens: [
+                "idle": Self.idle, "popup": Self.popup,
+                "both": Self.panel([("sleep 50", "running"), ("sleep 40", "running")]),
+                "first": Self.panel([("sleep 50", "cancelled"), ("sleep 40", "running")]),
+                "down": Self.panel([("sleep 50", "cancelled"), ("sleep 40", "running")], selected: 1),
+                "second": Self.panel([("sleep 50", "cancelled"), ("sleep 40", "cancelled")], selected: 1),
+                "closed": Self.idle,
+            ],
+            answers: [
+                "idle: paste /tasks": "popup", "popup: enter": "both", "both: k": "first", "first: down": "down",
+                "down: k": "second", "second: esc": "closed",
+            ])
+
+        #expect(await Self.stop([Self.command("sleep 40", id: 6)], in: one) == nil)
+        #expect(
+            await Self.stop([Self.command("sleep 40", id: 6), Self.command("sleep 50", id: 7)], in: two) == nil)
+
+        #expect(one.typed == ["paste /tasks", "enter", "k", "esc"])
+        #expect(one.readCount == 5)
+        #expect(two.typed == ["paste /tasks", "enter", "k", "down", "k", "esc"])
+        #expect(two.readCount == 7)
+    }
+
+    /// A step's read that does not show what the next key needs, here the
+    /// turn's end in a frame agy has yet to draw its box in, is not the one
+    /// the key goes on: a fresh read is.
+    @Test func aKeyTheStepsReadDoesNotPassGoesOnAFreshRead() async {
+        let pane = AgyPane(
+            reads: ["undrawn"],
+            screens: [
+                "undrawn": ScreenFixture.synthetic(["\u{25CF} Ran (sleep 40) (ctrl+o to expand)"]), "idle": Self.idle,
+                "popup": Self.popup, "panel": Self.panel([("sleep 40", "running")]),
+                "killed": Self.panel([("sleep 40", "cancelled")]), "closed": Self.idle,
+            ],
+            answers: [
+                "idle: paste /tasks": "popup", "popup: enter": "panel", "panel: k": "killed", "killed: esc": "closed",
+            ],
+            drawing: ["undrawn": "idle"])
+
+        let left = await Self.stop([Self.command("sleep 40", id: 6)], in: pane)
+
+        #expect(left == nil)
+        #expect(pane.typed == ["paste /tasks", "enter", "k", "esc"])
+        #expect(pane.readCount == 6)
     }
 
     /// A daemon the turn started keeps running, as agy's own headless runs
@@ -782,6 +845,7 @@ private final class AgyPane: @unchecked Sendable {
 
     var typed: [String] { lock.withLock { log } }
     var shown: String { lock.withLock { current } }
+    var readCount: Int { lock.withLock { reads } }
 
     func read() throws -> ANSIScreen {
         if let readTime { readTime.clock.advance(readTime.duration) }
