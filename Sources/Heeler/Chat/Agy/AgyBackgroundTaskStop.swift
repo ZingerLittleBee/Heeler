@@ -71,7 +71,7 @@ struct AgyBackgroundTaskStop {
     /// agy writes the step that makes a command a task as it lists the task
     /// under the box, but Chat's read can bring it seconds later, after a
     /// tap (live). So with none of the open turn's commands read at the tap,
-    /// a task listed on the screen after the Esc has Chat read again, and
+    /// Chat reads again unless the screen after the Esc lists no task, and
     /// the commands that turn then has, if it is still the open one, are
     /// ended.
     static func followThrough(
@@ -87,7 +87,9 @@ struct AgyBackgroundTaskStop {
         }
         if let stop = stop(tapped) { return { await stop.run() } }
         return {
-            guard let screen = try? await io.readScreen(), AgyScreen(screen).showsRunningTasks else { return nil }
+            // Only a screen that shows no task spares the wait; one that
+            // could not be read says nothing of what runs.
+            if let screen = try? await io.readScreen(), !AgyScreen(screen).showsRunningTasks { return nil }
             _ = await transcript.readAgain(timing.transcript) { stop(transcript.openTurn()) != nil }
             return await stop(transcript.openTurn())?.run()
         }

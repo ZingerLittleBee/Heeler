@@ -307,8 +307,8 @@ it ran out on a send no turn began with. agy names a command's task only
 in the step it writes 10 s after the command starts, and a transcript read
 bringing that step took up to 5.8 s live, so a tap can come before Chat
 knows the command. When it knows none, the follow-through reads the screen
-after the Esc and, only while a task shows there (its row under the box or
-the footer's task count), wakes the transcript read and waits up to 8 s
+after the Esc and, unless that read shows no task (its row under the box
+or the footer's task count), wakes the transcript read and waits up to 8 s
 for the tapped turn's commands, never another turn's. A Chat send waits
 while the follow-through reads and types, since it would land between two
 of its keys. agy records a kill only with the next prompt, so the row

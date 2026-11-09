@@ -599,6 +599,17 @@ struct AgyBackgroundTaskStopTests {
         #expect(chat.readsAgain == 0)
     }
 
+    /// A read after the Esc that fails says nothing of what runs, so Chat
+    /// still reads again, and the command it then lists is ended.
+    @Test func aFailedReadAfterTheEscStillReadsAgain() async throws {
+        let chat = ChatReads(Self.turn(1), then: Self.turn(1, [Self.command("sleep 60", id: 45)]))
+        let pane = try Self.corePane(failing: [1])
+
+        #expect(await Self.tap(chat, pane) == .some(nil))
+        #expect(pane.typed == ["paste /tasks", "enter", "k", "esc"])
+        #expect(chat.readsAgain == 1)
+    }
+
     /// A command of a turn opened since the tap, or of another
     /// conversation Chat now follows, is not the stopped turn's.
     @Test(arguments: [(conversation: 1, entry: 50), (conversation: 2, entry: 40)])
@@ -632,8 +643,9 @@ struct AgyBackgroundTaskStopTests {
             conversation: conversation, firstEntry: ChatEntryID("agy:40:user"), commands: commands)
     }
 
-    /// herdr-core's paints in agy's colors from Esc to the panel's close.
-    private static func corePane() throws -> AgyPane {
+    /// herdr-core's paints in agy's colors from Esc to the panel's close;
+    /// reads `failing` names throw.
+    private static func corePane(failing: Set<Int> = []) throws -> AgyPane {
         AgyPane(
             reads: ["idle"],
             screens: try [
@@ -643,7 +655,8 @@ struct AgyBackgroundTaskStopTests {
             ].mapValues(AgyTaskPanelTests.captured),
             answers: [
                 "idle: paste /tasks": "popup", "popup: enter": "panel", "panel: k": "killed", "killed: esc": "closed",
-            ])
+            ],
+            failing: failing)
     }
 
     /// What a tap builds, run: nil when it builds nothing, else what it says.

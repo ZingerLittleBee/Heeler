@@ -581,10 +581,10 @@ them once the screen shows the turn ended: `/tasks` into the empty box,
 Enter on the popup's `/tasks`, `k` on each in the panel, and Esc, every key
 after a fresh read passed its check, rows matched by command with the
 panel's top rows naming the turn's tasks in order. When the transcript
-held no such command at the tap but a task shows after the Esc, it reads
-the transcript again first. A failed check takes back what it typed, Esc
-for the panel and six Backspaces for `/tasks` in the box, and says what
-still runs (ADR 0024).
+held no such command at the tap, it reads the transcript again first,
+unless a read after the Esc shows no task. A failed check takes back what
+it typed, Esc for the panel and six Backspaces for `/tasks` in the box,
+and says what still runs (ADR 0024).
 
 Chat's `/` menu offers agy's skills as `/name`, except one named like a
 built-in command and one whose frontmatter says
