@@ -623,10 +623,13 @@ the Agent switcher row stay in both.
 
 While Agent Status is Blocked, Chat answers the dialog on the Agent's screen
 with a native card in the Composer's place instead of sending the user to the
-terminal. The screen decides what a card offers. Chat reads the visible screen
-through `agent.read` with its ANSI colors, which also tell a narrow pane's
-leftover text apart, and joins it with the main conversation's pending
-request in the transcript; a subagent's dialog is read from the screen alone.
+terminal. The Composer gives way as herdr reports Blocked, since a Blocked
+Agent takes no message, and a progress indicator holds its place until the
+first read decides the card. The screen decides what a card offers. Chat
+reads the visible screen through `agent.read` with its ANSI colors, which
+also tell a narrow pane's leftover text apart, and joins it with the main
+conversation's pending request in the transcript; a subagent's dialog is
+read from the screen alone.
 Labels are the program's own text. herdr reports Claude Code idle on some of
 its question pages, the review page of a question form and a question with
 previews, so while the transcript holds an open AskUserQuestion call, an idle

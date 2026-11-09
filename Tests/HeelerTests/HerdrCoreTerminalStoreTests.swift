@@ -1896,6 +1896,50 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    /// The Blocked status arrives a paint before Chat's read of the dialog
+    /// does: the Composer gives way at once, to a sign that Chat is reading,
+    /// and that to the card.
+    @Test func aCoreChatHoldsTheComposersPlaceWhileItReadsTheDialog() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let paint = try ChatFixture.text("screens/core-paint/claude-02-c1-bash-blocked.paint")
+        await fixture.scripted.setAttachPaint(Data(paint.utf8))
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        _ = try await fixture.waitForAttach(1, laying: detail)
+        try await Self.until("the Composer") { detail.offers("Message the Agent") }
+        try await Self.until("Chat, once the Host's kernel is known") { fixture.console.chatProgram(for: agent) != nil }
+        detail.layOut()
+        try await HostedMenu.select("Show Chat", labeled: "More", in: detail.window)
+        try await Self.until("Chat") { detail.offers("Show Agent Terminal") }
+        let chat = try #require(fixture.console.chatStore(for: agent, program: .claude))
+
+        await fixture.scripted.holdAttachReplies()
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine(
+                "status",
+                data: .object([
+                    "status": .object(["state": .string("blocked"), "app": .string("claude-code")]),
+                    "records": .object([:]), "reported": .bool(true),
+                ])))
+        try await Self.until("Chat reading the dialog") { detail.offers("Reading the Agent's screen") }
+        try await Self.until("the Composer giving way") { !detail.offers("Message the Agent") }
+        // A read that gave up would show the unreadable card instead.
+        #expect(chat.blocked.content == .none, "the read is still held")
+
+        await fixture.scripted.releaseAttachReplies()
+        try await Self.until("the store's card") {
+            if case .card = chat.blocked.content { return true }
+            return false
+        }
+        await detail.settle()
+        try await Self.until("the card in the reading sign's place") {
+            detail.reads("Yes") && !detail.offers("Reading the Agent's screen")
+        }
+        #expect(!detail.offers("Message the Agent"))
+        await detail.close()
+        await fixture.finish()
+    }
+
     /// Native Windows stages through the core and takes Send over its Attach.
     @Test func aNativeWindowsCoreAgentsComposerOffersAddAndSend() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])

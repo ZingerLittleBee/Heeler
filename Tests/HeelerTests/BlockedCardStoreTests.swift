@@ -2070,6 +2070,64 @@ struct BlockedCardStoreTests {
         #expect(await pane.reads == reads)
     }
 
+    // MARK: The Composer's place
+
+    /// herdr reports Blocked a read before its card can show. The card's
+    /// place is taken at once, so the Composer never shows over agy's trust
+    /// prompt while Chat reads it.
+    @Test func aBlockedAgentsCardTakesTheComposersPlaceBeforeItsFirstRead() async throws {
+        let screen = try ScreenFixture.screen("agy-00-trust-prompt-191x49")
+        let gate = ScriptedTransportCallGate()
+        let store = BlockedCardStore(
+            program: .agy,
+            io: BlockedScreenIO(
+                readScreen: {
+                    await gate.waitUntilOpen()
+                    return screen
+                },
+                sendKeys: { _ in }, paste: { _ in }),
+            clock: ManualClock().clock)
+        #expect(!store.replacesComposer)
+
+        store.update(activity: .blocked)
+        #expect(store.replacesComposer)
+        let read = Task { await store.refresh() }
+        await gate.waitForEntry()
+        #expect(store.content == .none)
+        #expect(store.replacesComposer)
+
+        await gate.open()
+        await read.value
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+
+        store.update(activity: .idle)
+        #expect(store.content == .none)
+        #expect(!store.replacesComposer)
+    }
+
+    /// An idle Agent read for its trust prompt keeps the Composer until the
+    /// card shows: most such reads find no dialog.
+    @Test func anIdleAgentAwaitingItsSessionKeepsTheComposerUntilItsTrustRead() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-12-trust-prompt-no-selected-40x30"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .idle)
+        store.update(awaitingSession: true)
+        #expect(!store.replacesComposer)
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+        #expect(store.replacesComposer)
+    }
+
     // MARK: Helpers
 
     private static let openCodeBlockedNote =

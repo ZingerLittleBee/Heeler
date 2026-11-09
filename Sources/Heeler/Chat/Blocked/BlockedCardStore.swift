@@ -141,10 +141,18 @@ final class BlockedCardStore {
     /// way out of a dialog that keeps the card waiting.
     var canStop: Bool { progress != .acting }
 
+    /// Whether the card takes the Composer's place: while it shows, and
+    /// while herdr reports Blocked before a read has decided it, when the
+    /// card's place shows that Chat is reading. A Blocked Agent takes no
+    /// message, and its dialog is one read away. An idle Agent read for a
+    /// dialog keeps the Composer until a card shows: most of those reads
+    /// find none.
+    var replacesComposer: Bool { content != .none || activity == .blocked }
+
     @ObservationIgnored private let io: BlockedScreenIO
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private let clock: BlockedCardClock
-    @ObservationIgnored private var activity: ChatAgentActivity = .unknown
+    private var activity: ChatAgentActivity = .unknown
     @ObservationIgnored private var awaitingSession = false
     @ObservationIgnored private var pendingRequests: [ChatPendingRequest] = []
     /// Antigravity CLI permission calls a confirmed answer went to, until

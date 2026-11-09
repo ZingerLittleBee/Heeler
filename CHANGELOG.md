@@ -54,6 +54,7 @@ Entries reference the pull request that made the change.
 - On a herdr-core Host, a Chat that can't tell the conversation and shows none refuses a message at once, instead of showing it as Sending while Heeler checks the Host. (#644)
 - Fade a Blocked card's options where they run past its scroll edge, and flash its scroll bar as they start to, instead of cutting an option off flat with no sign of the answers below it. (#644)
 - Show why a Send or Retry was held even while an earlier message's failure shows. A held Retry keeps its own failure, instead of showing the passing reason as its error after the hold ended. (#644)
+- Replace Chat's Composer with a progress indicator as soon as an Agent reports Blocked, until Chat has read the dialog for its card, instead of showing the Composer for a moment first, as before Antigravity CLI's trust prompt. (#644)
 
 ## [0.1.18]
 

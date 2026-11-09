@@ -383,7 +383,7 @@ struct AgentChatSurfaceView: View {
             guard let statuses else { return }
             composer.settleUnknownOutcomes(recorded: Set(statuses.filter { $0.value == .recorded }.keys))
         }
-        .onChange(of: chat.map { $0.blocked.content != .none } ?? false) { _, isReplaced in
+        .onChange(of: chat?.blocked.replacesComposer ?? false) { _, isReplaced in
             // A Blocked card takes the Composer's place, Voice Input and the
             // tools dock with it. iPad keeps `.tools` without focus, so
             // nothing else would put the dock away.
@@ -1345,9 +1345,10 @@ struct AgentChatSurfaceView: View {
         }
     }
 
-    /// A Blocked Agent's dialog, answered in the Composer's place.
+    /// A Blocked Agent's dialog, answered in the Composer's place, or a sign
+    /// that Chat is reading it (`BlockedCardStore.replacesComposer`).
     private var blockedCard: AnyView? {
-        guard let chat, chat.blocked.content != .none else { return nil }
+        guard let chat, chat.blocked.replacesComposer else { return nil }
         return AnyView(
             BlockedCardView(
                 store: chat.blocked,
@@ -1388,7 +1389,7 @@ struct AgentChatSurfaceView: View {
             isInputFocused: false,
             keyboardPresentation: composerKeyboardPresentation,
             inheritsKeyboard: keyboardHandoff.mode(for: agent.id) != nil,
-            hasInputReplacement: chat.map { $0.blocked.content != .none } ?? false,
+            hasInputReplacement: chat?.blocked.replacesComposer ?? false,
             keyboardIsLeaving: keyboardIsLeaving)
     }
 

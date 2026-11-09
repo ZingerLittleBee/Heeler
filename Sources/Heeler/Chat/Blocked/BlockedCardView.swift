@@ -32,12 +32,25 @@ struct BlockedCardView: View {
                 case .unreadable:
                     UnreadableDialogCard(store: store, openTerminal: openTerminal)
                 case .none:
-                    EmptyView()
+                    BlockedReadingCard()
                 }
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat.blocked-card")
+    }
+}
+
+/// herdr reports the Agent Blocked and no read has shown its dialog yet
+/// (`BlockedCardStore.replacesComposer`). The status chip already says
+/// Blocked, so the place only shows that Chat is reading.
+private struct BlockedReadingCard: View {
+    var body: some View {
+        ProgressView()
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Reading the Agent's screen")
+            .accessibilityIdentifier("chat.blocked-reading")
     }
 }
 
