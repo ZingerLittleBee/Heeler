@@ -2349,6 +2349,66 @@ struct BlockedCardHostedTests {
         }
     }
 
+    /// An Antigravity CLI form's multi-select page offers the `Write-in...`
+    /// field beside its checks. On agy-163, apple already checked in the
+    /// terminal, `mango` typed on the card goes out with that check and
+    /// the second page's Skip: `Write-in...`'s digit, the paste, Enter,
+    /// then Esc (`A1: apple, mango`, `A2: User Skipped`).
+    @Test func anAgyFormsMultiSelectPageTakesAWrittenAnswer() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-163-ask-question-multiselect-q1-of-2-checked-120x40"))
+        await pane.react(
+            to: ["4"], with: try ScreenFixture.screen("agy-164-ask-question-multiselect-q1-of-2-writein-open-120x40"))
+        await pane.react(
+            toPaste: "mango",
+            with: try ScreenFixture.screen("agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40"))
+        await pane.react(
+            to: ["enter"], with: try ScreenFixture.screen("agy-167-ask-question-q2-after-multiselect-writein-120x40"))
+        await pane.react(
+            to: ["esc"], with: try ScreenFixture.screen("agy-168-idle-after-writein-and-skipped-question-120x40"))
+        let store = BlockedCardStore(
+            program: .agy,
+            io: BlockedScreenIO(
+                readScreen: { try await pane.read() },
+                sendKeys: { await pane.send($0) },
+                paste: { await pane.paste($0) }),
+            clock: ManualClock().clock)
+        let ask = ChatPendingRequest(
+            entryID: ChatEntryID("agy:9:tool:0"), callID: "agy:9:tool:0", kind: .question, toolName: "ask_question",
+            summary: "Which fruits do you like?",
+            questions: [
+                ChatQuestion(
+                    text: "Which fruits do you like?", options: ["apple", "banana", "cherry"], isMultiSelect: true),
+                ChatQuestion(text: "Which size?", options: ["small", "large"]),
+            ])
+        store.update(transcript: ChatTranscript(entries: [], pendingRequests: [ask]))
+        store.update(activity: .blocked)
+        await store.refresh()
+        try await Self.host(store) { controller in
+            let button = { (label: String) in AccessibilityProbe.elements(labeled: label, in: controller.view).first }
+            #expect(
+                await Self.eventually {
+                    Self.labels(in: controller).isSuperset(of: ["apple", "banana", "cherry", "Next"])
+                })
+            let field = try #require(Self.textField(in: controller.view), "\(Self.labels(in: controller))")
+            #expect(field.placeholder == "Type your own answer")
+            field.becomeFirstResponder()
+            field.insertText("mango")
+            #expect(button("Next")?.accessibilityActivate() == true)
+            #expect(await Self.eventually { Self.labels(in: controller).contains("Which size?") })
+            #expect(button("Skip")?.accessibilityActivate() == true)
+            #expect(await Self.eventually { button("Submit Answers")?.accessibilityTraits.contains(.notEnabled) == false })
+            #expect(button("Submit Answers")?.accessibilityActivate() == true)
+
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft, await pane.keys != [["4"], ["enter"], ["esc"]] {
+                try? await Task.sleep(for: .milliseconds(10))
+                budget.charge()
+            }
+            #expect(await pane.keys == [["4"], ["enter"], ["esc"]])
+            #expect(await pane.pastes == ["mango"])
+        }
+    }
+
     private static func textField(in view: UIView) -> UITextField? {
         if let field = view as? UITextField { return field }
         return view.subviews.lazy.compactMap { textField(in: $0) }.first
