@@ -238,7 +238,19 @@ the row read `cancelled` (173); on a finished row it did nothing. `x`,
 which the hint says removes a row, was not pressed. Esc on the panel closes it, leaving `> /tasks ⎿  Exited
 /tasks command` in the scrollback and a `slash_command` history line (175);
 during a turn the first Esc closes only the panel. Down on an empty box
-selects the task under it, but `k` there typed into the box (180). Tasks
+selects the task under it, but `k` there typed into the box (180). In the
+box with its popup open, Esc closes the popup and keeps `/tasks`, and a
+second Esc opens the popup again; Ctrl+C keeps it too and arms `press
+ctrl+c again to exit`. Six Backspaces in one send clear `/tasks` and close
+the popup, leaving `? for shortcuts` (tmux at 120×40 and 62×27,
+2026-11-09), as Ctrl+U does. `/tasks` and a CR in one bracketed paste
+skip the popup and open the panel. After `k`, agy writes nothing about
+the kill until its next turn, so the call's last step still reads
+`RUNNING`. Through herdr (agy-181 to 185 at 62×46, agy-186 to 199 from
+herdr-core's first paint, 2026-11-09) the task's row and the footer's
+`· 1 task(s) · /tasks` stay under the idle box after Esc, the popup, the
+panel and its `cancelled` row read as in tmux, and agy writes the step
+naming the task with that footer, 10 s after the command starts. Tasks
 stay with the conversation and list again after a resume. agy's changelog
 adds that timers and other background tools list in `/tasks` too, that
 `manage_task` lets the model kill its own, that headless runs leave daemon
@@ -298,9 +310,13 @@ read also holds scrollback above the box.
 
 - Two full-width rules of `─` from column 0 in 256-color 8 (grey). Between
   them, `>` at column 0 in color 12 (bright blue, not bold) and the draft in
-  the default color from column 2. A wrapped draft and a typed newline both
-  continue at column 2, so the two read the same (15, 16, 59). The box grows
-  upward as a draft grows once the screen is full.
+  the default color from column 2. A known slash command in the draft is
+  blue too, and herdr-core 0.1.18's first paint, which sends no color for
+  a blank, joins it to the marker as one run, `> /tasks` (core paint
+  188); herdr's `agent.read` keeps the blank apart (182). A wrapped draft
+  and a typed newline both continue at column 2, so the two read the same
+  (15, 16, 59). The box grows upward as a draft grows once the screen is
+  full.
 - The footer under the bottom rule: `? for shortcuts` when the box is empty,
   `esc to cancel` while a turn runs, `Press up to edit queued messages` while
   a message waits, and nothing at the left with a draft. The mode, model and
@@ -396,9 +412,10 @@ Normal mode's Ctrl+S and Ctrl+Enter, from its changelog, were not tried.
 | State | Key | Result |
 |---|---|---|
 | Working | Esc | The turn stops (`⎿  Interrupted · …`) and the box is left empty; a queued message comes back into the box (38, 97); a background task keeps running (170) |
+| Working | Ctrl+C | The same, and no exit is armed (39) |
 | Idle or Working | `/tasks`, Enter | Opens the background task panel, the top task selected (171, 172, 176, 177) |
 | Task panel | `k`, Esc | Kills the selected running task with no confirmation (173); closes the panel, only it during a turn (175) |
-| Working | Ctrl+C | The same, and no exit is armed (39) |
+| `/tasks` popup | Esc, Backspace ×6 | Esc closes the popup and keeps `/tasks`, and a second Esc opens it again; six Backspaces in one send clear both (tmux, live) |
 | Idle | Ctrl+C or Ctrl+D | Arms an exit, `press ctrl+c again to exit`, with no timeout; a draft stays (03, 07). A second press exits |
 | Exit armed | A typed key, Esc, or a paste through herdr's `agent prompt` | Disarms it; the pasted message is sent (04, live) |
 | Idle draft | Esc, Esc within 0.25 s | One Esc does nothing; two clear the draft (05, 06) |
@@ -563,8 +580,11 @@ has commands other than daemons running in the background, Stop then ends
 them once the screen shows the turn ended: `/tasks` into the empty box,
 Enter on the popup's `/tasks`, `k` on each in the panel, and Esc, every key
 after a fresh read passed its check, rows matched by command with the
-panel's top rows naming the turn's tasks in order. A failed check closes
-the panel and says what still runs (ADR 0024).
+panel's top rows naming the turn's tasks in order. When the transcript
+held no such command at the tap but a task shows after the Esc, it reads
+the transcript again first. A failed check takes back what it typed, Esc
+for the panel and six Backspaces for `/tasks` in the box, and says what
+still runs (ADR 0024).
 
 Chat's `/` menu offers agy's skills as `/name`, except one named like a
 built-in command and one whose frontmatter says

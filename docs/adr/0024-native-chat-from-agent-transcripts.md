@@ -292,16 +292,28 @@ local start times, so its top rows must name the turn's background commands
 in order, matched by command. A daemon (`IsDaemon`), which agy's own
 headless runs leave running, and a task from an earlier turn are never
 selected. Each key goes only after a fresh read passes its check, which
-herdr-core's typing makes again. A failed check presses nothing more than an
-Esc that closes the panel, and Chat says what still runs and how to end it
-in the terminal, with Open in Terminal. The commands are the transcript's
-as Stop is tapped, since agy writes nothing on Esc, and none while a send
-of Chat's waits for its record, when the open turn it shows may be the one
-before. An overdue send does not count: its echo clock stops while agy
-works, so it ran out on a send no turn began with. A Chat send waits while
-the follow-through types, since it would land between two of its keys.
-agy records a kill only with the next prompt, so the row reads Started
-until then (1.5.3, live). The terminal's own Stop stays one Esc.
+herdr-core's typing makes again; a step waits up to 3 s, since one read
+through herdr took up to 1.65 s, and a read that fails is tried again
+within it. A failed check takes back only what the follow-through typed:
+Esc closes the panel, and in the box six Backspaces in one send erase its
+own `/tasks` and close the popup, since Esc there closes the popup but
+keeps the text and a second Esc opens it again; any other draft stays.
+Chat then says what still runs and how to end it in the terminal, with
+Open in Terminal. The commands are the transcript's open turn's as Stop is
+tapped, since agy writes nothing on Esc, and none while a send of Chat's
+waits for its record, when the open turn it shows may be the one before.
+An overdue send does not count: its echo clock stops while agy works, so
+it ran out on a send no turn began with. agy names a command's task only
+in the step it writes 10 s after the command starts, and a transcript read
+bringing that step took up to 5.8 s live, so a tap can come before Chat
+knows the command. When it knows none, the follow-through reads the screen
+after the Esc and, only while a task shows there (its row under the box or
+the footer's task count), wakes the transcript read and waits up to 8 s
+for the tapped turn's commands, never another turn's. A Chat send waits
+while the follow-through reads and types, since it would land between two
+of its keys. agy records a kill only with the next prompt, so the row
+reads Started until then (1.5.3, live). The terminal's own Stop stays one
+Esc.
 
 ## Entry and the terminal
 
