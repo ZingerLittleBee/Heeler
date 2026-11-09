@@ -53,6 +53,7 @@ Entries reference the pull request that made the change.
 - Hold a Chat message at once while Oh My Pi or OpenCode reports Working, instead of showing it as Sending until Heeler has read the Agent's screen. The notice clears on the next status change. (#644)
 - On a herdr-core Host, a Chat that can't tell the conversation and shows none refuses a message at once, instead of showing it as Sending while Heeler checks the Host. (#644)
 - Fade a Blocked card's options where they run past its scroll edge, and flash its scroll bar as they start to, instead of cutting an option off flat with no sign of the answers below it. (#644)
+- Show why a Send or Retry was held even while an earlier message's failure shows. A held Retry keeps its own failure, instead of showing the passing reason as its error after the hold ended. (#644)
 
 ## [0.1.18]
 

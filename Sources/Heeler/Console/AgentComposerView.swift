@@ -476,7 +476,7 @@ struct AgentComposerView: View {
                     openVoiceInputSettings: { isVoiceSetupPresented = true },
                     dismiss: { store.voice.dismissFailure() })
             }
-            if let notice = store.notice, notice.route == sendPolicy.route, failureIsHidden {
+            if let notice = store.notice, notice.route == sendPolicy.route {
                 noticeRow(notice)
             }
             if status == .working, let stopNotice = store.stop.notice {
@@ -928,9 +928,6 @@ struct AgentComposerView: View {
         else { return nil }
         return matches
     }
-
-    /// The notice gives way to a failure, which has its own row and Retry.
-    private var failureIsHidden: Bool { latestFailure == nil }
 
     /// Blocked delivery types into Attach without Enter; the tools keyboard
     /// is what submits or cancels. A refusal stays as the store's notice and

@@ -475,6 +475,40 @@ struct ChatStopPlanTests {
         #expect(composer.notice?.refusal == hold)
     }
 
+    /// A Retry tapped while the follow-through types is held as a Send is.
+    /// The message keeps the failure it was retried for, so neither the
+    /// Composer's failure row nor Chat's echo says the hold once it ended.
+    @Test func aRetryHeldForAFollowThroughKeepsItsReason() async throws {
+        let composer = AgentComposerStore(target: "w1:p1", initialStatus: .idle) { _ in
+            throw TransportError.sshUnreachable(detail: "offline")
+        }
+        let session = AgentComposerSession(composer: composer)
+        let policy = ComposerDeliveryPolicy(
+            route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 }, validate: { _ in nil },
+            preflight: { _ in session.heldSend() }, verify: nil)
+        let hold = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHold)
+        composer.replaceDraft(with: "and the tests")
+        #expect(await composer.send(policy: policy) == .failed)
+        let failed = try #require(composer.messages.first)
+        guard case .failed(let reason) = failed.state else {
+            Issue.record("the send should have failed: \(failed.state)")
+            return
+        }
+        let panel = ScriptedTransportCallGate()
+        let work = Task { await session.agentKeys.afterQueued { await panel.waitUntilOpen() } }
+        await panel.waitForEntry()
+
+        #expect(await composer.retry(failed.id, policy: policy) == .refused(hold))
+        #expect(composer.notice == ComposerNotice(refusal: hold, route: .chat))
+        #expect(composer.messages.map(\.state) == [.failed(reason)])
+        await panel.open()
+        await work.value
+
+        #expect(composer.notice == nil)
+        #expect(composer.messages.map(\.state) == [.failed(reason)])
+        #expect(ChatComposerEchoes.pending(composer.messages, statuses: [:]).map(\.state) == [.failed(reason)])
+    }
+
     // MARK: Helpers
 
     /// What OpenCode's guard says on a capture while herdr reports Working.

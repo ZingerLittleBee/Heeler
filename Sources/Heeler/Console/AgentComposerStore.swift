@@ -407,7 +407,8 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     /// Sends a failed message again. The policy should be the one for the
-    /// message's own route.
+    /// message's own route. A refusal leaves the message's failure as it
+    /// was and becomes the notice.
     @discardableResult
     func retry(_ id: Message.ID, policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
         noting(await retryMessage(id, policy: policy), policy: policy)
@@ -416,7 +417,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     private func retryMessage(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
         guard isConnectionAvailable else { return .ignored }
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
-        guard case .failed = messages[index].state, messages[index].route == policy.route else {
+        guard case .failed(let reason) = messages[index].state, messages[index].route == policy.route else {
             return .ignored
         }
         if let refusal = policy.validate(messages[index].text) { return .refused(refusal) }
@@ -426,7 +427,10 @@ final class AgentComposerStore: ComposerDraftOperations {
         messages[index].tracksAgentProgress = true
         messages[index].state = .sending
         if let preflight = policy.preflight, let refusal = await preflight(messages[index].text) {
-            fail(id, message: refusal.message)
+            // The message keeps the failure it was retried for; the refusal
+            // is the notice, which ends as any notice does. As the message's
+            // failure it would outlast a passing hold.
+            fail(id, message: reason)
             return .refused(refusal)
         }
         return await deliver(id, policy: policy)

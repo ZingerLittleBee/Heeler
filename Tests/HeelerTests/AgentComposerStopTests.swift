@@ -744,6 +744,39 @@ struct AgentComposerFoldHostedTests {
         }
     }
 
+    /// A held Retry: the failure row keeps the message's own reason, with
+    /// Retry, and the notice under it says why the Retry waits.
+    @Test func aHeldRetryShowsItsFailureAndWhyItWaits() async throws {
+        let harness = ComposerHarness(status: .idle)
+        let hold = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHold)
+        var policy = ComposerDeliveryPolicy(
+            route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 }, validate: { _ in nil },
+            preflight: nil, verify: nil)
+        harness.composer.replaceDraft(with: "Reply with the word fig")
+        #expect(await harness.composer.send(policy: policy) == .failed)
+        let failed = try #require(harness.composer.messages.first)
+        guard case .failed(let reason) = failed.state else {
+            Issue.record("the send should have failed: \(failed.state)")
+            return
+        }
+        policy.preflight = { _ in hold }
+        #expect(await harness.composer.retry(failed.id, policy: policy) == .refused(hold))
+
+        let controller = UIHostingController(
+            rootView: ComposerHost(harness: harness, collapses: false, sendPolicy: policy))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: Self.phoneWidth, height: 812), rootViewController: controller
+        ) { _ in
+            let shown = await Self.eventually {
+                controller.view.layoutIfNeeded()
+                return Self.accessible(labeled: reason, in: controller.view) != nil
+                    && Self.accessible(labeled: "Retry", in: controller.view) != nil
+            }
+            #expect(shown, "the failure row should keep the message's own reason")
+            #expect(Self.accessible(labeled: hold.message, in: controller.view) != nil)
+        }
+    }
+
     // MARK: Helpers
 
     private enum NoticeKind: CaseIterable {

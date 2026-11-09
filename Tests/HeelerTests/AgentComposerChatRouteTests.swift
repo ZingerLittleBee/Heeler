@@ -325,8 +325,10 @@ struct AgentComposerChatRouteTests {
         #expect(store.notice == nil)
     }
 
-    /// A retry's refusal shows on the message it failed, with its own words.
-    @Test func aRetryRefusedUnderAStatusChangeKeepsItsReason() async throws {
+    /// A held retry keeps the failure it was retried for and says why in
+    /// the notice, even under a status change. Written into the message,
+    /// a passing hold outlasted itself as the message's failure.
+    @Test func aHeldRetryKeepsItsFailureAndSaysWhyInTheNotice() async throws {
         let transport = ScriptedTransport()
         let store = Self.store(transport, status: .working)
         store.replaceDraft(with: "next step")
@@ -334,6 +336,10 @@ struct AgentComposerChatRouteTests {
         await transport.setAgentPromptFailure(TransportError.sshUnreachable(detail: "offline"))
         _ = await store.send(policy: Self.chatPolicy())
         let failed = try #require(store.messages.first)
+        guard case .failed(let reason) = failed.state else {
+            Issue.record("the send should have failed: \(failed.state)")
+            return
+        }
 
         let result = await store.retry(failed.id, policy: Self.chatPolicy(preflight: { _ in
             store.agentStatusDidChange(.idle)
@@ -341,7 +347,11 @@ struct AgentComposerChatRouteTests {
         }))
 
         #expect(result == .refused(hold))
-        #expect(store.messages.first?.state == .failed(hold.message))
+        #expect(store.messages.map(\.state) == [.failed(reason)])
+        #expect(store.notice == ComposerNotice(refusal: hold, route: .chat))
+        store.agentStatusDidChange(.working)
+        #expect(store.notice == nil)
+        #expect(store.messages.map(\.state) == [.failed(reason)])
     }
 
     @Test func aHoldThatAStatusChangeUnderTheSendKeepsStillShows() async {
