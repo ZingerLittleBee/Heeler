@@ -29,6 +29,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Find links on an Agent's terminal after a line with a character such as Claude Code's `❯` prompt. The link button stayed hidden for any link printed after it. (PR #672)
 - Center a checkout's icon on its title in the Agents list's By Workspace cards. A pinned Agent's card no longer lifts the icon above the title. (PR #669)
 - Show in the app's language the text that stayed in English under Japanese: each Host's line in Settings > Notifications, the Host Helper sheet's file counts, and a finished Grok Build subagent's tool calls, turns and duration. Short lists, such as a Host's Agent counts, join with the language's own separator, and a sentence closes with its own full stop. (PR #662)
 - Keep the sidebar hidden when Heeler returns from the background in portrait on an iPhone Duo's inner screen, an iPad, or another regular-width layout. It had slid back open on its own each time. (PR #663)
