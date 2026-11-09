@@ -1795,26 +1795,27 @@ struct AgentChatStoreTests {
         #expect(fixture.store.sendStatuses[third] == .awaiting)
     }
 
-    @Test func anImagePathWithTextIsRecordedThoughTheSpaceAfterThePathIsGone() async throws {
-        let fixture = Fixture(session: Self.first)
+    @Test func anImagePathOnALineOfItsOwnIsRecordedRunIntoTheTextBelowIt() async throws {
+        var adapter = NumberedChatReducer.adapter()
+        adapter.pastedImageEcho = { ClaudeImagePaste.recordedText($0) }
+        let fixture = Fixture(session: Self.first, adapter: adapter)
         await fixture.files.write(NumberedChatReducer.lines(0..<1), at: Self.path(Self.first))
         await fixture.store.step()
-        let send = UUID()
-        fixture.store.updateSends([Self.sent(send, "/tmp/d.png what changed here ", delivered: false)])
-        fixture.store.updateSends([Self.sent(send, "/tmp/d.png what changed here ")])
+        let alone = UUID()
+        let inline = UUID()
+        let sends = [Self.sent(alone, "/tmp/d.png \nwhat changed here "), Self.sent(inline, "/tmp/e.png what else ")]
+        fixture.store.updateSends(sends.map { Self.sent($0.id, $0.text, delivered: false) })
+        fixture.store.updateSends(sends)
 
-        // Claude Code 2.1.319 records `[Image #1]what changed here`, the
-        // space eaten; its projection puts the path back, as this text stands for.
+        // Claude Code 2.1.319 records `[Image #1]what changed here`; its
+        // projection puts the path back, as these texts stand for. A path
+        // with text after it on its line stays text, recorded as sent.
         await fixture.files.append(NumberedChatReducer.prompt("/tmp/d.pngwhat changed here"), to: Self.path(Self.first))
+        await fixture.files.append(NumberedChatReducer.prompt("/tmp/e.pngwhat else"), to: Self.path(Self.first))
         await fixture.store.step()
 
-        #expect(fixture.store.sendStatuses[send] == .recorded)
-    }
-
-    @Test func onlyTheSpaceAfterAnImagePathMayBeMissingFromTheRecord() {
-        #expect(AgentChatStore.withoutSpaceAfterImagePaths("/tmp/d.png what changed ") == "/tmp/d.pngwhat changed")
-        #expect(AgentChatStore.withoutSpaceAfterImagePaths(#"print("a b")"#) == nil)
-        #expect(AgentChatStore.withoutSpaceAfterImagePaths("/tmp/d.png") == nil)
+        #expect(fixture.store.sendStatuses[alone] == .recorded)
+        #expect(fixture.store.sendStatuses[inline] == .awaiting)
     }
 
     @Test func aCodexUndoIsFollowedOnAStatusChangeAndOnAnOverdueSend() async throws {

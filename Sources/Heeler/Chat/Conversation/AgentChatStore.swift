@@ -1921,7 +1921,7 @@ final class AgentChatStore {
             candidate(offset: prompt.offset, entryID: prompt.entryID).map {
                 (
                     candidate: $0, key: source.adapter.echoKey(prompt.text), text: String(Self.squeezed(prompt.text)),
-                    imagePaths: prompt.pastedImagePaths, written: prompt.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    imagePaths: prompt.pastedImagePaths
                 )
             }
         }
@@ -1990,11 +1990,12 @@ final class AgentChatStore {
                     return paths.isEmpty || paths.contains(path)
                 }?.candidate
             }
-            // Claude Code drops the space after a pasted image path
-            // (`[Image #1]what…`), so the text restored from the record
-            // differs from the send only there. Other whitespace counts.
-            if match == nil, let text = Self.withoutSpaceAfterImagePaths(send.text) {
-                match = recorded.first { $0.written == text && isOpen($0.candidate) }?.candidate
+            // The program may move image paths on lines of their own ahead
+            // of the text and drop the line breaks after them
+            // (`[Image #1]what…`), so the restored record differs from the send.
+            if match == nil, let text = source.adapter.pastedImageEcho(send.text) {
+                let key = source.adapter.echoKey(text)
+                match = recorded.first { $0.key == key && isOpen($0.candidate) }?.candidate
             }
             if match == nil, extendedSends.contains(send.id) {
                 let text = String(Self.squeezed(send.text))
@@ -2391,16 +2392,6 @@ final class AgentChatStore {
                 let text = String(squeezed(send.text))
                 return !text.isEmpty && target.contains(text)
             }.map(\.id))
-    }
-
-    /// `text` trimmed, with the spaces right after its image paths gone, as
-    /// Claude Code records it; nil when it names no image path to change.
-    static func withoutSpaceAfterImagePaths(_ text: String) -> String? {
-        var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        for path in ChatImageLink.paths(in: ChatImageLink.marking(result)) {
-            result = result.replacingOccurrences(of: path + " ", with: path)
-        }
-        return result == text.trimmingCharacters(in: .whitespacesAndNewlines) ? nil : result
     }
 
     /// `text` without its whitespace, which the editor's wrapping changes.

@@ -100,6 +100,24 @@ struct ChatImageLinkTests {
         #expect(ChatImageLink.path(opening: try #require(URL(string: "https://x.test/?path=/a.png"))) == nil)
     }
 
+    @Test func aSentImagesPlaceholdersOpenTheFilesItCameFrom() {
+        let text = "[Image #2]compare with [Image #3] and /tmp/c.png"
+        let marked = ChatImageLink.marking(text, imagePaths: ["/tmp/a.png", "/tmp/b.png"])
+        let linked = marked.runs.filter { $0[ChatImageLink.PathAttribute.self] != nil }
+        #expect(linked.map { String(marked[$0.range].characters) } == ["[Image #2]", "[Image #3]", "/tmp/c.png"])
+        #expect(ChatImageLink.paths(in: marked) == ["/tmp/a.png", "/tmp/b.png", "/tmp/c.png"])
+        // Without one file for every placeholder, no placeholder links.
+        #expect(ChatImageLink.paths(in: ChatImageLink.marking(text, imagePaths: ["/tmp/a.png"])) == ["/tmp/c.png"])
+    }
+
+    @Test func aSentImageIsPreviewedFromItsRowWithoutAPlaceholder() async {
+        let message = ChatUserMessage(text: "look", imageCount: 1, imagePaths: ["/tmp/a.png"])
+        let entry = ChatEntry(id: ChatEntryID("user"), sourceOffset: 0, content: .user(message))
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [entry]))
+        #expect(rows.first?.messageImagePaths == ["/tmp/a.png"])
+        #expect(rows.first?.hasInnerControls == false)
+    }
+
     @Test func aHomePathResolvesOnlyWithTheHome() {
         #expect(ChatImagePath.resolve("~/a/b.png", cwd: "/w", home: "/home/dev") == "/home/dev/a/b.png")
         #expect(ChatImagePath.resolve("~/a/b.png", cwd: "/w") == nil)
