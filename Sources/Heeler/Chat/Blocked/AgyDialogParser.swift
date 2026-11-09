@@ -390,8 +390,15 @@ private struct AgyOptionSheet {
         var index = range.lowerBound
         while index < range.upperBound {
             let row = screen[index]
+            if answerField != nil {
+                // `Your answer:` is the last block over the hint, so a row
+                // under it is typed text, even one that reads `1. mango`.
+                if !row.isBlank { answerField?.append(row.trimmedText) }
+                index += 1
+                continue
+            }
             if let option = DialogRowScanner.numberedOption(in: row, pointer: ">") {
-                guard answerField == nil, option.number == rows.count + 1 else { return nil }
+                guard option.number == rows.count + 1 else { return nil }
                 let isFocused = option.isPointed
                 if isFocused {
                     guard focused == nil else { return nil }
@@ -410,10 +417,8 @@ private struct AgyOptionSheet {
             if amendable, field == nil, !rows.isEmpty, row.indent == 4, text.hasPrefix(">") {
                 // The note field under the row Tab turned into one.
                 field = (rows.count, [String(text.dropFirst()).trimmingCharacters(in: .whitespaces)])
-            } else if text == "Your answer:", answerField == nil, !rows.isEmpty {
+            } else if text == "Your answer:", !rows.isEmpty {
                 answerField = []
-            } else if answerField != nil {
-                answerField?.append(text)
             } else if let open = field, open.ordinal == rows.count {
                 field?.text.append(text)
             } else if !rows.isEmpty, row.indent == 0, screen[index - 1].isBlank == false {

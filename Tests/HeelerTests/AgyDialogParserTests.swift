@@ -359,6 +359,28 @@ struct AgyDialogParserTests {
         }
     }
 
+    /// agy-105 and agy-157 with their typed text numbered like an option:
+    /// a row under `Your answer:` is the field's text, so the question
+    /// still reads, and a paste of that text meets its check.
+    @Test(arguments: [
+        ("agy-105-ask-question-writein-typed-62x41", "a small hamster", "2. a small hamster"),
+        ("agy-157-ask-question-multiselect-writein-typed-checked-120x40", "mango", "1. mango"),
+    ])
+    func aWrittenAnswerNumberedLikeAnOptionIsTheFieldsText(stem: String, typed: String, numbered: String) throws {
+        let original = try Self.dialog(stem)
+        let text = try ScreenFixture.text(stem)
+        let row = "\r\n  \(typed)"
+        try #require(text.components(separatedBy: row).count == 2)
+        let result = AgyDialogParser.parse(
+            ANSIScreenDecoder.decode(text.replacingOccurrences(of: row, with: "\r\n  \(numbered)")))
+        let dialog = try #require(result.dialog, "\(result)")
+
+        #expect(dialog.focus.inputText == numbered)
+        #expect(dialog.focus.feedbackOrdinal == original.focus.feedbackOrdinal)
+        #expect(dialog.options.map(\.label) == original.options.map(\.label))
+        #expect(dialog.fingerprint == original.fingerprint)
+    }
+
     /// agy-163 to agy-167: on the first of two pages the field reads as on
     /// a single question. Enter in it turns to the second page, whether it
     /// holds text or not.
