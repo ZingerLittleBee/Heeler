@@ -82,28 +82,42 @@ enum NodeToolchainProbe {
 
     /// The same search for a program that needs only Node.js, as the Host
     /// Helper does (ADR 0033). It prints one line: `node <absolute path>`,
-    /// the binary itself rather than a version manager's shim, which is what a
-    /// service may name; `node-old <version>`; or `node-missing`. It always
+    /// which a service names; `node-old <version>`; or `node-missing`. It always
     /// exits 0 and leaves the caller's `PATH` alone, so run it in a subshell.
+    ///
+    /// A directory counts only when the binary its `node` runs sits in a
+    /// Node.js install's `bin`, so another program's private runtime, such as
+    /// cursor-agent's `dist-package/node` behind a mise shim, is passed over
+    /// before its version is read. The path printed is a manager's own stable
+    /// link where the search found one (fnm's default alias, Homebrew's `bin`),
+    /// which follows that manager's upgrades. Otherwise it is the binary itself:
+    /// a shim (mise, Volta, asdf, nodenv, proto) cannot run under a service, and
+    /// a directory from `PATH` or the login shell can be one shell's own, as
+    /// fnm's per-shell links are.
     static let nodeOnlyScript = ([
         "__h_npm=",
         "__h_old=",
+        "__h_at=",
         "__h_try() { [ -z \"$__h_npm\" ] || return 0; [ -n \"$1\" ] && [ -x \"$1/node\" ] || return 1; "
             + "__h_p=\"$1${2:+:$2}\"; "
+            + "__h_e=$(PATH=\"$__h_p:$PATH\"; node -p process.execPath </dev/null 2>/dev/null) || return 1; "
+            + "case \"$__h_e\" in /*/bin/node|/*/bin/nodejs) ;; *) return 1 ;; esac; "
             + "__h_v=$(PATH=\"$__h_p:$PATH\"; node -p process.versions.node </dev/null 2>/dev/null) "
             + "|| return 1; "
             + "if ! [ \"${__h_v%%.*}\" -ge \(minimumMajorVersion) ] 2>/dev/null; then "
             + "[ -n \"$__h_old\" ] || __h_old=\"$__h_v\"; return 1; fi; "
-            + "__h_npm=\"$__h_p\"; }",
+            + "__h_npm=\"$__h_p\"; __h_at=\"$__h_e\"; "
+            + "if [ \"$3\" = keep ]; then case \"$1\" in /*) __h_at=\"$1/node\" ;; esac; fi; }",
     ] + searches(for: "node") + [
-        "if [ -n \"$__h_npm\" ]; then "
-            + "printf \"node %s\\n\" \"$(PATH=\"$__h_npm:$PATH\"; node -p process.execPath </dev/null 2>/dev/null)\"; "
+        "if [ -n \"$__h_npm\" ]; then printf \"node %s\\n\" \"$__h_at\"; "
             + "elif [ -n \"$__h_old\" ]; then printf \"node-old %s\\n\" \"$__h_old\"; "
             + "else printf \"node-missing\\n\"; fi",
     ]).map { $0 + "; " }.joined()
 
     /// Tries each common install method's directory for `tool`, in the order
-    /// the type's documentation gives.
+    /// the type's documentation gives. A third word `keep` marks a link its
+    /// manager keeps in place across versions, which only
+    /// ``nodeOnlyScript`` reads.
     private static func searches(for tool: String) -> [String] {
         [
         "__h_data=\"${XDG_DATA_HOME:-$HOME/.local/share}\"",
@@ -111,7 +125,7 @@ enum NodeToolchainProbe {
         "__h_try \"${VOLTA_HOME:-$HOME/.volta}/bin\"",
         // fnm keeps its default version as an alias directory.
         "for __h_d in \"$FNM_DIR\" \"$__h_data/fnm\" \"$HOME/Library/Application Support/fnm\" "
-            + "\"$HOME/.fnm\"; do [ -n \"$__h_d\" ] && __h_try \"$__h_d/aliases/default/bin\"; done",
+            + "\"$HOME/.fnm\"; do [ -n \"$__h_d\" ] && __h_try \"$__h_d/aliases/default/bin\" \"\" keep; done",
         // nvm resolves its own default alias (lts/*, node, 22, …); without
         // one, any installed version will do.
         "__h_nvm=\"${NVM_DIR:-$HOME/.nvm}\"",
@@ -123,11 +137,11 @@ enum NodeToolchainProbe {
         // asdf's shims run `asdf` from PATH.
         "__h_try \"${ASDF_DATA_DIR:-$HOME/.asdf}/shims\" \"${ASDF_DIR:-$HOME/.asdf}/bin\"",
         "__h_try \"${NODENV_ROOT:-$HOME/.nodenv}/shims\"",
-        "__h_try \"${NVS_HOME:-$HOME/.nvs}/default/bin\"",
-        "__h_try \"$HOME/.nodebrew/current/bin\"",
-        "__h_try \"${N_PREFIX:-$HOME/n}/bin\"",
+        "__h_try \"${NVS_HOME:-$HOME/.nvs}/default/bin\" \"\" keep",
+        "__h_try \"$HOME/.nodebrew/current/bin\" \"\" keep",
+        "__h_try \"${N_PREFIX:-$HOME/n}/bin\" \"\" keep",
         "__h_try \"${PROTO_HOME:-$HOME/.proto}/shims\"",
-        "for __h_d in \"$PNPM_HOME\" \"$HOME/Library/pnpm\" \"$__h_data/pnpm\"; do __h_try \"$__h_d\"; done",
+        "for __h_d in \"$PNPM_HOME\" \"$HOME/Library/pnpm\" \"$__h_data/pnpm\"; do __h_try \"$__h_d\" \"\" keep; done",
         // Homebrew, the system's packages, and the app's PATH prefixes, then
         // Homebrew itself for a launcher, which gets no prefixes, its
         // versioned formulae, which it keeps off PATH, and the rest.
@@ -136,7 +150,7 @@ enum NodeToolchainProbe {
             + "/opt/homebrew/opt/node*/bin /usr/local/opt/node*/bin "
             + "/home/linuxbrew/.linuxbrew/opt/node*/bin \"$HOME/.nix-profile/bin\" "
             + "\"/etc/profiles/per-user/$USER/bin\" /run/current-system/sw/bin "
-            + "/nix/var/nix/profiles/default/bin /snap/bin /opt/local/bin; do __h_try \"$__h_d\"; done",
+            + "/nix/var/nix/profiles/default/bin /snap/bin /opt/local/bin; do __h_try \"$__h_d\" \"\" keep; done",
         // Last, the login shell's own PATH, from its rc files, kept whole
         // after npm's directory because shims there may need other tools
         // on it (asdf 0.16 runs `asdf`). `env` prints it the same way from

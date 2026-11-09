@@ -26,7 +26,11 @@ that Heeler can read from outside the process.
   never over a newer one another device installed, as ADR 0027 does for the
   plugin. It runs on the Node.js the Host already has, found as for the
   plugin and named by its absolute path in the service, since a systemd user
-  unit's `PATH` holds only system directories. The service restarts whenever
+  unit's `PATH` holds only system directories. That path is a manager's own
+  stable link where the search finds one (fnm's default alias, nvs's default,
+  nodebrew's `current`, n's and pnpm's directories, Homebrew's and the other
+  system directories), else the binary itself, and never a binary outside a
+  Node.js install's `bin`, such as another program's private runtime. The service restarts whenever
   it stops, not only on failure. A user service does not start with the
   core's environment, so for Usage the Helper reads the variables that locate
   Accounts, such as `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, from the core
@@ -86,7 +90,8 @@ that Heeler can read from outside the process.
   to the devices whose Notification Registrations it holds, encrypted with
   their Notification Keys. It serves Usage reads as the plugin does: the app
   runs the Helper's `usage-query.js` by the Node.js the session's record names,
-  in one bounded exec, and the query and worker are the plugin's own modules.
+  or by the service's when the record's cannot run, in one bounded exec, and
+  the query and worker are the plugin's own modules.
   The app's Usage read makes the session's folder, and the Helper also follows
   a session with a folder, since Usage needs a core's environment without any
   notification registration. A session nobody registered or read stays
@@ -342,8 +347,24 @@ Hosts are unchanged.
   **Node.js Moved** with Repair. The Helper is not made to exit over this: it still
   sends notifications, and nothing else about it is wrong until it stops. Usage
   asks for the Repair only when the service's path has gone too. When only the
-  record's has, the Helper rewrites that record at its next connection to the
-  core, so Usage waits for the core. The check has run against scripts and fake
+  record's has, as after a Repair or when the service's link now leads to
+  another binary, Usage runs the query with the service's Node.js until the
+  Helper rewrites that record at its next connection to the core. The probe
+  names a manager's stable link where it finds one, so an upgrade through that
+  manager moves the service along at its next start rather than stranding it,
+  though a default switched to a version too old can then fail that start,
+  which reads as Service Failed. Shims are the exception: mise's, Volta's,
+  asdf's, nodenv's and proto's pick a version from the shell's tools and
+  directory, and asdf's and nodenv's need their tool on `PATH`, so the binary
+  each runs is named and still moves with every upgrade. On the developer Mac
+  (2026-11-08, #644) the LaunchAgent named cursor-agent's bundled
+  `dist-package/node` in a versioned directory, which cursor-agent replaces on
+  every update: mise's shim, which the probe tries first, runs that binary
+  there, since mise's own Node.js was installed but not active. The probe now
+  passes over a binary outside a Node.js install's `bin`, so a Host with only
+  such a runtime reads Node.js Missing. Services
+  installed before that change keep their path until the next Install, Update
+  or Repair. The check has run against scripts and fake
   service managers, and on one Linux Host: on hc-lab on 2026-11-02 (Debian 13,
   systemd 257, Host Helper 0.5.3, Node.js v22.23.3), renaming the Node.js the
   unit names under a running Helper read **Node.js Moved** with Repair, and Usage

@@ -61,6 +61,7 @@ Entries reference the pull request that made the change.
 - Open the Workspace terminals handle, and pick from the panel it or the header's Terminals menu opens, on an Agent Ended, Terminal Ended or Session Ended page, instead of the page's dimmed background taking every tap and drag. (#644)
 - On herdr-core Hosts, an Agent started by typing its command in a Terminal shows the directory it runs in, in its Agents row and its header, rather than the one the Terminal started in. Its Workspace still follows where the Terminal started. (#644)
 - On herdr-core Hosts, the Core Environment notice also names a variable the core's Terminals inherit from its `herdr-core hold`, which can carry the environment of whoever started the core when the core's own process does not, as on a Mac whose core launchd runs. Heeler checks again when a Terminal starts, so a hold that came with the first Terminal is read without reconnecting. (#644)
+- The Host Helper is set up on a Node.js install, passing over another program's bundled runtime that a version manager's shim can lead to, as mise's did to cursor-agent's, and names fnm's default alias, Homebrew's `bin` or another manager's stable link where it finds one, so an upgrade no longer strands it on a removed version. A Helper already installed changes at its next Install, Update or Repair. Usage keeps reading through the service's Node.js when the one the Helper recorded has gone. (#644)
 
 ## [0.1.18]
 
