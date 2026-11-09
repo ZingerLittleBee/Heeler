@@ -215,6 +215,36 @@ every pane read showed the spinner or `esc to cancel` and herdr read
 `working`, then `done`, with no idle box between; one 5 s gap in the reads
 fell just after the reply.
 
+**Stopping a background task** (a tmux probe of agy 1.5.3, 2026-11-09). The
+model passed `WaitMsBeforeAsync` 10000 on all four `sleep 40` calls, even
+with `in the foreground` in the prompt, and agy made the command a task
+exactly 10 s after it started; the `sleep` is agy's own child. The task's
+row, `● [hh:mm:ss] sleep 40 running` in the Host's local time, sits under
+the box between rules, and the footer's right side ends `· 1 task(s) ·
+/tasks` (169). Esc then ends the turn (`⎿  Interrupted`) and writes nothing
+to the transcript; neither it, a second Esc nor Ctrl+C ends the task (170).
+After an interrupted turn agy started no turn when a task ended (three
+times): it wrote the message under `brain/<id>/.system_generated/messages/`
+at once and held it undelivered until the next prompt, which recorded it as
+a `SYSTEM_MESSAGE`, a high-priority finish before that `USER_INPUT` and a
+low-priority cancel after it. Only `/tasks` ended the task. Typed or
+pasted, `/tasks` selects `> /tasks  View background tasks` in the `/` popup,
+idle or during a turn (171, 176), and Enter opens the panel: `Tasks`,
+`Agent Backgrounded`, a row per task of the conversation, newest first with
+the top one selected, and a key hint that 62 columns cut and 40 drop, where
+`completed (exit 0)` reads `completed (exit` (172, 177 to 179). `k` on a
+running row killed it with no confirmation, within a second both times, and
+the row read `cancelled` (173); on a finished row it did nothing. `x`,
+which the hint says removes a row, was not pressed. Esc on the panel closes it, leaving `> /tasks ⎿  Exited
+/tasks command` in the scrollback and a `slash_command` history line (175);
+during a turn the first Esc closes only the panel. Down on an empty box
+selects the task under it, but `k` there typed into the box (180). Tasks
+stay with the conversation and list again after a resume. agy's changelog
+adds that timers and other background tools list in `/tasks` too, that
+`manage_task` lets the model kill its own, that headless runs leave daemon
+tasks running, and that the panel's hints follow `keybindings.json`. Chat's
+Stop ends the stopped turn's tasks this way (What Chat sends into, below).
+
 **System messages.** `content` opens with a preamble that names the tag
 (`The following is a <SYSTEM_MESSAGE> not actually sent by the user. …`),
 then a blank line and the real `<SYSTEM_MESSAGE>` block, whose one line is
@@ -365,7 +395,9 @@ Normal mode's Ctrl+S and Ctrl+Enter, from its changelog, were not tried.
 
 | State | Key | Result |
 |---|---|---|
-| Working | Esc | The turn stops (`⎿  Interrupted · …`) and the box is left empty; a queued message comes back into the box (38, 97) |
+| Working | Esc | The turn stops (`⎿  Interrupted · …`) and the box is left empty; a queued message comes back into the box (38, 97); a background task keeps running (170) |
+| Idle or Working | `/tasks`, Enter | Opens the background task panel, the top task selected (171, 172, 176, 177) |
+| Task panel | `k`, Esc | Kills the selected running task with no confirmation (173); closes the panel, only it during a turn (175) |
 | Working | Ctrl+C | The same, and no exit is armed (39) |
 | Idle | Ctrl+C or Ctrl+D | Arms an exit, `press ctrl+c again to exit`, with no timeout; a draft stays (03, 07). A second press exits |
 | Exit armed | A typed key, Esc, or a paste through herdr's `agent prompt` | Disarms it; the pasted message is sent (04, live) |
@@ -526,7 +558,13 @@ with nothing sent meanwhile.
 
 Stop sends one Esc, never Ctrl+C. It reads the screen first and sends
 nothing while bash mode holds a command, which Esc would drop (93); what
-Esc does to a turn from bash mode was not captured.
+Esc does to a turn from bash mode was not captured. When the stopped turn
+has commands other than daemons running in the background, Stop then ends
+them once the screen shows the turn ended: `/tasks` into the empty box,
+Enter on the popup's `/tasks`, `k` on each in the panel, and Esc, every key
+after a fresh read passed its check, rows matched by command with the
+panel's top rows naming the turn's tasks in order. A failed check closes
+the panel and says what still runs (ADR 0024).
 
 Chat's `/` menu offers agy's skills as `/name`, except one named like a
 built-in command and one whose frontmatter says
