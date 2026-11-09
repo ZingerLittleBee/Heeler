@@ -58,6 +58,7 @@ Entries reference the pull request that made the change.
 - Show why a Send or Retry was held even while an earlier message's failure shows. A held Retry keeps its own failure, instead of showing the passing reason as its error after the hold ended. (#644)
 - Replace Chat's Composer with a progress indicator as soon as an Agent reports Blocked, until Chat has read the dialog for its card, instead of showing the Composer for a moment first, as before Antigravity CLI's trust prompt. (#644)
 - Keep Chat's messages and its Collapse Steps and Jump to Latest buttons clear of the Workspace terminals handle, instead of the handle covering their right-hand ends, such as a tool's check mark or Allowed. (#644)
+- Open the Workspace terminals handle, and pick from the panel it or the header's Terminals menu opens, on an Agent Ended, Terminal Ended or Session Ended page, instead of the page's dimmed background taking every tap and drag. (#644)
 
 ## [0.1.18]
 

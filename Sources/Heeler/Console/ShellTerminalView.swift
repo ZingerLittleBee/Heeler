@@ -287,6 +287,10 @@ struct ShellTerminalView: View {
     var body: some View {
         terminalScreen
             .id(store.terminalID)
+            .overlay { statusOverlay }
+            // Above the status dialog, whose dim would take every touch
+            // meant for the handle, when an ended terminal's next step is
+            // often another of the Workspace's terminals.
             .overlay {
                 if let workspaceDrawer {
                     let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
@@ -301,7 +305,6 @@ struct ShellTerminalView: View {
                     }
                 }
             }
-            .overlay { statusOverlay }
             // The input row and controls dock must stay above the edge
             // gesture's hit region, including their leftmost buttons.
             // Beside a sidebar the split view's own swipe brings it out,

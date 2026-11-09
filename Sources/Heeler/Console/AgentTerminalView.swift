@@ -1084,7 +1084,11 @@ struct AgentTerminalView: View {
         .overlay(alignment: .bottomTrailing) {
             attachLinksChrome
         }
-        // Above the floating buttons: the open panel covers them.
+        .overlay { statusOverlay }
+        // Above the floating buttons and the status dialog: the open panel
+        // covers them, and an ended terminal's dim would take every touch
+        // meant for the handle, when the next step is often another of the
+        // Workspace's terminals.
         .overlay {
             if let workspaceDrawer {
                 let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
@@ -1099,7 +1103,6 @@ struct AgentTerminalView: View {
                 }
             }
         }
-        .overlay { statusOverlay }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerStagingStatusBar(staging: session.staging)
                 .ridesKeyboard(
