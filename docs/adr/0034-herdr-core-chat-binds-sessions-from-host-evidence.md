@@ -78,7 +78,7 @@ never show or send into a conversation it has guessed.
   | Grok Build | the one `active_sessions.json` row whose pid and process start match |
   | OpenCode | from 2.1, the `ses` id Heeler started it with; otherwise none, and the plugin on the user's word (ADR 0033) |
   | Pi | none; Heeler's extension (ADR 0033) |
-  | Antigravity CLI | the one `<data root>/presence/<id>.lock` the process holds open |
+  | Antigravity CLI | the one `<data root>/presence/<id>.lock` the process holds open; before its first prompt none, below |
 
 - Claude Code's registry entry appears only at its prompt. Before that, during
   sign-in or the trust dialog, its sessions folder holds a `<pid>.<hash>.key`
@@ -149,6 +149,23 @@ never show or send into a conversation it has guessed.
   A confirmed candidate differs from that guess: the user saw the
   conversation before choosing it, and the guard drops it the first time it
   proves wrong.
+- One state has no conversation to guess: an Antigravity CLI that has made none
+  yet. agy makes a new conversation (its folder, database and lock) only with its
+  first prompt. So an agy that is the Terminal's own foreground, was started with
+  no argument after its name, and holds no lock and no file of a conversation's
+  folder or database shows Waiting for Conversation, as on Herdr TUI. A Send goes
+  in, since that message is what starts the conversation, and the check that
+  agy's `working` brings binds the lock it then holds. Chat sends this way only
+  while it shows no conversation; under an earlier one the Send waits for the
+  first message from the terminal. Any argument, a launcher in front, open files
+  that cannot be read, a conversation's file held without its lock, or a pick for
+  that process still reads as before, and a pick that stands unconfirmed says it
+  cannot tell. The arguments are the core's record of the Terminal's foreground,
+  which the candidate list reads for `--conversation` too; the check's exec still
+  learns nothing of an argv. `--conversation` and `-c` can open a conversation
+  another agy holds; such an agy never takes the lock and, on Linux, holds none of
+  its files about 30 s after it starts. Decided on 2026-11-10 (#644), before a live
+  run.
 - Candidates serve every program whose Chat binds on core, and only a Chat that
   already says it cannot tell offers them, on request. A list costs one exec, as
   a check does, then the listings it takes: a directory's folder, or for OpenCode
@@ -380,7 +397,15 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   every agy on the data root and names no id for a fresh launch's first prompt.
   `/clear` from idle reports no status, so Chat keeps showing the conversation before
   it until the next status or the check before a Send, which moves Chat and holds
-  that Send once.
+  that Send once. An agy that reaches a conversation another agy holds through its
+  own `/resume`, `/conversation` or `/conv-switch` is not recorded. If it then holds
+  nothing, as a second agy started with `--conversation` does on Linux after about
+  30 s, it reads as having no conversation yet, and a first Send from Chat goes into
+  that conversation with Chat bound to none, waiting for a lock that never comes.
+  That is still the Agent on screen and binds nothing wrong; on macOS the folder and
+  database such an agy holds rule it out. This was accepted on 2026-11-10, pending a
+  live check, rather than hold a Send on agy's `Conversation already open` notice,
+  which scrolls away.
   Seen on 2026-11-07 on one signed-in Mac, macOS 27.0.1, in a plain PTY outside herdr
   and herdr-core, the open files through `HostProcessReader`'s own macOS read
   (`host-evidence/agy`). In herdr-core 0.1.18 Terminals on macOS 27.0.1, with the
@@ -417,10 +442,11 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   Linux's list. The hold carried no `NO_COLOR`. The lock read through
   `/proc/<pid>/fd` bound an agy from New Agent, drawn in color, a typed `agy` and a
   typed `NO_COLOR=1 agy`, which drew none, each from its first prompt sent in the
-  terminal, and `/clear` moved Chat to the new conversation before any Send, in
-  color and under `NO_COLOR`. No agy there held a conversation's folder open. The
-  agy from New Agent held its new conversation's database (with `-wal` and `-shm`)
-  when read within 30 s of its first prompt, and only its lock 42 min after it; the
+  terminal, since Chat then held a first message sent from it, which it has let
+  through since 2026-11-10 (Decision), and `/clear` moved Chat to the new
+  conversation before any Send, in color and under `NO_COLOR`. No agy there held a
+  conversation's folder open. The agy from New Agent held its new conversation's
+  database (with `-wal` and `-shm`) when read within 30 s of its first prompt, and only its lock 42 min after it; the
   typed `NO_COLOR=1 agy` held no database 41 s or 2 min after its first prompt. An
   agy started with `--conversation` held its database 27 s after its start, and
   9 min after it only its lock; a second and a third on that conversation held

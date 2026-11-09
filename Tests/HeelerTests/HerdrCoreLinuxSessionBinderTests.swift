@@ -132,55 +132,96 @@ struct HerdrCoreLinuxSessionBinderTests {
     /// no recording here. Its lock is `jetski/presence/lock_unix.go`'s on both
     /// systems, so these take the macOS recording (`host-evidence/agy`) with its paths
     /// moved under this Host's home, read the way a Linux Host reads them:
-    /// `/proc/<pid>/fd` targets, which name the same files.
-    private nonisolated static func agyRig(_ scene: String) async throws -> (ScriptedProcessTable, HerdrCoreTerminalRecord) {
+    /// `/proc/<pid>/fd` targets, which name the same files. The core's record of the
+    /// foreground carries the recorded argv, or a bare `agy` where none was recorded.
+    /// `files` and `argv` replace the row's.
+    private nonisolated static func agyRig(
+        _ scene: String, files: [String]? = nil, argv: [String]? = nil
+    ) async throws -> (ScriptedProcessTable, HerdrCoreTerminalRecord) {
         let row = try #require(try HostEvidenceFixture.named("agy/presence-lock-1.5.3").scene(scene).processes?.first)
         var process = row.process
         process.environment["HOME"] = home
-        process.openFiles = row.files.map { $0.replacingOccurrences(of: "/Users/developer", with: home) }
+        process.openFiles = files ?? row.files.map { $0.replacingOccurrences(of: "/Users/developer", with: home) }
         let table = ScriptedProcessTable()
         await table.add(process)
         let name = JSONValue.string("agy")
+        let foreground = (argv ?? (row.argv.isEmpty ? ["agy"] : row.argv)).map(JSONValue.string)
         let record = try JSONDecoder().decode(
             HerdrCoreTerminalRecord.self,
             from: try JSONEncoder().encode(
                 JSONValue.object([
                     "address": .string("t1"), "cwd": .string("\(home)/user/projects/agy"), "state": .string("live"),
-                    "argv": .array([name]), "keep": .bool(true), "title": .string(""), "cols": .number(80),
+                    "argv": .array(foreground), "keep": .bool(true), "title": .string(""), "cols": .number(80),
                     "rows": .number(24), "name": .null, "reason": .null, "pid": .number(Double(row.pid)),
                     "labels": .object([:]),
                     "foreground": .object([
-                        "pid": .number(Double(row.pid)), "name": name, "argv": .array([name]),
+                        "pid": .number(Double(row.pid)), "name": name, "argv": .array(foreground),
                         "cwd": .string("\(home)/user/projects/agy"),
                     ]),
                 ])))
         return (table, record)
     }
 
-    /// Each scene and the conversation its lock names, none before the first prompt
-    /// and none for a second agy on a conversation already open.
-    private nonisolated static let agyScenes: [(scene: String, session: String?)] = [
-        ("after-first-prompt", "00000000-0000-4000-8000-000000000103"),
-        ("follow-after-fork", "00000000-0000-4000-8000-000000000105"),
-        ("at-prompt", nil),
-        ("second-instance", nil),
+    private nonisolated static func agyBinder(_ table: ScriptedProcessTable, files: VirtualHostFiles) -> HerdrCoreSessionBinder {
+        HerdrCoreSessionBinder(
+            program: .agy, processes: { try await table.read($0) }, files: files.hostFiles(), clearLabels: { _ in })
+    }
+
+    /// Each scene and what it says: the conversation its lock names, none yet before
+    /// the first prompt of a bare `agy`, and cannot tell for a second agy on a
+    /// conversation already open.
+    private nonisolated static let agyScenes: [(scene: String, evidence: ChatSessionEvidence)] = [
+        (
+            "after-first-prompt",
+            .bound(
+                sessionID: "00000000-0000-4000-8000-000000000103", transcriptRoot: "\(home)/.gemini/antigravity-cli",
+                directory: nil)
+        ),
+        (
+            "follow-after-fork",
+            .bound(
+                sessionID: "00000000-0000-4000-8000-000000000105", transcriptRoot: "\(home)/.gemini/antigravity-cli",
+                directory: nil)
+        ),
+        ("at-prompt", .unavailable(.noConversationYet(.agy))),
+        ("second-instance", cannotTell(.agy)),
     ]
 
     @Test(arguments: agyScenes)
-    func antigravityBindsFromTheLockItHolds(_ entry: (scene: String, session: String?)) async throws {
-        let (scene, session) = entry
-        let (table, record) = try await Self.agyRig(scene)
+    func antigravityBindsFromTheLockItHolds(_ entry: (scene: String, evidence: ChatSessionEvidence)) async throws {
+        let (table, record) = try await Self.agyRig(entry.scene)
         let files = VirtualHostFiles(home: Self.home)
-        let binder = HerdrCoreSessionBinder(
-            program: .agy, processes: { try await table.read($0) }, files: files.hostFiles(), clearLabels: { _ in })
 
-        let evidence = try await binder.check(record)
+        let evidence = try await Self.agyBinder(table, files: files).check(record)
 
-        #expect(
-            evidence
-                == session.map { .bound(sessionID: $0, transcriptRoot: "\(Self.home)/.gemini/antigravity-cli", directory: nil) }
-                ?? Self.cannotTell(.agy))
+        #expect(evidence == entry.evidence)
         #expect(await table.requests.count == 1)
         #expect(await files.reads.isEmpty)
+    }
+
+    /// The Linux run of 2026-11-09 (`core-color-C12-fds`): a second agy on a
+    /// conversation another agy held, past the about 30 s it held that conversation's
+    /// database, held only its log and its crash log, which is all a new agy holds at
+    /// its prompt there. Only the core's record of its argv tells the two apart, so
+    /// any argument after `agy` cannot tell, and a bare `agy` has no conversation yet.
+    @Test(arguments: [
+        (["agy", "--conversation", "df829e0c-22c5-4585-bfba-b2762d0fa576"], cannotTell(.agy)),
+        (["agy", "--conversation=df829e0c-22c5-4585-bfba-b2762d0fa576"], cannotTell(.agy)),
+        (["agy", "-c"], cannotTell(.agy)),
+        (["agy"], ChatSessionEvidence.unavailable(.noConversationYet(.agy))),
+    ])
+    func aSecondAntigravityCLIThatLetItsFilesGoTellsOnlyByItsArgv(
+        _ argv: [String], _ expected: ChatSessionEvidence
+    ) async throws {
+        let (table, record) = try await Self.agyRig(
+            "second-instance",
+            files: [
+                "\(Self.home)/.gemini/antigravity-cli/log/cli-20261108_202934.log",
+                "\(Self.home)/.gemini/antigravity-cli/crashes/crash_390749_cd22135a-fc13-4b8c-ad3a-42f16b60f602.log",
+                "/proc/390749", "/proc/390749/smaps", "/proc/390749/maps",
+            ],
+            argv: argv)
+
+        #expect(try await Self.agyBinder(table, files: VirtualHostFiles(home: Self.home)).check(record) == expected)
     }
 }

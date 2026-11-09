@@ -870,10 +870,18 @@ struct HerdrCoreProgramBinderTests {
         #expect(await rig.files.listings.isEmpty)
     }
 
-    /// A new conversation exists only from its first prompt, as Codex's does, so the
-    /// same process two minutes earlier says it cannot tell yet.
-    @Test func atItsPromptAnAntigravityCLIHoldsNoLockAndSaysSo() async throws {
-        #expect(try await Self.agyEvidence("at-prompt") == .unavailable(.cannotTellSession(.agy)))
+    /// A new conversation exists only from its first prompt, so the same process two
+    /// minutes earlier, a bare `agy` in the core's record, has none yet. The recording
+    /// kept no argv, and a foreground whose argv the core does not give says nothing
+    /// of how agy started, so that one cannot tell.
+    @Test func atItsPromptABareAntigravityCLIHasNoConversationYet() async throws {
+        let (rig, unnamed) = try await Self.agyRig("at-prompt")
+        let row = try Self.firstRow(try HostEvidenceFixture.named("agy/presence-lock-1.5.3").scene("at-prompt"))
+        let bare = try Self.record(pid: row.pid, argv: ["agy"], name: row.name)
+
+        #expect(unnamed.foreground?.argv == [])
+        #expect(try await rig.binder.check(bare) == .unavailable(.noConversationYet(.agy)))
+        #expect(try await rig.binder.check(unnamed) == .unavailable(.cannotTellSession(.agy)))
     }
 
     /// `/clear` and `/fork` move the lock at once, and the conversation left behind

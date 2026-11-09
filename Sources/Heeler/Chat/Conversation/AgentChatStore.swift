@@ -1334,8 +1334,9 @@ final class AgentChatStore {
     private var showsAwaitingReason: Bool {
         switch conversation.phase {
         case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
-            .unavailable(.cannotTellSessionOnWindows), .unavailable(.cannotReadProcessesOnWindows),
-            .unavailable(.extensionNotLoaded), .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
+            .unavailable(.noConversationYet), .unavailable(.cannotTellSessionOnWindows),
+            .unavailable(.cannotReadProcessesOnWindows), .unavailable(.extensionNotLoaded),
+            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
             true
         default: false
         }
@@ -1734,6 +1735,12 @@ final class AgentChatStore {
         if resolution != before { wake() }
         let name = program.chatName
         switch evidence {
+        // The message starts the conversation, and the check its turn brings
+        // binds it (ADR 0034).
+        case .unavailable(.noConversationYet) where shown == nil:
+            return nil
+        case .unavailable(.noConversationYet):
+            return "\(name) hasn't started a conversation here yet, while Chat still shows an earlier one. Send its first message in the terminal."
         case .unavailable, .pickUnconfirmed:
             return "Heeler can't tell which conversation \(name) shows, so it sent nothing."
         case .bound, .picked:

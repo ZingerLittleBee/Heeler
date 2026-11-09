@@ -6,7 +6,7 @@ import SwiftUI
 extension ChatUnavailableReason {
     var title: String {
         switch self {
-        case .noSession: "Waiting for Conversation"
+        case .noSession, .noConversationYet: "Waiting for Conversation"
         case .unidentifiedSession: "Conversation Not Identified"
         case .notFound, .mismatched, .sessionStore(_, .sessionMissing): "Conversation Not Found"
         case .awaitingFirstMessage: "No Messages Yet"
@@ -22,7 +22,7 @@ extension ChatUnavailableReason {
 
     var systemImage: String {
         switch self {
-        case .noSession, .awaitingFirstMessage: "bubble.left.and.bubble.right"
+        case .noSession, .noConversationYet, .awaitingFirstMessage: "bubble.left.and.bubble.right"
         case .notFound, .mismatched, .sessionStore(_, .sessionMissing): "doc.text.magnifyingglass"
         default: "exclamationmark.bubble"
         }
@@ -75,6 +75,8 @@ extension ChatUnavailableReason {
             "Chat can't tell which conversation this Agent is in, and doesn't guess. Oh My Pi names it through Heeler's extension, which comes with the Host Helper. Install the Helper from this Host's details, then start the Agent again. Without it, Chat follows the conversation after its first message."
         case .cannotTellSession(let program):
             "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes."
+        case .noConversationYet(let program):
+            "\(program.chatName) starts a conversation with its first message. Send one here or in the terminal, and Chat follows it."
         case .extensionNotLoaded(let program, let turnedOff):
             "Chat can't tell which conversation this Agent is in, and doesn't guess. "
                 + (turnedOff
@@ -128,6 +130,8 @@ extension ChatUnavailableReason {
         return switch self {
         case .noSession:
             "Waiting for the Agent to report its conversation."
+        case .noConversationYet(let program):
+            "Waiting for \(program.chatName) to start the conversation.\(saved)"
         case .awaitingFirstMessage(let program):
             "\(program.chatName) saves this conversation \(program.firstSave)."
         case .unidentifiedSession, .unsupportedSession:
@@ -169,8 +173,9 @@ extension ChatUnavailableReason {
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
-        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .cannotTellSessionOnWindows,
-            .cannotReadProcessesOnWindows, .extensionNotLoaded, .transcriptOff, .codexSharedDaemon:
+        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .noConversationYet,
+            .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded, .transcriptOff,
+            .codexSharedDaemon:
             true
         case .sessionStore(_, let problem): problem.isRetryable
         default: false
@@ -185,7 +190,7 @@ extension ChatUnavailableReason {
     /// banner shows progress and offers nothing to do.
     var isWaiting: Bool {
         switch self {
-        case .noSession, .awaitingFirstMessage: true
+        case .noSession, .noConversationYet, .awaitingFirstMessage: true
         default: false
         }
     }
@@ -453,7 +458,7 @@ extension ChatProgram {
         case .claude, .pi, .omp:
             "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal."
         case .agy:
-            "Antigravity CLI shows its conversation with the first message, or as it starts when it resumes one, so send one in the terminal. One opened on a conversation that's already open in another terminal never shows it."
+            "Antigravity CLI shows a new conversation with its first message, which Chat sends only to one started with nothing after agy, so send it in the terminal. One opened on a conversation that's already open in another terminal never shows it."
         }
     }
 

@@ -50,6 +50,10 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// A herdr-core Codex on the shared daemon, whose windows' sessions look alike
     /// from outside. Only reopening it with `--no-daemon` offers Chat (ADR 0034).
     case codexSharedDaemon
+    /// A herdr-core program that shows no conversation yet and makes one with its
+    /// first message: Antigravity CLI before its first prompt (ADR 0034). There is
+    /// nothing to choose, and a Send starts it.
+    case noConversationYet(ChatProgram)
 
     /// Whether Chat shows the explanation in the conversation's place even
     /// over saved messages, which stay in memory until the program shows

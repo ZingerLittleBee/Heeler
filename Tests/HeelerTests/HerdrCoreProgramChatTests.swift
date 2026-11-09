@@ -410,6 +410,120 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
+    /// A bare agy before its first prompt has no conversation, so Chat waits for one
+    /// as on Herdr TUI and lets the first Send go: that message makes it. agy takes
+    /// the lock with it, and the check its `working` brings binds that lock.
+    @Test(arguments: ["Linux", "Darwin"])
+    func aFreshAntigravityCLITakesItsFirstMessageFromChatAndBindsItsLock(_ kernel: String) async throws {
+        let session = "00000000-0000-4000-8000-000000000103"
+        let rig = Rig(
+            host: host, record: Self.record(foreground: ["agy"], name: "agy", app: "antigravity"), offering: [.agy])
+        let row = Self.process(
+            name: "agy", environment: [:], argv: ["agy"], files: ["\(Self.agyRoot)/log/cli-20261108_202934.log"])
+        try await rig.start([row], kernel: kernel)
+        let chat = try rig.chat(.agy)
+
+        chat.show()
+
+        try await rig.waitUntil("Chat to wait for the conversation") {
+            chat.conversation.phase == .unavailable(.noConversationYet(.agy))
+        }
+        #expect(!chat.offersCandidates)
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        #expect(chat.conversation.phase == .unavailable(.noConversationYet(.agy)))
+
+        var prompted = row
+        prompted.openFiles += [
+            "\(Self.agyRoot)/presence/\(session).lock", "\(Self.agyRoot)/conversations/\(session).db",
+        ]
+        await rig.transport.processTable.add(prompted)
+        await rig.files.write(try ChatFixture.data("agy/core-turns.jsonl"), at: Self.agyTranscript(session))
+        await rig.transport.deliver(Self.statusEvent(sequence: 2, state: "working", app: "antigravity"))
+
+        try await rig.waitUntil("Chat to follow it") {
+            chat.conversation.phase == .following(path: Self.agyTranscript(session))
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// Linux, past the about 30 s a second agy holds the database of a conversation
+    /// another agy has open: it holds nothing of it, and only its argv says it is no
+    /// new agy. Chat still can't tell, and a Send sends nothing.
+    @Test func aSecondAntigravityCLIStillRefusesASend() async throws {
+        let argv = ["agy", "--conversation", "00000000-0000-4000-8000-000000000102"]
+        let rig = Rig(host: host, record: Self.record(foreground: argv, name: "agy", app: "antigravity"), offering: [.agy])
+        try await rig.start([
+            Self.process(name: "agy", environment: [:], argv: argv, files: ["\(Self.agyRoot)/log/cli-20261108_202934.log"])
+        ])
+        let chat = try rig.chat(.agy)
+
+        chat.show()
+
+        try await rig.waitUntil("Chat to say so") { chat.conversation.phase == .unavailable(.cannotTellSession(.agy)) }
+        #expect(
+            await chat.confirmSessionBeforeSend()
+                == "Heeler can't tell which conversation Antigravity CLI shows, so it sent nothing.")
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A new agy in a Terminal whose Chat still shows the conversation of the one
+    /// before: a Send from Chat would read as going there, so it waits for the first
+    /// message from the terminal, which binds as above.
+    @Test func aFreshAntigravityCLIUnderAnEarlierConversationRefusesASend() async throws {
+        let first = "00000000-0000-4000-8000-000000000102"
+        let rig = Rig(
+            host: host, record: Self.record(foreground: ["agy"], name: "agy", app: "antigravity"), offering: [.agy])
+        let row = Self.process(
+            name: "agy", environment: [:], argv: ["agy"],
+            files: ["\(Self.agyRoot)/presence/\(first).lock", "\(Self.agyRoot)/conversations/\(first).db"])
+        await rig.files.write(try ChatFixture.data("agy/core-turns.jsonl"), at: Self.agyTranscript(first))
+        try await rig.start([row])
+        let chat = try rig.chat(.agy)
+        chat.show()
+        try await rig.waitUntil("Chat to follow it") {
+            chat.conversation.phase == .following(path: Self.agyTranscript(first))
+                && !chat.conversation.transcript.entries.isEmpty
+        }
+
+        var fresh = row
+        fresh.start = "222"
+        fresh.openFiles = []
+        await rig.transport.processTable.add(fresh)
+
+        let refusal = try #require(await chat.confirmSessionBeforeSend())
+        #expect(refusal.contains("hasn't started a conversation here yet"))
+        #expect(chat.conversation.phase == .unavailable(.noConversationYet(.agy)))
+        #expect(!chat.conversation.transcript.entries.isEmpty)
+        #expect(await chat.confirmSessionBeforeSend() == refusal)
+
+        // `/resume` there takes the earlier conversation's lock: Chat shows it again.
+        fresh.openFiles = row.openFiles
+        await rig.transport.processTable.add(fresh)
+        await rig.transport.deliver(Self.statusEvent(sequence: 2, state: "working", app: "antigravity"))
+        try await rig.waitUntil("Chat to show it again") {
+            chat.conversation.phase == .following(path: Self.agyTranscript(first))
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// Waiting for Conversation, as on Herdr TUI, with nothing to choose and nothing
+    /// of herdr in what it says.
+    @Test func noConversationYetWaitsAsHerdrTUIsNoSessionDoes() {
+        let reason = ChatUnavailableReason.noConversationYet(.agy)
+
+        #expect(reason.title == ChatUnavailableReason.noSession(.agy).title)
+        #expect(reason.systemImage == ChatUnavailableReason.noSession(.agy).systemImage)
+        #expect(reason.isWaiting && reason.offersRetry)
+        #expect(!reason.leavesItToAPick && !reason.hidesConversation)
+        #expect(reason.explanation.contains("first message"))
+        #expect(!reason.explanation.contains("herdr"))
+        #expect(reason.bannerText(showingSavedMessages: false) == "Waiting for Antigravity CLI to start the conversation.")
+        #expect(reason.bannerText(showingSavedMessages: true).hasSuffix("Showing saved messages."))
+    }
+
     // MARK: Codex
 
     private static let codexThread = "01a10f87-e025-7fb1-8974-8dd09937767a"

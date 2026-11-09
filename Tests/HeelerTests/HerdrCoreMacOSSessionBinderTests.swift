@@ -523,7 +523,8 @@ struct HerdrCoreMacOSSessionBinderTests {
     }
 
     /// The reader's own macOS read of a probe's agy is what the macOS Host binds from,
-    /// and the owner's check in a core Terminal passed, so a Mac offers it.
+    /// and the owner's check in a core Terminal passed, so a Mac offers it. The same
+    /// process before its first prompt has no conversation yet.
     @Test func antigravityBindsExactlyFromItsMacOSRead() async throws {
         #expect(HostCapabilities.macOSExactCoreChatPrograms.contains(.agy))
         #expect(HostCapabilities.confirmedMacOSCoreChatPrograms.contains(.agy))
@@ -537,7 +538,7 @@ struct HerdrCoreMacOSSessionBinderTests {
         #expect(await files.reads.isEmpty)
 
         let (atPrompt, atPromptRecord, _) = try await Self.agyBinder("at-prompt")
-        #expect(try await atPrompt.check(atPromptRecord) == Self.cannotTell(.agy))
+        #expect(try await atPrompt.check(atPromptRecord) == .unavailable(.noConversationYet(.agy)))
     }
 
     /// Left out of the exact set, it reads as cannot tell and lists what it holds.

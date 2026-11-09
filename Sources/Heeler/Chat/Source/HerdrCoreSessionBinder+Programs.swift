@@ -327,16 +327,46 @@ extension HerdrCoreSessionBinder {
     /// holds none, so only a lock the Agent holds open counts, and the brain folder
     /// and database of a conversation it left with `/clear` or `/fork` stay open
     /// and never bind. One lock is the whole proof, so a check reads no file.
-    func checkAntigravity(_ tree: HerdrCoreTerminalProcesses) -> ChatSessionEvidence {
+    ///
+    /// A new agy makes its conversation (folder, database and lock) only with its
+    /// first prompt, so before that there is none to tell, and a Send starts it. That
+    /// holds only for an agy with nothing to say otherwise: the Terminal's own
+    /// foreground, started with nothing after its name and holding no file of any
+    /// conversation. With `--conversation` or `-c` it may be on a conversation another
+    /// agy holds, which it never locks and, on Linux, stops holding any file of about
+    /// 30 s after it starts; a launcher in front may have passed either. The name
+    /// rules out a shell left in the foreground after agy exits, which the Agent's
+    /// rule takes for the Agent when nothing runs under it (ADR 0034).
+    func checkAntigravity(_ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses) -> ChatSessionEvidence {
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid],
             case .value(let files) = process.openFiles
         else { return cannotTell }
         // lsof lists a file once per descriptor, so the same lock twice is one.
         let held = Set(files.compactMap(Self.antigravityLock(held:)))
         // One process holds one: anything else is a release no recording shows.
-        guard held.count == 1, let lock = held.first else { return cannotTell }
-        // The root the process really writes under, whatever its `HOME` says.
-        return .bound(sessionID: lock.session, transcriptRoot: lock.root, directory: nil)
+        if held.count == 1, let lock = held.first {
+            // The root the process really writes under, whatever its `HOME` says.
+            return .bound(sessionID: lock.session, transcriptRoot: lock.root, directory: nil)
+        }
+        guard process.name == "agy", let foreground = record.foreground,
+            foreground.pid.map(String.init) == pid, foreground.argv.count == 1,
+            !files.contains(where: Self.isAntigravityConversationFile)
+        else { return cannotTell }
+        return .unavailable(.noConversationYet(program))
+    }
+
+    /// Whether an open file is one conversation's: its lock, anything in its brain
+    /// folder, or its database with `-wal` and `-shm`, under any root. A new agy at
+    /// its prompt holds none (`host-evidence/agy`, `at-prompt`).
+    static func isAntigravityConversationFile(_ path: String) -> Bool {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        return zip(parts, parts.dropFirst()).contains { folder, leaf in
+            switch folder {
+            case "brain": ConversationReference.canonicalUUID(String(leaf)) != nil
+            case "presence", "conversations": ConversationReference.canonicalUUID(String(leaf.prefix { $0 != "." })) != nil
+            default: false
+            }
+        }
     }
 
     /// `<root>/presence/<uuid>.lock`, with a root a read can take. The folder must be

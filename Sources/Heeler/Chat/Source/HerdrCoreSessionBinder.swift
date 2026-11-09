@@ -139,7 +139,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 case .grok: try await checkGrokBuild(tree)
                 case .opencode: try await checkOpenCode(record, tree: tree)
                 case .pi, .omp: try await checkPiFamily(record, tree: tree)
-                case .agy: checkAntigravity(tree)
+                case .agy: checkAntigravity(record, tree: tree)
                 }
         }
         return await applyingPick(to: evidence, record: record, tree: tree)

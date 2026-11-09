@@ -23,8 +23,9 @@ Entries reference the pull request that made the change.
   message, with the reason, while Antigravity CLI is working or its screen
   shows no empty input box, since a permission dialog that opened as the
   message went in would take it as its answer. macOS and Linux herdr-core
-  Hosts offer it too, following the conversation once its first message is
-  sent in the terminal. Windows herdr-core Hosts don't offer it. (#644)
+  Hosts offer it too, following the conversation from its first message,
+  sent from Chat or the terminal. Windows herdr-core Hosts don't offer it.
+  (#644)
 
 ### Changed
 
