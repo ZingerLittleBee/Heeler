@@ -159,19 +159,20 @@ never show or send into a conversation it has guessed.
   while it shows no conversation; under an earlier one the Send waits for the
   first message from the terminal. Any argument, a launcher in front (one that
   goes by `agy` too, which shows as another `agy` under it), a process walk that
-  did not answer, open files that cannot be read, a conversation's file held without its lock, or a pick for
-  that process still reads as before, and a pick that stands unconfirmed says it
-  cannot tell. The arguments are the core's record of the Terminal's foreground,
-  which the candidate list reads for `--conversation` too; the check's exec still
-  learns nothing of an argv. `--conversation` and `-c` can open a conversation
-  another agy holds; such an agy never takes the lock and, on Linux, holds none of
-  its files about 30 s after it starts. Decided on 2026-11-10 (#644), before a live
-  run.
+  did not answer, open files that cannot be read, a conversation's file held
+  without its lock, or a pick for that process still reads as before, and a pick
+  that stands unconfirmed says it cannot tell. The arguments are the core's
+  record of the Terminal's foreground, which the candidate list reads for
+  `--conversation` too; the check's exec still learns nothing of an argv.
+  `--conversation` and `-c` can open a conversation another agy holds; such an
+  agy never takes the lock and, on Linux, holds none of its files about 30 s
+  after it starts. Decided on 2026-11-10 (#644), before a live run.
 - While Chat shows no conversation, the check before a Send refuses whatever it
-  finds, since a conversation it newly binds is not one the user saw. So a Chat
-  that shows none and says it cannot tell refuses the Send before any await and
-  asks again after it, and the message no longer shows as Sending through the
-  check's exec, as a held Send's recording on a core showed (#644).
+  finds other than an agy with no conversation yet (above), since a conversation
+  it newly binds is not one the user saw. So a Chat that shows none and says it
+  cannot tell refuses the Send before any await and asks again after it, and
+  the message no longer shows as Sending through the check's exec, as a held
+  Send's recording on a core showed (#644).
 - Candidates serve every program whose Chat binds on core, and only a Chat that
   already says it cannot tell offers them, on request. A list costs one exec, as
   a check does, then the listings it takes: a directory's folder, or for OpenCode
@@ -409,8 +410,10 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   that Send once. An agy that reaches a conversation another agy holds through its
   own `/resume`, `/conversation` or `/conv-switch` is not recorded. If it then holds
   nothing, as a second agy started with `--conversation` does on Linux after about
-  30 s, it reads as having no conversation yet, and a first Send from Chat goes into
-  that conversation with Chat bound to none, waiting for a lock that never comes.
+  30 s, it reads as having no conversation yet, and each Send from Chat goes into
+  that conversation while that reading holds, not only the first, since nothing is
+  kept from a Send that went in that way. Chat stays bound to none, waiting for a
+  lock that never comes.
   That is still the Agent on screen and binds nothing wrong; on macOS the folder and
   database such an agy holds rule it out. This was accepted on 2026-11-10, pending a
   live check, rather than hold a Send on agy's `Conversation already open` notice,
