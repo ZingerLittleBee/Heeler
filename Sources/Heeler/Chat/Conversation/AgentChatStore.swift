@@ -370,6 +370,10 @@ final class AgentChatStore {
     /// a session check trusts the transcript once one started after herdr
     /// last reported the Agent idle.
     @ObservationIgnored private var lastReadStartedAt: Date?
+    /// Transcript reads begun, and the latest of them that applied to this
+    /// conversation, numbered in order (`readAgain(within:until:)`).
+    @ObservationIgnored private var readsBegun = 0
+    @ObservationIgnored private var lastAppliedRead = 0
     /// When herdr last reported the Agent idle, while it still is.
     @ObservationIgnored private var idleSince: Date?
     /// When herdr last reported a turn starting. Esc puts back only the
@@ -677,6 +681,22 @@ final class AgentChatStore {
         wake()
     }
 
+    /// Reads the transcript now, rather than at the loop's pace, and waits
+    /// up to `window` for a read that began after this call to apply, or
+    /// for `isEnough`. Returns whether either came. Antigravity CLI's Stop
+    /// needs a step agy wrote just before the tap, which Chat's read under
+    /// way may have begun too early to see.
+    func readAgain(within window: Duration, until isEnough: @MainActor () -> Bool = { false }) async -> Bool {
+        let begun = readsBegun
+        wake()
+        let deadline = ContinuousClock.now + window
+        while lastAppliedRead <= begun, !isEnough() {
+            guard ContinuousClock.now < deadline, !Task.isCancelled else { return false }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return true
+    }
+
     /// A prompt was just sent: the Agent is about to write, and may start a
     /// session Chat has not seen.
     func noteSent() {
@@ -891,6 +911,8 @@ final class AgentChatStore {
         let context = projectionContext
         let snapshot: ChatConversationSnapshot
         let readStart = now()
+        readsBegun += 1
+        let read = readsBegun
         var polled = false
         var opened = false
         var didRead = true
@@ -931,6 +953,7 @@ final class AgentChatStore {
         apply(snapshot, from: engine)
         if polled || opened, case .following = snapshot.phase, snapshot.readFailure == nil {
             lastReadStartedAt = readStart
+            lastAppliedRead = read
             if !snapshot.hasUnreadRecords { pickGuardReadStart = readStart }
         }
         matchSends()

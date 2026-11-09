@@ -27,6 +27,67 @@ struct AgyBackgroundTaskStop {
         /// a second, twice, live.
         var kill: Duration = .seconds(2)
         var poll: Duration = .milliseconds(150)
+        /// How long Chat's transcript may take to bring a command's task:
+        /// the read under way may have begun before agy wrote it, and a read
+        /// that found new lines took up to 5.8 s over SFTP (live, 31 reads).
+        var transcript: Duration = .seconds(8)
+    }
+
+    /// The turn Chat's transcript leaves open, as last read.
+    struct OpenTurn: Equatable, Sendable {
+        /// The conversation Chat follows (`AgentChatStore.conversationGeneration`).
+        var conversation: Int
+        /// The turn's first entry; nil for a turn opened above the loaded
+        /// lines. A prompt, or a task's end after a reply, opens another.
+        var firstEntry: ChatEntryID?
+        /// Its background commands, oldest first
+        /// (`ChatTranscript.openTurnBackgroundCommands`).
+        var commands: [ChatBackgroundCommand]
+
+        func isSameTurn(as other: OpenTurn) -> Bool {
+            conversation == other.conversation && firstEntry == other.firstEntry
+        }
+    }
+
+    /// What the follow-through reads of Chat's conversation.
+    struct Transcript {
+        /// A send of Chat's waits for its record, so the open turn the
+        /// transcript shows may be the one before.
+        var awaitsRecord: @MainActor () -> Bool
+        var openTurn: @MainActor () -> OpenTurn
+        /// `AgentChatStore.readAgain(within:until:)`.
+        var readAgain: @MainActor (Duration, @MainActor () -> Bool) async -> Bool
+    }
+
+    /// What Chat's Stop presses after its Esc, built as Stop is tapped so it
+    /// stops the turn the tap saw (`ChatStopPlan.composerInterrupt`); nil
+    /// while a send of Chat's waits for its record. Only a send whose echo
+    /// still waits can be that turn's prompt; an overdue one would otherwise
+    /// keep Stop from every later turn.
+    ///
+    /// agy writes the step that makes a command a task as it lists the task
+    /// under the box, but Chat's read can bring it seconds later, after a
+    /// tap (live). So with none of the open turn's commands read at the tap,
+    /// a task listed on the screen after the Esc has Chat read again, and
+    /// the commands that turn then has, if it is still the open one, are
+    /// ended.
+    static func followThrough(
+        reading transcript: Transcript, io: BlockedScreenIO, mayContinue: @escaping @MainActor () -> Bool,
+        timing: Timing = Timing(), clock: BlockedCardClock = .live
+    ) -> ChatStopFollowThrough? {
+        guard !transcript.awaitsRecord() else { return nil }
+        let tapped = transcript.openTurn()
+        func stop(_ turn: OpenTurn) -> AgyBackgroundTaskStop? {
+            guard turn.isSameTurn(as: tapped) else { return nil }
+            return AgyBackgroundTaskStop(
+                commands: turn.commands, io: io, mayContinue: mayContinue, timing: timing, clock: clock)
+        }
+        if let stop = stop(tapped) { return { await stop.run() } }
+        return {
+            guard let screen = try? await io.readScreen(), AgyScreen(screen).showsRunningTasks else { return nil }
+            _ = await transcript.readAgain(timing.transcript) { stop(transcript.openTurn()) != nil }
+            return await stop(transcript.openTurn())?.run()
+        }
     }
 
     /// Why a step stopped.
@@ -43,8 +104,9 @@ struct AgyBackgroundTaskStop {
 
     /// - Parameters:
     ///   - commands: The stopped turn's background commands, oldest first
-    ///     (`ChatTranscript.openTurnBackgroundCommands`), read as Stop is
-    ///     tapped. Nil when none is a running command other than a daemon.
+    ///     (`ChatTranscript.openTurnBackgroundCommands`; see
+    ///     `followThrough`). Nil when none is a running command other than
+    ///     a daemon.
     ///   - mayContinue: Checked before every key: false while a Composer
     ///     send types, which could land in the box between two of them.
     init?(
@@ -231,5 +293,20 @@ struct AgyBackgroundTaskStop {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard trimmed.count > 40 || line != command else { return trimmed }
         return String(trimmed.prefix(39)) + "\u{2026}"
+    }
+}
+
+extension AgyBackgroundTaskStop.Transcript {
+    /// The conversation `chat` follows.
+    init(chat: AgentChatStore, awaitsRecord: @escaping @MainActor () -> Bool) {
+        self.init(
+            awaitsRecord: awaitsRecord,
+            openTurn: {
+                let transcript = chat.conversation.transcript
+                return AgyBackgroundTaskStop.OpenTurn(
+                    conversation: chat.conversationGeneration, firstEntry: transcript.turns.last?.firstEntryID,
+                    commands: transcript.openTurnBackgroundCommands)
+            },
+            readAgain: { await chat.readAgain(within: $0, until: $1) })
     }
 }

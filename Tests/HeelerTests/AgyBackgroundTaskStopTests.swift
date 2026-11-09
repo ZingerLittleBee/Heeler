@@ -120,6 +120,21 @@ struct AgyTaskPanelTests {
         #expect(!agy.showsRunningTurn)
         #expect(agy.taskPanel == nil)
         #expect(AgyBackgroundTaskStop.showsIdleBox(screen))
+        #expect(agy.showsRunningTasks == stem.contains("background-task"))
+    }
+
+    /// A running task shows under the box, or in the footer's count, which
+    /// a queued message's hint cuts at 62 columns (72) and the popup keeps
+    /// (176, 182); it shows nowhere once none runs.
+    @Test(arguments: [
+        ("agy-169-plain-working-background-task-120x40", true), ("agy-72-working-altm-send-now-62x41", true),
+        ("agy-176-plain-tasks-popup-while-working-120x40", true), ("agy-182-tasks-popup-62x46", true),
+        ("agy-188-core-tasks-popup-200x114", true), ("agy-196-core-nocolor-tasks-popup-200x119", true),
+        ("agy-175-plain-idle-after-tasks-120x40", false), ("agy-02-idle-empty-120x40", false),
+        ("agy-184-tasks-panel-after-k-62x46", false),
+    ])
+    func aRunningTaskShows(stem: String, shows: Bool) throws {
+        #expect(AgyScreen(try Self.captured(stem)).showsRunningTasks == shows)
     }
 
     @Test(arguments: [
@@ -129,6 +144,7 @@ struct AgyTaskPanelTests {
         let screen = try Self.captured(stem)
 
         #expect(AgyScreen(screen).showsRunningTurn)
+        #expect(AgyScreen(screen).showsRunningTasks)
         #expect(!AgyBackgroundTaskStop.showsIdleBox(screen))
     }
 
@@ -390,6 +406,113 @@ struct AgyBackgroundTaskStopTests {
                 + "runs in the background. Stop it in the terminal: /tasks, then k.")
     }
 
+    // MARK: Built as Stop is tapped
+
+    /// The live race: Chat's read of the step that made `sleep 60` a task
+    /// landed after the tap. The task under the box after the Esc has Chat
+    /// read again, and the command it then lists is ended.
+    @Test func aCommandReadOnlyAfterTheTapIsEnded() async throws {
+        let chat = ChatReads(Self.turn(1), then: Self.turn(1, [Self.command("sleep 60", id: 45)]))
+        let pane = try Self.corePane()
+
+        let left = await Self.tap(chat, pane)
+
+        #expect(left == .some(nil))
+        #expect(pane.typed == ["paste /tasks", "enter", "k", "esc"])
+        #expect(chat.readsAgain == 1)
+    }
+
+    /// A command read at the tap goes at once, with no read again.
+    @Test func aCommandReadAtTheTapIsEndedWithoutReadingAgain() async throws {
+        let chat = ChatReads(Self.turn(1, [Self.command("sleep 60", id: 45)]), then: nil)
+        let pane = try Self.corePane()
+
+        #expect(await Self.tap(chat, pane) == .some(nil))
+        #expect(pane.typed == ["paste /tasks", "enter", "k", "esc"])
+        #expect(chat.readsAgain == 0)
+    }
+
+    /// No command by the read's deadline: the task listed is another
+    /// turn's, or a daemon's, and nothing is pressed or said.
+    @Test func noCommandAfterReadingAgainPressesNothing() async throws {
+        let chat = ChatReads(Self.turn(1), then: Self.turn(1, [Self.command("npm run dev", daemon: true, id: 45)]))
+        let pane = try Self.corePane()
+
+        #expect(await Self.tap(chat, pane) == .some(nil))
+        #expect(pane.typed.isEmpty)
+        #expect(chat.readsAgain == 1)
+    }
+
+    /// Nothing listed under the box or in the footer after the Esc: no task
+    /// runs, so Chat does not read again.
+    @Test func noTaskOnTheScreenReadsNothingAgain() async throws {
+        let chat = ChatReads(Self.turn(1), then: Self.turn(1, [Self.command("sleep 60", id: 45)]))
+        let pane = try AgyPane(
+            reads: ["idle"], screens: ["idle": AgyTaskPanelTests.captured("agy-191-core-idle-after-tasks-200x113")],
+            answers: [:])
+
+        #expect(await Self.tap(chat, pane) == .some(nil))
+        #expect(pane.typed.isEmpty)
+        #expect(chat.readsAgain == 0)
+    }
+
+    /// A command of a turn opened since the tap, or of another
+    /// conversation Chat now follows, is not the stopped turn's.
+    @Test(arguments: [(conversation: 1, entry: 50), (conversation: 2, entry: 40)])
+    func anotherTurnsCommandIsLeftRunning(conversation: Int, entry: Int) async throws {
+        let later = AgyBackgroundTaskStop.OpenTurn(
+            conversation: conversation, firstEntry: ChatEntryID("agy:\(entry):user"),
+            commands: [Self.command("sleep 60", id: entry + 5)])
+        let chat = ChatReads(Self.turn(1), then: later)
+        let pane = try Self.corePane()
+
+        #expect(await Self.tap(chat, pane) == .some(nil))
+        #expect(pane.typed.isEmpty)
+    }
+
+    /// A send of Chat's still waiting for its record: the open turn may be
+    /// the one before, so Stop builds nothing, whatever comes later.
+    @Test func aSendAwaitingItsRecordBuildsNothing() async throws {
+        let chat = ChatReads(Self.turn(1), then: Self.turn(1, [Self.command("sleep 60", id: 45)]))
+        chat.awaitsRecord = true
+        let pane = try Self.corePane()
+
+        #expect(await Self.tap(chat, pane) == nil)
+        #expect(pane.typed.isEmpty)
+        #expect(chat.readsAgain == 0)
+    }
+
+    /// The open turn Chat read in `conversation`, opened by the prompt at
+    /// step 40.
+    private static func turn(_ conversation: Int, _ commands: [ChatBackgroundCommand] = []) -> AgyBackgroundTaskStop.OpenTurn {
+        AgyBackgroundTaskStop.OpenTurn(
+            conversation: conversation, firstEntry: ChatEntryID("agy:40:user"), commands: commands)
+    }
+
+    /// herdr-core's paints in agy's colors from Esc to the panel's close.
+    private static func corePane() throws -> AgyPane {
+        AgyPane(
+            reads: ["idle"],
+            screens: try [
+                "idle": "agy-187-core-idle-background-task-after-esc-200x113", "popup": "agy-188-core-tasks-popup-200x114",
+                "panel": "agy-189-core-tasks-panel-running-200x120", "killed": "agy-190-core-tasks-panel-after-k-200x120",
+                "closed": "agy-191-core-idle-after-tasks-200x113",
+            ].mapValues(AgyTaskPanelTests.captured),
+            answers: [
+                "idle: paste /tasks": "popup", "popup: enter": "panel", "panel: k": "killed", "killed: esc": "closed",
+            ])
+    }
+
+    /// What a tap builds, run: nil when it builds nothing, else what it says.
+    private static func tap(_ chat: ChatReads, _ pane: AgyPane) async -> String?? {
+        guard
+            let followThrough = AgyBackgroundTaskStop.followThrough(
+                reading: chat.transcript, io: pane.io(typingChecksTheScreen: true), mayContinue: { true },
+                clock: ManualClock().clock)
+        else { return nil }
+        return .some(await followThrough())
+    }
+
     // MARK: Helpers
 
     private static func stop(
@@ -441,6 +564,31 @@ struct AgyBackgroundTaskStopTests {
     /// `left`, then `right` ending at column 120.
     private static func right(_ left: String, _ right: String) -> String {
         left + String(repeating: " ", count: max(2, 120 - left.count - right.count)) + right
+    }
+}
+
+/// Chat's conversation as the follow-through reads it: the open turn at the
+/// tap, and what a read again brings, or nothing new.
+@MainActor
+private final class ChatReads {
+    var awaitsRecord = false
+    private(set) var readsAgain = 0
+    private var turn: AgyBackgroundTaskStop.OpenTurn
+    private let next: AgyBackgroundTaskStop.OpenTurn?
+
+    init(_ turn: AgyBackgroundTaskStop.OpenTurn, then next: AgyBackgroundTaskStop.OpenTurn?) {
+        self.turn = turn
+        self.next = next
+    }
+
+    var transcript: AgyBackgroundTaskStop.Transcript {
+        AgyBackgroundTaskStop.Transcript(
+            awaitsRecord: { [self] in awaitsRecord }, openTurn: { [self] in turn },
+            readAgain: { [self] _, isEnough in
+                readsAgain += 1
+                if let next { turn = next }
+                return next != nil || isEnough()
+            })
     }
 }
 

@@ -122,6 +122,10 @@ struct AgyScreen: Sendable {
     /// manifest reads as Working (`esc_cancel_footer_working` and
     /// `spinner_working`).
     let showsRunningTurn: Bool
+    /// A background task runs: agy lists it under the box, or counts it at
+    /// the footer's right (`· 1 task(s) · /tasks`), which a narrow footer
+    /// can cut (72) and a popup keeps (176).
+    let showsRunningTasks: Bool
 
     /// Footer hints of an idle box Enter sends from. Ctrl+C or Ctrl+D on an
     /// idle box arms an exit with no timeout, and a paste disarms it before
@@ -141,10 +145,13 @@ struct AgyScreen: Sendable {
         var composer = Self.composer(in: rows, ruleWidth: ruleWidth)
         var footerHint: String?
         var below: String?
+        var showsRunningTasks = false
         if let box = composer {
             var index = box.bottomRule + 1
+            showsRunningTasks = rows[index...].contains(where: Self.countsTasks)
             // The background-task panel: its task rows, then a rule.
             if index < rows.count, Self.isTaskRow(rows[index]) {
+                showsRunningTasks = true
                 while index < rows.count, Self.isTaskRow(rows[index]) { index += 1 }
                 if index < rows.count, Self.rulePalette(rows[index], width: ruleWidth) == box.palette { index += 1 }
             }
@@ -181,6 +188,7 @@ struct AgyScreen: Sendable {
         hasExited = tail.contains { $0.trimmedText.hasPrefix(Self.exitLine) }
         showsDialog = composer == nil && Self.showsDialog(rows)
         showsRunningTurn = footerHint.map(Self.workingHints.contains) == true || Self.showsSpinner(rows)
+        self.showsRunningTasks = showsRunningTasks
     }
 
     // MARK: Box
@@ -289,6 +297,11 @@ struct AgyScreen: Sendable {
     /// echo probe-two  running`.
     private static func isTaskRow(_ row: ScreenRow) -> Bool {
         row.trimmedText.range(of: #"^\S \[\d{1,2}:\d{2}:\d{2}\] "#, options: .regularExpression) != nil
+    }
+
+    /// The footer's count of running background tasks.
+    private static func countsTasks(_ row: ScreenRow) -> Bool {
+        row.text.range(of: #"\d+ task\(s\)"#, options: .regularExpression) != nil
     }
 
     /// The `/tasks` panel right under the box's bottom rule: `Tasks`, then

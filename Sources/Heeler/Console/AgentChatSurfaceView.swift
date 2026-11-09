@@ -1323,21 +1323,16 @@ struct AgentChatSurfaceView: View {
     }
 
     /// Antigravity CLI's Stop also ends the commands the turn sent to the
-    /// background, which its Esc leaves running (ADR 0024). Read as Stop is
-    /// tapped: a send the transcript has not recorded yet means the open
-    /// turn it shows may be the one before, whose tasks Stop leaves alone.
-    /// Only a send whose echo still waits can be that turn's prompt; an
-    /// overdue one would otherwise keep Stop from every later turn.
+    /// background, which its Esc leaves running (ADR 0024).
     private var stopFollowThrough: (@MainActor () -> ChatStopFollowThrough?)? {
         guard program == .agy, let chat else { return nil }
         let composer = composer
         return {
-            guard !ChatComposerEchoes.awaitsRecord(composer.messages, statuses: chat.sendStatuses),
-                let stop = AgyBackgroundTaskStop(
-                    commands: chat.conversation.transcript.openTurnBackgroundCommands, io: chat.screenIO,
-                    mayContinue: { !composer.messages.contains { $0.state == .sending } })
-            else { return nil }
-            return { await stop.run() }
+            AgyBackgroundTaskStop.followThrough(
+                reading: AgyBackgroundTaskStop.Transcript(chat: chat) {
+                    ChatComposerEchoes.awaitsRecord(composer.messages, statuses: chat.sendStatuses)
+                },
+                io: chat.screenIO, mayContinue: { !composer.messages.contains { $0.state == .sending } })
         }
     }
 

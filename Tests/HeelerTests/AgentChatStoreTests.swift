@@ -429,6 +429,33 @@ struct AgentChatStoreTests {
         #expect(await fixture.server.reads == 1)
     }
 
+    /// Antigravity CLI's Stop needs lines written just before it: a read
+    /// again wakes the loop from its idle pace and waits for a read that
+    /// began after it asked.
+    @Test func aReadAgainWakesTheLoopAndWaitsForAFreshRead() async throws {
+        let fixture = Fixture(
+            session: Self.first, timing: AgentChatStore.Timing(activeInterval: .seconds(60), idleInterval: .seconds(60)))
+        defer { fixture.store.end() }
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        fixture.store.show()
+        try await Self.waitUntil { Self.ids(fixture.store) == NumberedChatReducer.ids(0..<2) }
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+
+        #expect(await fixture.store.readAgain(within: .seconds(5)))
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+    }
+
+    /// With no loop to read, a read again gives up at its window, unless
+    /// what it waits for holds.
+    @Test func aReadAgainWithNoReadComingGivesUp() async {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        await fixture.store.step()
+
+        #expect(await fixture.store.readAgain(within: .milliseconds(200)) == false)
+        #expect(await fixture.store.readAgain(within: .seconds(5), until: { true }))
+    }
+
     @Test func noSessionIsExplainedWithoutReadingTheHost() async throws {
         let fixture = Fixture(session: nil)
 
