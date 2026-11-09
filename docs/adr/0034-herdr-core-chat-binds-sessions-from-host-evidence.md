@@ -222,7 +222,13 @@ never show or send into a conversation it has guessed.
   the user's own terminal fixes it. Heeler does not restart it. Terminals
   inherit the environment of the core's `herdr-core hold`, which on a Mac can
   differ from the core's own, so the check reads every hold `server.status`
-  names beside the core, and reads again when a Terminal starts one. A Claude Code Agent started
+  names beside the core, and reads again when a Terminal starts one. Whether a
+  restart clears a variable only a hold carries is unverified: on Linux a hold
+  restarts a dead core with the environment of whoever first started it
+  ([herdr compatibility](../agents/herdr-compatibility.md)), so the hold may
+  have to stop too. The testing guide's
+  [Leaked environment](../guides/herdr-core-testing.md#leaked-environment) row
+  for a hold would settle it. A Claude Code Agent started
   with `CLAUDE_CODE_CHILD_SESSION=1` keeps neither a registry entry nor a
   Transcript, and one with `CLAUDE_CODE_SKIP_PROMPT_HISTORY` keeps an entry and
   no Transcript; Chat says so instead of waiting for a file. Claude Code reads

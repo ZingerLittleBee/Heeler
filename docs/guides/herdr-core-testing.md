@@ -607,6 +607,7 @@ HC_SESSION=<s> TMUX=/tmp/made-up,1,0 CLAUDE_CODE_CHILD_SESSION=made-up STY= \
 | Leaked variables | The core above, with the Host connected | **Core Environment** names `CLAUDE_CODE_CHILD_SESSION` and `TMUX`, each with what it breaks, and says restarting the core from your own terminal fixes it; blank `STY` is not named, no value appears, and nothing offers a restart |
 | Prefix | Add `HERDR_PANE_ID=made-up` when starting | `HERDR_PANE_ID` is named with the others |
 | Restarted cleanly | `server stop` by absolute path with the same environment, then start again from a clean login shell without those variables | The Host reconnects by itself and **Core Environment** is gone |
+| Carried by the hold | A core whose `herdr-core hold` carries `TMUX=/tmp/made-up,1,0` while the core's own process does not, as on a Mac whose core launchd runs, started from a shell with that value; then create a Terminal. Afterwards stop the core from a clean terminal and start it again | **Core Environment** names `TMUX` once the first Terminal has started the hold, without a reconnect. Record whether the restart, with the hold left alone, clears it: ADR 0034 leaves open whether restarting the core is enough |
 | Link recovery | With an Agent detail open and a draft typed, block the route to the Host, then restore it | The screen and draft stay, the title reads **Reconnecting…**, Send and keys are refused, and input comes back once the Agent's row does |
 
 ## Desktop organization
