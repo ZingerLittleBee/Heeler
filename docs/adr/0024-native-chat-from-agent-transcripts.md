@@ -292,8 +292,8 @@ local start times, so its top rows must name the turn's background commands
 in order, matched by command. A daemon (`IsDaemon`), which agy's own
 headless runs leave running, and a task from an earlier turn are never
 selected. Each key goes only after a fresh read passes its check, which
-herdr-core's typing makes again; a step waits up to 3 s, since one read
-through herdr took up to 1.65 s, and a read that fails is tried again
+herdr-core's typing makes again; a step gives agy 3 s, reading once more
+after them whatever a read takes, and a read that fails is tried again
 within it. A failed check takes back only what the follow-through typed:
 Esc closes the panel, and in the box six Backspaces in one send erase its
 own `/tasks` and close the popup, since Esc there closes the popup but

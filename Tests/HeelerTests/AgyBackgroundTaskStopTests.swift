@@ -478,6 +478,45 @@ struct AgyBackgroundTaskStopTests {
         #expect(pane.typed == ["paste /tasks", "enter", "k", "esc"])
     }
 
+    /// Core's first read after a key often showed agy before it drew the
+    /// answer: the turn's end, the popup, the panel, `cancelled` (live).
+    /// A step's window is agy's time to draw, whatever a read takes: one
+    /// read longer than the window, such as a 2 s read against the kill's
+    /// 2 s, must not have the last word. Each step drawn one read late,
+    /// with reads longer than every window, still goes through.
+    @Test(arguments: ["working", "typed", "opening", "killing", "closing"])
+    func aStepDrawnASlowReadLateIsStillSeen(late: String) async throws {
+        let clock = ManualClock()
+        let running = Self.panel([("sleep 40", "running")])
+        let cancelled = Self.panel([("sleep 40", "cancelled")])
+        let pane = AgyPane(
+            reads: [late == "working" ? "working" : "idle"],
+            screens: [
+                "working": Self.screen(under: [Self.right("esc to cancel", Self.model)]), "idle": Self.idle,
+                "typed": Self.screen(draft: "/tasks", under: [Self.right("", Self.model)]), "popup": Self.popup,
+                "opening": Self.popup, "panel": running, "killing": running, "killed": cancelled,
+                "closing": cancelled, "closed": Self.idle,
+            ],
+            answers: [
+                "idle: paste /tasks": late == "typed" ? "typed" : "popup",
+                "popup: enter": late == "opening" ? "opening" : "panel",
+                "panel: k": late == "killing" ? "killing" : "killed",
+                "killed: esc": late == "closing" ? "closing" : "closed",
+            ],
+            drawing: ["working": "idle", "typed": "popup", "opening": "panel", "killing": "killed", "closing": "closed"],
+            readTime: (clock, .milliseconds(3_200)))
+        let built = AgyBackgroundTaskStop(
+            commands: [Self.command("sleep 40", id: 6)], io: pane.io(typingChecksTheScreen: false),
+            mayContinue: { true }, clock: clock.clock)
+        let stop = try #require(built)
+
+        let left = await stop.run()
+
+        #expect(left == nil)
+        #expect(pane.typed == ["paste /tasks", "enter", "k", "esc"])
+        #expect(pane.shown == "closed")
+    }
+
     /// Esc, the popup drawn a read after the paste, the panel, `k` and Esc.
     private static func fullPane(
         failing: Set<Int> = [], readTime: (clock: ManualClock, duration: Duration)? = nil

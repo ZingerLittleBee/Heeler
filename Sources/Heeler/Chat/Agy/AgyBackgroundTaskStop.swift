@@ -22,9 +22,9 @@ struct AgyBackgroundTaskStop {
         /// How long the turn may take to end after the Esc; past it Stop's
         /// own wait says the Agent still works.
         var turnEnd: Duration = .seconds(3)
-        /// How long the popup, the panel or a move may take to show: a read
-        /// through herdr took 0.8 to 1.65 s live, so a shorter window held a
-        /// single read.
+        /// How long the popup, the panel or a move may take to show. A read's
+        /// own time, 0.8 to 1.65 s through herdr live, does not count
+        /// against it (`poll`).
         var step: Duration = .seconds(3)
         /// How long a killed row may take to stop reading `running`: under
         /// a second, twice, live.
@@ -205,21 +205,26 @@ struct AgyBackgroundTaskStop {
         try await io.type(typing, whileShowing: check)
     }
 
-    /// Reads the screen until one passes `isDone`, for up to `window`. A
-    /// read that fails is tried again until then, so one failing herdr
-    /// read does not stop a step the next would see.
+    /// Reads the screen until one passes `isDone`, for up to `window`. The
+    /// window is agy's to draw in: a read shows the screen as it reaches
+    /// herdr, and the first one after a key often showed agy before it
+    /// drew (live), so the last read is the first to begin once the
+    /// window passed, however long a read takes. A read that fails is
+    /// tried again until then, so one failing herdr read does not stop a
+    /// step the next would see.
     private func poll(
         within window: Duration, until isDone: (ANSIScreen) -> Bool
     ) async throws -> ANSIScreen? {
         let deadline = clock.now() + window
         while true {
+            let begun = clock.now()
             do {
                 let screen = try await io.readScreen()
                 if isDone(screen) { return screen }
             } catch {
-                guard clock.now() < deadline else { throw error }
+                guard begun < deadline else { throw error }
             }
-            guard clock.now() < deadline else { return nil }
+            guard begun < deadline else { return nil }
             try await clock.sleep(timing.poll)
         }
     }
