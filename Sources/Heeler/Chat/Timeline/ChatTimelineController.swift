@@ -536,6 +536,15 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         reserveCollapseControlRoom()
     }
 
+    /// Keeps `width` at the trailing edge clear of rows, for chrome that
+    /// floats over it, such as the Workspace terminals handle.
+    func setTrailingReserve(_ width: CGFloat) {
+        loadViewIfNeeded()
+        guard layout.trailingReserve != width else { return }
+        layout.trailingReserve = width
+        collectionView.setNeedsLayout()
+    }
+
     private func reserveCollapseControlRoom() {
         let reserve = reportedCanCollapse ? collapseControlClearance : 0
         guard collapseControlReserve != reserve else { return }
@@ -1164,7 +1173,7 @@ final class ChatCollectionView: UICollectionView {
     }
 }
 
-/// Measures its hosted row at the column's full width.
+/// Measures its hosted row at the width the layout gives it.
 final class ChatHostingCell: UICollectionViewCell {
     /// A hosted row pads itself by the safe area it overlaps, which for a
     /// row scrolling under the status bar or home indicator changes with

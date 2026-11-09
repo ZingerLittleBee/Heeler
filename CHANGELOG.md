@@ -57,6 +57,7 @@ Entries reference the pull request that made the change.
 - Fade a Blocked card's options where they run past its scroll edge, and flash its scroll bar as they start to, instead of cutting an option off flat with no sign of the answers below it. (#644)
 - Show why a Send or Retry was held even while an earlier message's failure shows. A held Retry keeps its own failure, instead of showing the passing reason as its error after the hold ended. (#644)
 - Replace Chat's Composer with a progress indicator as soon as an Agent reports Blocked, until Chat has read the dialog for its card, instead of showing the Composer for a moment first, as before Antigravity CLI's trust prompt. (#644)
+- Keep Chat's messages and its Collapse Steps and Jump to Latest buttons clear of the Workspace terminals handle, instead of the handle covering their right-hand ends, such as a tool's check mark or Allowed. (#644)
 
 ## [0.1.18]
 

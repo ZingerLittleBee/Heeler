@@ -16,6 +16,9 @@ struct ChatTimelineView: UIViewControllerRepresentable {
     var bottomEdge = ChatTimelineBottomEdge()
     /// Height of the Collapse Steps button over the list's bottom edge.
     var collapseControlClearance: CGFloat = 0
+    /// Room at the trailing edge rows end short of, for chrome floating
+    /// over it; the list still runs to the edge.
+    var trailingReserve: CGFloat = 0
     /// Chat's own text size; nil follows the system's.
     var textSize: DynamicTypeSize?
     var font: ChatFontOption = .system
@@ -36,6 +39,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
         controller.setTopObstruction(topObstruction)
         bottomEdge.controller = controller
         controller.setCollapseControlClearance(collapseControlClearance)
+        controller.setTrailingReserve(trailingReserve)
         controller.view.accessibilityElementsHidden = hidesFromAccessibility
         controller.apply(state)
         return controller
@@ -47,6 +51,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
         controller.setTopObstruction(topObstruction)
         bottomEdge.controller = controller
         controller.setCollapseControlClearance(collapseControlClearance)
+        controller.setTrailingReserve(trailingReserve)
         controller.view.accessibilityElementsHidden = hidesFromAccessibility
         controller.apply(state)
         let coordinator = context.coordinator

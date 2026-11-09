@@ -550,6 +550,16 @@ struct AgentChatSurfaceView: View {
             }
         }
         .chatContentColumn()
+        .padding(.trailing, edgeHandleReserve)
+    }
+
+    /// How much further than their own margin Chat's rows and floating
+    /// buttons keep from the trailing edge, for the Workspace terminals
+    /// handle resting there. Kept while the back header is out and the
+    /// handle hides, so folding the header does not re-measure every row.
+    private var edgeHandleReserve: CGFloat {
+        guard workspaceDrawer != nil else { return 0 }
+        return max(0, WorkspaceTerminalDrawer.contentClearance - ChatTimelineMetrics.horizontalPadding)
     }
 
     /// The timeline runs edge to edge: under the status bar, the back
@@ -563,6 +573,7 @@ struct AgentChatSurfaceView: View {
                 topObstruction: topInset + headerObstruction + bannerHeight,
                 bottomEdge: bottomEdge,
                 collapseControlClearance: collapseControlHeight,
+                trailingReserve: edgeHandleReserve,
                 textSize: ChatTextSettings.size(system: dynamicTypeSize, offset: textSizeOffset),
                 font: chatFont,
                 hidesFromAccessibility: presentation != .timeline,

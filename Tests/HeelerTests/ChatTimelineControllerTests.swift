@@ -170,6 +170,42 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    /// Chrome resting on the list's trailing edge, such as the Workspace
+    /// terminals handle, keeps rows short of it: they end before it and
+    /// measure at the width left, whether it is there from the start or goes
+    /// later. The list itself still runs to the edge.
+    @Test func rowsEndShortOfATrailingReserveAndMeasureAtTheWidthLeft() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.entries(0..<12)))
+        // A paragraph of a few lines, which a narrower row wraps onto more.
+        let answer = ChatRowID.entry(ChatEntryID("e11"))
+        let reserve: CGFloat = 120
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            let view = controller.timeline
+            @MainActor func expectRows(endingAt edge: CGFloat) {
+                #expect(!view.visibleCells.isEmpty)
+                for cell in view.visibleCells {
+                    #expect(abs(cell.frame.maxX - edge) <= 0.5)
+                    let fitted = cell.contentView.systemLayoutSizeFitting(
+                        CGSize(width: cell.bounds.width, height: UIView.layoutFittingCompressedSize.height),
+                        withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)
+                    #expect(abs(cell.bounds.height - fitted.height) <= 1)
+                }
+            }
+            controller.setTrailingReserve(reserve)
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            #expect(view.bounds.width == Self.frame.width)
+            expectRows(endingAt: Self.frame.width - reserve)
+            let narrow = try #require(controller.cellFrame(of: answer)).height
+
+            controller.setTrailingReserve(0)
+            await Self.settle(controller)
+            expectRows(endingAt: Self.frame.width)
+            #expect(try #require(controller.cellFrame(of: answer)).height < narrow)
+        }
+    }
+
     @Test func opensAtTheNewestRowWithVisibleRowsMeasured() async throws {
         let controller = ChatTimelineController(actions: ChatTimelineActions())
         let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.entries(0..<60)))
