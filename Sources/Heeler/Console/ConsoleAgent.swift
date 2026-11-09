@@ -103,7 +103,9 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
 
     /// The Agent's current directory: latest pane foreground cwd, then pane
     /// cwd, then its last Agent snapshot, then the workspace checkout path.
-    /// Launch-directory consumers continue to use `agent.cwd`.
+    /// Consumers of where the Agent's program runs use `agent.cwd` instead:
+    /// herdr's launch cwd on a Herdr TUI Host, and on herdr-core the
+    /// foreground's sample, else the Terminal's launch directory.
     var directory: String? {
         paneDirectory ?? nonempty(agent.foregroundCwd) ?? nonempty(agent.cwd)
             ?? nonempty(checkoutPath)
@@ -136,9 +138,10 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     }
 
     /// The directory the skills probe treats as the agent's project root:
-    /// the worktree checkout when the workspace has one, else the agent's
-    /// launch cwd. Deliberately not the live foreground cwd — agents load
-    /// project skills from where they started.
+    /// the worktree checkout when the workspace has one, else `agent.cwd`,
+    /// where its program runs. Deliberately not `directory`, which follows
+    /// the pane's foreground: agents load project skills from where they
+    /// started.
     var skillsProjectRoot: String? {
         if let checkoutPath, !checkoutPath.isEmpty { return checkoutPath }
         return agent.cwd.isEmpty ? nil : agent.cwd
@@ -170,7 +173,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         }
     }
 
-    /// The launch directory as a Console row should print it. The snapshot
+    /// `agent.cwd` as a Console row should print it. The snapshot
     /// carries the expanded remote path but not `$HOME`, so only the
     /// account's conventional macOS/Linux homes are shortened to `~`; every
     /// other path stays exactly as the Agent reported it.

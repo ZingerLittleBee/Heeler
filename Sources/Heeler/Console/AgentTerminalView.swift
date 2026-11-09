@@ -390,8 +390,9 @@ struct AgentTerminalView: View {
     }
 
     /// The Skills pane's store, or nil when this agent's kind has no skills
-    /// source catalog. Captures launch-time context on purpose: the project
-    /// root is the worktree checkout or launch cwd, never the live cwd.
+    /// source catalog. Captures its context once, on purpose: the project
+    /// root is `skillsProjectRoot` when the store is made, never the pane's
+    /// live foreground cwd.
     /// `include` narrows what the store lists.
     static func makeSkillsStore(
         for agent: ConsoleAgent, console: ConsoleStore,
