@@ -1321,17 +1321,13 @@ struct AgentChatSurfaceView: View {
     /// background, which its Esc leaves running (ADR 0024). Read as Stop is
     /// tapped: a send the transcript has not recorded yet means the open
     /// turn it shows may be the one before, whose tasks Stop leaves alone.
+    /// Only a send whose echo still waits can be that turn's prompt; an
+    /// overdue one would otherwise keep Stop from every later turn.
     private var stopFollowThrough: (@MainActor () -> ChatStopFollowThrough?)? {
         guard program == .agy, let chat else { return nil }
         let composer = composer
         return {
-            let unrecorded = ChatComposerEchoes.pending(composer.messages, statuses: chat.sendStatuses).contains {
-                switch $0.state {
-                case .sending, .sent, .unconfirmed, .outcomeUnknown: true
-                default: false
-                }
-            }
-            guard !unrecorded,
+            guard !ChatComposerEchoes.awaitsRecord(composer.messages, statuses: chat.sendStatuses),
                 let stop = AgyBackgroundTaskStop(
                     commands: chat.conversation.transcript.openTurnBackgroundCommands, io: chat.screenIO,
                     mayContinue: { !composer.messages.contains { $0.state == .sending } })

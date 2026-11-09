@@ -745,6 +745,23 @@ struct ChatComposerEchoesTests {
         #expect(echoes.map(\.state) == [.sent])
     }
 
+    /// What keeps agy's Stop from taking the open turn for the one it
+    /// stops: a send whose echo still waits. An overdue one, an earlier send
+    /// the program never recorded, must not keep it from every later turn.
+    @Test func onlyASendWhoseEchoStillWaitsAwaitsItsRecord() async {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        store.replaceDraft(with: "lost")
+        await store.send(policy: Self.policy())
+        store.replaceDraft(with: "run sleep 40")
+        await store.send(policy: Self.policy())
+        let ids = store.messages.map(\.id)
+
+        #expect(!ChatComposerEchoes.awaitsRecord(store.messages, statuses: [ids[0]: .overdue, ids[1]: .recorded]))
+        #expect(ChatComposerEchoes.awaitsRecord(store.messages, statuses: [ids[0]: .overdue, ids[1]: .awaiting]))
+        #expect(!ChatComposerEchoes.awaitsRecord(store.messages, statuses: [:]), "sent before Chat watched")
+    }
+
     private func waitUntil(
         _ comment: Comment,
         timeout: Duration = .seconds(2),

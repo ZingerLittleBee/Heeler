@@ -296,7 +296,9 @@ herdr-core's typing makes again. A failed check presses nothing more than an
 Esc that closes the panel, and Chat says what still runs and how to end it
 in the terminal, with Open in Terminal. The commands are the transcript's
 as Stop is tapped, since agy writes nothing on Esc, and none while a send
-of Chat's is unrecorded, when the open turn it shows may be the one before.
+of Chat's waits for its record, when the open turn it shows may be the one
+before. An overdue send does not count: its echo clock stops while agy
+works, so it ran out on a send no turn began with.
 agy records a kill only with the next prompt, so the row reads Started
 until then (1.5.3, live). The terminal's own Stop stays one Esc.
 
