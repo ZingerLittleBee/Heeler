@@ -217,7 +217,9 @@ struct HostHelperScript: Sendable, Equatable {
             // The record names the binary the Helper started on, while the
             // service can name a manager's link that now leads to another one,
             // or the Node.js a Repair chose. That one runs the query until the
-            // Helper rewrites the record when it next reaches the core. A
+            // Helper starts on it and records it: a Repair restarts the Helper,
+            // while one still running on a removed binary records that binary
+            // again each time it reaches the core, until its next start. A
             // service on the same lost Node.js never will.
             "  case \"$(uname -s)\" in",
             "  Darwin) __h_service_node=$(launchctl print \"user/$(id -u)/\(HostHelperLaunchAgent.label)\" 2>/dev/null | \(programOfPrint)) ;;",

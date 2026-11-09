@@ -348,8 +348,11 @@ Hosts are unchanged.
   sends notifications, and nothing else about it is wrong until it stops. Usage
   asks for the Repair only when the service's path has gone too. When only the
   record's has, as after a Repair or when the service's link now leads to
-  another binary, Usage runs the query with the service's Node.js until the
-  Helper rewrites that record at its next connection to the core. The probe
+  another binary, Usage runs the query with the service's Node.js until a
+  Helper started on that Node.js records it when it reaches the core: soon after
+  a Repair, which restarts the Helper, and otherwise only after its next start,
+  since a Helper still running on the removed binary records that binary again
+  at each connection. The probe
   names a manager's stable link where it finds one, so an upgrade through that
   manager moves the service along at its next start rather than stranding it,
   though a default switched to a version too old can then fail that start,
