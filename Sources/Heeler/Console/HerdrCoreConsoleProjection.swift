@@ -527,7 +527,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             checkouts: checkouts, home: home, doneTerminals: doneTerminals)
         let builder = ConsolePaneRowBuilder(host: host, inventory: organization.snapshot)
         // Every value comes from the rebuilt records: nothing is carried over.
-        let agents = builder.agentRows(lastOutputSnippet: { _ in nil }, liveChange: { _ in nil })
+        let agents = builder.agentRows(liveChange: { _ in nil })
         var rows = builder.terminalRows(agents: agents, liveChange: { _ in nil })
         for record in records where rows[record.address] != nil {
             rows[record.address]?.isRestarting = record.isRestarting

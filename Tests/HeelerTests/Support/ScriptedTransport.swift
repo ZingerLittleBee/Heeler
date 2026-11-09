@@ -132,7 +132,6 @@ final actor ScriptedTransport: Transport {
     private var nextSnapshotGate: ScriptedTransportCallGate?
     private var paneTexts: [String: String] = [:]
     private var paneReadFailure: TransportError?
-    private var nextPaneReadGate: ScriptedTransportCallGate?
     private var agentPromptFailure: (any Error)?
     private var agentPromptFailures: [any Error] = []
     private var nextAgentPromptGate: ScriptedTransportCallGate?
@@ -242,11 +241,6 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `readPane` throw `failure`.
     func setPaneReadFailure(_ failure: TransportError?) {
         paneReadFailure = failure
-    }
-
-    /// Pauses the next pane read after capturing its response.
-    func gateNextPaneRead(using gate: ScriptedTransportCallGate) {
-        nextPaneReadGate = gate
     }
 
     /// Makes every subsequent `promptAgent` throw `failure`.
@@ -646,11 +640,7 @@ final actor ScriptedTransport: Transport {
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
         paneReadParams.append(params)
         let responseText = paneTexts[params.paneID] ?? ""
-        let failure = paneReadFailure
-        let gate = nextPaneReadGate
-        nextPaneReadGate = nil
-        await gate?.waitUntilOpen()
-        if let failure { throw failure }
+        if let failure = paneReadFailure { throw failure }
         return PaneReadResult(
             format: .text, paneID: params.paneID, revision: 0,
             source: params.source, tabID: "t", text: responseText,

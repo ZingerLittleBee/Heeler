@@ -38,14 +38,10 @@ struct ConsolePaneRowBuilder {
         self.tabPaneIDs = tabPaneIDs
     }
 
-    /// One row per listed Agent, keyed by Pane. `lastOutputSnippet` carries a
-    /// row's snippet over from before this inventory. `liveChange` is a Pane
-    /// value observed while the inventory was on its way, newer than it, even
-    /// when the inventory has no Terminal entry for that Pane.
-    func agentRows(
-        lastOutputSnippet: (String) -> String?,
-        liveChange: (String) -> PaneInfo?
-    ) -> [String: ConsoleAgent] {
+    /// One row per listed Agent, keyed by Pane. `liveChange` is a Pane value
+    /// observed while the inventory was on its way, newer than it, even when
+    /// the inventory has no Terminal entry for that Pane.
+    func agentRows(liveChange: (String) -> PaneInfo?) -> [String: ConsoleAgent] {
         var rows: [String: ConsoleAgent] = [:]
         for (snapshotOrder, info) in inventory.agents.enumerated() {
             let agent = Agent(info)
@@ -59,7 +55,6 @@ struct ConsolePaneRowBuilder {
                 agent: agent,
                 workspaceLabel: workspace?.label,
                 repositoryCheckout: workspace?.worktree.map(RepositoryCheckout.init),
-                lastOutputSnippet: lastOutputSnippet(agent.paneID),
                 hostUsername: host.username,
                 tabLabel: tab?.label,
                 tabPosition: tab.flatMap { tabPositions[$0.tabID] },

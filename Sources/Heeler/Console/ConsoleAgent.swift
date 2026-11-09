@@ -34,9 +34,6 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// not mean this is removable: the main checkout is reported with
     /// `isLinkedWorktree == false` too.
     let repositoryCheckout: RepositoryCheckout?
-    /// Trailing terminal output (`pane.read`, ANSI stripped), fetched after
-    /// snapshots and status changes; nil until the first read lands.
-    var lastOutputSnippet: String?
     /// Set for a core Host's rows: its Terminals can start in a Windows directory.
     /// A Herdr TUI Host's on Windows have no such offer.
     var startsTerminalsInWindowsDirectories = false
@@ -69,7 +66,6 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         agent: Agent,
         workspaceLabel: String?,
         repositoryCheckout: RepositoryCheckout?,
-        lastOutputSnippet: String? = nil,
         hostUsername: String? = nil,
         tabLabel: String? = nil,
         tabPosition: Int? = nil,
@@ -90,7 +86,6 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         self.tabPaneCount = tabPaneCount
         self.snapshotOrder = snapshotOrder
         self.repositoryCheckout = repositoryCheckout
-        self.lastOutputSnippet = lastOutputSnippet
     }
 
     var repoName: String? { repositoryCheckout?.repoName }
