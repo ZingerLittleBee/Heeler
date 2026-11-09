@@ -101,6 +101,11 @@ Decrypted plaintext (canonical form):
   trimmed `cwd` for directory; `tokens` values for `$custom` fields; and on a
   herdr-core Host the Terminal's label for `label:<key>` fields, which the Helper
   reads from the same `tokens`.
+  On a herdr-core Host the app takes an Agent's `cwd` from its Terminal's
+  foreground sample, else the record's launch `cwd`. Host Helper 0.5.5 still
+  sends the record's `cwd` for its rows and its notifications' project, so an
+  Agent typed after a `cd` names its Terminal's starting folder there once the
+  app suspends, until the next plugin version follows the app.
   `state_icon` and `state_text` render no text because the status indicator
   owns that information. Missing context suppresses that field only.
 - `host` is the Host machine's short hostname (first DNS label), ≤80
