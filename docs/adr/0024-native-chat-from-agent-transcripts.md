@@ -279,6 +279,26 @@ Esc, which stops a running turn and puts a queued message back in the box;
 Ctrl+C is never sent, since on an idle box it arms exit. Esc in bash mode
 leaves it and drops the command typed there (captured idle), so Stop reads
 the screen first and presses nothing while bash mode holds a command.
+A command still running when its `WaitMsBeforeAsync` passes (10 s on every
+call seen, even when the prompt asks for the foreground) becomes a
+background task, which Esc and Ctrl+C leave running; only `k` in agy's
+`/tasks` panel ends one, with no confirmation. So Chat's Stop follows its Esc
+through when the stopped turn has such a command running: once the screen
+shows the turn ended, it types `/tasks` into the empty idle box, presses
+Enter while the `/` popup selects `/tasks`, presses `k` in the panel on each
+of the turn's running commands, moving one row at a time, and closes it with
+Esc. The panel lists the conversation's tasks newest first with the Host's
+local start times, so its top rows must name the turn's background commands
+in order, matched by command. A daemon (`IsDaemon`), which agy's own
+headless runs leave running, and a task from an earlier turn are never
+selected. Each key goes only after a fresh read passes its check, which
+herdr-core's typing makes again. A failed check presses nothing more than an
+Esc that closes the panel, and Chat says what still runs and how to end it
+in the terminal, with Open in Terminal. The commands are the transcript's
+as Stop is tapped, since agy writes nothing on Esc, and none while a send
+of Chat's is unrecorded, when the open turn it shows may be the one before.
+agy records a kill only with the next prompt, so the row reads Started
+until then (1.5.3, live). The terminal's own Stop stays one Esc.
 
 ## Entry and the terminal
 
@@ -509,7 +529,11 @@ acknowledgement means only that the keys reached the PTY, and an Esc that
 lands after the turn ended can open the program's own history menus, so Stop
 shows a spinner until Agent Status leaves Working. After three seconds it
 works again and says the Agent still shows Working; background agents and
-shells, which Esc does not end, can keep it there. OpenCode's interrupt
+shells, which Esc does not end, can keep it there. Antigravity CLI's
+background commands are the exception: Chat's Stop ends the stopped turn's
+own after its Esc (Antigravity CLI above), and says which still run when it
+could not, a notice that stays after the status leaves Working, until the
+next tap or turn. OpenCode's interrupt
 resumes with a message that waited during the turn: OpenCode records the
 stopped turn as interrupted and starts that message within milliseconds, and
 herdr 0.9.5 reports idle for about 105 ms before Working again. That idle
