@@ -183,6 +183,7 @@ macOS 可能会提示 `node` 可在后台运行，并将其列在“登录项”
 - **OpenCode Chat 已关闭：** OpenCode Agent 仅提供终端视图。
 - **使用 `/new` 开始新对话：** 在 Codex 中执行 `/new` 后，请先使用终端，直到退出并运行 `codex resume --no-daemon`。在未安装 Host Helper 的 Pi 中，只有在从 Chat 发送的消息未出现在旧对话中之后，才会察觉到 `/new`。
 - **Federated Terminals：** 不显示。请将另一台机器作为单独的 Host 添加。
+- **包装脚本：** 以子进程方式运行 Agent 的脚本会留在 **Terminals** 中。请用 `exec` 启动 Agent（例如 `exec claude "$@"`），它才会显示在 **Agents** 中。
 - **首次使用无 `~/.zshrc` 的 `zsh`：** `zsh` 会打开其配置向导，新启动的 Agent 会一直等待，直到你完成向导或创建 `~/.zshrc`。
 
 最后核对于 2026-11-06，核对依据为 herdr-core 0.1.18 与 Herdr 桌面端 0.1.13。
