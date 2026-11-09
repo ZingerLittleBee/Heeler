@@ -444,6 +444,25 @@ class ProbeTests(HelperScriptCase):
         self.node_in(brew, f"{self.root}/abs/opt/homebrew/Cellar/node/24.1.0/bin/node", "24.1.0")
         self.assertEqual(self.probe()["node"], f"found {brew}/node")
 
+    def test_homebrews_bin_on_the_path_is_named_rather_than_its_cellar(self) -> None:
+        # A fish config.fish that runs `brew shellenv` puts it on the exec's PATH.
+        brew = self.root / "abs/opt/homebrew/bin"
+        self.node_in(brew, f"{self.root}/abs/opt/homebrew/Cellar/node/24.1.0/bin/node", "24.1.0")
+        self.env["PATH"] = f"{brew}:{self.env['PATH']}"
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], f"found {brew}/node")
+
+    def test_another_directory_on_the_path_is_named_by_the_binary_it_runs(self) -> None:
+        # fnm's per-shell link, which goes when that shell does.
+        shell_link = self.root / "fnm_multishells/123_456/bin"
+        binary = f"{self.root}/fnm/node-versions/v22.1.0/installation/bin/node"
+        self.node_in(shell_link, binary)
+        self.env["PATH"] = f"{shell_link}:{self.env['PATH']}"
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], f"found {binary}")
+
     def test_a_shim_is_named_by_the_binary_it_runs(self) -> None:
         binary = f"{self.root}/mise/installs/node/24.13.1/bin/node"
         self.node_in(self.home / ".local/share/mise/shims", binary, "24.13.1")
