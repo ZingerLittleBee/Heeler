@@ -189,6 +189,37 @@ struct HerdrCoreTerminalStoreTests {
                 activity: activity, themes: settings.themes, window: window)
         }
 
+        /// A core Terminal's screen fed the Terminal live, as the Console
+        /// feeds it, so it sees its shell start an Agent. It opens with the
+        /// keyboard up, as from a screen that had it up.
+        func showShellWithKeyboardUp(
+            of terminal: ConsoleTerminal, opensAgentsOn surface: AgentDetailSurface,
+            keyboardHandoff: TerminalKeyboardHandoff,
+            onSelectAgent: @escaping (ConsoleAgent.ID) -> Void
+        ) async throws -> CoreDetailWindow {
+            let settings = try Self.makeSettings(look: WindowLook())
+            let selection = HostedDetailSelection()
+            let activity = AppActivityCoordinator()
+            let defaults = try #require(UserDefaults(suiteName: "core-shell-\(UUID().uuidString)"))
+            let agentSurface = AgentDetailSurfaceSettings(defaults: defaults)
+            agentSurface.select(surface)
+            keyboardHandoff.armShellTerminal()
+            let controller = UIHostingController(
+                rootView: HostedLiveShell(
+                    console: console, terminal: terminal, corePin: console.corePin(on: terminal.hostID),
+                    settings: settings, activity: activity, selection: selection,
+                    keyboardHandoff: keyboardHandoff, agentSurface: agentSurface,
+                    onSelectAgent: onSelectAgent
+                )
+                .environment(\.agentSceneRouting, AgentSceneRouting(directory: directory, sceneID: UUID()))
+                .defaultAppStorage(defaults))
+            let window = try await makeTestWindow(
+                frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+            return CoreDetailWindow(
+                selection: selection, changes: nil, activity: activity, themes: settings.themes,
+                window: window)
+        }
+
         private static func makeSettings(look: WindowLook) throws -> TerminalSettings {
             let defaults = try #require(UserDefaults(suiteName: "core-settings-\(UUID().uuidString)"))
             let themes = TerminalThemeSettings(defaults: defaults)
@@ -1011,6 +1042,86 @@ struct HerdrCoreTerminalStoreTests {
         try await fixture.deliverOutput("y", on: second)
         try await Self.until("the shell on screen") { !screen.reads("Restarting…") }
         #expect(!screen.offers("Reattach"))
+        await screen.close()
+        await fixture.finish()
+    }
+
+    // MARK: A shell that starts an Agent
+
+    /// What a shell's screen had done with its keyboard when it left for the
+    /// Agent its shell started.
+    @MainActor
+    private final class Departure {
+        weak var surface: HeelerTerminalView?
+        let handoff = TerminalKeyboardHandoff()
+        private(set) var agentID: ConsoleAgent.ID?
+        private(set) var keptKeyboard: Bool?
+        private(set) var handedKeyboard: TerminalKeyboardMode?
+
+        func leave(for id: ConsoleAgent.ID) {
+            agentID = id
+            keptKeyboard = surface?.isFirstResponder
+            handedKeyboard = handoff.mode(for: id)
+        }
+    }
+
+    private static let claudeInForeground: JSONValue = .object([
+        "pid": .number(120), "name": .string("claude"), "argv": .array([.string("claude")]),
+        "cwd": .string("/work/app"),
+    ])
+
+    /// A shell typed into on its screen, its Agent about to start.
+    private func shellWithKeyboardUp(
+        opensAgentsOn surface: AgentDetailSurface
+    ) async throws -> (Fixture, CoreDetailWindow, Departure) {
+        let fixture = try await Fixture(terminals: [Self.keptRecord(argv: "/bin/bash")])
+        await fixture.console.resolveHostPlatform(fixture.host.id)
+        #expect(fixture.console.hostPlatforms[fixture.host.id] != nil)
+        let terminal = try #require(fixture.console.terminals.first)
+        let departure = Departure()
+        let screen = try await fixture.showShellWithKeyboardUp(
+            of: terminal, opensAgentsOn: surface, keyboardHandoff: departure.handoff
+        ) { departure.leave(for: $0) }
+        let attach = try await fixture.waitForAttach(1, laying: screen)
+        try await fixture.deliverOutput("$ ", on: attach)
+        try await Self.until("the shell's keyboard") { screen.surface?.isFirstResponder == true }
+        departure.surface = screen.surface
+        return (fixture, screen, departure)
+    }
+
+    /// The Agent's terminal takes the keyboard over, as Back and the drawer
+    /// hand it: the shell keeps first responder until the terminal claims it.
+    @Test func aShellThatStartsAnAgentHandsItsKeyboardToTheAgentsTerminal() async throws {
+        let (fixture, screen, departure) = try await shellWithKeyboardUp(opensAgentsOn: .terminal)
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("foreground", data: Self.claudeInForeground))
+        try await Self.until("the Agent's screen") {
+            screen.layOut()
+            return departure.agentID != nil
+        }
+        #expect(departure.agentID == fixture.console.agents.first?.id)
+        #expect(departure.handedKeyboard == .text)
+        #expect(departure.keptKeyboard == true)
+        await screen.close()
+        await fixture.finish()
+    }
+
+    /// Chat may have nothing to take the keyboard, so it goes down before
+    /// Chat comes in: a hide still running as the screens change animates
+    /// the arriving screen, which UI tests then wait on (#644).
+    @Test func aShellThatStartsAnAgentOnChatPutsItsKeyboardAwayFirst() async throws {
+        let (fixture, screen, departure) = try await shellWithKeyboardUp(opensAgentsOn: .chat)
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("foreground", data: Self.claudeInForeground))
+        try await Self.until("the Agent's screen") {
+            screen.layOut()
+            return departure.agentID != nil
+        }
+        let agent = try #require(fixture.console.agents.first)
+        #expect(fixture.console.chatProgram(for: agent) != nil)
+        #expect(departure.agentID == agent.id)
+        #expect(departure.keptKeyboard == false)
+        #expect(departure.handedKeyboard == nil)
         await screen.close()
         await fixture.finish()
     }
@@ -2783,6 +2894,37 @@ private struct HostedCoreDetail: View {
         .environment(\.agentSceneRouting, routing)
         // A hosting controller has no SwiftUI scene to say so.
         .environment(\.scenePhase, .active)
+    }
+}
+
+/// A core Terminal's screen given the Terminal as the Console gives it, read
+/// live from the store.
+private struct HostedLiveShell: View {
+    let console: ConsoleStore
+    let terminal: ConsoleTerminal
+    let corePin: TerminalCorePin
+    let settings: TerminalSettings
+    let activity: AppActivityCoordinator
+    let selection: HostedDetailSelection
+    let keyboardHandoff: TerminalKeyboardHandoff
+    let agentSurface: AgentDetailSurfaceSettings
+    let onSelectAgent: (ConsoleAgent.ID) -> Void
+
+    var body: some View {
+        NavigationStack {
+            WorkspaceTerminalDetailView(
+                terminal: console.terminals.first(where: { $0.id == terminal.id }) ?? terminal,
+                console: console,
+                corePin: corePin,
+                settings: settings,
+                activity: activity,
+                onSelectAgent: onSelectAgent,
+                onSelectTerminal: { _ in },
+                isSelected: { [selection] in selection.showsDetail },
+                keyboardHandoff: keyboardHandoff,
+                agentSurface: agentSurface,
+                onBack: {})
+        }
     }
 }
 

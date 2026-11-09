@@ -34,6 +34,10 @@ Entries reference the pull request that made the change.
 - Codex's question card names its page beside its title, `1 of 2` as a
   question form does, and none for a single question, instead of a
   `Question 1/2` line above the question. (#644)
+- When a command in a Shell Terminal starts an Agent, the Agent's terminal
+  keeps the keyboard up as it takes the screen over, as Back and the
+  Terminals drawer already do. An Agent that opens on Chat takes over once
+  the keyboard has gone down. (#644)
 
 ### Fixed
 

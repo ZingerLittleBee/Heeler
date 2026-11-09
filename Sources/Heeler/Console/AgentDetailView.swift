@@ -104,10 +104,9 @@ struct AgentDetailView: View {
         self.terminal = terminal
         self.inputMode = inputMode
         self.detailSurface = detailSurface
-        // A saved Chat entry's Host is not connected, so its terminal cannot
-        // attach: it opens on Chat without changing the preference.
         _surface = State(
-            initialValue: console.savedChatEntries[agent.id] != nil ? .chat : detailSurface.preferred)
+            initialValue: Self.openingChoice(
+                for: agent.id, console: console, preferred: detailSurface.preferred))
         self.hosts = hosts
         self.activity = activity
         self.keyboardHandoff = keyboardHandoff
@@ -249,6 +248,24 @@ struct AgentDetailView: View {
     /// choice itself is kept, so Chat comes back once it is available again.
     private var effectiveSurface: AgentDetailSurface {
         chatProgram == nil ? .terminal : surface
+    }
+
+    /// What a detail opening on `agent` now shows first, for a screen it is
+    /// about to replace.
+    static func openingSurface(
+        for agent: ConsoleAgent, console: ConsoleStore, preferred: AgentDetailSurface,
+        keepingTo corePin: TerminalCorePin?
+    ) -> AgentDetailSurface {
+        guard console.chatProgram(for: agent, keepingTo: corePin) != nil else { return .terminal }
+        return openingChoice(for: agent.id, console: console, preferred: preferred)
+    }
+
+    /// A saved Chat entry's Host is not connected, so its terminal cannot
+    /// attach: it opens on Chat without changing the preference.
+    private static func openingChoice(
+        for id: ConsoleAgent.ID, console: ConsoleStore, preferred: AgentDetailSurface
+    ) -> AgentDetailSurface {
+        console.savedChatEntries[id] != nil ? .chat : preferred
     }
 
     /// The terminal is on screen: no Shell Terminal, no Changes over it, and
@@ -684,6 +701,7 @@ struct AgentDetailView: View {
                 shellRoute?.terminal.id == route.terminal.id && isVisible()
             },
             keyboardHandoff: keyboardHandoff,
+            agentSurface: detailSurface,
             backTitle: "Back to Agent",
             onBack: { shellRoute = nil })
         // A pushed screen takes the stack's environment, not this detail's,

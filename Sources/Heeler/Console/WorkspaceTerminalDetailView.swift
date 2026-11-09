@@ -15,6 +15,8 @@ struct WorkspaceTerminalDetailView: View {
     /// Keyboard state in from the screen that selected this terminal and
     /// out to an Agent the drawer routes to; see `ShellTerminalView`.
     var keyboardHandoff: TerminalKeyboardHandoff? = nil
+    /// The surface Agent details open on; nil counts as the terminal.
+    var agentSurface: AgentDetailSurfaceSettings? = nil
     /// Where Back goes: the Console, or the Agent this was pushed over.
     var backTitle = "Back to Console"
     let onBack: () -> Void
@@ -67,6 +69,26 @@ struct WorkspaceTerminalDetailView: View {
             && !console.terminals.contains(where: { $0.id == terminal.id && $0.terminalID == terminal.terminalID })
     }
 
+    /// The pool's entry while this screen shows its terminal.
+    private var shownEntry: TerminalConnectionPool.Entry? {
+        guard let entry, console.terminalConnections.entries[poolKey] === entry else { return nil }
+        return entry
+    }
+
+    /// The Agent this shell has started. Another core's Agent at this
+    /// address is no Agent of this Terminal's.
+    private var startedAgent: ShellTerminalView.StartedAgent? {
+        guard let agentID = terminal.agentID, !console.hasLeftCore(corePin, on: terminal.hostID)
+        else { return nil }
+        let opening = agentSurface.flatMap { surface in
+            console.detailAgent(for: agentID).map {
+                AgentDetailView.openingSurface(
+                    for: $0, console: console, preferred: surface.preferred, keepingTo: corePin)
+            }
+        }
+        return ShellTerminalView.StartedAgent(id: agentID, opensOnChat: opening == .chat)
+    }
+
     var body: some View {
         Group {
             if isMissing {
@@ -83,7 +105,7 @@ struct WorkspaceTerminalDetailView: View {
                             .buttonStyle(.terminalStatusSecondary)
                     }
                 }
-            } else if let entry, console.terminalConnections.entries[poolKey] === entry {
+            } else if let entry = shownEntry {
                 ShellTerminalView(
                     store: entry.store,
                     agentID: .init(hostID: terminal.hostID, paneID: terminal.paneID),
@@ -102,6 +124,8 @@ struct WorkspaceTerminalDetailView: View {
                     workspaceDrawer: workspaceDrawer,
                     keyboardHandoff: keyboardHandoff,
                     backReturnsToAgent: false,
+                    startedAgent: startedAgent,
+                    onAgentStarted: { onSelectAgent($0) },
                     onBack: { onBack() })
             } else if let failure {
                 terminalSurface {
@@ -166,9 +190,10 @@ struct WorkspaceTerminalDetailView: View {
                 }
             }
         }
-        // Another core's Agent at this address is no Agent of this Terminal's.
-        .onChange(of: terminal.agentID, initial: true) { _, agentID in
-            if let agentID, !console.hasLeftCore(corePin, on: terminal.hostID) { onSelectAgent(agentID) }
+        // A shown terminal leaves for its Agent itself, once it has settled
+        // the keyboard; see `ShellTerminalView.leaveForStartedAgent()`.
+        .onChange(of: startedAgent?.id, initial: true) { _, agentID in
+            if let agentID, shownEntry == nil { onSelectAgent(agentID) }
         }
         .alert("Couldn't Close Terminal", isPresented: Binding(
             get: { closeFailure != nil }, set: { if !$0 { closeFailure = nil } })
