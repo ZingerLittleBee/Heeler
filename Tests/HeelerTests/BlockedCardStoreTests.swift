@@ -2433,6 +2433,33 @@ struct BlockedCardHostedTests {
         }
     }
 
+    /// A single-select card's own-answer field: Antigravity CLI's says what
+    /// its multi-select card and form pages say, not the terminal row's
+    /// `Write-in...`; Claude's keeps the row label Claude draws.
+    @Test(arguments: [
+        (ChatProgram.agy, "agy-41-ask-question-single-120x40", "Type your own answer"),
+        (ChatProgram.claude, "claude-39-c8-phone-question-titled-rule", "Type something."),
+    ])
+    func aSingleSelectCardWordsItsOwnAnswerField(_ program: ChatProgram, _ stem: String, placeholder: String)
+        async throws
+    {
+        let pane = FakePane(try ScreenFixture.screen(stem))
+        let store = BlockedCardStore(
+            program: program,
+            io: BlockedScreenIO(
+                readScreen: { try await pane.read() },
+                sendKeys: { await pane.send($0) },
+                paste: { await pane.paste($0) }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+        try await Self.host(store) { controller in
+            #expect(await Self.eventually { Self.labels(in: controller).contains("Send") })
+            let field = try #require(Self.textField(in: controller.view), "\(Self.labels(in: controller))")
+            #expect(field.placeholder == placeholder)
+        }
+    }
+
     private static func textField(in view: UIView) -> UITextField? {
         if let field = view as? UITextField { return field }
         return view.subviews.lazy.compactMap { textField(in: $0) }.first

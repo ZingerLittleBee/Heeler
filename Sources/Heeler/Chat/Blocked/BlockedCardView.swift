@@ -460,10 +460,11 @@ private struct BlockedDialogCard: View {
         case .agyCommand:
             noteEntry
         case .claudeQuestion, .agyQuestion:
+            // agy's `Write-in...` names a row, not what to type: its fields
+            // say what the form's pages say. Claude's card keeps the row
+            // label Claude draws.
             if writeInWithSelection != nil {
                 VStack(alignment: .leading, spacing: 8) {
-                    // As the form's multi-select page says it, rather than
-                    // the terminal's `Write-in...`.
                     BlockedTextField(placeholder: "Type your own answer", text: $text, isFocused: $isTextFocused)
                     selectionButton(writing: hasText ? text : nil)
                 }
@@ -471,7 +472,9 @@ private struct BlockedDialogCard: View {
                 let field = dialog.options.first(where: { $0.role == .otherText && $0.input != nil })
             {
                 VStack(alignment: .leading, spacing: 8) {
-                    BlockedTextField(placeholder: field.label, text: $text, isFocused: $isTextFocused)
+                    BlockedTextField(
+                        placeholder: dialog.kind == .agyQuestion ? "Type your own answer" : field.label, text: $text,
+                        isFocused: $isTextFocused)
                     Button("Send") { perform(.respond(ordinal: field.ordinal, text: text)) }
                         .buttonStyle(.bordered)
                         .disabled(!hasText)
