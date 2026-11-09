@@ -54,6 +54,9 @@ struct AgentChatSurfaceView: View {
     @State private var collapseRequest = 0
     @State private var canCollapseTrajectory = false
     @State private var collapseControlHeight: CGFloat = 0
+    /// Whether this Chat has offered the Workspace terminals drawer
+    /// (`edgeHandleReserve`).
+    @State private var hasOfferedWorkspaceDrawer = false
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     @State private var isConfirmingClose = false
     @State private var openCodeEditFlow: HarnessConfigEditFlow?
@@ -551,14 +554,19 @@ struct AgentChatSurfaceView: View {
         }
         .chatContentColumn()
         .padding(.trailing, edgeHandleReserve)
+        .onChange(of: workspaceDrawer != nil, initial: true) { _, offers in
+            if offers, !hasOfferedWorkspaceDrawer { hasOfferedWorkspaceDrawer = true }
+        }
     }
 
     /// How much further than their own margin Chat's rows and floating
     /// buttons keep from the trailing edge, for the Workspace terminals
     /// handle resting there. Kept while the back header is out and the
-    /// handle hides, so folding the header does not re-measure every row.
+    /// handle hides, so folding the header does not re-measure every row,
+    /// and once offered, through a reconnect that empties the Workspace's
+    /// Terminals for a moment, so the rows do not re-wrap twice.
     private var edgeHandleReserve: CGFloat {
-        guard workspaceDrawer != nil else { return 0 }
+        guard workspaceDrawer != nil || hasOfferedWorkspaceDrawer else { return 0 }
         return max(0, WorkspaceTerminalDrawer.contentClearance - ChatTimelineMetrics.horizontalPadding)
     }
 
