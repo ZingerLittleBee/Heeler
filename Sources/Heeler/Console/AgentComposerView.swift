@@ -287,6 +287,9 @@ struct AgentComposerView: View {
     var inputReplacement: AnyView? = nil
     /// Bumped to put the caret in the input.
     var focusRequest = 0
+    /// Bumped to put the keyboard away, as the switcher row's keyboard
+    /// button does.
+    var keyboardDismissRequest = 0
     /// Chat folds the input to one line while the keyboard is down; see
     /// `AgentComposerCollapse`. The terminal keeps its height, since every
     /// fold would resize the PTY, so each surface says which it wants.
@@ -392,6 +395,9 @@ struct AgentComposerView: View {
         .onChange(of: focusRequest) { _, _ in
             // A card still in the input's place keeps the keyboard down.
             if inputReplacement == nil { isInputFocused = true }
+        }
+        .onChange(of: keyboardDismissRequest) { _, _ in
+            if isKeyboardPresented { hideKeyboard() }
         }
         .onChange(of: isInputFocused) { _, isFocused in
             keyboardPresentationFollowsFocus(isFocused)

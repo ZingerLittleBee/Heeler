@@ -220,6 +220,29 @@ struct AgentTerminalView: View {
     /// Edge-docked Workspace navigation; nil where the detail cannot route
     /// to other terminals.
     private let workspaceDrawer: WorkspaceTerminalDrawer?
+    /// Whether another Agent's screen opens on Chat rather than its terminal;
+    /// nil counts as the terminal. See `leave(_:)`.
+    private let agentOpensOnChat: ((ConsoleAgent.ID) -> Bool)?
+
+    /// Another Agent's screen this one leaves for: one picked in the switcher
+    /// strip or started from the new-agent sheet, or an Agent row picked in
+    /// the Workspace drawer.
+    private enum AgentDeparture: Equatable {
+        case switched(ConsoleAgent.ID)
+        case drawer(ConsoleTerminal, agentID: ConsoleAgent.ID)
+
+        var agentID: ConsoleAgent.ID {
+            switch self {
+            case .switched(let id), .drawer(_, agentID: let id): id
+            }
+        }
+    }
+
+    /// The departure whose Chat waits for the keyboard to finish going down
+    /// before it takes the screen over.
+    @State private var departureAwaitingKeyboardHide: AgentDeparture?
+    /// Bumped to put the Composer's keyboard away.
+    @State private var composerKeyboardDismissRequest = 0
     /// Follows the Agent's own session file for the usage strip (#325).
     @State private var sessionUsage = AgentSessionUsageStore()
     @State private var attach: AgentAttachStore
@@ -337,6 +360,7 @@ struct AgentTerminalView: View {
         retainedSurface: TerminalSurfaceRetention? = nil,
         onRetainDeparture: ((_ keepingKeyboard: Bool) -> Void)? = nil,
         workspaceDrawer: WorkspaceTerminalDrawer? = nil,
+        agentOpensOnChat: ((ConsoleAgent.ID) -> Bool)? = nil,
         inheritsKeyboardHandoff: Bool = true,
         interactionProbe: AgentTerminalInteractionProbe? = nil
     ) {
@@ -366,6 +390,7 @@ struct AgentTerminalView: View {
         self.retainedSurface = retainedSurface
         self.onRetainDeparture = onRetainDeparture
         self.workspaceDrawer = workspaceDrawer
+        self.agentOpensOnChat = agentOpensOnChat
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
@@ -564,6 +589,9 @@ struct AgentTerminalView: View {
         // file when the Agent starts a fresh session, and the loop must follow
         // it instead of re-reading a file nothing writes to any more.
         .task(id: agent.sessionFilePath) { await followSessionUsage() }
+        .modifier(AgentKeyboardDeparture(
+            awaitingHide: $departureAwaitingKeyboardHide,
+            notificationCenter: keyboardInset.notificationCenter, complete: complete))
         .modifier(ConsoleTerminalCommandRegistration(
             agentID: agent.id,
             isFocused: keyboardControl.isFirstResponder,
@@ -1387,6 +1415,7 @@ struct AgentTerminalView: View {
             onFirstResponderRequest: composerFirstResponderRequest,
             onKeyboardHandoffSettled: composerKeyboardHandoffSettled,
             sendPolicy: sendPolicy,
+            keyboardDismissRequest: composerKeyboardDismissRequest,
             collapsesWithoutKeyboard: false,
             interrupt: stopInterrupt,
             offersSend: console.capabilities(for: agent.hostID).composerSend)
@@ -1654,6 +1683,15 @@ struct AgentTerminalView: View {
 
     private func toggleDirectKeyboard() {
         guard isOnStage() else { return }
+        if usesDirectToolsKeyboard || keyboardControl.isKeyboardUp {
+            hideDirectKeyboard()
+        } else {
+            directKeyboardIntent.setWantsKeyboard(true)
+            keyboardControl.requestKeyboard()
+        }
+    }
+
+    private func hideDirectKeyboard() {
         if usesDirectToolsKeyboard {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -1663,16 +1701,11 @@ struct AgentTerminalView: View {
                 keyboardInset.resumeHeightCapture()
                 keyboardControl.setKeyboardMode(.text)
             }
-            directKeyboardIntent.setWantsKeyboard(false)
-            keyboardControl.dismissKeyboard()
-        } else if keyboardControl.isKeyboardUp {
-            expectsDirectSystemKeyboard = false
-            directKeyboardIntent.setWantsKeyboard(false)
-            keyboardControl.dismissKeyboard()
         } else {
-            directKeyboardIntent.setWantsKeyboard(true)
-            keyboardControl.requestKeyboard()
+            expectsDirectSystemKeyboard = false
         }
+        directKeyboardIntent.setWantsKeyboard(false)
+        keyboardControl.dismissKeyboard()
     }
 
     /// See `TerminalKeyboardMode.controlsReleaseFirstResponder`.
@@ -1766,14 +1799,55 @@ struct AgentTerminalView: View {
         }
     }
 
-    /// Opens another Agent from the switcher strip or the new-agent sheet.
-    /// The keyboard is armed first:
-    /// the selection change rebuilds this screen from scratch, and the new
-    /// terminal claims the handoff as it comes up.
+    /// Opens another Agent from the switcher strip or the new-agent sheet;
+    /// see `leave(_:)`.
     private func switchToAgent(_ id: ConsoleAgent.ID) {
         guard id != agent.id else { return }
-        armAgentKeyboardHandoffIfKeyboardIsUp(for: id)
-        onSwitch(id)
+        leave(.switched(id))
+    }
+
+    /// Another Agent's screen takes this one over. The selection change
+    /// rebuilds this screen from scratch: an Agent that opens on its terminal
+    /// claims the keyboard through the handoff as it comes up, and one that
+    /// opens on Chat comes in once the keyboard has gone down here
+    /// (`AgentKeyboardDeparture`).
+    private func leave(_ departure: AgentDeparture) {
+        departureAwaitingKeyboardHide = nil
+        guard departure.agentID != agent.id,
+              agentOpensOnChat?(departure.agentID) == true, keyboardIsUpForHandoff
+        else {
+            armAgentKeyboardHandoffIfKeyboardIsUp(for: departure.agentID)
+            complete(departure)
+            return
+        }
+        // A focused Composer's own switcher arms the handoff before it asks
+        // for the switch.
+        keyboardHandoff.cancel(for: departure.agentID)
+        // A hardware keyboard, or a tools dock without a responder, leaves
+        // nothing for UIKit to animate. Waiting is set before the hide.
+        let animatesHide = keyboardInset.height > 0
+        if animatesHide { departureAwaitingKeyboardHide = departure }
+        hideKeyboard()
+        if !animatesHide { complete(departure) }
+    }
+
+    private func complete(_ departure: AgentDeparture) {
+        switch departure {
+        case .switched(let id):
+            onSwitch(id)
+        case .drawer(let target, _):
+            workspaceDrawer?.onSelect(target)
+        }
+    }
+
+    /// Hides whichever keyboard is up, the tools dock included, as the
+    /// switcher row's keyboard button does.
+    private func hideKeyboard() {
+        if isDirectInput {
+            hideDirectKeyboard()
+        } else {
+            composerKeyboardDismissRequest += 1
+        }
     }
 
     /// Whether leaving this screen should bring the keyboard up on the next
@@ -1814,16 +1888,17 @@ struct AgentTerminalView: View {
     }
 
     /// The drawer's routes rebuild this screen or replace it with a Shell
-    /// Terminal; each captures the keyboard state before it leaves.
+    /// Terminal; each captures the keyboard state before it leaves, and an
+    /// Agent leaves as a switch does (`leave(_:)`).
     private func keyboardCarryingDrawer(_ drawer: WorkspaceTerminalDrawer) -> WorkspaceTerminalDrawer {
         var carrying = drawer
         let onSelect = drawer.onSelect
         carrying.onSelect = { target in
             if let agentID = target.agentID {
-                armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
-            } else {
-                armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+                leave(.drawer(target, agentID: agentID))
+                return
             }
+            armShellTerminalKeyboardHandoffIfKeyboardIsUp()
             onSelect(target)
         }
         if let onNewTerminal = drawer.onNewTerminal {

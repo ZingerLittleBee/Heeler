@@ -96,15 +96,22 @@ struct HerdrCoreTerminalStoreTests {
         }
 
         /// A window showing `agent`'s detail, built as the Console builds it.
-        /// `sceneID` puts it under a scene root, as a real window is.
+        /// `sceneID` puts it under a scene root, as a real window is. Agents
+        /// open on `surface` when one is given.
         func showDetail(
             of agent: ConsoleAgent, sceneID: UUID? = nil, inputMode: AgentInputMode = .composer,
-            readsHostChanges: Bool = false, look: WindowLook = WindowLook()
+            readsHostChanges: Bool = false, look: WindowLook = WindowLook(),
+            opensAgentsOn surface: AgentDetailSurface? = nil,
+            keyboardHandoff handoff: TerminalKeyboardHandoff = TerminalKeyboardHandoff(),
+            keyboardInset inset: TerminalKeyboardInset = TerminalKeyboardInset(),
+            onSwitch: @escaping (ConsoleAgent.ID) -> Void = { _ in }
         ) async throws -> CoreDetailWindow {
             let settings = try Self.makeSettings(look: look)
             let defaults = try #require(UserDefaults(suiteName: "core-detail-\(UUID().uuidString)"))
             let inputModeSettings = AgentInputModeSettings(defaults: defaults)
             inputModeSettings.select(inputMode)
+            let detailSurface = AgentDetailSurfaceSettings(defaults: defaults)
+            if let surface { detailSurface.select(surface) }
             let selection = HostedDetailSelection()
             let changes =
                 readsHostChanges
@@ -114,8 +121,6 @@ struct HerdrCoreTerminalStoreTests {
                 }
             let console = console
             let activity = AppActivityCoordinator()
-            let handoff = TerminalKeyboardHandoff()
-            let inset = TerminalKeyboardInset()
             let routing = sceneID.map { AgentSceneRouting(directory: directory, sceneID: $0) }
             let controller = UIHostingController(
                 rootView: HostedCoreDetail(selection: selection, routing: routing) {
@@ -124,7 +129,7 @@ struct HerdrCoreTerminalStoreTests {
                         console: console,
                         terminal: settings,
                         inputMode: inputModeSettings,
-                        detailSurface: AgentDetailSurfaceSettings(defaults: defaults),
+                        detailSurface: detailSurface,
                         hosts: [],
                         activity: activity,
                         keyboardHandoff: handoff,
@@ -134,7 +139,7 @@ struct HerdrCoreTerminalStoreTests {
                             hostID: agent.hostID,
                             console: console,
                             sceneRouting: routing),
-                        onSwitch: { _ in },
+                        onSwitch: onSwitch,
                         onClosed: {},
                         onSelectTerminal: { _ in },
                         changesPresentation: changes)
@@ -1048,11 +1053,11 @@ struct HerdrCoreTerminalStoreTests {
 
     // MARK: A shell that starts an Agent
 
-    /// What a shell's screen had done with its keyboard when it left for the
-    /// Agent its shell started.
+    /// What a screen had done with its keyboard when it left for another
+    /// Agent's screen; `surface` is what held the keyboard.
     @MainActor
     private final class Departure {
-        weak var surface: HeelerTerminalView?
+        weak var surface: UIView?
         let handoff = TerminalKeyboardHandoff()
         private(set) var agentID: ConsoleAgent.ID?
         private(set) var keptKeyboard: Bool?
@@ -1163,6 +1168,125 @@ struct HerdrCoreTerminalStoreTests {
             #expect(departure.handedKeyboard == .text)
             #expect(departure.keptKeyboard == true)
         case .chat:
+            #expect(departure.handedKeyboard == nil)
+            #expect(departure.keptKeyboard == false)
+        }
+        await screen.close()
+        await fixture.finish()
+    }
+
+    // MARK: An Agent's terminal that leaves for another Agent
+
+    enum AgentPick: CaseIterable, Sendable {
+        case drawerRow, switcherChip
+    }
+
+    /// cursor-agent, a program with no Chat.
+    private static func cursorAgentRecord(address: String) -> JSONValue {
+        .object([
+            "address": .string(address), "cwd": .string("/work/app"), "state": .string("live"),
+            "argv": .array([.string("cursor-agent")]), "keep": .bool(false), "title": .string(""),
+            "cols": .number(80), "rows": .number(24), "pid": .number(8),
+            "foreground": .object([
+                "pid": .number(41), "name": .string("cursor-agent"),
+                "argv": .array([.string("cursor-agent")]), "cwd": .string("/work/app"),
+            ]),
+            "labels": .object([:]),
+        ])
+    }
+
+    /// A cursor-agent's page, its Composer typed into with the software
+    /// keyboard up, beside a Claude in its Workspace. With no Chat of its own
+    /// the page is the terminal, whatever Agents open on. The page hears the
+    /// keyboard on `keyboard`, where the test posts it.
+    private func agentTerminalWithKeyboardUp(
+        opensAgentsOn surface: AgentDetailSurface
+    ) async throws -> (Fixture, CoreDetailWindow, Departure, other: ConsoleAgent, keyboard: NotificationCenter) {
+        let fixture = try await Fixture(
+            terminals: [Self.cursorAgentRecord(address: "t1"), Self.agentRecord(address: "t2")])
+        await fixture.console.resolveHostPlatform(fixture.host.id)
+        let agent = try #require(fixture.console.agents.first { $0.agent.kind == "cursor" })
+        let other = try #require(fixture.console.agents.first { $0.agent.kind == "claude" })
+        #expect(fixture.console.chatProgram(for: agent) == nil)
+        #expect(fixture.console.chatProgram(for: other) != nil)
+        let keyboard = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: keyboard) { _ in 336 }
+        let departure = Departure()
+        departure.handoff.arm(for: agent.id)
+        let screen = try await fixture.showDetail(
+            of: agent, opensAgentsOn: surface, keyboardHandoff: departure.handoff,
+            keyboardInset: inset
+        ) { departure.leave(for: $0) }
+        var input: AgentComposerUITextView?
+        try await Self.until("the Composer's keyboard") {
+            screen.layOut()
+            input = Self.views(of: AgentComposerUITextView.self, in: screen.window).first
+            return input?.isFirstResponder == true
+        }
+        keyboard.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(x: 0, y: 500, width: 402, height: 374)])
+        try await Self.until("the keyboard's inset") { inset.height > 0 }
+        departure.surface = input
+        return (fixture, screen, departure, other, keyboard)
+    }
+
+    private static func views<T: UIView>(of type: T.Type, in root: UIView) -> [T] {
+        [root as? T].compactMap { $0 } + root.subviews.flatMap { views(of: type, in: $0) }
+    }
+
+    /// The Agent terminal page leaves for another Agent as a Shell Terminal
+    /// does, from its Workspace drawer and its switcher alike: the other
+    /// Agent's terminal takes the keyboard, and its Chat comes in once the
+    /// keyboard has gone down here (#644).
+    @Test(arguments: [AgentDetailSurface.terminal, .chat], AgentPick.allCases)
+    func anAgentTerminalHandsOrSettlesItsKeyboardForTheAgentItOpens(
+        surface: AgentDetailSurface, pick: AgentPick
+    ) async throws {
+        if pick == .drawerRow {
+            // Real SwiftUI actions require the hosted accessibility support in iOS 27.
+            guard #available(iOS 27, *) else { return }
+        }
+        let (fixture, screen, departure, other, keyboard) = try await agentTerminalWithKeyboardUp(
+            opensAgentsOn: surface)
+
+        switch pick {
+        case .drawerRow:
+            let handle = try #require(accessibleElement(labeled: "Workspace terminals", in: screen.window))
+            #expect(handle.accessibilityActivate())
+            var row: NSObject?
+            try await Self.until("the other Agent's row") {
+                screen.layOut()
+                row = accessibleElements(in: screen.window).first {
+                    $0.accessibilityLabel?.hasPrefix("Agent, ") == true
+                        && !$0.accessibilityTraits.contains(.selected)
+                }
+                return row != nil
+            }
+            #expect(try #require(row).accessibilityActivate())
+        case .switcherChip:
+            let chip = try #require(
+                Self.views(of: TerminalAgentChip.self, in: screen.window).first { $0.id == other.id })
+            chip.sendActions(for: .touchUpInside)
+        }
+        switch surface {
+        case .terminal:
+            #expect(departure.agentID == other.id)
+            #expect(departure.handedKeyboard == .text)
+            #expect(departure.keptKeyboard == true)
+        case .chat:
+            try await Self.until("the keyboard going down") {
+                screen.layOut()
+                return departure.surface?.isFirstResponder != true || departure.agentID != nil
+            }
+            // Chat waits for UIKit to finish the hide.
+            #expect(departure.agentID == nil)
+            keyboard.post(name: UIResponder.keyboardDidHideNotification, object: nil)
+            try await Self.until("the other Agent's screen") {
+                screen.layOut()
+                return departure.agentID != nil
+            }
+            #expect(departure.agentID == other.id)
             #expect(departure.handedKeyboard == nil)
             #expect(departure.keptKeyboard == false)
         }

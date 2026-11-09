@@ -260,6 +260,17 @@ struct AgentDetailView: View {
         return openingChoice(for: agent.id, console: console, preferred: preferred)
     }
 
+    /// Whether `id`'s detail, opened in place of this one, starts on Chat
+    /// rather than its terminal. An Agent on this Host keeps to this detail's
+    /// core, as the Workspace drawer's do on a Shell Terminal; another Host's
+    /// Agent has a core of its own.
+    private func opensOnChat(_ id: ConsoleAgent.ID) -> Bool {
+        guard let target = console.detailAgent(for: id) else { return false }
+        return Self.openingSurface(
+            for: target, console: console, preferred: detailSurface.preferred,
+            keepingTo: id.hostID == agent.hostID ? session.corePin : nil) == .chat
+    }
+
     /// A saved Chat entry's Host is not connected, so its terminal cannot
     /// attach: it opens on Chat without changing the preference.
     private static func openingChoice(
@@ -477,6 +488,7 @@ struct AgentDetailView: View {
                         }
                     },
                     workspaceDrawer: workspaceDrawer,
+                    agentOpensOnChat: { opensOnChat($0) },
                     // Retention swaps `attach` on appear and rebuilds this
                     // view; the build before that swap is a placeholder and
                     // must not spend the keyboard handoff meant for the real one.

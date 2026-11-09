@@ -486,7 +486,8 @@ struct ShellTerminalView: View {
                 }
             }
             .modifier(AgentKeyboardDeparture(
-                awaitingHide: $departureAwaitingKeyboardHide, complete: complete))
+                awaitingHide: $departureAwaitingKeyboardHide,
+                notificationCenter: keyboardInset.notificationCenter, complete: complete))
     }
 
     private var terminalTopInset: CGFloat {

@@ -19,13 +19,15 @@ import SwiftUI
 ///
 /// The screen sets `awaitingHide` before it hides its keyboard, and only when
 /// UIKit animates the hide; this completes that departure once the hide is
-/// reported done, or after `keyboardHideLeash`.
+/// reported done on `notificationCenter`, where the screen's keyboard inset
+/// hears the keyboard, or after `keyboardHideLeash`.
 struct AgentKeyboardDeparture<Departure: Equatable>: ViewModifier {
     /// How long an Agent's Chat waits for UIKit to report the keyboard gone
     /// before it takes the screen anyway.
     static var keyboardHideLeash: Duration { .seconds(1) }
 
     @Binding var awaitingHide: Departure?
+    let notificationCenter: NotificationCenter
     /// Routes as the screen now stands, which may have changed while the
     /// keyboard went down.
     let complete: @MainActor (Departure) -> Void
@@ -33,7 +35,7 @@ struct AgentKeyboardDeparture<Departure: Equatable>: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onReceive(
-                NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)
+                notificationCenter.publisher(for: UIResponder.keyboardDidHideNotification)
             ) { _ in
                 finish()
             }
