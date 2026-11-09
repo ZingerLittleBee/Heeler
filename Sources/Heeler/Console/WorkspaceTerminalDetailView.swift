@@ -77,16 +77,19 @@ struct WorkspaceTerminalDetailView: View {
 
     /// The Agent this shell has started. Another core's Agent at this
     /// address is no Agent of this Terminal's.
-    private var startedAgent: ShellTerminalView.StartedAgent? {
+    private var startedAgentID: ConsoleAgent.ID? {
         guard let agentID = terminal.agentID, !console.hasLeftCore(corePin, on: terminal.hostID)
         else { return nil }
-        let opening = agentSurface.flatMap { surface in
-            console.detailAgent(for: agentID).map {
-                AgentDetailView.openingSurface(
-                    for: $0, console: console, preferred: surface.preferred, keepingTo: corePin)
-            }
-        }
-        return ShellTerminalView.StartedAgent(id: agentID, opensOnChat: opening == .chat)
+        return agentID
+    }
+
+    /// Whether `id`'s detail opens on Chat rather than its terminal. The
+    /// drawer's Agents are this Terminal's Workspace on the same Host, so the
+    /// same core pin applies to them as to a started one.
+    private func opensOnChat(_ id: ConsoleAgent.ID) -> Bool {
+        guard let agentSurface, let agent = console.detailAgent(for: id) else { return false }
+        return AgentDetailView.openingSurface(
+            for: agent, console: console, preferred: agentSurface.preferred, keepingTo: corePin) == .chat
     }
 
     var body: some View {
@@ -124,8 +127,9 @@ struct WorkspaceTerminalDetailView: View {
                     workspaceDrawer: workspaceDrawer,
                     keyboardHandoff: keyboardHandoff,
                     backReturnsToAgent: false,
-                    startedAgent: startedAgent,
+                    startedAgentID: startedAgentID,
                     onAgentStarted: { onSelectAgent($0) },
+                    agentOpensOnChat: { opensOnChat($0) },
                     onBack: { onBack() })
             } else if let failure {
                 terminalSurface {
@@ -191,8 +195,8 @@ struct WorkspaceTerminalDetailView: View {
             }
         }
         // A shown terminal leaves for its Agent itself, once it has settled
-        // the keyboard; see `ShellTerminalView.leaveForStartedAgent()`.
-        .onChange(of: startedAgent?.id, initial: true) { _, agentID in
+        // the keyboard; see `ShellTerminalView.leave(_:)`.
+        .onChange(of: startedAgentID, initial: true) { _, agentID in
             if let agentID, shownEntry == nil { onSelectAgent(agentID) }
         }
         .alert("Couldn't Close Terminal", isPresented: Binding(

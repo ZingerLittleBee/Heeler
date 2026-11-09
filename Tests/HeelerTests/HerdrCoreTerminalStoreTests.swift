@@ -1070,14 +1070,15 @@ struct HerdrCoreTerminalStoreTests {
         "cwd": .string("/work/app"),
     ])
 
-    /// A shell typed into on its screen, its Agent about to start.
+    /// A shell typed into on its screen, its Agent about to start, with
+    /// `others` beside it in its Workspace.
     private func shellWithKeyboardUp(
-        opensAgentsOn surface: AgentDetailSurface
+        opensAgentsOn surface: AgentDetailSurface, beside others: [JSONValue] = []
     ) async throws -> (Fixture, CoreDetailWindow, Departure) {
-        let fixture = try await Fixture(terminals: [Self.keptRecord(argv: "/bin/bash")])
+        let fixture = try await Fixture(terminals: [Self.keptRecord(argv: "/bin/bash")] + others)
         await fixture.console.resolveHostPlatform(fixture.host.id)
         #expect(fixture.console.hostPlatforms[fixture.host.id] != nil)
-        let terminal = try #require(fixture.console.terminals.first)
+        let terminal = try #require(fixture.console.terminals.first { !$0.isAgent })
         let departure = Departure()
         let screen = try await fixture.showShellWithKeyboardUp(
             of: terminal, opensAgentsOn: surface, keyboardHandoff: departure.handoff
@@ -1122,6 +1123,49 @@ struct HerdrCoreTerminalStoreTests {
         #expect(departure.agentID == agent.id)
         #expect(departure.keptKeyboard == false)
         #expect(departure.handedKeyboard == nil)
+        await screen.close()
+        await fixture.finish()
+    }
+
+    /// The Workspace drawer leaves for an Agent as a started one does. Its
+    /// terminal takes the keyboard; Chat comes in with it down, since a
+    /// Composer that took it there would sit over the buttons of a page
+    /// such as Can't Tell the Conversation (#644).
+    @Test(arguments: [AgentDetailSurface.terminal, .chat])
+    func aShellsDrawerHandsOrSettlesItsKeyboardForTheAgentItOpens(
+        surface: AgentDetailSurface
+    ) async throws {
+        // Real SwiftUI actions require the hosted accessibility support in iOS 27.
+        guard #available(iOS 27, *) else { return }
+        let (fixture, screen, departure) = try await shellWithKeyboardUp(
+            opensAgentsOn: surface, beside: [Self.agentRecord(address: "t2")])
+        let agent = try #require(fixture.console.agents.first)
+        #expect(fixture.console.chatProgram(for: agent) != nil)
+
+        let handle = try #require(accessibleElement(labeled: "Workspace terminals", in: screen.window))
+        #expect(handle.accessibilityActivate())
+        var row: NSObject?
+        try await Self.until("the Agent's row") {
+            screen.layOut()
+            row = accessibleElements(in: screen.window).first {
+                $0.accessibilityLabel?.hasPrefix("Agent, ") == true
+            }
+            return row != nil
+        }
+        #expect(try #require(row).accessibilityActivate())
+        try await Self.until("the Agent's screen") {
+            screen.layOut()
+            return departure.agentID != nil
+        }
+        #expect(departure.agentID == agent.id)
+        switch surface {
+        case .terminal:
+            #expect(departure.handedKeyboard == .text)
+            #expect(departure.keptKeyboard == true)
+        case .chat:
+            #expect(departure.handedKeyboard == nil)
+            #expect(departure.keptKeyboard == false)
+        }
         await screen.close()
         await fixture.finish()
     }
@@ -1754,17 +1798,21 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    private static let agentRecord: JSONValue = .object([
-        "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("live"),
-        "argv": .array([.string("claude")]), "keep": .bool(false), "title": .string(""),
-        "cols": .number(80), "rows": .number(24), "pid": .number(7),
-        "foreground": .object([
-            "pid": .number(40), "name": .string("claude"), "argv": .array([.string("claude")]),
-            "cwd": .string("/work/app"),
-        ]),
-        "status": .object(["state": .string("working"), "app": .string("claude-code")]),
-        "labels": .object([:]),
-    ])
+    private static let agentRecord = agentRecord(address: "t1")
+
+    private static func agentRecord(address: String) -> JSONValue {
+        .object([
+            "address": .string(address), "cwd": .string("/work/app"), "state": .string("live"),
+            "argv": .array([.string("claude")]), "keep": .bool(false), "title": .string(""),
+            "cols": .number(80), "rows": .number(24), "pid": .number(7),
+            "foreground": .object([
+                "pid": .number(40), "name": .string("claude"), "argv": .array([.string("claude")]),
+                "cwd": .string("/work/app"),
+            ]),
+            "status": .object(["state": .string("working"), "app": .string("claude-code")]),
+            "labels": .object([:]),
+        ])
+    }
 
     @Test func aRetainedAgentGoesQuietWhenHiddenAndClosesItsChannelWhenEvicted() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
