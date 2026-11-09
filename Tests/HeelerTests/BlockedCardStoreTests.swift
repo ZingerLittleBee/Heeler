@@ -1703,9 +1703,10 @@ struct BlockedCardStoreTests {
         #expect(store.content == .none)
     }
 
-    /// A multi-select answer with a written one, on the screens agy drew
-    /// for the same keys: the check's digit, `Write-in...`'s digit, the
-    /// paste and Enter, which submitted `A1: apple, mango`.
+    /// A multi-select answer with a written one. The screens stand in for
+    /// the check's digit and the paste: agy drew them after Space checked
+    /// apple, `Write-in...`'s digit, `mango` typed, and Enter, which
+    /// submitted `A1: apple, mango`.
     @Test func anAgySelectionGoesWithItsWrittenAnswer() async throws {
         let pane = FakePane(try ScreenFixture.screen("agy-154-ask-question-multiselect-120x40"))
         await pane.react(to: ["1"], with: try ScreenFixture.screen("agy-155-ask-question-multiselect-checked-120x40"))

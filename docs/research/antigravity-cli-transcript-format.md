@@ -432,9 +432,12 @@ colors or without them, and anything else between a bold title and a hint
 row into the generic card, without numbers. The command's Amend field and
 the Write-in field keep the dialog's fingerprint, so a card's step into them
 checks against the same dialog. `AgyDialogPlanner` sends these keys, each
-sequence sent live through `agent send-keys` on 2026-11-08 except the trust
-prompt's, since answering it writes the folder into agy's settings, and a
-multi-select set's written answer, sent through tmux on 2026-11-09:
+sequence sent live through `agent send-keys` on 2026-11-08 except two. The
+trust prompt's was never sent, since answering it writes the folder into
+agy's settings. A multi-select set's written answer was sent through tmux on
+2026-11-09 as `Write-in...`'s digit, the paste and Enter, which kept the
+checks; Space made those checks, so the check digits before `Write-in...`'s
+were seen only on their own, through herdr on 2026-11-08:
 
 | Card action | Keys |
 |---|---|
