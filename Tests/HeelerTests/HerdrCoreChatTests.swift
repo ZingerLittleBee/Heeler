@@ -1029,6 +1029,45 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
+    /// Each Terminal's creation asks the leak check again. The same answer
+    /// changes nothing a Chat checked with, so no Chat checks its Agent again.
+    @Test func theSameLeakAnswerAgainChecksNoChat() async throws {
+        let rig = Rig(host: host)
+        let name = ChatTranscriptOffVariable.childSession.rawValue
+        await rig.transport.setLeakedEnvironment([name])
+        try await rig.start(environment: [name: "1"])
+        try await rig.waitUntil("the notice") { rig.store.hostCoreEnvironmentNotices[self.host.id] != nil }
+        let chat = try rig.chat()
+        chat.show()
+        let reason = ChatUnavailableReason.transcriptOff(.childSession, coreCarriesIt: true)
+        try await rig.waitUntil("the reason") { chat.conversation.phase == .unavailable(reason) }
+        let checks = await rig.checks
+        let answers = await rig.transport.leakAnswers
+
+        await rig.transport.deliver(
+            Self.event(
+                sequence: 2, type: "created", terminal: "t2",
+                data: .object([
+                    "address": .string("t2"), "cwd": .string("/work"), "state": .string("live"), "pid": .number(7),
+                ])))
+        var budget = PollBudget(.seconds(5))
+        while await rig.transport.leakAnswers == answers, budget.hasTimeLeft {
+            try await Task.sleep(for: .milliseconds(10))
+            budget.charge()
+        }
+        #expect(await rig.transport.leakAnswers == answers + 1)
+        // Long enough for a check the answer asked for to start.
+        var extra = 0
+        for _ in 0..<30 where extra == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+            extra = await rig.checks - checks
+        }
+        #expect(extra == 0)
+        #expect(chat.conversation.phase == .unavailable(reason))
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     /// Between a new link and its snapshot nothing is known of any Terminal, so a
     /// check says nothing rather than that Chat cannot tell.
     @Test func aCheckBeforeTheSnapshotLeavesAFollowedConversationAlone() async throws {

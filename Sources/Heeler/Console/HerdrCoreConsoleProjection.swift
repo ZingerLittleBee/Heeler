@@ -170,9 +170,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         environmentTask = Task { [weak self, session] in
             for await _ in session.leakedEnvironmentUpdates {
                 guard !Task.isCancelled, let self else { return }
-                self.leakedEnvironmentNames = session.currentLeakedEnvironment
+                let names = session.currentLeakedEnvironment
+                // Each Terminal's creation asks again, and the same answer
+                // changes nothing a Chat checked with.
+                guard names != self.leakedEnvironmentNames else { continue }
+                self.leakedEnvironmentNames = names
                 // A Chat that checked before this answer named the wrong fix.
-                if !self.leakedEnvironmentNames.isEmpty { self.leakAnswers &+= 1 }
+                if !names.isEmpty { self.leakAnswers &+= 1 }
                 self.publish()
             }
         }
