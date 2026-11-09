@@ -40,9 +40,9 @@ Entries reference the pull request that made the change.
 - When a command in a Shell Terminal starts an Agent, the Agent's terminal
   keeps the keyboard up as it takes the screen over, as Back and the
   Terminals drawer already do. An Agent that opens on Chat, whether it
-  starts in the shell or is chosen from the Terminals drawer, takes over
-  once the keyboard has gone down, so Chat's own buttons, such as Choose a
-  Conversation, are not left under the keyboard. (#644)
+  starts in the shell or is chosen from the shell's Terminals drawer, takes
+  over once the keyboard has gone down, so Chat's own buttons, such as
+  Choose a Conversation, are not left under the keyboard. (#644)
 
 ### Fixed
 
