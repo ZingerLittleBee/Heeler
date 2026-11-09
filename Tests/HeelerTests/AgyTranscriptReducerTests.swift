@@ -280,6 +280,55 @@ struct AgyTranscriptReducerTests {
         #expect(both.turns.map(\.firstEntryID.rawValue) == ["agy:5", "agy:8", "agy:13"])
     }
 
+    /// Stop's follow-through cancels each command the stopped turn sent to the
+    /// background, and agy writes every cancel after the next prompt. Each one
+    /// ends the stopped turn, in the order agy wrote them, and none opens the
+    /// new turn.
+    @Test func severalCancelsHeldForTheNextPromptAllEndTheStoppedTurn() throws {
+        let conversation = "00000000-0000-4000-8000-000000000013"
+        let prompt = "<USER_REQUEST>\nRun sleep 60 and sleep 90 in the background\n</USER_REQUEST>"
+        func command(_ line: String) -> JSONValue {
+            .object(["CommandLine": .string(line), "WaitMsBeforeAsync": .number(500)])
+        }
+        func cancel(_ step: Int, task: Int) -> JSONValue {
+            AgyToolActivityTests.step(
+                step, "SYSTEM_SDK", "SYSTEM_MESSAGE",
+                content: AgyToolActivityTests.system(
+                    "Task id \"\(conversation)/task-\(task)\" was canceled with result:\nTool execution was canceled"))
+        }
+        let transcript = Self.transcript(
+            AgyToolActivityTests.lines([
+                AgyToolActivityTests.step(0, "USER_EXPLICIT", "USER_INPUT", content: prompt),
+                AgyToolActivityTests.step(
+                    1, "MODEL", "PLANNER_RESPONSE",
+                    calls: ["run_command": command("sleep 60"), "run_command": command("sleep 90")]),
+                AgyToolActivityTests.step(
+                    2, "MODEL", "GENERIC", status: "RUNNING",
+                    content: AgyToolActivityTests.background(conversation, task: 2, "sleep 60")),
+                AgyToolActivityTests.step(
+                    3, "MODEL", "GENERIC", status: "RUNNING",
+                    content: AgyToolActivityTests.background(conversation, task: 3, "sleep 90")),
+                AgyToolActivityTests.step(4, "USER_EXPLICIT", "USER_INPUT", content: prompt),
+                cancel(5, task: 2),
+                cancel(6, task: 3),
+            ]))
+
+        #expect(
+            Self.ids(transcript.entries) == [
+                "agy:0", "agy:1:tool:0", "agy:1:tool:1", "agy:3:interrupted", "agy:5", "agy:6", "agy:4",
+            ])
+        #expect(transcript.turns.map(\.firstEntryID.rawValue) == ["agy:0", "agy:4"])
+        #expect(transcript.turns.map(\.ending) == [.interrupted, nil])
+        for id in ["agy:1:tool:0", "agy:1:tool:1"] {
+            let tool = try #require(AgyToolActivityTests.tool(id, in: transcript))
+            #expect(tool.status == .interrupted)
+            #expect(tool.note == "Canceled in the background")
+        }
+        let ends = Self.notices(transcript).filter { $0.notice.kind == .taskNotification }
+        #expect(ends.map(\.notice.title) == ["Background command canceled", "Background command canceled"])
+        #expect(ends.map(\.notice.detail) == ["sleep 60", "sleep 90"])
+    }
+
     /// On herdr-core agy wrote its restart notice after the held cancel and
     /// before the new turn's first response (2026-11-09). The cancel still
     /// ends the stopped turn, and the notice, with no task left to stop,
