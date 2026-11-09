@@ -213,6 +213,8 @@ struct AgyInputBoxDetectorTests {
         "agy-183-tasks-panel-running-62x46": .below,
         "agy-184-tasks-panel-after-k-62x46": .below,
         "agy-185-idle-after-tasks-62x46": .empty,
+        // The box above `Resume with -c` is an exited agy's.
+        "agy-200-perm-run-command-under-exited-agy-62x46": .dialog,
     ]
 
     private static func reading(of state: InputBoxState) -> Reading? {
@@ -432,6 +434,21 @@ struct AgyInputBoxDetectorTests {
             Issue.record("not noComposer")
             return
         }
+    }
+
+    /// agy started again where an earlier agy exited draws under that one's
+    /// last frame, whose empty box stays above `Resume with -c` (200). The
+    /// box read is the new agy's, or none under its dialogs, which draw no
+    /// box.
+    @Test(arguments: [
+        ("agy-02-idle-empty-120x40", false), ("agy-14-idle-draft-oneline-120x40", false),
+        ("agy-55-perm-run-command-190x49", false), ("agy-00-trust-prompt-191x49", false),
+        ("agy-116-nocolor-idle-empty-45x45", true), ("agy-135-nocolor-perm-run-command-92x47", true),
+    ])
+    func anExitedAgysBoxIsNotRead(stem: String, colorless: Bool) throws {
+        let screen = try ScreenFixture.underExitedAgy(stem, colorless: colorless)
+
+        #expect(Self.detect(screen) == (try Self.detect(stem)))
     }
 
     // MARK: Without colors

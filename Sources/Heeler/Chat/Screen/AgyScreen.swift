@@ -3,7 +3,9 @@ import Foundation
 /// The structure of an Antigravity CLI screen (1.5.3): the input box between
 /// two full-width rules, the footer under it, and what agy draws under the
 /// box or in its place. agy draws inline on the normal screen, so a read
-/// also holds scrollback above the box.
+/// also holds scrollback above the box, and after an earlier agy exited in
+/// the same terminal its last frame above its resume line, whose box is
+/// never read as the current one.
 ///
 /// agy draws in one of two palettes. By default it uses 256-color indexes,
 /// which stay the same whatever the terminal's theme: rules and hints in 8
@@ -142,7 +144,12 @@ struct AgyScreen: Sendable {
     init(_ screen: ANSIScreen) {
         let rows = screen.rows
         let ruleWidth = Self.ruleWidth(columns: screen.columns)
-        var composer = Self.composer(in: rows, ruleWidth: ruleWidth)
+        // An agy that exited in this terminal leaves its last frame, box
+        // included, above its resume line, and one started after it draws
+        // below. Its dialogs draw no box, so the old one would be the
+        // bottom-most (live 2026-11-09, 200).
+        let live = (rows.lastIndex(where: Self.isExitLine) ?? -1) + 1
+        var composer = Self.composer(in: rows, from: live, ruleWidth: ruleWidth)
         var footerHint: String?
         var below: String?
         var showsRunningTasks = false
@@ -199,11 +206,11 @@ struct AgyScreen: Sendable {
         max(8, columns - 2)
     }
 
-    /// The bottom-most box: a full-width rule with the prompt's marker
-    /// right under it, and the next full-width rule below, all three in
-    /// one palette.
-    private static func composer(in rows: [ScreenRow], ruleWidth: Int) -> Composer? {
-        for top in rows.indices.reversed() where top + 2 < rows.count {
+    /// The bottom-most box from row `start` on: a full-width rule with the
+    /// prompt's marker right under it, and the next full-width rule below,
+    /// all three in one palette.
+    private static func composer(in rows: [ScreenRow], from start: Int, ruleWidth: Int) -> Composer? {
+        for top in rows.indices.reversed() where top >= start && top + 2 < rows.count {
             guard let palette = rulePalette(rows[top], width: ruleWidth),
                 let marker = promptMarker(of: rows[top + 1]), marker.palette == palette
             else { continue }
@@ -349,6 +356,12 @@ struct AgyScreen: Sendable {
     private static let exitLine = "Resume with -c"
     /// The exit message's two rows and the shell's prompt.
     private static let exitTailRows = 4
+
+    /// The first row of agy's exit message, at column 0, where neither a
+    /// reply (column 2) nor a past prompt (`> `) starts.
+    private static func isExitLine(_ row: ScreenRow) -> Bool {
+        row.indent == 0 && row.trimmedText.hasPrefix(exitLine)
+    }
 
     // MARK: A running turn
 

@@ -1616,6 +1616,28 @@ struct BlockedCardStoreTests {
         #expect(await pane.reads == 0)
     }
 
+    /// agy started again where an earlier agy exited: the box above
+    /// `Resume with -c` is that agy's, so the dialog under it shows as its
+    /// card, not the key pad, after the moment Blocked waits for one.
+    @Test func aBlockedAgyUnderAnExitedAgyShowsItsDialog() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-200-perm-run-command-under-exited-agy-62x46"))
+        let clock = ManualClock()
+        let store = Self.store(.agy, pane: pane, clock: clock)
+        let command = Self.agyCall("agy:9:tool:0", "run_command", .command, "sleep 54")
+        store.update(transcript: Self.agyTranscript(open: [command], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        clock.advance(.seconds(2))
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyCommand)
+        #expect(card.request?.callID == command.callID)
+    }
+
     /// The card's answer waits on the call: a re-read in which the idle
     /// command's row reads `no result` releases nothing, its result does.
     @Test func anAgyAnswerThatShowedNoEffectWaitsForItsCallsResult() async throws {

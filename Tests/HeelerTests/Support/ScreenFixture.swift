@@ -197,6 +197,8 @@ enum ScreenFixture {
         // The same through herdr 0.9.5, in agy's colors.
         "agy-181-idle-background-task-after-esc-62x46", "agy-182-tasks-popup-62x46",
         "agy-183-tasks-panel-running-62x46", "agy-184-tasks-panel-after-k-62x46", "agy-185-idle-after-tasks-62x46",
+        // A command's dialog from an agy started again where one exited.
+        "agy-200-perm-run-command-under-exited-agy-62x46",
     ]
 
     /// The Claude and Codex captures that the dialog and input-box suites walk.
@@ -230,6 +232,30 @@ enum ScreenFixture {
     /// A screen built from raw ANSI rows, for states no capture shows yet.
     static func synthetic(_ rows: [String]) -> ANSIScreen {
         ANSIScreenDecoder.decode(rows.joined(separator: "\r\n"))
+    }
+
+    /// An agy capture under the last frame of an agy that exited in the
+    /// same terminal: its empty box, in agy's colors or without, its exit
+    /// message, and the shell's prompt that started the capture's agy, as
+    /// agy-200 shows.
+    static func underExitedAgy(_ stem: String, colorless: Bool) throws -> ANSIScreen {
+        let text = try self.text(stem)
+        let columns = ANSIScreenDecoder.decode(text).columns
+        let rule = String(repeating: "─", count: columns)
+        let grey = "\(SGR.reset)\u{1B}[38;5;8m"
+        let box =
+            colorless
+            ? [rule, ">", rule]
+            : [grey + rule + SGR.reset, "\(SGR.reset)\u{1B}[38;5;12m>\(SGR.reset)", grey + rule + SGR.reset]
+        let exit = [
+            "", "Resume with -c (or command below):", "agy --conversation=00000000-0000-4000-8000-000000000200",
+            "developer@probe-host:~/projects/fruits$ agy", "",
+        ]
+        // The terminal wraps a row wider than the screen.
+        let wrapped = exit.flatMap { line in
+            stride(from: 0, to: max(line.count, 1), by: columns).map { String(line.dropFirst($0).prefix(columns)) }
+        }
+        return synthetic(box + wrapped + text.components(separatedBy: "\r\n"))
     }
 }
 

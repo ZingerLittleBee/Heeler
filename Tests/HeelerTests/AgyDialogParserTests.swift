@@ -81,6 +81,7 @@ struct AgyDialogParserTests {
         "agy-165-ask-question-q2-after-empty-writein-enter-120x40": .agyQuestion,
         "agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40": .agyQuestion,
         "agy-167-ask-question-q2-after-multiselect-writein-120x40": .agyQuestion,
+        "agy-200-perm-run-command-under-exited-agy-62x46": .agyCommand,
     ]
 
     @Test(arguments: ScreenFixture.agy)
@@ -473,6 +474,43 @@ struct AgyDialogParserTests {
 
     /// agy 1.5.3's declined title: bold, blue 4.
     private static let declined = "\(SGR.bold)\u{1B}[38;5;4mCommand"
+
+    /// agy-200: agy started again in the terminal an earlier agy exited
+    /// in, whose last frame and empty box stay above `Resume with -c`. The
+    /// dialog under them reads as one alone does.
+    @Test func readsADialogUnderAnExitedAgy() throws {
+        let dialog = try Self.dialog("agy-200-perm-run-command-under-exited-agy-62x46")
+        let alone = try Self.dialog("agy-31-perm-run-command-default-62x41")
+
+        #expect(dialog.subject.command == "sleep 54")
+        #expect(dialog.options == alone.options)
+        #expect(dialog.focus == alone.focus)
+        #expect(dialog.rows == 30..<45)
+    }
+
+    /// Every kind of dialog, in both palettes, reads the same under an
+    /// exited agy's box as alone.
+    @Test(arguments: [
+        ("agy-55-perm-run-command-190x49", false), ("agy-47-perm-file-edit-default-120x40", false),
+        ("agy-99-perm-file-create-default-62x41", false), ("agy-41-ask-question-single-120x40", false),
+        ("agy-00-trust-prompt-191x49", false), ("agy-135-nocolor-perm-run-command-92x47", true),
+        ("agy-152-nocolor-trust-prompt-92x47", true),
+    ])
+    func aDialogUnderAnExitedAgyReadsAsAlone(stem: String, colorless: Bool) throws {
+        let alone = try Self.dialog(stem)
+        let screen = try ScreenFixture.underExitedAgy(stem, colorless: colorless)
+        let shift = screen.rows.count - (try ScreenFixture.screen(stem)).rows.count
+
+        let result = AgyDialogParser.parse(screen)
+
+        let dialog = try #require(result.dialog, "\(stem) parsed as \(result)")
+        #expect(dialog.kind == alone.kind)
+        #expect(dialog.fingerprint == alone.fingerprint)
+        #expect(dialog.options == alone.options)
+        #expect(dialog.subject == alone.subject)
+        #expect(dialog.focus == alone.focus)
+        #expect(dialog.rows == (alone.rows.lowerBound + shift)..<(alone.rows.upperBound + shift))
+    }
 
     // MARK: Without colors
 
