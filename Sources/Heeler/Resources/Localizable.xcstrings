@@ -39213,18 +39213,18 @@
         }
       }
     },
-    "Pinching a terminal to zoom changes its text size too, and it sticks. Each appearance has its own theme: a dark theme for Light Mode keeps the terminal dark under a light system." : {
+    "Pinching a terminal to zoom changes its text size too, and it sticks. Each appearance has its own theme, and Heeler is drawn light or dark to match it: a dark theme for Light Mode keeps the app dark under a light system." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ターミナルをピンチで拡大すると文字サイズも変更され、そのまま維持されます。外観（ライト/ダーク）ごとにテーマを設定できます: ライトモード用のダークテーマは、ターミナルをダークのままに保ちます。"
+            "value" : "ターミナルをピンチで拡大すると文字サイズも変更され、そのまま維持されます。外観（ライト/ダーク）ごとにテーマを設定でき、Heeler の明暗はテーマに合わせて変わります: ライトモード用のダークテーマは、アプリ全体をダークのままに保ちます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在终端中双指缩放也会改变文字大小，并保持该设置。浅色和深色外观各有独立的主题：为浅色模式选择深色主题，可在浅色系统下让终端保持深色。"
+            "value" : "在终端中双指缩放也会改变文字大小，并保持该设置。浅色和深色外观各有独立的主题，Heeler 会随主题显示为浅色或深色：为浅色模式选择深色主题，可在浅色系统下让整个 App 保持深色。"
           }
         },
         "zh-Hant" : {

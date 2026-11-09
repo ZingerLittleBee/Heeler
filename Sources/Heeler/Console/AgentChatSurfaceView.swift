@@ -102,7 +102,7 @@ struct AgentChatSurfaceView: View {
     @AppStorage(ChatTextSettings.sizeOffsetKey) private var textSizeOffset = ChatTextSettings.defaultSizeOffset
     @AppStorage(ChatTextSettings.fontKey) private var chatFont = ChatFontOption.system
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.themeAppearance) private var themeAppearance
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -333,7 +333,7 @@ struct AgentChatSurfaceView: View {
 
     private var lifecycleSurface: some View {
         chatSurface
-        .wearsChatTheme(chatTheme)
+        .wearsTheme(themeColors)
         .onAppear {
             closer.didReturnToScreen()
             stageExit?.cancel()
@@ -419,16 +419,16 @@ struct AgentChatSurfaceView: View {
     // MARK: Layout
 
     /// The terminal's theme for this appearance, which Chat wears too.
-    private var chatTheme: ChatTheme {
-        ChatTheme(themes: terminal.themes, appearance: colorScheme)
+    private var themeColors: ThemeColors {
+        ThemeColors(themes: terminal.themes, appearance: themeAppearance)
     }
 
     private var themePalette: TerminalThemePalette {
-        terminal.themes.selection(for: colorScheme).palette(for: colorScheme)
+        terminal.themes.selection(for: themeAppearance).palette(for: themeAppearance)
     }
 
     private var chromeColorScheme: ColorScheme {
-        chatTheme.colorScheme ?? colorScheme
+        themeColors.colorScheme ?? themeAppearance
     }
 
     private var chatSurface: some View {
@@ -528,7 +528,7 @@ struct AgentChatSurfaceView: View {
             .accessibilityHidden(true)
         }
         .background {
-            chatTheme.background
+            themeColors.background
                 .ignoresSafeArea(.all, edges: surfaceEdges)
         }
         .ignoresSafeArea(.container, edges: .top)

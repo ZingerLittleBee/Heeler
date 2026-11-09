@@ -166,12 +166,6 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
             .toTerminalConfiguration() ?? .default
     }
 
-    var terminalTheme: TerminalTheme {
-        TerminalTheme(
-            light: configuration(isDark: false),
-            dark: configuration(isDark: true))
-    }
-
     func colors(isDark: Bool) -> TerminalThemeColors? {
         Self.definitions[catalogName(isDark: isDark)].map(TerminalThemeColors.init)
     }
@@ -242,10 +236,12 @@ final class TerminalThemeSettings {
             .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? .vesper
     }
 
-    var theme: TerminalTheme {
-        TerminalTheme(
-            light: lightSelection.configuration(isDark: false),
-            dark: darkSelection.configuration(isDark: true))
+    /// What a terminal shows: `appearance`'s slot in both halves, so a
+    /// terminal drawn in the other appearance (a dark theme for Light Mode
+    /// darkens the app) still shows that slot's theme.
+    func terminalTheme(for appearance: ColorScheme) -> TerminalTheme {
+        let configuration = selection(for: appearance).configuration(isDark: appearance == .dark)
+        return TerminalTheme(light: configuration, dark: configuration)
     }
 
     func selection(for colorScheme: ColorScheme) -> TerminalThemeOption {

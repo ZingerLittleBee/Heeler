@@ -1,38 +1,36 @@
 import SwiftUI
 import UIKit
 
-/// Chat's colours: the terminal theme of the current appearance, so an
-/// Agent's Chat and its terminal look alike. A file diff opened from Chat
-/// wears it too (`fileDiffTheme`).
-struct ChatTheme: Equatable, Sendable {
+/// The terminal theme of the current appearance as colours for the app's
+/// own surfaces, so they look like the terminal: Chat, a file diff opened
+/// from Chat (`fileDiffTheme`), and the Console sidebar beside a detail.
+struct ThemeColors: Equatable, Sendable {
     /// Light or dark by the theme's background
     /// (`TerminalThemeOption.chromeColorScheme`); every system colour inside
-    /// Chat resolves against it. Nil keeps the surrounding one.
+    /// a themed surface resolves against it. Nil keeps the surrounding one.
     let colorScheme: ColorScheme?
+    /// Text stays the system's label colours, which follow `colorScheme`
+    /// and leave controls their tint.
     let background: Color
-    let foreground: Color
     /// Cards, code blocks and table headers: the background with a little
     /// of the foreground in it.
     let raised: Color
     let diffSurface: DiffSurface
 
-    /// Views outside Chat.
-    static let system = ChatTheme(
+    /// Surfaces the theme does not reach.
+    static let system = ThemeColors(
         colorScheme: nil,
         background: Color(uiColor: .systemBackground),
-        foreground: Color(uiColor: .label),
         raised: Color(uiColor: .secondarySystemBackground),
         diffSurface: .system)
 
     private static let raisedShare: CGFloat = 0.06
 
     init(
-        colorScheme: ColorScheme?, background: Color, foreground: Color, raised: Color,
-        diffSurface: DiffSurface
+        colorScheme: ColorScheme?, background: Color, raised: Color, diffSurface: DiffSurface
     ) {
         self.colorScheme = colorScheme
         self.background = background
-        self.foreground = foreground
         self.raised = raised
         self.diffSurface = diffSurface
     }
@@ -48,7 +46,6 @@ struct ChatTheme: Equatable, Sendable {
         self.init(
             colorScheme: colorScheme,
             background: palette.background,
-            foreground: palette.foreground,
             raised: Color(uiColor: raised),
             diffSurface: .theme(background: background, hunkBand: raised, style: style))
     }
@@ -61,15 +58,14 @@ struct ChatTheme: Equatable, Sendable {
 }
 
 extension EnvironmentValues {
-    @Entry var chatTheme: ChatTheme = .system
+    @Entry var themeColors: ThemeColors = .system
 }
 
 extension View {
     /// Dresses this view, and the navigation bar it shows, in `theme`.
-    func wearsChatTheme(_ theme: ChatTheme) -> some View {
-        environment(\.chatTheme, theme)
+    func wearsTheme(_ theme: ThemeColors) -> some View {
+        environment(\.themeColors, theme)
             .environment(\.diffSurface, theme.diffSurface)
-            .foregroundStyle(theme.foreground)
             .transformEnvironment(\.colorScheme) { scheme in
                 if let themed = theme.colorScheme { scheme = themed }
             }

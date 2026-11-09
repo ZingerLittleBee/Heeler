@@ -34,7 +34,7 @@ struct ChangesView: View {
                     // covers it, as one screen.
                     .task { await store.followAgentStatus() }
                     .modifier(ChangesScreenAppearance(presence: presence))
-                    .wearsChatTheme(fileDiffTheme ?? .system)
+                    .wearsTheme(fileDiffTheme ?? .system)
             }
             .task { await store.appear() }
             .task { await store.followAgentStatus() }
@@ -363,7 +363,7 @@ extension EnvironmentValues {
     @Entry var changesScreenPresence: ChangesScreenPresence? = nil
     /// What an open file diff wears; Chat sets its own theme, other ways in
     /// leave the system's.
-    @Entry var fileDiffTheme: ChatTheme? = nil
+    @Entry var fileDiffTheme: ThemeColors? = nil
 }
 
 private struct ChangesScreenAppearance: ViewModifier {

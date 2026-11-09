@@ -54,10 +54,10 @@ struct ContentView: View {
         .environment(
             \.agentSceneRouting,
             AgentSceneRouting(directory: app.sceneDirectory, sceneID: sceneID))
-        // The one place the app's light/dark override is applied: it lands on
-        // the window, so sheets, pushed screens, and the UIKit terminal
-        // surfaces all resolve against the chosen appearance.
-        .preferredColorScheme(app.appearance.preferredColorScheme)
+        // The one place the app's light or dark is applied: it lands on the
+        // window, so sheets, pushed screens, and the UIKit terminal surfaces
+        // all resolve against it.
+        .appAppearance(app.appearance, themes: app.terminal.themes)
         .background {
             WindowReader { window.attach($0) }
                 .allowsHitTesting(false)

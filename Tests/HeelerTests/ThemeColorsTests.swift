@@ -4,26 +4,26 @@ import UIKit
 
 @testable import Heeler
 
-/// Chat wears the terminal theme, so every theme in both appearances must
-/// keep Chat's cards and diffs readable.
+/// Chat and the sidebar wear the terminal theme, so every theme in both
+/// appearances must keep their cards and diffs readable.
 @MainActor
-@Suite("Chat theme")
-struct ChatThemeTests {
+@Suite("Theme colors")
+struct ThemeColorsTests {
     private static let appearances: [ColorScheme] = [.light, .dark]
 
-    /// A card may cost a little of the theme's own text contrast, never more
-    /// than a tenth, and never below 4.5:1 where the theme starts above it.
-    @Test func textOnCardsKeepsTheThemesContrast() {
+    /// Text is the system's label, so it must read on every theme's page and
+    /// cards in the light or dark that theme is drawn in.
+    @Test func labelTextReadsOnEveryThemesSurfaces() {
         for option in TerminalThemeOption.allCases {
             for appearance in Self.appearances {
-                let theme = ChatTheme(option: option, appearance: appearance)
+                let theme = ThemeColors(option: option, appearance: appearance)
                 let style = theme.diffSurface.themeStyle ?? .light
-                let text = UIColor(theme.foreground)
-                let page = FileDiffViewTests.contrast(text, on: UIColor(theme.background), style: style)
-                let card = FileDiffViewTests.contrast(text, on: UIColor(theme.raised), style: style)
-                #expect(
-                    card >= min(4.5, page * 0.9),
-                    "\(option) \(appearance) text on a card has contrast \(card), on the page \(page)")
+                for (surface, color) in [("page", theme.background), ("card", theme.raised)] {
+                    let contrast = FileDiffViewTests.contrast(.label, on: UIColor(color), style: style)
+                    #expect(
+                        contrast >= 4.5,
+                        "\(option) \(appearance) text on the \(surface) has contrast \(contrast)")
+                }
             }
         }
     }
@@ -32,7 +32,7 @@ struct ChatThemeTests {
     @Test func diffColoursAreReadableOnEveryTerminalTheme() {
         for option in TerminalThemeOption.allCases {
             for appearance in Self.appearances {
-                let surface = ChatTheme(option: option, appearance: appearance).diffSurface
+                let surface = ThemeColors(option: option, appearance: appearance).diffSurface
                 guard let style = surface.themeStyle else {
                     Issue.record("\(option) \(appearance) has no theme style")
                     continue

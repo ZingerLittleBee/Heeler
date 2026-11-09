@@ -102,6 +102,7 @@ struct HerdrCoreTerminalStoreTests {
             readsHostChanges: Bool = false, look: WindowLook = WindowLook()
         ) async throws -> CoreDetailWindow {
             let settings = try Self.makeSettings(look: look)
+            let appearance = HostedThemeAppearance(look.appearance)
             let defaults = try #require(UserDefaults(suiteName: "core-detail-\(UUID().uuidString)"))
             let inputModeSettings = AgentInputModeSettings(defaults: defaults)
             inputModeSettings.select(inputMode)
@@ -141,13 +142,14 @@ struct HerdrCoreTerminalStoreTests {
                 }
                 // The header's fold state is a stored preference; the test
                 // host's own defaults must not decide it.
-                .defaultAppStorage(defaults))
+                .defaultAppStorage(defaults)
+                .modifier(HostedThemeAppearanceRoot(appearance: appearance)))
             controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
             return CoreDetailWindow(
                 selection: selection, changes: changes, activity: activity, themes: settings.themes,
-                window: window)
+                appearance: appearance, window: window)
         }
 
         /// A window showing a core Terminal's screen, built as the Console
@@ -156,6 +158,7 @@ struct HerdrCoreTerminalStoreTests {
             of terminal: ConsoleTerminal, sceneID: UUID, look: WindowLook = WindowLook()
         ) async throws -> CoreDetailWindow {
             let settings = try Self.makeSettings(look: look)
+            let appearance = HostedThemeAppearance(look.appearance)
             let selection = HostedDetailSelection()
             let console = console
             let activity = AppActivityCoordinator()
@@ -177,7 +180,8 @@ struct HerdrCoreTerminalStoreTests {
                 }
                 .environment(\.agentSceneRouting, routing)
                 // As in showDetail: the header's fold state is the fixture's own.
-                .defaultAppStorage(defaults))
+                .defaultAppStorage(defaults)
+                .modifier(HostedThemeAppearanceRoot(appearance: appearance)))
             controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
@@ -186,7 +190,7 @@ struct HerdrCoreTerminalStoreTests {
                 changes: AgentChangesPresentation {
                     ChangesStore(directory: { "/work/app" }) { _ in throw ChangesReadError.unavailable }
                 },
-                activity: activity, themes: settings.themes, window: window)
+                activity: activity, themes: settings.themes, appearance: appearance, window: window)
         }
 
         private static func makeSettings(look: WindowLook) throws -> TerminalSettings {
@@ -2761,6 +2765,30 @@ struct HerdrCoreTerminalStoreTests {
     }
 }
 
+/// The theme slot a test window's scene root picks (`appAppearance`), from
+/// the appearance the window shows.
+@MainActor
+@Observable
+private final class HostedThemeAppearance {
+    private(set) var scheme: ColorScheme
+
+    init(_ style: UIUserInterfaceStyle) {
+        scheme = style == .dark ? .dark : .light
+    }
+
+    func update(_ style: UIUserInterfaceStyle) {
+        scheme = style == .dark ? .dark : .light
+    }
+}
+
+private struct HostedThemeAppearanceRoot: ViewModifier {
+    let appearance: HostedThemeAppearance
+
+    func body(content: Content) -> some View {
+        content.environment(\.themeAppearance, appearance.scheme)
+    }
+}
+
 /// The theme in each of a test window's two slots and the appearance it shows.
 private struct WindowLook {
     var light = TerminalThemeOption.vesper
@@ -2859,20 +2887,26 @@ private final class CoreDetailWindow {
     let themes: TerminalThemeSettings
     let window: UIWindow
 
+    private let appearance: HostedThemeAppearance
+
     init(
         selection: HostedDetailSelection, changes: AgentChangesPresentation?,
-        activity: AppActivityCoordinator, themes: TerminalThemeSettings, window: UIWindow
+        activity: AppActivityCoordinator, themes: TerminalThemeSettings,
+        appearance: HostedThemeAppearance, window: UIWindow
     ) {
         self.selection = selection
         self.changes = changes
         self.activity = activity
         self.themes = themes
+        self.appearance = appearance
         self.window = window
     }
 
-    /// Changes the appearance this window shows, as the system does.
+    /// Changes the appearance this window shows, as the system does: the
+    /// window's light or dark, and the theme slot its scene root picks.
     func setAppearance(_ appearance: UIUserInterfaceStyle) {
         window.rootViewController?.overrideUserInterfaceStyle = appearance
+        self.appearance.update(appearance)
     }
 
     func layOut() { window.layoutIfNeeded() }

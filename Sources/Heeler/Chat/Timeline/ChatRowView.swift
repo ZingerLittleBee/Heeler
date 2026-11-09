@@ -411,7 +411,7 @@ private struct ChatTurnHeaderRow: View {
 /// lines changed, and whether any is running or failed. Opening it shows
 /// each call's own card below it.
 private struct ChatToolGroupRow: View {
-    @Environment(\.chatTheme) private var chatTheme
+    @Environment(\.themeColors) private var themeColors
     let group: ChatToolGroup
     let toggle: () -> Void
 
@@ -448,7 +448,7 @@ private struct ChatToolGroupRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
-            .background(chatTheme.raised, in: .rect(cornerRadius: 12))
+            .background(themeColors.raised, in: .rect(cornerRadius: 12))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -551,7 +551,7 @@ struct ChatSubagentPresentation {
 }
 
 private struct ChatSubagentActivityRow: View {
-    @Environment(\.chatTheme) private var chatTheme
+    @Environment(\.themeColors) private var themeColors
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .title3) private var iconWidth = 24
     @ScaledMetric(relativeTo: .subheadline) private var titleCapHeight = UIFont.systemFont(ofSize: 15).capHeight
@@ -613,7 +613,7 @@ private struct ChatSubagentActivityRow: View {
             }
         }
         .padding(12)
-        .background(chatTheme.raised, in: .rect(cornerRadius: 12))
+        .background(themeColors.raised, in: .rect(cornerRadius: 12))
     }
 
     private var agentIcon: some View {
@@ -642,7 +642,7 @@ private struct ChatSubagentActivityRow: View {
 }
 
 private struct ChatToolRow: View {
-    @Environment(\.chatTheme) private var chatTheme
+    @Environment(\.themeColors) private var themeColors
     struct TextActions {
         var copy: () -> Void
         var selectText: () -> Void
@@ -717,7 +717,7 @@ private struct ChatToolRow: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(chatTheme.raised, in: .rect(cornerRadius: 12))
+        .background(themeColors.raised, in: .rect(cornerRadius: 12))
     }
 
     /// What an open diff says while its lines were never read; nil for a
@@ -896,7 +896,7 @@ private struct ChatToolKindIcon: View {
 /// A tool's output text: as tall as the text up to a limit, then scrolling
 /// inside, so a long output never makes the row a screen tall.
 private struct ChatToolOutputText: View {
-    @Environment(\.chatTheme) private var chatTheme
+    @Environment(\.themeColors) private var themeColors
     let text: String
     @ScaledMetric(relativeTo: .caption) private var maximumHeight: CGFloat = 240
 
@@ -910,7 +910,7 @@ private struct ChatToolOutputText: View {
         .scrollBounceBehavior(.basedOnSize)
         .frame(maxHeight: maximumHeight)
         .fixedSize(horizontal: false, vertical: true)
-        .background(chatTheme.background, in: .rect(cornerRadius: 8))
+        .background(themeColors.background, in: .rect(cornerRadius: 8))
     }
 }
 
@@ -1019,7 +1019,7 @@ private struct ChatToolStatusBadge: View {
 }
 
 private struct ChatPlanRow: View {
-    @Environment(\.chatTheme) private var chatTheme
+    @Environment(\.themeColors) private var themeColors
     let plan: ChatPlan
     let blocks: [ChatMarkdownBlock]
 
@@ -1045,7 +1045,7 @@ private struct ChatPlanRow: View {
             }
         }
         .padding(12)
-        .background(chatTheme.raised, in: .rect(cornerRadius: 12))
+        .background(themeColors.raised, in: .rect(cornerRadius: 12))
     }
 }
 

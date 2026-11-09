@@ -116,7 +116,7 @@
                 liveActivities: liveActivities,
                 activity: activity
             )
-            .preferredColorScheme(appearance.preferredColorScheme)
+            .appAppearance(appearance, themes: terminalThemes)
             .environment(\.diffLayoutSettings, diffLayout)
             .environment(\.hostOnboardingDependencies, DemoScreenshotFixture.onboardingDependencies)
             .environment(\.hostRemovalDependencies, hostRemoval)

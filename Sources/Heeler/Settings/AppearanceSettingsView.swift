@@ -73,7 +73,7 @@ private struct TerminalAppearanceSection: View {
             Text("Terminal")
         } footer: {
             Text(
-                String(localized: "Pinching a terminal to zoom changes its text size too, and it sticks. Each appearance has its own theme: a dark theme for Light Mode keeps the terminal dark under a light system."))
+                String(localized: "Pinching a terminal to zoom changes its text size too, and it sticks. Each appearance has its own theme, and Heeler is drawn light or dark to match it: a dark theme for Light Mode keeps the app dark under a light system."))
         }
     }
 

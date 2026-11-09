@@ -159,7 +159,7 @@ extension DiffPalette.Change {
 }
 
 /// What a diff is drawn on. The Changes screen keeps the system's surface
-/// and the tuned colours; Chat draws on its terminal theme (`ChatTheme`).
+/// and the tuned colours; Chat draws on its terminal theme (`ThemeColors`).
 struct DiffSurface: Equatable, Sendable {
     let background: UIColor
     let hunkBand: UIColor

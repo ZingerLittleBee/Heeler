@@ -159,7 +159,7 @@ extension View {
 }
 
 private struct ChatMarkdownBlockView: View {
-    @Environment(\.chatTheme) private var chatTheme
+    @Environment(\.themeColors) private var themeColors
     let block: ChatMarkdownBlock
     let isMuted: Bool
     @ScaledMetric(relativeTo: .body) private var indent: CGFloat = 18
@@ -219,7 +219,7 @@ private struct ChatMarkdownBlockView: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(chatTheme.raised, in: .rect(cornerRadius: 10))
+            .background(themeColors.raised, in: .rect(cornerRadius: 10))
         case .table:
             if let table = block.table {
                 ChatMarkdownTableView(table: table)
@@ -259,7 +259,7 @@ private struct ChatMarkdownBlockView: View {
 /// A native table with stable column widths across every row. Wide tables
 /// scroll within their own bounds; ordinary two-column tables fit the phone.
 struct ChatMarkdownTableView: View {
-    @Environment(\.chatTheme) private var chatTheme
+    @Environment(\.themeColors) private var themeColors
     let table: ChatMarkdownBlock.Table
     @ScaledMetric(relativeTo: .subheadline) private var minimumColumnWidth: CGFloat = 112
     @Environment(\.chatImageOpener) private var imageOpener
@@ -289,7 +289,7 @@ struct ChatMarkdownTableView: View {
                                 .multilineTextAlignment(textAlignment(for: table.columns[column]))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
                                 .padding(8)
-                                .background(row == 0 ? chatTheme.raised : chatTheme.background)
+                                .background(row == 0 ? themeColors.raised : themeColors.background)
                                 .overlay(alignment: .bottom) {
                                     Rectangle().fill(Color(uiColor: .separator)).frame(height: 0.5)
                                 }
