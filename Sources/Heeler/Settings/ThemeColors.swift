@@ -57,7 +57,23 @@ struct ThemeColors: Equatable, Sendable {
     }
 }
 
+/// Neutral veils that shade a theme's background rather than tint it: black
+/// in light, white in dark, at a few strengths, so a card, a strip or a
+/// selection reads as the theme a step deeper.
+enum ThemeVeil {
+    /// A card on the page: the Composer, a sidebar card.
+    static let card = Color.primary.opacity(0.04)
+    /// A strip on a card: the Composer's Agent strip.
+    static let strip = Color.primary.opacity(0.06)
+    /// What is chosen: a selected sidebar row, the chosen Agent's chip.
+    static let selection = UIColor { traits in
+        UIColor(white: traits.userInterfaceStyle == .dark ? 1 : 0, alpha: 0.08)
+    }
+}
+
 extension EnvironmentValues {
+    /// Set at the scene root (`appAppearance(_:themes:)`); the system's
+    /// colours outside one.
     @Entry var themeColors: ThemeColors = .system
 }
 

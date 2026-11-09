@@ -540,7 +540,7 @@ final class TerminalAgentChip: UIControl {
             + (item.qualifier == nil
                 ? 0 : qualifierLabel.intrinsicContentSize.width + Self.qualifierSpacing)
         dot.backgroundColor = item.status.inkUIColor
-        backgroundColor = selected ? .tertiarySystemBackground : .clear
+        backgroundColor = selected ? ThemeVeil.selection : .clear
         isWorking = item.status == .working
         updatePulse()
 
@@ -694,7 +694,7 @@ struct TerminalAgentSwitcherRow: View {
                 .fill(Color(uiColor: .separator))
                 .frame(height: hairline)
         }
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background(ThemeVeil.strip)
     }
 
     @ViewBuilder

@@ -29,6 +29,7 @@ private struct AppAppearanceModifier: ViewModifier {
         let drawn = themes.selection(for: themeAppearance).chromeColorScheme(for: themeAppearance)
         content
             .environment(\.themeAppearance, themeAppearance)
+            .environment(\.themeColors, ThemeColors(themes: themes, appearance: themeAppearance))
             .onChange(of: drawn, initial: true) { _, drawn in scene.draw(drawn) }
             .background {
                 WindowReader { scene.attach($0) }

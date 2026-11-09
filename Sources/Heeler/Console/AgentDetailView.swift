@@ -35,7 +35,7 @@ struct AgentDetailView: View {
     @State private var focus = AgentFocusCoordinator()
     @State private var hasAppeared = false
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.themeAppearance) private var themeAppearance
+    @Environment(\.themeColors) private var themeColors
     @State private var session: AgentComposerSession
     /// This detail's presence in `session`, outside a scene root.
     @State private var presenceToken = UUID()
@@ -476,7 +476,7 @@ struct AgentDetailView: View {
                 // A diff opened from Chat looks like Chat.
                 .environment(
                     \.fileDiffTheme,
-                    effectiveSurface == .chat ? ThemeColors(themes: terminal.themes, appearance: themeAppearance) : nil)
+                    effectiveSurface == .chat ? themeColors : nil)
         }
         // Open Terminal on an iPhone: a short detour, so Back and the swipe
         // come back to this Agent rather than to the list.

@@ -99,6 +99,9 @@ struct TerminalListView: View {
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
+            // The sidebar's own fill behind the cards, as By Host shows.
+            .scrollContentBackground(.hidden)
+            .background(isSidebarColumn ? .clear : Color(uiColor: .systemGroupedBackground))
             .modifier(ConsoleSidebarListTint())
             .searchDrawerStartsTucked()
         }
@@ -507,17 +510,10 @@ enum ListCard {
                 : UIColor.white.withAlphaComponent(0.65)
         })
 
-    /// On the sidebar's glass rather than the grouped background, dark mode
-    /// lifts the cards a step: the system card sinks into the dark glass.
-    private static let sidebarFill = Color(
-        uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? .tertiarySystemGroupedBackground
-                : UIColor.white.withAlphaComponent(0.65)
-        })
-
+    /// The sidebar wears the terminal's theme beside a detail, so its cards
+    /// are a veil over it rather than a colour of their own.
     static func fill(inSidebar: Bool) -> Color {
-        inSidebar ? sidebarFill : fill
+        inSidebar ? ThemeVeil.card : fill
     }
 }
 

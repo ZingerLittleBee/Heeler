@@ -103,6 +103,8 @@ struct AgentChatSurfaceView: View {
     @AppStorage(ChatTextSettings.fontKey) private var chatFont = ChatFontOption.system
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.themeAppearance) private var themeAppearance
+    /// The terminal's theme for this appearance, which Chat wears too.
+    @Environment(\.themeColors) private var themeColors
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -417,11 +419,6 @@ struct AgentChatSurfaceView: View {
     }
 
     // MARK: Layout
-
-    /// The terminal's theme for this appearance, which Chat wears too.
-    private var themeColors: ThemeColors {
-        ThemeColors(themes: terminal.themes, appearance: themeAppearance)
-    }
 
     private var themePalette: TerminalThemePalette {
         terminal.themes.selection(for: themeAppearance).palette(for: themeAppearance)
