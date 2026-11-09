@@ -51,6 +51,20 @@ final class ChatAgentKeysStore {
     /// land between two of its keys, such as into a `/tasks` typed for Stop.
     var isRunningQueuedWork: Bool { queuedWork > 0 }
     @ObservationIgnored private var queuedWork = 0
+    /// What runs once no queued work is left (`holdSend`).
+    @ObservationIgnored private var whenQueuedWorkEnds: [@MainActor () -> Void] = []
+
+    /// Holds a Composer send while queued work runs: the refusal saying
+    /// `reason`, or nil when none runs. `composer`'s notice of it ends with
+    /// that work, since nothing else would: Antigravity CLI is Idle by then,
+    /// so no Agent Status change comes, and the notice stayed until the
+    /// draft changed (live). A notice noted for anything else stays.
+    func holdSend(saying reason: String, in composer: AgentComposerStore) -> ComposerRefusal? {
+        guard isRunningQueuedWork else { return nil }
+        let hold = ComposerRefusal.inputNotReady(reason)
+        whenQueuedWorkEnds.append { [weak composer] in composer?.endNotice(hold) }
+        return hold
+    }
 
     /// Runs `work` once the keys queued before it have gone, and holds keys
     /// queued after it until it ends: work that types over several screens,
@@ -58,7 +72,14 @@ final class ChatAgentKeysStore {
     /// where a second Stop's Esc must not land halfway.
     func afterQueued<Result: Sendable>(_ work: @escaping @MainActor () async -> Result) async -> Result {
         queuedWork += 1
-        defer { queuedWork -= 1 }
+        defer {
+            queuedWork -= 1
+            if queuedWork == 0 {
+                let ended = whenQueuedWorkEnds
+                whenQueuedWorkEnds = []
+                for action in ended { action() }
+            }
+        }
         let previous = tail
         let task = Task { @MainActor in
             _ = await previous?.value

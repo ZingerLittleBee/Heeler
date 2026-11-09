@@ -420,6 +420,54 @@ struct ChatStopPlanTests {
         #expect(!keys.isRunningQueuedWork)
     }
 
+    /// agy is Idle while the follow-through types, so no status change
+    /// ended the held send's notice, which stayed after it until the draft
+    /// changed (live). It ends with the work; a notice for another reason,
+    /// or one noted once the work ended, stays.
+    @Test func aSendHeldForAFollowThroughSaysSoUntilItEnds() async {
+        let keys = Self.agentKeys(StopRecorder())
+        let composer = AgentComposerStore(target: "w1:p1", initialStatus: .idle) { _ in
+            throw TransportError.cancelled
+        }
+        let hold = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHold)
+        let other = ComposerRefusal.inputNotReady("Claude Code is switching a setting. Try again in a moment.")
+        /// Chat's Send, refused for `refusal` or else as Chat holds it.
+        func send(refusedFor refusal: ComposerRefusal? = nil) async -> AgentComposerStore.SendResult {
+            await composer.send(
+                policy: ComposerDeliveryPolicy(
+                    route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 }, validate: { _ in nil },
+                    preflight: { _ in refusal ?? keys.holdSend(saying: AgyBackgroundTaskStop.sendHold, in: composer) },
+                    verify: nil))
+        }
+        /// A follow-through, with `meanwhile` sent as it types.
+        func followThrough(_ meanwhile: () async -> Void) async {
+            let panel = ScriptedTransportCallGate()
+            let work = Task { await keys.afterQueued { await panel.waitUntilOpen() } }
+            await panel.waitForEntry()
+            await meanwhile()
+            await panel.open()
+            await work.value
+        }
+        composer.replaceDraft(with: "and the tests")
+
+        await followThrough {
+            #expect(await send() == .refused(hold))
+            #expect(composer.notice == ComposerNotice(refusal: hold, route: .chat))
+        }
+        #expect(composer.notice == nil)
+        #expect(composer.draft == "and the tests")
+
+        await followThrough {
+            _ = await send()
+            _ = await send(refusedFor: other)
+        }
+        #expect(composer.notice?.refusal == other)
+
+        _ = await send(refusedFor: hold)
+        await followThrough {}
+        #expect(composer.notice?.refusal == hold)
+    }
+
     // MARK: Helpers
 
     /// What OpenCode's guard says on a capture while herdr reports Working.

@@ -311,9 +311,10 @@ after the Esc and, unless that read shows no task (its row under the box
 or the footer's task count), wakes the transcript read and waits up to 8 s
 for the tapped turn's commands, never another turn's. A Chat send waits
 while the follow-through reads and types, since it would land between two
-of its keys. agy records a kill only with the next prompt, so the row
-reads Started until then (1.5.3, live). The terminal's own Stop stays one
-Esc.
+of its keys, and its notice ends with the follow-through: agy is Idle by
+then, so no status change would end it. agy records a kill only with the
+next prompt, so the row reads Started until then (1.5.3, live). The
+terminal's own Stop stays one Esc.
 
 ## Entry and the terminal
 

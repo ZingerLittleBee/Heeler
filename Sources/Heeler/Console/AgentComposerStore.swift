@@ -455,6 +455,13 @@ final class AgentComposerStore: ComposerDraftOperations {
         self.notice = nil
     }
 
+    /// What `refusal` held the Send for is over, with no Agent Status
+    /// change or edit to say so: its notice ends. Any other notice stays.
+    func endNotice(_ refusal: ComposerRefusal) {
+        guard notice?.refusal == refusal else { return }
+        notice = nil
+    }
+
     /// Removes a failed or unanswered echo and restores all of its text to the
     /// draft. If the user has already started another draft, both are kept in
     /// order. An unanswered one is the user's call, having seen the terminal.
