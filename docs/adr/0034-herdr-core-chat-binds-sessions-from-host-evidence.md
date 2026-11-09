@@ -13,9 +13,9 @@ never show or send into a conversation it has guessed.
 ## Decision
 
 - The app binds a herdr-core Agent's session itself, lazily: when Chat opens,
-  before each Send Chat does not hold on its status, and on the Terminal's
-  status, turn and foreground events and a change to its `heeler.session` or
-  `heeler.chat` label: OpenCode 1.x
+  before each Send Chat does not hold on its status or refuse at once (below),
+  and on the Terminal's status, turn and foreground events and a change to its
+  `heeler.session` or `heeler.chat` label: OpenCode 1.x
   reports no status, so its plugin's label is the only thing that says the
   conversation moved, and a label is the only sign of a choice made on another
   device or of a `/new` with no turn yet.
@@ -166,6 +166,11 @@ never show or send into a conversation it has guessed.
   another agy holds; such an agy never takes the lock and, on Linux, holds none of
   its files about 30 s after it starts. Decided on 2026-11-10 (#644), before a live
   run.
+- While Chat shows no conversation, the check before a Send refuses whatever it
+  finds, since a conversation it newly binds is not one the user saw. So a Chat
+  that shows none and says it cannot tell refuses the Send before any await and
+  asks again after it, and the message no longer shows as Sending through the
+  check's exec, as a held Send's recording on a core showed (#644).
 - Candidates serve every program whose Chat binds on core, and only a Chat that
   already says it cannot tell offers them, on request. A list costs one exec, as
   a check does, then the listings it takes: a directory's folder, or for OpenCode

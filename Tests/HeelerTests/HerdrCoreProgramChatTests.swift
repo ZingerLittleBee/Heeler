@@ -429,6 +429,7 @@ struct HerdrCoreProgramChatTests {
             chat.conversation.phase == .unavailable(.noConversationYet(.agy))
         }
         #expect(!chat.offersCandidates)
+        #expect(chat.sessionRefusalBeforeCheck() == nil)
         #expect(await chat.confirmSessionBeforeSend() == nil)
         #expect(chat.conversation.phase == .unavailable(.noConversationYet(.agy)))
 
@@ -461,9 +462,18 @@ struct HerdrCoreProgramChatTests {
         chat.show()
 
         try await rig.waitUntil("Chat to say so") { chat.conversation.phase == .unavailable(.cannotTellSession(.agy)) }
-        #expect(
-            await chat.confirmSessionBeforeSend()
-                == "Heeler can't tell which conversation Antigravity CLI shows, so it sent nothing.")
+        let refusal = "Heeler can't tell which conversation Antigravity CLI shows, so it sent nothing."
+        #expect(await chat.confirmSessionBeforeSend() == refusal)
+        // Chat follows nothing, so the check would refuse whatever it found: the
+        // Send is refused before it, and a check follows.
+        let checks = await rig.transport.processTable.requests.count
+        #expect(chat.sessionRefusalBeforeCheck() == refusal)
+        var checked = false
+        for _ in 0..<500 where !checked {
+            checked = await rig.transport.processTable.requests.count > checks
+            if !checked { try await Task.sleep(for: .milliseconds(10)) }
+        }
+        #expect(checked)
         chat.end()
         rig.store.setHosts([])
     }
@@ -492,8 +502,11 @@ struct HerdrCoreProgramChatTests {
         fresh.openFiles = []
         await rig.transport.processTable.add(fresh)
 
+        #expect(chat.sessionRefusalBeforeCheck() == nil)
         let refusal = try #require(await chat.confirmSessionBeforeSend())
         #expect(refusal.contains("hasn't started a conversation here yet"))
+        // Over a conversation Chat still shows, the check itself says why.
+        #expect(chat.sessionRefusalBeforeCheck() == nil)
         #expect(chat.conversation.phase == .unavailable(.noConversationYet(.agy)))
         #expect(!chat.conversation.transcript.entries.isEmpty)
         #expect(await chat.confirmSessionBeforeSend() == refusal)
@@ -505,6 +518,16 @@ struct HerdrCoreProgramChatTests {
         try await rig.waitUntil("Chat to show it again") {
             chat.conversation.phase == .following(path: Self.agyTranscript(first))
         }
+
+        // Two locks can't be told apart, over the conversation Chat shows. A check
+        // that finds its lock alone again lets a Send go, so nothing refuses first.
+        fresh.openFiles.append("\(Self.agyRoot)/presence/00000000-0000-4000-8000-000000000101.lock")
+        await rig.transport.processTable.add(fresh)
+        await rig.transport.deliver(Self.statusEvent(sequence: 3, state: "idle", app: "antigravity"))
+        try await rig.waitUntil("Chat to say it can't tell") {
+            chat.conversation.phase == .unavailable(.cannotTellSession(.agy))
+        }
+        #expect(chat.sessionRefusalBeforeCheck() == nil)
         chat.end()
         rig.store.setHosts([])
     }

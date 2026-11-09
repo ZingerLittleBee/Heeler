@@ -1717,6 +1717,26 @@ final class AgentChatStore {
         source.sessionEvidence != nil || program.confirmsSessionBeforeSend
     }
 
+    /// On herdr-core, while Chat shows no conversation and can't tell, the check
+    /// before a Send refuses whatever it finds: a binding it newly finds reads as
+    /// another conversation, and anything else as one it can't tell. So the Send is
+    /// refused before any await, and its message never shows as Sending through the
+    /// check's exec. The next step checks again instead, which ends a reason a new
+    /// process has outlived. Never while there is no conversation yet, since the
+    /// first Send starts it (ADR 0034).
+    func sessionRefusalBeforeCheck() -> String? {
+        guard source.sessionEvidence != nil, followed == nil, case .unavailable(let reason) = conversation.phase
+        else { return nil }
+        switch reason {
+        case .cannotTellSession, .extensionNotLoaded, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows,
+            .transcriptOff, .codexSharedDaemon:
+            sessionEvidenceMayHaveChanged()
+            return Self.cannotTellSessionReason(program)
+        default:
+            return nil
+        }
+    }
+
     /// On herdr-core: one more check of what the Host shows about the process,
     /// then, for a program that can leave its conversation with nothing there
     /// saying so, what its terminal's title says.
@@ -1742,7 +1762,7 @@ final class AgentChatStore {
         case .unavailable(.noConversationYet):
             return "\(name) hasn't started a conversation here yet, while Chat still shows an earlier one. Send its first message in the terminal."
         case .unavailable, .pickUnconfirmed:
-            return "Heeler can't tell which conversation \(name) shows, so it sent nothing."
+            return Self.cannotTellSessionReason(program)
         case .bound, .picked:
             break
         }
@@ -1792,6 +1812,11 @@ final class AgentChatStore {
     /// couldn't be read, or there is no Chat to check with.
     static func uncheckedSessionReason(_ program: ChatProgram) -> String {
         "Heeler couldn't check which conversation \(program.chatName) shows, so it sent nothing. Try again."
+    }
+
+    /// Why a send that nothing on the Host could place sent nothing.
+    static func cannotTellSessionReason(_ program: ChatProgram) -> String {
+        "Heeler can't tell which conversation \(program.chatName) shows, so it sent nothing."
     }
 
     // MARK: Snapshots

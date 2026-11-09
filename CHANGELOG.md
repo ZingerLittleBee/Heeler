@@ -49,6 +49,7 @@ Entries reference the pull request that made the change.
 - A Claude Code scheduled task shows as a small notice opening its own turn, rather than its reply folding into the turn before, and no longer waits as an unsent message. (PR #647)
 - Clear an unsaved Voice Input API key when its service or Custom URL changes, and report Keychain deletion failures without switching the saved destination or withdrawing its agreement. (PR #643)
 - Hold a Chat message at once while Oh My Pi or OpenCode reports Working, instead of showing it as Sending until Heeler has read the Agent's screen. The notice clears on the next status change. (#644)
+- On a herdr-core Host, a Chat that can't tell the conversation and shows none refuses a message at once, instead of showing it as Sending while Heeler checks the Host. (#644)
 - Fade a Blocked card's options where they run past its scroll edge, and flash its scroll bar as they start to, instead of cutting an option off flat with no sign of the answers below it. (#644)
 
 ## [0.1.18]

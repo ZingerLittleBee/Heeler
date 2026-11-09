@@ -941,7 +941,7 @@ struct AgentChatSurfaceView: View {
     private var sendPolicy: ComposerDeliveryPolicy {
         var policy = ComposerDeliveryPolicy.chat(
             rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, confirmSession: confirmSession,
-            sendConcern: sendConcern, willReadScreen: registerSends,
+            heldSession: heldSession, sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
         // A status-line switch types into the same input line.
         let preflight = policy.preflight
@@ -979,6 +979,12 @@ struct AgentChatSurfaceView: View {
             guard let chat else { return AgentChatStore.uncheckedSessionReason(program) }
             return await chat.confirmSessionBeforeSend()
         }
+    }
+
+    /// The refusal Chat already knows the check would give, before any await.
+    private var heldSession: (@MainActor () -> String?)? {
+        guard let chat else { return nil }
+        return { chat.sessionRefusalBeforeCheck() }
     }
 
     /// Hands Chat the Composer's messages as a send's check starts, ahead

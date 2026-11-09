@@ -19,12 +19,15 @@ extension ComposerDeliveryPolicy {
     /// runs before `willReadScreen` and the screen read: why the message
     /// would land outside the conversation Chat shows, or nil to go on.
     /// A reported Working holds a program Chat never sends to during a turn
-    /// (`ChatProgram.inputBoxWhileWorking`) before either, as Blocked does.
+    /// (`ChatProgram.inputBoxWhileWorking`) before either, as Blocked does, and
+    /// so does `heldSession`: the refusal Chat already knows `confirmSession`
+    /// would give (`AgentChatStore.sessionRefusalBeforeCheck`).
     static func chat(
         rules: ChatSendRules,
         activity: @escaping @MainActor () -> ChatAgentActivity,
         readScreen: @escaping @MainActor () async throws -> ANSIScreen,
         confirmSession: (@MainActor () async -> String?)? = nil,
+        heldSession: (@MainActor () -> String?)? = nil,
         sendConcern: @escaping @MainActor (_ outgoing: String, _ screen: ANSIScreen) -> String? = { _, _ in nil },
         willReadScreen: @escaping @MainActor () -> Void = {},
         conversation: (@MainActor () -> Int)? = nil,
@@ -47,6 +50,9 @@ extension ComposerDeliveryPolicy {
                 if reported == .working, let working = program.inputBoxWhileWorking {
                     return .inputNotReady(working.holdReason(for: program))
                 }
+                // The same for a herdr-core Chat that can't tell, whose
+                // Can't Tell page gave way to Sending through the exec.
+                if let reason = heldSession?() { return .inputNotReady(reason) }
                 if let confirmSession, let reason = await confirmSession() { return .inputNotReady(reason) }
                 willReadScreen()
                 let screen: ANSIScreen

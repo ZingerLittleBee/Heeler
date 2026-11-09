@@ -174,6 +174,54 @@ struct AgentComposerChatRouteTests {
         #expect(store.notice == nil)
     }
 
+    /// The herdr-core runs: a Send from a Chat that couldn't tell showed the
+    /// timeline with the message as Sending through the session check's exec,
+    /// then the Can't Tell page again. Chat knows that check would refuse, so
+    /// the refusal comes before it, in the main-actor turn the Send came in.
+    @Test func aSessionRefusalChatAlreadyKnowsNeverShowsTheEcho() async throws {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        let ready = try ScreenFixture.screen("agy-02-idle-empty-120x40")
+        let seen = Seen()
+        let refusal = "Heeler can't tell which conversation Antigravity CLI shows, so it sent nothing."
+        func policy(held: String?) -> ComposerDeliveryPolicy {
+            ComposerDeliveryPolicy.chat(
+                rules: ChatSendRules(
+                    program: .agy, commands: ChatCommandMenu.commands(skills: [], agentIsIdle: true, program: .agy)),
+                activity: { .idle },
+                readScreen: {
+                    seen.steps.append("read")
+                    await Task.yield()
+                    return ready
+                },
+                confirmSession: {
+                    seen.steps.append("check")
+                    await Task.yield()
+                    return nil
+                },
+                heldSession: { held },
+                pause: { _ in })
+        }
+        store.replaceDraft(with: "hello")
+
+        let send = Task { await store.send(policy: policy(held: refusal)) }
+        let look = Task { seen.echoes.append(store.messages.map(\.state)) }
+        let result = await send.value
+        await look.value
+
+        #expect(result == .refused(.inputNotReady(refusal)))
+        #expect(seen.echoes == [[]])
+        #expect(seen.steps.isEmpty)
+        #expect(store.draft == "hello")
+        #expect(store.messages.isEmpty)
+        #expect(await transport.agentPromptParams.isEmpty)
+
+        // With nothing known, the check runs before the read as ever.
+        #expect(await store.send(policy: policy(held: nil)) == .deliveredViaPrompt)
+        #expect(seen.steps.prefix(2) == ["check", "read"])
+        #expect(await transport.agentPromptParams.count == 1)
+    }
+
     /// The Mac pick run: "can't tell" stayed in the Composer after the pick
     /// it asked for. A hold about the conversation Chat followed ends once
     /// it follows another; one noted after the Send's own check moved Chat
