@@ -1,0 +1,46 @@
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Please run the shell command sleep 53 in the foreground and[0m
+[0m[1m[38;5;4m  wait until it exits, then reply done.[0m
+
+[0m[38;5;8m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 53)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Please run the shell command sleep 52 in the foreground and[0m
+[0m[1m[38;5;4m  wait until it exits, then reply done.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 52)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Reply with the single word ready.[0m
+
+  ready
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait[0m
+[0m[1m[38;5;4m  until it exits, then reply finished.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+  Launched [0m[38;5;12msleep 60[0m and waiting for it to finish.
+
+  finished
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait[0m
+[0m[1m[38;5;4m  until it exits, then reply finished.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait[0m
+[0m[1m[38;5;4m  until it exits, then reply finished.[0m
+
+[0m[38;5;8m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[1m[38;5;4m> /tasks[0m
+[0m[1m[38;5;4m  ⎿  [0m[38;5;7mExited /tasks command[0m
+
+[0m[38;5;8m──────────────────────────────────────────────────────────────[0m
+[0m[38;5;12m>[0m
+[0m[38;5;8m──────────────────────────────────────────────────────────────[0m
+[0m[38;5;8m? for shortcuts                        [0m[2mGemini 4 Argon · medium[0m

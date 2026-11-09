@@ -208,6 +208,11 @@ struct AgyInputBoxDetectorTests {
         // Without colors, the task Down selects under an empty box sits
         // between rules like a box of its own, and reads as its draft.
         "agy-180-plain-active-task-focused-by-down-120x40": .draft,
+        "agy-181-idle-background-task-after-esc-62x46": .empty,
+        "agy-182-tasks-popup-62x46": .below,
+        "agy-183-tasks-panel-running-62x46": .below,
+        "agy-184-tasks-panel-after-k-62x46": .below,
+        "agy-185-idle-after-tasks-62x46": .empty,
     ]
 
     private static func reading(of state: InputBoxState) -> Reading? {

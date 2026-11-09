@@ -297,6 +297,25 @@ replays: the program set the alternate screen, bracketed paste, kitty flags 9
 and application cursor keys, or nothing. These are provisional until a live
 Agent on a core is captured.
 
+`agy-186` to `agy-199` are live: the first paint Heeler's own observing
+attach got from herdr-core 0.1.18 on Ubuntu 24.04.5 in a boxd VM
+(2026-11-09), a 200×120 Terminal running Antigravity CLI 1.5.3 signed in;
+the stem's size is the screen it decodes to. 186 to 191 are in agy's
+colors: a turn running with a `sleep 60` agy made a task, the idle box
+after Esc with the task listed under it, the `/` popup over a pasted
+`/tasks`, the `/tasks` panel with the task running and after `k`
+cancelled it, and the idle box after Esc closed it. The paint sends no
+color for a blank, so the box row holding `/tasks` is one blue run,
+`> /tasks` (188). 192 and 193 are the idle box and the popup of an
+earlier run, whose scrollback holds an exited agy's box and resume line.
+194 to 199 are 186 to 191 under `NO_COLOR`. The probe kept each paint's
+bytes up to its win32 mode sequence; these end with `CSI ?9001l` as the
+replays do. Scrubbing replaced the account's email with `<email>`, which
+had taken the `8m` of its grey before it, restored as `agy-01` draws the
+banner, and the conversation id with
+`00000000-0000-4000-8000-000000000006`. `boxd@heeler-agy-644` in the
+shell's prompt and the title is the throwaway VM's.
+
 ### Grok Build screens
 
 `screens/grok/grok-*.ansi` are visible-screen reads from Grok Build 1.0.62 on
@@ -437,6 +456,7 @@ is the Heeler app's own 59×41 attach, and `agy-00`, `agy-09`, `agy-10`,
 | `agy-108` to `agy-111`, `agy-113` to `agy-115` | The same day and repository: a command's dialog, its Amend field after Tab, with a note pasted in, and after Down three times and Tab on `No`; a multi-select question on page 1 of 2, whose cut hint row herdr reports done, and after Enter turned the page; a single question after Esc skipped it |
 | `agy-154` to `agy-168` | Captured 2026-11-09 through tmux, not herdr (below): a multi-select question, `apple` checked with Space, `Write-in...`'s digit opening `Your answer:` with the check kept, `mango` typed, Esc closing the field, and the turn after Enter submitted both (`A1: apple, mango`); Down to `Write-in...`, Enter on it opening the field, and `mango` pasted with nothing checked; the first of two questions with `apple` checked, the field opened, Enter in it empty turning the page, `mango` pasted after Left and the digit again, Enter turning the page, and the idle box after Esc skipped the second |
 | `agy-169` to `agy-180` | Captured 2026-11-09 through tmux without styles (below): a turn running with `sleep 40` sent to the background and listed under the box, and the idle box after Esc left it running; the `/` popup over `/tasks`, pasted into the idle box and typed during a turn; the `/tasks` panel with the task running, after `k` cancelled it, with the second row selected, during a turn, and at 62×41 and 40×41; the idle box after Esc closed it; Down on an empty box selecting the task listed under it |
+| `agy-181` to `agy-185` | Captured 2026-11-09 through herdr 0.9.5 on Linux, in agy's colors (below): the idle box after Esc with a `sleep 60` agy made a task still listed under it, the `/` popup over a pasted `/tasks`, the `/tasks` panel with the task running and after `k` cancelled it, and the idle box after Esc closed it |
 
 `agy-154` to `agy-168` are `tmux capture-pane -p -e` reads of a 120×40 tmux 3.4
 pane running agy 1.5.3 on Ubuntu 24.04.5. tmux writes agy's 16 colors as SGR
@@ -453,6 +473,13 @@ which agy's readers take as its colorless palette, in CRLF rows as well.
 Each keeps the bottom of the read, from a rule above the box or a past
 prompt down. `agy-178` and `agy-179` were read after the pane was resized
 to 62×41 and 40×41. The account became `developer`.
+
+`agy-181` to `agy-185` are herdr 0.9.5's `agent.read` of a 62×46 pane on
+Ubuntu 24.04.5 in a boxd VM, as received, while Heeler's Stop ended the
+task. herdr keeps the uncolored blank between the box's blue `>` and a
+blue `/tasks`, so the marker reads as a run of its own (182), as it does
+not in herdr-core's paint of the same screen (Core paints, above). No row
+names the account.
 
 Help's general tab (it shows the conversation id and the log's path), its
 command pages and a 200-row scrollback read are not kept.

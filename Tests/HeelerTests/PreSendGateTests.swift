@@ -119,6 +119,7 @@ struct PreSendGateTests {
             // A command still running in the background lists its task under
             // the box; the footer under it decides.
             "agy-170-plain-idle-background-task-after-esc-120x40", "agy-175-plain-idle-after-tasks-120x40",
+            "agy-181-idle-background-task-after-esc-62x46", "agy-185-idle-after-tasks-62x46",
         ]
         let screen = try ScreenFixture.screen(stem)
         let state = InputBoxStateDetector.detect(screen, program: .agy)

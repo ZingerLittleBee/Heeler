@@ -57,15 +57,79 @@ struct AgyTaskPanelTests {
         #expect(Self.panel(stem) == nil)
     }
 
-    /// The `/` popup under a typed `/tasks`, idle or during a turn.
-    @Test(arguments: ["agy-171-plain-tasks-popup-120x40", "agy-176-plain-tasks-popup-while-working-120x40"])
+    /// The `/` popup under a typed `/tasks`, idle or during a turn, through
+    /// tmux, herdr and herdr-core, in agy's colors and without them.
+    @Test(arguments: [
+        "agy-171-plain-tasks-popup-120x40", "agy-176-plain-tasks-popup-while-working-120x40",
+        "agy-182-tasks-popup-62x46", "agy-188-core-tasks-popup-200x114",
+        "agy-193-core-tasks-popup-under-exited-agy-200x114", "agy-196-core-nocolor-tasks-popup-200x119",
+    ])
     func thePopupSelectsTasks(stem: String) throws {
-        let screen = try ScreenFixture.screen(stem)
+        let screen = try Self.captured(stem)
         let agy = AgyScreen(screen)
 
         #expect(agy.slashSelection == AgyScreen.SlashSelection(command: "/tasks", description: "View background tasks"))
         #expect(agy.composer?.draft == "/tasks")
+        #expect(agy.composer?.mode == .prompt)
         #expect(AgyBackgroundTaskStop.showsTasksPopup(screen))
+    }
+
+    /// herdr-core 0.1.18's first paint sends no color for a blank, so the
+    /// box's blue `>` and the blue `/tasks` agy draws for a known command
+    /// come as one run, `> /tasks`, where herdr keeps the blank between
+    /// them apart (182). That row is still the box: not the popup's
+    /// selected row under it, also `> /tasks` in blue, nor a box an exited
+    /// agy left in the scrollback (193, rows 13 to 15).
+    @Test(arguments: ["agy-188-core-tasks-popup-200x114", "agy-193-core-tasks-popup-under-exited-agy-200x114"])
+    func aCorePaintsBoxHoldingTasksIsTheBottomOne(stem: String) throws {
+        let box = try #require(AgyScreen(try Self.captured(stem)).composer)
+
+        #expect(box.palette == .colored)
+        #expect(box.topRule == 107 && box.bottomRule == 109)
+    }
+
+    /// The panel names the stopped turn's command at the top, selected, on
+    /// every Host and palette, and `k` turns it `cancelled` there.
+    @Test(arguments: [
+        ("agy-183-tasks-panel-running-62x46", "agy-184-tasks-panel-after-k-62x46"),
+        ("agy-189-core-tasks-panel-running-200x120", "agy-190-core-tasks-panel-after-k-200x120"),
+        ("agy-197-core-nocolor-tasks-panel-running-200x120", "agy-198-core-nocolor-tasks-panel-after-k-200x120"),
+    ])
+    func thePanelNamesTheStoppedCommandAtTheTop(running: String, killed: String) throws {
+        let before = try #require(AgyBackgroundTaskStop.panel(on: try Self.captured(running), naming: ["sleep 60"]))
+        let after = try #require(AgyBackgroundTaskStop.panel(on: try Self.captured(killed), naming: ["sleep 60"]))
+
+        #expect(before.rows[0].isRunning && before.selected == 0)
+        #expect(after.rows[0].status == "cancelled" && after.rows[0].hasEnded && after.selected == 0)
+        #expect(before.rows.dropFirst().allSatisfy { !$0.isRunning })
+    }
+
+    /// The idle box after Esc, with the task still listed under it, and
+    /// after the panel closed: both take `/tasks`.
+    @Test(arguments: [
+        "agy-181-idle-background-task-after-esc-62x46", "agy-185-idle-after-tasks-62x46",
+        "agy-187-core-idle-background-task-after-esc-200x113", "agy-191-core-idle-after-tasks-200x113",
+        "agy-192-core-idle-background-task-under-exited-agy-200x113",
+        "agy-195-core-nocolor-idle-background-task-after-esc-200x118", "agy-199-core-nocolor-idle-after-tasks-200x118",
+    ])
+    func theIdleBoxTakesTasks(stem: String) throws {
+        let screen = try Self.captured(stem)
+        let agy = AgyScreen(screen)
+
+        #expect(agy.footerHint == "? for shortcuts")
+        #expect(!agy.showsRunningTurn)
+        #expect(agy.taskPanel == nil)
+        #expect(AgyBackgroundTaskStop.showsIdleBox(screen))
+    }
+
+    @Test(arguments: [
+        "agy-186-core-working-background-task-200x113", "agy-194-core-nocolor-working-background-task-200x117",
+    ])
+    func aTurnRunningOnTheCoreReadsSo(stem: String) throws {
+        let screen = try Self.captured(stem)
+
+        #expect(AgyScreen(screen).showsRunningTurn)
+        #expect(!AgyBackgroundTaskStop.showsIdleBox(screen))
     }
 
     @Test func anIdleBoxHasNoPopup() throws {
@@ -78,6 +142,14 @@ struct AgyTaskPanelTests {
 
     private static func panel(_ stem: String) -> AgyScreen.TaskPanel? {
         (try? ScreenFixture.screen(stem)).flatMap { AgyScreen($0).taskPanel }
+    }
+
+    /// A capture's screen: herdr's or tmux's read, or for `-core-` stems
+    /// herdr-core's first paint as Chat decodes it.
+    static func captured(_ stem: String) throws -> ANSIScreen {
+        guard stem.contains("-core-") else { return try ScreenFixture.screen(stem) }
+        var paint = HerdrCoreFirstPaint()
+        return try #require(paint.receive(Data(try ChatFixture.text("screens/core-paint/\(stem).paint").utf8)))
     }
 }
 
@@ -106,6 +178,45 @@ struct AgyBackgroundTaskStopTests {
             ])
 
         let left = await Self.stop([Self.command("sleep 40", id: 6)], in: pane, typingChecksTheScreen: typingChecksTheScreen)
+
+        #expect(left == nil)
+        #expect(pane.typed == ["paste /tasks", "enter", "k", "esc"])
+        #expect(pane.shown == "closed")
+    }
+
+    /// The live runs' screens, one `sleep 60` agy made a task (2026-11-09):
+    /// through herdr in agy's colors, and herdr-core's first paints in them
+    /// and under `NO_COLOR`. Exactly paste `/tasks`, Enter, `k`, Esc.
+    @Test(arguments: [
+        [
+            "idle": "agy-181-idle-background-task-after-esc-62x46", "popup": "agy-182-tasks-popup-62x46",
+            "panel": "agy-183-tasks-panel-running-62x46", "killed": "agy-184-tasks-panel-after-k-62x46",
+            "closed": "agy-185-idle-after-tasks-62x46",
+        ],
+        [
+            "working": "agy-186-core-working-background-task-200x113",
+            "idle": "agy-187-core-idle-background-task-after-esc-200x113", "popup": "agy-188-core-tasks-popup-200x114",
+            "panel": "agy-189-core-tasks-panel-running-200x120", "killed": "agy-190-core-tasks-panel-after-k-200x120",
+            "closed": "agy-191-core-idle-after-tasks-200x113",
+        ],
+        [
+            "working": "agy-194-core-nocolor-working-background-task-200x117",
+            "idle": "agy-195-core-nocolor-idle-background-task-after-esc-200x118",
+            "popup": "agy-196-core-nocolor-tasks-popup-200x119",
+            "panel": "agy-197-core-nocolor-tasks-panel-running-200x120",
+            "killed": "agy-198-core-nocolor-tasks-panel-after-k-200x120",
+            "closed": "agy-199-core-nocolor-idle-after-tasks-200x118",
+        ],
+    ])
+    func stopKillsTheCommandOnEveryCapturedHost(stems: [String: String]) async throws {
+        let pane = AgyPane(
+            reads: stems["working"] == nil ? ["idle"] : ["working", "idle"],
+            screens: try stems.mapValues(AgyTaskPanelTests.captured),
+            answers: [
+                "idle: paste /tasks": "popup", "popup: enter": "panel", "panel: k": "killed", "killed: esc": "closed",
+            ])
+
+        let left = await Self.stop([Self.command("sleep 60", id: 45)], in: pane, typingChecksTheScreen: true)
 
         #expect(left == nil)
         #expect(pane.typed == ["paste /tasks", "enter", "k", "esc"])

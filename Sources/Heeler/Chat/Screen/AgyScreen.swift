@@ -240,16 +240,21 @@ struct AgyScreen: Sendable {
     }
 
     /// The prompt's marker at column 0 and its palette. In agy's colors the
-    /// marker is a run of its own, since a popup's or a dialog's selected
-    /// row draws `> ` and its label in one run of the same blue. Without
-    /// colors the prompt's `>` and the draft share one plain run, as a
-    /// selected row's `> ` and label do, so only the rules around it make
+    /// marker is blue and the draft's blank after it uncolored, so herdr
+    /// reads the marker as a run of its own. herdr-core's first paint sends
+    /// no color for a blank, so there a draft agy colors as blue as the
+    /// marker, such as a known command like `/tasks`, shares its run
+    /// (2026-11-09). A popup's or a dialog's selected row draws `> ` and its
+    /// label in one such run too, so, as without colors, where the prompt's
+    /// `>` and the draft share one plain run, only the rules around it make
     /// it the box's. A past prompt's `>` is bold in both.
     private static func promptMarker(of row: ScreenRow) -> (mode: Composer.Mode, palette: Palette)? {
         guard let first = row.runs.first, first.column == 0 else { return nil }
         let marker = first.text.trimmingCharacters(in: .whitespaces)
         let style = first.style
-        if marker == ">", style.foreground == .indexed(12), !style.isBold { return (.prompt, .colored) }
+        if marker == ">" || first.text.hasPrefix("> "), style.foreground == .indexed(12), !style.isBold {
+            return (.prompt, .colored)
+        }
         if marker == "!", style.foreground == .indexed(4), style.isBold { return (.bash, .colored) }
         if marker == "!", style == ScreenStyle(isBold: true) { return (.bash, .colorless) }
         if style == .plain, first.text == ">" || first.text.hasPrefix("> ") { return (.prompt, .colorless) }

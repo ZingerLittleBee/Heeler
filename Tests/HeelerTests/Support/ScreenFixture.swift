@@ -194,6 +194,9 @@ enum ScreenFixture {
         "agy-175-plain-idle-after-tasks-120x40", "agy-176-plain-tasks-popup-while-working-120x40",
         "agy-177-plain-tasks-panel-while-working-120x40", "agy-178-plain-tasks-panel-62x41",
         "agy-179-plain-tasks-panel-40x41", "agy-180-plain-active-task-focused-by-down-120x40",
+        // The same through herdr 0.9.5, in agy's colors.
+        "agy-181-idle-background-task-after-esc-62x46", "agy-182-tasks-popup-62x46",
+        "agy-183-tasks-panel-running-62x46", "agy-184-tasks-panel-after-k-62x46", "agy-185-idle-after-tasks-62x46",
     ]
 
     /// The Claude and Codex captures that the dialog and input-box suites walk.
