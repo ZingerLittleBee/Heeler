@@ -17,7 +17,7 @@ import Foundation
 /// ended, so turns record when they started only, and Chat shows no time
 /// worked rather than one that leaves out the reply.
 struct AgyTranscriptReducer: ChatTranscriptReducer {
-    static let revision = 2
+    static let revision = 3
 
     private var steps: [UInt64: AgyStep] = [:]
     private var invalid: Set<UInt64> = []
@@ -318,7 +318,8 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
 
         /// A background task ended. Its end comes as a system message, and
         /// after the turn's reply it starts a turn of its own: the agent
-        /// replies to it.
+        /// replies to it. One agy held for the next prompt ends the turn
+        /// before that prompt.
         private mutating func readTaskEnd(_ step: AgyStep, _ end: (taskID: String, wasCanceled: Bool, result: String)) {
             var command: String?
             if let index = tasks[end.taskID] {
@@ -327,20 +328,32 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                     line: ChatOutputReference(offset: step.offset, length: step.length))
                 command = calls[index].command
             }
+            var detail = command.map { [$0] } ?? []
+            if !end.wasCanceled, let code = AgyToolCall.exitCode(in: end.result) {
+                detail.append("Exit code \(code)")
+            }
+            let notice = ChatNotice(
+                kind: .taskNotification,
+                title: end.wasCanceled ? "Background command canceled" : "Background command finished",
+                detail: detail.isEmpty ? nil : detail.joined(separator: " · "))
+            // agy holds a task's end until the next prompt and writes a
+            // cancel from `/tasks` just after it (1.5.3), though the task
+            // ended before that prompt: it shows at the end of the turn
+            // before, where a held finish falls. The open turn's latest step
+            // stays the prompt, so a second held end follows the first.
+            if let open, let turn = open.turn, open.lastStep?.kind == .userInput,
+                let prompt = transcript.entries.lastIndex(where: { $0.id == transcript.turns[turn].firstEntryID })
+            {
+                transcript.entries.insert(
+                    ChatEntry(id: Self.id(step), sourceOffset: step.offset, content: .notice(notice)), at: prompt)
+                return
+            }
             if open?.hasReply ?? true {
                 if let open { close(open, ending: .completed, interruptedNotice: false) }
                 open = OpenTurn(turn: nil, isAboveWindow: false, startedAt: step.createdAt, isCompact: false)
             }
             note(step)
-            var detail = command.map { [$0] } ?? []
-            if !end.wasCanceled, let code = AgyToolCall.exitCode(in: end.result) {
-                detail.append("Exit code \(code)")
-            }
-            addNotice(
-                ChatNotice(
-                    kind: .taskNotification,
-                    title: end.wasCanceled ? "Background command canceled" : "Background command finished",
-                    detail: detail.isEmpty ? nil : detail.joined(separator: " · ")), step)
+            addNotice(notice, step)
         }
 
         private mutating func readCheckpoint(_ step: AgyStep) {

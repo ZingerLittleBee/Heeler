@@ -189,6 +189,10 @@ struct AgyTranscriptReducerTests {
     /// which agy holds until that prompt: a cancel from `/tasks` (low
     /// priority) after the prompt, a finish (high) before it.
     private static func stopProbe() -> [ChatLine] {
+        AgyToolActivityTests.lines(stopProbeSteps())
+    }
+
+    private static func stopProbeSteps() -> [JSONValue] {
         let conversation = "00000000-0000-4000-8000-000000000010"
         let prompt = "<USER_REQUEST>\nRun the shell command sleep 40 in the foreground and wait until it exits\n</USER_REQUEST>"
         let sleep: KeyValuePairs<String, JSONValue> = [
@@ -197,7 +201,7 @@ struct AgyTranscriptReducerTests {
                 "toolSummary": .string("Run sleep 40 command"),
             ])
         ]
-        return AgyToolActivityTests.lines([
+        return [
             AgyToolActivityTests.step(5, "USER_EXPLICIT", "USER_INPUT", content: prompt),
             AgyToolActivityTests.step(6, "MODEL", "PLANNER_RESPONSE", calls: sleep),
             AgyToolActivityTests.step(
@@ -220,7 +224,7 @@ struct AgyTranscriptReducerTests {
                     "Task id \"\(conversation)/task-11\" finished with result:\nCommand exited with code 0.\n\n"
                         + "No output from the command.")),
             AgyToolActivityTests.step(13, "USER_EXPLICIT", "USER_INPUT", content: prompt),
-        ])
+        ]
     }
 
     /// The turn Stop ended still reads open, since agy writes nothing on
@@ -244,20 +248,93 @@ struct AgyTranscriptReducerTests {
         #expect(next.turns.map(\.ending) == [.interrupted, nil])
     }
 
-    /// The cancel `k` sends comes after the next prompt, so the old row
-    /// reads canceled and the notice falls in the new turn.
-    @Test func aCancelFromTasksComesAfterTheNextPrompt() throws {
+    /// agy writes the cancel `k` sends just after the next prompt, though
+    /// the task ended before it: the old row reads canceled, and the notice
+    /// ends the stopped turn, after its `Interrupted`, as the finish agy
+    /// writes before a prompt does, rather than opening the new turn.
+    @Test func aCancelHeldForTheNextPromptEndsTheStoppedTurn() throws {
         let transcript = Self.transcript(Array(Self.stopProbe().prefix(5)))
 
         let canceled = try #require(AgyToolActivityTests.tool("agy:6:tool:0", in: transcript))
         #expect(canceled.status == .interrupted)
         #expect(canceled.note == "Canceled in the background")
         #expect(canceled.preview?.text == "Tool execution was canceled")
+        // The probe starts at step 5, which reads as a fork's head.
+        #expect(
+            Self.ids(transcript.entries) == [
+                "agy:5:history", "agy:5", "agy:6:tool:0", "agy:7:interrupted", "agy:9", "agy:8",
+            ])
         let notice = try #require(Self.notices(transcript).first { $0.notice.kind == .taskNotification })
         #expect(notice.id == "agy:9")
         #expect(notice.notice.title == "Background command canceled")
+        #expect(notice.notice.detail == "sleep 40")
         #expect(transcript.turns.map(\.firstEntryID.rawValue) == ["agy:5", "agy:8"])
         #expect(transcript.turns.map(\.ending) == [.interrupted, nil])
+
+        let both = Self.transcript(Self.stopProbe())
+        #expect(
+            Self.ids(both.entries) == [
+                "agy:5:history", "agy:5", "agy:6:tool:0", "agy:7:interrupted", "agy:9", "agy:8", "agy:10:tool:0",
+                "agy:12", "agy:12:interrupted", "agy:13",
+            ])
+        #expect(both.turns.map(\.firstEntryID.rawValue) == ["agy:5", "agy:8", "agy:13"])
+    }
+
+    /// On herdr-core agy wrote its restart notice after the held cancel and
+    /// before the new turn's first response (2026-11-09). The cancel still
+    /// ends the stopped turn, and the notice, with no task left to stop,
+    /// shows nothing.
+    @Test func aHeldCancelBeforeARestartNoticeStillEndsTheStoppedTurn() {
+        let transcript = Self.transcript(
+            AgyToolActivityTests.lines(
+                Array(Self.stopProbeSteps().prefix(5)) + [
+                    AgyToolActivityTests.step(
+                        10, "SYSTEM", "SYSTEM_MESSAGE",
+                        content: AgyToolActivityTests.system(AgyTranscriptReducer.restartNotice + ".")),
+                    AgyToolActivityTests.step(11, "MODEL", "PLANNER_RESPONSE", content: "Done."),
+                ]))
+
+        #expect(
+            Self.ids(transcript.entries) == [
+                "agy:5:history", "agy:5", "agy:6:tool:0", "agy:7:interrupted", "agy:9", "agy:8", "agy:11:text",
+            ])
+        #expect(transcript.turns.map(\.firstEntryID.rawValue) == ["agy:5", "agy:8"])
+        #expect(transcript.turns.map(\.ending) == [.interrupted, .completed])
+    }
+
+    /// Only an end that comes straight after a prompt moves, whichever
+    /// turn started its task: one an earlier turn left running that ends
+    /// during a later turn's work shows there, after its rows.
+    @Test func aTaskEndingDuringALaterTurnShowsInThatTurn() throws {
+        let conversation = "00000000-0000-4000-8000-000000000012"
+        let transcript = Self.transcript(
+            AgyToolActivityTests.lines([
+                AgyToolActivityTests.step(
+                    0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nServe it\n</USER_REQUEST>"),
+                AgyToolActivityTests.step(
+                    1, "MODEL", "PLANNER_RESPONSE",
+                    calls: ["run_command": .object(["CommandLine": .string("npm run dev")])]),
+                AgyToolActivityTests.step(
+                    2, "MODEL", "GENERIC", status: "RUNNING",
+                    content: AgyToolActivityTests.background(conversation, task: 2, "npm run dev")),
+                AgyToolActivityTests.step(3, "MODEL", "PLANNER_RESPONSE", content: "Serving."),
+                AgyToolActivityTests.step(
+                    4, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nRead the config\n</USER_REQUEST>"),
+                AgyToolActivityTests.step(
+                    5, "MODEL", "PLANNER_RESPONSE",
+                    calls: ["view_file": .object(["AbsolutePath": .string("/work/app/config.json")])]),
+                AgyToolActivityTests.step(6, "MODEL", "GENERIC", content: "{}"),
+                AgyToolActivityTests.step(
+                    7, "SYSTEM", "SYSTEM_MESSAGE",
+                    content: AgyToolActivityTests.system(
+                        "Task id \"\(conversation)/task-2\" finished with result:\nCommand exited with code 0.")),
+            ]), activity: .working)
+
+        #expect(
+            Self.ids(transcript.entries) == ["agy:0", "agy:1:tool:0", "agy:3:text", "agy:4", "agy:5:tool:0", "agy:7"])
+        #expect(transcript.turns.map(\.firstEntryID.rawValue) == ["agy:0", "agy:4"])
+        let server = try #require(AgyToolActivityTests.tool("agy:1:tool:0", in: transcript))
+        #expect(server.note == "Finished in the background")
     }
 
     /// A finish agy held is written before the next prompt: the stopped

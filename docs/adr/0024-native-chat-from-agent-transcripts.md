@@ -324,12 +324,16 @@ follow-through reads and types, since it would land between two of its
 keys: the keys queue is the Agent's, as the Composer is. Its notice ends
 with the follow-through: agy is Idle by then, so no status change would
 end it. agy records a kill only with the next prompt, so the row reads
-Started until then (1.5.3, live). agy's model sometimes ends a turn itself
-seconds after sending a command to the background, saying it waits for it.
-Stop then no longer shows, and the command is Background Work, which this
-version neither lists nor stops (Not in this version, below): it runs to
-its end unless the user ends it in the terminal with `/tasks` and `k`. The
-terminal's own Stop stays one Esc.
+Started until then (1.5.3, live). It writes the kill just after that
+prompt, but Chat shows its notice at the end of the stopped turn, where a
+finish agy held falls (written before the prompt), not at the top of the
+next turn. A task that ends during a later turn's work still shows there.
+agy's model sometimes ends a turn itself seconds after sending a command
+to the background, saying it waits for it. Stop then no longer shows, and
+the command is Background Work, which this version neither lists nor stops
+(Not in this version, below): it runs to its end unless the user ends it
+in the terminal with `/tasks` and `k`. The terminal's own Stop stays one
+Esc.
 
 ## Entry and the terminal
 
