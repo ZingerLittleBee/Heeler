@@ -70,7 +70,10 @@ struct AgentCardView: View {
                 // A card of its own: its checkout's symbol on the heading's
                 // line, and the mark beside the Agent's own lines below it.
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: cardColumn.spacing) {
+                    // Centered on the heading's line, not on its baseline:
+                    // the line's baseline can come from the pin beside the
+                    // title, which lifts the symbol above the title.
+                    HStack(alignment: .center, spacing: cardColumn.spacing) {
                         ConsoleWorkspaceCardIcon(systemName: heading.systemImage)
                         titleLine(presentation, trailing: lines.title)
                     }
