@@ -318,6 +318,16 @@ when the move does not name it. A row
 whose image shows is never folded into a tool group, so the image stays in
 view while its turn is open.
 
+A user message's images show as a count, never as thumbnails. When the
+program recorded the file each came from (Claude Code's
+`[Image: source: …]` records, Codex's `local_images`) and there is one file
+for every `[Image #N]` placeholder, each placeholder is a link that opens its
+file in the same sheet, as an image path in a message does; a long press
+lists them too. Nothing is read before the tap. A staged image's file lives
+in the Host's temporary storage (ADR 0005), so an old message's image may be
+gone, and the sheet says so. Other programs keep a sent path in the message's
+text, where it opens as a link.
+
 Reads use the existing read-only SFTP connection on demand and stop at
 20 MiB. A thumbnail is read only while its row is on screen, one file at a
 time per Agent, and a row that leaves the screen cancels its read; files over

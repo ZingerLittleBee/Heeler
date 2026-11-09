@@ -177,9 +177,11 @@ private struct ChatUserBubble: View {
                         + Text(command.arguments.isEmpty ? "" : " \(command.arguments)"))
                         .font(.body)
                 } else {
-                    // Image paths open as in the Agent's messages.
+                    // Image paths open as in the Agent's messages, and so do
+                    // the placeholders of images pasted from a file.
                     ChatMarkdownView.text(
-                        ChatImageLink.marking(message.text), in: .body, opensImages: imageOpener != nil)
+                        ChatImageLink.marking(message.text, imagePaths: message.imagePaths), in: .body,
+                        opensImages: imageOpener != nil)
                         .font(.body)
                         .chatMessageLinks(opener: imageOpener)
                 }

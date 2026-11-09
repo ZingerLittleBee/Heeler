@@ -88,6 +88,25 @@ enum ChatImageLink {
         return result
     }
 
+    /// `text` marked as `marking(_:)` marks it, with each `[Image #N]`
+    /// placeholder also marked as the file its image came from, in order,
+    /// when there is one file for every placeholder.
+    static func marking(_ text: String, imagePaths: [String]) -> AttributedString {
+        let placeholders = text.ranges(of: #/\[Image #[0-9]+\]/#)
+        guard !placeholders.isEmpty, placeholders.count == imagePaths.count else { return marking(text) }
+        var result = AttributedString()
+        var start = text.startIndex
+        for (range, path) in zip(placeholders, imagePaths) {
+            append(String(text[start..<range.lowerBound]), attributes: AttributeContainer(), to: &result)
+            var piece = AttributedString(String(text[range]))
+            piece[PathAttribute.self] = path
+            result.append(piece)
+            start = range.upperBound
+        }
+        append(String(text[start...]), attributes: AttributeContainer(), to: &result)
+        return result
+    }
+
     /// Appends `text` in `attributes`, with the paths `pathRanges` finds
     /// marked.
     static func append(_ text: String, attributes: AttributeContainer, to content: inout AttributedString) {

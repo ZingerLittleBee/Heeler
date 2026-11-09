@@ -134,12 +134,16 @@ struct ChatRow: Identifiable, Sendable {
         return tool.imagePath
     }
 
-    /// The image files the row's message names by path, as written and
-    /// each once (`ChatImageLink`).
+    /// The image files the row's message names by path or carried, as
+    /// written and each once (`ChatImageLink`).
     var messageImagePaths: [String] {
         switch content {
-        case .user(let message) where message.command == nil:
-            return ChatImageLink.paths(in: ChatImageLink.marking(message.text))
+        case .user(let message):
+            let linked =
+                message.command == nil
+                ? ChatImageLink.paths(in: ChatImageLink.marking(message.text, imagePaths: message.imagePaths)) : []
+            var seen: Set<String> = []
+            return (linked + message.imagePaths).filter { seen.insert($0).inserted }
         case .assistant(_, let blocks), .plan(_, let blocks):
             var seen: Set<String> = []
             return blocks.flatMap { block in

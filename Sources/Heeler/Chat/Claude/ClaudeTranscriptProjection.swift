@@ -24,8 +24,10 @@ enum ClaudeTranscriptProjection {
         index: ClaudeTranscriptIndex, chain: ClaudeChain, role: ClaudeTranscriptReducer.Role,
         context: ChatProjectionContext, transcriptPath: String? = nil
     ) -> ChatTranscript {
+        let sources = imageSources(index.recordsByPosition, indexed: index.records)
         var builder = Builder(
-            chain: chain, index: index, role: role, activity: context.activity, transcriptPath: transcriptPath)
+            chain: chain, index: index, role: role, activity: context.activity, transcriptPath: transcriptPath,
+            imageSources: sources)
         builder.build()
         let waiting = role == .main ? builder.addWaitingPrompts(waitingEnqueues(index)) : [:]
         var transcript = ChatTranscript(
@@ -33,7 +35,8 @@ enum ClaudeTranscriptProjection {
             needsOlderHistory: context.windowStart > 0,
             pendingRequests: builder.pendingRequests,
             recordedPrompts: role == .main
-                ? recordedPrompts(index, entryByRecord: builder.entryByRecord, waiting: waiting) : [],
+                ? recordedPrompts(
+                    index, entryByRecord: builder.entryByRecord, waiting: waiting, imageSources: sources) : [],
             links: index.links, diagnostics: index.diagnostics,
             backgroundWork: role == .main ? builder.backgroundWork : [],
             latestPromptOffset: builder.latestPromptOffset,
@@ -73,12 +76,11 @@ enum ClaudeTranscriptProjection {
     /// the file. Task notifications and other machine input never count.
     static func recordedPrompts(
         _ index: ClaudeTranscriptIndex, entryByRecord: [String: ChatEntryID],
-        waiting: [UInt64: ChatEntryID] = [:]
+        waiting: [UInt64: ChatEntryID] = [:], imageSources: [String: [String]]
     ) -> [ChatRecordedPrompt] {
         var prompts: [(prompt: ChatRecordedPrompt, rawKey: String)] = []
         var fires: [(offset: UInt64, key: String)] = []
         let byPosition = index.recordsByPosition
-        let imageSources = imageSources(byPosition, indexed: index.records)
         for (position, record) in byPosition.enumerated() where !record.isSidechain && record.teamName == nil {
             if let command = unknownCommand(record) {
                 let next = byPosition.indices.contains(position + 1) ? byPosition[position + 1] : nil
@@ -370,6 +372,8 @@ private struct Builder {
     let role: ClaudeTranscriptReducer.Role
     let activity: ChatAgentActivity
     let transcriptPath: String?
+    /// The files each prompt's pasted images came from, by the prompt's uuid.
+    let imageSources: [String: [String]]
 
     private(set) var entries: [ChatEntry] = []
     private(set) var pendingRequests: [ChatPendingRequest] = []
@@ -410,10 +414,11 @@ private struct Builder {
 
     init(
         chain: ClaudeChain, index: ClaudeTranscriptIndex, role: ClaudeTranscriptReducer.Role,
-        activity: ChatAgentActivity, transcriptPath: String?
+        activity: ChatAgentActivity, transcriptPath: String?, imageSources: [String: [String]]
     ) {
         self.chain = chain
         indexed = index.records
+        self.imageSources = imageSources
         self.role = role
         self.activity = activity
         self.transcriptPath = transcriptPath
@@ -818,7 +823,10 @@ private struct Builder {
             guard !prompt.isEmpty || record.imageCount > 0 else { return }
             add(
                 "user:\(record.uuid)", at: record,
-                .user(ChatUserMessage(text: prompt, imageCount: record.imageCount, wasQueued: wasQueued)))
+                .user(
+                    ChatUserMessage(
+                        text: prompt, imageCount: record.imageCount, imagePaths: imageSources[record.uuid] ?? [],
+                        wasQueued: wasQueued)))
         case .command(let invocation):
             // A local command records its output below it; a skill or prompt
             // command records the expanded prompt, which stays hidden.
@@ -831,8 +839,8 @@ private struct Builder {
                     "user:\(record.uuid)", at: record,
                     .user(
                         ChatUserMessage(
-                            text: invocation.displayText, imageCount: record.imageCount, command: invocation,
-                            wasQueued: wasQueued)))
+                            text: invocation.displayText, imageCount: record.imageCount,
+                            imagePaths: imageSources[record.uuid] ?? [], command: invocation, wasQueued: wasQueued)))
             }
         case .localCommandOutput(let output):
             addOutputNotice(output: output, at: record)

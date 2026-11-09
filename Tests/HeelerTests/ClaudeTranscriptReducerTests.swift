@@ -517,6 +517,20 @@ struct ClaudeTranscriptReducerTests {
         #expect(prompts[1].entryID == ChatEntryID("user:p1"))
     }
 
+    @Test("A prompt's bubble keeps the files its pasted images came from; a clipboard image has none")
+    func promptImagePaths() {
+        let transcript = ClaudeSample.transcript(
+            #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":[{"type":"text","text":"[Image #1]what changed"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AA"}}]}}
+            {"type":"user","uuid":"m1","parentUuid":"p1","isMeta":true,"message":{"role":"user","content":[{"type":"text","text":"[Image: source: /tmp/one.png]"}]}}
+            {"type":"user","uuid":"p2","parentUuid":"m1","message":{"role":"user","content":[{"type":"text","text":"[Image #2] from the clipboard"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AA"}}]}}
+            """#)
+        let messages = transcript.entries.compactMap { entry -> ChatUserMessage? in
+            if case .user(let message) = entry.content { message } else { nil }
+        }
+        #expect(messages.map(\.imagePaths) == [["/tmp/one.png"], []])
+    }
+
     // MARK: - Subagent and first probe
 
     private struct SubagentMeta: Decodable {

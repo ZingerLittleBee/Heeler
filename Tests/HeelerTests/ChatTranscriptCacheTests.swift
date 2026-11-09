@@ -145,6 +145,12 @@ struct ChatTranscriptCacheTests {
         #expect(tool.imagePath == nil)
     }
 
+    @Test func olderCachedUserMessagesDecodeWithoutImagePaths() throws {
+        let json = #"{"text":"[Image #1]look","imageCount":1,"attachmentLabels":[],"wasQueued":false}"#
+        let message = try JSONDecoder().decode(ChatUserMessage.self, from: Data(json.utf8))
+        #expect(message == ChatUserMessage(text: "[Image #1]look", imageCount: 1))
+    }
+
     @Test func fileNamesRevealNoIdentifiers() {
         let key = ChatCacheKey(
             hostID: Self.hostA, socketLocation: .namedSession("work"),

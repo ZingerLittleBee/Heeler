@@ -837,7 +837,8 @@ struct CodexUserContent: Equatable, Sendable {
     /// The text parts joined without a separator, as Codex joins them.
     var text: String
     var imageCount: Int
-    /// `local_image` paths, for matching an image-only send.
+    /// `local_image` paths, for matching an image-only send and showing
+    /// the images.
     var localImagePaths: [String]
     /// Chips for parts that are neither text, images, skills nor mentions.
     var attachmentLabels: [String]

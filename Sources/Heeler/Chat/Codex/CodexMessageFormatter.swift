@@ -58,7 +58,8 @@ enum CodexMessageFormatter {
         let known = skillNames.union(content.skillNames)
         return .message(
             ChatUserMessage(
-                text: body, imageCount: content.imageCount, attachmentLabels: labels,
+                text: body, imageCount: content.imageCount, imagePaths: content.localImagePaths,
+                attachmentLabels: labels,
                 command: skillInvocation(in: body, knownSkills: known), wasQueued: wasQueued))
     }
 
