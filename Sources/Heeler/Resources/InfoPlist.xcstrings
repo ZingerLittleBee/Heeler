@@ -10,6 +10,12 @@
             "state" : "new",
             "value" : "Heeler"
           }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler"
+          }
         }
       }
     },
@@ -20,6 +26,12 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
+            "value" : "Heeler"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
             "value" : "Heeler"
           }
         }
@@ -45,6 +57,12 @@
             "state" : "translated",
             "value" : "Heeler 使用相机扫描电脑上显示的配对码，这样无需输入任何内容即可添加那台电脑。"
           }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 會使用相機掃描電腦上顯示的配對碼，讓你不必輸入任何內容就能新增該機器。"
+          }
         }
       }
     },
@@ -68,6 +86,12 @@
             "state" : "translated",
             "value" : "Heeler 使用本地网络，在 Tailscale、ZeroTier 或 EasyTier 网络中的主机就在附近时直接连接它们，并查找提供 SSH 的电脑。"
           }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 會使用本地網路，在 Tailscale、ZeroTier 或 EasyTier 網路上的主機位於附近時直接連線，並尋找提供 SSH 的機器。"
+          }
         }
       }
     },
@@ -90,6 +114,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当你轻点输入框中的麦克风时，Heeler 会录下你的语音，并将录音发送到你在“设置”中选择的语音服务，转换为文字。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當你點選輸入框中的麥克風時，Heeler 會錄下你的聲音，並將錄音傳送到你在「設定」中選擇的語音服務，轉換成文字。"
           }
         }
       }
