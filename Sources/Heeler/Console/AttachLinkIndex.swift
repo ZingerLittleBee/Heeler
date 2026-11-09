@@ -121,7 +121,9 @@ final class AttachLinkIndex {
 /// Removes terminal control content while preserving stream state across
 /// arbitrary PTY chunks. SGR styling is transparent to visible URLs; other
 /// controls end plain candidates. OSC 8 targets are collected explicitly so
-/// their labels cannot hide or replace the real destination.
+/// their labels cannot hide or replace the real destination. A byte inside a
+/// UTF-8 character is content, never a C1 control: `❯` is `E2 9D AF`, and its
+/// `9D` does not start an OSC.
 private struct AttachLinkScanner {
     private enum State: Equatable {
         case text
@@ -138,6 +140,7 @@ private struct AttachLinkScanner {
     private var plain = PlainAttachLinkScanner()
     private var osc = OSC8Accumulator()
     private var isOSC8LabelActive = false
+    private var utf8BytesOwed = 0
 
     mutating func receive(_ data: Data, record: (String) -> Void) {
         for byte in data {
@@ -154,12 +157,18 @@ private struct AttachLinkScanner {
         state = .text
         osc.reset()
         isOSC8LabelActive = false
+        utf8BytesOwed = 0
     }
 
     private mutating func receive(_ byte: UInt8, record: (String) -> Void) {
+        let continuesCharacter = continuesUTF8Character(byte)
         switch state {
         case .text:
-            receiveText(byte, record: record)
+            if continuesCharacter {
+                receivePrintable(byte, record: record)
+            } else {
+                receiveText(byte, record: record)
+            }
 
         case .escape:
             receiveAfterEscape(byte, record: record)
@@ -183,7 +192,7 @@ private struct AttachLinkScanner {
             }
 
         case .osc:
-            if byte == 0x07 || byte == 0x9C {
+            if byte == 0x07 || (byte == 0x9C && !continuesCharacter) {
                 finishOSC(record: record)
             } else if byte == 0x1B {
                 state = .oscEscape
@@ -200,7 +209,7 @@ private struct AttachLinkScanner {
             }
 
         case .stringControl:
-            if byte == 0x9C {
+            if byte == 0x9C, !continuesCharacter {
                 state = .text
             } else if byte == 0x1B {
                 state = .stringControlEscape
@@ -226,9 +235,30 @@ private struct AttachLinkScanner {
         case 0x80...0x9F:
             finishPlainCandidate(record: record)
         default:
-            guard !isOSC8LabelActive else { return }
-            plain.receive(byte, record: record)
+            receivePrintable(byte, record: record)
         }
+    }
+
+    private mutating func receivePrintable(_ byte: UInt8, record: (String) -> Void) {
+        guard !isOSC8LabelActive else { return }
+        plain.receive(byte, record: record)
+    }
+
+    /// Whether `byte` continues the UTF-8 character in progress. A lead byte
+    /// starts counting the bytes its character still owes; any other byte
+    /// ends the character, so a lone C1 byte stays a control.
+    private mutating func continuesUTF8Character(_ byte: UInt8) -> Bool {
+        if utf8BytesOwed > 0, (0x80...0xBF).contains(byte) {
+            utf8BytesOwed -= 1
+            return true
+        }
+        switch byte {
+        case 0xC2...0xDF: utf8BytesOwed = 1
+        case 0xE0...0xEF: utf8BytesOwed = 2
+        case 0xF0...0xF4: utf8BytesOwed = 3
+        default: utf8BytesOwed = 0
+        }
+        return false
     }
 
     private mutating func receiveAfterEscape(

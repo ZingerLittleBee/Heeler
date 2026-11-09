@@ -1688,6 +1688,88 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
+    /// `❯` is `E2 9D AF`. Its `9D` once opened an OSC that no newline closed,
+    /// so every later line was hidden from Attach Links.
+    private static let unicodePromptTranscript = """
+        ❯ Unrelated: print a full url to the bbc website homepage
+
+        ● https://www.bbc.co.uk
+
+        """
+
+    @Test(arguments: [4096, 2, 1])
+    func aUnicodePromptLeavesALaterURLVisible(chunkSize: Int) async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        let output = Data(Self.unicodePromptTranscript.utf8)
+
+        try await goLive(store, transport)
+        for start in stride(from: 0, to: output.count, by: chunkSize) {
+            let end = min(start + chunkSize, output.count)
+            await transport.emitAttachOutput(Data(output[start..<end]))
+        }
+
+        try await waitUntil("the URL after the Unicode prompt should be collected") {
+            store.attachLinks.map(\.target) == ["https://www.bbc.co.uk"]
+        }
+
+        await store.leave().value
+    }
+
+    @Test func aUnicodePromptLeavesALaterViewportURLVisible() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        try await goLive(store, transport)
+        store.viewportTextDidChange(Self.unicodePromptTranscript)
+
+        #expect(store.attachLinks.map(\.target) == ["https://www.bbc.co.uk"])
+
+        await store.leave().value
+    }
+
+    /// `Ü` is `C3 9C`, and its `9C` is not a String Terminator.
+    @Test func unicodeInsideControlStringsKeepsThemHidden() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+
+        try await goLive(store, transport)
+        await transport.emitAttachOutput(
+            Data("\u{001B}]0;Ü https://hidden-title.example\u{0007}".utf8))
+        await transport.emitAttachOutput(
+            Data("\u{001B}PÜ https://hidden-control.example\u{001B}\\".utf8))
+        await transport.emitAttachOutput(Data("https://visible.example/result\n".utf8))
+
+        try await waitUntil("only the visible target should be collected") {
+            store.attachLinks.map(\.target) == ["https://visible.example/result"]
+        }
+
+        await store.leave().value
+    }
+
+    @Test func aC1IntroducerAfterACompleteUnicodeCharacterStillOpensOSC8() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        var output = Data("❯".utf8)
+        output.append(0x9D)
+        output.append(Data("8;;https://after-prompt.example/docs".utf8))
+        output.append(0x07)
+        output.append(Data("Docs".utf8))
+        output.append(0x9D)
+        output.append(Data("8;;".utf8))
+        output.append(0x07)
+        output.append(0x0A)
+
+        try await goLive(store, transport)
+        await transport.emitAttachOutput(output)
+
+        try await waitUntil("the lone C1 introducer should open the hyperlink") {
+            store.attachLinks.map(\.target) == ["https://after-prompt.example/docs"]
+        }
+
+        await store.leave().value
+    }
+
     @Test func osc8TargetsReuseWebValidationAndCollectionBounds() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)
