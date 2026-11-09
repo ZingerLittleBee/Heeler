@@ -11,6 +11,8 @@
 
 herdr 还没有告诉 Heeler 这个 Agent 正在哪个对话中。
 
+在 [herdr-core](herdr-core.md) Host 上，Antigravity CLI 在收到首条消息前都会显示这个状态：从 Chat 或在终端中发送一条，Chat 就会跟随它开始的对话。下面的步骤适用于 herdr。
+
 1. 对于 Codex，发送第一条提示；每次启动或恢复（resume）后都需要发送一条。对于 OpenCode，在终端中打开一个对话，或在那里发送第一条消息。
 2. 在 Host 上运行 `herdr integration status`，如果该程序的集成不是 `current`，安装它（参见[配置 Host](chat.md#配置-host)），然后重启 Agent。
 3. 轻点 **Check Again**。

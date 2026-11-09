@@ -10,6 +10,8 @@ With herdr, Chat works only for Claude Code, Codex, Pi, Oh My Pi, Grok Build, Op
 
 herdr hasn't told Heeler which conversation the Agent is in yet.
 
+On a [herdr-core](herdr-core.md) Host, Antigravity CLI shows this until its first message: send one from Chat or in the terminal, and Chat follows the conversation it starts. The steps below are for herdr.
+
 1. For Codex, send a first prompt; it needs one after every start or resume. For OpenCode, open a conversation in the terminal or send a first message there.
 2. On the Host, run `herdr integration status` and install the program's integration if it isn't `current` ([Set up the Host](chat.md#set-up-the-host)), then restart the Agent.
 3. Tap **Check Again**.
