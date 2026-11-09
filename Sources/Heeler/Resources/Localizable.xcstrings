@@ -12260,6 +12260,28 @@
         }
       }
     },
+    "Chat wears the terminal's theme. Code stays monospaced, and the text size follows the system's from there. A finished turn's steps fold behind one line above its answer; a turn stays open while it runs or while its background work does." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャットはターミナルのテーマを使います。コードは等幅のままとなり、文字サイズはシステムの設定に追従します。完了したターンの手順はその回答の上 1 行に折りたたまれ、ターンは実行中もバックグラウンド作業の最中も開いたままです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对话使用终端的主题。代码保持等宽字体，文字大小在此基础上跟随系统设置。已结束轮次的步骤会折叠在回答上方的一行中；正在运行或仍有后台工作运行的轮次会保持展开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "對話使用終端機的主題。程式碼維持等寬字型，文字大小則依系統設定。已完成的一輪對話，其步驟會收合在回答上方的一行後面；一輪對話在執行中，或其背景工作仍在執行時，會保持展開。"
+          }
+        }
+      }
+    },
     "Check Again" : {
       "localizations" : {
         "ja" : {
@@ -13942,28 +13964,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "關閉窗格失敗：%@"
-          }
-        }
-      }
-    },
-    "Code stays monospaced, and the text size follows the system's from there. A finished turn's steps fold behind one line above its answer; a turn stays open while it runs or while its background work does." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "コードは等幅のままとなり、文字サイズはシステムの設定に追従します。完了したターンの手順はその回答の上 1 行に折りたたまれ、ターンは実行中もバックグラウンド作業の最中も開いたままです。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "代码保持等宽字体，文字大小在此基础上跟随系统设置。已结束轮次的步骤会折叠在回答上方的一行中；正在运行或仍有后台工作运行的轮次会保持展开。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "程式碼維持等寬字型，文字大小則依系統設定。已完成的一輪對話，其步驟會收合在回答上方的一行後面；一輪對話在執行中，或其背景工作仍在執行時，會保持展開。"
           }
         }
       }

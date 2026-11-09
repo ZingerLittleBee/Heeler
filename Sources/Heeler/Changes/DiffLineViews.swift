@@ -14,13 +14,15 @@ struct DiffLineRow: View {
     /// A side-by-side cell stretches to its taller neighbour.
     var fillsHeight = false
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.diffSurface) private var surface
     @ScaledMetric(relativeTo: .caption2) private var digitWidth: CGFloat =
         DiffLayoutPolicy.defaultDigitWidth
     @ScaledMetric(relativeTo: .footnote) private var glyphWidth: CGFloat =
         DiffLayoutPolicy.defaultGlyphWidth
 
     var body: some View {
-        let palette = DiffPalette.current(differentiatingWithoutColor: differentiateWithoutColor)
+        let palette = DiffPalette.current(
+            differentiatingWithoutColor: differentiateWithoutColor, on: surface)
         let ink = Color(uiColor: palette.ink(for: line.kind))
         let numberWidth = digitWidth * CGFloat(max(numberDigits, 1))
         HStack(alignment: .firstTextBaseline, spacing: 0) {
@@ -122,14 +124,14 @@ struct DiffCodeText: View {
             if line.missingNewline {
                 Text("No newline at end of file")
                     .font(.caption2)
-                    .foregroundStyle(Color(uiColor: DiffPalette.contextNumber))
+                    .foregroundStyle(Color(uiColor: palette.contextNumber))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
                     .background(Capsule().fill(.quaternary))
             }
         }
         .font(.footnote.monospaced())
-        .foregroundStyle(Color(uiColor: DiffPalette.code))
+        .foregroundStyle(Color(uiColor: palette.code))
         .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -215,6 +217,7 @@ struct DiffHatch: View {
     /// The diff's scrolling content, which every blank cell measures against.
     static let coordinateSpace = "file-diff-content"
     private static let period: CGFloat = 7
+    @Environment(\.diffSurface) private var surface
 
     var body: some View {
         GeometryReader { proxy in
@@ -234,7 +237,7 @@ struct DiffHatch: View {
                 context.stroke(path, with: .color(Color(uiColor: DiffPalette.hatch)), lineWidth: 1)
             }
         }
-        .background(Color(uiColor: DiffPalette.background))
+        .background(Color(uiColor: surface.background))
         .accessibilityHidden(true)
     }
 }
@@ -247,6 +250,7 @@ struct FileDiffHunkBand: View {
     let unchangedLinesBefore: Int?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.diffSurface) private var surface
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -262,11 +266,11 @@ struct FileDiffHunkBand: View {
                 count
             }
         }
-        .foregroundStyle(Color(uiColor: DiffPalette.hunkText))
+        .foregroundStyle(Color(uiColor: surface.secondaryText))
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: DiffPalette.hunkBand))
+        .background(Color(uiColor: surface.hunkBand))
         .overlay(alignment: .top) { hairline }
         .overlay(alignment: .bottom) { hairline }
         .accessibilityElement(children: .ignore)

@@ -881,6 +881,7 @@ struct BlockedOptionButton: View {
 private struct BlockedOptionStyle: ButtonStyle {
     let emphasis: BlockedOptionEmphasis
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.chatTheme) private var chatTheme
 
     func makeBody(configuration: Configuration) -> some View {
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -915,7 +916,7 @@ private struct BlockedOptionStyle: ButtonStyle {
         switch emphasis {
         case .primary: .accentColor
         case .destructive: .red.opacity(0.12)
-        case .plain, .caution: Color(uiColor: .secondarySystemGroupedBackground)
+        case .plain, .caution: chatTheme.raised
         }
     }
 }

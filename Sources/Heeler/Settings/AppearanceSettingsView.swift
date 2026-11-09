@@ -138,7 +138,7 @@ private struct ChatAppearanceSection: View {
             Text("Chat")
         } footer: {
             Text(
-                String(localized: "Code stays monospaced, and the text size follows the system's from there. A finished turn's steps fold behind one line above its answer; a turn stays open while it runs or while its background work does."))
+                String(localized: "Chat wears the terminal's theme. Code stays monospaced, and the text size follows the system's from there. A finished turn's steps fold behind one line above its answer; a turn stays open while it runs or while its background work does."))
         }
     }
 
