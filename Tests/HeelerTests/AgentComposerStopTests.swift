@@ -213,6 +213,51 @@ struct AgentComposerStopStoreTests {
         #expect(store.notice == nil)
     }
 
+    /// What a Stop left running is said after the turn it ended left
+    /// Working, which ends every other notice, until the Agent works again.
+    @Test func whatStopLeftRunningOutlastsTheTurnItEnded() async {
+        let send = ScriptedTransportCallGate()
+        let store = AgentComposerStopStore(sleep: { _ in })
+
+        let wait = store.stop(using: {
+            await send.waitUntilOpen()
+            return .sentLeavingWork("sleep 40 still runs.")
+        })
+        await send.waitForEntry()
+        store.agentStatusChanged(to: .idle)
+        await send.open()
+        await wait?.value
+        #expect(store.phase == .ready)
+        #expect(store.notice == nil)
+        #expect(store.leftRunning == "sleep 40 still runs.")
+
+        store.agentStatusChanged(to: .done)
+        #expect(store.leftRunning == "sleep 40 still runs.")
+        store.agentStatusChanged(to: .working)
+        #expect(store.leftRunning == nil)
+    }
+
+    /// A newer tap's word wins over what an older Stop left running, and
+    /// clears what one already said.
+    @Test func aNewerTapOverridesWhatAnOlderStopLeftRunning() async {
+        let store = AgentComposerStopStore(sleep: { _ in })
+        await store.stop(using: { .sentLeavingWork("first") })?.value
+        #expect(store.leftRunning == "first")
+
+        let older = ScriptedTransportCallGate()
+        let late = store.stop(using: {
+            await older.waitUntilOpen()
+            return .sentLeavingWork("older")
+        })
+        #expect(store.leftRunning == nil)
+        await older.waitForEntry()
+        store.agentStatusChanged(to: .idle)
+        await store.stop(using: { .sent })?.value
+        await older.open()
+        await late?.value
+        #expect(store.leftRunning == nil)
+    }
+
     /// Esc keeps no gap: once a status change readies Stop, the next tap
     /// presses at once, even while the last Esc is still on its way.
     @Test func anEscTapAfterAStatusChangePressesWhileTheLastEscIsOnItsWay() async {

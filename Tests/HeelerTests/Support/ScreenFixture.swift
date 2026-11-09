@@ -186,6 +186,14 @@ enum ScreenFixture {
         "agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40",
         "agy-167-ask-question-q2-after-multiselect-writein-120x40",
         "agy-168-idle-after-writein-and-skipped-question-120x40",
+        // Background tasks and the `/tasks` panel, read through tmux as plain
+        // text: no styles, so they read in the colorless palette.
+        "agy-169-plain-working-background-task-120x40", "agy-170-plain-idle-background-task-after-esc-120x40",
+        "agy-171-plain-tasks-popup-120x40", "agy-172-plain-tasks-panel-running-120x40",
+        "agy-173-plain-tasks-panel-after-k-120x40", "agy-174-plain-tasks-panel-second-selected-120x40",
+        "agy-175-plain-idle-after-tasks-120x40", "agy-176-plain-tasks-popup-while-working-120x40",
+        "agy-177-plain-tasks-panel-while-working-120x40", "agy-178-plain-tasks-panel-62x41",
+        "agy-179-plain-tasks-panel-40x41", "agy-180-plain-active-task-focused-by-down-120x40",
     ]
 
     /// The Claude and Codex captures that the dialog and input-box suites walk.

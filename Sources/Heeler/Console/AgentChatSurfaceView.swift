@@ -1313,7 +1313,31 @@ struct AgentChatSurfaceView: View {
     /// Chat's Stop: the program's Stop plan, in line with the Agent page's
     /// keys, as typed keys would arrive.
     private var stopInterrupt: AgentComposerInterrupt {
-        console.chatStopPlan(for: agent, program: program).composerInterrupt(context: stopContext, agentKeys: agentKeys)
+        console.chatStopPlan(for: agent, program: program).composerInterrupt(
+            context: stopContext, agentKeys: agentKeys, followThrough: stopFollowThrough)
+    }
+
+    /// Antigravity CLI's Stop also ends the commands the turn sent to the
+    /// background, which its Esc leaves running (ADR 0024). Read as Stop is
+    /// tapped: a send the transcript has not recorded yet means the open
+    /// turn it shows may be the one before, whose tasks Stop leaves alone.
+    private var stopFollowThrough: (@MainActor () -> ChatStopFollowThrough?)? {
+        guard program == .agy, let chat else { return nil }
+        let composer = composer
+        return {
+            let unrecorded = ChatComposerEchoes.pending(composer.messages, statuses: chat.sendStatuses).contains {
+                switch $0.state {
+                case .sending, .sent, .unconfirmed, .outcomeUnknown: true
+                default: false
+                }
+            }
+            guard !unrecorded,
+                let stop = AgyBackgroundTaskStop(
+                    commands: chat.conversation.transcript.openTurnBackgroundCommands, io: chat.screenIO,
+                    mayContinue: { !composer.messages.contains { $0.state == .sending } })
+            else { return nil }
+            return { await stop.run() }
+        }
     }
 
     /// What a Stop guard reads: the screen, then herdr's status.

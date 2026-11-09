@@ -436,6 +436,7 @@ is the Heeler app's own 59×41 attach, and `agy-00`, `agy-09`, `agy-10`,
 | `agy-99` to `agy-107` | Captured 2026-11-08 in the trusted `fruits2` repository: the file creation dialog at 120×40, 62×41 and 40×30; `ask_question` with a multi-select question, after `2` checked an answer, after `3` and `2`, and after Enter submitted it; `Write-in...` after its digit opened the field and with an answer pasted in; two questions after Esc skipped the first, and the second after `2` |
 | `agy-108` to `agy-111`, `agy-113` to `agy-115` | The same day and repository: a command's dialog, its Amend field after Tab, with a note pasted in, and after Down three times and Tab on `No`; a multi-select question on page 1 of 2, whose cut hint row herdr reports done, and after Enter turned the page; a single question after Esc skipped it |
 | `agy-154` to `agy-168` | Captured 2026-11-09 through tmux, not herdr (below): a multi-select question, `apple` checked with Space, `Write-in...`'s digit opening `Your answer:` with the check kept, `mango` typed, Esc closing the field, and the turn after Enter submitted both (`A1: apple, mango`); Down to `Write-in...`, Enter on it opening the field, and `mango` pasted with nothing checked; the first of two questions with `apple` checked, the field opened, Enter in it empty turning the page, `mango` pasted after Left and the digit again, Enter turning the page, and the idle box after Esc skipped the second |
+| `agy-169` to `agy-180` | Captured 2026-11-09 through tmux without styles (below): a turn running with `sleep 40` sent to the background and listed under the box, and the idle box after Esc left it running; the `/` popup over `/tasks`, pasted into the idle box and typed during a turn; the `/tasks` panel with the task running, after `k` cancelled it, with the second row selected, during a turn, and at 62×41 and 40×41; the idle box after Esc closed it; Down on an empty box selecting the task listed under it |
 
 `agy-154` to `agy-168` are `tmux capture-pane -p -e` reads of a 120×40 tmux 3.4
 pane running agy 1.5.3 on Ubuntu 24.04.5. tmux writes agy's 16 colors as SGR
@@ -445,6 +446,13 @@ were dropped, as herdr's reads end at the last drawn row. The account became
 `developer`, and the banner keeps the scratch folder, `~/heeler-probe/question`.
 The read of the first of two questions before any key was taken while agy
 still drew `Working...`, so no fixture shows that page untouched.
+
+`agy-169` to `agy-180` come from another such pane, in `~/heeler-probe/stop`,
+read with `tmux capture-pane -p` without `-e`: plain text with no styles,
+which agy's readers take as its colorless palette, in CRLF rows as well.
+Each keeps the bottom of the read, from a rule above the box or a past
+prompt down. `agy-178` and `agy-179` were read after the pane was resized
+to 62×41 and 40×41. The account became `developer`.
 
 Help's general tab (it shows the conversation id and the log's path), its
 command pages and a 200-row scrollback read are not kept.

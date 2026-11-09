@@ -483,6 +483,9 @@ struct AgentComposerView: View {
                 noticeLabel(stopNotice)
                     .accessibilityIdentifier("composer.stop-notice")
             }
+            if let leftRunning = store.stop.leftRunning {
+                leftRunningRow(leftRunning)
+            }
             if !isCollapsed {
                 actionRow
             }
@@ -624,6 +627,21 @@ struct AgentComposerView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("composer.notice")
+    }
+
+    /// What a Stop that ended the turn left running, which the terminal can
+    /// end.
+    private func leftRunningRow(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            noticeLabel(text)
+            if let openAgentTerminal {
+                Button("Open in Terminal", action: openAgentTerminal)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("composer.stop-left-running")
     }
 
     /// Why a send was refused, or why Stop pressed nothing or the Agent

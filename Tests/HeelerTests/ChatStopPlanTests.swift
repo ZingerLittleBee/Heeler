@@ -327,6 +327,74 @@ struct ChatStopPlanTests {
         #expect(recorder.events == ["read", "esc"])
     }
 
+    /// What Stop presses for the commands agy sent to the background is
+    /// read as Stop is tapped, runs once the Esc went, and what it left
+    /// running is what Stop says.
+    @Test func agyStopFollowsThroughAfterItsEsc() async throws {
+        let recorder = StopRecorder()
+        let interrupt = ChatStopPlan.standard(for: .agy).composerInterrupt(
+            context: Self.context(
+                recorder, screen: try ScreenFixture.screen("agy-169-plain-working-background-task-120x40")),
+            agentKeys: Self.agentKeys(recorder),
+            followThrough: {
+                recorder.events.append("tap")
+                return {
+                    recorder.events.append("panel")
+                    return "sleep 40 still runs."
+                }
+            })
+
+        let outcome = await interrupt.perform()
+
+        #expect(outcome == .sentLeavingWork("sleep 40 still runs."))
+        #expect(recorder.events == ["tap", "read", "esc", "panel"])
+    }
+
+    /// A follow-through that ended everything leaves a plain `.sent`, and a
+    /// withheld Esc runs none.
+    @Test func agyStopFollowsThroughOnlyAfterAnEscThatWent() async throws {
+        let ended = StopRecorder()
+        let sent = await ChatStopPlan.standard(for: .agy).composerInterrupt(
+            context: Self.context(ended), agentKeys: Self.agentKeys(ended),
+            followThrough: { { ended.events.append("panel"); return nil } }
+        ).perform()
+        #expect(sent == .sent)
+        #expect(ended.events == ["read", "esc", "panel"])
+
+        let refused = StopRecorder()
+        let withheld = await ChatStopPlan.standard(for: .agy).composerInterrupt(
+            context: Self.context(refused, screen: try ScreenFixture.screen("agy-93-bash-mode-with-text-62x41")),
+            agentKeys: Self.agentKeys(refused),
+            followThrough: { { refused.events.append("panel"); return "unexpected" } }
+        ).perform()
+        #expect(withheld == .failed(AgyStopGuard.bashCommand))
+        #expect(refused.events == ["read"])
+    }
+
+    /// Keys pressed while a follow-through types wait for it, so a second
+    /// Stop's Esc never lands between its keys.
+    @Test func keysWaitForAFollowThroughInTheQueue() async {
+        let recorder = StopRecorder()
+        let gate = ScriptedTransportCallGate()
+        let keys = Self.agentKeys(recorder)
+        let followThrough = Task {
+            await keys.afterQueued {
+                recorder.events.append("panel")
+                await gate.waitUntilOpen()
+                recorder.events.append("closed")
+            }
+        }
+        await gate.waitForEntry()
+        let esc = Task { await keys.deliver(["esc"]) }
+        for _ in 0..<20 { await Task.yield() }
+        #expect(recorder.events == ["panel"])
+
+        await gate.open()
+        await followThrough.value
+        #expect(await esc.value == .sent)
+        #expect(recorder.events == ["panel", "closed", "esc"])
+    }
+
     // MARK: Helpers
 
     /// What OpenCode's guard says on a capture while herdr reports Working.

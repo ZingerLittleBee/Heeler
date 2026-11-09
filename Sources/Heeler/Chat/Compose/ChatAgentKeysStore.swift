@@ -46,6 +46,23 @@ final class ChatAgentKeysStore {
         return await enqueue(names, unless: check).value
     }
 
+    /// Runs `work` once the keys queued before it have gone, and holds keys
+    /// queued after it until it ends: work that types over several screens,
+    /// such as Antigravity CLI's Stop ending a turn's background commands,
+    /// where a second Stop's Esc must not land halfway.
+    func afterQueued<Result: Sendable>(_ work: @escaping @MainActor () async -> Result) async -> Result {
+        let previous = tail
+        let task = Task { @MainActor in
+            _ = await previous?.value
+            return await work()
+        }
+        tail = Task { @MainActor in
+            _ = await task.value
+            return .sent
+        }
+        return await task.value
+    }
+
     private func enqueue(
         _ names: [String], unless check: (@MainActor () async -> String?)?
     ) -> Task<ChatKeyDelivery, Never> {

@@ -54,7 +54,46 @@ struct AgyScreen: Sendable {
         var palette: Palette
     }
 
+    /// agy's `/tasks` panel, under the box in the footer's place: `Tasks`,
+    /// the section `Agent Backgrounded`, then a row per task, newest first,
+    /// such as `> ● [02:54:02] sleep 40` with its status at the right edge,
+    /// the selected row marked `> `. A key hint row and the footer follow;
+    /// nothing reads the hint, which agy cuts at 62 columns and drops at 40.
+    /// The time is the Host's local time, so nothing reads it either.
+    struct TaskPanel: Equatable, Sendable {
+        struct Row: Equatable, Sendable {
+            /// The task's name: the command it runs.
+            var command: String
+            /// `running`, `cancelled`, `completed (exit 0)` and the like,
+            /// cut at narrow widths (`completed (exit` at 40 columns).
+            var status: String
+
+            var isRunning: Bool { status == "running" }
+            /// A status the task never leaves: `cancelled` after `k`, or
+            /// `completed (exit 0)` and the like. `failed` is a guess from
+            /// agy's statuses; no capture shows one.
+            var hasEnded: Bool {
+                status == "cancelled" || status.hasPrefix("completed") || status.hasPrefix("failed")
+            }
+        }
+
+        var rows: [Row]
+        /// The row marked `> `: the top one as the panel opens.
+        var selected: Int?
+    }
+
+    /// The `/` popup's selected row under a `/` draft, such as `/tasks` and
+    /// `View background tasks`.
+    struct SlashSelection: Equatable, Sendable {
+        var command: String
+        var description: String
+    }
+
     let composer: Composer?
+    /// The `/tasks` panel under the box, when it shows.
+    let taskPanel: TaskPanel?
+    /// The `/` popup's selected row under a `/` draft, when it shows.
+    let slashSelection: SlashSelection?
     /// The footer's left side, right under the box or under the
     /// background-task panel: `? for shortcuts` while the box is empty,
     /// `esc to cancel` while a turn runs, `Press up to edit queued messages`
@@ -63,8 +102,9 @@ struct AgyScreen: Sendable {
     /// when something other than the footer is drawn under the box.
     let footerHint: String?
     /// The first row of what agy draws under the box in place of the
-    /// footer: the `/` and `@` popups, the `?` help, the `/model` picker or
-    /// the artifact review panel, each of which takes Enter.
+    /// footer: the `/` and `@` popups, the `?` help, the `/model` picker,
+    /// the artifact review panel or the `/tasks` panel, each of which takes
+    /// Enter.
     let below: String?
     /// The footer while agy waits for a second press other than an exit's,
     /// such as `press %s again to send command to background` in its
@@ -130,6 +170,10 @@ struct AgyScreen: Sendable {
         self.composer = composer
         self.footerHint = footerHint
         self.below = below
+        taskPanel = composer.flatMap { Self.taskPanel(in: rows, below: $0.bottomRule) }
+        slashSelection = composer.flatMap { box in
+            box.mode == .prompt && box.draft.hasPrefix("/") ? below.flatMap(Self.slashSelection) : nil
+        }
         pendingDoublePress = footerHint.flatMap { hint in
             hint.hasPrefix("press ") && hint.contains(" again to ") && !Self.readyHints.contains(hint) ? hint : nil
         }
@@ -240,6 +284,37 @@ struct AgyScreen: Sendable {
     /// echo probe-two  running`.
     private static func isTaskRow(_ row: ScreenRow) -> Bool {
         row.trimmedText.range(of: #"^\S \[\d{1,2}:\d{2}:\d{2}\] "#, options: .regularExpression) != nil
+    }
+
+    /// The `/tasks` panel right under the box's bottom rule: `Tasks`, then
+    /// `Agent Backgrounded` and its rows. Any other section first, which no
+    /// capture shows, reads as no panel.
+    private static func taskPanel(in rows: [ScreenRow], below bottomRule: Int) -> TaskPanel? {
+        let drawn = rows.indices.dropFirst(bottomRule + 1).filter { !rows[$0].isBlank }
+        guard drawn.count >= 2, rows[drawn[0]].trimmedText == "Tasks",
+            rows[drawn[1]].trimmedText == "Agent Backgrounded"
+        else { return nil }
+        var taskRows: [TaskPanel.Row] = []
+        var marked: [Int] = []
+        for index in rows.indices.dropFirst(drawn[1] + 1) {
+            // `> ` or two blanks, a dot, the start time, the command, and the
+            // status after the last gap of two or more blanks, which agy sets
+            // at the right edge.
+            let text = ScreenRow.normalizedSpaces(rows[index].text)
+            guard let match = text.wholeMatch(of: #/(> |  )\S \[\d{1,2}:\d{2}:\d{2}\] (.*\S)\s{2,}(\S.*?)\s*/#)
+            else { break }
+            if match.1 == "> " { marked.append(taskRows.count) }
+            taskRows.append(TaskPanel.Row(command: String(match.2), status: String(match.3)))
+        }
+        guard !taskRows.isEmpty else { return nil }
+        return TaskPanel(rows: taskRows, selected: marked.count == 1 ? marked[0] : nil)
+    }
+
+    /// `> /tasks  View background tasks`: the selected row of the `/`
+    /// popup, the command and its description.
+    private static func slashSelection(_ row: String) -> SlashSelection? {
+        guard let match = row.wholeMatch(of: #/> (/\S+)\s{2,}(\S.*)/#) else { return nil }
+        return SlashSelection(command: String(match.1), description: String(match.2))
     }
 
     /// The footer's left side: the text up to the gap before the mode,

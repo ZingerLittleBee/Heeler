@@ -16,6 +16,10 @@ enum ChatStopVerdict: Equatable, Sendable {
     case refuse(String)
 }
 
+/// What Chat's Stop presses after its keys went: what is still running
+/// when it is done, or nil.
+typealias ChatStopFollowThrough = @MainActor () async -> String?
+
 /// What Chat's Stop does in one program (ADR 0024).
 struct ChatStopPlan: Sendable {
     /// herdr key names, sent in one `agent.send_keys`; herdr 0.9.5 writes
@@ -100,15 +104,24 @@ struct ChatStopPlan: Sendable {
     /// then the guard (`.refuse(r)` gives `r`). `.sent` maps to `.sent`,
     /// `.withheld(r)` to `.failed(r)`, and `.failed` to
     /// `.failed(unreachableMessage)`.
+    ///
+    /// - Parameter followThrough: Called as Stop is tapped, so it sees the
+    ///   turn the keys stop. What it returns runs in the keys queue once the
+    ///   keys went, and says what they left running, which maps `.sent` to
+    ///   `.sentLeavingWork`: Antigravity CLI's background commands.
     @MainActor func composerInterrupt(
         context: @escaping @MainActor () async throws -> ChatStopContext,
-        agentKeys: ChatAgentKeysStore
+        agentKeys: ChatAgentKeysStore,
+        followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil
     ) -> AgentComposerInterrupt {
         let keys = keys
         let check = screenGuard.map { Self.check($0, context: context) }
         return AgentComposerInterrupt(wait: wait, accessibilityHint: accessibilityHint) {
+            let after = followThrough?()
             switch await agentKeys.deliver(keys, unless: check) {
-            case .sent: return .sent
+            case .sent:
+                guard let after, let left = await agentKeys.afterQueued(after) else { return .sent }
+                return .sentLeavingWork(left)
             case .withheld(let reason): return .failed(reason)
             case .failed: return .failed(Self.unreachableMessage)
             }

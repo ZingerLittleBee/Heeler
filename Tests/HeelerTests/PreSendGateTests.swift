@@ -116,6 +116,9 @@ struct PreSendGateTests {
             "agy-150-nocolor-idle-after-multiselect-92x47",
             // Read through tmux.
             "agy-168-idle-after-writein-and-skipped-question-120x40",
+            // A command still running in the background lists its task under
+            // the box; the footer under it decides.
+            "agy-170-plain-idle-background-task-after-esc-120x40", "agy-175-plain-idle-after-tasks-120x40",
         ]
         let screen = try ScreenFixture.screen(stem)
         let state = InputBoxStateDetector.detect(screen, program: .agy)

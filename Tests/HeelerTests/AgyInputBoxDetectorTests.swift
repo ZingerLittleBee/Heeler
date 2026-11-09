@@ -194,6 +194,20 @@ struct AgyInputBoxDetectorTests {
         "agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40": .dialog,
         "agy-167-ask-question-q2-after-multiselect-writein-120x40": .dialog,
         "agy-168-idle-after-writein-and-skipped-question-120x40": .empty,
+        "agy-169-plain-working-background-task-120x40": .working,
+        "agy-170-plain-idle-background-task-after-esc-120x40": .empty,
+        "agy-171-plain-tasks-popup-120x40": .below,
+        "agy-172-plain-tasks-panel-running-120x40": .below,
+        "agy-173-plain-tasks-panel-after-k-120x40": .below,
+        "agy-174-plain-tasks-panel-second-selected-120x40": .below,
+        "agy-175-plain-idle-after-tasks-120x40": .empty,
+        "agy-176-plain-tasks-popup-while-working-120x40": .below,
+        "agy-177-plain-tasks-panel-while-working-120x40": .below,
+        "agy-178-plain-tasks-panel-62x41": .below,
+        "agy-179-plain-tasks-panel-40x41": .below,
+        // Without colors, the task Down selects under an empty box sits
+        // between rules like a box of its own, and reads as its draft.
+        "agy-180-plain-active-task-focused-by-down-120x40": .draft,
     ]
 
     private static func reading(of state: InputBoxState) -> Reading? {
@@ -394,6 +408,14 @@ struct AgyInputBoxDetectorTests {
             "agy-132-nocolor-help-shortcuts-93x45",
             "Antigravity CLI   general    commands    shortcuts   (←/→ or tab to cycle)"
         ),
+        // Chat's Stop opens `/tasks` to end a turn's background commands; a
+        // send then must not land in its popup or panel. Its popup's footer
+        // reads `esc to cancel` with no turn running.
+        ("agy-171-plain-tasks-popup-120x40", "> /tasks  View background tasks"),
+        ("agy-176-plain-tasks-popup-while-working-120x40", "> /tasks  View background tasks"),
+        ("agy-172-plain-tasks-panel-running-120x40", "Tasks"),
+        ("agy-173-plain-tasks-panel-after-k-120x40", "Tasks"),
+        ("agy-179-plain-tasks-panel-40x41", "Tasks"),
     ])
     func whatAgyDrawsUnderTheBoxHolds(stem: String, row: String) throws {
         #expect(try Self.detect(stem) == .overlay(row))
