@@ -257,6 +257,19 @@ adds that timers and other background tools list in `/tasks` too, that
 tasks running, and that the panel's hints follow `keybindings.json`. Chat's
 Stop ends the stopped turn's tasks this way (What Chat sends into, below).
 
+agy 1.5.3's model sometimes ends its turn itself about 5 s after a command
+went to the background, with a reply that it waits for it
+(`Running sleep 60 and waiting for it to finish...` on herdr-core,
+`Launched sleep 60 and waiting for it to finish.` on Herdr TUI,
+2026-11-09), and did so at once in a run whose allow came so late that the
+command was a task before it started. The idle box then shows with the
+footer's `· 1 task(s)`, herdr no longer reports Working, and Chat offers
+Send, not Stop. The command runs until it ends, and agy then answers the
+task's message in a turn of its own; `/tasks` and `k` in the terminal end
+it sooner. A Stop tapped before Chat read that reply still ends the
+command, since the follow-through ends the commands Chat read at the tap
+(the reply came 0.3 s after the touch, 2026-11-09).
+
 **System messages.** `content` opens with a preamble that names the tag
 (`The following is a <SYSTEM_MESSAGE> not actually sent by the user. …`),
 then a blank line and the real `<SYSTEM_MESSAGE>` block, whose one line is
