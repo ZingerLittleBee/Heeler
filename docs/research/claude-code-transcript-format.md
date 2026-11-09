@@ -500,8 +500,14 @@ How the 2.1.291 CLI turns a submitted prompt into a record
    carried (one in the live capture, nine or more on a session's first
    prompt in local transcripts), with one `[Image: source: <path>]`
    text block per image. A sent path compares with the record once each
-   placeholder is replaced by its source. A path followed by more text
-   stays plain text. A queued paste's enqueue `content` is the submitted
+   placeholder is replaced by its source. The paste is read a line at a
+   time (2.1.319, its paste handler and live pastes on 2026-11-10): a line
+   that splits, at each space before a path, into paths alone gives up its
+   image paths, and any other line stays whole, so a path followed by more
+   text on its line stays plain text. The placeholders, joined by spaces,
+   come first, followed at once by the remaining lines that are not blank,
+   joined by line breaks: `/tmp/a.png \nwhat` and `what\n/tmp/a.png` both
+   become `[Image #1]what`. A queued paste's enqueue `content` is the submitted
    text, so it keeps the bare placeholder; Chat matches a send of one path
    to a placeholder-only prompt that names no source, or to the one whose
    delivery names that path (not observed live). Flag
@@ -541,7 +547,8 @@ What follows for matching a sent prompt to its record:
   `compact_boundary` with `trigger: "manual"` stands for it (Not verified).
   Images are recorded as blocks, so only the text compares, after each
   `[Image #N]` is replaced by its `[Image: source: …]` path when the prompt
-  has one (item 3 above).
+  has one (item 3 above). A send with an image path on a line of its own
+  compares as item 3 rearranges it.
 - A `/command` the running CLI doesn't know records no prompt; its
   `Unknown command: /name` record, with the arguments its
   `Args from unknown skill:` child names, stands for it (2.1.301, live

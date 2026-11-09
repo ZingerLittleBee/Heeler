@@ -236,6 +236,9 @@ struct ChatTranscriptAdapter: Sendable {
     /// What a sent prompt and a recorded one are compared on: the text as
     /// the program records it, which drops what Heeler adds when it sends.
     var echoKey: @Sendable (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// What the program records for a send it moves pasted image paths
+    /// around in, each placeholder back as its path; nil when it moves none.
+    var pastedImageEcho: @Sendable (String) -> String? = { _ in nil }
     /// Names the conversation from the file's first bytes, for a program
     /// that rewrites them; nil compares the bytes.
     var identity: TranscriptFollower.Identity?
