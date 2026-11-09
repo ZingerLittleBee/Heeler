@@ -118,11 +118,8 @@ struct AgyToolCall: Sendable {
                 return (.started, "Sent to the background")
             case .done, .other:
                 if kind == .command, let code = Self.exitCode(in: result.resultBody), code != 0 { return (.failed, nil) }
-                if kind == .question, result.resultBody.contains("User Skipped"), !questions.isEmpty,
-                    questions.allSatisfy({ $0.answer == nil })
-                {
-                    return (.succeeded, "Not answered")
-                }
+                // A skipped question reads `Skipped` under itself, so a
+                // call whose questions were all skipped needs no note.
                 return (.succeeded, nil)
             }
         }
@@ -346,11 +343,11 @@ struct AgyToolCall: Sendable {
     // MARK: Questions
 
     /// `ask_question`'s questions, answered from its result's `A<n>: …`
-    /// lines; `User Skipped` leaves a question unanswered. A `(Recommended) `
-    /// prefix marks the option the agent recommends.
+    /// lines; `User Skipped` marks a question skipped, with no answer. A
+    /// `(Recommended) ` prefix marks the option the agent recommends.
     var questions: [ChatQuestion] {
         guard name == "ask_question", case .array(let items)? = args?["questions"] else { return [] }
-        let answers = result.map { Self.answers(in: $0.resultBody) } ?? [:]
+        let answers = result.map { Self.answers(in: $0.resultBody) } ?? (given: [:], skipped: [])
         var questions: [ChatQuestion] = []
         for (index, item) in items.enumerated() {
             guard let text = item["question"]?.stringValue else { continue }
@@ -371,15 +368,16 @@ struct AgyToolCall: Sendable {
             questions.append(
                 ChatQuestion(
                     text: text, options: options, isMultiSelect: isMultiSelect, recommendedIndex: recommended,
-                    answer: answers[index + 1]))
+                    answer: answers.given[index + 1], isSkipped: answers.skipped.contains(index + 1)))
         }
         return questions
     }
 
-    /// The answers by question number, from lines `A1: banana`. A skipped
-    /// question reads `User Skipped`.
-    static func answers(in body: String) -> [Int: String] {
+    /// The answers by question number, from lines `A1: banana`, and the
+    /// questions skipped, whose line reads `User Skipped`.
+    static func answers(in body: String) -> (given: [Int: String], skipped: Set<Int>) {
         var answers: [Int: String] = [:]
+        var skipped: Set<Int> = []
         var current: Int?
         for line in normalized(body).split(separator: "\n", omittingEmptySubsequences: false) {
             if line.hasPrefix("A"), let colon = line.firstIndex(of: ":"),
@@ -388,15 +386,17 @@ struct AgyToolCall: Sendable {
                 let answer = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
                 current = number
                 answers[number] = answer == "User Skipped" ? nil : answer
+                if answer == "User Skipped" { skipped.insert(number) }
             } else if let current, let answer = answers[current] {
                 // A written-in answer can run over several lines.
                 answers[current] = answer + "\n" + line
             }
         }
-        return answers.compactMapValues { answer in
+        let given = answers.compactMapValues { answer in
             let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         }
+        return (given, skipped)
     }
 
     // MARK: File changes

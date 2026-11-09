@@ -749,6 +749,10 @@ struct ChatQuestion: Equatable, Codable, Sendable {
     /// My Pi's `recommended`).
     var recommendedIndex: Int?
     var answer: String?
+    /// The user skipped the question, so it has no answer by choice:
+    /// Antigravity CLI records each skip (`User Skipped`), where other
+    /// programs leave an unanswered question without one.
+    var isSkipped = false
     /// An answer given in Chat that the program holds back: Codex records
     /// an asynchronous answer only once it sends it, after its next tool
     /// call. Held in memory only.
@@ -756,7 +760,7 @@ struct ChatQuestion: Equatable, Codable, Sendable {
 
     init(
         id: String? = nil, header: String? = nil, text: String, options: [Option] = [],
-        isMultiSelect: Bool = false, recommendedIndex: Int? = nil, answer: String? = nil
+        isMultiSelect: Bool = false, recommendedIndex: Int? = nil, answer: String? = nil, isSkipped: Bool = false
     ) {
         self.id = id
         self.header = header
@@ -765,12 +769,27 @@ struct ChatQuestion: Equatable, Codable, Sendable {
         self.isMultiSelect = isMultiSelect
         self.recommendedIndex = recommendedIndex
         self.answer = answer
+        self.isSkipped = isSkipped
     }
 
     // `queuedAnswer` is deliberately absent: decoding leaves it nil. An
     // entry cached before `recommendedIndex` decodes without one.
     private enum CodingKeys: String, CodingKey {
-        case id, header, text, options, isMultiSelect, recommendedIndex, answer
+        case id, header, text, options, isMultiSelect, recommendedIndex, answer, isSkipped
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+        header = try container.decodeIfPresent(String.self, forKey: .header)
+        text = try container.decode(String.self, forKey: .text)
+        options = try container.decode([Option].self, forKey: .options)
+        isMultiSelect = try container.decode(Bool.self, forKey: .isMultiSelect)
+        recommendedIndex = try container.decodeIfPresent(Int.self, forKey: .recommendedIndex)
+        answer = try container.decodeIfPresent(String.self, forKey: .answer)
+        // An entry cached before `isSkipped` decodes as not skipped, rather
+        // than failing and dropping every program's cached document.
+        isSkipped = try container.decodeIfPresent(Bool.self, forKey: .isSkipped) ?? false
     }
 }
 

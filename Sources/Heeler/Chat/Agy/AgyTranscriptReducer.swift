@@ -17,7 +17,7 @@ import Foundation
 /// ended, so turns record when they started only, and Chat shows no time
 /// worked rather than one that leaves out the reply.
 struct AgyTranscriptReducer: ChatTranscriptReducer {
-    static let revision = 1
+    static let revision = 2
 
     private var steps: [UInt64: AgyStep] = [:]
     private var invalid: Set<UInt64> = []

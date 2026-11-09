@@ -1969,6 +1969,25 @@ struct ChatRowViewTests {
         #expect(!expanded.contains("No output."), "\(expanded)")
     }
 
+    /// A question the user skipped reads `Skipped` in its answer's place;
+    /// one with no answer and no skip shows nothing there.
+    @Test func anExpandedQuestionSaysWhichWasSkipped() async throws {
+        let tool = ChatToolActivity(
+            kind: .question, name: "ask_question", title: "Which color? · Which size? · Which shape?",
+            status: .succeeded,
+            questions: [
+                ChatQuestion(text: "Which color?", options: ["red", "green"], answer: "green"),
+                ChatQuestion(text: "Which size?", options: ["small", "large"], isSkipped: true),
+                ChatQuestion(text: "Which shape?", options: ["round", "square"]),
+            ])
+        let labels = try await Self.labels(of: tool, isExpanded: true)
+        // The row reads as one element, each question followed by what
+        // answered it.
+        #expect(labels.joined().components(separatedBy: "Skipped").count == 2, "\(labels)")
+        #expect(
+            labels.contains { $0.hasSuffix("Which color?, green, Which size?, Skipped, Which shape?") }, "\(labels)")
+    }
+
     /// A call that never ran says nothing about output it has none of
     /// (CLB-02/03/04); one that ran still says it printed nothing.
     @Test func anExpandedCallThatNeverRanSaysNothingAboutOutput() async throws {

@@ -113,6 +113,30 @@ struct ChatTranscriptCacheTests {
         #expect(await fixture.cache.load(Self.key()) == .hit(document))
     }
 
+    /// Only Antigravity CLI marks a question skipped. A question cached
+    /// before the mark existed still decodes, as not skipped, so no
+    /// program's cached document is dropped for it.
+    @Test func skippedQuestionsSurviveTheDiskCache() async throws {
+        let json = #"{"text":"Which size?","options":[{"label":"small"}],"isMultiSelect":false,"answer":"small"}"#
+        let older = try JSONDecoder().decode(ChatQuestion.self, from: Data(json.utf8))
+        #expect(older.answer == "small")
+        #expect(!older.isSkipped)
+
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        var document = Self.document(Self.key())
+        document.entries = [ChatEntry(
+            id: ChatEntryID("ask"), sourceOffset: 100,
+            content: .tool(ChatToolActivity(
+                kind: .question, name: "ask_question", title: "Which color? · Which size?", status: .succeeded,
+                questions: [
+                    ChatQuestion(text: "Which color?", options: ["red", "green"], answer: "green"),
+                    ChatQuestion(text: "Which size?", options: ["small", "large"], isSkipped: true),
+                ])))]
+        await fixture.cache.save(document)
+        #expect(await fixture.cache.load(Self.key()) == .hit(document))
+    }
+
     @Test func olderCachedToolsDecodeWithoutSubagentMetadata() throws {
         let json = #"{"kind":"agent","name":"Agent","title":"Task","status":"succeeded","questions":[]}"#
         let tool = try JSONDecoder().decode(ChatToolActivity.self, from: Data(json.utf8))

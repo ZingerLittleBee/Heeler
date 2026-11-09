@@ -418,7 +418,7 @@ agy writes a call that asks the user as its dialog opens (the
 `PLANNER_RESPONSE` step) and its result only after the answer and the tool's
 run. It records no approval, and Esc records nothing: a stopped call stays
 without a result until the next prompt ends its turn. A skipped question's
-result reads `User Skipped`.
+result reads `User Skipped`, and Chat shows `Skipped` under that question.
 
 ### The Blocked card
 

@@ -205,8 +205,8 @@ struct AgyToolActivityTests {
         #expect(ask.output == nil)
     }
 
-    /// `(Recommended) ` marks an option, and `User Skipped` leaves a
-    /// question unanswered.
+    /// `(Recommended) ` marks an option, and `User Skipped` marks a
+    /// question skipped, with no answer.
     @Test func recommendedOptionsAndSkippedQuestions() throws {
         let transcript = try Self.fixture("approvals.jsonl", steps: 13...20)
 
@@ -217,12 +217,33 @@ struct AgyToolActivityTests {
 
         let two = try #require(Self.tool("agy:18:tool:0", in: transcript))
         #expect(two.questions.map(\.answer) == ["Blue", nil])
+        #expect(two.questions.map(\.isSkipped) == [false, true])
         #expect(two.title == "What is your favorite color? · What is your favorite season?")
         #expect(two.note == nil)
     }
 
+    /// A call whose every question was skipped still finished, and each
+    /// question says it was skipped, so the row adds no note.
+    @Test func aCallWithEveryQuestionSkippedSaysSoPerQuestion() throws {
+        var lines = try AgyTranscriptReducerTests.lines("approvals.jsonl", steps: 17...20)
+        let result = lines[2]
+        let text = try #require(String(data: result.data, encoding: .utf8))
+        let skipped = text.replacingOccurrences(of: "A1: Blue", with: "A1: User Skipped")
+        try #require(skipped != text)
+        lines[2] = ChatLine(offset: result.offset, data: Data(skipped.utf8))
+        let transcript = AgyTranscriptReducerTests.transcript(lines)
+
+        let ask = try #require(Self.tool("agy:18:tool:0", in: transcript))
+        #expect(ask.status == .succeeded)
+        #expect(ask.note == nil)
+        #expect(ask.questions.map(\.answer) == [nil, nil])
+        #expect(ask.questions.map(\.isSkipped) == [true, true])
+    }
+
     @Test func answersReadAcrossLines() {
-        #expect(AgyToolCall.answers(in: "A1: banana\nA2: User Skipped\nA3: line one\nline two") == [1: "banana", 3: "line one\nline two"])
+        let answers = AgyToolCall.answers(in: "A1: banana\nA2: User Skipped\nA3: line one\nline two")
+        #expect(answers.given == [1: "banana", 3: "line one\nline two"])
+        #expect(answers.skipped == [2])
     }
 
     // MARK: Background commands
