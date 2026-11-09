@@ -423,21 +423,28 @@ struct ChatStopPlanTests {
     /// agy is Idle while the follow-through types, so no status change
     /// ended the held send's notice, which stayed after it until the draft
     /// changed (live). It ends with the work; a notice for another reason,
-    /// or one noted once the work ended, stays.
-    @Test func aSendHeldForAFollowThroughSaysSoUntilItEnds() async {
-        let keys = Self.agentKeys(StopRecorder())
+    /// or one noted once the work ended, stays. The terminal page's Send
+    /// waits the same way: the Agent's keys queue is its Composer's.
+    @Test(arguments: [ComposerRoute.chat, .terminal])
+    func aSendHeldForAFollowThroughSaysSoUntilItEnds(route: ComposerRoute) async {
         let composer = AgentComposerStore(target: "w1:p1", initialStatus: .idle) { _ in
             throw TransportError.cancelled
         }
+        let session = AgentComposerSession(composer: composer)
+        let keys = session.agentKeys
         let hold = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHold)
         let other = ComposerRefusal.inputNotReady("Claude Code is switching a setting. Try again in a moment.")
-        /// Chat's Send, refused for `refusal` or else as Chat holds it.
+        /// A Send from `route`'s surface, refused for `refusal` or else as
+        /// that surface holds it.
         func send(refusedFor refusal: ComposerRefusal? = nil) async -> AgentComposerStore.SendResult {
-            await composer.send(
-                policy: ComposerDeliveryPolicy(
+            var policy =
+                route == .chat
+                ? ComposerDeliveryPolicy(
                     route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 }, validate: { _ in nil },
-                    preflight: { _ in refusal ?? keys.holdSend(saying: AgyBackgroundTaskStop.sendHold, in: composer) },
-                    verify: nil))
+                    preflight: { _ in session.heldSend() }, verify: nil)
+                : session.terminalSendPolicy(attach: nil)
+            if let refusal { policy.preflight = { _ in refusal } }
+            return await composer.send(policy: policy)
         }
         /// A follow-through, with `meanwhile` sent as it types.
         func followThrough(_ meanwhile: () async -> Void) async {
@@ -452,7 +459,7 @@ struct ChatStopPlanTests {
 
         await followThrough {
             #expect(await send() == .refused(hold))
-            #expect(composer.notice == ComposerNotice(refusal: hold, route: .chat))
+            #expect(composer.notice == ComposerNotice(refusal: hold, route: route))
         }
         #expect(composer.notice == nil)
         #expect(composer.draft == "and the tests")

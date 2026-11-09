@@ -65,6 +65,8 @@ final actor ScriptedTransport: Transport {
         return try await chatFiles.read(range)
     }
     private(set) var agentPromptParams: [AgentPromptParams] = []
+    /// Every `agent.send_keys` received, in order.
+    private(set) var agentSendKeysParams: [AgentSendKeysParams] = []
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
@@ -675,7 +677,9 @@ final actor ScriptedTransport: Transport {
         return Agent(.fixture(paneID: params.target, status: .working))
     }
 
-    func sendAgentKeys(_: AgentSendKeysParams) async throws {}
+    func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
+        agentSendKeysParams.append(params)
+    }
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
         agentStarts.append(request)

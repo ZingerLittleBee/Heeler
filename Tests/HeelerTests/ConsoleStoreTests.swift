@@ -246,6 +246,43 @@ struct ConsoleStoreTests {
         #expect(cores.session(for: agent, console: store) === store.composerSession(for: agent))
     }
 
+    /// Antigravity CLI's Stop types `/tasks` and its keys after its Esc, and a
+    /// Composer send's paste would land between them. Its keys queue is the
+    /// Agent's, as the Composer is, so the terminal page's Send waits for that
+    /// work too, in any window or rebuilt Chat, and goes once it ends.
+    @Test func everySurfaceOfAnAgentSharesItsKeysQueue() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let store = makeStore(transports: [host.id: transport])
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Agent should arrive") { store.agents.count == 1 }
+        let agent = try #require(store.agents.first)
+        let session = store.composerSession(for: agent)
+        #expect(store.composerSession(for: agent).agentKeys === session.agentKeys)
+        #expect(await session.agentKeys.deliver(["esc"]) == .sent)
+        #expect(await transport.agentSendKeysParams == [AgentSendKeysParams(keys: ["esc"], target: "w1:p1")])
+
+        let panel = ScriptedTransportCallGate()
+        let followThrough = Task { await session.agentKeys.afterQueued { await panel.waitUntilOpen() } }
+        await panel.waitForEntry()
+        let hold = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHold)
+        let terminal = session.terminalSendPolicy(attach: nil)
+        session.composer.replaceDraft(with: "and the tests")
+
+        #expect(await session.composer.send(policy: terminal) == .refused(hold))
+        #expect(session.composer.draft == "and the tests")
+        #expect(session.composer.notice == ComposerNotice(refusal: hold, route: .terminal))
+        #expect(await transport.agentPromptParams.isEmpty)
+
+        await panel.open()
+        await followThrough.value
+        #expect(session.composer.notice == nil)
+        #expect(await session.composer.send(policy: terminal) == .deliveredViaPrompt)
+        #expect(await transport.agentPromptParams.map(\.text) == ["and the tests"])
+    }
+
     /// Actions only Herdr TUI can serve are offered by Server Kind, not
     /// attempted and failed (ADR 0032). Later tickets turn on each core action
     /// as they build it.

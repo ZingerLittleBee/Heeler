@@ -17,9 +17,11 @@ Entries reference the pull request that made the change.
 - Chat shows Antigravity CLI conversations on macOS and Linux Herdr TUI
   Hosts: messages, reasoning, tools with their file changes, background
   commands and compactions. Chat sends prompts and the skills Antigravity
-  CLI offers as commands, stops a turn with Esc, and answers its command,
-  file edit and file creation permissions, its questions (several at once,
-  multi-select or written) and its trust prompt from cards. It holds a
+  CLI offers as commands, stops a turn with Esc and then the background
+  commands that turn left running, holding a message sent meanwhile from
+  Chat or the terminal, and answers its command, file edit and file
+  creation permissions, its questions (several at once, multi-select or
+  written) and its trust prompt from cards. It holds a
   message, with the reason, while Antigravity CLI is working or its screen
   shows no empty input box, since a permission dialog that opened as the
   message went in would take it as its answer. macOS and Linux herdr-core

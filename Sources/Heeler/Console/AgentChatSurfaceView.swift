@@ -66,7 +66,6 @@ struct AgentChatSurfaceView: View {
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
-    @State private var agentKeys: ChatAgentKeysStore
     /// Claude Code's "Switch model?" question, asked again on the phone.
     @State private var switchQuestion: SwitchQuestion?
     /// A status-line switch under way; the controls wait for it, since two
@@ -161,10 +160,6 @@ struct AgentChatSurfaceView: View {
         let paneID = agent.agent.paneID
         let hostID = agent.hostID
         let corePin = session.corePin
-        _agentKeys = State(
-            initialValue: ChatAgentKeysStore { [console] keys in
-                try await console.sendAgentKeys(keys, to: paneID, on: hostID, keepingTo: corePin)
-            })
         _closer = State(
             initialValue: ClosePaneStore(paneTitle: AgentTerminalView.displayTitle(for: agent)) {
                 [console] in
@@ -469,7 +464,7 @@ struct AgentChatSurfaceView: View {
                 },
                 snippets: terminal.snippets,
                 manageSnippets: { isManagingSnippets = true },
-                agentKeys: agentKeys,
+                agentKeys: session.agentKeys,
                 height: composerKeyboardLayout.availableToolsHeight)
             .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
             .disabled(composerKeyboardPresentation != .tools)
@@ -947,14 +942,11 @@ struct AgentChatSurfaceView: View {
         let preflight = policy.preflight
         let isSwitching = { isSwitchingSetting }
         let settle = settleUnansweredSwitch
-        let keys = agentKeys
-        let composer = composer
+        let session = session
         policy.preflight = { text in
             if isSwitching() { return .inputNotReady("Claude Code is switching a setting. Try again in a moment.") }
-            // Stop's follow-through types there too (agy's `/tasks`). Held
-            // before any await: one that starts later finds this send
-            // typing and stops.
-            if let hold = keys.holdSend(saying: AgyBackgroundTaskStop.sendHold, in: composer) { return hold }
+            // Stop's follow-through types there too (agy's `/tasks`).
+            if let hold = session.heldSend() { return hold }
             if let reason = await settle() { return .inputNotReady(reason) }
             return await preflight?(text)
         }
@@ -1326,7 +1318,7 @@ struct AgentChatSurfaceView: View {
     /// keys, as typed keys would arrive.
     private var stopInterrupt: AgentComposerInterrupt {
         console.chatStopPlan(for: agent, program: program).composerInterrupt(
-            context: stopContext, agentKeys: agentKeys, followThrough: stopFollowThrough)
+            context: stopContext, agentKeys: session.agentKeys, followThrough: stopFollowThrough)
     }
 
     /// Antigravity CLI's Stop also ends the commands the turn sent to the

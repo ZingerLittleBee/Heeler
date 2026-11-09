@@ -311,12 +311,13 @@ bringing that step took up to 5.8 s live, so a tap can come before Chat
 knows the command. When it knows none, the follow-through reads the screen
 after the Esc and, unless that read shows no task (its row under the box
 or the footer's task count), wakes the transcript read and waits up to 8 s
-for the tapped turn's commands, never another turn's. A Chat send waits
-while the follow-through reads and types, since it would land between two
-of its keys, and its notice ends with the follow-through: agy is Idle by
-then, so no status change would end it. agy records a kill only with the
-next prompt, so the row reads Started until then (1.5.3, live). The
-terminal's own Stop stays one Esc.
+for the tapped turn's commands, never another turn's. A Composer send,
+from Chat or the terminal page in any window, waits while the
+follow-through reads and types, since it would land between two of its
+keys: the keys queue is the Agent's, as the Composer is. Its notice ends
+with the follow-through: agy is Idle by then, so no status change would
+end it. agy records a kill only with the next prompt, so the row reads
+Started until then (1.5.3, live). The terminal's own Stop stays one Esc.
 
 ## Entry and the terminal
 

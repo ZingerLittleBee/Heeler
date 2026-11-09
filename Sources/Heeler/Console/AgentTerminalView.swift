@@ -1353,16 +1353,7 @@ struct AgentTerminalView: View {
 
     /// This window's Attach, since another window can show the same Agent's Composer.
     private var sendPolicy: ComposerDeliveryPolicy {
-        var policy = ComposerDeliveryPolicy.terminal
-        policy.coreAttach = attach
-        let settings = session.settingOverrides
-        policy.preflight = { _ in
-            if settings.switchingSetting != nil {
-                return .inputNotReady("Claude Code is reading or changing a setting. Try again in a moment.")
-            }
-            return nil
-        }
-        return policy
+        session.terminalSendPolicy(attach: attach)
     }
 
     private var composerChrome: some View {

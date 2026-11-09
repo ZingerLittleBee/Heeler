@@ -13,7 +13,9 @@ enum ChatKeyDelivery: Equatable, Sendable {
 /// Chat's Agent controls: keys pressed in the Agent's program through
 /// `agent.send_keys` (ADR 0024), never through the Attach PTY, or on herdr-core
 /// through an attach of Chat's own (ADR 0035). One request at a time, in the
-/// order pressed, as typed keys would arrive.
+/// order pressed, as typed keys would arrive. One queue per Agent
+/// (`AgentComposerSession.agentKeys`), shared by every Chat and window
+/// showing it and kept by a rebuilt one, as its Composer is.
 @MainActor
 @Observable
 final class ChatAgentKeysStore {
@@ -46,9 +48,11 @@ final class ChatAgentKeysStore {
         return await enqueue(names, unless: check).value
     }
 
-    /// Whether work queued with `afterQueued` has yet to end. Chat holds a
-    /// Composer send meanwhile, which goes outside this queue and could
-    /// land between two of its keys, such as into a `/tasks` typed for Stop.
+    /// Whether work queued with `afterQueued` has yet to end. A Composer
+    /// send, from Chat or the Agent's terminal page in any window, waits
+    /// meanwhile (`AgentComposerSession.heldSend`): it goes outside this
+    /// queue and could land between two of its keys, such as into a
+    /// `/tasks` typed for Stop.
     var isRunningQueuedWork: Bool { queuedWork > 0 }
     @ObservationIgnored private var queuedWork = 0
     /// What runs once no queued work is left (`holdSend`).
