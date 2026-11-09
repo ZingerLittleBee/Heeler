@@ -70,7 +70,7 @@ private struct BlockedDialogCard: View {
                 title: dialog.cardTitle, detail: dialog.positionLabel ?? dialog.pageLabel,
                 isActing: store.progress == .acting,
                 lineLimit: dialog.asksInTitle ? nil : 2, collapse: { store.isCollapsed = true })
-            BlockedScrollingContent(maxHeight: scrollingMaxHeight, fadesEdges: pinsChoices) {
+            BlockedScrollingContent(maxHeight: scrollingMaxHeight) {
                 VStack(alignment: .leading, spacing: 10) {
                     if let source {
                         Label {
@@ -86,7 +86,6 @@ private struct BlockedDialogCard: View {
                 }
                 .disabled(!isReady)
             }
-            .scrollIndicatorsFlash(onAppear: pinsChoices)
             if pinsChoices {
                 trustChoices
                     .disabled(!isReady)
@@ -1110,14 +1109,16 @@ private struct BlockedPlanBox: View {
 
 /// Grows with its content up to `maxHeight`, then scrolls. A smaller parent
 /// proposal, such as the room above a keyboard, also limits the viewport.
+/// A flat cut reads as the card's end, so an option cut there would hide
+/// the answers past it, a decline too. An edge fades instead while more
+/// waits past it, and the scroll indicator flashes as the content starts
+/// to overflow. Content that fits draws as it is.
 struct BlockedScrollingContent<Content: View>: View {
     let maxHeight: CGFloat
-    /// Fades an edge's cut line while more waits past it, where answers
-    /// sit right under the content rather than the card's edge.
-    var fadesEdges = false
     @ViewBuilder let content: Content
     @State private var contentHeight: CGFloat = 0
     @State private var hidden = BlockedEdgeFade.Hidden()
+    @State private var flashes = 0
 
     var body: some View {
         let height = min(max(contentHeight, 1), maxHeight)
@@ -1128,7 +1129,11 @@ struct BlockedScrollingContent<Content: View>: View {
         }
         .frame(minHeight: 0, idealHeight: height, maxHeight: height)
         .scrollBounceBehavior(.basedOnSize)
-        .modifier(BlockedEdgeFade(isActive: fadesEdges, hidden: $hidden))
+        .scrollIndicatorsFlash(trigger: flashes)
+        .modifier(BlockedEdgeFade(hidden: $hidden))
+        .onChange(of: hidden.overflows) { _, overflows in
+            if overflows { flashes += 1 }
+        }
     }
 }
 
@@ -1136,32 +1141,29 @@ private struct BlockedEdgeFade: ViewModifier {
     struct Hidden: Equatable {
         var above = false
         var below = false
+
+        var overflows: Bool { above || below }
     }
 
-    let isActive: Bool
     @Binding var hidden: Hidden
 
     func body(content: Content) -> some View {
-        if isActive {
-            content
-                .onScrollGeometryChange(for: Hidden.self) { geometry in
-                    let offset = geometry.contentOffset.y + geometry.contentInsets.top
-                    return Hidden(
-                        above: offset > 1,
-                        below: offset + geometry.containerSize.height < geometry.contentSize.height - 1)
-                } action: { _, next in
-                    hidden = next
+        content
+            .onScrollGeometryChange(for: Hidden.self) { geometry in
+                let offset = geometry.contentOffset.y + geometry.contentInsets.top
+                return Hidden(
+                    above: offset > 1,
+                    below: offset + geometry.containerSize.height < geometry.contentSize.height - 1)
+            } action: { _, next in
+                hidden = next
+            }
+            .mask {
+                VStack(spacing: 0) {
+                    edge(hides: hidden.above, from: .bottom, to: .top)
+                    Rectangle()
+                    edge(hides: hidden.below, from: .top, to: .bottom)
                 }
-                .mask {
-                    VStack(spacing: 0) {
-                        edge(hides: hidden.above, from: .bottom, to: .top)
-                        Rectangle()
-                        edge(hides: hidden.below, from: .top, to: .bottom)
-                    }
-                }
-        } else {
-            content
-        }
+            }
     }
 
     private func edge(hides: Bool, from start: UnitPoint, to end: UnitPoint) -> some View {
