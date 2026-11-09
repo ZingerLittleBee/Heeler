@@ -86,9 +86,10 @@ enum NodeToolchainProbe {
     /// exits 0 and leaves the caller's `PATH` alone, so run it in a subshell.
     ///
     /// A directory counts only when the binary its `node` runs sits in a
-    /// Node.js install's `bin`, so another program's private runtime, such as
-    /// cursor-agent's `dist-package/node` behind a mise shim, is passed over
-    /// before its version is read. The path printed is a manager's own stable
+    /// Node.js install's `bin` under a Node.js name: `node`, `nodejs`, or a
+    /// versioned one, as Fedora's `/usr/bin/node` leads to `node-22`. So another
+    /// program's private runtime, such as cursor-agent's `dist-package/node`
+    /// behind a mise shim, is passed over before its version is read. The path printed is a manager's own stable
     /// link where the search found one (fnm's default alias, Homebrew's `bin`),
     /// which follows that manager's upgrades. Otherwise it is the binary itself:
     /// a shim (mise, Volta, asdf, nodenv, proto) cannot run under a service, and
@@ -101,7 +102,9 @@ enum NodeToolchainProbe {
         "__h_try() { [ -z \"$__h_npm\" ] || return 0; [ -n \"$1\" ] && [ -x \"$1/node\" ] || return 1; "
             + "__h_p=\"$1${2:+:$2}\"; "
             + "__h_e=$(PATH=\"$__h_p:$PATH\"; node -p process.execPath </dev/null 2>/dev/null) || return 1; "
-            + "case \"$__h_e\" in /*/bin/node|/*/bin/nodejs) ;; *) return 1 ;; esac; "
+            + "case \"${__h_e%/*}\" in /*/bin) ;; *) return 1 ;; esac; "
+            + "case \"${__h_e##*/}\" in node|nodejs|node[0-9]*|node-[0-9]*|nodejs[0-9]*|nodejs-[0-9]*) ;; "
+            + "*) return 1 ;; esac; "
             + "__h_v=$(PATH=\"$__h_p:$PATH\"; node -p process.versions.node </dev/null 2>/dev/null) "
             + "|| return 1; "
             + "if ! [ \"${__h_v%%.*}\" -ge \(minimumMajorVersion) ] 2>/dev/null; then "

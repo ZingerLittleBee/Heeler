@@ -420,6 +420,18 @@ class ProbeTests(HelperScriptCase):
             with self.subTest(shell=shell):
                 self.assertEqual(self.probe(shell)["node"], "missing")
 
+    def test_a_distributions_versioned_binary_is_found(self) -> None:
+        # Fedora's /usr/bin/node links to node-22; openSUSE's to node22.
+        for binary in ("/usr/bin/node-22", "/usr/bin/node22", "/usr/bin/nodejs22"):
+            self.node_in(self.bin, binary)
+            for shell in shells():
+                with self.subTest(binary=binary, shell=shell):
+                    self.assertEqual(self.probe(shell)["node"], f"found {binary}")
+        for binary in ("/opt/tool/libexec/node-22", "/usr/bin/node-gyp", "/usr/bin/node22/lib/node"):
+            self.node_in(self.bin, binary)
+            with self.subTest(binary=binary):
+                self.assertEqual(self.probe()["node"], "missing")
+
     def test_a_managers_default_link_is_named_as_found(self) -> None:
         alias = self.home / ".local/share/fnm/aliases/default/bin"
         self.node_in(alias, f"{self.root}/fnm/node-versions/v22.1.0/installation/bin/node")
