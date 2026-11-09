@@ -182,6 +182,7 @@ Add a Windows machine over OpenSSH:
 - **OpenCode Chat is off:** OpenCode Agents offer the terminal only.
 - **Starting a new conversation with `/new`:** After `/new` in Codex, use the terminal until you exit and run `codex resume --no-daemon`. In Pi without the Host Helper, `/new` is noticed only after a Chat message fails to appear in the old conversation.
 - **Federated Terminals:** Omitted. Add the other machine as its own Host.
+- **Wrapper scripts:** A script that runs an Agent as its child stays in **Terminals**. Start the Agent with `exec`, as in `exec claude "$@"`, to list it in **Agents**.
 - **First-time `zsh` without `~/.zshrc`:** `zsh` opens its wizard and a new Agent waits until you finish it or create `~/.zshrc`.
 
 Last checked on 2026-11-06 against herdr-core 0.1.18 and the Herdr desktop app 0.1.13.
