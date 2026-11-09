@@ -1,0 +1,55 @@
+import SwiftUI
+
+/// A terminal screen leaving for an Agent's screen with its keyboard up: a
+/// Shell Terminal for an Agent its shell started or one picked in its
+/// Workspace drawer, and an Agent's terminal for another Agent from its
+/// switcher, its drawer or the new-agent sheet.
+///
+/// An Agent that opens on its terminal takes the keyboard over through the
+/// handoff, as Back carries it. Chat may come up with nothing to type into (a
+/// trust card, a conversation to choose or still to come), where a Composer
+/// that took the keyboard would sit over the page's own buttons. So the
+/// keyboard goes down first, on the screen being left, and Chat comes in
+/// once UIKit has finished hiding it: a hide still running as the screens
+/// change animates the arriving screen's input row, which can leave the
+/// window mid-animation, and UIKit never reports that animation ended (UI
+/// tests then wait on it until the screen is left). Chat's own switcher and
+/// drawer carry the keyboard from one Composer to another and do not come
+/// here.
+///
+/// The screen sets `awaitingHide` before it hides its keyboard, and only when
+/// UIKit animates the hide; this completes that departure once the hide is
+/// reported done, or after `keyboardHideLeash`.
+struct AgentKeyboardDeparture<Departure: Equatable>: ViewModifier {
+    /// How long an Agent's Chat waits for UIKit to report the keyboard gone
+    /// before it takes the screen anyway.
+    static var keyboardHideLeash: Duration { .seconds(1) }
+
+    @Binding var awaitingHide: Departure?
+    /// Routes as the screen now stands, which may have changed while the
+    /// keyboard went down.
+    let complete: @MainActor (Departure) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(
+                NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)
+            ) { _ in
+                finish()
+            }
+            // A hide something cuts short (another responder taking the
+            // keyboard) is never reported done; Chat comes in anyway.
+            .task(id: awaitingHide) {
+                guard awaitingHide != nil else { return }
+                try? await Task.sleep(for: Self.keyboardHideLeash)
+                guard !Task.isCancelled else { return }
+                finish()
+            }
+    }
+
+    private func finish() {
+        guard let departure = awaitingHide else { return }
+        awaitingHide = nil
+        complete(departure)
+    }
+}

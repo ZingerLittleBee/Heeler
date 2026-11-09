@@ -1045,6 +1045,7 @@
 		FAE0A146BA645B872E898B49 /* AgyInputBoxDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA96C6D39E47A231E6DFCB51 /* AgyInputBoxDetector.swift */; };
 		FB1A131B80DCF0BE6CEE8120 /* GitProbe+Failures.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17016197F052B8BC51732FA /* GitProbe+Failures.swift */; };
 		FB3A2B881CE2C93601F1A90F /* SkillFrontmatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CB3A0C20671F436B322D0F3 /* SkillFrontmatter.swift */; };
+		FB3C5A208B4E8B1C84F49CF0 /* AgentKeyboardDeparture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 775A482172AE33AAA009D088 /* AgentKeyboardDeparture.swift */; };
 		FB8356C03D8D6EDA7F8EC240 /* AgentReferenceInsertionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5F3C1C292639BE08C0F7A7A /* AgentReferenceInsertionTests.swift */; };
 		FBA523FF01478B2A357F2E29 /* AgentUsageTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEAE4D5EF1EB5AD0E27E7865 /* AgentUsageTab.swift */; };
 		FBC2F27922BF5A627A27C339 /* EventsSessionLatencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F565A5BE8CC4ABA3FA10D57 /* EventsSessionLatencyTests.swift */; };
@@ -1585,6 +1586,7 @@
 		76FEA2FB18C10525E4B4F1D8 /* ConsoleListPresentationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleListPresentationStore.swift; sourceTree = "<group>"; };
 		772B52761FEDCED5A3F0E633 /* ChatTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTimelineView.swift; sourceTree = "<group>"; };
 		775417BCAF4E4110FDEF5A75 /* AgentListFieldsPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentListFieldsPreview.swift; sourceTree = "<group>"; };
+		775A482172AE33AAA009D088 /* AgentKeyboardDeparture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentKeyboardDeparture.swift; sourceTree = "<group>"; };
 		7780BE78D868DB0A8275E6FB /* Heeler.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Heeler.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		77DB1F6C018F79AFBFCCD8F5 /* GrokCardBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokCardBuilder.swift; sourceTree = "<group>"; };
 		7859F47BE902D8B547E59220 /* UntrackedDirectoryListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UntrackedDirectoryListing.swift; sourceTree = "<group>"; };
@@ -2945,6 +2947,7 @@
 				E7F93F9925E94FF2C2B0254B /* AgentDirectInputChrome.swift */,
 				EAF7CDC80C0B17DEDB5F55A8 /* AgentDirectInputPresentation.swift */,
 				370A6461E16FB281B88126B4 /* AgentFocusCoordinator.swift */,
+				775A482172AE33AAA009D088 /* AgentKeyboardDeparture.swift */,
 				27950D09736733112C4C4AEA /* AgentKindMark.swift */,
 				4692E780178FDFA1CF9537B1 /* AgentName.swift */,
 				AAE2FC36626CBCBF497706C4 /* AgentRowLayout.swift */,
@@ -3883,6 +3886,7 @@
 				FA4096D59D2F576F860238B6 /* AgentDirectInputPresentation.swift in Sources */,
 				A6747734905576A8861C945A /* AgentFocusCoordinator.swift in Sources */,
 				390E9313FFE9AA540C6B6113 /* AgentInputModeSettings.swift in Sources */,
+				FB3C5A208B4E8B1C84F49CF0 /* AgentKeyboardDeparture.swift in Sources */,
 				4CDBD98DE1180E9C51E50A8C /* AgentKindMark.swift in Sources */,
 				E68A1DDFA6C5F618BBB79AB7 /* AgentLayoutErrorView.swift in Sources */,
 				28F93D9F39898FEB4093A5A2 /* AgentLayoutTokensEditing.swift in Sources */,
