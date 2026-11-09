@@ -2227,6 +2227,45 @@ struct BlockedCardStoreTests {
         #expect(!store.replacesComposer)
     }
 
+    /// A turn-end read that fails is still the one read. Once its card shows,
+    /// a failed read keeps it and reads on, until a read shows the dialog gone.
+    @Test func aFailedTurnEndReadEndsTheReadsUnlessACardShows() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        await pane.failReads(true)
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .working)
+        store.update(activity: .idle)
+
+        await store.refresh()
+        await store.refresh()
+
+        #expect(await pane.reads == 1)
+        #expect(store.content == .none)
+        #expect(!store.replacesComposer)
+
+        let edit = FakePane(try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40"))
+        let shown = Self.store(.agy, pane: edit)
+        shown.update(activity: .working)
+        shown.update(activity: .idle)
+        await shown.refresh()
+        guard case .card = shown.content else {
+            Issue.record("Expected the file edit's card, got \(shown.content)")
+            return
+        }
+        await edit.failReads(true)
+        await shown.refresh()
+        guard case .card = shown.content else {
+            Issue.record("Expected the card to stay through a failed read, got \(shown.content)")
+            return
+        }
+        await edit.failReads(false)
+        await edit.show(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        await shown.refresh()
+        #expect(shown.content == .none)
+        await shown.refresh()
+        #expect(await edit.reads == 3)
+    }
+
     /// A dialog Heeler can't name shows no card at a turn's end: only a
     /// Blocked agy gets the generic one.
     @Test func anUnknownScreenAtAgysTurnEndShowsNoCard() async throws {
