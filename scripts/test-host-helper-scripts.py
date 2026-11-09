@@ -420,6 +420,29 @@ class ProbeTests(HelperScriptCase):
             with self.subTest(shell=shell):
                 self.assertEqual(self.probe(shell)["node"], "missing")
 
+    def test_a_bundled_node_first_on_the_path_gives_way_to_a_later_one(self) -> None:
+        # A fish config.fish that activates mise puts cursor-agent's runtime
+        # ahead of the system's Node.js on the exec's PATH.
+        bundled = self.root / "mise/installs/cursor-agent/latest/dist-package"
+        self.node_in(bundled, f"{bundled}/node")
+        system = self.root / "system/bin"
+        self.node_in(system, "/usr/bin/node")
+        self.env["PATH"] = f"{bundled}:{system}:{self.env['PATH']}"
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], "found /usr/bin/node")
+
+    def test_a_bundled_node_first_on_the_login_shells_path_gives_way_to_a_later_one(self) -> None:
+        bundled = self.root / "mise/installs/cursor-agent/latest/dist-package"
+        self.node_in(bundled, f"{bundled}/node")
+        system = self.root / "system/bin"
+        self.node_in(system, "/usr/bin/node")
+        self.tool("fish", f'#!/bin/sh\necho "PATH=/wrong"\nPATH="{bundled}:{system}:/usr/bin:/bin" exec /usr/bin/env\n')
+        self.env["SHELL"] = str(self.bin / "fish")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], "found /usr/bin/node")
+
     def test_a_distributions_versioned_binary_is_found(self) -> None:
         # Fedora's /usr/bin/node links to node-22; openSUSE's to node22.
         for binary in ("/usr/bin/node-22", "/usr/bin/node22", "/usr/bin/nodejs22"):

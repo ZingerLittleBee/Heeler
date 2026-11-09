@@ -5,7 +5,7 @@ import Foundation
 /// is where most Node.js installs put themselves on `PATH`, so the probe
 /// looks where each common install method keeps a default `node` and `npm`,
 /// in the order an interactive shell usually ends up with: version managers
-/// first, then what `PATH` already finds, then system-wide package managers,
+/// first, then each directory on `PATH`, then system-wide package managers,
 /// and last the login shell itself, bounded by a watchdog.
 ///
 /// A directory counts only when its `npm` runs and the `node` it would start
@@ -68,7 +68,7 @@ enum NodeToolchainProbe {
             + "[ -n \"$__h_old\" ] || __h_old=\"$__h_v\"; return 1; fi; "
             + "PATH=\"$__h_p:$PATH\" \"$1/npm\" --version </dev/null >/dev/null 2>&1 || return 1; "
             + "__h_npm=\"$__h_p\"; }",
-    ] + searches(for: "npm") + [
+    ] + searches + [
         // Without an npm, a node alone still says what to fix.
         "if [ -z \"$__h_npm\" ]; then if [ -z \"$__h_old\" ]; then "
             + "__h_v=$(PATH=\"${__h_lp:+$__h_lp:}$PATH\"; node -p process.versions.node </dev/null 2>/dev/null); "
@@ -112,7 +112,7 @@ enum NodeToolchainProbe {
             + "[ -n \"$__h_old\" ] || __h_old=\"$__h_v\"; return 1; fi; "
             + "__h_npm=\"$__h_p\"; __h_at=\"$__h_e\"; "
             + "if [ \"$3\" = keep ]; then case \"$1\" in /*) __h_at=\"$1/node\" ;; esac; fi; }",
-    ] + searches(for: "node") + [
+    ] + searches + [
         "if [ -n \"$__h_npm\" ]; then printf \"node %s\\n\" \"$__h_at\"; "
             + "elif [ -n \"$__h_old\" ]; then printf \"node-old %s\\n\" \"$__h_old\"; "
             + "else printf \"node-missing\\n\"; fi",
@@ -129,12 +129,10 @@ enum NodeToolchainProbe {
         "/nix/var/nix/profiles/default/bin", "/snap/bin", "/opt/local/bin",
     ]
 
-    /// Tries each common install method's directory for `tool`, in the order
-    /// the type's documentation gives. A third word `keep` marks a link its
-    /// manager keeps in place across versions, which only
-    /// ``nodeOnlyScript`` reads.
-    private static func searches(for tool: String) -> [String] {
-        [
+    /// Tries each common install method's directory, in the order the type's
+    /// documentation gives. A third word `keep` marks a link its manager keeps
+    /// in place across versions, which only ``nodeOnlyScript`` reads.
+    private static let searches = [
         "__h_data=\"${XDG_DATA_HOME:-$HOME/.local/share}\"",
         "__h_try \"${MISE_DATA_DIR:-$__h_data/mise}/shims\"",
         "__h_try \"${VOLTA_HOME:-$HOME/.volta}/bin\"",
@@ -157,22 +155,22 @@ enum NodeToolchainProbe {
         "__h_try \"${N_PREFIX:-$HOME/n}/bin\" \"\" keep",
         "__h_try \"${PROTO_HOME:-$HOME/.proto}/shims\"",
         "for __h_d in \"$PNPM_HOME\" \"$HOME/Library/pnpm\" \"$__h_data/pnpm\"; do __h_try \"$__h_d\" \"\" keep; done",
-        // Homebrew, the system's packages, and the app's PATH prefixes, then
-        // Homebrew itself for a launcher, which gets no prefixes, its
-        // versioned formulae, which it keeps off PATH, and the rest. One of
-        // those `PATH` finds first keeps its link as the loop would.
-        "__h_node=$(command -v \(tool) 2>/dev/null) && case \"${__h_node%/*}\" in "
-            + "\(stableDirectories.joined(separator: "|"))) __h_try \"${__h_node%/*}\" \"\" keep ;; "
-            + "*) __h_try \"${__h_node%/*}\" ;; esac",
+        // Each directory on PATH in turn, Homebrew's, the system's and the
+        // app's PATH prefixes among them, so one passed over leaves the rest
+        // to try. Then Homebrew itself for a launcher, which gets no
+        // prefixes, its versioned formulae, which it keeps off PATH, and the
+        // rest.
+        eachDirectory(of: "$PATH", with: ""),
         "for __h_d in \(stableDirectories.joined(separator: " ")); do __h_try \"$__h_d\" \"\" keep; done",
-        // Last, the login shell's own PATH, from its rc files, kept whole
-        // after npm's directory because shims there may need other tools
-        // on it (asdf 0.16 runs `asdf`). `env` prints it the same way from
-        // all four shells. The output goes to a file, so a process the
-        // setup leaves behind cannot hold the exec open, and a watchdog
-        // ends a setup that waits, with the commands it started directly
-        // (shells without a terminal have no job control to end the rest).
-        // The watchdog takes its own `sleep` with it when it is not needed.
+        // Last, each directory on the login shell's own PATH, from its rc
+        // files, with that PATH kept whole after it because shims there may
+        // need other tools on it (asdf 0.16 runs `asdf`). `env` prints it
+        // the same way from all four shells. The output goes to a file, so
+        // a process the setup leaves behind cannot hold the exec open, and a
+        // watchdog ends a setup that waits, with the commands it started
+        // directly (shells without a terminal have no job control to end the
+        // rest). The watchdog takes its own `sleep` with it when it is not
+        // needed.
         "if [ -z \"$__h_npm\" ] && [ -n \"$SHELL\" ]; then case \"${SHELL##*/}\" in bash|zsh|fish|ksh) "
             + "__h_f=$(mktemp 2>/dev/null) && { "
             + "\"$SHELL\" -lic /usr/bin/env </dev/null >\"$__h_f\" 2>/dev/null & __h_s=$!; "
@@ -180,9 +178,19 @@ enum NodeToolchainProbe {
             + "pkill -9 -P \"$__h_s\"; kill -9 \"$__h_s\" ) </dev/null >/dev/null 2>&1 & __h_w=$!; "
             + "{ wait \"$__h_s\"; kill \"$__h_w\"; wait \"$__h_w\"; } 2>/dev/null; "
             + "__h_lp=$(sed -n \"s/^PATH=//p\" \"$__h_f\" | tail -n 1 | tr -d \"\\r\"); rm -f \"$__h_f\"; "
-            + "__h_node=$(PATH=\"$__h_lp\"; command -v \(tool) 2>/dev/null); "
-            + "case \"$__h_node\" in /*) __h_try \"${__h_node%/*}\" \"$__h_lp\";; esac; }; ;; esac; fi",
-        ]
+            + eachDirectory(of: "$__h_lp", with: "$__h_lp") + "; }; ;; esac; fi",
+    ]
+
+    /// Tries each absolute directory on the `:`-separated `list` in order,
+    /// with `extra` after it, until one is chosen. One of
+    /// ``stableDirectories`` keeps its link however the search reaches it.
+    /// The list is split by hand, leaving `IFS`, globbing and a launcher's
+    /// positional parameters alone.
+    private static func eachDirectory(of list: String, with extra: String) -> String {
+        "__h_r=\"\(list):\"; while [ -n \"$__h_r\" ] && [ -z \"$__h_npm\" ]; do "
+            + "__h_d=\"${__h_r%%:*}\"; __h_r=\"${__h_r#*:}\"; case \"$__h_d\" in "
+            + "\(stableDirectories.joined(separator: "|"))) __h_try \"$__h_d\" \"\(extra)\" keep ;; "
+            + "/*) __h_try \"$__h_d\" \"\(extra)\" ;; esac; done"
     }
 }
 

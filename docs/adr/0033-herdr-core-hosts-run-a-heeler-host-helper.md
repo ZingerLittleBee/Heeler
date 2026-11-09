@@ -364,10 +364,13 @@ Hosts are unchanged.
   `dist-package/node` in a versioned directory, which cursor-agent replaces on
   every update: mise's shim, which the probe tries first, runs that binary
   there, since mise's own Node.js was installed but not active. The probe now
-  passes over a binary outside a Node.js install's `bin`, so a Host with only
-  such a runtime reads Node.js Missing. Services
-  installed before that change keep their path until the next Install, Update
-  or Repair. The check has run against scripts and fake
+  passes over a binary outside a Node.js install's `bin` and tries every
+  directory on the exec's `PATH`, and on the login shell's, rather than only
+  the first `node` each finds, so such a runtime ahead of the system's Node.js
+  on `PATH`, as a mise-activated fish puts it, does not hide it. A Host with
+  only such a runtime reads Node.js Missing. Services installed before that
+  change keep their path until the next Install, Update or Repair. The check
+  has run against scripts and fake
   service managers, and on one Linux Host: on hc-lab on 2026-11-02 (Debian 13,
   systemd 257, Host Helper 0.5.3, Node.js v22.23.3), renaming the Node.js the
   unit names under a running Helper read **Node.js Moved** with Repair, and Usage

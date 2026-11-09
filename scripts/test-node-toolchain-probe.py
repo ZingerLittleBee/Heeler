@@ -216,6 +216,12 @@ class ProbeTests(unittest.TestCase):
     def test_the_path_is_used_when_nothing_else_is_there(self) -> None:
         self.assert_found(self.node(self.system, "20.5.0"), "20.5.0")
 
+    def test_an_old_npm_first_on_the_path_gives_way_to_a_later_one(self) -> None:
+        self.node(self.system, "18.19.0")
+        later = self.node(self.root / "later/bin")
+        self.env["PATH"] = f"{self.system}:{later}:/usr/bin:/bin"
+        self.assert_found(later)
+
     def login_shell(self, name: str, path: str) -> None:
         """A login shell whose rc files set `path` and print noise."""
         self.env["SHELL"] = str(self.tool(
