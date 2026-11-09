@@ -32,6 +32,7 @@ struct ConsoleRestLocalizationTests {
     @Test(arguments: [
         ("ja", ["Blocked": "対応待ち", "Working": "作業中", "Agent status Done": "完了", "Idle": "待機中"]),
         ("zh-Hans", ["Blocked": "待处理", "Working": "工作中", "Agent status Done": "已完成", "Idle": "空闲"]),
+        ("zh-Hant", ["Blocked": "待處理", "Working": "工作中", "Agent status Done": "已完成", "Idle": "閒置"]),
     ])
     func statusWordsFollowTheGlossary(language: String, words: [String: String]) throws {
         let table = try #require(LocalizationTables.table("Localizable", localization: language))
