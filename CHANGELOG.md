@@ -28,6 +28,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Center a checkout's icon on its title in the Agents list's By Workspace cards. A pinned Agent's card no longer lifts the icon above the title.
 - Show in the app's language the text that stayed in English under Japanese: each Host's line in Settings > Notifications, the Host Helper sheet's file counts, and a finished Grok Build subagent's tool calls, turns and duration. Short lists, such as a Host's Agent counts, join with the language's own separator, and a sentence closes with its own full stop. (PR #662)
 - Keep Settings > Notifications steady while Hosts reconnect. A Host being read again keeps showing its last state, and one Host's connection retries no longer read every other Host again. (PR #661)
 - Show the Host detail's 30-day Usage cost on its own line with the token count beneath it, so a large figure no longer wraps its last digit. The Usage widgets keep every cost whole: a long Host or program name truncates first, and a cost that still does not fit shrinks, drops its cents, then reads in thousands or millions, rather than ending in an ellipsis. The large widget no longer lists the Hosts it leaves out. (PR #660)
