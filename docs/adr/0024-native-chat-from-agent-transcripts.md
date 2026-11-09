@@ -765,9 +765,12 @@ turn stands in for Blocked: an idle agy's screen is read for a card then.
 The reducer offers every open call to the card whatever herdr reports,
 since an idle command row reads as without a result while its Amend field
 shows; a command sent to the background has its result and keeps no card.
-An idle agy that has reported no session is read for the trust prompt
-alone, as Codex is. The card matches a command or a file by the whole
-command or path the screen shows, or by its start where the screen cut it
+The transcript shows such a call only a poll after herdr's idle, so an agy
+that herdr has just moved from Working to idle is read once too, and a read
+that names no dialog ends it. An idle agy that has reported no session is
+read for the trust prompt alone, as Codex is. The card matches a command
+or a file by the whole command or path the screen shows, or by its start
+where the screen cut it
 (a command then ends in `…`, a path reaches the screen's edge), and a
 question by its text. It shows the command, the path and the changed lines
 as the screen draws them, and takes from the call only what the screen cut:

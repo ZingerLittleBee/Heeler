@@ -2128,6 +2128,114 @@ struct BlockedCardStoreTests {
         #expect(store.replacesComposer)
     }
 
+    // MARK: Antigravity CLI's turn end
+
+    /// herdr reports agy idle on a multi-select page whose hint row the
+    /// screen cuts and on a file edit, and the transcript shows the call
+    /// only a poll later. The turn's end reads the screen, so the card
+    /// shows without the call, keeps showing through a transcript still
+    /// without it, and the dialog going ends the reads.
+    @Test func aDialogAgyReportsIdleShowsAtItsTurnEnd() async throws {
+        let expected: [String: BlockedDialogKind] = [
+            "agy-113-ask-question-multiselect-q1-of-2-62x41": .agyQuestion,
+            "agy-47-perm-file-edit-default-120x40": .agyFileEdit,
+        ]
+        for (stem, kind) in expected {
+            let pane = FakePane(try ScreenFixture.screen(stem))
+            let store = Self.store(.agy, pane: pane)
+            store.update(activity: .working)
+            store.update(activity: .idle)
+
+            await store.refresh()
+
+            guard case .card(let card) = store.content else {
+                Issue.record("Expected \(stem)'s card, got \(store.content)")
+                continue
+            }
+            #expect(card.dialog.kind == kind)
+            #expect(card.request == nil)
+
+            store.update(transcript: Self.agyTranscript(open: [], status: .running))
+            await store.refresh()
+            guard case .card = store.content else {
+                Issue.record("Expected \(stem)'s card to stay, got \(store.content)")
+                continue
+            }
+
+            await pane.show(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+            await store.refresh()
+            #expect(store.content == .none)
+            let reads = await pane.reads
+            await store.refresh()
+            #expect(await pane.reads == reads, "\(stem)")
+        }
+    }
+
+    /// A turn that ends at agy's input box costs one read.
+    @Test func aPlainAgyTurnEndReadsTheScreenOnce() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .working)
+        store.update(activity: .idle)
+
+        await store.refresh()
+        await store.refresh()
+
+        #expect(await pane.reads == 1)
+        #expect(store.content == .none)
+        #expect(!store.replacesComposer)
+    }
+
+    /// A dialog Heeler can't name shows no card at a turn's end: only a
+    /// Blocked agy gets the generic one.
+    @Test func anUnknownScreenAtAgysTurnEndShowsNoCard() async throws {
+        let pane = FakePane(
+            ScreenFixture.synthetic([
+                "\(SGR.reset)\(SGR.bold)\u{1B}[38;5;3mSubagent\(SGR.reset)",
+                "\(SGR.reset)\u{1B}[38;5;8m" + String(repeating: "─", count: 62) + SGR.reset,
+                "",
+                "\(SGR.bold)Allow this subagent to start?\(SGR.reset)",
+                "\(SGR.reset)\u{1B}[38;5;12m> 1. Yes\(SGR.reset)",
+                "  2. No",
+                "",
+                "  \(SGR.bold)\u{1B}[38;5;12m↑/↓\(SGR.reset)\u{1B}[38;5;8m Navigate\(SGR.reset)",
+                "\(SGR.reset)\u{1B}[38;5;8mesc to cancel\(SGR.reset)",
+            ]))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .working)
+        store.update(activity: .idle)
+
+        await store.refresh()
+        await store.refresh()
+
+        #expect(store.content == .none)
+        #expect(await pane.reads == 1)
+    }
+
+    /// Only Working to idle is a turn's end, and only agy is read there.
+    @Test func noOtherChangeReadsAtATurnEnd() async throws {
+        let edit = try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40")
+        let answered = FakePane(edit)
+        let afterBlocked = Self.store(.agy, pane: answered)
+        afterBlocked.update(activity: .blocked)
+        afterBlocked.update(activity: .idle)
+        await afterBlocked.refresh()
+        #expect(await answered.reads == 0)
+
+        let started = FakePane(edit)
+        let unknownToIdle = Self.store(.agy, pane: started)
+        unknownToIdle.update(activity: .idle)
+        await unknownToIdle.refresh()
+        #expect(await started.reads == 0)
+
+        let claude = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
+        let claudeStore = Self.store(.claude, pane: claude)
+        claudeStore.update(activity: .working)
+        claudeStore.update(activity: .idle)
+        await claudeStore.refresh()
+        #expect(await claude.reads == 0)
+    }
+
     // MARK: Helpers
 
     private static let openCodeBlockedNote =

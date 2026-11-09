@@ -63,7 +63,8 @@ struct BlockedCard: Equatable, Sendable {
 /// Agent the store reads it every second, and also an idle Claude whose
 /// AskUserQuestion call is open (see `readsIdleQuestion`), an idle
 /// Antigravity CLI with a call that asks the user open
-/// (`readsIdleGatedCall`), and an idle Codex or Antigravity CLI that has
+/// (`readsIdleGatedCall`) or that herdr has just moved from Working to idle
+/// (`readsTurnEnd`), and an idle Codex or Antigravity CLI that has
 /// reported no session (`readsIdleTrust`). An action reads it
 /// again first and sends nothing if the dialog changed, waits until the
 /// dialog has shown for a moment, sends the plan's keys while checking
@@ -153,6 +154,12 @@ final class BlockedCardStore {
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private let clock: BlockedCardClock
     private var activity: ChatAgentActivity = .unknown
+    /// See `readsIdleGatedCall`: an Antigravity CLI that herdr has just
+    /// moved from Working to idle, read once for a dialog herdr reports
+    /// idle on, before the transcript shows its call. The next status
+    /// change ends it, and so does a read that names no dialog, or one
+    /// that fails before any shows.
+    @ObservationIgnored private var readsTurnEnd = false
     @ObservationIgnored private var awaitingSession = false
     @ObservationIgnored private var pendingRequests: [ChatPendingRequest] = []
     /// Antigravity CLI permission calls a confirmed answer went to, until
@@ -244,7 +251,9 @@ final class BlockedCardStore {
     /// the user).
     func update(activity: ChatAgentActivity) {
         guard activity != self.activity else { return }
+        let previous = self.activity
         self.activity = activity
+        readsTurnEnd = program == .agy && previous == .working && activity == .idle
         if activity == .blocked { quietSince = clock.now() }
         if !readsScreen, progress != .acting { clear() }
         updateWatching()
@@ -320,7 +329,9 @@ final class BlockedCardStore {
     /// hint row the screen cuts. agy writes a call that asks the user as
     /// its dialog opens and its result only once answered, so an open one
     /// stands in for Blocked there. A command sent to the background has
-    /// its result and keeps no card.
+    /// its result and keeps no card. The transcript shows the call only a
+    /// poll after herdr's idle, so an agy that herdr has just moved from
+    /// Working to idle is also read once (`readsTurnEnd`).
     private var readsIdleGatedCall: Bool {
         program == .agy && activity == .idle
             && pendingRequests.contains { AgyToolCall.userGatedTools.contains($0.toolName) }
@@ -337,7 +348,7 @@ final class BlockedCardStore {
 
     /// Whether the screen may show a dialog the card answers.
     private var readsScreen: Bool {
-        activity == .blocked || readsIdleQuestion || readsIdleGatedCall || readsIdleTrust
+        activity == .blocked || readsIdleQuestion || readsIdleGatedCall || readsIdleTrust || readsTurnEnd
     }
 
     // MARK: Actions
@@ -563,10 +574,23 @@ final class BlockedCardStore {
                 if note != unreadableNote { unreadableNote = note }
                 content = .unreadable
             }
+            if content == .none { endTurnEndRead() }
             return
         }
         releaseIfChanged(observation)
         present(observation)
+        if observation.result.dialog == nil { endTurnEndRead() }
+    }
+
+    /// The turn-end read found no dialog it names, or failed: it was the
+    /// one read (`readsTurnEnd`). Unless another reason reads the screen,
+    /// the card clears, so a screen Heeler can't name never stays a
+    /// generic card there.
+    private func endTurnEndRead() {
+        guard readsTurnEnd else { return }
+        readsTurnEnd = false
+        if !readsScreen, progress != .acting { clear() }
+        updateWatching()
     }
 
     /// Brings the controls back once the dialog an answer showed no effect
