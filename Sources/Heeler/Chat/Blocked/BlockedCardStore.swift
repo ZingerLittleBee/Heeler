@@ -147,13 +147,20 @@ final class BlockedCardStore {
     /// card's place shows that Chat is reading. A Blocked Agent takes no
     /// message, and its dialog is one read away. An idle Agent read for a
     /// dialog keeps the Composer until a card shows: most of those reads
-    /// find none.
-    var replacesComposer: Bool { content != .none || activity == .blocked }
+    /// find none. Nor does a Blocked one whose answer just handed the turn
+    /// back (`answerHandedTurnBack`).
+    var replacesComposer: Bool { content != .none || (activity == .blocked && !answerHandedTurnBack) }
 
     @ObservationIgnored private let io: BlockedScreenIO
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private let clock: BlockedCardClock
     private var activity: ChatAgentActivity = .unknown
+    /// An answer that hands the turn back (a decline or Esc) took its dialog
+    /// off the screen. herdr can report Blocked a moment longer, so the
+    /// Composer comes back with that read rather than herdr's next status,
+    /// and the focus the answer asks for lands on it. The next status ends
+    /// it, and so does another card.
+    private var answerHandedTurnBack = false
     /// See `readsIdleGatedCall`: an Antigravity CLI that herdr has just
     /// moved from Working to idle, read once for a dialog herdr reports
     /// idle on, before the transcript shows its call. The next status
@@ -253,6 +260,7 @@ final class BlockedCardStore {
         guard activity != self.activity else { return }
         let previous = self.activity
         self.activity = activity
+        if answerHandedTurnBack { answerHandedTurnBack = false }
         readsTurnEnd = program == .agy && previous == .working && activity == .idle
         if activity == .blocked { quietSince = clock.now() }
         if !readsScreen, progress != .acting { clear() }
@@ -573,6 +581,7 @@ final class BlockedCardStore {
                 let note = whyBlocked(on: nil)
                 if note != unreadableNote { unreadableNote = note }
                 content = .unreadable
+                if answerHandedTurnBack { answerHandedTurnBack = false }
             }
             if content == .none { endTurnEndRead() }
             return
@@ -759,7 +768,10 @@ final class BlockedCardStore {
             answeredCalls.insert(id)
         }
         present(confirmed)
-        if plan.focusesComposer { composerFocusRequest += 1 }
+        if plan.focusesComposer {
+            if content == .none { answerHandedTurnBack = true }
+            composerFocusRequest += 1
+        }
         return true
     }
 
@@ -896,6 +908,7 @@ final class BlockedCardStore {
         }
         let note = next == .unreadable ? whyBlocked(on: observation.screen) : nil
         if note != unreadableNote { unreadableNote = note }
+        if next != .none, answerHandedTurnBack { answerHandedTurnBack = false }
         if next != content { content = next }
     }
 

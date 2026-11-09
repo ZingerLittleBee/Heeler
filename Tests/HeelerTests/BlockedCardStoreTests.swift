@@ -237,6 +237,47 @@ struct BlockedCardStoreTests {
         #expect(store.progress == .ready)
     }
 
+    /// herdr can report Blocked a moment after a decline removed the dialog.
+    /// The Composer comes back with the answer's read, not with herdr's next
+    /// status, so the focus the answer asks for lands on it. The next Blocked,
+    /// or another dialog on screen, takes its place again.
+    @Test func aDeclineGivesTheComposerBackWhileHerdrStillReportsBlocked() async throws {
+        let exec = try ScreenFixture.screen("codex-01-x1-exec")
+        let ready = try ScreenFixture.screen("codex-00-ready")
+        let pane = FakePane(exec)
+        await pane.react(to: ["3"], with: ready)
+        let store = Self.store(.codex, pane: pane)
+        store.update(activity: .blocked)
+        await store.refresh()
+        #expect(store.replacesComposer)
+
+        await store.perform(.choose(ordinal: 3))
+
+        #expect(store.content == .none)
+        #expect(store.composerFocusRequest == 1)
+        #expect(!store.replacesComposer)
+
+        // Another dialog while herdr never left Blocked shows its card, and
+        // once it goes the place is Chat's reading again.
+        await pane.show(exec)
+        await store.refresh()
+        #expect(store.replacesComposer)
+        await pane.show(ready)
+        await store.refresh()
+        #expect(store.content == .none)
+        #expect(store.replacesComposer)
+
+        await pane.show(exec)
+        await store.refresh()
+        await pane.react(to: ["3"], with: ready)
+        await store.perform(.choose(ordinal: 3))
+        #expect(store.composerFocusRequest == 2)
+        #expect(!store.replacesComposer)
+        store.update(activity: .working)
+        store.update(activity: .blocked)
+        #expect(store.replacesComposer)
+    }
+
     @Test func answersTheTranscriptCantShowAreKeptOnceTheyTakeEffect() async throws {
         let request = Self.bash("toolu_1", "touch c1.txt")
         for (action, keys, expected) in [
