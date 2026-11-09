@@ -331,12 +331,15 @@ extension HerdrCoreSessionBinder {
     /// A new agy makes its conversation (folder, database and lock) only with its
     /// first prompt, so before that there is none to tell, and a Send starts it. That
     /// holds only for an agy with nothing to say otherwise: the Terminal's own
-    /// foreground, started with nothing after its name and holding no file of any
-    /// conversation. With `--conversation` or `-c` it may be on a conversation another
-    /// agy holds, which it never locks and, on Linux, stops holding any file of about
-    /// 30 s after it starts; a launcher in front may have passed either. The name
-    /// rules out a shell left in the foreground after agy exits, which the Agent's
-    /// rule takes for the Agent when nothing runs under it (ADR 0034).
+    /// foreground, started with nothing after its name, holding no file of any
+    /// conversation, and with no other `agy` under it, which a walk that did not
+    /// answer cannot rule out. With `--conversation` or `-c` it may be on a
+    /// conversation another agy holds, which it never locks and, on Linux, stops
+    /// holding any file of about 30 s after it starts; a launcher in front may have
+    /// passed either, and one that goes by `agy` itself is the nearest `agy`, while
+    /// the conversation is its child's. The name rules out a shell left in the
+    /// foreground after agy exits, which the Agent's rule takes for the Agent when
+    /// nothing runs under it (ADR 0034).
     func checkAntigravity(_ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses) -> ChatSessionEvidence {
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid],
             case .value(let files) = process.openFiles
@@ -350,7 +353,8 @@ extension HerdrCoreSessionBinder {
         }
         guard process.name == "agy", let foreground = record.foreground,
             foreground.pid.map(String.init) == pid, foreground.argv.count == 1,
-            !files.contains(where: Self.isAntigravityConversationFile)
+            !files.contains(where: Self.isAntigravityConversationFile),
+            tree.walkAnswered, !tree.descendants.contains(where: { tree.facts[$0]?.name == "agy" })
         else { return cannotTell }
         return .unavailable(.noConversationYet(program))
     }

@@ -826,6 +826,49 @@ struct HerdrCoreChatPickBinderTests {
         #expect(try await rig.binder.check(try Self.agyTypedRecord(argv: ["agy"])) == .unavailable(.noConversationYet(.agy)))
     }
 
+    /// A launcher that itself goes by `agy` and starts the real one as its child: the
+    /// nearest `agy` is the launcher, which holds nothing, while the child may be on
+    /// a conversation it holds, or on Linux on one another agy holds and it locks
+    /// none of. Nor can a walk that did not answer say nothing is under it.
+    @Test(arguments: [true, false])
+    func anAntigravityCLIUnderALauncherOfTheSameNameCannotTell(_ childHoldsLock: Bool) async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        let environment = ["HC_SCOPE": "scope", "HOME": Self.home]
+        await rig.table.add(ScriptedProcessTable.Process(pid: 39, name: "bash", start: "145500", environment: environment))
+        await rig.table.add(
+            ScriptedProcessTable.Process(pid: 41, parent: 39, name: "agy", start: "145520", environment: environment))
+        let childFiles = Self.agyAtItsPrompt + (childHoldsLock ? ["\(root)/presence/\(Self.uuid).lock"] : [])
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, parent: 41, name: "agy", start: Self.start, environment: environment,
+                openFiles: childFiles))
+
+        #expect(
+            try await rig.binder.check(try Self.agyTypedRecord(argv: ["agy"], foreground: 41))
+                == .unavailable(.cannotTellSession(.agy)))
+    }
+
+    @Test func aBareAntigravityCLIWhoseDescendantsCannotBeWalkedCannotTell() async throws {
+        let table = ScriptedProcessTable()
+        let environment = ["HC_SCOPE": "scope", "HOME": Self.home]
+        await table.add(ScriptedProcessTable.Process(pid: 39, name: "bash", start: "145500", environment: environment))
+        await table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, parent: 39, name: "agy", start: Self.start, environment: environment,
+                openFiles: Self.agyAtItsPrompt))
+        let binder = HerdrCoreSessionBinder(
+            program: .agy,
+            processes: { request in
+                var facts = try await table.read(request)
+                facts[String(Self.pid)]?.descendants = .unavailable
+                return facts
+            },
+            files: VirtualHostFiles(home: Self.home).hostFiles(), clearLabels: { _ in })
+
+        #expect(try await binder.check(try Self.agyTypedRecord(argv: ["agy"])) == .unavailable(.cannotTellSession(.agy)))
+    }
+
     /// After agy exits the core can keep its label on the Terminal, and with nothing
     /// under the shell the Agent's rule takes the shell itself. It holds no lock and
     /// no conversation, and is still no agy.
