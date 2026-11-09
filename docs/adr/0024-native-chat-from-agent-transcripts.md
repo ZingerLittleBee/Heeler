@@ -1073,9 +1073,9 @@ no Attach at all.
     `multi_replace_file_content`'s edit, which no capture shows either and
     the card answers as any edit, on the inference that it asks in the same
     `Pending edit` dialog; and
-    Chat on herdr-core Hosts, where its conversation binds from its
-    presence lock (ADR 0034) but no platform offers it until it is checked
-    on a real machine.
+    Chat on Windows herdr-core Hosts. Linux and macOS ones offer it, binding
+    its conversation from its presence lock, or waiting for its first
+    message (ADR 0034).
   - The segment before a Codex undo. After one, Chat shows only the turns
     written since; the reducer accepts the earlier segment, but nothing loads
     it yet.
