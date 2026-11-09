@@ -198,6 +198,10 @@ struct BlockedCardViewTests {
             try await withTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
             ) { _ in
+                // The scroll bar flashes as the options start to run past
+                // the edge; a card that fits shows none.
+                let flashes = await Self.showsScrollIndicator(in: controller, within: .seconds(1))
+                #expect(flashes == (budget < 600), "scroll bar flash at \(budget)")
                 let scroll = try await Self.settledScrollView(in: controller)
                 let range = (
                     lower: -scroll.adjustedContentInset.top,
@@ -357,6 +361,24 @@ struct BlockedCardViewTests {
         }
         try #require(stablePasses >= 2, "The card must finish laying out before measuring its answers")
         return try #require(foundScroll)
+    }
+
+    /// Whether the card's scroll view shows its vertical scroll indicator
+    /// within `limit`. Nothing scrolls it meanwhile, so only a flash does.
+    /// UIKit draws the indicator as a private `_UIScrollViewScrollIndicator`
+    /// subview, transparent while it rests.
+    private static func showsScrollIndicator(in controller: UIViewController, within limit: Duration) async -> Bool {
+        var budget = PollBudget(limit)
+        while budget.hasTimeLeft {
+            controller.view.layoutIfNeeded()
+            let indicators = Self.scrollView(in: controller.view)?.subviews.filter {
+                String(describing: type(of: $0)).contains("ScrollIndicator") && $0.bounds.height > $0.bounds.width
+            }
+            if indicators?.contains(where: { !$0.isHidden && $0.alpha > 0.01 }) == true { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+            budget.charge()
+        }
+        return false
     }
 
     private static func scrollView(in root: UIView) -> UIScrollView? {
