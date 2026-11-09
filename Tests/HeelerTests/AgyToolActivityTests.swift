@@ -325,7 +325,7 @@ struct AgyToolActivityTests {
     }
 
     /// One agy step as `transcript_full.jsonl` writes it.
-    private static func step(
+    static func step(
         _ index: Int, _ source: String, _ type: String, status: String = "DONE", content: String? = nil,
         calls: KeyValuePairs<String, JSONValue> = [:]
     ) -> JSONValue {
@@ -340,18 +340,18 @@ struct AgyToolActivityTests {
         return .object(fields)
     }
 
-    private static func background(_ conversation: String, task: Int, _ description: String) -> String {
+    static func background(_ conversation: String, task: Int, _ description: String) -> String {
         "Created At: 2026-11-08T00:20:30+08:00\nTool is running as a background task with task id: "
             + "\(conversation)/task-\(task)\nTask Description: \(description)\n"
     }
 
-    private static func system(_ content: String) -> String {
+    static func system(_ content: String) -> String {
         "The following is a <SYSTEM_MESSAGE> not actually sent by the user.\n\n<SYSTEM_MESSAGE>\n"
             + "[Message] timestamp=2026-11-07T16:25:00Z sender=system priority=MESSAGE_PRIORITY_HIGH content="
             + content + "\n</SYSTEM_MESSAGE>"
     }
 
-    private static func lines(_ steps: [JSONValue]) -> [ChatLine] {
+    static func lines(_ steps: [JSONValue]) -> [ChatLine] {
         let text = steps.compactMap { step -> String? in
             guard let data = try? JSONEncoder().encode(step) else { return nil }
             return String(decoding: data, as: UTF8.self)

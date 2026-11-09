@@ -185,6 +185,10 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         mutating func finish() -> ChatTranscript {
             if let open, open.hasReply {
                 close(open, ending: .completed, interruptedNotice: false)
+            } else if let open {
+                // agy writes nothing on Esc, so a turn Stop just ended reads
+                // as still open.
+                transcript.openTurnBackgroundCommands = open.calls.compactMap { calls[$0].backgroundCommand }
             }
             resolveTools()
             return transcript

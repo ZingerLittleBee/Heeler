@@ -1199,6 +1199,24 @@ struct ChatBackgroundWorkEnd: Equatable, Sendable {
     }
 }
 
+/// A command Antigravity CLI sent to a background task, as the transcript
+/// shows it. agy delivers a task's end only with the next prompt once its
+/// turn was stopped, so a command can read running after it ended.
+struct ChatBackgroundCommand: Equatable, Sendable {
+    /// The call's entry id.
+    let callID: String
+    /// `CommandLine`, which agy's `/tasks` panel names the task by.
+    let command: String?
+    /// Neither the task's end nor a restart has come.
+    let isRunning: Bool
+    /// `IsDaemon`: a server or watcher meant to outlive the turn, which agy's
+    /// own headless runs leave running too.
+    let isDaemon: Bool
+
+    /// What Chat's Stop ends.
+    var isStoppable: Bool { isRunning && !isDaemon }
+}
+
 extension ChatBackgroundWorkItem {
     mutating func apply(_ end: ChatBackgroundWorkEnd) {
         state = end.state
@@ -1276,6 +1294,11 @@ struct ChatTranscript: Equatable, Sendable {
     /// yet, such as a queued prompt's waiting bubble. A later record shows
     /// it under another id, so the cache never keeps them.
     var unrecordedEntryIDs: Set<ChatEntryID>
+    /// Antigravity CLI: the commands the turn still open at the end of the
+    /// loaded lines sent to the background, oldest first, which Chat's Stop
+    /// ends after its Esc (ADR 0024). The next prompt closes the turn and
+    /// empties it.
+    var openTurnBackgroundCommands: [ChatBackgroundCommand] = []
 
     init(
         entries: [ChatEntry] = [], title: String? = nil, needsOlderHistory: Bool = false,

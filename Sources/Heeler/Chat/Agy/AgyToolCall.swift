@@ -91,6 +91,14 @@ struct AgyToolCall: Sendable {
     /// with a system message, or a wait (`waitTools`), which never does.
     var isInTheBackground: Bool { result?.status == .running }
 
+    /// The call as Chat's Stop reads it once agy made it a task.
+    var backgroundCommand: ChatBackgroundCommand? {
+        guard taskID != nil else { return nil }
+        return ChatBackgroundCommand(
+            callID: entryID.rawValue, command: command, isRunning: taskEnd == nil && !stoppedByRestart,
+            isDaemon: args?["IsDaemon"] == .bool(true))
+    }
+
     // MARK: Status
 
     /// The row's status and the note under it. While the call's turn is

@@ -181,6 +181,143 @@ struct AgyTranscriptReducerTests {
         #expect(notice.notice.detail == "Antigravity CLI restarted.")
     }
 
+    // MARK: What Stop ends
+
+    /// Steps 5 to 13 of the #644 Stop probe's conversation (2026-11-09), in
+    /// the order agy wrote them: a command sent to the background after
+    /// 10 s, a Stop that wrote nothing, the next prompt, and the task's end,
+    /// which agy holds until that prompt: a cancel from `/tasks` (low
+    /// priority) after the prompt, a finish (high) before it.
+    private static func stopProbe() -> [ChatLine] {
+        let conversation = "00000000-0000-4000-8000-000000000010"
+        let prompt = "<USER_REQUEST>\nRun the shell command sleep 40 in the foreground and wait until it exits\n</USER_REQUEST>"
+        let sleep: KeyValuePairs<String, JSONValue> = [
+            "run_command": .object([
+                "CommandLine": .string("sleep 40"), "WaitMsBeforeAsync": .number(10000),
+                "toolSummary": .string("Run sleep 40 command"),
+            ])
+        ]
+        return AgyToolActivityTests.lines([
+            AgyToolActivityTests.step(5, "USER_EXPLICIT", "USER_INPUT", content: prompt),
+            AgyToolActivityTests.step(6, "MODEL", "PLANNER_RESPONSE", calls: sleep),
+            AgyToolActivityTests.step(
+                7, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(conversation, task: 7, "sleep 40")),
+            AgyToolActivityTests.step(8, "USER_EXPLICIT", "USER_INPUT", content: prompt),
+            AgyToolActivityTests.step(
+                9, "SYSTEM_SDK", "SYSTEM_MESSAGE",
+                content: AgyToolActivityTests.system(
+                    "Task id \"\(conversation)/task-7\" was canceled with result:\nTool execution was canceled\nLog: "
+                        + "file:///home/developer/.gemini/antigravity-cli/brain/\(conversation)/.system_generated/tasks/task-7.log"
+                )),
+            AgyToolActivityTests.step(10, "MODEL", "PLANNER_RESPONSE", calls: sleep),
+            AgyToolActivityTests.step(
+                11, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(conversation, task: 11, "sleep 40")),
+            AgyToolActivityTests.step(
+                12, "SYSTEM_SDK", "SYSTEM_MESSAGE",
+                content: AgyToolActivityTests.system(
+                    "Task id \"\(conversation)/task-11\" finished with result:\nCommand exited with code 0.\n\n"
+                        + "No output from the command.")),
+            AgyToolActivityTests.step(13, "USER_EXPLICIT", "USER_INPUT", content: prompt),
+        ])
+    }
+
+    /// The turn Stop ended still reads open, since agy writes nothing on
+    /// Esc: its command sent to the background is what Stop ends, until the
+    /// next prompt closes the turn.
+    @Test func theOpenTurnListsTheCommandItSentToTheBackground() throws {
+        let lines = Self.stopProbe()
+
+        let stopped = Self.transcript(Array(lines.prefix(3)))
+        #expect(
+            stopped.openTurnBackgroundCommands == [
+                ChatBackgroundCommand(callID: "agy:6:tool:0", command: "sleep 40", isRunning: true, isDaemon: false)
+            ])
+        #expect(stopped.openTurnBackgroundCommands.allSatisfy { $0.isStoppable })
+        let started = try #require(AgyToolActivityTests.tool("agy:6:tool:0", in: stopped))
+        #expect(started.status == .started)
+        #expect(started.note == "Sent to the background")
+
+        let next = Self.transcript(Array(lines.prefix(4)))
+        #expect(next.openTurnBackgroundCommands.isEmpty, "the next prompt closes the turn")
+        #expect(next.turns.map(\.ending) == [.interrupted, nil])
+    }
+
+    /// The cancel `k` sends comes after the next prompt, so the old row
+    /// reads canceled and the notice falls in the new turn.
+    @Test func aCancelFromTasksComesAfterTheNextPrompt() throws {
+        let transcript = Self.transcript(Array(Self.stopProbe().prefix(5)))
+
+        let canceled = try #require(AgyToolActivityTests.tool("agy:6:tool:0", in: transcript))
+        #expect(canceled.status == .interrupted)
+        #expect(canceled.note == "Canceled in the background")
+        #expect(canceled.preview?.text == "Tool execution was canceled")
+        let notice = try #require(Self.notices(transcript).first { $0.notice.kind == .taskNotification })
+        #expect(notice.id == "agy:9")
+        #expect(notice.notice.title == "Background command canceled")
+        #expect(transcript.turns.map(\.firstEntryID.rawValue) == ["agy:5", "agy:8"])
+        #expect(transcript.turns.map(\.ending) == [.interrupted, nil])
+    }
+
+    /// A finish agy held is written before the next prompt: the stopped
+    /// turn's command then reads ended, so Stop has nothing to end.
+    @Test func aFinishHeldUntilTheNextPromptEndsTheCommandInItsTurn() throws {
+        let lines = Self.stopProbe()
+
+        let held = Self.transcript(Array(lines.prefix(8)))
+        #expect(
+            held.openTurnBackgroundCommands == [
+                ChatBackgroundCommand(callID: "agy:10:tool:0", command: "sleep 40", isRunning: false, isDaemon: false)
+            ])
+        #expect(!held.openTurnBackgroundCommands.contains { $0.isStoppable })
+
+        let transcript = Self.transcript(lines)
+        let finished = try #require(AgyToolActivityTests.tool("agy:10:tool:0", in: transcript))
+        #expect(finished.status == .succeeded)
+        #expect(finished.note == "Finished in the background")
+        #expect(transcript.turns.map(\.ending) == [.interrupted, .interrupted, nil])
+        #expect(transcript.openTurnBackgroundCommands.isEmpty)
+    }
+
+    /// Only the open turn's commands are listed: one an earlier turn left
+    /// running stays out, a daemon is listed as one, and a turn that
+    /// replied lists nothing.
+    @Test func onlyTheOpenTurnsCommandsAreListed() {
+        let conversation = "00000000-0000-4000-8000-000000000011"
+        let command = { (line: String, daemon: Bool) -> KeyValuePairs<String, JSONValue> in
+            ["run_command": .object(["CommandLine": .string(line), "IsDaemon": .bool(daemon)])]
+        }
+        let lines = AgyToolActivityTests.lines([
+            AgyToolActivityTests.step(0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nTest\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(1, "MODEL", "PLANNER_RESPONSE", calls: command("npm test", false)),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(conversation, task: 2, "npm test")),
+            AgyToolActivityTests.step(3, "MODEL", "PLANNER_RESPONSE", content: "The tests run in the background."),
+            AgyToolActivityTests.step(4, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nServe it\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(5, "MODEL", "PLANNER_RESPONSE", calls: command("npm run dev", true)),
+            AgyToolActivityTests.step(
+                6, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(conversation, task: 6, "npm run dev")),
+            AgyToolActivityTests.step(7, "MODEL", "PLANNER_RESPONSE", calls: command("sleep 40", false)),
+            AgyToolActivityTests.step(
+                8, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(conversation, task: 8, "sleep 40")),
+            AgyToolActivityTests.step(9, "MODEL", "PLANNER_RESPONSE", content: "Serving."),
+        ])
+
+        let working = Self.transcript(Array(lines.prefix(9)), activity: .working)
+        #expect(
+            working.openTurnBackgroundCommands == [
+                ChatBackgroundCommand(callID: "agy:5:tool:0", command: "npm run dev", isRunning: true, isDaemon: true),
+                ChatBackgroundCommand(callID: "agy:7:tool:0", command: "sleep 40", isRunning: true, isDaemon: false),
+            ])
+        #expect(working.openTurnBackgroundCommands.map(\.isStoppable) == [false, true])
+
+        #expect(Self.transcript(lines).openTurnBackgroundCommands.isEmpty, "a turn that replied is over")
+    }
+
     // MARK: Compaction, errors and other steps
 
     /// `/compact` is a prompt answered by its checkpoint, which shows as a
