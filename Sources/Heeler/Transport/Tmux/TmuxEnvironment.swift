@@ -38,4 +38,20 @@ enum TmuxEnvironment {
     static func inherited(global: Scope, session: Scope) -> Set<String> {
         global.assigned.subtracting(session.removed).union(session.assigned)
     }
+
+    /// The names ADR 0034's notice is about, from a set of environment names.
+    static func leaked(in names: Set<String>) -> Set<String> {
+        names.filter { name in
+            HerdrCoreEnvironmentCheck.names.contains(name)
+                || HerdrCoreEnvironmentCheck.prefixes.contains { name.hasPrefix($0) }
+        }
+    }
+
+    /// Variables that locate an Account (ADR 0033). Launch-folder names, the
+    /// process identity, and proxies stay out: the helper reads those itself.
+    static let accountVariables: Set<String> = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME"]
+
+    static func accountVariables(in names: Set<String>) -> Set<String> {
+        names.intersection(accountVariables)
+    }
 }

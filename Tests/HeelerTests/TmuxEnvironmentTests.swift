@@ -55,4 +55,21 @@ struct TmuxEnvironmentTests {
             TmuxEnvironment.inherited(global: global, session: session)
                 == ["CLAUDECODE", "PATH", "CODEX_HOME", "TMUX"])
     }
+
+    @Test func leakedNamesAreTheCoreCheckAndTheHerdrPrefix() {
+        let names: Set<String> = [
+            "CLAUDECODE", "TMUX", "HERDR_SESSION", "PATH", "CODEX_THREAD_ID", "HOME",
+        ]
+        #expect(TmuxEnvironment.leaked(in: names) == ["CLAUDECODE", "TMUX", "HERDR_SESSION", "CODEX_THREAD_ID"])
+    }
+
+    @Test func accountVariablesAreOnlyTheOnesThatLocateAnAccount() {
+        let names: Set<String> = [
+            "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME",
+            "PATH", "HOME", "USER", "GROK_HOME", "HTTP_PROXY", "PI_CODING_AGENT_DIR",
+        ]
+        #expect(
+            TmuxEnvironment.accountVariables(in: names)
+                == ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME"])
+    }
 }
