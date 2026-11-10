@@ -30,6 +30,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Start a New Agent, New Terminal or Template in a Herdr desktop space on a herdr-core Host where the space's shell is now, as the desktop app does, rather than in the folder the space was made in. A space made while another was shown had started them in that other space's folder, and a new Worktree had come from that folder's repository. (PR #677)
 - Settle a Chat message whose attached image path stood on a line of its own. Claude Code records the image before the text, and Chat kept showing the message as sent but not yet in the conversation. (PR #674)
 - Find links on an Agent's terminal after a line with a character such as Claude Code's `❯` prompt. The link button stayed hidden for any link printed after it. (PR #672)
 - Center a checkout's icon on its title in the Agents list's By Workspace cards. A pinned Agent's card no longer lifts the icon above the title. (PR #669)

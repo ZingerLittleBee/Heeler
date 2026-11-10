@@ -30,6 +30,11 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   `herdr.*` label; Heeler's own `heeler.*` labels do not count) started from
   inside another, such as a subagent, joins that Terminal's Workspace and Tab
   as another Pane.
+- A launch into a desktop space that names no directory starts where the
+  Terminal the space is named after is now, else in the space's folder, else
+  in the home folder. The desktop app starts its own new Terminals where the
+  space's focused Pane is, which its document does not record, and its folder
+  only records where the space was made.
 - Heeler keeps no organization of its own. Workspaces it creates, and Tabs it
   adds to a desktop space, carry the desktop app's labels, the adoption
   contract herdr-app documents, so a desktop app on that core shows them too.
