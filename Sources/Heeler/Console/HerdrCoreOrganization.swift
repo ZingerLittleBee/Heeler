@@ -54,15 +54,13 @@ enum HerdrCoreOrganization {
         let shown = terminals.filter { !$0.hasFinished }
         let shownByAddress = Dictionary(shown.map { ($0.address, $0) }) { first, _ in first }
 
-        var spaces = (document?.spaces ?? []).map(plannedSpace)
+        let spaces = plannedSpaces(shown: shown, document: document)
         var derived: [PlannedWorkspace] = []
         var children: [String: [HerdrCoreTerminalRecord]] = [:]
-        for record in shown {
+        for record in shown where desktopLabel("herdr.space", of: record) == nil {
             let host = placementHost(of: record, shown: shownByAddress)
             if host.address != record.address {
                 children[host.address, default: []].append(record)
-            } else if let space = desktopLabel("herdr.space", of: record) {
-                place(record, inSpace: space, spaces: &spaces)
             } else {
                 place(
                     record,
@@ -86,7 +84,7 @@ enum HerdrCoreOrganization {
             // Where the desktop app looks for a space's checkout too.
             let directory =
                 workspace.isDesktopSpace
-                ? members.joined().first.map(liveDirectory) ?? "" : workspace.keyDirectory
+                ? firstTerminal(of: workspace).map(liveDirectory) ?? "" : workspace.keyDirectory
             let isCheckout = !directory.isEmpty && directory != home
             if isCheckout, !checkoutDirectories.contains(directory) {
                 checkoutDirectories.append(directory)
@@ -164,6 +162,27 @@ enum HerdrCoreOrganization {
         _ name: String, of record: HerdrCoreTerminalRecord
     ) -> String? {
         record.labels[name].flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// The document's spaces in its order, then those only labels name, each
+    /// holding the shown Terminals labeled into it.
+    private static func plannedSpaces(
+        shown: [HerdrCoreTerminalRecord], document: HerdrCoreDesktopDocument?
+    ) -> [PlannedWorkspace] {
+        var spaces = (document?.spaces ?? []).map(plannedSpace)
+        for record in shown {
+            if let space = desktopLabel("herdr.space", of: record) {
+                place(record, inSpace: space, spaces: &spaces)
+            }
+        }
+        return spaces
+    }
+
+    /// The Terminal a space is named after and a launch there starts beside:
+    /// the first in its Tabs' order and each Tab's tree order. The desktop app
+    /// starts one beside the space's focused Pane, which no document records.
+    private static func firstTerminal(of space: PlannedWorkspace) -> HerdrCoreTerminalRecord? {
+        space.tabs.lazy.compactMap { ordered($0).first }.first
     }
 
     private static func plannedSpace(_ space: HerdrCoreDesktopDocument.Space) -> PlannedWorkspace {
@@ -249,19 +268,21 @@ enum HerdrCoreOrganization {
     }
 
     /// Where a new Terminal in a space starts when nothing asked for a directory:
-    /// the space's folder, else where its first Terminal is now.
+    /// where the Terminal the space is named after is now, else the space's
+    /// folder. The desktop app keeps that folder from when the space was made and
+    /// starts its own new Terminals where a Pane of the space is now.
     static func directory(
         ofSpace space: String, terminals: [HerdrCoreTerminalRecord],
         document: HerdrCoreDesktopDocument?
     ) -> String? {
-        if let folder = document?.spaces.first(where: { $0.id == space })?.folder, !folder.isEmpty {
-            return folder
+        let workspaceID = spaceWorkspaceID(space)
+        let planned = plannedSpaces(shown: terminals.filter { !$0.hasFinished }, document: document)
+            .first { $0.id == workspaceID }
+        if let live = planned.flatMap(firstTerminal).map(liveDirectory), !live.isEmpty {
+            return live
         }
-        return
-            terminals
-            .first { !$0.hasFinished && desktopLabel("herdr.space", of: $0) == space }
-            .map(liveDirectory)
-            .flatMap { $0.isEmpty ? nil : $0 }
+        if let folder = planned?.folder, !folder.isEmpty { return folder }
+        return nil
     }
 
     /// The Workspace a Terminal with no parent shown lands in.
