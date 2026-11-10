@@ -83,9 +83,10 @@ def records(layout: str = "sharded", package: bool = False) -> list[dict]:
     direct = [method(evidence.DIRECT, index) for index in range(9)]
     weak = [method(evidence.WEAK, index) for index in range(11)]
     core = [method(evidence.CORE, index) for index in range(9)]
+    tmux = [method(evidence.TMUX, index) for index in range(8)]
     shared = [method(suite, 0) for suite in sorted(evidence.SHARED)]
     shared += [method("HeelerSSHTransportBehaviorE2ETests", index) for index in range(1, 121)]
-    skipped = copy.deepcopy(session + direct + shared + weak + core)
+    skipped = copy.deepcopy(session + direct + shared + weak + core + tmux)
     for test in skipped:
         test["result"] = "Skipped"
         test["cases"][0]["result"] = "Skipped"
@@ -97,6 +98,7 @@ def records(layout: str = "sharded", package: bool = False) -> list[dict]:
                   phase(evidence.DIRECT, "all", direct, {evidence.DIRECT}),
                   phase("SharedFixtureE2ETests", "all", shared + weak, evidence.SHARED | {evidence.WEAK}),
                   phase(evidence.CORE, "all", core, {evidence.CORE}),
+                  phase(evidence.TMUX, "all", tmux, {evidence.TMUX}),
                   phase("full-lane", "all", ordinary + skipped, set())]
     else:
         result = [phase(evidence.SESSION, "session-weak", session, {evidence.SESSION}),
@@ -104,6 +106,7 @@ def records(layout: str = "sharded", package: bool = False) -> list[dict]:
                   phase(evidence.DIRECT, "transport", direct, {evidence.DIRECT}),
                   phase("SharedFixtureE2ETests", "transport", shared, evidence.SHARED),
                   phase(evidence.CORE, "transport", core, {evidence.CORE}),
+                  phase(evidence.TMUX, "transport", tmux, {evidence.TMUX}),
                   phase("full-lane", "ordinary", ordinary + skipped, set())]
     if package:
         tests = [method(suite, 0, target="HeelerSSHTests") for suite in sorted(evidence.PACKAGE_SUITES)]
@@ -146,8 +149,8 @@ class AggregateTests(unittest.TestCase):
     def test_complete_sharded_union_matches_serial_including_parameter_cases(self):
         write_records(self.baseline, records("serial"))
         result = self.check(baseline=True)
-        self.assertEqual(result["passed_methods"], 937)
-        self.assertEqual(result["passed_cases"], 938)
+        self.assertEqual(result["passed_methods"], 945)
+        self.assertEqual(result["passed_cases"], 946)
         self.assertTrue(result["baseline_compared"])
 
     def test_one_missing_parameter_case_fails_despite_identical_method_and_summary_counts(self):
@@ -163,7 +166,7 @@ class AggregateTests(unittest.TestCase):
         self.values[-1]["tests"][0] = copy.deepcopy(parameterized)
         previous[-1]["tests"][0] = copy.deepcopy(parameterized)
         write_records(self.baseline, previous)
-        self.assertEqual(self.check(baseline=True, package=True)["passed_cases"], 1024)
+        self.assertEqual(self.check(baseline=True, package=True)["passed_cases"], 1032)
         self.values[-1]["tests"][0]["cases"].pop()
         with self.assertRaisesRegex(ValueError, "parameterized-case union differs"):
             self.check(baseline=True, package=True)
@@ -174,7 +177,7 @@ class AggregateTests(unittest.TestCase):
         self.values[-1]["tests"][0] = copy.deepcopy(parameterized)
         previous[-1]["tests"][0] = copy.deepcopy(parameterized)
         write_records(self.baseline, previous)
-        self.assertEqual(self.check(baseline=True)["passed_cases"], 939)
+        self.assertEqual(self.check(baseline=True)["passed_cases"], 947)
         self.values[-1]["tests"][0]["cases"].pop()
         with self.assertRaisesRegex(ValueError, "parameterized-case union differs"):
             self.check(baseline=True)
@@ -212,6 +215,25 @@ class AggregateTests(unittest.TestCase):
         core["tests"][0]["result"] = "Skipped"
         core["tests"][0]["cases"][0]["result"] = "Skipped"
         core["summary"]["skipped"] = 1
+        with self.assertRaisesRegex(ValueError, "Mandatory fixture tests skipped"):
+            self.check()
+
+    def test_tmux_phase_is_required_and_its_eight_methods_must_all_execute(self):
+        tmux = next(value for value in self.values if value["phase"] == evidence.TMUX)
+        self.values.remove(tmux)
+        with self.assertRaisesRegex(ValueError, "Missing or unexpected phases"):
+            self.check()
+        self.values = records()
+        tmux = next(value for value in self.values if value["phase"] == evidence.TMUX)
+        tmux["tests"].pop()
+        tmux["summary"]["total"] -= 1
+        with self.assertRaisesRegex(ValueError, "Fixture suite/count contract changed"):
+            self.check()
+        self.values = records()
+        tmux = next(value for value in self.values if value["phase"] == evidence.TMUX)
+        tmux["tests"][0]["result"] = "Skipped"
+        tmux["tests"][0]["cases"][0]["result"] = "Skipped"
+        tmux["summary"]["skipped"] = 1
         with self.assertRaisesRegex(ValueError, "Mandatory fixture tests skipped"):
             self.check()
 
@@ -281,13 +303,13 @@ class AggregateTests(unittest.TestCase):
     def test_new_ordinary_methods_are_included_automatically_without_a_fixed_total(self):
         self.values[-1]["tests"].append(method("NewSuite", 0))
         self.values[-1]["summary"]["total"] += 1
-        self.assertEqual(self.check()["passed_methods"], 938)
+        self.assertEqual(self.check()["passed_methods"], 946)
 
     def test_package_is_required_when_requested_and_retains_its_contract(self):
         with self.assertRaisesRegex(ValueError, "Missing worker"):
             self.check(package=True)
         self.values = records(package=True)
-        self.assertEqual(self.check(package=True)["passed_methods"], 1022)
+        self.assertEqual(self.check(package=True)["passed_methods"], 1030)
 
     def test_package_cannot_drop_back_to_the_old_seventy_method_count(self):
         self.values = records(package=True)

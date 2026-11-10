@@ -18,7 +18,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-simulator-recovery.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-for function in prepare_evidence_directory prepare_app_build_directory record_phase opt_in_build_settings start_background_build cancel_background_build run_app_fixture_suites run_core_fixture_suite stop_core_fixture download_core_fixture_binary claim_core_port claim_port_block assign_port_block assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
+for function in prepare_evidence_directory prepare_app_build_directory record_phase opt_in_build_settings start_background_build cancel_background_build run_app_fixture_suites run_core_fixture_suite stop_core_fixture download_core_fixture_binary run_tmux_fixture_suite start_tmux_fixture stop_tmux_fixture find_fixture_tmux claim_core_port claim_port_block assign_port_block assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
     claim_simulator claim_resource_lock release_resource_lock write_lock_owner \
     lock_is_stale acquire_claim_guard release_claim_guard \
     clear_simulator_environment push_simulator_environment; do
@@ -376,6 +376,7 @@ run_shard_case() (
     start_password_sshd() { echo start-password >> "$fixture_dir/events"; }
     stop_privileged_sshd() { echo stop-password >> "$fixture_dir/events"; }
     run_core_fixture_suite() { run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests; }
+    run_tmux_fixture_suite() { run_suite TmuxTransportE2ETests 8 1 0 TmuxTransportE2ETests; }
     run_app_fixture_suites
     case "$shard" in
         session-weak)
@@ -392,6 +393,7 @@ EXPECTED
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 126 6 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests PairingCeremonyE2ETests
 suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
+suite TmuxTransportE2ETests 8 1 0 TmuxTransportE2ETests
 EXPECTED
             [[ ! -e "$fixture_dir/WeakNetworkE2ETests.log" ]] || fail 'transport included Weak'
             ;;
@@ -403,6 +405,7 @@ stop-password
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 137 7 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
 suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
+suite TmuxTransportE2ETests 8 1 0 TmuxTransportE2ETests
 EXPECTED
             ;;
         ordinary)
@@ -555,6 +558,108 @@ EXPECTED
     printf 'PASS core-phase-%s\n' "$result"
 ); done
 
+# The tmux fixture's stop is its only process owner too: a failed log copy must
+# neither skip it nor hide in its status, and a failed stop keeps the root.
+for stop_result in pass fail; do (
+    fixture_dir="$work/tmux-logcopy-$stop_result/main"
+    tmux_fixture_dir="$work/tmux-logcopy-$stop_result/tmux"
+    mkdir -p "$fixture_dir" "$tmux_fixture_dir/logs"
+    echo fixture-log > "$tmux_fixture_dir/logs/sshd.log"
+    tmux_log="$work/tmux-logcopy-$stop_result/called"
+    fixture_python=tmux_stop_stub
+    tmux_stop_stub() { echo "$*" > "$tmux_log"; [[ "$stop_result" == pass ]]; }
+    cp() { return 1; }
+    status=0
+    stop_tmux_fixture || status=$?
+    [[ -f "$tmux_log" ]] || fail 'log-copy error skipped tmux fixture shutdown'
+    grep -qF "scripts/fixtures/tmux-ssh.py stop --root $work/tmux-logcopy-$stop_result/tmux" "$tmux_log" \
+        || fail 'tmux fixture stop did not name its own root'
+    [[ "$status" == 1 ]] || fail 'tmux log-copy failure disappeared from final status'
+    if [[ "$stop_result" == pass ]]; then
+        [[ -z "$tmux_fixture_dir" ]] || fail 'successful tmux shutdown retained ownership'
+    else
+        [[ -n "$tmux_fixture_dir" ]] || fail 'failed tmux shutdown lost cleanup ownership'
+    fi
+    echo "PASS tmux-logcopy-stop-$stop_result"
+); done
+
+# The tmux phase swaps the Simulator config as the core phase does, restores the
+# legacy config afterwards, and retains ownership for cleanup when tests fail.
+for result in pass fail; do (
+    fixture_dir="$work/tmux-$result"
+    mkdir -p "$fixture_dir"
+    fixture_configuration_base64=legacy-config
+    HEELER_SSH_E2E_CONFIG=legacy-config
+    HEELER_SSH_JUMP_E2E_CONFIG=jump-config
+    HEELER_PAIRING_E2E_CONFIG=pairing-config
+    start_tmux_fixture() {
+        tmux_fixture_dir="$fixture_dir/tmux"
+        mkdir -p "$tmux_fixture_dir"
+        echo tmux-config > "$tmux_fixture_dir/tmux-test-config"
+        echo start >> "$fixture_dir/events"
+    }
+    push_simulator_environment() { echo "config $HEELER_SSH_E2E_CONFIG $*" >> "$fixture_dir/events"; }
+    run_suite() {
+        echo "suite $*" >> "$fixture_dir/events"
+        [[ "$result" == pass ]] || return 65
+    }
+    stop_tmux_fixture() { echo stop >> "$fixture_dir/events"; tmux_fixture_dir=""; }
+    status=0
+    run_tmux_fixture_suite || status=$?
+    cat > "$fixture_dir/expected" <<'EXPECTED'
+start
+config tmux-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+suite TmuxTransportE2ETests 8 1 0 TmuxTransportE2ETests
+EXPECTED
+    if [[ "$result" == pass ]]; then
+        [[ "$status" == 0 && -z "$tmux_fixture_dir" ]] || fail 'tmux success retained fixture ownership'
+        cat >> "$fixture_dir/expected" <<'EXPECTED'
+config legacy-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+stop
+EXPECTED
+    else
+        [[ "$status" == 65 && -n "$tmux_fixture_dir" ]] || fail 'tmux failure hid status or lost cleanup ownership'
+    fi
+    diff -u "$fixture_dir/expected" "$fixture_dir/events" || fail 'tmux phase environment or execution order drifted'
+    printf 'PASS tmux-phase-%s\n' "$result"
+); done
+
+# The fixture links a tmux the machine already has, the one named first, and
+# starts with that tmux on the port the stopped core fixture held.
+(
+    fixture_dir="$work/tmux-start"
+    mkdir -p "$fixture_dir/bin"
+    printf '%s\n' '#!/bin/sh' 'echo tmux 3.7b' > "$fixture_dir/bin/tmux"
+    chmod 755 "$fixture_dir/bin/tmux"
+    tmux_fixture_candidates=("$fixture_dir/absent/tmux")
+    PATH=/usr/bin:/bin
+    status=0
+    HEELER_CI_TMUX="" find_fixture_tmux > "$fixture_dir/output" 2>&1 || status=$?
+    [[ "$status" == 1 ]] || fail 'a machine without tmux found one'
+    grep -qF 'brew install tmux' "$fixture_dir/output" || fail 'missing tmux did not say how to get one'
+    tmux_fixture_candidates=("$fixture_dir/absent/tmux" "$fixture_dir/bin/tmux")
+    [[ "$(HEELER_CI_TMUX="" find_fixture_tmux)" == "$fixture_dir/bin/tmux" ]] || fail 'a known tmux path was not found'
+    mkdir -p "$fixture_dir/named"
+    cp "$fixture_dir/bin/tmux" "$fixture_dir/named/tmux"
+    [[ "$(HEELER_CI_TMUX="$fixture_dir/named/tmux" find_fixture_tmux)" == "$fixture_dir/named/tmux" ]] \
+        || fail 'HEELER_CI_TMUX did not win'
+    repo_root=/repo
+    core_port=55401
+    tmux_fixture_executable=""
+    tmux_fixture_dir=""
+    fixture_python=tmux_start_stub
+    tmux_start_stub() { echo "$*" > "$fixture_dir/start"; }
+    HEELER_CI_TMUX="" start_tmux_fixture || fail 'tmux fixture did not start'
+    case "$tmux_fixture_dir" in
+        /tmp/ht-ci.*) ;;
+        *) fail "tmux fixture root is not a short scratch path: $tmux_fixture_dir" ;;
+    esac
+    [[ "$(cat "$fixture_dir/start")" == "/repo/scripts/fixtures/tmux-ssh.py start --root $tmux_fixture_dir --port 55401 --tmux $fixture_dir/bin/tmux" ]] \
+        || fail 'tmux fixture start arguments drifted'
+    rmdir "$tmux_fixture_dir"
+    echo 'PASS tmux-fixture-start'
+)
+
 # A wrong release archive must never be extracted or run, even though the
 # download succeeded. Execute the shipped verifier against hostile bytes.
 (
@@ -680,7 +785,7 @@ for function in cleanup preserve_failure_diagnostics dump_fixture_logs; do
     [[ -n "$body" ]] || fail "missing cleanup function $function"
     eval "$body"
 done
-for reason in preparation-failure parent-cancellation core-stop-failure; do
+for reason in preparation-failure parent-cancellation core-stop-failure tmux-stop-failure; do
     (
         export SCENARIO=background-stall
         export CASE_DIR="$work/$reason"
@@ -721,6 +826,14 @@ for reason in preparation-failure parent-cancellation core-stop-failure; do
             echo fixture-log > "$core_fixture_dir/logs/sshd.log"
             fixture_python=core_stop_failure
             core_stop_failure() { echo called > "$CASE_DIR/core-stop-called"; return 1; }
+        fi
+        tmux_fixture_dir=""
+        if [[ "$reason" == tmux-stop-failure ]]; then
+            tmux_fixture_dir="$CASE_DIR/tmux"
+            mkdir -p "$tmux_fixture_dir/logs"
+            echo fixture-log > "$tmux_fixture_dir/logs/sshd.log"
+            fixture_python=tmux_stop_failure
+            tmux_stop_failure() { echo called > "$CASE_DIR/tmux-stop-called"; return 1; }
         fi
         # Cleanup owns the fixture port locks on every exit path.
         lock_root="$CASE_DIR/locks"
@@ -764,10 +877,14 @@ for reason in preparation-failure parent-cancellation core-stop-failure; do
         [[ -f "$work/$reason/core-stop-called" ]] || fail 'outer cleanup did not attempt core shutdown'
         [[ -f "$work/$reason/core/bin/herdr-core" ]] || fail 'outer cleanup lost retained core executable'
     fi
+    if [[ "$reason" == tmux-stop-failure ]]; then
+        [[ -f "$work/$reason/tmux-stop-called" ]] || fail 'outer cleanup did not attempt tmux fixture shutdown'
+        [[ -f "$work/$reason/tmux/logs/sshd.log" ]] || fail 'outer cleanup lost the retained tmux fixture'
+    fi
     [[ -z "$(ls -A "$work/$reason/locks")" ]] || fail 'cleanup leaked a fixture port lock'
     printf 'PASS overlap-%s\n' "$reason"
 done
-echo 'Passed 3 owned build cleanup scenarios.'
+echo 'Passed 4 owned build cleanup scenarios.'
 
 for scenario in new settings stale-phase stale-worker stale-metrics unexpected symlink; do
     (
