@@ -1342,6 +1342,46 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    /// The detail can put a fresh terminal page in while the keyboard goes
+    /// down on the one leaving, here a terminal its retention let go of and
+    /// the next activation takes again. The other Agent's Chat still comes
+    /// in, once UIKit reports the hide, or after the leash (#644).
+    @Test(arguments: [true, false])
+    func anAgentTerminalReplacedMidHideStillOpensTheOtherAgentsChat(hideIsReported: Bool) async throws {
+        let (fixture, screen, departure, other, keyboard) = try await agentTerminalWithKeyboardUp(
+            opensAgentsOn: .chat)
+        weak var leavingInput = departure.surface
+        let chip = try #require(
+            Self.views(of: TerminalAgentChip.self, in: screen.window).first { $0.id == other.id })
+        chip.sendActions(for: .touchUpInside)
+        try await Self.until("the keyboard going down") {
+            screen.layOut()
+            return departure.surface?.isFirstResponder != true || departure.agentID != nil
+        }
+        #expect(departure.agentID == nil)
+
+        await fixture.console.agentTerminals.reconcile(hostID: fixture.host.id, agents: [])
+        screen.activity.didBecomeActive()
+        try await Self.until("a fresh terminal page") {
+            screen.layOut()
+            return leavingInput?.window == nil
+                && !Self.views(of: AgentComposerUITextView.self, in: screen.window).isEmpty
+        }
+        // Chat waits for UIKit to finish the hide.
+        #expect(departure.agentID == nil)
+        if hideIsReported {
+            keyboard.post(name: UIResponder.keyboardDidHideNotification, object: nil)
+        }
+        try await Self.until("the other Agent's screen") {
+            screen.layOut()
+            return departure.agentID != nil
+        }
+        #expect(departure.agentID == other.id)
+        #expect(departure.handedKeyboard == nil)
+        await screen.close()
+        await fixture.finish()
+    }
+
     // MARK: Scrollback
 
     /// The core paints no history unless asked (`history` defaults to 0), and

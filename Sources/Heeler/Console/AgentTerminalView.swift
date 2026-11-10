@@ -220,14 +220,15 @@ struct AgentTerminalView: View {
     /// Edge-docked Workspace navigation; nil where the detail cannot route
     /// to other terminals.
     private let workspaceDrawer: WorkspaceTerminalDrawer?
-    /// Whether another Agent's screen opens on Chat rather than its terminal;
-    /// nil counts as the terminal. See `leave(_:)`.
-    private let agentOpensOnChat: ((ConsoleAgent.ID) -> Bool)?
+    /// Which other Agents' screens open on Chat rather than their terminal,
+    /// and where a departure for one waits for the keyboard to go down; nil
+    /// counts every Agent as opening on its terminal. See `leave(_:)`.
+    private let chatDepartures: AgentChatDepartures<AgentDeparture>?
 
     /// Another Agent's screen this one leaves for: one picked in the switcher
     /// strip or started from the new-agent sheet, or an Agent row picked in
     /// the Workspace drawer.
-    private enum AgentDeparture: Equatable {
+    enum AgentDeparture: Equatable {
         case switched(ConsoleAgent.ID)
         case drawer(ConsoleTerminal, agentID: ConsoleAgent.ID)
 
@@ -238,9 +239,6 @@ struct AgentTerminalView: View {
         }
     }
 
-    /// The departure whose Chat waits for the keyboard to finish going down
-    /// before it takes the screen over.
-    @State private var departureAwaitingKeyboardHide: AgentDeparture?
     /// Bumped to put the Composer's keyboard away.
     @State private var composerKeyboardDismissRequest = 0
     /// Follows the Agent's own session file for the usage strip (#325).
@@ -360,7 +358,7 @@ struct AgentTerminalView: View {
         retainedSurface: TerminalSurfaceRetention? = nil,
         onRetainDeparture: ((_ keepingKeyboard: Bool) -> Void)? = nil,
         workspaceDrawer: WorkspaceTerminalDrawer? = nil,
-        agentOpensOnChat: ((ConsoleAgent.ID) -> Bool)? = nil,
+        chatDepartures: AgentChatDepartures<AgentDeparture>? = nil,
         inheritsKeyboardHandoff: Bool = true,
         interactionProbe: AgentTerminalInteractionProbe? = nil
     ) {
@@ -390,7 +388,7 @@ struct AgentTerminalView: View {
         self.retainedSurface = retainedSurface
         self.onRetainDeparture = onRetainDeparture
         self.workspaceDrawer = workspaceDrawer
-        self.agentOpensOnChat = agentOpensOnChat
+        self.chatDepartures = chatDepartures
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
@@ -589,9 +587,6 @@ struct AgentTerminalView: View {
         // file when the Agent starts a fresh session, and the loop must follow
         // it instead of re-reading a file nothing writes to any more.
         .task(id: agent.sessionFilePath) { await followSessionUsage() }
-        .modifier(AgentKeyboardDeparture(
-            awaitingHide: $departureAwaitingKeyboardHide,
-            notificationCenter: keyboardInset.notificationCenter, complete: complete))
         .modifier(ConsoleTerminalCommandRegistration(
             agentID: agent.id,
             isFocused: keyboardControl.isFirstResponder,
@@ -1809,12 +1804,12 @@ struct AgentTerminalView: View {
     /// Another Agent's screen takes this one over. The selection change
     /// rebuilds this screen from scratch: an Agent that opens on its terminal
     /// claims the keyboard through the handoff as it comes up, and one that
-    /// opens on Chat comes in once the keyboard has gone down here
-    /// (`AgentKeyboardDeparture`).
+    /// opens on Chat comes in once the keyboard has gone down here, brought
+    /// in by the detail around this screen (`AgentKeyboardDeparture`).
     private func leave(_ departure: AgentDeparture) {
-        departureAwaitingKeyboardHide = nil
-        guard departure.agentID != agent.id,
-              agentOpensOnChat?(departure.agentID) == true, keyboardIsUpForHandoff
+        chatDepartures?.awaitingKeyboardHide.wrappedValue = nil
+        guard departure.agentID != agent.id, let chatDepartures,
+              chatDepartures.opensOnChat(departure.agentID), keyboardIsUpForHandoff
         else {
             armAgentKeyboardHandoffIfKeyboardIsUp(for: departure.agentID)
             complete(departure)
@@ -1826,11 +1821,12 @@ struct AgentTerminalView: View {
         // A hardware keyboard, or a tools dock without a responder, leaves
         // nothing for UIKit to animate. Waiting is set before the hide.
         let animatesHide = keyboardInset.height > 0
-        if animatesHide { departureAwaitingKeyboardHide = departure }
+        if animatesHide { chatDepartures.awaitingKeyboardHide.wrappedValue = departure }
         hideKeyboard()
         if !animatesHide { complete(departure) }
     }
 
+    /// Routes a departure that has nothing to wait for.
     private func complete(_ departure: AgentDeparture) {
         switch departure {
         case .switched(let id):

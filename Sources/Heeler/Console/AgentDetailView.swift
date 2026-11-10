@@ -55,6 +55,10 @@ struct AgentDetailView: View {
     @State private var isChoosingTerminal = false
     @State private var terminalOpenFailure: String?
     @State private var createdTerminal = CreatedWorkspaceTerminal()
+    /// A departure the Agent's terminal page made for another Agent that
+    /// opens on Chat, while the keyboard goes down there. Held here, since
+    /// this detail can put a fresh page in first (`.id` follows `attach`).
+    @State private var departureAwaitingKeyboardHide: AgentTerminalView.AgentDeparture?
     /// A Shell Terminal pushed over this Agent by Open Terminal, so Back
     /// returns here; nil beside a list, where the list selects it instead.
     /// The Console holds it, so a detail SwiftUI remounts (a size-class
@@ -488,7 +492,9 @@ struct AgentDetailView: View {
                         }
                     },
                     workspaceDrawer: workspaceDrawer,
-                    agentOpensOnChat: { opensOnChat($0) },
+                    chatDepartures: AgentChatDepartures(
+                        opensOnChat: { opensOnChat($0) },
+                        awaitingKeyboardHide: $departureAwaitingKeyboardHide),
                     // Retention swaps `attach` on appear and rebuilds this
                     // view; the build before that swap is a placeholder and
                     // must not spend the keyboard handoff meant for the real one.
@@ -507,6 +513,10 @@ struct AgentDetailView: View {
         .navigationDestination(item: shellRouteSelection) { route in
             pushedTerminal(route)
         }
+        .modifier(AgentKeyboardDeparture(
+            awaitingHide: $departureAwaitingKeyboardHide,
+            notificationCenter: keyboardInset.notificationCenter,
+            complete: completeDeparture))
         .onAppear {
             hasAppeared = true
             // A detail mounted afresh covers nothing, whatever the last one
@@ -642,6 +652,17 @@ struct AgentDetailView: View {
             agentID: agent.id,
             isPresenting: openTerminal.failure != nil || openTerminal.closeFailureMessage != nil
                 || terminalOpenFailure != nil || isChoosingTerminal))
+    }
+
+    /// Routes a departure of the Agent's terminal page once the keyboard has
+    /// gone down there.
+    private func completeDeparture(_ departure: AgentTerminalView.AgentDeparture) {
+        switch departure {
+        case .switched(let id):
+            onSwitch(id)
+        case .drawer(let target, _):
+            workspaceDrawer?.onSelect(target)
+        }
     }
 
     /// Nil outside a Console that can select terminals (a scene root), and
