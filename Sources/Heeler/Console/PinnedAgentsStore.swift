@@ -87,14 +87,14 @@ final class PinnedAgentsStore {
         revision += 1
     }
 
-    /// Drops this Host's pins on panes outside `paneIDs`. Only herdr-core Hosts
-    /// call this: their addresses never return once gone.
+    /// Drops this Host's pins on panes outside `paneIDs`. Only herdr-core and
+    /// tmux Hosts call this: their addresses and pane ids never return once gone.
     func retainPins(hostID: Host.ID, paneIDs: Set<String>) {
         drop { $0.hostID == hostID && !paneIDs.contains($0.paneID) }
     }
 
-    /// Drops all of this Host's pins. Only herdr-core Hosts call this: another
-    /// core's addresses are not these.
+    /// Drops all of this Host's pins. Only herdr-core and tmux Hosts call this:
+    /// another core's addresses, or another tmux server's pane ids, are not these.
     func removePins(hostID: Host.ID) {
         drop { $0.hostID == hostID }
     }

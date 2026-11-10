@@ -1,9 +1,18 @@
 import Foundation
 
-/// A tmux Host's share of the Console (ADR 0042): its connection, and the
-/// server that answers on its socket. It lists no inventory yet, so nothing
-/// on it can be opened, started or closed, and `HostCapabilities` offers none
-/// of it.
+/// A tmux Host's share of the Console (ADRs 0042 and 0043): its connection,
+/// the server that answers on its socket, and what that server lists. A
+/// session is a Workspace, a window a Tab and a pane a Pane, as
+/// `TmuxOrganization` reads them.
+///
+/// A Pane is its server instance and its pane id: tmux counts pane ids from
+/// zero again each time it starts. The instance is kept where a herdr-core
+/// Host keeps its core id, so another instance drops what this device held of
+/// the last one's Panes, and a detail open on one of them keeps to it through
+/// the same pin.
+///
+/// Nothing on it can be opened, started or closed yet, and `HostCapabilities`
+/// offers none of it.
 @MainActor
 final class TmuxConsoleProjection: ConsoleHostProjection {
     /// The catalog's Host, with the paths a connection last resolved.
@@ -18,19 +27,23 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     /// The server on the Host's socket, while one answers. Another instance is
     /// another server, whose Panes only share ids with the last one's.
     private(set) var server: TmuxServerStatus?
-    /// Until a server answered, nothing says what the Host runs.
-    var isAwaitingSnapshot: Bool { server == nil }
+    /// Until the server that answered has listed its panes, nothing says what
+    /// the Host runs.
+    private(set) var isAwaitingSnapshot = true
 
     let syncError: String? = nil
     let leakedEnvironmentNames: Set<String> = []
-    let workspaces: [ConsoleWorkspace] = []
+    private(set) var workspaces: [ConsoleWorkspace] = []
     let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
-    let terminalsByPane: [String: ConsoleTerminal] = [:]
-    let agentsByPane: [String: ConsoleAgent] = [:]
-    let lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
-    let sidebarRevision: UInt64 = 0
+    private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
+    private(set) var agentsByPane: [String: ConsoleAgent] = [:]
+    private(set) var lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
+    private(set) var sidebarRevision: UInt64 = 0
     let terminalLabelKeys: [String] = []
 
+    /// What this device keeps of the Host by server instance, and its Pins.
+    private let memory: HerdrCoreHostMemory
+    private let pins: PinnedAgentsStore
     private let onPathsResolved: @MainActor (TmuxPaths) -> Void
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
@@ -42,11 +55,15 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     init(
         host: Host,
         session: TmuxHostSession,
+        memory: HerdrCoreHostMemory,
+        pins: PinnedAgentsStore,
         onPathsResolved: @escaping @MainActor (TmuxPaths) -> Void,
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
         self.session = session
+        self.memory = memory
+        self.pins = pins
         self.onPathsResolved = onPathsResolved
         self.onChange = onChange
     }
@@ -129,6 +146,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         latency = nil
         routeID = nil
         server = nil
+        invalidateInventory()
         onChange()
     }
 
@@ -148,24 +166,81 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             case .connecting, .suspended, .ended:
                 break
             }
-            if status != .connected { server = nil }
+            if status != .connected {
+                server = nil
+                invalidateInventory()
+            }
         case .server(let server):
+            // What was listed came from the server that answered before.
+            if self.server?.instance != server.instance { invalidateInventory() }
             self.server = server
+            noteInstance(server.instance)
         case .paths(let paths):
             guard paths != host.tmuxPaths, paths.serves(socketName: host.tmuxSocketName) else { return }
             host.tmuxPaths = paths
             onPathsResolved(paths)
+        case .inventory(let inventory):
+            guard status == .connected, server != nil else { return }
+            replaceInventory(with: inventory)
         }
         onChange()
     }
 
     // MARK: Inventory
 
+    /// The server instance this inventory's pane ids mean, where a herdr-core
+    /// Host has the core its addresses mean.
+    var inventoryCore: String? {
+        memory.coreID(for: host.id)
+    }
+
+    /// Another instance is another server, whose pane ids only repeat the last
+    /// one's: the Pins on those go, with whatever else this device kept of
+    /// them. Pins go first, so a crash in between still finds another instance
+    /// next time.
+    private func noteInstance(_ instance: TmuxServerInstance) {
+        if let known = memory.coreID(for: host.id), known != instance.id {
+            pins.removePins(hostID: host.id)
+            lastKnownAgentsByPane = [:]
+        }
+        memory.noteCore(instance.id, for: host.id)
+    }
+
+    private func invalidateInventory() {
+        isAwaitingSnapshot = true
+        workspaces = []
+        terminalsByPane = [:]
+        agentsByPane = [:]
+    }
+
+    /// Each snapshot is the whole inventory, so nothing is carried over. Its
+    /// rows name their server, which the loop asked later than `server` did.
+    private func replaceInventory(with inventory: TmuxInventory) {
+        if let instance = inventory.instance { noteInstance(instance) }
+        pins.retainPins(hostID: host.id, paneIDs: Set(inventory.panes.map(\.paneID)))
+        let organization = TmuxOrganization.build(inventory)
+        let builder = ConsolePaneRowBuilder(host: host, inventory: organization.snapshot)
+        let agents = builder.agentRows(lastOutputSnippet: { _ in nil }, liveChange: { _ in nil })
+        var rows = builder.terminalRows(agents: agents, liveChange: { _ in nil })
+        for pane in organization.panes {
+            rows[pane.paneID]?.gridColumns = pane.width
+            rows[pane.paneID]?.gridRows = pane.height
+        }
+        terminalsByPane = rows
+        agentsByPane = agents
+        lastKnownAgentsByPane = agents
+        workspaces = builder.workspaceRows()
+        isAwaitingSnapshot = false
+        sidebarRevision &+= 1
+    }
+
     func refreshTerminalInventory() async {}
     func refreshSidebarMetadata() async {}
     func setShownAgents(_ paneIDs: Set<String>) {}
 
-    func paneExists(_ paneID: String) async throws -> Bool { false }
+    func paneExists(_ paneID: String) async throws -> Bool {
+        terminalsByPane[paneID] != nil
+    }
 
     // MARK: What a tmux Host does not do yet
 

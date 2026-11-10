@@ -6,7 +6,8 @@ import Testing
 
 /// A tmux Host in the Console, through `ConsoleStore` and the real tmux
 /// transport over a scripted Host: its connection states, the paths it
-/// resolves, and that it lists nothing and offers nothing yet.
+/// resolves, and that it offers nothing yet. `TmuxInventoryConsoleTests`
+/// covers what it lists.
 @MainActor
 @Suite("tmux Host in the Console", .timeLimit(.minutes(1)))
 struct TmuxConsoleTests {
@@ -81,7 +82,7 @@ struct TmuxConsoleTests {
 
     // MARK: Connected
 
-    @Test func aTmuxHostConnectsAndListsNothingYet() async throws {
+    @Test func aTmuxHostConnectsOnItsStoredPaths() async throws {
         let tmux = ScriptedTmuxHost()
         let console = await started(tmux)
         let store = console.store

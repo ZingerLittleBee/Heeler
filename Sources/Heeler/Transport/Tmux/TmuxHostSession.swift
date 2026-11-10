@@ -10,6 +10,9 @@ enum TmuxHostSessionUpdate: Sendable, Equatable {
     case server(TmuxServerStatus)
     /// A connection resolved the Host's tmux paths again, for the catalog to keep.
     case paths(TmuxPaths)
+    /// Every pane the server lists: once after each `server`, and again each
+    /// time something changed (ADR 0043).
+    case inventory(TmuxInventory)
 }
 
 /// Owns a tmux Host's connection, as `HerdrCoreHostSession` owns a herdr-core
@@ -20,6 +23,10 @@ enum TmuxHostSessionUpdate: Sendable, Equatable {
 /// server running stays retryable with backoff, on the SSH connection it has;
 /// a missing or too old tmux is never retried. Every ask carries `-N`, so
 /// nothing here ever starts a server (ADR 0042).
+///
+/// While a server answers, one long exec follows its inventory (ADR 0043). A
+/// loop that ends, as it does when its server stops, is followed by an ask of
+/// the server, and the next answer starts another.
 actor TmuxHostSession {
     typealias Sleep = @Sendable (Duration) async throws -> Void
 
@@ -46,6 +53,8 @@ actor TmuxHostSession {
     private let connect: @Sendable (TmuxPaths?) async throws -> any TmuxTransport
     private let reconnectPolicy: ReconnectPolicy
     private let keepalive: KeepalivePolicy?
+    /// A loop that ran this long was following its server, and its end is news.
+    private let settledLoopLife: Duration
     private let sleep: Sleep
 
     /// The paths the next connection starts from: the catalog's, then whatever
@@ -57,6 +66,9 @@ actor TmuxHostSession {
     /// A timed-out ask leaves the connection in doubt, so the next attempt dials.
     private var transportSuspect = false
     private var liveServer: TmuxServerStatus?
+    /// The loop following the server's inventory, and which start of it this is.
+    private var inventoryTask: Task<Void, Never>?
+    private var inventoryRun: UInt64 = 0
     private var activationGeneration: UInt64 = 0
     private var runTask: Task<Void, Never>?
     private var waitSleep: Task<Void, any Error>?
@@ -69,12 +81,14 @@ actor TmuxHostSession {
         connect: @escaping @Sendable (TmuxPaths?) async throws -> any TmuxTransport,
         reconnectPolicy: ReconnectPolicy = .default,
         keepalive: KeepalivePolicy? = .default,
+        settledLoopLife: Duration = .seconds(2),
         sleep: @escaping Sleep = { try await Task.sleep(for: $0) }
     ) {
         self.storedPaths = Mutex(storedPaths)
         self.connect = connect
         self.reconnectPolicy = reconnectPolicy
         self.keepalive = keepalive
+        self.settledLoopLife = settledLoopLife
         self.sleep = sleep
         (updates, updatesContinuation) = AsyncStream.makeStream(of: TmuxHostSessionUpdate.self)
         (latencyUpdates, latencyContinuation) = AsyncStream.makeStream(
@@ -180,6 +194,7 @@ actor TmuxHostSession {
 
     private func yieldStatus(_ status: EventsSessionStatus) {
         if status != .connected {
+            stopInventory()
             liveServer = nil
             latencyBox.withLock { $0 = nil }
             routeIDBox.withLock { $0 = nil }
@@ -219,6 +234,7 @@ actor TmuxHostSession {
                 case .success(let server):
                     attempt = 0
                     announce(server, latency: started.duration(to: .now), routeID: transport.routeID)
+                    followInventory(on: transport, generation: generation)
                     try await waitForNextAsk()
                     continue
                 case .failure(let error):
@@ -254,8 +270,57 @@ actor TmuxHostSession {
         let previous = liveServer
         liveServer = server
         if previous == nil { updatesContinuation.yield(.status(.connected)) }
-        if previous != server { updatesContinuation.yield(.server(server)) }
+        if previous != server {
+            // Another server, or other paths to it: the loop that ran is not its.
+            stopInventory()
+            updatesContinuation.yield(.server(server))
+        }
         latencyContinuation.yield()
+    }
+
+    // MARK: Inventory
+
+    /// Starts the loop unless one runs. A loop that cannot start is tried
+    /// again at the next ask.
+    private func followInventory(on transport: any TmuxTransport, generation: UInt64) {
+        guard inventoryTask == nil else { return }
+        inventoryRun &+= 1
+        let run = inventoryRun
+        inventoryTask = Task { [weak self, settledLoopLife] in
+            let started = ContinuousClock.now
+            var listed = false
+            do {
+                for try await inventory in try await transport.inventory() {
+                    guard await self?.noteInventory(inventory, run: run, generation: generation) == true
+                    else { return }
+                    listed = true
+                }
+            } catch {}
+            let lasted = started.duration(to: .now) >= settledLoopLife
+            await self?.inventoryEnded(run: run, asksAtOnce: listed && lasted)
+        }
+    }
+
+    private func noteInventory(_ inventory: TmuxInventory, run: UInt64, generation: UInt64) -> Bool {
+        guard run == inventoryRun, inventoryTask != nil, activationIsCurrent(generation), liveServer != nil
+        else { return false }
+        updatesContinuation.yield(.inventory(inventory))
+        return true
+    }
+
+    /// A loop that followed the server and then ended says something happened
+    /// to it: the server is asked at once. One that listed nothing, or ended
+    /// as soon as it started, waits for the next ask, so a Host that refuses
+    /// the exec or ends it is not asked in a spin.
+    private func inventoryEnded(run: UInt64, asksAtOnce: Bool) {
+        guard run == inventoryRun, inventoryTask != nil else { return }
+        inventoryTask = nil
+        if asksAtOnce { waitSleep?.cancel() }
+    }
+
+    private func stopInventory() {
+        inventoryTask?.cancel()
+        inventoryTask = nil
     }
 
     /// The pause between two asks of a server that answers, which a
@@ -306,6 +371,7 @@ actor TmuxHostSession {
         let task = runTask
         runTask = nil
         task?.cancel()
+        stopInventory()
         liveServer = nil
         if let transport = currentTransport {
             currentTransport = nil

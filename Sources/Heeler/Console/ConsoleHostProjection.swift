@@ -34,6 +34,10 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// Display-only metadata for a selected detail during recovery. Never used
     /// as live inventory, and replaced even by an empty fresh snapshot.
     var lastKnownAgentsByPane: [String: ConsoleAgent] { get }
+    /// What this inventory's Pane ids belong to, on a Host whose ids repeat
+    /// under another: a herdr-core Host's core, a tmux Host's server instance.
+    /// Nil on a Herdr TUI Host, and before the first one is known.
+    var inventoryCore: String? { get }
     var sidebarRevision: UInt64 { get }
     var terminalLabelKeys: [String] { get }
 
@@ -186,6 +190,8 @@ protocol CheckedChatTyping: AnyObject {
 
 extension ConsoleHostProjection {
     var departedAgentsByPane: [String: ConsoleAgent] { [:] }
+
+    var inventoryCore: String? { nil }
 
     /// Until a snapshot proves what the Host runs, its Console rows may be saved
     /// Chat entries, on a Host that offers Chat at all.

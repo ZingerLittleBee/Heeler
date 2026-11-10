@@ -97,7 +97,7 @@ extension HostCapabilities {
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
         isLocatingCore: Bool = false
     ) {
-        // A tmux Host lists no inventory yet, so there is nothing to act on.
+        // A tmux Host lists its Panes, and no action on them is built yet.
         guard serverKind != .tmux else {
             self.init(
                 startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,

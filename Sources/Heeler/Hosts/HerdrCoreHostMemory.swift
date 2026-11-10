@@ -7,6 +7,9 @@ import Foundation
 /// shared with the Host. It goes with the Host. When the Host's core id changes it
 /// starts over, since addresses belong to one core, all but the kernel, which
 /// belongs to the machine.
+///
+/// A tmux Host keeps its server instance here as its core id (ADR 0043): pane
+/// ids belong to one run of the server as addresses belong to one core.
 @MainActor
 final class HerdrCoreHostMemory {
     private struct Entry: Codable, Equatable {

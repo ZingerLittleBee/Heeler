@@ -79,8 +79,9 @@ final class ConsoleStore {
     private(set) var hostDesktopAppNaming: [Host.ID: HerdrAppNaming] = [:]
     /// Each core Host's kernel, as its locator prints it, once a link has located its core.
     private(set) var hostCoreKernels: [Host.ID: String] = [:]
-    /// The core each core Host's inventory comes from. A detail reads it, so it
-    /// redraws once the Host no longer serves the core it opened on.
+    /// The core each core Host's inventory comes from, and the server instance
+    /// each tmux Host's does. A detail reads it, so it redraws once the Host no
+    /// longer serves what it opened on.
     private(set) var hostCores: [Host.ID: String] = [:]
     /// The connection each Host's platform was last asked on.
     @ObservationIgnored private var hostPlatformGenerations: [Host.ID: UInt64] = [:]
@@ -300,7 +301,8 @@ final class ConsoleStore {
         }
         if let hostsOutOfSight {
             let retained = hostsOutOfSight.union(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id))
-            coreHostMemory.retainHosts(retained)
+            // A tmux Host's server instance is kept where a core Host's core id is.
+            coreHostMemory.retainHosts(retained.union(hosts.lazy.filter { $0.serverKind == .tmux }.map(\.id)))
             harnessEdits.retainHosts(retained)
         }
         cachedChats.setHosts(hosts)
@@ -1466,7 +1468,7 @@ final class ConsoleStore {
                         onChange: onChange)
                 case .tmux:
                     TmuxConsoleProjection(
-                        host: host, session: makeTmuxSession(host),
+                        host: host, session: makeTmuxSession(host), memory: coreHostMemory, pins: pins,
                         onPathsResolved: { [weak self, id = host.id] paths in
                             self?.onTmuxPathsResolved?(id, paths)
                         },
@@ -1548,8 +1550,9 @@ final class ConsoleStore {
                 .compactMap { projection in projection.kernel.map { (projection.host.id, $0) } })
         if hostCoreKernels != nextCoreKernels { hostCoreKernels = nextCoreKernels }
         let nextCores = Dictionary(
-            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
-                .compactMap { projection in projection.inventoryCore.map { (projection.host.id, $0) } })
+            uniqueKeysWithValues: current.compactMap { projection in
+                projection.inventoryCore.map { (projection.host.id, $0) }
+            })
         if hostCores != nextCores { hostCores = nextCores }
         hostConnectionGenerations = Dictionary(
             uniqueKeysWithValues: current.map {
