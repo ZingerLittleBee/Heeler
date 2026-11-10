@@ -107,7 +107,8 @@ final class HeelerAppModel {
             },
             harnessEdits: console.harnessEdits,
             noteWindowsCore: { [weak console] in console?.noteWindowsCore(on: $0) },
-            coreKernel: { [weak console] in console?.hostCoreKernels[$0] })
+            coreKernel: { [weak console] in console?.hostCoreKernels[$0] },
+            noteTmuxPaths: { [weak hostStore] id, paths in try? hostStore?.noteTmuxPaths(paths, for: id) })
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on

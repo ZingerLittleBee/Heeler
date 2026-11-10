@@ -193,6 +193,7 @@ final actor FakeTransportConnector: TransportConnector {
     private let plugin: Result<HeelerPluginInstallation?, TransportError>?
     private let pluginSteps: FakePluginSteps
     private let core: ScriptedCoreHost?
+    private let tmux: ScriptedTmuxHost?
     private(set) var capturedSettings: [SSHTransportSettings] = []
     private(set) var transports: [FakeTransport] = []
 
@@ -201,9 +202,11 @@ final actor FakeTransportConnector: TransportConnector {
         sessions: [HerdrSession] = [],
         plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
         pluginSteps: FakePluginSteps = FakePluginSteps(),
-        core: ScriptedCoreHost? = nil
+        core: ScriptedCoreHost? = nil,
+        tmux: ScriptedTmuxHost? = nil
     ) {
         self.core = core
+        self.tmux = tmux
         self.outcome = outcome
         self.presentedKeyBlob = presentedKeyBlob
         self.presentedJumpKeyBlob = presentedJumpKeyBlob
@@ -252,10 +255,29 @@ final actor FakeTransportConnector: TransportConnector {
         case .connects:
             break
         }
+        if let tmux, core == nil { return tmux }
         guard let core else {
             throw TransportError.hostFeatureUnavailable(feature: "Server Kind detection")
         }
         return core
+    }
+
+    /// The real tmux transport over a scripted Host, for this Host's socket.
+    func connectTmux(settings: SSHTransportSettings) async throws -> any TmuxTransport {
+        capturedSettings.append(settings)
+        switch outcome {
+        case .connectFails(let error):
+            throw error
+        case .hangs(let duration):
+            await Task.detached { try? await Task.sleep(for: duration) }.value
+            throw TransportError.timedOut
+        case .connects:
+            break
+        }
+        guard let tmux else {
+            throw TransportError.hostFeatureUnavailable(feature: "tmux Hosts")
+        }
+        return await tmux.transport(socketName: settings.tmuxSocketName, storedPaths: settings.tmuxPaths)
     }
 
     func connect(settings: SSHTransportSettings) async throws -> any Transport {

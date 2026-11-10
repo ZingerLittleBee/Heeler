@@ -44,6 +44,8 @@ struct HostOnboardingDependencies: Sendable {
     var noteWindowsCore: @MainActor @Sendable (Host.ID) -> Void = { _ in }
     /// The kernel a herdr-core Host's locator last found, nil before any has.
     var coreKernel: @MainActor @Sendable (Host.ID) -> String? = { _ in nil }
+    /// A tmux Host's checks resolved its paths again, for the catalog to keep.
+    var noteTmuxPaths: @MainActor @Sendable (Host.ID, TmuxPaths) -> Void = { _, _ in }
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
@@ -52,7 +54,8 @@ struct HostOnboardingDependencies: Sendable {
 /// Host with a herdr endpoint (ADR 0023) skips discovery, because its socket
 /// already fixes the session, and must instead prove its launcher answers. A
 /// Host added unconfirmed first detects which servers it runs and has the user
-/// confirm one kind, then runs that kind's checks (ADR 0031).
+/// confirm one kind, then runs that kind's checks (ADR 0031). A tmux Host's
+/// checks ask its server and start none (ADR 0042).
 @MainActor
 @Observable
 final class HostOnboardingStore {
@@ -94,6 +97,11 @@ final class HostOnboardingStore {
     private(set) var detectionFailure: String?
     /// Why the last confirmation was refused, for the user to read.
     private(set) var confirmationRefusal: String?
+    /// The socket a tmux confirmation names: one detection offered, or the typed
+    /// name when no server answers.
+    private(set) var tmuxSocket = TmuxSocketName.defaultName
+    /// What a tmux Host's server answered on the last checks.
+    private(set) var tmuxStatus: TmuxServerStatus?
     /// What the locator found on a core Host the last checks read as not running.
     private var notRunningCore: HerdrCoreLocator.Location?
     /// Set from the user's request until they answer it.
@@ -123,6 +131,7 @@ final class HostOnboardingStore {
     @ObservationIgnored private var currentRun = UUID()
     @ObservationIgnored private let hostHelperDidChange: @MainActor () -> Void
     @ObservationIgnored private let noteWindowsCore: @MainActor (Host.ID) -> Void
+    @ObservationIgnored private let noteTmuxPaths: @MainActor (Host.ID, TmuxPaths) -> Void
     @ObservationIgnored private let hostHelperHealthGap: @Sendable () async throws -> Void
     @ObservationIgnored private let harnessEdits: HarnessConfigEditStore?
     /// A Mac's second health read, which outlives the run that began it and owns
@@ -143,9 +152,12 @@ final class HostOnboardingStore {
             try await Task.sleep(for: HostHelperLaunchAgent.healthGap)
         },
         harnessEdits: HarnessConfigEditStore? = nil,
-        noteWindowsCore: @escaping @MainActor (Host.ID) -> Void = { _ in }
+        noteWindowsCore: @escaping @MainActor (Host.ID) -> Void = { _ in },
+        noteTmuxPaths: @escaping @MainActor (Host.ID, TmuxPaths) -> Void = { _, _ in }
     ) {
         self.noteWindowsCore = noteWindowsCore
+        self.noteTmuxPaths = noteTmuxPaths
+        tmuxSocket = TmuxSocketName.normalized(host.sessionName)
         self.hostHelperHealthGap = hostHelperHealthGap
         self.harnessEdits = harnessEdits
         self.coreHolderRestart = coreHolderRestart
@@ -178,6 +190,8 @@ final class HostOnboardingStore {
         detection = nil
         detectionFailure = nil
         confirmationRefusal = nil
+        tmuxStatus = nil
+        tmuxSocket = TmuxSocketName.normalized(host.sessionName)
         notRunningCore = nil
         coreStartConfirmation = nil
         coreStart = .idle
@@ -276,9 +290,7 @@ final class HostOnboardingStore {
             await performCoreChecks(settings: settings, coreReportedRunning: coreReportedRunning)
             return
         case .tmux:
-            // Nothing reads a tmux Host yet.
-            report = .failure(
-                check: .herdrInstalled, hint: String(localized: "The checks ended before reading this Host."))
+            await performTmuxChecks(settings: settings)
             return
         case .herdrTUI:
             break
@@ -391,6 +403,45 @@ final class HostOnboardingStore {
         }
     }
 
+    /// A tmux Host's preflight: one ask of its server, with the stored paths
+    /// while they answer and through the login shell once they do not, and
+    /// close. It starts nothing. Paths resolved again go to the catalog.
+    private func performTmuxChecks(settings: SSHTransportSettings) async {
+        pluginStatus = .unsupportedServerKind
+        do {
+            let transport = try await connector.connectTmux(settings: settings)
+            guard !Task.isCancelled else {
+                try? await transport.close()
+                return
+            }
+            let outcome: Result<TmuxServerStatus, any Error>
+            do {
+                outcome = .success(try await transport.status())
+            } catch {
+                outcome = .failure(error)
+            }
+            let resolved = await transport.resolvedPaths()
+            // Preflight only probes; the Console owns long-lived connections.
+            try? await transport.close()
+            guard !Task.isCancelled else { return }
+            if let resolved, resolved != host.tmuxPaths {
+                host.tmuxPaths = resolved
+                noteTmuxPaths(host.id, resolved)
+            }
+            switch outcome {
+            case .success(let status):
+                tmuxStatus = status
+                report = .allPassed
+            case .failure(let error):
+                report = failureReport(error)
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            captureHostKeyReplacement(error)
+            report = failureReport(error)
+        }
+    }
+
     /// The Helper's actions dial for themselves, after the preflight settled the
     /// Host key: a key that still needs trusting is declined.
     private func makeHostHelper() -> HostHelperStore {
@@ -426,7 +477,10 @@ final class HostOnboardingStore {
             }
             do {
                 let found = try await ServerKindDetection.run(over: connection, session: host.sessionName)
-                if !Task.isCancelled { detection = found }
+                if !Task.isCancelled {
+                    detection = found
+                    tmuxSocket = found.preselectedTmuxSocket(typed: host.sessionName)
+                }
             } catch {
                 if !Task.isCancelled {
                     detectionFailure = (error as? TransportError)?.presentation.message ?? "\(error)"
@@ -447,6 +501,17 @@ final class HostOnboardingStore {
         return detectionFailure == nil ? [] : ServerKindDetection.offeredWithoutFindings
     }
 
+    /// The sockets a tmux server answers on, for the confirmation to choose from.
+    var tmuxSocketChoices: [String] {
+        host.serverKind == .unconfirmed ? detection?.tmuxSockets ?? [] : []
+    }
+
+    /// Chooses the socket a tmux confirmation names, among those offered.
+    func selectTmuxSocket(_ name: String) {
+        guard tmuxSocketChoices.contains(name) else { return }
+        tmuxSocket = name
+    }
+
     /// What the confirmation adds to the findings it lists, if anything.
     var confirmationNote: String? {
         if let detectionFailure {
@@ -456,12 +521,18 @@ final class HostOnboardingStore {
         if case .sessionRefused(let reason) = detection.herdrCore {
             return reason
         }
-        if detection.foundKinds.count > 1 {
+        switch detection.foundKinds.count {
+        case 0:
+            return detection.supportedKinds.count > 2
+                ? String(localized: "None of them was found. Choose the one you will use, and its checks say how to set it up.")
+                : String(localized: "Neither was found. Choose the one you will use, and its checks say how to set it up.")
+        case 1:
+            return nil
+        case 2:
             return String(localized: "This machine runs both. A Host is one kind: confirm one here, then add the machine again for the other.")
+        default:
+            return String(localized: "This machine runs more than one. A Host is one kind: confirm one here, then add the machine again for each of the others.")
         }
-        return detection.foundKinds.isEmpty
-            ? String(localized: "Neither was found. Choose the one you will use, and its checks say how to set it up.")
-            : nil
     }
 
     /// Confirms the Host's kind, once, then runs that kind's checks. A name refused
@@ -480,9 +551,20 @@ final class HostOnboardingStore {
         }
         if kind == .herdrCore, detection?.isNativeWindows == true { noteWindowsCore(host.id) }
         do {
-            host = try catalog.confirmServerKind(kind, for: host.id)
+            // A tmux Host takes the socket chosen here, and the paths this
+            // detection's login shell resolved for it (ADR 0042).
+            host =
+                kind == .tmux
+                ? try catalog.confirmServerKind(
+                    kind, for: host.id, sessionName: tmuxSocket,
+                    tmuxPaths: detection?.tmuxPaths(socketName: tmuxSocket))
+                : try catalog.confirmServerKind(kind, for: host.id)
         } catch HostStoreError.sessionNameRefused(let reason) {
             confirmationRefusal = reason
+            return
+        } catch HostStoreError.catalogUnreadable where kind == .tmux && catalog.tmuxCatalogLoadError != nil {
+            confirmationRefusal =
+                String(localized: "The saved tmux Hosts could not be read, so no tmux Host can be added.")
             return
         } catch HostStoreError.catalogUnreadable where catalog.coreCatalogLoadError != nil {
             confirmationRefusal =
@@ -608,6 +690,9 @@ final class HostOnboardingStore {
     /// advisory: a core other than the one this build was tested with still
     /// connects if `hello` passes.
     var serverKindSummary: String {
+        if host.serverKind == .tmux, let tmuxStatus {
+            return "\(host.serverKind.displayName) \(tmuxStatus.version)"
+        }
         guard host.serverKind == .herdrCore, let serverInfo else { return host.serverKind.displayName }
         return "\(host.serverKind.displayName) \(serverInfo.version)"
     }

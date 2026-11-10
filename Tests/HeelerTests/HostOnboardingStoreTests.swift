@@ -684,7 +684,7 @@ struct HostOnboardingStoreTests {
         let found = HostOnboardingStoreTests.sessionsJSON
         let cases: [(ScriptedCoreHost, String?)] = [
             (ScriptedCoreHost(herdrRead: .answers(found), channel: .refused), "This machine runs both"),
-            (ScriptedCoreHost(locator: absent, channel: .refused), "Neither was found"),
+            (ScriptedCoreHost(locator: absent, channel: .refused), "None of them was found"),
             (ScriptedCoreHost(channel: .refused), nil),
             (ScriptedCoreHost(locator: absent, herdrRead: .answers(found), channel: .refused), nil),
         ]

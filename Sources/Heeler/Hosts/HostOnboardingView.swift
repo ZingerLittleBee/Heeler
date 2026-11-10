@@ -95,7 +95,8 @@ struct HostOnboardingView: View {
             credentials: dependencies.credentials,
             hostHelperDidChange: dependencies.hostHelperDidChange,
             harnessEdits: dependencies.harnessEdits,
-            noteWindowsCore: dependencies.noteWindowsCore)
+            noteWindowsCore: dependencies.noteWindowsCore,
+            noteTmuxPaths: dependencies.noteTmuxPaths)
     }
 
     /// The page with its Edit sheet, outside `page`'s modifier chain, which
@@ -156,7 +157,12 @@ struct HostOnboardingView: View {
                 LabeledContent("Account", value: store.host.username)
                 LabeledContent("Server Kind", value: store.serverKindSummary)
                     .accessibilityIdentifier("hosts.detail.serverKind")
-                LabeledContent("Session", value: sessionLine)
+                if store.host.serverKind == .tmux {
+                    LabeledContent("Socket", value: store.host.tmuxSocketName)
+                        .accessibilityIdentifier("hosts.detail.tmuxSocket")
+                } else {
+                    LabeledContent("Session", value: sessionLine)
+                }
                 herdrEndpointRows
                 LabeledContent(
                     "Auth",
@@ -285,7 +291,7 @@ struct HostOnboardingView: View {
     /// the Server Kind row.
     private var preflightSection: some View {
         Section {
-            ForEach(PreflightCheck.allCases, id: \.self) { @Sendable check in
+            ForEach(PreflightCheck.cases(for: store.host.serverKind), id: \.self) { @Sendable check in
                 MainActorContent {
                     PreflightCheckRow(
                         title: check.title(for: store.host.serverKind), status: status(for: check))
@@ -315,6 +321,18 @@ struct HostOnboardingView: View {
                     .accessibilityIdentifier("hosts.detail.detection.herdrTUI")
                 LabeledContent(ServerKind.herdrCore.displayName, value: detection.herdrCore.summary)
                     .accessibilityIdentifier("hosts.detail.detection.herdrCore")
+                if detection.tmux != .unsupported {
+                    LabeledContent(ServerKind.tmux.displayName, value: detection.tmux.summary)
+                        .accessibilityIdentifier("hosts.detail.detection.tmux")
+                }
+            }
+            if store.tmuxSocketChoices.count > 1 {
+                Picker("tmux Socket", selection: tmuxSocketSelection) {
+                    ForEach(store.tmuxSocketChoices, id: \.self) { socket in
+                        Text(socket).tag(socket)
+                    }
+                }
+                .accessibilityIdentifier("hosts.detail.tmuxSocketPicker")
             }
             ForEach(store.offeredKinds, id: \.self) { @Sendable kind in
                 MainActorContent {
@@ -340,6 +358,10 @@ struct HostOnboardingView: View {
         return PreflightCheck.allCases.lazy.map { report[$0] }.first {
             if case .failed = $0 { true } else { false }
         }
+    }
+
+    private var tmuxSocketSelection: Binding<String> {
+        Binding(get: { store.tmuxSocket }, set: { store.selectTmuxSocket($0) })
     }
 
     private var confirmationRefusalPresented: Binding<Bool> {
