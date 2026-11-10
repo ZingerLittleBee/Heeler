@@ -164,9 +164,9 @@ never show or send into a conversation it has guessed.
   that stands unconfirmed says it cannot tell. The arguments are the core's
   record of the Terminal's foreground, which the candidate list reads for
   `--conversation` too; the check's exec still learns nothing of an argv.
-  `--conversation` and `-c` can open a conversation another agy holds; such an
-  agy never takes the lock and, on Linux, holds none of its files about 30 s
-  after it starts. Decided on 2026-11-10 (#644), before a live run.
+  agy 1.5.3's `--conversation` and `-c` can open a conversation another agy
+  holds; such an agy never takes the lock and, on Linux, holds none of its files
+  about 30 s after it starts. Decided on 2026-11-10 (#644), before a live run.
   The live run that followed showed a state before this one: until the core
   samples the agy from Heeler's own launch of a bare `agy`, the record has no
   foreground ([herdr compatibility](../agents/herdr-compatibility.md)), and
@@ -177,7 +177,10 @@ never show or send into a conversation it has guessed.
   is refused with its text left in the Composer and a notice to send again once
   agy runs, nothing resent by itself, and the core's sample brings the next
   check. A launch with arguments
-  and a launcher still read as above (#644).
+  and a launcher still read as above (#644). On agy 1.5.4, live, `--conversation`
+  with a held id still did as 1.5.3's, but `-c` passed over a held conversation,
+  continued one no agy held and took its lock at start, which Chat bound
+  ([herdr compatibility](../agents/herdr-compatibility.md)).
 - While Chat shows no conversation, the check before a Send refuses whatever it
   finds other than an agy with no conversation yet (above), since a conversation
   it newly binds is not one the user saw. So a Chat that shows none and says it
