@@ -19,7 +19,8 @@ them from any terminal attached to it.
   two counts. `turn=<n>` advances when the status leaves working or blocked for
   done or error, or leaves working, for a program not known to report done, for
   idle, so a turn that starts and finishes between two looks still counts;
-  blocked to done ends a turn as it does on herdr-core (ADR 0033).
+  blocked to done ends a turn, as herdr-core's turn end does
+  (`HerdrCoreTurnState`, `herdr-core-turn-end-v1.json`).
   `blocked=<n>` advances each time the status enters blocked, so two questions
   between two looks are two. Both belong to the Pane and never go back:
   whatever writes next, another program or another integration, reads them and
