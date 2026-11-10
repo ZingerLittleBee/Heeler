@@ -117,6 +117,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// Whether Rename and applying a typed name are offered at all (ADR 0032).
     private let herdrAppRename: Bool
     private let chatTypingClock: BlockedCardClock
+    /// Whether Send should treat the Host as native Windows, read when a step runs.
+    private let isNativeWindows: @MainActor () -> Bool
     private var chatTypings: [String: HerdrCoreChatTyping] = [:]
     /// What the last `herdr-app status` on this link said.
     private var isDesktopAppRunning = false
@@ -134,6 +136,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         gitGate: GitExecGate,
         herdrAppRename: Bool,
         chatTypingClock: BlockedCardClock = .live,
+        isNativeWindows: @escaping @MainActor () -> Bool,
         onSeenMarksChanged: @escaping @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void = { _, _ in },
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
@@ -145,6 +148,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         self.gitGate = gitGate
         self.herdrAppRename = herdrAppRename
         self.chatTypingClock = chatTypingClock
+        self.isNativeWindows = isNativeWindows
         self.onSeenMarksChanged = onSeenMarksChanged
         self.onChange = onChange
     }
@@ -1275,6 +1279,22 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     func pasteIntoAgent(_ text: String, paneID: String) async throws {
         try await chatTyping(at: paneID).paste(text)
+    }
+
+    /// Checked Composer Send (ADR 0035). `live` follows a projection replaced
+    /// after the Composer was opened.
+    func checkedComposerSend(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> (any CheckedComposerSend)? {
+        let isNativeWindows = isNativeWindows
+        return HerdrCoreComposerSend(
+            address: paneID,
+            projection: { live() as? HerdrCoreConsoleProjection },
+            corePin: corePin,
+            clock: chatTypingClock,
+            isOnWindows: isNativeWindows)
     }
 
     /// How Chat reads and types in a Terminal (ADR 0035), kept so the screen it

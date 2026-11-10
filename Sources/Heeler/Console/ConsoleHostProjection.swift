@@ -125,6 +125,37 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func withNotificationTransport<Value: Sendable>(
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value
+
+    // MARK: Checked input
+
+    /// Checked Composer Send for this Pane, or nil to send with `promptAgent`.
+    /// `live` is the Host's projection at the moment a step runs, which may
+    /// have replaced this one.
+    func checkedComposerSend(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> (any CheckedComposerSend)?
+}
+
+/// What a checked Composer Send came to. The Composer shows each case itself.
+enum CheckedSendOutcome: Equatable, Sendable {
+    /// The paste and the submit key both left, in that order.
+    case submitted
+    /// Nothing more goes out, and the draft comes back with this.
+    case refused(ComposerRefusal)
+    /// Nothing left Heeler, so sending again is safe.
+    case failed(String)
+    /// A step got no answer and may still reach the program.
+    case outcomeUnknown
+}
+
+/// Composer Send a projection checks itself, in place of `promptAgent`.
+@MainActor
+protocol CheckedComposerSend: AnyObject {
+    func send(
+        _ text: String, route: ComposerRoute, attach: AgentAttachStore?
+    ) async -> CheckedSendOutcome
 }
 
 extension ConsoleHostProjection {
@@ -154,4 +185,10 @@ extension ConsoleHostProjection {
     func programExit(ofPane paneID: String) -> ProgramExit? { nil }
 
     var heldTerminalNames: Set<String> { [] }
+
+    func checkedComposerSend(
+        for _: String,
+        keepingTo _: TerminalCorePin,
+        live _: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> (any CheckedComposerSend)? { nil }
 }

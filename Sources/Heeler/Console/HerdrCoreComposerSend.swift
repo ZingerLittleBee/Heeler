@@ -83,17 +83,8 @@ private final class ViewedAttachSeat: HerdrCoreTypingSeat {
 /// pastes must not share one submit. A Blocked Agent gets nothing: its dialog
 /// would take the paste's Enter, or the next one, as an answer.
 @MainActor
-final class HerdrCoreComposerSend {
-    enum Outcome: Equatable, Sendable {
-        /// The paste and the submit key both left, in that order.
-        case submitted
-        /// Nothing more goes out, and the draft comes back with this.
-        case refused(ComposerRefusal)
-        /// Nothing left Heeler, so sending again is safe.
-        case failed(String)
-        /// A step got no answer and may still reach the program.
-        case outcomeUnknown
-    }
+final class HerdrCoreComposerSend: CheckedComposerSend {
+    typealias Outcome = CheckedSendOutcome
 
     /// One sampling period of the core's foreground with margin.
     static let sampleDelay: Duration = .milliseconds(550)

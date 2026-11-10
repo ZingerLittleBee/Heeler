@@ -134,6 +134,9 @@ final class ConsoleStore {
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let makeCoreSession: @Sendable (Host) -> HerdrCoreHostSession
+    /// A test supplies each Host's projection. Production leaves the choice to
+    /// the Server Kind.
+    @ObservationIgnored private let makeProjection: (@MainActor (Host) -> any ConsoleHostProjection)?
     @ObservationIgnored private let herdrAppRename: Bool
     @ObservationIgnored private let coreSendClock: BlockedCardClock
     @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
@@ -223,6 +226,7 @@ final class ConsoleStore {
         },
         makeCoreSession: @escaping @Sendable (Host) -> HerdrCoreHostSession =
             ConsoleStore.coreSessionFactory(),
+        makeProjection: (@MainActor (Host) -> any ConsoleHostProjection)? = nil,
         coreStopClock: BlockedCardClock = .live,
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore(),
@@ -242,6 +246,7 @@ final class ConsoleStore {
         self.chatNow = chatNow
         self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
+        self.makeProjection = makeProjection
         self.coreStopClock = coreStopClock
         self.herdrAppRename = herdrAppRename
         self.coreHostMemory = coreHostMemory
@@ -788,22 +793,14 @@ final class ConsoleStore {
             existing.leaveStaging()
         }
         let corePin = self.corePin(on: hostID)
-        let coreSend =
-            projections[hostID] is HerdrCoreConsoleProjection
-            ? HerdrCoreComposerSend(
-                address: agent.agent.paneID,
-                projection: { [weak self] in self?.projections[hostID] as? HerdrCoreConsoleProjection },
-                corePin: corePin,
-                clock: coreSendClock,
-                isOnWindows: { [weak self] in
-                    self?.capabilities(for: hostID).isNativeWindowsCore == true
-                })
-            : nil
+        let checkedSend = projections[hostID]?.checkedComposerSend(
+            for: agent.agent.paneID, keepingTo: corePin,
+            live: { [weak self] in self?.projections[hostID] })
         let composer = AgentComposerStore(
             target: agent.agent.paneID,
             initialStatus: agent.agent.status,
             statusUpdates: agentStatusUpdates(for: agent.id),
-            coreSend: coreSend
+            checkedSend: checkedSend
         ) { [weak self] params in
             guard let self else { throw TransportError.cancelled }
             return try await self.promptAgent(params, on: hostID)
@@ -814,7 +811,9 @@ final class ConsoleStore {
             stageImage: imageStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
             stageFile: fileStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
             corePin: corePin,
-            isOnCoreHost: coreSend != nil,
+            // Staging names transport failures where Send is the projection's
+            // checked Send. Today that is a herdr-core Host.
+            isOnCoreHost: checkedSend != nil,
             filePreparer: WindowsCoreFilePreparer(isOnWindows: { [weak self] in
                 self?.capabilities(for: hostID).isNativeWindowsCore == true
             }))
@@ -1436,22 +1435,29 @@ final class ConsoleStore {
     private func startProjection(for host: Host) {
         let onChange: @MainActor @Sendable () -> Void = { [weak self] in self?.rebuild() }
         let projection: any ConsoleHostProjection =
-            switch host.serverKind {
-            case .herdrCore:
-                HerdrCoreConsoleProjection(
-                    host: host, session: makeCoreSession(host), memory: coreHostMemory, pins: pins,
-                    gitGate: gitExecGate(for: host.id), herdrAppRename: herdrAppRename,
-                    chatTypingClock: coreSendClock,
-                    onSeenMarksChanged: { [weak self, id = host.id] core, marks in
-                        self?.onCoreSeenMarksChanged?(id, core, marks)
-                    },
-                    onChange: onChange)
-            default:
-                HostConsoleProjection(
-                    host: host,
-                    session: makeSession(host, HostConsoleProjection.subscriptions(paneIDs: [])),
-                    snapshotRetryDelay: snapshotRetryDelay,
-                    onChange: onChange)
+            if let makeProjection {
+                makeProjection(host)
+            } else {
+                switch host.serverKind {
+                case .herdrCore:
+                    HerdrCoreConsoleProjection(
+                        host: host, session: makeCoreSession(host), memory: coreHostMemory, pins: pins,
+                        gitGate: gitExecGate(for: host.id), herdrAppRename: herdrAppRename,
+                        chatTypingClock: coreSendClock,
+                        isNativeWindows: { [weak self] in
+                            self?.capabilities(for: host.id).isNativeWindowsCore == true
+                        },
+                        onSeenMarksChanged: { [weak self, id = host.id] core, marks in
+                            self?.onCoreSeenMarksChanged?(id, core, marks)
+                        },
+                        onChange: onChange)
+                default:
+                    HostConsoleProjection(
+                        host: host,
+                        session: makeSession(host, HostConsoleProjection.subscriptions(paneIDs: [])),
+                        snapshotRetryDelay: snapshotRetryDelay,
+                        onChange: onChange)
+                }
             }
         projections[host.id] = projection
         projection.setShownAgents(shownAgents(on: host.id))
