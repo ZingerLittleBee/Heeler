@@ -97,13 +97,15 @@ struct HerdrCoreTerminalStoreTests {
 
         /// A window showing `agent`'s detail, built as the Console builds it.
         /// `sceneID` puts it under a scene root, as a real window is. Agents
-        /// open on `surface` when one is given.
+        /// open on `surface` when one is given, and a departure for one waits
+        /// `keyboardHideLeash` for the keyboard when one is given.
         func showDetail(
             of agent: ConsoleAgent, sceneID: UUID? = nil, inputMode: AgentInputMode = .composer,
             readsHostChanges: Bool = false, look: WindowLook = WindowLook(),
             opensAgentsOn surface: AgentDetailSurface? = nil,
             keyboardHandoff handoff: TerminalKeyboardHandoff = TerminalKeyboardHandoff(),
             keyboardInset inset: TerminalKeyboardInset = TerminalKeyboardInset(),
+            keyboardHideLeash: Duration? = nil,
             onSwitch: @escaping (ConsoleAgent.ID) -> Void = { _ in }
         ) async throws -> CoreDetailWindow {
             let settings = try Self.makeSettings(look: look)
@@ -146,7 +148,8 @@ struct HerdrCoreTerminalStoreTests {
                 }
                 // The header's fold state is a stored preference; the test
                 // host's own defaults must not decide it.
-                .defaultAppStorage(defaults))
+                .defaultAppStorage(defaults)
+                .transformEnvironment(\.agentKeyboardHideLeash) { if let keyboardHideLeash { $0 = keyboardHideLeash } })
             controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
@@ -196,10 +199,12 @@ struct HerdrCoreTerminalStoreTests {
 
         /// A core Terminal's screen fed the Terminal live, as the Console
         /// feeds it, so it sees its shell start an Agent. It opens with the
-        /// keyboard up, as from a screen that had it up.
+        /// keyboard up, as from a screen that had it up. A departure for an
+        /// Agent waits `keyboardHideLeash` for the keyboard when one is given.
         func showShellWithKeyboardUp(
             of terminal: ConsoleTerminal, opensAgentsOn surface: AgentDetailSurface,
             keyboardHandoff: TerminalKeyboardHandoff, keyboardInset: TerminalKeyboardInset? = nil,
+            keyboardHideLeash: Duration? = nil,
             onSelectAgent: @escaping (ConsoleAgent.ID) -> Void
         ) async throws -> CoreDetailWindow {
             let settings = try Self.makeSettings(look: WindowLook())
@@ -217,7 +222,8 @@ struct HerdrCoreTerminalStoreTests {
                     keyboardInset: keyboardInset, onSelectAgent: onSelectAgent
                 )
                 .environment(\.agentSceneRouting, AgentSceneRouting(directory: directory, sceneID: UUID()))
-                .defaultAppStorage(defaults))
+                .defaultAppStorage(defaults)
+                .transformEnvironment(\.agentKeyboardHideLeash) { if let keyboardHideLeash { $0 = keyboardHideLeash } })
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
             return CoreDetailWindow(
@@ -1075,11 +1081,16 @@ struct HerdrCoreTerminalStoreTests {
         "cwd": .string("/work/app"),
     ])
 
+    /// Longer than any wait in these tests: a departure that completes under
+    /// it was completed by the keyboard hide the test reported, not by the
+    /// leash, which would also have brought Chat in.
+    private static let leashOutlastingTheTest: Duration = .seconds(60)
+
     /// A shell typed into on its screen, its Agent about to start, with
     /// `others` beside it in its Workspace.
     private func shellWithKeyboardUp(
         opensAgentsOn surface: AgentDetailSurface, beside others: [JSONValue] = [],
-        keyboardInset: TerminalKeyboardInset? = nil
+        keyboardInset: TerminalKeyboardInset? = nil, keyboardHideLeash: Duration? = nil
     ) async throws -> (Fixture, CoreDetailWindow, Departure) {
         let fixture = try await Fixture(terminals: [Self.keptRecord(argv: "/bin/bash")] + others)
         await fixture.console.resolveHostPlatform(fixture.host.id)
@@ -1088,7 +1099,7 @@ struct HerdrCoreTerminalStoreTests {
         let departure = Departure()
         let screen = try await fixture.showShellWithKeyboardUp(
             of: terminal, opensAgentsOn: surface, keyboardHandoff: departure.handoff,
-            keyboardInset: keyboardInset
+            keyboardInset: keyboardInset, keyboardHideLeash: keyboardHideLeash
         ) { departure.leave(for: $0) }
         let attach = try await fixture.waitForAttach(1, laying: screen)
         try await fixture.deliverOutput("$ ", on: attach)
@@ -1138,13 +1149,16 @@ struct HerdrCoreTerminalStoreTests {
     /// pool lets it go at the next inventory change and the shell's screen
     /// goes with it, often while the keyboard is still going down: on a
     /// Herdr TUI Host every snapshot is one. Chat still comes in, once UIKit
-    /// reports the hide, or after the leash when it never does (#644).
+    /// reports the hide, or after the leash when it never does (#644). A
+    /// reported hide gets a leash that outlasts the test, so only the report
+    /// reaching the detail can bring Chat in.
     @Test(arguments: [true, false])
     func aShellThePoolLetsGoMidHideStillOpensItsAgentsChat(hideIsReported: Bool) async throws {
         let keyboard = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: keyboard) { _ in 336 }
         let (fixture, screen, departure) = try await shellWithKeyboardUp(
-            opensAgentsOn: .chat, keyboardInset: inset)
+            opensAgentsOn: .chat, keyboardInset: inset,
+            keyboardHideLeash: hideIsReported ? Self.leashOutlastingTheTest : nil)
         keyboard.post(
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(x: 0, y: 500, width: 402, height: 374)])
@@ -1248,7 +1262,7 @@ struct HerdrCoreTerminalStoreTests {
     /// the page is the terminal, whatever Agents open on. The page hears the
     /// keyboard on `keyboard`, where the test posts it.
     private func agentTerminalWithKeyboardUp(
-        opensAgentsOn surface: AgentDetailSurface
+        opensAgentsOn surface: AgentDetailSurface, keyboardHideLeash: Duration? = nil
     ) async throws -> (Fixture, CoreDetailWindow, Departure, other: ConsoleAgent, keyboard: NotificationCenter) {
         let fixture = try await Fixture(
             terminals: [Self.cursorAgentRecord(address: "t1"), Self.agentRecord(address: "t2")])
@@ -1263,7 +1277,7 @@ struct HerdrCoreTerminalStoreTests {
         departure.handoff.arm(for: agent.id)
         let screen = try await fixture.showDetail(
             of: agent, opensAgentsOn: surface, keyboardHandoff: departure.handoff,
-            keyboardInset: inset
+            keyboardInset: inset, keyboardHideLeash: keyboardHideLeash
         ) { departure.leave(for: $0) }
         var input: AgentComposerUITextView?
         try await Self.until("the Composer's keyboard") {
@@ -1286,7 +1300,8 @@ struct HerdrCoreTerminalStoreTests {
     /// The Agent terminal page leaves for another Agent as a Shell Terminal
     /// does, from its Workspace drawer and its switcher alike: the other
     /// Agent's terminal takes the keyboard, and its Chat comes in once the
-    /// keyboard has gone down here (#644).
+    /// keyboard has gone down here (#644), under a leash that outlasts the
+    /// test, so only the reported hide can bring it in.
     @Test(arguments: [AgentDetailSurface.terminal, .chat], AgentPick.allCases)
     func anAgentTerminalHandsOrSettlesItsKeyboardForTheAgentItOpens(
         surface: AgentDetailSurface, pick: AgentPick
@@ -1296,7 +1311,7 @@ struct HerdrCoreTerminalStoreTests {
             guard #available(iOS 27, *) else { return }
         }
         let (fixture, screen, departure, other, keyboard) = try await agentTerminalWithKeyboardUp(
-            opensAgentsOn: surface)
+            opensAgentsOn: surface, keyboardHideLeash: Self.leashOutlastingTheTest)
 
         switch pick {
         case .drawerRow:
@@ -1345,11 +1360,12 @@ struct HerdrCoreTerminalStoreTests {
     /// The detail can put a fresh terminal page in while the keyboard goes
     /// down on the one leaving, here a terminal its retention let go of and
     /// the next activation takes again. The other Agent's Chat still comes
-    /// in, once UIKit reports the hide, or after the leash (#644).
+    /// in, once UIKit reports the hide, or after the leash (#644). A reported
+    /// hide gets a leash that outlasts the test, as above.
     @Test(arguments: [true, false])
     func anAgentTerminalReplacedMidHideStillOpensTheOtherAgentsChat(hideIsReported: Bool) async throws {
         let (fixture, screen, departure, other, keyboard) = try await agentTerminalWithKeyboardUp(
-            opensAgentsOn: .chat)
+            opensAgentsOn: .chat, keyboardHideLeash: hideIsReported ? Self.leashOutlastingTheTest : nil)
         weak let leavingInput = departure.surface
         let chip = try #require(
             Self.views(of: TerminalAgentChip.self, in: screen.window).first { $0.id == other.id })

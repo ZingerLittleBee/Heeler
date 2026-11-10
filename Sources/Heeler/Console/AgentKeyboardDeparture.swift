@@ -21,15 +21,12 @@ import SwiftUI
 /// only when UIKit animates the hide. The screen around it holds
 /// `awaitingHide` and this modifier, which completes that departure once the
 /// hide is reported done on `notificationCenter`, where the leaving screen's
-/// keyboard inset hears the keyboard, or after `keyboardHideLeash`. The
-/// leaving screen can go first: the pane a shell starts its Agent in stops
+/// keyboard inset hears the keyboard, or after `agentKeyboardHideLeash`.
+/// The leaving screen can go first: the pane a shell starts its Agent in stops
 /// being a terminal, and the terminal pool lets it go, often while the
 /// keyboard is still going down (#644).
 struct AgentKeyboardDeparture<Departure: Equatable>: ViewModifier {
-    /// How long an Agent's Chat waits for UIKit to report the keyboard gone
-    /// before it takes the screen anyway.
-    static var keyboardHideLeash: Duration { .seconds(1) }
-
+    @Environment(\.agentKeyboardHideLeash) private var keyboardHideLeash
     @Binding var awaitingHide: Departure?
     let notificationCenter: NotificationCenter
     /// Routes as the screen now stands, which may have changed while the
@@ -47,7 +44,7 @@ struct AgentKeyboardDeparture<Departure: Equatable>: ViewModifier {
             // keyboard) is never reported done; Chat comes in anyway.
             .task(id: awaitingHide) {
                 guard awaitingHide != nil else { return }
-                try? await Task.sleep(for: Self.keyboardHideLeash)
+                try? await Task.sleep(for: keyboardHideLeash)
                 guard !Task.isCancelled else { return }
                 finish()
             }
@@ -58,6 +55,13 @@ struct AgentKeyboardDeparture<Departure: Equatable>: ViewModifier {
         awaitingHide = nil
         complete(departure)
     }
+}
+
+extension EnvironmentValues {
+    /// How long an Agent's Chat waits for UIKit to report the keyboard gone
+    /// before it takes the screen anyway (`AgentKeyboardDeparture`). Tests
+    /// lengthen it so only a reported hide brings Chat in.
+    @Entry var agentKeyboardHideLeash: Duration = .seconds(1)
 }
 
 /// What a screen leaving for an Agent takes from the screen around it: which
