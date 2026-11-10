@@ -51,6 +51,12 @@ enum HerdrCoreAgentRule {
         case .other(let name):
             guard let report = record.status else { return nil }
             let app = report.app.trimmingCharacters(in: .whitespacesAndNewlines)
+            if shells.contains(baseName(name)) {
+                if let kind = reportedApps[app.lowercased()] ?? knownKind(app.lowercased()) {
+                    return HerdrCoreAgent(
+                        kind: kind, isKnownProgram: true, status: agentStatus(report.state))
+                }
+            }
             guard reportedApps[app.lowercased()] == nil else { return nil }
             return HerdrCoreAgent(
                 kind: genericKind(app: app, program: name), isKnownProgram: false,
@@ -118,7 +124,7 @@ enum HerdrCoreAgentRule {
         guard !foreground.argv.isEmpty else {
             return foreground.name.isEmpty ? readLaunch(record.argv) : read([foreground.name]).program
         }
-        if showsPowerShellPrompt(foreground.argv, title: record.title) { return .shell }
+        if showsPowerShellPrompt(foreground.argv, title: record.title, status: record.status) { return .shell }
         let program = read(foreground.argv).program
         if case .other = program, let kind = knownKind(baseName(foreground.name)) {
             return .known(kind)
@@ -266,6 +272,9 @@ enum HerdrCoreAgentRule {
                 return option == "-command" || option == "-c"
             })
         else {
+            if arguments.dropFirst().contains(where: isNoExitOption) {
+                return Reading(program: .other(name))
+            }
             return Reading(program: arguments.dropFirst().contains { !$0.hasPrefix("-") } ? .other(name) : .shell)
         }
         guard option + 1 < arguments.count else { return Reading(program: .shell) }
@@ -279,7 +288,10 @@ enum HerdrCoreAgentRule {
     /// after its program exits, so only the console's title shows the exit: it goes
     /// back to that PowerShell's own path (ADR 0032). A console nothing has titled
     /// reads an empty title instead, which keeps the foreground's reading.
-    private static func showsPowerShellPrompt(_ arguments: [String], title: String) -> Bool {
+    private static func showsPowerShellPrompt(_ arguments: [String], title: String, status: HerdrCoreProgramStatus?) -> Bool {
+        if status?.state == "working" || status?.app.lowercased() == "antigravity" || status?.app.lowercased() == "agy" {
+            return false
+        }
         guard let executable = arguments.first else { return false }
         let name = baseName(executable)
         guard name == "powershell" || name == "pwsh", arguments.dropFirst().contains(where: isNoExitOption)

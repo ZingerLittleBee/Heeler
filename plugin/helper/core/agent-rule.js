@@ -264,7 +264,10 @@ function powerShellWords(line) {
 /** `pwsh -NoExit -Command "& 'prog' 'arg'"`, as the desktop app runs it, and `-Command "& 'prog' 'arg'; exit $LASTEXITCODE"`, as Heeler does. */
 function readPowerShell(args, name, depth) {
   const option = args.findIndex((argument) => ["-command", "-c"].includes(argument.toLowerCase()));
-  if (option === -1) return args.slice(1).some((argument) => !argument.startsWith("-")) ? other(name) : SHELL_PROGRAM;
+  if (option === -1) {
+    if (args.slice(1).some(isNoExitOption)) return other(name);
+    return args.slice(1).some((argument) => !argument.startsWith("-")) ? other(name) : SHELL_PROGRAM;
+  }
   if (option + 1 >= args.length) return SHELL_PROGRAM;
   const exit = "; exit $LASTEXITCODE";
   const line = args[option + 1].endsWith(exit) ? args[option + 1].slice(0, -exit.length) : args[option + 1];
@@ -391,7 +394,8 @@ function isNoExitOption(argument) {
  * PowerShell's own path (ADR 0032). A console nothing has titled reads an empty title
  * instead, which keeps the foreground's reading.
  */
-function showsPowerShellPrompt(args, title) {
+function showsPowerShellPrompt(args, title, status) {
+  if (status?.state === "working" || ["antigravity", "agy"].includes(status?.app?.toLowerCase())) return false;
   if (args.length === 0) return false;
   const name = baseName(args[0]);
   if ((name !== "powershell" && name !== "pwsh") || !args.slice(1).some(isNoExitOption)) return false;
@@ -407,7 +411,7 @@ function programOf(record) {
   const args = strings(foreground.argv);
   const name = text(foreground.name);
   if (args.length === 0) return name === "" ? readLaunch(launch) : read([name]);
-  if (showsPowerShellPrompt(args, text(record.title))) return SHELL_PROGRAM;
+  if (showsPowerShellPrompt(args, text(record.title), record.status)) return SHELL_PROGRAM;
   const program = read(args);
   // A process whose arguments say nothing known can still be known by its OS
   // name, as a native install running from a versioned path is.
@@ -461,6 +465,13 @@ export function agentIn(record) {
     const foreign = report === null || (reported !== null && reported !== program.known);
     return { kind: program.known, known: true, status: foreign ? "unknown" : statusWord(report.state) };
   }
-  if (report === null || reportedKind(app.toLowerCase()) !== null) return null;
+  if (report === null) return null;
+  if (SHELLS.has(baseName(program.other))) {
+    const kind = reportedKind(app.toLowerCase()) ?? knownKind(app.toLowerCase());
+    if (kind !== null) {
+      return { kind, known: true, status: statusWord(report.state) };
+    }
+  }
+  if (reportedKind(app.toLowerCase()) !== null) return null;
   return { kind: genericKind(app, program.other), known: false, status: statusWord(report.state) };
 }

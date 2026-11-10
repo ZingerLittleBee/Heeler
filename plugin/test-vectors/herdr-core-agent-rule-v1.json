@@ -4710,6 +4710,180 @@
         "reported": true
       },
       "expected": null
+    },
+    {
+      "name": "interactively started pi in PowerShell is recognized as pi",
+      "source": "Heeler issue #667: interactive agents in Windows PowerShell",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 1234,
+        "argv": [
+          "pwsh.exe",
+          "-NoExit"
+        ],
+        "cwd": "C:\\Users\\user",
+        "foreground": {
+          "pid": 1234,
+          "name": "pwsh.exe",
+          "argv": [
+            "pwsh.exe",
+            "-NoExit"
+          ],
+          "cwd": "C:\\Users\\user"
+        },
+        "status": {
+          "state": "idle",
+          "app": "pi"
+        },
+        "reported": true,
+        "title": "π - interactive"
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "interactively started antigravity in PowerShell while working is recognized as agy",
+      "source": "Heeler issue #667: interactive agents in Windows PowerShell",
+      "record": {
+        "address": "t2",
+        "state": "live",
+        "pid": 5678,
+        "argv": [
+          "pwsh.exe",
+          "-NoExit"
+        ],
+        "cwd": "C:\\Users\\user",
+        "foreground": {
+          "pid": 5678,
+          "name": "pwsh.exe",
+          "argv": [
+            "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+            "-NoExit",
+            "-Command",
+            "$global:__hc_prompt = 1"
+          ],
+          "cwd": "C:\\Users\\user"
+        },
+        "status": {
+          "state": "working",
+          "app": "antigravity"
+        },
+        "reported": true,
+        "title": "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+      },
+      "expected": {
+        "kind": "agy",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "interactively started antigravity in PowerShell while idle is recognized as agy",
+      "source": "Heeler issue #667: interactive agents in Windows PowerShell",
+      "record": {
+        "address": "t2b",
+        "state": "live",
+        "pid": 5679,
+        "argv": [
+          "pwsh.exe",
+          "-NoExit"
+        ],
+        "cwd": "C:\\Users\\user",
+        "foreground": {
+          "pid": 5679,
+          "name": "pwsh.exe",
+          "argv": [
+            "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+            "-NoExit",
+            "-Command",
+            "$global:__hc_prompt = 1"
+          ],
+          "cwd": "C:\\Users\\user"
+        },
+        "status": {
+          "state": "idle",
+          "app": "antigravity"
+        },
+        "reported": true,
+        "title": "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+      },
+      "expected": {
+        "kind": "agy",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "interactively started claude-code in PowerShell is recognized as claude",
+      "source": "Heeler issue #667: interactive agents in Windows PowerShell",
+      "record": {
+        "address": "t3",
+        "state": "live",
+        "pid": 7890,
+        "argv": [
+          "pwsh.exe",
+          "-NoExit"
+        ],
+        "cwd": "C:\\Users\\user",
+        "foreground": {
+          "pid": 7890,
+          "name": "pwsh.exe",
+          "argv": [
+            "pwsh.exe",
+            "-NoExit"
+          ],
+          "cwd": "C:\\Users\\user"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true,
+        "title": "✳ Claude Code"
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "idle"
+      }
+    },
+    {
+      "name": "interactively started codex in PowerShell while working is recognized as codex",
+      "source": "Heeler issue #667: interactive agents in Windows PowerShell",
+      "record": {
+        "address": "t4",
+        "state": "live",
+        "pid": 8901,
+        "argv": [
+          "pwsh.exe",
+          "-NoExit"
+        ],
+        "cwd": "C:\\Users\\user",
+        "foreground": {
+          "pid": 8901,
+          "name": "pwsh.exe",
+          "argv": [
+            "pwsh.exe",
+            "-NoExit"
+          ],
+          "cwd": "C:\\Users\\user"
+        },
+        "status": {
+          "state": "working",
+          "app": "codex"
+        },
+        "reported": true,
+        "title": "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+      },
+      "expected": {
+        "kind": "codex",
+        "known": true,
+        "status": "working"
+      }
     }
   ]
 }
