@@ -17,6 +17,9 @@ struct WorkspaceTerminalDetailView: View {
     var keyboardHandoff: TerminalKeyboardHandoff? = nil
     /// The surface Agent details open on; nil counts as the terminal.
     var agentSurface: AgentDetailSurfaceSettings? = nil
+    /// Where the terminal's screen hears and measures the keyboard. Nil gives
+    /// it one of its own on UIKit's center; a test passes one it drives.
+    var keyboardInset: TerminalKeyboardInset? = nil
     /// Where Back goes: the Console, or the Agent this was pushed over.
     var backTitle = "Back to Console"
     let onBack: () -> Void
@@ -29,6 +32,12 @@ struct WorkspaceTerminalDetailView: View {
     @State private var isCreatingTerminal = false
     @State private var createFailure: String?
     @State private var retryID = 0
+    /// A departure the terminal's screen made for an Agent that opens on
+    /// Chat, while the keyboard goes down there. Held here, since that screen
+    /// can go first: the pane a shell starts its Agent in stops being a
+    /// terminal, and the pool lets it go at the next inventory change, on a
+    /// Herdr TUI Host often before UIKit reports the keyboard gone (#644).
+    @State private var departureAwaitingKeyboardHide: ShellTerminalView.AgentDeparture?
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
     /// This window, so a remount of this screen takes its terminal over.
@@ -129,7 +138,10 @@ struct WorkspaceTerminalDetailView: View {
                     backReturnsToAgent: false,
                     startedAgentID: startedAgentID,
                     onAgentStarted: { onSelectAgent($0) },
-                    agentOpensOnChat: { opensOnChat($0) },
+                    chatDepartures: AgentChatDepartures(
+                        opensOnChat: { opensOnChat($0) },
+                        awaitingKeyboardHide: $departureAwaitingKeyboardHide),
+                    keyboardInsetOverride: keyboardInset,
                     onBack: { onBack() })
             } else if let failure {
                 terminalSurface {
@@ -197,8 +209,17 @@ struct WorkspaceTerminalDetailView: View {
         // A shown terminal leaves for its Agent itself, once it has settled
         // the keyboard; see `ShellTerminalView.leave(_:)`.
         .onChange(of: startedAgentID, initial: true) { _, agentID in
-            if let agentID, shownEntry == nil { onSelectAgent(agentID) }
+            if let agentID {
+                if shownEntry == nil { onSelectAgent(agentID) }
+            } else if case .started = departureAwaitingKeyboardHide {
+                departureAwaitingKeyboardHide = nil
+            }
         }
+        .modifier(AgentKeyboardDeparture(
+            awaitingHide: $departureAwaitingKeyboardHide,
+            // Where the terminal's screen hears the keyboard.
+            notificationCenter: keyboardInset?.notificationCenter ?? .default,
+            complete: completeDeparture))
         .alert("Couldn't Close Terminal", isPresented: Binding(
             get: { closeFailure != nil }, set: { if !$0 { closeFailure = nil } })
         ) {
@@ -212,6 +233,19 @@ struct WorkspaceTerminalDetailView: View {
             Button("OK", role: .cancel) { createFailure = nil }
         } message: {
             Text(createFailure ?? "")
+        }
+    }
+
+    /// Routes as this screen now stands, which may have changed while the
+    /// keyboard went down.
+    private func completeDeparture(_ departure: ShellTerminalView.AgentDeparture) {
+        switch departure {
+        case .started(let id):
+            // The Agent may have ended while the keyboard went down.
+            guard startedAgentID == id else { return }
+            onSelectAgent(id)
+        case .drawer(let target, _):
+            workspaceDrawer?.onSelect(target)
         }
     }
 

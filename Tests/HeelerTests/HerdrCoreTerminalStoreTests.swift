@@ -199,7 +199,7 @@ struct HerdrCoreTerminalStoreTests {
         /// keyboard up, as from a screen that had it up.
         func showShellWithKeyboardUp(
             of terminal: ConsoleTerminal, opensAgentsOn surface: AgentDetailSurface,
-            keyboardHandoff: TerminalKeyboardHandoff,
+            keyboardHandoff: TerminalKeyboardHandoff, keyboardInset: TerminalKeyboardInset? = nil,
             onSelectAgent: @escaping (ConsoleAgent.ID) -> Void
         ) async throws -> CoreDetailWindow {
             let settings = try Self.makeSettings(look: WindowLook())
@@ -214,7 +214,7 @@ struct HerdrCoreTerminalStoreTests {
                     console: console, terminal: terminal, corePin: console.corePin(on: terminal.hostID),
                     settings: settings, activity: activity, selection: selection,
                     keyboardHandoff: keyboardHandoff, agentSurface: agentSurface,
-                    onSelectAgent: onSelectAgent
+                    keyboardInset: keyboardInset, onSelectAgent: onSelectAgent
                 )
                 .environment(\.agentSceneRouting, AgentSceneRouting(directory: directory, sceneID: UUID()))
                 .defaultAppStorage(defaults))
@@ -1078,7 +1078,8 @@ struct HerdrCoreTerminalStoreTests {
     /// A shell typed into on its screen, its Agent about to start, with
     /// `others` beside it in its Workspace.
     private func shellWithKeyboardUp(
-        opensAgentsOn surface: AgentDetailSurface, beside others: [JSONValue] = []
+        opensAgentsOn surface: AgentDetailSurface, beside others: [JSONValue] = [],
+        keyboardInset: TerminalKeyboardInset? = nil
     ) async throws -> (Fixture, CoreDetailWindow, Departure) {
         let fixture = try await Fixture(terminals: [Self.keptRecord(argv: "/bin/bash")] + others)
         await fixture.console.resolveHostPlatform(fixture.host.id)
@@ -1086,7 +1087,8 @@ struct HerdrCoreTerminalStoreTests {
         let terminal = try #require(fixture.console.terminals.first { !$0.isAgent })
         let departure = Departure()
         let screen = try await fixture.showShellWithKeyboardUp(
-            of: terminal, opensAgentsOn: surface, keyboardHandoff: departure.handoff
+            of: terminal, opensAgentsOn: surface, keyboardHandoff: departure.handoff,
+            keyboardInset: keyboardInset
         ) { departure.leave(for: $0) }
         let attach = try await fixture.waitForAttach(1, laying: screen)
         try await fixture.deliverOutput("$ ", on: attach)
@@ -1127,6 +1129,52 @@ struct HerdrCoreTerminalStoreTests {
         #expect(fixture.console.chatProgram(for: agent) != nil)
         #expect(departure.agentID == agent.id)
         #expect(departure.keptKeyboard == false)
+        #expect(departure.handedKeyboard == nil)
+        await screen.close()
+        await fixture.finish()
+    }
+
+    /// The pane a shell starts its Agent in stops being a terminal, so the
+    /// pool lets it go at the next inventory change and the shell's screen
+    /// goes with it, often while the keyboard is still going down: on a
+    /// Herdr TUI Host every snapshot is one. Chat still comes in, once UIKit
+    /// reports the hide, or after the leash when it never does (#644).
+    @Test(arguments: [true, false])
+    func aShellThePoolLetsGoMidHideStillOpensItsAgentsChat(hideIsReported: Bool) async throws {
+        let keyboard = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: keyboard) { _ in 336 }
+        let (fixture, screen, departure) = try await shellWithKeyboardUp(
+            opensAgentsOn: .chat, keyboardInset: inset)
+        keyboard.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(x: 0, y: 500, width: 402, height: 374)])
+        try await Self.until("the keyboard's inset") { inset.height > 0 }
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("foreground", data: Self.claudeInForeground))
+        try await Self.until("the keyboard going down") {
+            screen.layOut()
+            return departure.surface?.isFirstResponder != true || departure.agentID != nil
+        }
+        #expect(departure.agentID == nil)
+        // A core changes its inventory for labels; a foreground alone does not.
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine("labels", data: .object(["labels": .object([:])]), sequence: 60))
+        try await Self.until("the pool letting the shell go") {
+            screen.layOut()
+            return screen.surface == nil || departure.agentID != nil
+        }
+        #expect(screen.reads("Opening Terminal"))
+        // Chat waits for UIKit to finish the hide.
+        #expect(departure.agentID == nil)
+        if hideIsReported {
+            keyboard.post(name: UIResponder.keyboardDidHideNotification, object: nil)
+        }
+        try await Self.until("the Agent's screen") {
+            screen.layOut()
+            return departure.agentID != nil
+        }
+        let agent = try #require(fixture.console.agents.first)
+        #expect(departure.agentID == agent.id)
         #expect(departure.handedKeyboard == nil)
         await screen.close()
         await fixture.finish()
@@ -3124,6 +3172,7 @@ private struct HostedLiveShell: View {
     let selection: HostedDetailSelection
     let keyboardHandoff: TerminalKeyboardHandoff
     let agentSurface: AgentDetailSurfaceSettings
+    let keyboardInset: TerminalKeyboardInset?
     let onSelectAgent: (ConsoleAgent.ID) -> Void
 
     var body: some View {
@@ -3139,6 +3188,7 @@ private struct HostedLiveShell: View {
                 isSelected: { [selection] in selection.showsDetail },
                 keyboardHandoff: keyboardHandoff,
                 agentSurface: agentSurface,
+                keyboardInset: keyboardInset,
                 onBack: {})
         }
     }

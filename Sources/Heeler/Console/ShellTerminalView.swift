@@ -46,14 +46,19 @@ struct ShellTerminalView: View {
     /// itself through `onAgentStarted`; see `leave(_:)`.
     var startedAgentID: ConsoleAgent.ID? = nil
     var onAgentStarted: (@MainActor (ConsoleAgent.ID) -> Void)? = nil
-    /// Whether an Agent's screen opens on Chat rather than its terminal, for
-    /// a started Agent or a drawer row; nil counts as the terminal.
-    var agentOpensOnChat: (@MainActor (ConsoleAgent.ID) -> Bool)? = nil
+    /// Which Agents' screens open on Chat rather than their terminal, for a
+    /// started Agent or a drawer row, and where a departure for one waits for
+    /// the keyboard to go down; nil counts every Agent as opening on its
+    /// terminal. See `leave(_:)`.
+    var chatDepartures: AgentChatDepartures<AgentDeparture>? = nil
+    /// Where this screen hears and measures the keyboard. Nil gives it one of
+    /// its own on UIKit's center; a test passes one it drives.
+    var keyboardInsetOverride: TerminalKeyboardInset? = nil
     let onBack: @MainActor () async -> Void
 
     /// An Agent's screen this one leaves for: one its shell started, or an
     /// Agent row picked in the Workspace drawer.
-    private enum AgentDeparture: Equatable {
+    enum AgentDeparture: Equatable {
         case started(ConsoleAgent.ID)
         case drawer(ConsoleTerminal, agentID: ConsoleAgent.ID)
 
@@ -65,11 +70,9 @@ struct ShellTerminalView: View {
     }
 
     @State private var keyboardControl = TerminalKeyboardControl()
-    /// The departure whose Chat waits for the keyboard to finish going down
-    /// before it takes the screen over.
-    @State private var departureAwaitingKeyboardHide: AgentDeparture?
     @State private var keyboardMode: TerminalKeyboardMode = .text
-    @State private var keyboardInset = TerminalKeyboardInset()
+    @State private var ownKeyboardInset = TerminalKeyboardInset()
+    private var keyboardInset: TerminalKeyboardInset { keyboardInsetOverride ?? ownKeyboardInset }
     @State private var isConfirmingClose = false
     @Environment(\.colorScheme) private var colorScheme
     /// The scene root's window, known before this screen first renders.
@@ -479,15 +482,8 @@ struct ShellTerminalView: View {
                 if managesLifecycle { store.leave() }
             }
             .onChange(of: startedAgentID, initial: true) { _, id in
-                if let id {
-                    if onAgentStarted != nil { leave(.started(id)) }
-                } else if case .started = departureAwaitingKeyboardHide {
-                    departureAwaitingKeyboardHide = nil
-                }
+                if let id, onAgentStarted != nil { leave(.started(id)) }
             }
-            .modifier(AgentKeyboardDeparture(
-                awaitingHide: $departureAwaitingKeyboardHide,
-                notificationCenter: keyboardInset.notificationCenter, complete: complete))
     }
 
     private var terminalTopInset: CGFloat {
@@ -589,10 +585,13 @@ struct ShellTerminalView: View {
     /// An Agent's screen takes this one over: one this shell started,
     /// seconds after the Enter that started it, or an Agent row picked in
     /// the Workspace drawer. Its terminal takes the keyboard over; Chat
-    /// comes in once the keyboard has gone down (`AgentKeyboardDeparture`).
+    /// comes in once the keyboard has gone down, and the screen around this
+    /// one brings it in (`AgentKeyboardDeparture`).
     private func leave(_ departure: AgentDeparture) {
-        departureAwaitingKeyboardHide = nil
-        guard agentOpensOnChat?(departure.agentID) == true, isKeyboardUpForHandoff else {
+        chatDepartures?.awaitingKeyboardHide.wrappedValue = nil
+        guard let chatDepartures, chatDepartures.opensOnChat(departure.agentID),
+              isKeyboardUpForHandoff
+        else {
             armAgentKeyboardHandoffIfKeyboardIsUp(for: departure.agentID)
             complete(departure)
             return
@@ -600,18 +599,15 @@ struct ShellTerminalView: View {
         // A hardware keyboard or the Keys dock leaves nothing for UIKit to
         // animate. Waiting is set before the hide, which may report at once.
         let animatesHide = keyboardInset.height > 0
-        if animatesHide { departureAwaitingKeyboardHide = departure }
+        if animatesHide { chatDepartures.awaitingKeyboardHide.wrappedValue = departure }
         hideKeyboard()
         if !animatesHide { complete(departure) }
     }
 
-    /// Routes as this screen now stands, which may have changed while the
-    /// keyboard went down.
+    /// Routes a departure that has nothing to wait for.
     private func complete(_ departure: AgentDeparture) {
         switch departure {
         case .started(let id):
-            // The Agent may have ended while the keyboard went down.
-            guard startedAgentID == id else { return }
             onAgentStarted?(id)
         case .drawer(let target, _):
             workspaceDrawer?.onSelect(target)

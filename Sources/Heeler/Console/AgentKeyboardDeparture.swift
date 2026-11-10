@@ -17,10 +17,14 @@ import SwiftUI
 /// drawer carry the keyboard from one Composer to another and do not come
 /// here.
 ///
-/// The screen sets `awaitingHide` before it hides its keyboard, and only when
-/// UIKit animates the hide; this completes that departure once the hide is
-/// reported done on `notificationCenter`, where the screen's keyboard inset
-/// hears the keyboard, or after `keyboardHideLeash`.
+/// The screen leaving sets `awaitingHide` before it hides its keyboard, and
+/// only when UIKit animates the hide. The screen around it holds
+/// `awaitingHide` and this modifier, which completes that departure once the
+/// hide is reported done on `notificationCenter`, where the leaving screen's
+/// keyboard inset hears the keyboard, or after `keyboardHideLeash`. The
+/// leaving screen can go first: the pane a shell starts its Agent in stops
+/// being a terminal, and the terminal pool lets it go, often while the
+/// keyboard is still going down (#644).
 struct AgentKeyboardDeparture<Departure: Equatable>: ViewModifier {
     /// How long an Agent's Chat waits for UIKit to report the keyboard gone
     /// before it takes the screen anyway.
@@ -54,4 +58,12 @@ struct AgentKeyboardDeparture<Departure: Equatable>: ViewModifier {
         awaitingHide = nil
         complete(departure)
     }
+}
+
+/// What a screen leaving for an Agent takes from the screen around it: which
+/// Agents open on Chat, and where a departure for one of them waits for the
+/// keyboard to go down (`AgentKeyboardDeparture`).
+struct AgentChatDepartures<Departure: Equatable> {
+    let opensOnChat: @MainActor (ConsoleAgent.ID) -> Bool
+    let awaitingKeyboardHide: Binding<Departure?>
 }
