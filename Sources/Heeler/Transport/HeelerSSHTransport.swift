@@ -3769,11 +3769,12 @@ actor HeelerSSHTransport: Transport {
 
 // MARK: - What Server Kind detection uses of this connection
 extension HeelerSSHTransport: ServerKindDetectionConnection {
-    /// One bounded exec, cut off on the Host if a read hangs. The POSIX script does
-    /// not go to native Windows, which runs `runWindowsCommand` instead.
+    /// One bounded exec, cut off on the Host if a read hangs, and long enough for
+    /// the login shell the tmux probe goes through. The POSIX script does not go to
+    /// native Windows, which runs `runWindowsCommand` instead.
     func runServerKindDetection(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: String(localized: "Server Kind detection"), deadline: .seconds(16), remoteSeconds: 12,
+            script, feature: String(localized: "Server Kind detection"), deadline: .seconds(26), remoteSeconds: 20,
             timeoutMarkerPrefix: "__HEELER_KIND_DETECTION_TIMEOUT_", timedOut: .timedOut)
     }
 }

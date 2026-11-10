@@ -5,7 +5,8 @@ import Foundation
 /// one bounded exec.
 ///
 /// `herdrRead` runs first, in a subshell of its own, so its PATH never reaches
-/// the locator. Neither part starts a server.
+/// the locator. The tmux probe follows, in another, through the login shell
+/// (ADR 0042). No part starts a server.
 enum ServerKindDetectionScript {
     /// What one run printed, before anyone decides what it means.
     struct Output: Equatable, Sendable {
@@ -13,6 +14,9 @@ enum ServerKindDetectionScript {
         let herdrOutput: Data
         /// Nil when hc refuses the session's name, so no locator ran.
         let location: HerdrCoreLocator.Location?
+        /// Nil on native Windows, where no probe runs, and when the probe's part
+        /// did not read, which says nothing of the other two.
+        var tmux: TmuxProbe.Report?
     }
 
     static func script(session: String, nonce: String, herdrRead: String) -> Data {
@@ -23,6 +27,9 @@ enum ServerKindDetectionScript {
             \(herdrRead)
             ) </dev/null 2>/dev/null
             printf '\\n%s herdr-tui status %s\\n' '\(nonce)' "$?"
+            (
+            \(TmuxProbe.script(.sockets, nonce: nonce))
+            )
 
             """.utf8)
         if let locator = try? HerdrCoreLocator.script(session: session, nonce: nonce) {
@@ -74,6 +81,7 @@ enum ServerKindDetectionScript {
         return Output(
             herdrStatus: status,
             herdrOutput: Data(lines[(begin + 1)..<statusLine].joined(separator: [UInt8(ascii: "\n")])),
-            location: location)
+            location: location,
+            tmux: platform == .nativeWindows ? nil : try? TmuxProbe.parse(stdout: stdout, nonce: nonce))
     }
 }

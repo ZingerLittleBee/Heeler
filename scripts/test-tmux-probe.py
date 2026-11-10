@@ -326,20 +326,33 @@ class LoginShellTests(ProbeTestCase):
         self.assertEqual(self.probe("sockets")["sockets"], [])
         self.assertFalse(self.login_directory.exists())
 
+    def sealed_env(self) -> dict:
+        """An exec with no login shell and a PATH of this test's own, which no real tmux is on."""
+        tools = self.root / "tools"
+        tools.mkdir(exist_ok=True)
+        for name in ("uname", "id", "sed", "sleep"):
+            if not (tools / name).exists():
+                (tools / name).symlink_to(shutil.which(name, path="/usr/bin:/bin"))
+        refusing = self.root / "refusing-shell"
+        refusing.write_text("#!/bin/sh\nexit 1\n")
+        refusing.chmod(0o755)
+        return {"PATH": str(tools), "SHELL": str(refusing)}
+
     def test_a_tmux_directory_that_does_not_exist_falls_back_as_tmux_does(self) -> None:
-        # tmux ignores a TMUX_TMPDIR it cannot resolve and uses /tmp. No tmux is
-        # installed for this run, so it only names that directory and asks nothing.
-        found = self.probe("resolve", "default", extra_env={"TMUX_TMPDIR": str(self.root / "missing")})
+        # tmux ignores a TMUX_TMPDIR it cannot resolve and uses /tmp. No tmux can
+        # be found in this run, so it only names that directory and asks nothing.
+        found = self.probe(
+            "resolve", "default", extra_env={**self.sealed_env(), "TMUX_TMPDIR": str(self.root / "missing")})
+        self.assertIsNone(found["executable"])
         self.assertEqual(found["directory"], str(Path("/tmp").resolve() / f"tmux-{self.uid}"))
         self.assertEqual(self.called(), [])
 
     def test_no_tmux_anywhere_reads_as_not_installed(self) -> None:
-        self.login_files_resolve()
         for request in (("sockets",), ("resolve", "default")):
-            found = self.probe(*request)
+            found = self.probe(*request, extra_env=self.sealed_env())
             self.assertEqual(found["installation"], "notInstalled")
             self.assertEqual(found["sockets"], [])
-            self.assertEqual(found["directory"], str(self.login_directory))
+            self.assertEqual(found["directory"], str(self.exec_directory))
         self.assertEqual(self.called(), [])
 
     def test_a_shell_that_cannot_run_the_line_leaves_the_exec_to_answer(self) -> None:

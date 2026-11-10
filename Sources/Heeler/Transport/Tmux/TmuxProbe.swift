@@ -108,7 +108,7 @@ enum TmuxProbe {
                 [ -z "$n" ] || s=$d/$n
             fi
             if [ -n "$t" ] && [ -n "$s" ]; then
-                i=$(answer "$s") && printf 'server %s\\n' "$i"
+                i=$(answer "$s") && printf 'instance %s\\n' "$i"
             elif [ -n "$t" ]; then
                 c=0
                 for f in "$d"/*; do
@@ -151,8 +151,8 @@ enum TmuxProbe {
             } else if let socket = value("socket") {
                 // A file name Heeler could not name back to tmux is not offered.
                 if TmuxSocketName.isValid(socket), !report.sockets.contains(socket) { report.sockets.append(socket) }
-            } else if let server = value("server") {
-                let fields = server.split(separator: " ")
+            } else if let instance = value("instance") {
+                let fields = instance.split(separator: " ")
                 if fields.count == 2, let pid = Int(fields[0]), let startTime = Int(fields[1]) {
                     report.server = TmuxServerInstance(pid: pid, startTime: startTime)
                 }

@@ -66,7 +66,7 @@ struct TmuxProbeTests {
         let report = try TmuxProbe.parse(
             stdout: output([
                 "kernel Darwin", "executable /opt/homebrew/bin/tmux", "version tmux 3.7b",
-                "directory /private/tmp/tmux-501", "server 4242 1794326988",
+                "directory /private/tmp/tmux-501", "instance 4242 1794326988",
             ]), nonce: nonce)
 
         #expect(report.kernel == "Darwin")
@@ -108,7 +108,7 @@ struct TmuxProbeTests {
     @Test func onlyTheLastWholeAnswerIsRead() throws {
         var stdout = Data("Welcome\n\(nonce) tmux begin\nexecutable /nowhere/tmux\nversion tmux 9.9\n".utf8)
         stdout.append(Data([0xFF, 0xFE]))
-        stdout.append(output(["executable /usr/bin/tmux", "version tmux 3.4", "server 1 2"]))
+        stdout.append(output(["executable /usr/bin/tmux", "version tmux 3.4", "instance 1 2"]))
 
         let report = try TmuxProbe.parse(stdout: stdout, nonce: nonce)
 
@@ -126,8 +126,8 @@ struct TmuxProbeTests {
         }
     }
 
-    @Test func aServerLineThatIsNotTwoNumbersIsNoServer() throws {
-        for line in ["server", "server 12", "server a b", "server 1 2 3"] {
+    @Test func anInstanceLineThatIsNotTwoNumbersIsNoServer() throws {
+        for line in ["instance", "instance 12", "instance a b", "instance 1 2 3"] {
             let report = try TmuxProbe.parse(stdout: output([line]), nonce: nonce)
             #expect(report.server == nil)
         }

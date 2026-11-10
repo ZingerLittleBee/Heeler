@@ -167,6 +167,17 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         return lines
     }
 
+    /// What the tmux probe prints for a Host with a usable tmux, or with none.
+    static func tmuxLines(
+        executable: String? = nil, version: String = "tmux 3.4", kernel: String = "Linux",
+        directory: String = "/tmp/tmux-1000", sockets: [String] = []
+    ) -> [String] {
+        var lines = ["kernel \(kernel)"]
+        if let executable { lines += ["executable \(executable)", "version \(version)"] }
+        lines.append("directory \(directory)")
+        return lines + sockets.map { "socket \($0)" }
+    }
+
     nonisolated let routeID: UUID? = nil
     /// The Host Helper's side of this Host. Its steps stay out of `log`.
     nonisolated let helper: ScriptedHelperHost
@@ -179,6 +190,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private let start: StartResponse
     private let channelAfterStart: Channel?
     private let herdrRead: HerdrRead
+    /// What detection's tmux probe prints between its markers; nil prints none.
+    private let tmuxProbe: [String]?
     private let detectionFailure: TransportError?
     private var processRead: ProcessRead
     private var isProcessReadHeld = false
@@ -264,7 +277,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     init(
         windowsLocator: [String]? = nil,
         locator: [String] = locatorLines(), locatorStatus: Int32 = 0, shellBanner: Data = Data(),
-        herdrRead: HerdrRead = .notInstalled, detectionFailure: TransportError? = nil,
+        herdrRead: HerdrRead = .notInstalled, tmuxProbe: [String]? = tmuxLines(),
+        detectionFailure: TransportError? = nil,
         helper: ScriptedHelperHost = ScriptedHelperHost(),
         start: StartResponse = .fresh, channelAfterStart: Channel? = nil,
         processRead: ProcessRead = .names([]),
@@ -276,6 +290,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         self.start = start
         self.channelAfterStart = channelAfterStart
         self.herdrRead = herdrRead
+        self.tmuxProbe = tmuxProbe
         self.detectionFailure = detectionFailure
         self.locator = locator
         self.locatorStatus = locatorStatus
@@ -384,6 +399,10 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             case .fails(let status, let output): (status, output)
             }
         var printed = "\n\(nonce) herdr-tui begin\n\(output)\n\(nonce) herdr-tui status \(status)\n"
+        if let tmuxProbe, body.contains("\(nonce) tmux begin") {
+            printed += (["", "\(nonce) tmux begin"] + tmuxProbe + ["", "\(nonce) tmux end"])
+                .joined(separator: "\n") + "\n"
+        }
         if body.contains("__session=") {
             printed += (["\(nonce) begin"] + locator + ["\(nonce) end"]).joined(separator: "\n") + "\n"
         }
