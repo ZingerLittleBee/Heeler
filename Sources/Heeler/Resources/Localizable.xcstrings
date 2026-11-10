@@ -2371,6 +2371,56 @@
         }
       }
     },
+    "%@, needs %@ or newer" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, needs %2$@ or newer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@、%2$@ 以降が必要"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@，需要 %2$@ 或更高版本"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@，需要 %2$@ 或更新版本"
+          }
+        }
+      }
+    },
+    "%@, no server running" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@、サーバー未実行"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@，没有服务器在运行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@，沒有伺服器在執行"
+          }
+        }
+      }
+    },
     "%@, not running" : {
       "localizations" : {
         "ja" : {
@@ -16724,6 +16774,28 @@
         }
       }
     },
+    "Could not read" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取れませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取"
+          }
+        }
+      }
+    },
     "Could not read Usage" : {
       "localizations" : {
         "ja" : {
@@ -24853,6 +24925,34 @@
         }
       }
     },
+    "Heeler cannot use the tmux socket name \"%@\". A name uses letters, digits, \".\", \"_\" and \"-\", up to %lld bytes, and does not start with \"-\". A socket path is not supported." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler cannot use the tmux socket name \"%1$@\". A name uses letters, digits, \".\", \"_\" and \"-\", up to %2$lld bytes, and does not start with \"-\". A socket path is not supported."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler は tmux のソケット名「%1$@」を使用できません。名前には英字・数字・\".\"・\"_\"・\"-\" が使え、%2$lld バイト以内で、\"-\" で始まらない必要があります。ソケットパスはサポートされていません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 无法使用 tmux 套接字名称“%1$@”。名称只能使用字母、数字、“.”、“_”和“-”，最长 %2$lld 字节，且不能以“-”开头。不支持套接字路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 無法使用 tmux socket 名稱「%1$@」。名稱僅限字母、數字、「.」、「_」與「-」，最長 %2$lld 位元組，且不能以「-」開頭。不支援 socket 路徑。"
+          }
+        }
+      }
+    },
     "Heeler connects over SSH to a machine that runs herdr." : {
       "localizations" : {
         "ja" : {
@@ -28439,6 +28539,28 @@
         }
       }
     },
+    "Install tmux %@ or newer on the Host, then check again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストに tmux %@ 以降をインストールし、再確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在主机上安装 tmux %@ 或更高版本，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在主機上安裝 tmux %@ 或更新版本，然後重新檢查。"
+          }
+        }
+      }
+    },
     "Instructions dictated to a coding agent" : {
       "localizations" : {
         "ja" : {
@@ -29861,6 +29983,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "留空則使用預設的工作階段。"
+          }
+        }
+      }
+    },
+    "Leave blank for the default socket, which a tmux started without -L uses." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "既定のソケットを使う場合は空欄のままにしてください。-L を付けずに起動した tmux が使うソケットです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留空以使用默认套接字，即未加 -L 启动的 tmux 所用的套接字。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留空則使用預設的 socket，也就是未加 -L 啟動的 tmux 所使用的 socket。"
           }
         }
       }
@@ -34102,6 +34246,72 @@
         }
       }
     },
+    "No tmux server answers on the default socket" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "既定のソケットで応答する tmux サーバーがありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认套接字上没有 tmux 服务器应答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預設的 socket 上沒有 tmux 伺服器回應"
+          }
+        }
+      }
+    },
+    "No tmux server answers on the socket \"%@\"" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ソケット「%@」で応答する tmux サーバーがありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "套接字“%@”上没有 tmux 服务器应答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "socket「%@」上沒有 tmux 伺服器回應"
+          }
+        }
+      }
+    },
+    "No tmux server running" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux サーバーが実行されていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有 tmux 服务器在运行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有 tmux 伺服器在執行"
+          }
+        }
+      }
+    },
     "No uncommitted changes" : {
       "localizations" : {
         "ja" : {
@@ -34277,6 +34487,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無"
+          }
+        }
+      }
+    },
+    "None of them was found. Choose the one you will use, and its checks say how to set it up." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "いずれも見つかりませんでした。使うものを選ぶと、そのチェックが設定方法を示します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "均未找到。请选择你要使用的类型，其检查项会说明如何配置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全都找不到。請選擇你要使用的那一個，它的檢查會說明如何設定。"
           }
         }
       }
@@ -35072,6 +35304,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "herdr-core 不支援"
+          }
+        }
+      }
+    },
+    "Not supported on this Host" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストではサポートされていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机不支持"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機不支援"
           }
         }
       }
@@ -47946,6 +48200,28 @@
         }
       }
     },
+    "Socket name" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ソケット名"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "套接字名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "socket 名稱"
+          }
+        }
+      }
+    },
     "Some Changes details were truncated." : {
       "localizations" : {
         "ja" : {
@@ -48339,6 +48615,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請啟動為此主機設定的 herdr 實例，並確認其 socket 路徑。"
+          }
+        }
+      }
+    },
+    "Start tmux on the Host. Heeler keeps checking." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストで tmux を起動してください。Heeler は確認を続けます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在主机上启动 tmux。Heeler 会持续检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在主機上啟動 tmux。Heeler 會持續檢查。"
           }
         }
       }
@@ -53212,6 +53510,34 @@
         }
       }
     },
+    "The Host has tmux %@, and Heeler needs %@ or newer" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The Host has tmux %1$@, and Heeler needs %2$@ or newer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの tmux は %1$@ ですが、Heeler には %2$@ 以降が必要です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的 tmux 为 %1$@，而 Heeler 需要 %2$@ 或更高版本"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的 tmux 是 %1$@，而 Heeler 需要 %2$@ 或更新版本"
+          }
+        }
+      }
+    },
     "The Host is not connected, so Stop wasn't sent." : {
       "localizations" : {
         "ja" : {
@@ -57971,6 +58297,28 @@
         }
       }
     },
+    "The saved tmux Hosts could not be read, so no tmux Host can be added." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存済みの tmux ホストを読み取れず、tmux ホストを追加できません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取已保存的 tmux 主机，因此无法添加 tmux 主机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取已儲存的 tmux 主機，因此無法新增 tmux 主機。"
+          }
+        }
+      }
+    },
     "The selected file exceeds the 64 MiB upload limit." : {
       "localizations" : {
         "ja" : {
@@ -60017,6 +60365,28 @@
         }
       }
     },
+    "This action on a tmux Host" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux ホストでのこの操作"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux 主机上的此操作"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux 主機上的此操作"
+          }
+        }
+      }
+    },
     "This app carries a newer Host Helper." : {
       "localizations" : {
         "ja" : {
@@ -61139,6 +61509,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這台機器兩者都有執行。一個主機只能是一種類型：請先在這裡確認其中一種，再為另一種重新新增這台機器。"
+          }
+        }
+      }
+    },
+    "This machine runs more than one. A Host is one kind: confirm one here, then add the machine again for each of the others." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このマシンは複数を動作させています。ホストはどれか 1 種類です。ここでは 1 つを確定し、残りのそれぞれのためにこのマシンを再追加してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此机器同时运行了多种服务。每台主机只能对应一种类型：请先在此确认其中一种，然后为其余每一种重新添加该机器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台機器執行了不只一種。一個主機只能是一種類型：請先在這裡確認其中一種，再為其餘每一種重新新增這台機器。"
           }
         }
       }
@@ -63372,6 +63764,28 @@
         }
       }
     },
+    "Update required" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新が必要です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要更新"
+          }
+        }
+      }
+    },
     "Update the Host Helper" : {
       "localizations" : {
         "ja" : {
@@ -63456,6 +63870,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請更新此主機的憑證或授權金鑰。"
+          }
+        }
+      }
+    },
+    "Update tmux on the Host, then check again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの tmux を更新し、再確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新主机上的 tmux，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請更新主機上的 tmux，然後重新檢查。"
           }
         }
       }
@@ -66591,6 +67027,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的上一則訊息被送到另一個 %@ 工作階段。請在終端機中切換回這段對話，讓它的最新訊息顯示在那裡，或直接從終端機傳送；然後再從這裡重新傳送。"
+          }
+        }
+      }
+    },
+    "Your login shell on the Host finds no tmux" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストのログインシェルで tmux が見つかりません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你在主机上的登录 Shell 找不到 tmux"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你在主機上的登入 Shell 找不到 tmux"
           }
         }
       }
@@ -70280,6 +70738,28 @@
         }
       }
     },
+    "socket %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ソケット %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "套接字 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "socket %@"
+          }
+        }
+      }
+    },
     "start failed — %@" : {
       "comment" : "Settings Live Activity status line; the placeholder is ActivityKit's reason",
       "localizations" : {
@@ -70505,6 +70985,182 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "終端機控制器：%@"
+          }
+        }
+      }
+    },
+    "tmux Hosts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux ホスト"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux 主机"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux 主機"
+          }
+        }
+      }
+    },
+    "tmux Socket" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux ソケット"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux 套接字"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux socket"
+          }
+        }
+      }
+    },
+    "tmux installed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux インストール済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux 已安装"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux 已安裝"
+          }
+        }
+      }
+    },
+    "tmux is not installed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux がインストールされていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安装 tmux"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux 未安裝"
+          }
+        }
+      }
+    },
+    "tmux server running" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux サーバー実行中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux 服务器运行中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux 伺服器執行中"
+          }
+        }
+      }
+    },
+    "tmux: The Host's tmux or its socket is at a path Heeler cannot use." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux: ホストの tmux またはそのソケットが、Heeler の使用できないパスにあります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux：主机上的 tmux 或其套接字位于 Heeler 无法使用的路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux：主機上的 tmux 或其 socket 位於 Heeler 無法使用的路徑。"
+          }
+        }
+      }
+    },
+    "tmux: The probe exited with status %d." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux: プローブがステータス %d で終了しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux：探测已退出，状态码为 %d。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux：探測以狀態 %d 結束。"
+          }
+        }
+      }
+    },
+    "tmux: The probe's output is unreadable." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux: プローブの出力を読み取れません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux：无法读取探测的输出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tmux：探測的輸出無法讀取。"
           }
         }
       }
