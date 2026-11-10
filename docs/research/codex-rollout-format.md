@@ -345,8 +345,9 @@ TUI's backtrack is `codex-rs/tui/src/app/event_dispatch.rs:684-768`).
   the rewind's own timestamp in that day's directory, and leaves the base
   file byte for byte as it was. A follower of the base therefore sees no
   change at all; Chat looks for the newest segment again on each Agent
-  status change and whenever a send goes overdue, and tries again on the
-  next read when that search fails.
+  status change except a dialog opening inside a turn or its answer
+  (Working to Blocked and back), and whenever a send goes overdue, and
+  tries again on the next read when that search fails.
 
 ### Legacy turns
 
