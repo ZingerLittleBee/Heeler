@@ -156,8 +156,8 @@ never show or send into a conversation it has guessed.
   folder or database shows Waiting for Conversation, as on Herdr TUI. A Send goes
   in, since that message is what starts the conversation, and the check that
   agy's `working` brings binds the lock it then holds. Chat sends this way only
-  while it shows no conversation; under an earlier one the Send waits for the
-  first message from the terminal. Any argument, a launcher in front (one that
+  while it shows no conversation; under an earlier one a Send is refused, and
+  the first message goes in from the terminal. Any argument, a launcher in front (one that
   goes by `agy` too, which shows as another `agy` under it), a process walk that
   did not answer, open files that cannot be read, a conversation's file held
   without its lock, or a pick for that process still reads as before, and a pick
@@ -174,7 +174,9 @@ never show or send into a conversation it has guessed.
   keeps the Terminal's own process, so a walk from it reads as still starting
   while that process goes by the launch's shell's name, or is an agy holding no
   conversation's file, with no other `agy` under it. Chat keeps looking, a Send
-  waits, and the core's sample brings the next check. A launch with arguments
+  is refused with its text left in the Composer and a notice to send again once
+  agy runs, nothing resent by itself, and the core's sample brings the next
+  check. A launch with arguments
   and a launcher still read as above (#644).
 - While Chat shows no conversation, the check before a Send refuses whatever it
   finds other than an agy with no conversation yet (above), since a conversation
