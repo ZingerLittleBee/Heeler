@@ -166,12 +166,6 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
             .toTerminalConfiguration() ?? .default
     }
 
-    var terminalTheme: TerminalTheme {
-        TerminalTheme(
-            light: configuration(isDark: false),
-            dark: configuration(isDark: true))
-    }
-
     func colors(isDark: Bool) -> TerminalThemeColors? {
         Self.definitions[catalogName(isDark: isDark)].map(TerminalThemeColors.init)
     }
@@ -224,6 +218,10 @@ final class TerminalThemeSettings {
     private static let legacyDefaultsKey = "terminal-theme"
     private static let lightDefaultsKey = "terminal-theme-light"
     private static let darkDefaultsKey = "terminal-theme-dark"
+    /// A slot nobody chose shows a theme as light or dark as its appearance,
+    /// so an untouched app is lit as the system is (ADR 0042).
+    static let defaultLightSelection = TerminalThemeOption.followSystem
+    static let defaultDarkSelection = TerminalThemeOption.vesper
 
     private(set) var lightSelection: TerminalThemeOption
     private(set) var darkSelection: TerminalThemeOption
@@ -236,16 +234,18 @@ final class TerminalThemeSettings {
             .flatMap(TerminalThemeOption.init(rawValue:))
         lightSelection =
             defaults.string(forKey: Self.lightDefaultsKey)
-            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? .vesper
+            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? Self.defaultLightSelection
         darkSelection =
             defaults.string(forKey: Self.darkDefaultsKey)
-            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? .vesper
+            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? Self.defaultDarkSelection
     }
 
-    var theme: TerminalTheme {
-        TerminalTheme(
-            light: lightSelection.configuration(isDark: false),
-            dark: darkSelection.configuration(isDark: true))
+    /// What a terminal shows: `appearance`'s slot in both halves, so a
+    /// terminal drawn in the other appearance (a dark theme for Light Mode
+    /// darkens the app) still shows that slot's theme.
+    func terminalTheme(for appearance: ColorScheme) -> TerminalTheme {
+        let configuration = selection(for: appearance).configuration(isDark: appearance == .dark)
+        return TerminalTheme(light: configuration, dark: configuration)
     }
 
     func selection(for colorScheme: ColorScheme) -> TerminalThemeOption {

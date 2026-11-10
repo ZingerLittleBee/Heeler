@@ -102,7 +102,9 @@ struct AgentChatSurfaceView: View {
     @AppStorage(ChatTextSettings.sizeOffsetKey) private var textSizeOffset = ChatTextSettings.defaultSizeOffset
     @AppStorage(ChatTextSettings.fontKey) private var chatFont = ChatFontOption.system
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.themeAppearance) private var themeAppearance
+    /// The terminal's theme for this appearance, which Chat wears too.
+    @Environment(\.themeColors) private var themeColors
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -333,6 +335,7 @@ struct AgentChatSurfaceView: View {
 
     private var lifecycleSurface: some View {
         chatSurface
+        .wearsTheme(themeColors)
         .onAppear {
             closer.didReturnToScreen()
             stageExit?.cancel()
@@ -417,12 +420,20 @@ struct AgentChatSurfaceView: View {
 
     // MARK: Layout
 
+    private var themePalette: TerminalThemePalette {
+        terminal.themes.selection(for: themeAppearance).palette(for: themeAppearance)
+    }
+
+    private var chromeColorScheme: ColorScheme {
+        themeColors.colorScheme ?? themeAppearance
+    }
+
     private var chatSurface: some View {
         conversation
         .overlay(alignment: .bottom) { floatingTimelineControls }
         .overlay {
             if let workspaceDrawer {
-                let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(.system)
+                let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
                 // The back header's menu stands in for the edge handle
                 // while the header is out; folded, the handle comes back.
                 if isBackHeaderExpanded {
@@ -479,7 +490,7 @@ struct AgentChatSurfaceView: View {
         .padding(.top, topInset)
         .overlay(alignment: .top) {
             AgentDetailHeader(
-                palette: .system,
+                palette: themePalette,
                 isExpanded: $isBackHeaderExpanded,
                 onBack: showsBackButton && !usesVerticalToolbar ? { dismiss() } : nil,
                 actions: backHeaderActions,
@@ -514,7 +525,7 @@ struct AgentChatSurfaceView: View {
             .accessibilityHidden(true)
         }
         .background {
-            Color(uiColor: .systemBackground)
+            themeColors.background
                 .ignoresSafeArea(.all, edges: surfaceEdges)
         }
         .ignoresSafeArea(.container, edges: .top)
@@ -527,7 +538,7 @@ struct AgentChatSurfaceView: View {
         .toolbar(.visible, for: .navigationBar)
         .detailHeaderBarControls(
             headerControlPlacement,
-            palette: .system,
+            palette: themePalette,
             isExpanded: $isBackHeaderExpanded,
             actions: backHeaderActions,
             surfaceSwitch: terminalSurfaceSwitch,
@@ -1027,7 +1038,7 @@ struct AgentChatSurfaceView: View {
             changes: AgentDetailChanges(rows: console.rowChanges, agent: agent, open: showChanges),
             session: sessionSettings,
             sessionControls: sessionControls,
-            chromeColorScheme: colorScheme,
+            chromeColorScheme: chromeColorScheme,
             switcher: agentSwitcher,
             keyboardHandoff: keyboardHandoff,
             keyboardHeight: composerKeyboardLayout.availableToolsHeight,

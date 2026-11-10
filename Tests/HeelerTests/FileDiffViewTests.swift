@@ -166,8 +166,8 @@ struct FileDiffViewTests {
                     let pairs: [(String, UIColor, UIColor)] = [
                         ("ink on line", change.ink, change.line),
                         ("ink on gutter", change.ink, change.gutter),
-                        ("code on line", DiffPalette.code, change.line),
-                        ("code on word", DiffPalette.code, change.word),
+                        ("code on line", palette.code, change.line),
+                        ("code on word", palette.code, change.word),
                     ]
                     for (pair, foreground, background) in pairs {
                         let contrast = Self.contrast(foreground, on: background, style: style)
@@ -177,12 +177,12 @@ struct FileDiffViewTests {
                     }
                 }
                 for (pair, foreground) in [
-                    ("context numbers", DiffPalette.contextNumber), ("code", DiffPalette.code),
+                    ("context numbers", palette.contextNumber), ("code", palette.code),
                 ] {
-                    let contrast = Self.contrast(foreground, on: DiffPalette.background, style: style)
+                    let contrast = Self.contrast(foreground, on: DiffSurface.system.background, style: style)
                     #expect(contrast >= 4.5, "\(pair) in \(style) has contrast \(contrast)")
                 }
-                let band = Self.contrast(DiffPalette.hunkText, on: DiffPalette.hunkBand, style: style)
+                let band = Self.contrast(DiffSurface.system.secondaryText, on: DiffSurface.system.hunkBand, style: style)
                 #expect(band >= 4.5, "hunk band in \(style) has contrast \(band)")
             }
         }
@@ -197,14 +197,14 @@ struct FileDiffViewTests {
                 format: "%02X%02X%02X", Int(round(red * 255)), Int(round(green * 255)),
                 Int(round(blue * 255)))
         }
-        #expect(hex(DiffPalette.current(differentiatingWithoutColor: false).added.ink) == "3FB950")
-        #expect(hex(DiffPalette.current(differentiatingWithoutColor: true).added.ink) == "9ECDFB")
-        #expect(hex(DiffPalette.current(differentiatingWithoutColor: true).removed.ink) == "F1B5D8")
+        #expect(hex(DiffPalette.current(differentiatingWithoutColor: false, on: .system).added.ink) == "3FB950")
+        #expect(hex(DiffPalette.current(differentiatingWithoutColor: true, on: .system).added.ink) == "9ECDFB")
+        #expect(hex(DiffPalette.current(differentiatingWithoutColor: true, on: .system).removed.ink) == "F1B5D8")
     }
 
     /// Composites a translucent foreground over its background before
     /// comparing, as the screen does.
-    private static func contrast(
+    static func contrast(
         _ foreground: UIColor, on background: UIColor, style: UIUserInterfaceStyle
     ) -> CGFloat {
         let traits = UITraitCollection(userInterfaceStyle: style)
