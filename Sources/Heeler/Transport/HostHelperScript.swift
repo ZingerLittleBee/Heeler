@@ -220,7 +220,9 @@ struct HostHelperScript: Sendable, Equatable {
             // Helper starts on it and records it: a Repair restarts the Helper,
             // while one still running on a removed binary records that binary
             // again each time it reaches the core, until its next start. A
-            // service on the same lost Node.js never will.
+            // service on the same lost Node.js never will. Only the query runs
+            // here: the Helper starts its background refresh on the recorded
+            // binary, so that refresh fails until then (ADR 0033).
             "  case \"$(uname -s)\" in",
             "  Darwin) __h_service_node=$(launchctl print \"user/$(id -u)/\(HostHelperLaunchAgent.label)\" 2>/dev/null | \(programOfPrint)) ;;",
             "  *) case \"$XDG_CONFIG_HOME\" in /*) __h_config=\"$XDG_CONFIG_HOME\";; *) __h_config=\"$HOME/.config\";; esac",

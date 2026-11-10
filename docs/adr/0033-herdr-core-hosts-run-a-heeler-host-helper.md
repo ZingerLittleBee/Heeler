@@ -355,7 +355,16 @@ Hosts are unchanged.
   Helper started on that Node.js records it when it reaches the core: soon after
   a Repair, which restarts the Helper, and otherwise only after its next start,
   since a Helper still running on the removed binary records that binary again
-  at each connection. The probe
+  at each connection. That covers the query alone: the query starts its
+  background refresh with the Node.js the record names (`startWorker` in
+  `usage/query.js`), so while the record names a removed binary no refresh
+  starts, and once the snapshot is more than 60 s old Claude Code's and Codex's
+  Token Usage, and each counted Account's, read *The background refresh could
+  not start.* The app leaves Token Usage that is not ok out of its totals, so
+  Usage showed $0.00 with no note in a live run (2026-11-10, #644). Starting the
+  refresh on the Node.js the query runs on changes the Helper itself and waits
+  for its next version; until then the Helper's restart, which a Repair makes,
+  brings the refresh back. The probe
   names a manager's stable link where it finds one, so an upgrade through that
   manager moves the service along at its next start rather than stranding it,
   though a default switched to a version too old can then fail that start,
