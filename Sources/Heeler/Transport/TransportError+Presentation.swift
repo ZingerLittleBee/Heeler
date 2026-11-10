@@ -239,6 +239,16 @@ extension TransportError {
                     ? String(localized: "No tmux server answers on the default socket")
                     : String(localized: "No tmux server answers on the socket \"\(socketName)\""),
                 recoverySuggestion: String(localized: "Start tmux on the Host. Heeler keeps checking."))
+        case .tmuxPaneGone:
+            TransportErrorPresentation(
+                summary: String(localized: "This Pane is gone"),
+                detail: nil,
+                recoverySuggestion: nil)
+        case .tmuxServerGone:
+            TransportErrorPresentation(
+                summary: String(localized: "This Pane belongs to a tmux server that is gone"),
+                detail: String(localized: "Nothing was sent"),
+                recoverySuggestion: String(localized: "Open it again from the list."))
         case .gitTimedOut:
             TransportErrorPresentation(
                 summary: String(localized: "Reading Changes timed out"),

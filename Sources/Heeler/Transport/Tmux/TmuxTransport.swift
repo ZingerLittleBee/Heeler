@@ -41,6 +41,12 @@ protocol TmuxTransport: Sendable {
     /// Letting go of the stream closes the exec.
     func inventory() async throws -> AsyncThrowingStream<TmuxInventory, any Error>
 
+    /// Opens an Attach on `pane` of the server the last `status()` answered
+    /// (ADR 0043): a session of Heeler's own holding the Pane's window, with
+    /// one control client attached to it, and the Pane's first paint. It holds
+    /// one of the connection's attach slots (ADR 0017) until it ends.
+    func attachPane(_ pane: String, request: TerminalAttachRequest) async throws -> TerminalAttachSession
+
     /// Closes the connection.
     func close() async throws
 }
@@ -61,6 +67,12 @@ protocol TmuxHostConnection: HostServices {
     /// of the connection's four ordinary SSH sessions (ADR 0017) until then.
     func openTmuxInventoryLoop(_ script: Data) async throws -> any WindowsTerminalExecChannel
 
+    /// Opens one long exec of a `TmuxAttachScript` script, whose control-mode
+    /// client reads the exec's input after the script. It holds one of the
+    /// connection's attach slots (ADR 0017) until the channel is closed. Reads
+    /// and writes throw `TransportError`.
+    func openTmuxControlClient(_ script: Data) async throws -> any WindowsTerminalExecChannel
+
     func close() async throws
 }
 
@@ -72,6 +84,7 @@ actor TmuxSSHTransport: TmuxTransport {
     private let socketName: String
     private let nonce: @Sendable () -> String
     private let loopSilenceLimit: Duration
+    private let attachStartLimit: Duration
     /// The paths every command runs with: the Host's stored ones, until the
     /// login shell resolves others.
     private var paths: TmuxPaths?
@@ -86,13 +99,15 @@ actor TmuxSSHTransport: TmuxTransport {
         socketName: String,
         storedPaths: TmuxPaths?,
         nonce: @escaping @Sendable () -> String = { UUID().uuidString },
-        loopSilenceLimit: Duration = TmuxInventoryLoop.silenceLimit
+        loopSilenceLimit: Duration = TmuxInventoryLoop.silenceLimit,
+        attachStartLimit: Duration = .seconds(15)
     ) {
         routeID = connection.routeID
         self.connection = connection
         self.socketName = TmuxSocketName.normalized(socketName)
         self.nonce = nonce
         self.loopSilenceLimit = loopSilenceLimit
+        self.attachStartLimit = attachStartLimit
         // Paths resolved for another socket name say nothing of this one.
         paths = storedPaths.flatMap { $0.serves(socketName: socketName) ? $0 : nil }
     }
@@ -223,6 +238,24 @@ actor TmuxSSHTransport: TmuxTransport {
     }
 
     private static let closeTimeout = Duration.seconds(2)
+
+    // MARK: Attach
+
+    /// Seconds a client may fall behind before tmux pauses the Pane for it,
+    /// which a new first paint then resumes (ADR 0043).
+    static let pauseAfter = 10
+
+    func attachPane(_ pane: String, request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        guard let paths else { throw TransportError.tmuxServerNotRunning(socketName: socketName) }
+        let session = TmuxAttachScript.sessionPrefix + String(format: "%08x", UInt32.random(in: .min ... .max))
+        guard
+            let script = TmuxAttachScript.script(
+                paths: paths, session: session, pane: pane, pauseAfter: Self.pauseAfter)
+        else { throw TransportError.tmuxPaneGone }
+        let channel = try await connection.openTmuxControlClient(Data(script.utf8))
+        return try await TmuxPaneAttach.open(
+            channel: channel, session: session, pane: pane, request: request, startLimit: attachStartLimit)
+    }
 
     func close() async throws {
         try await connection.close()

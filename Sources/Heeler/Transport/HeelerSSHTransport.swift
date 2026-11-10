@@ -3814,6 +3814,56 @@ extension HeelerSSHTransport: TmuxHostConnection {
         }
         return channel
     }
+
+    /// One long exec of `/bin/sh -s` that execs a control-mode client. Its
+    /// script goes first; the client reads what follows (ADR 0043). It holds an
+    /// attach slot until the channel closes, and its reads and writes throw
+    /// `TransportError`, a lost connection among them.
+    func openTmuxControlClient(_ script: Data) async throws -> any WindowsTerminalExecChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
+        let timeout = requestTimeout
+        let channel = try await channelAdmission.admitAttachExec {
+            do {
+                return try await self.connection.openExec(command: Self.gitScriptCommand, timeout: timeout)
+            } catch {
+                throw await self.mapOperationError(error)
+            }
+        }
+        do {
+            try await channel.write(script, timeout: timeout)
+        } catch {
+            try? await channel.close(timeout: .seconds(2))
+            throw await mapOperationError(error)
+        }
+        return TransportErrorExecChannel(channel: channel) { await self.mapOperationError($0) }
+    }
+}
+
+/// An exec whose reads and writes throw `TransportError`, as the connection
+/// classifies what its channel threw.
+private struct TransportErrorExecChannel: WindowsTerminalExecChannel {
+    let channel: any WindowsTerminalExecChannel
+    let map: @Sendable (any Error) async -> TransportError
+
+    func write(_ data: Data, timeout: Duration) async throws {
+        do { try await channel.write(data, timeout: timeout) } catch { throw await map(error) }
+    }
+
+    func read(maximumBytes: Int, timeout: Duration) async throws -> Data? {
+        do { return try await channel.read(maximumBytes: maximumBytes, timeout: timeout) } catch {
+            throw await map(error)
+        }
+    }
+
+    func exitStatus(timeout: Duration) async throws -> Int32 {
+        do { return try await channel.exitStatus(timeout: timeout) } catch { throw await map(error) }
+    }
+
+    func close(timeout: Duration) async throws {
+        try await channel.close(timeout: timeout)
+    }
 }
 
 // MARK: - What the Host Helper uses of this connection

@@ -84,6 +84,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         panes listed: [TmuxInventory.Pane] = []
     ) async {
         let socket = Self.socketPath(name, in: loginDirectory)
+        if servers[socket] != nil { await endControlClients(on: socket) }
         servers[socket] = instance
         panes[socket] = listed
         await printChanges(on: socket)
@@ -94,6 +95,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let socket = Self.socketPath(name, in: loginDirectory)
         servers[socket] = nil
         panes[socket] = nil
+        await endControlClients(on: socket)
         await printChanges(on: socket)
     }
 
@@ -263,6 +265,253 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         }
     }
 
+    // MARK: Control clients (ADR 0043)
+
+    /// One Attach's control client, in its session of Heeler's own.
+    private struct ControlClient {
+        let dial: UInt64
+        let socket: String
+        let channel: ScriptedTmuxLoopChannel
+        let sessionName: String
+        let sessionID: String
+        /// The pane the Attach shows, as the server listed it when it attached.
+        let pane: TmuxInventory.Pane
+        /// The window the session links; nil while it holds only its placeholder.
+        let window: String?
+    }
+
+    private var controlClients: [UInt64: ControlClient] = [:]
+    private var nextControlClient: UInt64 = 0
+    private var nextCommandNumber: UInt64 = 1000
+    private var nextSessionID = 100
+    /// What each pane shows, by socket and pane id, a line a row. A pane with
+    /// none shows blank rows.
+    private var screens: [String: [String: [String]]] = [:]
+    /// Each control client's script, and every line any of them wrote, in order.
+    private(set) var controlScripts: [String] = []
+    private(set) var controlCommands: [String] = []
+    /// Control clients that answer nothing at all, for attaches that time out.
+    private var silentControlClients = 0
+
+    var openControlClients: Int { controlClients.count }
+
+    /// The names of the sessions Attaches made that are still there.
+    var attachSessions: [String] { controlClients.values.map(\.sessionName).sorted() }
+
+    func setScreen(_ rows: [String], of pane: String, on name: String = "default") {
+        screens[Self.socketPath(name, in: loginDirectory), default: [:]][pane] = rows
+    }
+
+    func silenceNextControlClient() {
+        silentControlClients += 1
+    }
+
+    /// The pane prints `text`, which every client whose session links its window reads.
+    func paneOutput(_ text: String, in pane: String, on name: String = "default") async {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        for client in controlClients.values where client.socket == socket && client.window == window(of: pane, client) {
+            await client.channel.send(Data("%output \(pane) \(Self.escaped(text))\n".utf8))
+        }
+    }
+
+    /// The client fell `pause-after` behind, and tmux paused the pane for it.
+    func pause(_ pane: String, on name: String = "default") async {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        for client in controlClients.values where client.socket == socket && client.pane.paneID == pane {
+            await client.channel.send(Data("%pause \(pane)\n".utf8))
+        }
+    }
+
+    /// The user ends every session of theirs that holds the pane's window:
+    /// only Heeler's sessions hold it from then on.
+    func endUserSessions(holding pane: String, on name: String = "default") async {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        guard let window = panes[socket]?.first(where: { $0.paneID == pane })?.windowID else { return }
+        panes[socket]?.removeAll { $0.windowID == window }
+        for client in controlClients.values where client.socket == socket && client.window == window {
+            await client.channel.send(Data("%sessions-changed\n%window-close \(window)\n".utf8))
+        }
+        await printChanges(on: socket)
+    }
+
+    private func window(of pane: String, _ client: ControlClient) -> String? {
+        panes[client.socket]?.first { $0.paneID == pane }?.windowID ?? (pane == client.pane.paneID ? client.window : nil)
+    }
+
+    func openTmuxControlClient(_ script: Data) async throws -> any WindowsTerminalExecChannel {
+        try await openControlClient(script, dial: 0)
+    }
+
+    fileprivate func openControlClient(_ script: Data, dial: UInt64) async throws -> any WindowsTerminalExecChannel {
+        let body = String(decoding: script, as: UTF8.self)
+        controlScripts.append(body)
+        nextControlClient += 1
+        let id = nextControlClient
+        let channel = ScriptedTmuxLoopChannel(
+            onWrite: { [weak self] data in await self?.controlClientWrote(data, client: id) },
+            onClose: { [weak self] in await self?.noteControlClientClosed(id) })
+        if silentControlClients > 0 {
+            silentControlClients -= 1
+            return channel
+        }
+        let socket = Self.assigned("s", in: body)
+        let words = body.split(separator: "\n").first { $0.hasPrefix("exec ") }?.split(separator: " ").map(String.init) ?? []
+        let sessionName = words.firstIndex(of: "-s").map { words[$0 + 1] } ?? ""
+        let paneID = words.firstIndex(of: "@heeler-attach").map { words[$0 + 1].replacingOccurrences(of: "'", with: "") } ?? ""
+        // With `-N` and no server, tmux says so on standard error and exits.
+        guard servers[socket] != nil, executables[Self.assigned("t", in: body)] != nil else {
+            await channel.finish()
+            return channel
+        }
+        nextSessionID += 1
+        let sessionID = "$\(nextSessionID)"
+        let pane = panes[socket]?.first { $0.paneID == paneID }
+        controlClients[id] = ControlClient(
+            dial: dial, socket: socket, channel: channel, sessionName: sessionName, sessionID: sessionID,
+            pane: pane ?? .make(pane: Int(paneID.dropFirst()) ?? 0, command: "sleep"), window: pane?.windowID)
+        // One block for each start command, up to the first that fails.
+        var start = (0..<3).map { _ in block([], fromClient: false) }
+        if pane != nil {
+            start += [block([], fromClient: false), block([], fromClient: false)]
+        } else {
+            start.append(block(["can't find pane: \(paneID)"], succeeded: false, fromClient: false))
+        }
+        start.append("%sessions-changed\n%session-changed \(sessionID) \(sessionName)\n")
+        await channel.send(Data(start.joined().utf8))
+        return channel
+    }
+
+    private func block(_ lines: [String], succeeded: Bool = true, fromClient: Bool = true) -> String {
+        nextCommandNumber += 1
+        let fields = "1794339265 \(nextCommandNumber) \(fromClient ? 1 : 0)"
+        return (["%begin \(fields)"] + lines + ["\(succeeded ? "%end" : "%error") \(fields)"]).joined(separator: "\n") + "\n"
+    }
+
+    private func controlClientWrote(_ data: Data, client id: UInt64) async {
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
+            controlCommands.append(String(line))
+            guard let client = controlClients[id] else { return }
+            let words = Self.words(of: String(line))
+            await client.channel.send(Data(answer(words, from: client, id: id).utf8))
+            if let ended = ending(after: words, from: client) {
+                for other in ended { await endControlClient(other) }
+            }
+        }
+    }
+
+    /// What tmux replies to one command a client wrote.
+    private func answer(_ words: [String], from client: ControlClient, id: UInt64) -> String {
+        let listed = panes[client.socket] ?? []
+        let pane = client.pane
+        switch words.first {
+        case "list-panes" where words.contains("-s"):
+            guard let window = client.window else { return block(["\(client.sessionID) @99 %99"]) }
+            let rows = Set(listed.filter { $0.windowID == window }.map(\.paneID)).union([pane.paneID]).sorted()
+            return block(rows.map { "\(client.sessionID) \(window) \($0)" })
+        case "list-panes":
+            guard let window = client.window else { return block([]) }
+            let users = Set(listed.filter { $0.windowID == window }.map(\.sessionID)).sorted().map { "\($0) \(window) 0" }
+            let heeler = controlClients.values.filter { $0.socket == client.socket && $0.window == window }
+                .map { "\($0.sessionID) \(window) 1" }.sorted()
+            return block(users + heeler)
+        case "display-message":
+            let width = pane.width, height = pane.height
+            return block([
+                "\(pane.paneID) \(client.window ?? "@99") \(width) \(height) 0 0 0 1 0 0 0 0 \(height - 1) 0 0 0 0 0 0 0 0 1 0 0"
+            ])
+        case "capture-pane":
+            if words.contains("-a") { return block([]) }
+            let rows = screens[client.socket]?[pane.paneID] ?? Array(repeating: "", count: pane.height)
+            // With no history, tmux captures the screen's top row for the range.
+            return block(words.contains("-S") ? Array(rows.prefix(1)) : rows)
+        case "refresh-client":
+            return block(["%continue \(pane.paneID)"])
+        case "kill-window", "kill-session":
+            return block([])
+        default:
+            return block(["unknown command: \(words.first ?? "")"], succeeded: false)
+        }
+    }
+
+    /// The clients a command ended: a killed window takes the sessions that
+    /// held only it, and a killed session its client.
+    private func ending(after words: [String], from client: ControlClient) -> [UInt64]? {
+        guard let target = words.firstIndex(of: "-t").map({ words[$0 + 1] }) else { return nil }
+        switch words.first {
+        case "kill-window":
+            panes[client.socket]?.removeAll { $0.windowID == target }
+            return controlClients.filter { $0.value.socket == client.socket && $0.value.window == target }.map(\.key)
+        case "kill-session":
+            return controlClients.filter { $0.value.sessionID == target }.map(\.key)
+        default:
+            return nil
+        }
+    }
+
+    private func endControlClient(_ id: UInt64) async {
+        guard let client = controlClients.removeValue(forKey: id) else { return }
+        await client.channel.send(Data("%exit\n".utf8))
+        await client.channel.finish()
+    }
+
+    private func endControlClients(on socket: String) async {
+        for (id, client) in controlClients where client.socket == socket {
+            controlClients[id] = nil
+            await client.channel.send(Data("%exit server exited unexpectedly\n".utf8))
+            await client.channel.finish()
+        }
+    }
+
+    private func closeControlClients(ofDial dial: UInt64) async {
+        for (id, client) in controlClients where client.dial == dial {
+            controlClients[id] = nil
+            await client.channel.fail(.sshUnreachable(detail: "The SSH connection is closed."))
+        }
+    }
+
+    /// The exec closed: tmux read the end of its input, detached the client,
+    /// and its session ended with it.
+    private func noteControlClientClosed(_ id: UInt64) {
+        controlClients[id] = nil
+    }
+
+    /// A command line's words, as tmux's parser reads the quoting Heeler writes.
+    private static func words(of line: String) -> [String] {
+        var words: [String] = []
+        var word = ""
+        var quoted = false
+        var inWord = false
+        for character in line {
+            if character == "'" {
+                quoted.toggle()
+                inWord = true
+            } else if character == " ", !quoted {
+                if inWord { words.append(word) }
+                word = ""
+                inWord = false
+            } else {
+                word.append(character)
+                inWord = true
+            }
+        }
+        if inWord { words.append(word) }
+        return words
+    }
+
+    /// Pane output as `%output` writes it.
+    private static func escaped(_ text: String) -> String {
+        var escaped = ""
+        for byte in text.utf8 {
+            if byte < 0x20 || byte == 0x5C {
+                let octal = String(byte, radix: 8)
+                escaped += "\\" + String(repeating: "0", count: 3 - octal.count) + octal
+            } else {
+                escaped.unicodeScalars.append(Unicode.Scalar(byte))
+            }
+        }
+        return escaped
+    }
+
     // MARK: The connection
 
     var isConnected: Bool { connected }
@@ -271,17 +520,19 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         log.append("close")
         connected = false
         await closeLoops(ofDial: 0)
+        await closeControlClients(ofDial: 0)
     }
 
     /// A new connection to the Host, which closes apart from any other. A
     /// loop silent for `loopSilenceLimit` is lost, as the app's is after its own.
     func transport(
-        socketName: String, storedPaths: TmuxPaths?, loopSilenceLimit: Duration = .seconds(30)
+        socketName: String, storedPaths: TmuxPaths?, loopSilenceLimit: Duration = .seconds(30),
+        attachStartLimit: Duration = .seconds(5)
     ) -> TmuxSSHTransport {
         nextDial += 1
         return TmuxSSHTransport(
             connection: Dial(host: self, id: nextDial), socketName: socketName, storedPaths: storedPaths,
-            nonce: { Self.nonce }, loopSilenceLimit: loopSilenceLimit)
+            nonce: { Self.nonce }, loopSilenceLimit: loopSilenceLimit, attachStartLimit: attachStartLimit)
     }
 
     private var nextDial: UInt64 = 0
@@ -289,6 +540,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private func noteClose(ofDial dial: UInt64) async {
         log.append("close")
         await closeLoops(ofDial: dial)
+        await closeControlClients(ofDial: dial)
     }
 
     /// One SSH connection to the Host.
@@ -312,6 +564,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         func openTmuxInventoryLoop(_ script: Data) async throws -> any WindowsTerminalExecChannel {
             guard connected else { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
             return try await host.openLoop(script, dial: id)
+        }
+
+        func openTmuxControlClient(_ script: Data) async throws -> any WindowsTerminalExecChannel {
+            guard connected else { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
+            return try await host.openControlClient(script, dial: id)
         }
 
         func close() async throws {

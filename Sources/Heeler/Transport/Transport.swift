@@ -1051,6 +1051,13 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// No tmux server answers on the Host's socket. Connecting never starts one,
     /// and the user starting one is all it takes, so it is retried.
     case tmuxServerNotRunning(socketName: String)
+    /// The Pane an Attach showed is gone, or Heeler's session no longer holds
+    /// it: its window closed, or it moved to another (ADR 0043).
+    case tmuxPaneGone
+    /// Nothing was sent: the action came from a detail opened on one tmux
+    /// server's Pane, and the Host now runs another server, whose pane ids
+    /// start over. The tmux Host's `.herdrCoreTerminalGone`.
+    case tmuxServerGone
     /// A Chat transcript operation exceeded its own deadline. Like
     /// `.gitTimedOut` this says nothing about link health: a slow file read
     /// over a weak link must not redial the Host and rebuild its terminals.
@@ -1106,7 +1113,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .herdrCoreNotInstalled, .herdrCoreUpdateRequired, .herdrCoreSocketPathTooLong,
             .herdrCoreSessionNameRefused,
             .herdrCoreForwardingRefused, .herdrCoreTerminalGone,
-            .tmuxNotInstalled, .tmuxUpdateRequired,
+            .tmuxNotInstalled, .tmuxUpdateRequired, .tmuxPaneGone, .tmuxServerGone,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

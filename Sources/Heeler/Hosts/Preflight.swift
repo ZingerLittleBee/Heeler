@@ -159,7 +159,7 @@ struct PreflightReport: Equatable, Sendable {
         case .coreMutationOutcomeUnknown:
             check = .connection
             hint = String(localized: "The Host did not confirm the action. Check its state before trying again.")
-        case .herdrCoreInventoryStale, .herdrCoreTerminalGone:
+        case .herdrCoreInventoryStale, .herdrCoreTerminalGone, .tmuxPaneGone, .tmuxServerGone:
             // Preflight has no inventory; keep the closed taxonomy total.
             check = .connection
             hint = error.presentation.message
