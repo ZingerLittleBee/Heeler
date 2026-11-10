@@ -525,6 +525,8 @@ struct HerdrCoreComposerSendTests {
         #expect(reason.contains("stayed in the Agent's input unsubmitted"))
         #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
         #expect(fixture.composer.draft == "hello")
+        // The echo shown while the paste went out goes with the refusal.
+        #expect(fixture.composer.messages.isEmpty)
         await fixture.finish()
     }
 

@@ -11,6 +11,28 @@ import UIKit
 struct ChatTimelineControllerTests {
     private static let frame = CGRect(x: 0, y: 0, width: 390, height: 640)
 
+    /// A row the list drops, as a refused Send's echo, leaves nothing of
+    /// itself in the cell UIKit keeps hidden for reuse, which UI tests'
+    /// accessibility tree still lists: a "Sending…" stayed there under
+    /// Waiting for Conversation until the next Send (live).
+    @Test func aDroppedRowLeavesNothingInTheCellUIKitKeeps() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let echo = ChatPendingEcho(id: UUID(), text: "Reply with the single word gamma.", state: .sending)
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(pending: [echo]))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            #expect(controller.timeline.visibleCells.count == 1)
+
+            controller.apply(Self.state([], revision: 2))
+            await Self.settle(controller)
+
+            let view = controller.timeline
+            let kept = view.subviews.compactMap { $0 as? UICollectionViewCell }.filter { !view.visibleCells.contains($0) }
+            #expect(kept.allSatisfy { $0.contentConfiguration == nil })
+        }
+    }
+
     @Test func imageContextMenuUsesRecordedPathAndCommitsToPreviewSheet() async throws {
         let path = "/tmp/actual.png"
         let controller = ChatTimelineController(actions: ChatTimelineActions())
