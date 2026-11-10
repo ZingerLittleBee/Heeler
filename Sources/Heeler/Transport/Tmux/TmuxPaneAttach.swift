@@ -5,9 +5,10 @@ import Foundation
 /// terminal that shows only that Pane.
 ///
 /// The client's first reply to a command it wrote answers the barrier, and
-/// says whether the session came out as `TmuxAttachScript` meant it. What came
-/// before it belongs to the session's start and is dropped. A session that
-/// started wrong is ended.
+/// says whether the session came out as `TmuxAttachScript` meant it, on the
+/// server the request's `coreID` names. What came before it belongs to the
+/// session's start and is dropped. A session that started wrong is ended: on
+/// another server with `TransportError.tmuxServerGone`.
 ///
 /// The output ends with `TransportError.tmuxPaneGone` once the Pane is gone or
 /// Heeler's session no longer holds it, and with the client's own failure when
@@ -21,6 +22,7 @@ actor TmuxPaneAttach {
     private let pane: String
     private let viewRows: Int
     private let includingHistory: Bool
+    private let instance: String?
     private var feed: TmuxPaneFeed?
     private var starting: CheckedContinuation<Void, any Error>?
     private var startResult: Result<Void, any Error>?
@@ -37,6 +39,7 @@ actor TmuxPaneAttach {
         self.pane = pane
         viewRows = request.rows
         includingHistory = !request.surfaceHasHistory
+        instance = request.coreID
     }
 
     /// Opens the Attach on `channel`, an exec of `TmuxAttachScript.script`
@@ -126,7 +129,7 @@ actor TmuxPaneAttach {
         guard startResult == nil else { return }
         switch event {
         case .replied(Self.barrierTag, let reply):
-            switch TmuxAttachScript.started(reply, pane: pane) {
+            switch TmuxAttachScript.started(reply, pane: pane, instance: instance) {
             case .ready(let session, let window):
                 var feed = TmuxPaneFeed(
                     pane: pane, window: window, session: session, viewRows: viewRows,
@@ -137,16 +140,21 @@ actor TmuxPaneAttach {
                 await perform(actions)
             case .failed(let session):
                 let failure = await refusal()
-                if let session {
-                    _ = try? await client.run(TmuxControlCommand(["kill-session", "-t", session]), timeout: .seconds(5))
-                }
+                if let session { await end(session) }
                 await failStart(failure)
+            case .otherServer(let session):
+                await end(session)
+                await failStart(TransportError.tmuxServerGone)
             }
         case .ended(let end):
             finishStart(.failure(Self.startFailure(end)))
         default:
             break
         }
+    }
+
+    private func end(_ session: String) async {
+        _ = try? await client.run(TmuxControlCommand(["kill-session", "-t", session]), timeout: .seconds(5))
     }
 
     /// Why the session did not come out as meant: a Pane that is gone ends the

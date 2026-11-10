@@ -69,6 +69,10 @@ struct TerminalStatusPresentation: Equatable {
     /// Why a terminal ended when the Host moved on to another core.
     static let coreGoneMessage = String(localized: "This Terminal belongs to a core that is gone. Open it again from the list.")
 
+    /// Why a tmux Pane's terminal ended when the Host's server was replaced.
+    static let tmuxServerGoneMessage = String(
+        localized: "This Pane belongs to a tmux server that is gone. Open it again from the list.")
+
     static func ended(message: String) -> TerminalStatusPresentation {
         TerminalStatusPresentation(
             kind: .ended,

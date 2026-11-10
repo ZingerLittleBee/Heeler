@@ -11,8 +11,8 @@ import Foundation
 /// the last one's Panes, and a detail open on one of them keeps to it through
 /// the same pin.
 ///
-/// Nothing on it can be opened, started or closed yet, and `HostCapabilities`
-/// offers none of it.
+/// A Pane opens live, through `terminalRunner`. Nothing on it can be typed
+/// into, started or closed yet, and `HostCapabilities` offers none of it.
 @MainActor
 final class TmuxConsoleProjection: ConsoleHostProjection {
     /// The catalog's Host, with the paths a connection last resolved.
@@ -294,9 +294,26 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     func sendAgentKeys(_ keys: [String], to paneID: String) async throws { throw unavailable }
     func pasteIntoAgent(_ text: String, paneID: String) async throws { throw unavailable }
 
+    /// Each Attach is a control client in a session of Heeler's own (ADR 0043),
+    /// on whichever server answers once the connection is up. Another instance
+    /// than the one the Terminal first joined has only the same pane ids: that
+    /// Terminal is as good as ended, as is one whose Pane is gone.
     func terminalRunner() -> TerminalSessionRunner {
-        let unavailable = unavailable
-        return { _, _ in throw unavailable }
+        let session = session
+        return { request, handler in
+            do {
+                try await session.withAttachTransport { transport, generation, server in
+                    guard await handler.admitsCore(server.instance.id) else { throw TerminalProgramEnd.finished }
+                    await handler.transportDidBecomeReady(generation)
+                    var request = request
+                    request.coreID = server.instance.id
+                    let terminal = try await transport.attachPane(request.target.identifier, request: request)
+                    try await handler.runEndingSession(terminal)
+                }
+            } catch TransportError.tmuxPaneGone, TransportError.tmuxServerGone {
+                throw TerminalProgramEnd.finished
+            }
+        }
     }
 
     func imageStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> ImageStager {

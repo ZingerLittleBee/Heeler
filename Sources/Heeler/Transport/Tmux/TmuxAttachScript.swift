@@ -9,7 +9,9 @@ import Foundation
 /// client whatever fails after it. The client never starts a server (`-N`).
 ///
 /// The client's first reply to a command it wrote answers the barrier, after
-/// every block of the start: it says whether the session came out as meant.
+/// every block of the start: it says whether the session came out as meant,
+/// and on which server. A server that replaced the one the Terminal joined
+/// has a Pane with the same id and nothing else in common.
 enum TmuxAttachScript {
     /// What the barrier said of the session.
     enum Start: Equatable, Sendable {
@@ -17,6 +19,8 @@ enum TmuxAttachScript {
         case ready(session: String, window: String)
         /// It does not. A session that started is named, so it can be ended.
         case failed(session: String?)
+        /// It started on another server than the one asked for.
+        case otherServer(session: String)
     }
 
     /// The prefix of every Attach's session name. The inventory lists these
@@ -47,20 +51,28 @@ enum TmuxAttachScript {
         ].joined(separator: "\n")
     }
 
-    /// The first command the client writes. Its reply lists the session's panes.
+    /// The first command the client writes. Its reply lists the session's
+    /// panes, each with the server's instance.
     static func barrier(session: String) -> TmuxControlCommand {
-        TmuxControlCommand(["list-panes", "-s", "-t", "=\(session):", "-F", "#{session_id} #{window_id} #{pane_id}"])
+        TmuxControlCommand([
+            "list-panes", "-s", "-t", "=\(session):", "-F",
+            "#{pid} #{start_time} #{session_id} #{window_id} #{pane_id}",
+        ])
     }
 
-    static func started(_ reply: TmuxControlReply, pane: String) -> Start {
+    /// `instance` is the server the Terminal keeps to, as
+    /// `TmuxServerInstance.id` names it; nil for whichever answers.
+    static func started(_ reply: TmuxControlReply, pane: String, instance: String?) -> Start {
         let rows = reply.lines.map { String(decoding: $0, as: UTF8.self).split(separator: " ").map(String.init) }
-            .filter { $0.count == 3 }
+            .filter { $0.count == 5 }
         guard reply.succeeded, let first = rows.first else { return .failed(session: nil) }
-        let window = first[1]
-        guard rows.allSatisfy({ $0[1] == window }), rows.contains(where: { $0[2] == pane }) else {
-            return .failed(session: first[0])
+        let session = first[2]
+        if let instance, "tmux-\(first[0])-\(first[1])" != instance { return .otherServer(session: session) }
+        let window = first[3]
+        guard rows.allSatisfy({ $0[3] == window }), rows.contains(where: { $0[4] == pane }) else {
+            return .failed(session: session)
         }
-        return .ready(session: first[0], window: window)
+        return .ready(session: session, window: window)
     }
 
     /// `%` and a decimal number, as tmux names a pane.

@@ -60233,6 +60233,9 @@
         }
       }
     },
+    "This Pane belongs to a tmux server that is gone" : {},
+    "This Pane belongs to a tmux server that is gone. Open it again from the list." : {},
+    "This Pane is gone" : {},
     "This Terminal belongs to a core that is gone" : {
       "localizations" : {
         "ja" : {
@@ -71099,6 +71102,7 @@
         }
       }
     },
+    "tmux: A reply came that no command asked for." : {},
     "tmux: The Host's tmux or its socket is at a path Heeler cannot use." : {
       "localizations" : {
         "ja" : {
@@ -71121,6 +71125,9 @@
         }
       }
     },
+    "tmux: The Pane's screen could not be read." : {},
+    "tmux: The control client ended before it attached." : {},
+    "tmux: The control client printed a line too long to read." : {},
     "tmux: The probe exited with status %d." : {
       "localizations" : {
         "ja" : {

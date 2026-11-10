@@ -15,7 +15,7 @@ final class ConsoleDetailCores {
     /// The Composer session of the detail shown for `agent`, whose pin everything
     /// the detail does keeps to. A Herdr TUI Host has no core to keep to.
     func session(for agent: ConsoleAgent, console: ConsoleStore) -> AgentComposerSession {
-        guard console.coreProjection(on: agent.hostID) != nil else {
+        guard console.keepsDetailsToCores(on: agent.hostID) else {
             return console.composerSession(for: agent)
         }
         if let held = sessions[agent.id] { return held }

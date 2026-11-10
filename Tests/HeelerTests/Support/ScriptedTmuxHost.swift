@@ -405,9 +405,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let pane = client.pane
         switch words.first {
         case "list-panes" where words.contains("-s"):
-            guard let window = client.window else { return block(["\(client.sessionID) @99 %99"]) }
+            let server = servers[client.socket].map { "\($0.pid) \($0.startTime)" } ?? "0 0"
+            guard let window = client.window else { return block(["\(server) \(client.sessionID) @99 %99"]) }
             let rows = Set(listed.filter { $0.windowID == window }.map(\.paneID)).union([pane.paneID]).sorted()
-            return block(rows.map { "\(client.sessionID) \(window) \($0)" })
+            return block(rows.map { "\(server) \(client.sessionID) \(window) \($0)" })
         case "list-panes":
             guard let window = client.window else { return block([]) }
             let users = Set(listed.filter { $0.windowID == window }.map(\.sessionID)).sorted().map { "\($0) \(window) 0" }
@@ -536,6 +537,23 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     }
 
     private var nextDial: UInt64 = 0
+    /// Connections the network dropped.
+    private var droppedDials: Set<UInt64> = []
+
+    /// The network drops every connection open now: their execs fail, each
+    /// reads closed from then on, and a new connection gets through.
+    func dropConnections() async {
+        guard nextDial > 0 else { return }
+        for dial in UInt64(1)...nextDial where !droppedDials.contains(dial) {
+            droppedDials.insert(dial)
+            await closeLoops(ofDial: dial)
+            await closeControlClients(ofDial: dial)
+        }
+    }
+
+    fileprivate func isDropped(_ dial: UInt64) -> Bool {
+        droppedDials.contains(dial)
+    }
 
     private func noteClose(ofDial dial: UInt64) async {
         log.append("close")
@@ -555,19 +573,29 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             self.id = id
         }
 
-        var isConnected: Bool { connected }
+        var isConnected: Bool {
+            get async {
+                guard connected else { return false }
+                return await !host.isDropped(id)
+            }
+        }
+
+        private func requireConnected() async throws {
+            guard await isConnected else { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
+        }
 
         func runTmuxProbe(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
-            try await host.runTmuxProbe(script, throughLoginShell: throughLoginShell)
+            if await host.isDropped(id) { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
+            return try await host.runTmuxProbe(script, throughLoginShell: throughLoginShell)
         }
 
         func openTmuxInventoryLoop(_ script: Data) async throws -> any WindowsTerminalExecChannel {
-            guard connected else { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
+            try await requireConnected()
             return try await host.openLoop(script, dial: id)
         }
 
         func openTmuxControlClient(_ script: Data) async throws -> any WindowsTerminalExecChannel {
-            guard connected else { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
+            try await requireConnected()
             return try await host.openControlClient(script, dial: id)
         }
 

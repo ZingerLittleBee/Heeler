@@ -97,6 +97,22 @@ struct TmuxPaneAttachTests {
         try await waitUntil("the client to go") { await tmux.openControlClients == 0 }
     }
 
+    /// The Terminal joined one server; another took the socket since, with a
+    /// pane of the same id.
+    @Test func anAttachOnAnotherServerEndsItsSession() async throws {
+        let tmux = await host()
+        let transport = await tmux.transport(socketName: "default", storedPaths: ScriptedTmuxHost.paths())
+        var request = request
+        request.coreID = "tmux-4242-1"
+        await #expect(throws: TransportError.tmuxServerGone) { try await transport.attachPane("%0", request: request) }
+        #expect(await tmux.controlCommands.contains { $0.hasPrefix("kill-session -t '$") })
+        try await waitUntil("the client to go") { await tmux.openControlClients == 0 }
+
+        request.coreID = ScriptedTmuxHost.instance.id
+        let session = try await transport.attachPane("%0", request: request)
+        await session.end()
+    }
+
     @Test func aStartThatNeverAnswersTimesOutAndClosesItsExec() async throws {
         let tmux = await host()
         await tmux.silenceNextControlClient()

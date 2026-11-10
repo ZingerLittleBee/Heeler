@@ -49,32 +49,53 @@ struct TmuxAttachScriptTests {
     @Test func theBarrierListsTheSessionsPanes() {
         #expect(
             TmuxAttachScript.barrier(session: "heeler-attach-0a1b2c3d").line
-                == "list-panes -s -t '=heeler-attach-0a1b2c3d:' -F '#{session_id} #{window_id} #{pane_id}'")
+                == "list-panes -s -t '=heeler-attach-0a1b2c3d:' -F '#{pid} #{start_time} #{session_id} #{window_id} #{pane_id}'"
+        )
     }
 
     // MARK: What the barrier says
+
+    private let instance = "tmux-4242-1794339265"
 
     private func reply(_ lines: [String], succeeded: Bool = true) -> TmuxControlReply {
         TmuxControlReply(number: 9, fromClient: true, succeeded: succeeded, lines: lines.map { Data($0.utf8) })
     }
 
+    private func rows(_ rows: [String]) -> TmuxControlReply {
+        reply(rows.map { "4242 1794339265 \($0)" })
+    }
+
     @Test func aSessionHoldingOnlyThePanesWindowIsReady() {
         #expect(
-            TmuxAttachScript.started(reply(["$7 @2 %11", "$7 @2 %12"]), pane: "%12")
+            TmuxAttachScript.started(rows(["$7 @2 %11", "$7 @2 %12"]), pane: "%12", instance: instance)
                 == .ready(session: "$7", window: "@2"))
+        #expect(TmuxAttachScript.started(rows(["$7 @2 %12"]), pane: "%12", instance: nil) == .ready(session: "$7", window: "@2"))
     }
 
     /// The placeholder is still there: the link failed, and the commands after it never ran.
     @Test func aSessionStillHoldingThePlaceholderIsNot() {
-        #expect(TmuxAttachScript.started(reply(["$7 @5 %20"]), pane: "%12") == .failed(session: "$7"))
+        #expect(TmuxAttachScript.started(rows(["$7 @5 %20"]), pane: "%12", instance: instance) == .failed(session: "$7"))
         #expect(
-            TmuxAttachScript.started(reply(["$7 @5 %20", "$7 @2 %12"]), pane: "%12") == .failed(session: "$7"))
+            TmuxAttachScript.started(rows(["$7 @5 %20", "$7 @2 %12"]), pane: "%12", instance: instance)
+                == .failed(session: "$7"))
     }
 
     @Test func aSessionThatNeverStartedHasNothingToEnd() {
         #expect(
-            TmuxAttachScript.started(reply(["can't find session: =heeler-attach-1"], succeeded: false), pane: "%12")
+            TmuxAttachScript.started(
+                reply(["can't find session: =heeler-attach-1"], succeeded: false), pane: "%12", instance: instance)
                 == .failed(session: nil))
-        #expect(TmuxAttachScript.started(reply([]), pane: "%12") == .failed(session: nil))
+        #expect(TmuxAttachScript.started(reply([]), pane: "%12", instance: instance) == .failed(session: nil))
+    }
+
+    /// Another server took the socket since the Terminal joined: its pane
+    /// with the same id is another Pane.
+    @Test func aSessionOnAnotherServerIsNotTheTerminals() {
+        #expect(
+            TmuxAttachScript.started(reply(["4242 1794339325 $7 @2 %12"]), pane: "%12", instance: instance)
+                == .otherServer(session: "$7"))
+        #expect(
+            TmuxAttachScript.started(reply(["5151 1794339265 $7 @2 %12"]), pane: "%12", instance: instance)
+                == .otherServer(session: "$7"))
     }
 }

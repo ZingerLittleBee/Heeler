@@ -489,6 +489,13 @@ final class ConsoleStore {
         projections[hostID] as? HerdrCoreConsoleProjection
     }
 
+    /// Whether an address on this Host can come to mean another Terminal: a
+    /// herdr-core Host's under another core, a tmux Host's under another server
+    /// instance. A detail there keeps to the one it opened on.
+    func keepsDetailsToCores(on hostID: Host.ID) -> Bool {
+        projections[hostID] is HerdrCoreConsoleProjection || projections[hostID] is TmuxConsoleProjection
+    }
+
     func corePin(on hostID: Host.ID) -> TerminalCorePin {
         TerminalCorePin(joined: hostCores[hostID])
     }
@@ -503,7 +510,15 @@ final class ConsoleStore {
     /// What an ended terminal says in a detail that keeps to `corePin`, or nil for
     /// its own words.
     func terminalEndedMessage(keepingTo corePin: TerminalCorePin?, on hostID: Host.ID) -> String? {
-        hasLeftCore(corePin, on: hostID) ? TerminalStatusPresentation.coreGoneMessage : nil
+        guard hasLeftCore(corePin, on: hostID) else { return nil }
+        return projections[hostID] is TmuxConsoleProjection
+            ? TerminalStatusPresentation.tmuxServerGoneMessage : TerminalStatusPresentation.coreGoneMessage
+    }
+
+    /// What an action from a detail that `hasLeftCore` throws: a tmux Host's
+    /// Pane belongs to a server, a core Host's Terminal to a core.
+    func leftCoreError(on hostID: Host.ID) -> TransportError {
+        projections[hostID] is TmuxConsoleProjection ? .tmuxServerGone : .herdrCoreTerminalGone
     }
 
     /// What Agent Ended says for `id`, when it has more to say than its plain
@@ -759,7 +774,7 @@ final class ConsoleStore {
     func readAgentScreen(
         _ paneID: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws -> ANSIScreen {
-        guard !hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+        guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
         return try await projection(for: hostID).readAgentScreen(paneID)
     }
 
@@ -770,7 +785,7 @@ final class ConsoleStore {
     ) async throws {
         try requireNoTitleRename(.init(hostID: hostID, paneID: paneID))
         guard !hasLeftCore(corePin, on: hostID) else {
-            throw HerdrCoreChatTyping.Refusal(message: TransportError.herdrCoreTerminalGone.presentation.message)
+            throw HerdrCoreChatTyping.Refusal(message: leftCoreError(on: hostID).presentation.message)
         }
         try requireReadyForInput(hostID)
         try await projection(for: hostID).sendAgentKeys(keys, to: paneID)
@@ -963,14 +978,14 @@ final class ConsoleStore {
                 guard let self, let core = self.projections[hostID] as? HerdrCoreConsoleProjection else {
                     throw TransportError.cancelled
                 }
-                guard !self.hasLeftCore(pin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                guard !self.hasLeftCore(pin, on: hostID) else { throw self.leftCoreError(on: hostID) }
                 return try await core.chatCandidates(paneID: paneID, program: program)
             },
             confirm: { [weak self] candidate, list, pin in
                 guard let self, let core = self.projections[hostID] as? HerdrCoreConsoleProjection else {
                     throw TransportError.cancelled
                 }
-                guard !self.hasLeftCore(pin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                guard !self.hasLeftCore(pin, on: hostID) else { throw self.leftCoreError(on: hostID) }
                 try await core.writeChatPick(candidate, of: list, paneID: paneID)
             },
             drop: { [weak self] in
@@ -1173,7 +1188,7 @@ final class ConsoleStore {
     func closePane(
         _ paneID: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws {
-        guard !hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+        guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
         try await projection(for: hostID).closePane(paneID)
     }
 
@@ -1326,7 +1341,7 @@ final class ConsoleStore {
     func removeWorktree(
         _ request: WorktreeRemovalRequest, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws -> WorktreeRemovalReceipt {
-        guard !hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+        guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
         return try await projection(for: hostID).removeWorktree(request)
     }
 
@@ -2136,7 +2151,7 @@ final class ConsoleStore {
     ) -> HerdrCoreWindowsExtensionFlow {
         let hostID = agentID.hostID
         func core(of store: ConsoleStore) throws -> HerdrCoreConsoleProjection {
-            guard !store.hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+            guard !store.hasLeftCore(corePin, on: hostID) else { throw store.leftCoreError(on: hostID) }
             guard let core = store.projections[hostID] as? HerdrCoreConsoleProjection else {
                 throw TransportError.cancelled
             }
@@ -2168,12 +2183,12 @@ final class ConsoleStore {
             hostID: hostID, editID: OpenCodePluginEdit.id, store: harnessEdits,
             services: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
-                guard !self.hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                guard !self.hasLeftCore(corePin, on: hostID) else { throw self.leftCoreError(on: hostID) }
                 return try await self.harnessEditServices(on: hostID)
             },
             makeEdit: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
-                guard !self.hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                guard !self.hasLeftCore(corePin, on: hostID) else { throw self.leftCoreError(on: hostID) }
                 return try await self.openCodePluginEdit(paneID: agentID.paneID, on: hostID)
             })
     }

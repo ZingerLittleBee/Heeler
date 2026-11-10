@@ -73,6 +73,21 @@ actor TmuxHostSession {
     private var runTask: Task<Void, Never>?
     private var waitSleep: Task<Void, any Error>?
     private var lifecycleTransition: Task<Void, Never>?
+    /// Attaches waiting for a server to answer on a connection.
+    private var attachWaiters: [AttachWaiter] = []
+    /// Why the run stopped for good, for an Attach asked after it did.
+    private var attachFailure: TransportError?
+
+    private struct AttachWaiter {
+        let id: UUID
+        /// The activation it was asked in; nil when asked while suspended.
+        let activationGeneration: UInt64?
+        let continuation: CheckedContinuation<AttachTransport, any Error>
+    }
+
+    /// What an Attach runs on: the transport, its connection's generation, and
+    /// the server that answered on it.
+    typealias AttachTransport = (transport: any TmuxTransport, generation: UInt64, server: TmuxServerStatus)
 
     /// `connect` dials the Host with the paths to ask first; `storedPaths` are
     /// the catalog's.
@@ -145,9 +160,95 @@ actor TmuxHostSession {
         return try await operation(currentTransport)
     }
 
+    /// Runs an Attach once a server answers on the connection (ADR 0043),
+    /// waiting through a reconnect. Throws when the session ends, or its run
+    /// stops for good, before one does. A connection the Attach finds closed
+    /// is asked again at once, on a new one, rather than handed out.
+    func withAttachTransport<Value: Sendable>(
+        _ operation: @Sendable (AttachTransport) async throws -> Value
+    ) async throws -> Value {
+        while true {
+            let ready = try await awaitAttachTransport()
+            if await ready.transport.isConnected { return try await operation(ready) }
+            connectionClosed(generation: ready.generation)
+        }
+    }
+
+    private func connectionClosed(generation: UInt64) {
+        guard generation == currentConnectionGeneration, currentTransport != nil, !transportSuspect else { return }
+        transportSuspect = true
+        waitSleep?.cancel()
+    }
+
+    /// Attaches waiting for a server, which tests wait on.
+    var attachWaiterCount: Int { attachWaiters.count }
+
+    private func awaitAttachTransport() async throws -> AttachTransport {
+        let id = UUID()
+        try Task.checkCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if phase == .ended {
+                    continuation.resume(throwing: TransportError.cancelled)
+                } else if phase == .active, let ready = readyAttachTransport {
+                    continuation.resume(returning: ready)
+                } else if phase == .active, let attachFailure {
+                    continuation.resume(throwing: attachFailure)
+                } else {
+                    attachWaiters.append(
+                        AttachWaiter(
+                            id: id, activationGeneration: phase == .active ? activationGeneration : nil,
+                            continuation: continuation))
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelAttachWaiter(id) }
+        }
+    }
+
+    private var readyAttachTransport: AttachTransport? {
+        guard let currentTransport, let liveServer, !transportSuspect else { return nil }
+        return (currentTransport, currentConnectionGeneration, liveServer)
+    }
+
+    private func cancelAttachWaiter(_ id: UUID) {
+        guard let index = attachWaiters.firstIndex(where: { $0.id == id }) else { return }
+        attachWaiters.remove(at: index).continuation.resume(throwing: CancellationError())
+    }
+
+    private func resumeAttachWaiters() {
+        guard let ready = readyAttachTransport else { return }
+        let waiters = attachWaiters
+        attachWaiters = []
+        for waiter in waiters {
+            if let asked = waiter.activationGeneration, asked != activationGeneration {
+                waiter.continuation.resume(throwing: TransportError.cancelled)
+            } else {
+                waiter.continuation.resume(returning: ready)
+            }
+        }
+    }
+
+    /// Those asked in an activation that is going away get nothing from it.
+    /// One asked while suspended waits on for the next activation.
+    private func failPinnedAttachWaiters(_ failure: TransportError) {
+        let pinned = attachWaiters.filter { $0.activationGeneration != nil }
+        attachWaiters.removeAll { $0.activationGeneration != nil }
+        for waiter in pinned { waiter.continuation.resume(throwing: failure) }
+    }
+
+    private func failAttachWaiters(_ failure: TransportError) {
+        let waiters = attachWaiters
+        attachWaiters = []
+        for waiter in waiters { waiter.continuation.resume(throwing: failure) }
+    }
+
     private func activate() {
         guard phase == .suspended else { return }
         phase = .active
+        attachFailure = nil
         startRun()
     }
 
@@ -156,6 +257,7 @@ actor TmuxHostSession {
             activate()
             return
         }
+        attachFailure = nil
         activationGeneration &+= 1
         let generation = activationGeneration
         yieldStatus(.connecting)
@@ -174,6 +276,7 @@ actor TmuxHostSession {
     private func deactivate() async {
         guard phase == .active else { return }
         phase = .suspended
+        failPinnedAttachWaiters(.cancelled)
         await windDown()
         yieldStatus(.suspended)
     }
@@ -186,6 +289,7 @@ actor TmuxHostSession {
     private func finish() async {
         guard phase != .ended else { return }
         phase = .ended
+        failAttachWaiters(.cancelled)
         await windDown()
         yieldStatus(.ended)
         updatesContinuation.finish()
@@ -246,6 +350,8 @@ actor TmuxHostSession {
             }
             if failure == .timedOut { transportSuspect = true }
             guard failure.isRetryable else {
+                attachFailure = failure
+                failAttachWaiters(failure)
                 yieldStatus(.failed(failure))
                 return
             }
@@ -276,6 +382,7 @@ actor TmuxHostSession {
             updatesContinuation.yield(.server(server))
         }
         latencyContinuation.yield()
+        resumeAttachWaiters()
     }
 
     // MARK: Inventory
