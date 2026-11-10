@@ -27,6 +27,9 @@ enum TmuxControlNotification: Equatable, Sendable {
     /// A window outside the client's session closed or left its last session.
     case unlinkedWindowClosed(window: String)
     case layoutChanged(window: String)
+    /// The client was moved to another session, as tmux does when the one it
+    /// was attached to ends and `detach-on-destroy` is off.
+    case sessionChanged(session: String)
     /// Any other notification, by its name with the `%`.
     case other(name: String)
 }
@@ -143,6 +146,7 @@ struct TmuxControlReader: Sendable {
         case "%window-close": return .windowClosed(window: subject)
         case "%unlinked-window-close": return .unlinkedWindowClosed(window: subject)
         case "%layout-change": return .layoutChanged(window: subject)
+        case "%session-changed": return .sessionChanged(session: subject)
         default: return .other(name: name)
         }
     }

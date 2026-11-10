@@ -157,6 +157,7 @@ struct TmuxControlReaderTests {
             %unlinked-window-close @3
             %layout-change @2 b25f,80x24,0,0,2 b25f,80x24,0,0,2 *
             %window-renamed @2 cat
+            %session-changed $5 heeler-attach-0a1b2c
             %exit
             %exit server exited unexpectedly
 
@@ -170,6 +171,7 @@ struct TmuxControlReaderTests {
                 .notification(.unlinkedWindowClosed(window: "@3")),
                 .notification(.layoutChanged(window: "@2")),
                 .notification(.other(name: "%window-renamed")),
+                .notification(.sessionChanged(session: "$5")),
                 .exit(reason: nil),
                 .exit(reason: "server exited unexpectedly"),
             ])
