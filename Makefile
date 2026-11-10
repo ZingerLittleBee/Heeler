@@ -136,6 +136,7 @@ test-tools: check-agent-docs check-test-membership ## Test agent tooling without
 	python3 scripts/test-herdr-core-start.py
 	python3 scripts/test-server-kind-detection.py
 	python3 scripts/test-tmux-probe.py
+	python3 scripts/test-tmux-ssh-fixture.py
 	python3 scripts/test-herdr-core-lab-check.py
 	python3 scripts/test-store-shots.py
 	python3 scripts/test-node-toolchain-probe.py
