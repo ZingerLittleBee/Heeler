@@ -4,9 +4,10 @@ import Testing
 
 @testable import Heeler
 
-/// A tmux Host over real SSH and a real tmux (ADR 0042). The app never starts
-/// a server, so each test starts its own through the fixture, on a socket in
-/// the fixture account's own tmux directory.
+/// A tmux Host over real SSH and a real tmux (ADR 0042). Connecting never
+/// starts a server, so a test starts its own through the fixture, on a socket
+/// in the fixture account's own tmux directory. The one launch that starts a
+/// server is Linux New Workspace, and only that test lets it.
 @Suite("tmux real SSH", .enabled(if: RealSSHFixture.gate(TmuxSSHFixture.isConfigured),
     "requires scripts/fixtures/tmux-ssh.py"), .serialized)
 struct TmuxTransportE2ETests {
@@ -526,6 +527,334 @@ struct TmuxTransportE2ETests {
         } catch {
             store.setHosts([])
             throw error
+        }
+    }
+
+    // MARK: Launches
+
+    /// `claude` on the login shell's PATH, the program a New Agent asks for.
+    /// `cat` exits on `--session-id`, so the stand-in is a script that stays the
+    /// pane's foreground until it is killed, and takes its `sleep` with it.
+    private func agentOnLoginPath(on fixture: TmuxSSHFixture) async throws {
+        let program = "\(fixture.configuration.firstDirectory)/claude"
+        try await fixture.writeProgram(
+            at: program,
+            """
+            #!/bin/sh
+            trap 'kill "$child" 2>/dev/null; exit 0' TERM INT HUP
+            sleep 3600 &
+            child=$!
+            wait
+            """)
+    }
+
+    /// A directory that exists, which `new-window -c` and `new-session -c` require.
+    private func workDirectory(on fixture: TmuxSSHFixture) async throws -> String {
+        let path = "\(fixture.configuration.homePath)/work"
+        try await fixture.require("mkdir -p \(GitProbe.singleQuoted(path))")
+        return path
+    }
+
+    private func currentWindow(_ session: String, on fixture: TmuxSSHFixture) async throws -> String {
+        trimmed(try await fixture.tmux(nil, "display-message", "-p", "-t", session, "#{window_id}"))
+    }
+
+    private func paneField(
+        _ format: String, of target: String, on fixture: TmuxSSHFixture
+    ) async throws -> String {
+        trimmed(try await fixture.tmux(nil, "display-message", "-p", "-t", target, format))
+    }
+
+    private func trimmed(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The sidebar sorts by label. `order` is the order tmux listed the sessions.
+    @MainActor
+    private func labelsInListOrder(_ store: ConsoleStore, host: Host) -> [String] {
+        (store.workspacesByHost[host.id] ?? []).sorted { $0.order < $1.order }.map(\.label)
+    }
+
+    /// Session names in the order `list-panes -a` prints them. A session tmux
+    /// just created is listed before the one that was already current.
+    private func sessionLabelsInListOrder(on fixture: TmuxSSHFixture) async throws -> [String] {
+        let text = try await fixture.tmux(nil, "list-panes", "-a", "-F", "#{session_name}")
+        var labels: [String] = []
+        for line in text.split(whereSeparator: \.isNewline) {
+            let label = String(line)
+            if !label.isEmpty, !labels.contains(label) { labels.append(label) }
+        }
+        return labels
+    }
+
+    /// Where a `uname` that prints `Linux` is first on the exec's PATH.
+    private func linuxUnamePath(_ fixture: TmuxSSHFixture) -> String {
+        let root = URL(fileURLWithPath: fixture.configuration.homePath).deletingLastPathComponent().path
+        return "\(root)/bin/uname"
+    }
+
+    private func loginTmpDir(_ fixture: TmuxSSHFixture) -> String {
+        URL(fileURLWithPath: fixture.configuration.socketDirectory).deletingLastPathComponent().path
+    }
+
+    @MainActor
+    private func withConsole(
+        _ fixture: TmuxSSHFixture, _ body: (ConsoleStore, Host) async throws -> Void
+    ) async throws {
+        let suite = "tmux-e2e-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, host) = try console(over: fixture, on: defaults)
+        store.setHosts([host])
+        await store.resume()
+        do {
+            try await body(store, host)
+            store.setHosts([])
+        } catch {
+            store.setHosts([])
+            throw error
+        }
+    }
+
+    @Test("a new agent opens a detached window and the window ends when the agent exits")
+    func aNewAgentLeavesTheCurrentWindowAndEndsWhenItExits() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            try await agentOnLoginPath(on: fixture)
+            let directory = try await workDirectory(on: fixture)
+            try await launchAgent(fixture, directory: directory)
+        }
+    }
+
+    @MainActor
+    private func launchAgent(_ fixture: TmuxSSHFixture, directory: String) async throws {
+        try await withConsole(fixture) { store, host in
+            try await fixture.eventually { await store.workspacesByHost[host.id]?.map(\.label) == ["main"] }
+            let session = try #require(store.workspacesByHost[host.id]?.first?.id)
+            let current = try await currentWindow(session, on: fixture)
+
+            let opened = try await store.startAgent(
+                AgentLaunchRequest(kind: "claude", name: "claude", workspaceID: session, cwd: directory),
+                on: host.id)
+
+            #expect(opened.workspaceID == session)
+            #expect(opened.tabID != current)
+            #expect(try await currentWindow(session, on: fixture) == current)
+            try await fixture.eventually {
+                let pid = try await self.paneField("#{pane_pid}", of: opened.paneID, on: fixture)
+                let response = try await fixture.run("ps -ww -o args= -p \(pid)")
+                guard response.exitStatus == 0 else { return false }
+                let line = String(decoding: response.stdout, as: UTF8.self)
+                return line.contains("claude") && line.contains("--session-id")
+            }
+            let reported = try await paneField("#{pane_current_path}", of: opened.paneID, on: fixture)
+            let physical = trimmed(
+                try await fixture.require("cd \(GitProbe.singleQuoted(directory)) && pwd -P"))
+            #expect(reported == directory || reported == physical)
+            try await fixture.eventually { await store.agents.contains { $0.agent.paneID == opened.paneID } }
+            #expect(try await currentWindow(session, on: fixture) == current)
+
+            let pid = try await paneField("#{pane_pid}", of: opened.paneID, on: fixture)
+            try await fixture.require("kill \(pid)")
+            try await fixture.eventually {
+                let windows = try await fixture.tmux(nil, "list-windows", "-t", session, "-F", "#{window_id}")
+                return !windows.contains(opened.tabID) && windows.contains(current)
+            }
+            #expect(try await currentWindow(session, on: fixture) == current)
+            try await fixture.eventually { await store.agents.isEmpty }
+            #expect(await store.terminals.contains { $0.paneID == "%0" })
+        }
+    }
+
+    @Test("a new terminal opens a window running the user's shell")
+    func aNewTerminalOpensTheUsersShell() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let directory = try await workDirectory(on: fixture)
+            let shell = trimmed(try await fixture.tmux(nil, "show-options", "-g", "default-shell"))
+            let name = String(shell.split(separator: " ").last?.split(separator: "/").last ?? "")
+            try await launchTerminal(fixture, directory: directory, shell: name)
+        }
+    }
+
+    @MainActor
+    private func launchTerminal(
+        _ fixture: TmuxSSHFixture, directory: String, shell: String
+    ) async throws {
+        try await withConsole(fixture) { store, host in
+            try await fixture.eventually { await store.terminals.contains { $0.paneID == "%0" } }
+            let session = try #require(store.workspacesByHost[host.id]?.first?.id)
+            let current = try await currentWindow(session, on: fixture)
+
+            let opened = try await store.createShellTerminal(
+                ShellTerminalCreationRequest(workspaceID: session, cwd: directory), on: host.id)
+
+            #expect(opened.tabID != current)
+            #expect(try await currentWindow(session, on: fixture) == current)
+            try await fixture.eventually {
+                await store.terminals.contains { $0.paneID == opened.paneID && $0.pane.title == shell }
+            }
+            let terminal = try #require(store.terminals.first { $0.paneID == opened.paneID })
+            #expect(terminal.snapshotAgentKind == nil)
+            #expect(await store.agents.contains { $0.agent.paneID == opened.paneID } == false)
+            let reported = try await paneField("#{pane_current_path}", of: opened.paneID, on: fixture)
+            let physical = trimmed(
+                try await fixture.require("cd \(GitProbe.singleQuoted(directory)) && pwd -P"))
+            #expect(reported == directory || reported == physical)
+            #expect(try await currentWindow(session, on: fixture) == current)
+            #expect(await store.terminals.contains { $0.paneID == "%0" })
+        }
+    }
+
+    @Test("a new workspace is a session, named as typed or numbered by tmux")
+    func aNewWorkspaceUsesTheTypedNameOrTmuxNumbering() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let directory = try await workDirectory(on: fixture)
+            try await launchWorkspaces(fixture, directory: directory)
+        }
+    }
+
+    @MainActor
+    private func launchWorkspaces(_ fixture: TmuxSSHFixture, directory: String) async throws {
+        try await withConsole(fixture) { store, host in
+            try await fixture.eventually { await self.labelsInListOrder(store, host: host) == ["main"] }
+            let current = try await currentWindow("main", on: fixture)
+
+            _ = try await store.createShellWorkspace(
+                NewWorkspaceSpec(directory: directory, label: ""), tabLabel: nil, on: host.id)
+            try await fixture.eventually {
+                let listed = try await self.sessionLabelsInListOrder(on: fixture)
+                return await self.labelsInListOrder(store, host: host) == listed && listed.count == 2
+            }
+            #expect(try await currentWindow("main", on: fixture) == current)
+            #expect(try await fixture.sessionNames() == ["1", "main"])
+
+            _ = try await store.createShellWorkspace(
+                NewWorkspaceSpec(directory: directory, label: "feature"), tabLabel: nil, on: host.id)
+            try await fixture.eventually {
+                let listed = try await self.sessionLabelsInListOrder(on: fixture)
+                return await self.labelsInListOrder(store, host: host) == listed && listed.count == 3
+            }
+            #expect(try await fixture.sessionNames() == ["1", "feature", "main"])
+            #expect(try await currentWindow("main", on: fixture) == current)
+            let feature = try await currentWindow("feature", on: fixture)
+            #expect(feature != current)
+        }
+    }
+
+    @Test("linux with no server starts one through the login shell")
+    func linuxStartsAServerThroughTheLoginShell() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            let uname = linuxUnamePath(fixture)
+            let quoted = GitProbe.singleQuoted(uname)
+            try await fixture.writeProgram(at: uname, "#!/bin/sh\nprintf 'Linux\\n'")
+            do {
+                let directory = try await workDirectory(on: fixture)
+                try await launchOnLinux(fixture, directory: directory)
+                _ = try await fixture.run("rm -f \(quoted)")
+            } catch {
+                _ = try? await fixture.run("rm -f \(quoted)")
+                throw error
+            }
+        }
+    }
+
+    @MainActor
+    private func launchOnLinux(_ fixture: TmuxSSHFixture, directory: String) async throws {
+        try await withConsole(fixture) { store, host in
+            try await fixture.eventually {
+                if case .reconnecting(_, _, .tmuxServerNotRunning) = await store.hostStatuses[host.id] { true } else { false }
+            }
+            _ = try await store.createShellWorkspace(
+                NewWorkspaceSpec(directory: directory, label: "started"), tabLabel: nil, on: host.id)
+
+            // `-N` would not start a server, and the exec's own directory would
+            // show if the login shell had not wrapped the start.
+            let environment = trimmed(try await fixture.tmux(nil, "show-environment", "-g", "TMUX_TMPDIR"))
+            #expect(environment == "TMUX_TMPDIR=\(self.loginTmpDir(fixture))")
+            let execTmp = URL(fileURLWithPath: fixture.configuration.execSocketDirectory)
+                .deletingLastPathComponent().path
+            #expect(environment != "TMUX_TMPDIR=\(execTmp)")
+            try await fixture.eventually { await self.labelsInListOrder(store, host: host) == ["started"] }
+            #expect(store.hostStatuses[host.id] == .connected)
+        }
+    }
+
+    @Test("macos with no server says to start tmux on the Mac and starts nothing")
+    func macosSaysToStartTmuxOnTheMac() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            let directory = try await workDirectory(on: fixture)
+            try await refuseOnMac(fixture, directory: directory)
+        }
+    }
+
+    @MainActor
+    private func refuseOnMac(_ fixture: TmuxSSHFixture, directory: String) async throws {
+        try await withConsole(fixture) { store, host in
+            try await fixture.eventually {
+                if case .reconnecting(_, _, .tmuxServerNotRunning) = await store.hostStatuses[host.id] { true } else { false }
+            }
+            await #expect(throws: TransportError.tmuxStartOnMac) {
+                try await store.createShellWorkspace(
+                    NewWorkspaceSpec(directory: directory), tabLabel: nil, on: host.id)
+            }
+            #expect(try await fixture.answers() == false)
+            #expect(try await fixture.socketFiles().contains(fixture.socketPath()) == false)
+        }
+    }
+
+    @Test("rename and close reach the session, the window and the pane")
+    func renameAndCloseEndWhatTheyName() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            try await agentOnLoginPath(on: fixture)
+            let directory = try await workDirectory(on: fixture)
+            let claude = try await agentProgram("claude", on: fixture)
+            try await renameAndClose(fixture, directory: directory, claude: claude)
+        }
+    }
+
+    @MainActor
+    private func renameAndClose(
+        _ fixture: TmuxSSHFixture, directory: String, claude: String
+    ) async throws {
+        try await withConsole(fixture) { store, host in
+            try await fixture.eventually { await self.labelsInListOrder(store, host: host) == ["main"] }
+            let session = try #require(store.workspacesByHost[host.id]?.first?.id)
+            let current = try await currentWindow(session, on: fixture)
+
+            try await store.renameWorkspace(session, label: "renamed", on: host.id)
+            try await fixture.eventually { await self.labelsInListOrder(store, host: host) == ["renamed"] }
+            #expect(try await fixture.sessionNames() == ["renamed"])
+            #expect(try await currentWindow(session, on: fixture) == current)
+
+            let opened = try await store.startAgent(
+                AgentLaunchRequest(kind: "claude", name: "claude", workspaceID: session, cwd: directory),
+                on: host.id)
+            try await fixture.eventually { await store.agents.contains { $0.agent.paneID == opened.paneID } }
+            let agent = try #require(store.agents.first { $0.agent.paneID == opened.paneID })
+            try await store.closeAgent(agent)
+            try await fixture.eventually {
+                let windows = try await fixture.tmux(nil, "list-windows", "-t", session, "-F", "#{window_id}")
+                return windows.contains(current) && !windows.contains(opened.tabID)
+            }
+            try await fixture.eventually { await store.agents.isEmpty }
+
+            try await fixture.tmux(nil, "split-window", "-d", "-t", session, claude, "-u")
+            try await fixture.eventually { await store.agents.count == 1 }
+            let shared = try #require(store.agents.first)
+            let pane = shared.agent.paneID
+            #expect(pane != "%0")
+            #expect(shared.tabPaneCount > 1)
+            try await store.closeAgent(shared)
+            try await fixture.eventually {
+                let panes = try await fixture.tmux(nil, "list-panes", "-t", session, "-F", "#{pane_id}")
+                return panes.contains("%0") && !panes.contains(pane)
+            }
+            #expect(try await currentWindow(session, on: fixture) == current)
+            try await fixture.eventually { await self.labelsInListOrder(store, host: host) == ["renamed"] }
+            try await fixture.eventually { await store.agents.isEmpty }
         }
     }
 }
