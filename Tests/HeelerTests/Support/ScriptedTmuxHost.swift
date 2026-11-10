@@ -395,9 +395,17 @@ actor ScriptedTmuxLoopChannel: WindowsTerminalExecChannel {
     private var closed = false
     private var waiter: (id: UInt64, continuation: CheckedContinuation<Data?, any Error>)?
     private var nextWaiter: UInt64 = 0
+    private let onWrite: @Sendable (Data) async -> Void
     private let onClose: @Sendable () async -> Void
+    /// Everything written to the exec's input, a write each.
+    private(set) var written: [Data] = []
+    var isClosed: Bool { closed }
 
-    init(onClose: @escaping @Sendable () async -> Void) {
+    init(
+        onWrite: @escaping @Sendable (Data) async -> Void = { _ in },
+        onClose: @escaping @Sendable () async -> Void
+    ) {
+        self.onWrite = onWrite
         self.onClose = onClose
     }
 
@@ -429,7 +437,12 @@ actor ScriptedTmuxLoopChannel: WindowsTerminalExecChannel {
         }
     }
 
-    func write(_ data: Data, timeout: Duration) async throws {}
+    func write(_ data: Data, timeout: Duration) async throws {
+        if let failure { throw failure }
+        guard !closed, !ended else { throw TransportError.channelFailed(detail: "the exec ended") }
+        written.append(data)
+        await onWrite(data)
+    }
 
     func read(maximumBytes: Int, timeout: Duration) async throws -> Data? {
         if let failure { throw failure }
