@@ -31,4 +31,11 @@ enum TmuxEnvironment {
         }
         return Scope(assigned: assigned, removed: removed)
     }
+
+    /// Names a new pane in the session gets. The session listing is a delta:
+    /// a removal drops a global name, and a session assignment wins when both
+    /// name it.
+    static func inherited(global: Scope, session: Scope) -> Set<String> {
+        global.assigned.subtracting(session.removed).union(session.assigned)
+    }
 }

@@ -33,4 +33,26 @@ struct TmuxEnvironmentTests {
         #expect(!kept.contains("/usr/bin"))
         #expect(!kept.contains("/Users"))
     }
+
+    @Test func aSessionInheritsGlobalNamesExceptOnesItRemoved() {
+        let global = TmuxEnvironment.parse(
+            Data(
+                """
+                CLAUDECODE=secret-child
+                CLAUDE_CONFIG_DIR=/secret/claude
+                PATH=/usr/bin
+                TMUX=/tmp/secret.sock
+                """.utf8))
+        let session = TmuxEnvironment.parse(
+            Data(
+                """
+                CODEX_HOME=/secret/codex
+                -CLAUDE_CONFIG_DIR
+                TMUX=/tmp/secret-session.sock
+                """.utf8))
+
+        #expect(
+            TmuxEnvironment.inherited(global: global, session: session)
+                == ["CLAUDECODE", "PATH", "CODEX_HOME", "TMUX"])
+    }
 }
