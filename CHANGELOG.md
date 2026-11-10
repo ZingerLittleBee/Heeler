@@ -30,6 +30,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Open a herdr-core Agent or Terminal at its latest screen. A long session that never leaves the main screen, such as Antigravity's, scrolled through its history for seconds before it could be used, because that history was drawn piece by piece as it arrived. It now appears once it has all arrived, with Connecting… shown until then. (#680)
 - Settle a Chat message whose attached image path stood on a line of its own. Claude Code records the image before the text, and Chat kept showing the message as sent but not yet in the conversation. (PR #674)
 - Find links on an Agent's terminal after a line with a character such as Claude Code's `❯` prompt. The link button stayed hidden for any link printed after it. (PR #672)
 - Center a checkout's icon on its title in the Agents list's By Workspace cards. A pinned Agent's card no longer lifts the icon above the title. (PR #669)
