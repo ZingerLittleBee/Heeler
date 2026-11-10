@@ -26,6 +26,11 @@ suite("@heeler-status from the shared vector", () => {
     }
   });
 
+  test("the programs known to report done are the vector's", async () => {
+    const { DONE_REPORTERS } = await import(pathToFileURL(EXTENSION).href);
+    assert.deepEqual([...DONE_REPORTERS].sort(), [...vectors.doneReporters].sort());
+  });
+
   test("every write continues the counts as the vector says", async () => {
     const { continueHeelerStatus } = await import(pathToFileURL(EXTENSION).href);
     assert.ok(vectors.writes.length > 0);

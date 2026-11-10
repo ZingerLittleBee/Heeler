@@ -28,7 +28,7 @@ const TMUX_STATUS_OPTION = "@heeler-status";
 const TMUX_SESSION_OPTION = "@heeler-session";
 const TMUX_TIMEOUT_MS = 2000;
 /** Programs known to report done, so their idle ends no turn (tmux-heeler-status-v1.json). */
-const DONE_REPORTERS = new Set(["claude-code", "codex", "pi", "omp", "grok-build"]);
+export const DONE_REPORTERS = new Set(["claude-code", "codex", "pi", "omp", "grok-build"]);
 
 /** The start time in a Linux `/proc/<pid>/stat`, in clock ticks since boot. */
 export function startTimeFromStat(stat) {
