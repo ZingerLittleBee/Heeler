@@ -34,6 +34,13 @@ protocol TmuxTransport: Sendable {
     /// store. Nil while the paths it was given still stand.
     func resolvedPaths() async -> TmuxPaths?
 
+    /// Follows the server's inventory in one long exec (ADR 0043), with the
+    /// paths the last `status()` answered on: every pane the server lists at
+    /// once, then again each time something changed. The stream ends when the
+    /// server stops answering, and throws when the exec fails or goes silent.
+    /// Letting go of the stream closes the exec.
+    func inventory() async throws -> AsyncThrowingStream<TmuxInventory, any Error>
+
     /// Closes the connection.
     func close() async throws
 }
@@ -49,6 +56,11 @@ protocol TmuxHostConnection: HostServices {
     /// shell's startup files when the script goes through it.
     func runTmuxProbe(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult
 
+    /// Opens one long exec of a `TmuxInventoryLoop` script, which runs until
+    /// the channel is closed or its server stops answering. The exec holds one
+    /// of the connection's four ordinary SSH sessions (ADR 0017) until then.
+    func openTmuxInventoryLoop(_ script: Data) async throws -> any WindowsTerminalExecChannel
+
     func close() async throws
 }
 
@@ -59,6 +71,7 @@ actor TmuxSSHTransport: TmuxTransport {
     private nonisolated let connection: any TmuxHostConnection
     private let socketName: String
     private let nonce: @Sendable () -> String
+    private let loopSilenceLimit: Duration
     /// The paths every command runs with: the Host's stored ones, until the
     /// login shell resolves others.
     private var paths: TmuxPaths?
@@ -72,12 +85,14 @@ actor TmuxSSHTransport: TmuxTransport {
         connection: any TmuxHostConnection,
         socketName: String,
         storedPaths: TmuxPaths?,
-        nonce: @escaping @Sendable () -> String = { UUID().uuidString }
+        nonce: @escaping @Sendable () -> String = { UUID().uuidString },
+        loopSilenceLimit: Duration = TmuxInventoryLoop.silenceLimit
     ) {
         routeID = connection.routeID
         self.connection = connection
         self.socketName = TmuxSocketName.normalized(socketName)
         self.nonce = nonce
+        self.loopSilenceLimit = loopSilenceLimit
         // Paths resolved for another socket name say nothing of this one.
         paths = storedPaths.flatMap { $0.serves(socketName: socketName) ? $0 : nil }
     }
@@ -161,6 +176,53 @@ actor TmuxSSHTransport: TmuxTransport {
             throw TransportError.malformedResponse(String(localized: "tmux: The probe's output is unreadable."))
         }
     }
+
+    // MARK: Inventory
+
+    func inventory() async throws -> AsyncThrowingStream<TmuxInventory, any Error> {
+        guard let paths else { throw TransportError.tmuxServerNotRunning(socketName: socketName) }
+        let nonce = nonce()
+        let script = TmuxInventoryLoop.script(executable: paths.executable, socket: paths.socket, nonce: nonce)
+        let channel = try await connection.openTmuxInventoryLoop(Data(script.utf8))
+        return Self.inventories(from: channel, nonce: nonce, silenceLimit: loopSilenceLimit)
+    }
+
+    /// Reads the loop until it says its server is gone, its exec ends, or it
+    /// goes silent for longer than its heartbeat allows.
+    private static func inventories(
+        from channel: any WindowsTerminalExecChannel, nonce: String, silenceLimit: Duration
+    ) -> AsyncThrowingStream<TmuxInventory, any Error> {
+        let (stream, continuation) = AsyncThrowingStream.makeStream(of: TmuxInventory.self)
+        let reading = Task {
+            var reader = TmuxInventoryLoop.Reader(nonce: nonce)
+            var failure: (any Error)?
+            do {
+                loop: while !Task.isCancelled {
+                    guard let bytes = try await channel.read(maximumBytes: 64 * 1024, timeout: silenceLimit)
+                    else { break }
+                    for event in reader.read(bytes) {
+                        switch event {
+                        case .inventory(let inventory): continuation.yield(inventory)
+                        case .alive: break
+                        case .gone: break loop
+                        }
+                    }
+                }
+            } catch {
+                failure = error
+            }
+            try? await channel.close(timeout: closeTimeout)
+            continuation.finish(throwing: failure)
+        }
+        continuation.onTermination = { _ in
+            reading.cancel()
+            // A read in flight ends with its channel, not with its task.
+            Task { try? await channel.close(timeout: closeTimeout) }
+        }
+        return stream
+    }
+
+    private static let closeTimeout = Duration.seconds(2)
 
     func close() async throws {
         try await connection.close()

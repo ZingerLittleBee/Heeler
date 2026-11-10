@@ -3790,6 +3790,30 @@ extension HeelerSSHTransport: TmuxHostConnection {
             remoteSeconds: throughLoginShell ? 20 : 10,
             timeoutMarkerPrefix: "__HEELER_TMUX_PROBE_TIMEOUT_", timedOut: .timedOut)
     }
+
+    /// One long exec of `/bin/sh -s`, with the script as all it is given to
+    /// read: the script waits for that input to end, as it does when the
+    /// channel closes. It holds an ordinary session slot until then (ADR 0043).
+    func openTmuxInventoryLoop(_ script: Data) async throws -> any WindowsTerminalExecChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
+        let timeout = requestTimeout
+        let channel = try await channelAdmission.admitSessionExec {
+            do {
+                return try await self.connection.openExec(command: Self.gitScriptCommand, timeout: timeout)
+            } catch {
+                throw await self.mapOperationError(error)
+            }
+        }
+        do {
+            try await channel.write(script, timeout: timeout)
+        } catch {
+            try? await channel.close(timeout: .seconds(2))
+            throw await mapOperationError(error)
+        }
+        return channel
+    }
 }
 
 // MARK: - What the Host Helper uses of this connection

@@ -162,6 +162,15 @@ actor SSHChannelAdmission {
         try await admitCoreExec(.attach, open: open)
     }
 
+    /// One long exec under an ordinary session slot, as a tmux Host's inventory
+    /// loop is (ADR 0043). The slot stays taken until the channel closes, which
+    /// leaves three for one-shot commands.
+    func admitSessionExec(
+        open: @escaping @Sendable () async throws -> any WindowsTerminalExecChannel
+    ) async throws -> any WindowsTerminalExecChannel {
+        try await admitCoreExec(.ordinarySession, open: open)
+    }
+
     private func admitCoreExec(
         _ channelClass: ChannelClass,
         open: @escaping @Sendable () async throws -> any WindowsTerminalExecChannel

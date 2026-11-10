@@ -230,6 +230,148 @@ struct TmuxSSHTransportTests {
         #expect(await !transport.isConnected)
     }
 
+    // MARK: The inventory loop
+
+    private func next(
+        _ iterator: inout AsyncThrowingStream<TmuxInventory, any Error>.AsyncIterator
+    ) async throws -> TmuxInventory {
+        try #require(try await iterator.next())
+    }
+
+    @Test func theLoopRunsWithThePathsTheServerAnsweredOn() async throws {
+        let host = ScriptedTmuxHost()
+        await host.setPanes([.make(command: "claude", arguments: ["claude", "--resume"])])
+        let transport = await host.transport(socketName: "default", storedPaths: nil)
+        _ = try await transport.status()
+
+        var inventories = try await transport.inventory().makeAsyncIterator()
+        let first = try await next(&inventories)
+
+        #expect(first.instance == ScriptedTmuxHost.instance)
+        #expect(first.panes == [.make(command: "claude", arguments: ["claude", "--resume"])])
+        let script = try #require(await host.loopScripts.first)
+        #expect(script.contains("\nt='/opt/homebrew/bin/tmux'\n"))
+        #expect(script.contains("\ns='/private/tmp/tmux-501/default'\n"))
+        #expect(script.contains("\nn='\(ScriptedTmuxHost.nonce)'\n"))
+        #expect(script.contains(#""$t" -N -u -S "$s" list-panes -a"#))
+        #expect(await host.loopLog == ["open"])
+    }
+
+    @Test func aLoopBeforeAnyPathsAnsweredHasNoServerToFollow() async throws {
+        let host = ScriptedTmuxHost()
+        let transport = await host.transport(socketName: "default", storedPaths: nil)
+
+        await #expect(throws: TransportError.tmuxServerNotRunning(socketName: "default")) {
+            _ = try await transport.inventory()
+        }
+        #expect(await host.loopLog.isEmpty)
+    }
+
+    @Test func eachChangeIsAnotherInventoryAndArgumentsStayUntilReadAgain() async throws {
+        let host = ScriptedTmuxHost()
+        await host.setPanes([.make(command: "node", arguments: ["node", "/usr/bin/codex"])])
+        let transport = await host.transport(socketName: "default", storedPaths: stored)
+        var inventories = try await transport.inventory().makeAsyncIterator()
+        #expect(try await next(&inventories).panes.map(\.foregroundArguments) == [["node", "/usr/bin/codex"]])
+
+        // A rename prints the rows again, and no arguments.
+        await host.changePanes { $0[0].windowName = "renamed" }
+        let renamed = try await next(&inventories)
+        #expect(renamed.panes.map(\.windowName) == ["renamed"])
+        #expect(renamed.panes.map(\.foregroundArguments) == [["node", "/usr/bin/codex"]])
+
+        // Nothing changed: the loop says it is alive, and that is no inventory.
+        await host.sayAlive()
+        await host.setPanes([
+            .make(windowName: "renamed", command: "zsh", arguments: ["-zsh"]),
+            .make(window: 1, windowIndex: 1, pane: 1, command: "vim", arguments: ["vim"]),
+        ])
+        let changed = try await next(&inventories)
+        #expect(changed.panes.map(\.foregroundArguments) == [["-zsh"], ["vim"]])
+    }
+
+    @Test func theStreamEndsWhenTheServerStops() async throws {
+        let host = ScriptedTmuxHost()
+        await host.setPanes([.make()])
+        let transport = await host.transport(socketName: "default", storedPaths: stored)
+        var inventories = try await transport.inventory().makeAsyncIterator()
+        _ = try await next(&inventories)
+
+        await host.stopServer()
+
+        #expect(try await inventories.next() == nil)
+        try await eventually { await host.loopLog == ["open", "close"] }
+    }
+
+    @Test func aLoopOnAHostWithNoServerEndsAtOnce() async throws {
+        let host = ScriptedTmuxHost(sockets: [])
+        let transport = await host.transport(socketName: "default", storedPaths: stored)
+        var inventories = try await transport.inventory().makeAsyncIterator()
+        #expect(try await inventories.next() == nil)
+    }
+
+    @Test func lettingGoOfTheStreamClosesTheExec() async throws {
+        let host = ScriptedTmuxHost()
+        await host.setPanes([.make()])
+        let transport = await host.transport(socketName: "default", storedPaths: stored)
+        let reading = Task {
+            var count = 0
+            for try await _ in try await transport.inventory() { count += 1 }
+            return count
+        }
+        try await eventually { await host.openLoops == 1 }
+
+        reading.cancel()
+
+        try await eventually { await host.loopLog == ["open", "close"] }
+        #expect(await host.openLoops == 0)
+        _ = try? await reading.value
+    }
+
+    @Test func aLoopThatGoesSilentOrBreaksFails() async throws {
+        let host = ScriptedTmuxHost()
+        await host.setPanes([.make()])
+        let silent = await host.transport(
+            socketName: "default", storedPaths: stored, loopSilenceLimit: .milliseconds(50))
+        var inventories = try await silent.inventory().makeAsyncIterator()
+        _ = try await next(&inventories)
+        // A loop that says it is alive is not silent.
+        await host.sayAlive()
+        await #expect(throws: TransportError.timedOut) { _ = try await inventories.next() }
+        try await eventually { await host.loopLog == ["open", "close"] }
+
+        let broken = await host.transport(socketName: "default", storedPaths: stored)
+        var others = try await broken.inventory().makeAsyncIterator()
+        _ = try await next(&others)
+        await host.breakLoops()
+        await #expect(throws: TransportError.self) { _ = try await others.next() }
+    }
+
+    @Test func aLoopTheHostRefusesThrowsAndClosingTheConnectionEndsOne() async throws {
+        let host = ScriptedTmuxHost()
+        let transport = await host.transport(socketName: "default", storedPaths: stored)
+        await host.failNextLoop(.channelFailed(detail: "open failed"))
+        await #expect(throws: TransportError.channelFailed(detail: "open failed")) {
+            _ = try await transport.inventory()
+        }
+
+        var inventories = try await transport.inventory().makeAsyncIterator()
+        _ = try await next(&inventories)
+        try await transport.close()
+        await #expect(throws: TransportError.self) { _ = try await inventories.next() }
+        await #expect(throws: TransportError.self) { _ = try await transport.inventory() }
+    }
+
+    private func eventually(
+        _ condition: @Sendable () async -> Bool, sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        for _ in 0..<500 {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        Issue.record("Timed out", sourceLocation: sourceLocation)
+    }
+
     // MARK: What the user reads
 
     @Test func eachStateSaysWhatToDo() {
