@@ -5,7 +5,7 @@ A native iOS agent console for Herdr TUI, herdr-core and tmux. One context: the 
 ## Language
 
 **Host**:
-A remote machine reachable over SSH, as added for one Server Kind. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. An SSH target running more than one server is one Host per Server Kind.
+A remote machine reachable over SSH, as added for one Server Kind. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. A Host targets one server, so an SSH target running several, of one kind or more, is one Host for each.
 _Avoid_: server, machine, connection
 
 **Server Kind**:
@@ -23,9 +23,10 @@ _Avoid_: backend, server type, flavor
 **tmux server**:
 The tmux server a tmux Host targets, on macOS or Linux, named by its socket
 name (`default` unless the user names another). Connecting reaches only a
-server that is already running; New Workspace on a Host with none starts one,
-as the user's own login shell would. Never called a session: on tmux a session
-is a Workspace.
+server that is already running. On a Linux Host with none, New Workspace starts
+one as the user's own login shell would; a macOS Host waits for the user to
+start tmux on the Mac. Never called a session: on tmux a session is a
+Workspace.
 _Avoid_: session, tmux session (for the server), socket (alone)
 
 **Herdr desktop app**:
@@ -118,7 +119,7 @@ The server-side step of Pairing: the forced command appends the Device Key's pub
 _Avoid_: install key, authorization
 
 **Agent**:
-A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path. On tmux it is the foreground program of a Pane while that program is a known agent program; a shell in the foreground ends the Agent.
+A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path. On tmux it is the foreground program of a Pane while that program is a known agent program; a shell in the foreground ends the Agent, and a Pane whose program has exited hosts none.
 _Avoid_: bot, task, session
 
 **Staged Image**:
@@ -149,10 +150,9 @@ What a program reports about itself: idle, working, done, blocked or error,
 with optional detail. It is never inferred from the screen, and a program that
 never reports has none. In a herdr-core Terminal it arrives through OSC 7501,
 and the core keeps a program's last report after that program exits, for as
-long as its Terminal runs on. On tmux, Heeler records it on the Pane: a
-program's own OSC 7501 reports, read from its output, or, for Claude Code and
-Pi, which make none inside tmux, their hooks or Heeler's extension, in the same
-words.
+long as its Terminal runs on. On tmux, Heeler records it on the Pane in the
+same words, from its Claude Code hooks, its Pi and Oh My Pi extensions, or the
+OSC 7501 reports other programs make in their output.
 _Avoid_: detected status, agent state
 
 **Status Badge**:
@@ -214,8 +214,9 @@ labels, while a Terminal it opens in a derived Workspace carries none (ADR
 0032). On herdr-core only a Workspace the desktop app shows can be renamed, and
 only while that app runs on the Host; a derived Workspace has no name of its
 own. On tmux it is a tmux session, named and ordered as tmux shows it, and
-Heeler keeps no organization of its own there either; a window that grouped
-sessions share shows once, under the group's session with the lowest id. New
+Heeler keeps no organization of its own there either; a window several
+sessions share, grouped or linked, shows once, under the one with the lowest
+id, and the sessions Heeler keeps for showing Panes are not Workspaces. New
 Agent can start in an existing Workspace, a new Worktree of one, or a
 new Workspace opened at a remote directory. The id is an opaque string.
 _Avoid_: project, folder, window, space (the desktop app's word)
@@ -232,7 +233,8 @@ branch the user names, at `~/.herdr/worktrees/<repository>/<branch>`, and
 opens a new Workspace there; removing it first ends that Workspace's
 Terminals, and the branch survives. On tmux Heeler creates it the same way at
 `~/.heeler/worktrees/<repository>/<branch>`, opened as a new Workspace named
-after the branch; removing it first ends that Workspace's Panes.
+after the branch, numbered when that name is taken; removing it first ends that
+Workspace's Panes, never those of a Workspace that only shares its name.
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Checkout**:
@@ -507,8 +509,10 @@ On Herdr TUI, existing shells use direct terminal attach without takeover, and
 Take Over is an explicit action when another client owns the terminal.
 herdr-core has no Take Over: any viewer that is not only observing may type,
 and the last one to type, resize or come into focus sets the size. tmux has no
-Take Over either: the device viewing a Pane sets the size of its window until
-it leaves, and tmux then restores the window. libghostty renders it, and direct keyboard
+Take Over either: while a device shows a Pane, its window takes the device's
+size, no larger than a terminal of the user's showing the same window, and once
+the device stops showing it tmux sizes the window by its other terminals
+again. libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
 Agent semantics, no notification routing. Where the detail is pushed over the
 list (iPhone, or a compact iPad window), Open Terminal pushes it over Agent
