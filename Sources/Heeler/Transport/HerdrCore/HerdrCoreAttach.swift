@@ -32,11 +32,14 @@ enum HerdrCoreAttach {
                 do { try await Self.send(change, on: stream) } catch { return }
             }
         }
+        let firstPaint = HerdrCoreFirstPaintHold()
         return TerminalAttachSession(
-            output: { Self.output(of: stream) },
+            output: { Self.output(of: stream, holding: firstPaint) },
             input: input,
             onConsumed: { count in
-                Task { await stream.consumed(count) }
+                let owed = firstPaint.consumed(count)
+                guard owed > 0 else { return }
+                Task { await stream.consumed(owed) }
             },
             onPresence: { presence.yield($0) }
         ) {
@@ -112,12 +115,14 @@ enum HerdrCoreAttach {
 
     /// A store reattaches after a lost connection, which any failure of the
     /// link comes to: a core restart reopens it on the same SSH connection.
+    /// The first paint comes out whole (`HerdrCoreFirstPaintHold`).
     private static func output(
-        of stream: HerdrCoreLinkStream
+        of stream: HerdrCoreLinkStream, holding firstPaint: HerdrCoreFirstPaintHold
     ) -> AsyncThrowingStream<Data, any Error> {
         AsyncThrowingStream {
             do {
-                return try await stream.read()
+                return try await firstPaint.next(
+                    read: { try await stream.read() }, credit: { await stream.consumed($0) })
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
