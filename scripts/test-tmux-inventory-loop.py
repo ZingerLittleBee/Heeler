@@ -12,6 +12,8 @@ swiftc and tmux, and skips where either is missing. Uses only Python's standard
 library.
 """
 
+from __future__ import annotations
+
 import json
 import os
 import shutil
