@@ -79,8 +79,8 @@ final class ChatAgentKeysStore {
     /// where a second Stop's Esc must not land halfway.
     ///
     /// The work ends in the main-actor job `work` returns in. The caller
-    /// resumes a job later, and a send in between was held for work already
-    /// over (live, about 30 ms after Stop's last Esc).
+    /// resumes a job later, and a send in between would otherwise be held
+    /// for work already over, with nothing to send its draft.
     func afterQueued<Result: Sendable>(_ work: @escaping @MainActor () async -> Result) async -> Result {
         queuedWork += 1
         let previous = tail

@@ -421,9 +421,8 @@ struct ChatStopPlanTests {
     }
 
     /// The follow-through ends in the job it returns in, not once Stop's
-    /// await resumes a job later: a Send in between was held for work
-    /// already over, and its notice ended unseen, so it did nothing visible
-    /// (live, about 30 ms after Stop's last Esc).
+    /// await resumes a job later: a Send in between would otherwise be held
+    /// for work already over, with nothing to send its draft.
     @Test(arguments: [ComposerRoute.chat, .terminal])
     func aSendAsTheFollowThroughReturnsGoes(route: ComposerRoute) async throws {
         let transport = ScriptedTransport()
