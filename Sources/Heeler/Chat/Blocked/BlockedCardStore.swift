@@ -64,8 +64,9 @@ struct BlockedCard: Equatable, Sendable {
 /// AskUserQuestion call is open (see `readsIdleQuestion`), an idle
 /// Antigravity CLI with a call that asks the user open
 /// (`readsIdleGatedCall`) or that herdr has just moved from Working to idle
-/// (`readsTurnEnd`), and an idle Codex or Antigravity CLI that has
-/// reported no session (`readsIdleTrust`). An action reads it
+/// (`readsTurnEnd`), an idle Codex or Antigravity CLI that has
+/// reported no session (`readsIdleTrust`), and an Antigravity CLI without
+/// a session that herdr has no status for (`readsUnknownTrust`). An action reads it
 /// again first and sends nothing if the dialog changed, waits until the
 /// dialog has shown for a moment, sends the plan's keys while checking
 /// each of its expectations, then watches for the effect. Nothing is ever
@@ -92,6 +93,10 @@ final class BlockedCardStore {
         /// before the program draws its dialog, and a moment after an
         /// answer removed it.
         var unreadableAfter: Duration = .seconds(2)
+        /// How long the reading sign may stand in the Composer's place for
+        /// an Antigravity CLI herdr has no status for: past it the Composer
+        /// comes back while the read goes on.
+        var firstUnknownRead: Duration = .seconds(5)
     }
 
     enum Content: Equatable {
@@ -145,11 +150,15 @@ final class BlockedCardStore {
     /// Whether the card takes the Composer's place: while it shows, and
     /// while herdr reports Blocked before a read has decided it, when the
     /// card's place shows that Chat is reading. A Blocked Agent takes no
-    /// message, and its dialog is one read away. An idle Agent read for a
-    /// dialog keeps the Composer until a card shows: most of those reads
-    /// find none. Nor does a Blocked one whose answer just handed the turn
-    /// back (`answerHandedTurnBack`).
-    var replacesComposer: Bool { content != .none || (activity == .blocked && !answerHandedTurnBack) }
+    /// message, and its dialog is one read away. So is the trust prompt of
+    /// an Antigravity CLI herdr has no status for, until the first read
+    /// (`readsUnknownTrust`). An idle Agent read for a dialog keeps the
+    /// Composer until a card shows: most of those reads find none. Nor does
+    /// a Blocked one whose answer just handed the turn back
+    /// (`answerHandedTurnBack`).
+    var replacesComposer: Bool {
+        content != .none || (activity == .blocked && !answerHandedTurnBack) || awaitsFirstUnknownRead
+    }
 
     @ObservationIgnored private let io: BlockedScreenIO
     @ObservationIgnored private let timing: Timing
@@ -167,6 +176,12 @@ final class BlockedCardStore {
     /// change ends it, and so does a read that names no dialog, or one
     /// that fails before any shows.
     @ObservationIgnored private var readsTurnEnd = false
+    /// See `readsUnknownTrust`: set as an Antigravity CLI comes to be read
+    /// for its trust prompt with no status, and ended by the first read,
+    /// whatever it found or if it failed, by `Timing.firstUnknownRead`, and
+    /// once the Agent has a status or a session.
+    private var awaitsFirstUnknownRead = false
+    @ObservationIgnored private var firstUnknownReadLimit: Task<Void, Never>?
     @ObservationIgnored private var awaitingSession = false
     @ObservationIgnored private var pendingRequests: [ChatPendingRequest] = []
     /// Antigravity CLI permission calls a confirmed answer went to, until
@@ -224,7 +239,7 @@ final class BlockedCardStore {
     /// A Chat view shows the Agent: watch it while it is Blocked, while an
     /// idle Claude has an open AskUserQuestion call or an idle Antigravity
     /// CLI an open call that asks the user, or while an idle Codex or
-    /// Antigravity CLI awaits its session.
+    /// Antigravity CLI, or an agy without a status, awaits its session.
     func show() {
         isVisible = true
         updateWatching()
@@ -250,6 +265,7 @@ final class BlockedCardStore {
         isVisible = false
         updateWatching()
         clear()
+        endFirstUnknownRead()
     }
 
     /// herdr's latest status. Leaving Blocked clears the card unless an
@@ -259,11 +275,13 @@ final class BlockedCardStore {
     func update(activity: ChatAgentActivity) {
         guard activity != self.activity else { return }
         let previous = self.activity
+        let readUnknown = readsUnknownTrust
         self.activity = activity
         if answerHandedTurnBack { answerHandedTurnBack = false }
         readsTurnEnd = program == .agy && previous == .working && activity == .idle
         if activity == .blocked { quietSince = clock.now() }
         if !readsScreen, progress != .acting { clear() }
+        noteUnknownTrust(wasRead: readUnknown)
         updateWatching()
     }
 
@@ -319,8 +337,10 @@ final class BlockedCardStore {
     /// one only after its first prompt.
     func update(awaitingSession: Bool) {
         guard awaitingSession != self.awaitingSession else { return }
+        let readUnknown = readsUnknownTrust
         self.awaitingSession = awaitingSession
         if !readsScreen, progress != .acting { clear() }
+        noteUnknownTrust(wasRead: readUnknown)
         updateWatching()
     }
 
@@ -354,9 +374,50 @@ final class BlockedCardStore {
         (program == .codex || program == .agy) && activity == .idle && awaitingSession
     }
 
+    /// herdr 0.9.5 reports a typed Antigravity CLI 1.5.3 neither idle nor
+    /// Blocked for about 3 s after it draws its trust prompt, and New
+    /// Agent's for a similar time. An agy awaiting its session with no
+    /// status is read for that prompt alone, as `readsIdleTrust`, and its
+    /// first read takes the Composer's place (`awaitsFirstUnknownRead`):
+    /// Chat would hold a message there anyway, since agy shows no empty
+    /// input box under the prompt.
+    private var readsUnknownTrust: Bool {
+        program == .agy && activity == .unknown && awaitingSession
+    }
+
     /// Whether the screen may show a dialog the card answers.
     private var readsScreen: Bool {
-        activity == .blocked || readsIdleQuestion || readsIdleGatedCall || readsIdleTrust || readsTurnEnd
+        activity == .blocked || readsIdleQuestion || readsIdleGatedCall || readsIdleTrust || readsUnknownTrust
+            || readsTurnEnd
+    }
+
+    /// Puts the reading sign in the Composer's place as an Antigravity CLI
+    /// comes to be read with no status, and takes it away once it is not.
+    private func noteUnknownTrust(wasRead: Bool) {
+        if !readsUnknownTrust {
+            endFirstUnknownRead()
+        } else if !wasRead, content == .none {
+            awaitsFirstUnknownRead = true
+        }
+    }
+
+    /// Starts `Timing.firstUnknownRead` as the first read begins, so a read
+    /// that hangs gives the Composer back while it goes on.
+    private func limitFirstUnknownRead() {
+        guard awaitsFirstUnknownRead, firstUnknownReadLimit == nil else { return }
+        let clock = clock
+        let limit = timing.firstUnknownRead
+        firstUnknownReadLimit = Task { [weak self] in
+            try? await clock.sleep(limit)
+            guard !Task.isCancelled else { return }
+            self?.endFirstUnknownRead()
+        }
+    }
+
+    private func endFirstUnknownRead() {
+        firstUnknownReadLimit?.cancel()
+        firstUnknownReadLimit = nil
+        if awaitsFirstUnknownRead { awaitsFirstUnknownRead = false }
     }
 
     // MARK: Actions
@@ -574,7 +635,12 @@ final class BlockedCardStore {
     /// tests, which drive reads directly.
     func refresh() async {
         guard progress != .acting, readsScreen else { return }
+        limitFirstUnknownRead()
         let observation = await observe()
+        // Whatever it found, or if it failed, the read decided: a card it
+        // shows holds the Composer's place itself, and no card gives the
+        // Composer back.
+        defer { endFirstUnknownRead() }
         guard progress != .acting, readsScreen else { return }
         guard let observation else {
             if activity == .blocked, content == .none, !isQuiet {
@@ -862,14 +928,15 @@ final class BlockedCardStore {
         }
     }
 
-    /// A fresh read. While an idle Codex or Antigravity CLI awaits its
-    /// session, anything but the trust screen reads as no dialog: its
-    /// start screen and lists are no prompt to answer.
+    /// A fresh read. While an idle Codex or Antigravity CLI, or an agy
+    /// herdr has no status for, awaits its session, anything but the trust
+    /// screen reads as no dialog: its start screen and lists are no prompt
+    /// to answer.
     private func observe() async -> DialogObservation? {
         guard let screen = try? await io.readScreen() else { return nil }
         let observation = DialogObservation(
             screen: screen, program: program, activity: activity, resolvedToolUseIDs: resolvedToolUseIDs)
-        guard readsIdleTrust else { return observation }
+        guard readsIdleTrust || readsUnknownTrust else { return observation }
         switch observation.result.dialog?.kind {
         case .codexWorkspaceTrust, .agyWorkspaceTrust: return observation
         default: return observation.withoutDialog

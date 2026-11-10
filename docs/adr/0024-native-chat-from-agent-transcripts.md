@@ -773,9 +773,13 @@ shows; a command sent to the background has its result and keeps no card.
 The transcript shows such a call only a poll after herdr's idle, so an agy
 that herdr has just moved from Working to idle is read once too, and a read
 that names no dialog ends it. An idle agy that has reported no session is
-read for the trust prompt alone, as Codex is. The card matches a command
-or a file by the whole command or path the screen shows, or by its start
-where the screen cut it
+read for the trust prompt alone, as Codex is, and so is one herdr reports
+no status for yet: herdr 0.9.5 keeps a new agy without one for about 3 s
+past its drawn prompt. That agy is read at once, with the progress indicator
+in the Composer's place until the read decides; a read that finds no
+prompt, fails or runs past 5 s gives the Composer back. The card matches a
+command or a file by the whole command or path the screen shows, or by its
+start where the screen cut it
 (a command then ends in `…`, a path reaches the screen's edge), and a
 question by its text. It shows the command, the path and the changed lines
 as the screen draws them, and takes from the call only what the screen cut:

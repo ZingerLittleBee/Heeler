@@ -2169,6 +2169,136 @@ struct BlockedCardStoreTests {
         #expect(store.replacesComposer)
     }
 
+    /// herdr 0.9.5 reports a typed agy neither idle nor Blocked for about
+    /// 3 s after it draws its trust prompt. Awaiting its session, such an
+    /// agy is read at once, and the card's place shows Chat reading until
+    /// that read decides: here the trust card, which stays as herdr reports
+    /// Blocked.
+    @Test func anAgyWithoutAStatusTakesTheComposersPlaceUntilItsFirstRead() async throws {
+        let gate = ScriptedTransportCallGate()
+        let store = Self.agyReading(try ScreenFixture.screen("agy-00-trust-prompt-191x49"), after: gate)
+        #expect(!store.replacesComposer)
+
+        store.update(awaitingSession: true)
+        #expect(store.replacesComposer)
+        let read = Task { await store.refresh() }
+        await gate.waitForEntry()
+        #expect(store.content == .none)
+        #expect(store.replacesComposer)
+
+        await gate.open()
+        await read.value
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+        #expect(store.replacesComposer)
+
+        store.update(activity: .blocked)
+        guard case .card = store.content else {
+            Issue.record("Expected the trust card to stay, got \(store.content)")
+            return
+        }
+    }
+
+    /// The first read that finds no trust prompt gives the Composer back,
+    /// as one that fails does, and an agy that stays without a status keeps
+    /// it, read on for its trust prompt.
+    @Test(arguments: [false, true])
+    func anAgyWithoutAStatusGetsTheComposerBackFromItsFirstRead(failing: Bool) async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        await pane.failReads(failing)
+        let store = Self.store(.agy, pane: pane)
+        store.update(awaitingSession: true)
+        #expect(store.replacesComposer)
+
+        await store.refresh()
+        #expect(store.content == .none)
+        #expect(!store.replacesComposer)
+        await store.refresh()
+        #expect(!store.replacesComposer)
+
+        await pane.failReads(false)
+        await pane.show(try ScreenFixture.screen("agy-00-trust-prompt-191x49"))
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+    }
+
+    /// A first read that hangs gives the Composer back at its limit, here
+    /// with its Chat hidden while it hangs, as after switching Agents.
+    @Test func aFirstReadThatHangsGivesTheComposerBackAtItsLimit() async throws {
+        let manual = ManualClock()
+        let gate = ScriptedTransportCallGate()
+        let store = Self.agyReading(try ScreenFixture.screen("agy-02-idle-empty-120x40"), after: gate, clock: manual)
+        store.update(awaitingSession: true)
+        store.show()
+        await gate.waitForEntry()
+        let limit = BlockedCardStore.Timing().firstUnknownRead
+        await manual.untilParked(for: limit)
+        store.hide()
+        #expect(store.replacesComposer)
+
+        manual.advance(limit)
+        var budget = PollBudget(.seconds(5))
+        while store.replacesComposer, budget.hasTimeLeft {
+            await Task.yield()
+            budget.charge()
+        }
+        #expect(!store.replacesComposer)
+        await gate.open()
+    }
+
+    /// A status or a session ends the read's sign: idle keeps the Composer
+    /// until a card shows, and Blocked has its own.
+    @Test(arguments: ["idle", "working", "session"])
+    func anAgyThatGetsAStatusOrSessionEndsTheReadingSign(change: String) {
+        let store = Self.agyReading(ANSIScreen(rows: []), after: nil)
+        store.update(awaitingSession: true)
+        #expect(store.replacesComposer)
+
+        switch change {
+        case "idle": store.update(activity: .idle)
+        case "working": store.update(activity: .working)
+        default: store.update(awaitingSession: false)
+        }
+
+        #expect(!store.replacesComposer)
+    }
+
+    /// Only agy: the evidence shows no other program reported without a
+    /// status on its trust prompt.
+    @Test(arguments: [ChatProgram.codex, .claude, .grok])
+    func anotherProgramWithoutAStatusKeepsTheComposer(program: ChatProgram) async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-00-trust-prompt-191x49"))
+        let store = Self.store(program, pane: pane)
+        store.update(awaitingSession: true)
+
+        #expect(!store.replacesComposer)
+        await store.refresh()
+        #expect(await pane.reads == 0)
+    }
+
+    /// An agy store whose reads show `screen` once `gate`, if any, opens,
+    /// with sleeps that wait for `clock` to advance.
+    private static func agyReading(
+        _ screen: ANSIScreen, after gate: ScriptedTransportCallGate?, clock: ManualClock = ManualClock()
+    ) -> BlockedCardStore {
+        BlockedCardStore(
+            program: .agy,
+            io: BlockedScreenIO(
+                readScreen: {
+                    await gate?.waitUntilOpen()
+                    return screen
+                },
+                sendKeys: { _ in }, paste: { _ in }),
+            clock: BlockedCardClock(now: clock.clock.now, sleep: clock.parkedSleep(for:)))
+    }
+
     // MARK: Antigravity CLI's turn end
 
     /// herdr reports agy idle on a multi-select page whose hint row the
