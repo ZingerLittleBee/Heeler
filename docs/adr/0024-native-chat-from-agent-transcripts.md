@@ -779,7 +779,11 @@ read for the trust prompt alone, as Codex is, and so is one herdr reports
 no status for yet: herdr 0.9.5 keeps a new agy without one for about 3 s
 past its drawn prompt. That agy is read at once, with the progress indicator
 in the Composer's place until the read decides; a read that finds no
-prompt, fails or runs past 5 s gives the Composer back. The card matches a
+prompt, fails or runs past 5 s gives the Composer back. That includes a
+read made before agy has drawn its prompt, as a Chat New Agent opens at
+once can make: the Composer then shows until the next read, a second after
+that one ends, finds the prompt, or herdr reports Blocked. On Herdr TUI,
+where a read takes 0.8 to 1.65 s, that is about 1.8 to 2.7 s. The card matches a
 command or a file by the whole command or path the screen shows, or by its
 start where the screen cut it
 (a command then ends in `…`, a path reaches the screen's edge), and a
