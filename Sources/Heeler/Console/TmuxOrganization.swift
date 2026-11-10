@@ -8,7 +8,8 @@ import Foundation
 /// the session with the lowest id, so its Panes and Agents are not doubled.
 /// Heeler's own sessions, marked `@heeler-attach`, never show, and neither
 /// does the copy of a window they link. A session left with no window of its
-/// own to show is not listed.
+/// own to show is not listed. An Agent reads the status `statuses` holds for
+/// its Pane, and Unknown without one.
 enum TmuxOrganization {
     struct Result: Sendable {
         let snapshot: SessionSnapshot
@@ -16,7 +17,7 @@ enum TmuxOrganization {
         let panes: [TmuxInventory.Pane]
     }
 
-    static func build(_ inventory: TmuxInventory) -> Result {
+    static func build(_ inventory: TmuxInventory, statuses: [String: AgentStatus] = [:]) -> Result {
         let shown = shownPanes(inventory.panes)
 
         var workspaceOrder: [String] = []
@@ -60,10 +61,11 @@ enum TmuxOrganization {
         var agents: [AgentInfo] = []
         for pane in shown {
             let kind = TmuxAgentRule.agentKind(in: pane)
+            let status = kind == nil ? .unknown : statuses[pane.paneID] ?? .unknown
             let directory = pane.path.isEmpty ? nil : pane.path
             panes.append(
                 PaneInfo(
-                    agentStatus: .unknown, focused: false, paneID: pane.paneID, revision: 0,
+                    agentStatus: status, focused: false, paneID: pane.paneID, revision: 0,
                     tabID: pane.windowID, terminalID: pane.paneID, workspaceID: pane.sessionID, agent: kind,
                     cwd: pane.path, foregroundCwd: directory, label: nil, terminalTitle: nil,
                     terminalTitleStripped: nil, title: pane.command.isEmpty ? nil : pane.command))
@@ -72,7 +74,7 @@ enum TmuxOrganization {
                 // Agent reads as its program.
                 agents.append(
                     AgentInfo(
-                        agentStatus: .unknown, focused: false, paneID: pane.paneID, revision: 0,
+                        agentStatus: status, focused: false, paneID: pane.paneID, revision: 0,
                         tabID: pane.windowID, terminalID: pane.paneID, workspaceID: pane.sessionID,
                         agent: kind, cwd: pane.path, foregroundCwd: directory, name: nil, terminalTitle: nil,
                         terminalTitleStripped: AgentNotificationIdentity.kindLabel(kind), tokens: [:]))

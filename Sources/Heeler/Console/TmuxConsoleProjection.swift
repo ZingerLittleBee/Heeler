@@ -11,6 +11,10 @@ import Foundation
 /// the last one's Panes, and a detail open on one of them keeps to it through
 /// the same pin.
 ///
+/// An Agent's status is its Pane's `@heeler-status` (ADR 0044), and Done is
+/// per device: this device's seen marks and each Pane's turns are kept by
+/// server instance, beside it, with no Helper to hold them.
+///
 /// A Pane opens live, through `terminalRunner`. Nothing on it can be typed
 /// into, started or closed yet, and `HostCapabilities` offers none of it.
 @MainActor
@@ -49,6 +53,10 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
     private var hasEnded = false
+    /// The last inventory folded, which a seen mark folds again.
+    private var inventory: TmuxInventory?
+    /// The Panes this device shows now, whose finished turns are seen as they end.
+    private var shownAgents: Set<String> = []
 
     /// `onPathsResolved` hears the paths a connection resolved again, after
     /// `host` already carries them.
@@ -196,18 +204,23 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     /// Another instance is another server, whose pane ids only repeat the last
     /// one's: the Pins on those go, with whatever else this device kept of
-    /// them. Pins go first, so a crash in between still finds another instance
-    /// next time.
+    /// them, its turns and seen marks with the memory's core id. A detail
+    /// still open shows the last server's Pane, so it sees none of the new
+    /// one's turns. Pins go first, so a crash in between still finds another
+    /// instance next time.
     private func noteInstance(_ instance: TmuxServerInstance) {
         if let known = memory.coreID(for: host.id), known != instance.id {
             pins.removePins(hostID: host.id)
             lastKnownAgentsByPane = [:]
+            shownAgents = []
+            inventory = nil
         }
         memory.noteCore(instance.id, for: host.id)
     }
 
     private func invalidateInventory() {
         isAwaitingSnapshot = true
+        inventory = nil
         workspaces = []
         terminalsByPane = [:]
         agentsByPane = [:]
@@ -217,8 +230,36 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     /// rows name their server, which the loop asked later than `server` did.
     private func replaceInventory(with inventory: TmuxInventory) {
         if let instance = inventory.instance { noteInstance(instance) }
-        pins.retainPins(hostID: host.id, paneIDs: Set(inventory.panes.map(\.paneID)))
-        let organization = TmuxOrganization.build(inventory)
+        let listed = Set(inventory.panes.map(\.paneID))
+        pins.retainPins(hostID: host.id, paneIDs: listed)
+        memory.retainTmuxPanes(listed, for: host.id)
+        noteTurns(in: inventory)
+        self.inventory = inventory
+        rebuildRows()
+    }
+
+    /// One look at each Pane's `@heeler-status`. A Pane with no Agent is
+    /// remembered only once it has a turn to forget, so a shell costs nothing.
+    private func noteTurns(in inventory: TmuxInventory) {
+        var noted: Set<String> = []
+        let known = memory.tmuxTurnStates(for: host.id)
+        for pane in inventory.panes where noted.insert(pane.paneID).inserted {
+            let status = TmuxProgramStatus(option: pane.status)
+            if let kind = TmuxAgentRule.agentKind(in: pane) {
+                let isShown = shownAgents.contains(pane.paneID)
+                memory.updateTmuxTurnState(of: pane.paneID, for: host.id) {
+                    $0.noteSample(status, kind: kind, isShown: isShown)
+                }
+            } else if known[pane.paneID] != nil || status.turn > 0 {
+                memory.updateTmuxTurnState(of: pane.paneID, for: host.id) { $0.noteNoAgent(status) }
+            }
+        }
+    }
+
+    private func rebuildRows() {
+        guard let inventory else { return }
+        let statuses = memory.tmuxTurnStates(for: host.id).mapValues(\.agentStatus)
+        let organization = TmuxOrganization.build(inventory, statuses: statuses)
         let builder = ConsolePaneRowBuilder(host: host, inventory: organization.snapshot)
         let agents = builder.agentRows(lastOutputSnippet: { _ in nil }, liveChange: { _ in nil })
         var rows = builder.terminalRows(agents: agents, liveChange: { _ in nil })
@@ -236,7 +277,29 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     func refreshTerminalInventory() async {}
     func refreshSidebarMetadata() async {}
-    func setShownAgents(_ paneIDs: Set<String>) {}
+
+    // MARK: Done per device
+
+    /// Marks each newly shown Agent seen. A turn that ends while one stays
+    /// shown is marked at the look that finds it, so it never reads Done.
+    func setShownAgents(_ paneIDs: Set<String>) {
+        let opened = paneIDs.subtracting(shownAgents)
+        shownAgents = paneIDs
+        let known = memory.tmuxTurnStates(for: host.id)
+        let opening = opened.filter { known[$0] != nil }
+        guard !opening.isEmpty else { return }
+        let wasDone = doneAgents
+        for paneID in opening {
+            memory.updateTmuxTurnState(of: paneID, for: host.id) { $0.markSeen() }
+        }
+        guard doneAgents != wasDone else { return }
+        rebuildRows()
+        onChange()
+    }
+
+    private var doneAgents: Set<String> {
+        Set(memory.tmuxTurnStates(for: host.id).filter(\.value.isDone).keys)
+    }
 
     func paneExists(_ paneID: String) async throws -> Bool {
         terminalsByPane[paneID] != nil
