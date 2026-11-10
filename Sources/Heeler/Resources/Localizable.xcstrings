@@ -5859,6 +5859,7 @@
         }
       }
     },
+    "A tmux server started over SSH would run outside the Mac's login session" : {},
     "A vivid dark theme for both appearances" : {
       "localizations" : {
         "ja" : {
@@ -48619,6 +48620,7 @@
         }
       }
     },
+    "Start tmux in a terminal on the Mac. Heeler keeps checking." : {},
     "Start tmux on the Host. Heeler keeps checking." : {
       "localizations" : {
         "ja" : {
@@ -48641,6 +48643,7 @@
         }
       }
     },
+    "Start tmux on the Mac first" : {},
     "Started" : {
       "localizations" : {
         "ja" : {
@@ -71102,6 +71105,8 @@
         }
       }
     },
+    "tmux: %@" : {},
+    "tmux: A launch needs a directory." : {},
     "tmux: A reply came that no command asked for." : {},
     "tmux: The Host's tmux or its socket is at a path Heeler cannot use." : {
       "localizations" : {
@@ -71126,6 +71131,8 @@
       }
     },
     "tmux: The Pane's screen could not be read." : {},
+    "tmux: The command failed." : {},
+    "tmux: The command printed no pane." : {},
     "tmux: The control client ended before it attached." : {},
     "tmux: The control client printed a line too long to read." : {},
     "tmux: The probe exited with status %d." : {

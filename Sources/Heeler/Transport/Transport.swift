@@ -1051,6 +1051,9 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// No tmux server answers on the Host's socket. Connecting never starts one,
     /// and the user starting one is all it takes, so it is retried.
     case tmuxServerNotRunning(socketName: String)
+    /// New Workspace on a Mac whose server is not running. A server started
+    /// over SSH would sit outside the Mac's login session (ADR 0042).
+    case tmuxStartOnMac
     /// The Pane an Attach showed is gone, or Heeler's session no longer holds
     /// it: its window closed, or it moved to another (ADR 0043).
     case tmuxPaneGone
@@ -1113,7 +1116,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .herdrCoreNotInstalled, .herdrCoreUpdateRequired, .herdrCoreSocketPathTooLong,
             .herdrCoreSessionNameRefused,
             .herdrCoreForwardingRefused, .herdrCoreTerminalGone,
-            .tmuxNotInstalled, .tmuxUpdateRequired, .tmuxPaneGone, .tmuxServerGone,
+            .tmuxNotInstalled, .tmuxUpdateRequired, .tmuxPaneGone, .tmuxServerGone, .tmuxStartOnMac,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

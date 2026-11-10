@@ -180,7 +180,7 @@ struct PreflightReport: Equatable, Sendable {
             // cannot use fails where a missing one does.
             check = .herdrInstalled
             hint = error.presentation.message
-        case .tmuxServerNotRunning:
+        case .tmuxServerNotRunning, .tmuxStartOnMac:
             check = .serverRunning
             hint = error.presentation.message
         case .gitTimedOut:

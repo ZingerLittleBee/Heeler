@@ -9,9 +9,19 @@ struct TmuxServerStatus: Equatable, Sendable {
     let paths: TmuxPaths
 }
 
+/// The paths, kernel and shell a probe last read. Paths stay the stored ones
+/// until a login shell resolves others. `shell` is that probe's `$SHELL`.
+struct TmuxHostFacts: Equatable, Sendable {
+    var paths: TmuxPaths?
+    var kernel: String?
+    var shell: String?
+}
+
 /// What a tmux Host offers the app, beside and never through the Herdr TUI
 /// `Transport` or `HerdrCoreTransport` (ADR 0042). Connecting never starts a
-/// server: a Host with none running reads as `TransportError.tmuxServerNotRunning`.
+/// server. Linux New Workspace is the one launch that does, and only through
+/// the user's login shell (`TmuxLaunch`). A Host with none running reads as
+/// `TransportError.tmuxServerNotRunning`.
 protocol TmuxTransport: Sendable {
     /// The route that won the dial; nil when there was only ever one way in.
     nonisolated var routeID: UUID? { get }
@@ -33,6 +43,15 @@ protocol TmuxTransport: Sendable {
     /// The paths the login shell resolved on this connection, for the Host to
     /// store. Nil while the paths it was given still stand.
     func resolvedPaths() async -> TmuxPaths?
+
+    /// Kernel and shell from the last probe, with the paths later commands use.
+    /// Kept when the server is down, so Linux New Workspace can still start one.
+    func hostFacts() async -> TmuxHostFacts
+
+    /// One bounded exec of a script `TmuxLaunch` or agent discovery built.
+    /// `throughLoginShell` is the Linux server start, which waits for the
+    /// shell's startup files. The script already says how it runs.
+    func runTmuxScript(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult
 
     /// Follows the server's inventory in one long exec (ADR 0043), with the
     /// paths the last `status()` answered on: every pane the server lists at
@@ -62,6 +81,10 @@ protocol TmuxHostConnection: HostServices {
     /// shell's startup files when the script goes through it.
     func runTmuxProbe(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult
 
+    /// Runs one command script the same way. `throughLoginShell` only lengthens
+    /// the deadline: `TmuxLaunch` has already wrapped a Linux server start.
+    func runTmuxCommand(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult
+
     /// Opens one long exec of a `TmuxInventoryLoop` script, which runs until
     /// the channel is closed or its server stops answering. The exec holds one
     /// of the connection's four ordinary SSH sessions (ADR 0017) until then.
@@ -89,6 +112,10 @@ actor TmuxSSHTransport: TmuxTransport {
     /// login shell resolves others.
     private var paths: TmuxPaths?
     private var resolved: TmuxPaths?
+    /// `uname -s` and `$SHELL` from the last probe that parsed, kept when the
+    /// server is not running so a launch can still decide.
+    private var kernel: String?
+    private var shell: String?
     /// Whether the login shell resolved the paths since they last answered.
     /// Asking it again would get the same answer, at the cost of its startup
     /// files on every poll of a Host whose server is simply not running.
@@ -118,6 +145,14 @@ actor TmuxSSHTransport: TmuxTransport {
 
     func resolvedPaths() -> TmuxPaths? {
         resolved
+    }
+
+    func hostFacts() -> TmuxHostFacts {
+        TmuxHostFacts(paths: paths, kernel: kernel, shell: shell)
+    }
+
+    func runTmuxScript(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
+        try await connection.runTmuxCommand(script, throughLoginShell: throughLoginShell)
     }
 
     func status() async throws -> TmuxServerStatus {
@@ -185,11 +220,15 @@ actor TmuxSSHTransport: TmuxTransport {
             throw TransportError.malformedResponse(
                 String(localized: "tmux: The probe exited with status \(result.exitStatus)."))
         }
+        let report: TmuxProbe.Report
         do {
-            return try TmuxProbe.parse(stdout: result.stdout, nonce: nonce)
+            report = try TmuxProbe.parse(stdout: result.stdout, nonce: nonce)
         } catch {
             throw TransportError.malformedResponse(String(localized: "tmux: The probe's output is unreadable."))
         }
+        if let kernel = report.kernel { self.kernel = kernel }
+        if let shell = report.shell { self.shell = shell }
+        return report
     }
 
     // MARK: Inventory

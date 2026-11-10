@@ -53,7 +53,10 @@ struct HostCapabilities: Equatable, Sendable {
     }
 
     /// Whether New Workspace asks for a name it can apply.
-    var namesNewWorkspaces: Bool { tabNames || desktopAppNaming != nil }
+    var namesNewWorkspaces: Bool { tabNames || desktopAppNaming != nil || namesCreatedWorkspaces }
+    /// A Host that names a Workspace it creates, such as a tmux session, and
+    /// does not also name Tabs. Existing memberwise callers leave it off.
+    var namesCreatedWorkspaces = false
 
     /// What New Terminal asks for beside a Terminal in this directory. Nil on a
     /// Host that starts none, and for a directory that is not usable, rather
@@ -97,13 +100,15 @@ extension HostCapabilities {
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
         isLocatingCore: Bool = false
     ) {
-        // A tmux Host lists its Panes and shows each live; no action on them is built yet.
+        // A tmux Host starts Agents and Terminals, renames a Workspace and closes
+        // a Pane or a Tab. It does not rename an Agent, take over a Terminal, or
+        // name Tabs. Chat, Send, Worktrees and uploads are later tickets.
         guard serverKind != .tmux else {
             self.init(
-                startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,
+                startsAgents: true, startsTerminals: true, renameAgent: false, renamesWorkspaces: true,
                 worktrees: false, uploads: false, composerSend: false, chat: false, tabNames: false,
-                closeTab: false, syncLayoutFromPlugin: false, takeOver: false, composerStop: false,
-                hostScripts: false)
+                closeTab: true, syncLayoutFromPlugin: false, takeOver: false, composerStop: false,
+                hostScripts: false, namesCreatedWorkspaces: true)
             return
         }
         let offered = serverKind == .herdrTUI

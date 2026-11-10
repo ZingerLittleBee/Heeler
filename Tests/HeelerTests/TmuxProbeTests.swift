@@ -43,6 +43,10 @@ struct TmuxProbeTests {
             #expect(!script.contains(" -L "))
             #expect(!script.contains("new-session"))
             #expect(!script.contains("start-server"))
+            // The login shell stores the body in one quoted word, so the printf's
+            // quotes are written out. The format and `$SHELL` stay readable.
+            #expect(script.contains("shell %s\\n"))
+            #expect(script.contains("\"${SHELL:-}\""))
         }
     }
 
@@ -52,6 +56,7 @@ struct TmuxProbeTests {
         #expect(!stored.contains("-lic"))
         #expect(stored.contains("t='/usr/bin/tmux'"))
         #expect(stored.contains("s='/tmp/tmux-501/default'"))
+        #expect(stored.contains("printf 'shell %s\\n' \"${SHELL:-}\""))
 
         for request in [TmuxProbe.Request.sockets, .resolve(socketName: "work")] {
             let script = TmuxProbe.script(request, nonce: nonce)
@@ -65,11 +70,12 @@ struct TmuxProbeTests {
     @Test func aRunningServerReadsWithItsInstance() throws {
         let report = try TmuxProbe.parse(
             stdout: output([
-                "kernel Darwin", "executable /opt/homebrew/bin/tmux", "version tmux 3.7b",
+                "kernel Darwin", "shell /bin/zsh", "executable /opt/homebrew/bin/tmux", "version tmux 3.7b",
                 "directory /private/tmp/tmux-501", "instance 4242 1794326988",
             ]), nonce: nonce)
 
         #expect(report.kernel == "Darwin")
+        #expect(report.shell == "/bin/zsh")
         #expect(report.installation == .usable(executable: "/opt/homebrew/bin/tmux", version: "3.7b"))
         #expect(report.server == TmuxServerInstance(pid: 4242, startTime: 1_794_326_988))
         #expect(report.socketPath(named: "") == "/private/tmp/tmux-501/default")
@@ -85,6 +91,7 @@ struct TmuxProbeTests {
 
         #expect(report.sockets == ["work", "default"])
         #expect(report.server == nil)
+        #expect(report.shell == nil)
     }
 
     @Test func whatTheProbeFoundSaysWhetherTmuxIsUsable() throws {

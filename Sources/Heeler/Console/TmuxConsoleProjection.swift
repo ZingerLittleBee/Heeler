@@ -15,8 +15,10 @@ import Foundation
 /// per device: this device's seen marks and each Pane's turns are kept by
 /// server instance, beside it, with no Helper to hold them.
 ///
-/// A Pane opens live, through `terminalRunner`. Nothing on it can be typed
-/// into, started or closed yet, and `HostCapabilities` offers none of it.
+/// A Pane opens live, through `terminalRunner`. New Agent, New Terminal, New
+/// Workspace, Rename Workspace and Close run through `TmuxLaunch`. Nothing can
+/// be typed into a Pane yet, an Agent is not renamed, and a Terminal is not
+/// taken over.
 @MainActor
 final class TmuxConsoleProjection: ConsoleHostProjection {
     /// The catalog's Host, with the paths a connection last resolved.
@@ -55,6 +57,8 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private var hasEnded = false
     /// The last inventory folded, which a seen mark folds again.
     private var inventory: TmuxInventory?
+    /// OpenCode's version from the last discovery, for the next launch's `-s`.
+    private var openCodeVersion: String?
     /// The Panes this device shows now, whose finished turns are seen as they end.
     private var shownAgents: Set<String> = []
 
@@ -305,15 +309,42 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         terminalsByPane[paneID] != nil
     }
 
-    // MARK: What a tmux Host does not do yet
+    // MARK: Launches, rename and close
 
     private var unavailable: TransportError {
         .hostFeatureUnavailable(feature: String(localized: "This action on a tmux Host"))
     }
 
-    func availableAgentKinds() async throws -> [SupportedAgentKind] { [] }
+    /// Through the user's interactive shell, as a herdr-core Host does, so the
+    /// picker lists what an Agent launched that way would find (ADR 0032).
+    func availableAgentKinds() async throws -> [SupportedAgentKind] {
+        let facts = try await session.withTransport { await $0.hostFacts() }
+        let shell = facts.shell.flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/sh"
+        let nonce = HostProcessReader.makeNonce()
+        guard case .posixScript(let script) = HerdrCoreLaunch.discovery(shell: shell, nonce: nonce) else {
+            throw unavailable
+        }
+        let result = try await session.withTransport { transport in
+            try await transport.runTmuxScript(script, throughLoginShell: true)
+        }
+        guard result.exitStatus == 0,
+            let installed = try? HerdrCoreLaunch.installedAgents(stdout: result.stdout, nonce: nonce)
+        else {
+            throw TransportError.malformedResponse(
+                String(localized: "The Host's shell did not finish looking for Agents."))
+        }
+        openCodeVersion = installed.openCodeVersion
+        return installed.kinds
+    }
 
-    func startAgent(_ request: AgentLaunchRequest) async throws -> Agent { throw unavailable }
+    func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
+        let server = try await launchServer()
+        let made = try await created(try command { try TmuxLaunch.agentWindow(request, on: server) })
+        return Agent(
+            terminalID: made.paneID, kind: request.kind, title: "", status: .unknown,
+            workspaceID: request.workspaceID ?? "", tabID: made.windowID, paneID: made.paneID,
+            cwd: request.cwd ?? "", revision: 0, name: request.name)
+    }
 
     func startAgentInNewWorktree(
         _ request: AgentLaunchRequest, worktree: WorktreeSpec
@@ -321,18 +352,39 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     func startAgentInNewWorkspace(
         _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
-    ) async throws -> Agent { throw unavailable }
+    ) async throws -> Agent {
+        let server = try await launchServer()
+        let made = try await created(
+            try command { try TmuxLaunch.agentSession(request, workspace: workspace, on: server) })
+        return Agent(
+            terminalID: made.paneID, kind: request.kind, title: "", status: .unknown,
+            workspaceID: made.sessionID ?? "", tabID: made.windowID, paneID: made.paneID,
+            cwd: workspace.directory, revision: 0, name: request.name)
+    }
 
     func createShellTerminal(
         _ request: ShellTerminalCreationRequest
-    ) async throws -> ShellTerminalIdentity { throw unavailable }
+    ) async throws -> ShellTerminalIdentity {
+        let server = try await launchServer()
+        let made = try await created(try command { try TmuxLaunch.shellWindow(request, on: server) })
+        return ShellTerminalIdentity(paneID: made.paneID, tabID: made.windowID, terminalID: made.paneID)
+    }
 
     func createShellWorkspace(
         _ workspace: NewWorkspaceSpec, tabLabel: String?
-    ) async throws -> ShellTerminalIdentity { throw unavailable }
+    ) async throws -> ShellTerminalIdentity {
+        let server = try await launchServer()
+        let made = try await created(try command { try TmuxLaunch.shellSession(workspace, on: server) })
+        return ShellTerminalIdentity(paneID: made.paneID, tabID: made.windowID, terminalID: made.paneID)
+    }
 
-    func closePane(_ paneID: String) async throws { throw unavailable }
-    func closeTab(_ tabID: String) async throws { throw unavailable }
+    func closePane(_ paneID: String) async throws {
+        _ = try await perform(TmuxLaunch.killPane(paneID, paths: try runningPaths()))
+    }
+
+    func closeTab(_ tabID: String) async throws {
+        _ = try await perform(TmuxLaunch.killWindow(tabID, paths: try runningPaths()))
+    }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
         throw unavailable
@@ -348,7 +400,77 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     func focusAgent(_ paneID: String) async throws {}
     func renameAgent(_ paneID: String, name: String?) async throws { throw unavailable }
-    func renameWorkspace(_ workspaceID: String, label: String) async throws { throw unavailable }
+
+    func renameWorkspace(_ workspaceID: String, label: String) async throws {
+        _ = try await perform(TmuxLaunch.renameSession(id: workspaceID, label: label, paths: try runningPaths()))
+    }
+
+    /// Paths, kernel and shell for a launch. The shell defaults when the probe
+    /// saw none. No paths means the Host has not been asked yet.
+    private func launchServer() async throws -> TmuxLaunch.Server {
+        let facts = try await session.withTransport { await $0.hostFacts() }
+        guard let paths = facts.paths else {
+            throw TransportError.tmuxServerNotRunning(socketName: host.tmuxSocketName)
+        }
+        let shell = facts.shell.flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/sh"
+        return TmuxLaunch.Server(
+            paths: paths, shell: shell, kernel: facts.kernel, running: server != nil,
+            openCodeVersion: openCodeVersion)
+    }
+
+    /// Rename and close need a server. A window with none is `TmuxLaunch`'s own
+    /// refusal, which stays `.tmuxServerNotRunning` on Linux too.
+    private func runningPaths() throws -> TmuxPaths {
+        guard let paths = server?.paths else {
+            throw TransportError.tmuxServerNotRunning(socketName: host.tmuxSocketName)
+        }
+        return paths
+    }
+
+    /// `TmuxLaunch` refuses before any script. The rest are transport failures.
+    private func command(_ make: () throws -> TmuxLaunch.Command) throws -> TmuxLaunch.Command {
+        do {
+            return try make()
+        } catch let refusal as TmuxLaunch.Refusal {
+            throw transportError(refusal)
+        } catch {
+            throw error
+        }
+    }
+
+    private func transportError(_ refusal: TmuxLaunch.Refusal) -> TransportError {
+        switch refusal {
+        case .startTmuxOnMac: .tmuxStartOnMac
+        case .serverNotRunning: .tmuxServerNotRunning(socketName: host.tmuxSocketName)
+        case .missingTarget:
+            .malformedResponse(String(localized: "tmux: A launch needs a directory."))
+        }
+    }
+
+    private func perform(_ command: TmuxLaunch.Command) async throws -> GitExecResult {
+        let result = try await session.withTransport { transport in
+            try await transport.runTmuxScript(command.script, throughLoginShell: command.throughLoginShell)
+        }
+        guard result.exitStatus == 0 else {
+            let detail = String(decoding: result.stderr, as: UTF8.self)
+                .split(whereSeparator: \.isNewline)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .last { !$0.isEmpty }
+            if let detail {
+                throw TransportError.malformedResponse(String(localized: "tmux: \(detail)"))
+            }
+            throw TransportError.malformedResponse(String(localized: "tmux: The command failed."))
+        }
+        return result
+    }
+
+    private func created(_ command: TmuxLaunch.Command) async throws -> TmuxLaunch.Created {
+        let result = try await perform(command)
+        guard let created = TmuxLaunch.created(from: result.stdout) else {
+            throw TransportError.malformedResponse(String(localized: "tmux: The command printed no pane."))
+        }
+        return created
+    }
 
     func agentInfo(paneID: String) async throws -> Agent { throw unavailable }
     func processInfo(paneID: String) async throws -> PaneProcessInfo { throw unavailable }

@@ -232,6 +232,11 @@ extension TransportError {
                 detail: String(localized:
                     "The Host has tmux \(version), and Heeler needs \(TmuxVersion.minimum) or newer"),
                 recoverySuggestion: String(localized: "Update tmux on the Host, then check again."))
+        case .tmuxStartOnMac:
+            TransportErrorPresentation(
+                summary: String(localized: "Start tmux on the Mac first"),
+                detail: String(localized: "A tmux server started over SSH would run outside the Mac's login session"),
+                recoverySuggestion: String(localized: "Start tmux in a terminal on the Mac. Heeler keeps checking."))
         case .tmuxServerNotRunning(let socketName):
             TransportErrorPresentation(
                 summary: String(localized: "No tmux server running"),

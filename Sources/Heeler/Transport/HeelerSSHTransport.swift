@@ -3791,6 +3791,16 @@ extension HeelerSSHTransport: TmuxHostConnection {
             timeoutMarkerPrefix: "__HEELER_TMUX_PROBE_TIMEOUT_", timedOut: .timedOut)
     }
 
+    /// The same bound as a probe. A Linux server start goes through the login
+    /// shell and gets the longer one; every other command asks tmux alone.
+    func runTmuxCommand(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: String(localized: "tmux Hosts"),
+            deadline: throughLoginShell ? .seconds(26) : .seconds(14),
+            remoteSeconds: throughLoginShell ? 20 : 10,
+            timeoutMarkerPrefix: "__HEELER_TMUX_COMMAND_TIMEOUT_", timedOut: .timedOut)
+    }
+
     /// One long exec of `/bin/sh -s`, with the script as all it is given to
     /// read: the script waits for that input to end, as it does when the
     /// channel closes. It holds an ordinary session slot until then (ADR 0043).

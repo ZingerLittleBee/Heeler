@@ -6,8 +6,8 @@ import Testing
 
 /// A tmux Host in the Console, through `ConsoleStore` and the real tmux
 /// transport over a scripted Host: its connection states, the paths it
-/// resolves, and that it offers nothing yet. `TmuxInventoryConsoleTests`
-/// covers what it lists.
+/// resolves, and what it offers. `TmuxInventoryConsoleTests` covers what it
+/// lists, and `TmuxLaunchConsoleTests` covers starting, renaming and closing.
 @MainActor
 @Suite("tmux Host in the Console", .timeLimit(.minutes(1)))
 struct TmuxConsoleTests {
@@ -101,26 +101,30 @@ struct TmuxConsoleTests {
         store.setHosts([])
     }
 
-    @Test func aTmuxHostOffersNothingYet() async throws {
+    @Test func aTmuxHostOffersLaunchesRenameAndClose() async throws {
         let tmux = ScriptedTmuxHost()
         let console = await started(tmux)
         let store = console.store
         try await waitUntil("the server's answer") { store.hostStatuses[host.id] == .connected }
 
         let offers = store.capabilities(for: host.id)
-        #expect(!offers.startsAgents)
-        #expect(!offers.startsTerminals)
+        #expect(offers.startsAgents)
+        #expect(offers.startsTerminals)
+        #expect(offers.renamesWorkspaces)
+        #expect(offers.closeTab)
+        #expect(offers.namesCreatedWorkspaces)
+        #expect(offers.namesNewWorkspaces)
+        #expect(!offers.tabNames)
+        #expect(!offers.renameAgent)
+        #expect(!offers.takeOver)
         #expect(!offers.chat)
         #expect(!offers.uploads)
         #expect(!offers.composerSend)
         #expect(!offers.worktrees)
-        #expect(!offers.closeTab)
-        #expect(!offers.takeOver)
-        #expect([host].offeringNewItem(listsTerminals: false, capabilities: { store.capabilities(for: $0.id) }).isEmpty)
-        #expect([host].offeringNewItem(listsTerminals: true, capabilities: { store.capabilities(for: $0.id) }).isEmpty)
+        #expect([host].offeringNewItem(listsTerminals: false, capabilities: { store.capabilities(for: $0.id) }) == [host])
+        #expect([host].offeringNewItem(listsTerminals: true, capabilities: { store.capabilities(for: $0.id) }) == [host])
         await #expect(throws: TransportError.self) {
-            try await store.startAgent(
-                AgentLaunchRequest(kind: "claude", name: "claude", workspaceID: "$1", cwd: "/work"), on: host.id)
+            try await store.renameAgent("%0", name: "renamed", on: host.id)
         }
         store.setHosts([])
     }

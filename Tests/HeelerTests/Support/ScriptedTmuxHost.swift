@@ -10,8 +10,10 @@ import Foundation
 /// on it prints them as the real script would: once, then on each change,
 /// with a pane's arguments only when its command or the program its status
 /// names changed. The loop speaks the script's own text (`TmuxLoopText`), so
-/// the app's reader is the one under test. What later tickets ask of a tmux
-/// server, they add here against the same servers and panes.
+/// the app's reader is the one under test. A `runTmuxCommand` applies
+/// `new-window`, `new-session`, `rename-session`, `kill-pane` and
+/// `kill-window` to those panes, and a discovery script lists
+/// `installedExecutables`.
 actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     static let nonce = "scripted-tmux-host-nonce"
     static let executable = "/opt/homebrew/bin/tmux"
@@ -31,6 +33,15 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
 
     nonisolated let routeID: UUID? = nil
     private let kernel: String
+    /// `$SHELL` of the probe, which a launch wraps the agent in.
+    let shell: String
+    /// Programs discovery reports, in the order it prints them.
+    var installedExecutables: [String] = ["claude"]
+    /// OpenCode's own version line, printed only when a test sets one.
+    var openCodeVersion: String?
+    /// Each `runTmuxCommand` script, in order, including one that failed.
+    private(set) var commands: [String] = []
+    private var nextProcessID = 8000
     /// Every tmux on the Host, by path, with what its `-V` prints.
     private var executables: [String: String]
     /// The tmux the login shell's `PATH` finds.
@@ -60,9 +71,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     init(
         executable: String? = ScriptedTmuxHost.executable, version: String = "tmux 3.7b",
         directory: String = ScriptedTmuxHost.directory, sockets: [String] = ["default"],
-        kernel: String = "Darwin"
+        kernel: String = "Darwin", shell: String = "/bin/zsh"
     ) {
         self.kernel = kernel
+        self.shell = shell
         executables = executable.map { [$0: version] } ?? [:]
         loginExecutable = executable
         loginDirectory = directory
@@ -148,6 +160,13 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     func clearLog() {
         log = []
         scripts = []
+        commands = []
+    }
+
+    /// What discovery reports, and the OpenCode version a later launch may name.
+    func setInstalled(_ executables: [String], openCodeVersion: String? = nil) {
+        installedExecutables = executables
+        self.openCodeVersion = openCodeVersion
     }
 
     // MARK: The inventory loop
@@ -589,6 +608,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             return try await host.runTmuxProbe(script, throughLoginShell: throughLoginShell)
         }
 
+        func runTmuxCommand(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
+            if await host.isDropped(id) { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
+            return try await host.runTmuxCommand(script, throughLoginShell: throughLoginShell)
+        }
+
         func openTmuxInventoryLoop(_ script: Data) async throws -> any WindowsTerminalExecChannel {
             try await requireConnected()
             return try await host.openLoop(script, dial: id)
@@ -603,6 +627,237 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             connected = false
             await host.noteClose(ofDial: id)
         }
+    }
+
+    func runTmuxCommand(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
+        let text = String(decoding: script, as: UTF8.self)
+        log.append(throughLoginShell ? "command login" : "command")
+        commands.append(text)
+        if let discovery = discoveryAnswer(in: text) {
+            return GitExecResult(stdout: Data(discovery.utf8), stderr: Data(), exitStatus: 0)
+        }
+        return await apply(text)
+    }
+
+    /// Discovery's markers, with the programs a test listed and OpenCode's
+    /// version when one was set. The nonce is the hex after the begin marker.
+    private func discoveryAnswer(in script: String) -> String? {
+        let begin = "__HEELER_AGENTS_BEGIN_"
+        guard let range = script.range(of: begin) else { return nil }
+        let nonce = script[range.upperBound...].prefix { $0.isHexDigit }
+        guard !nonce.isEmpty else { return nil }
+        var lines = ["", "\(begin)\(nonce)"]
+        lines += installedExecutables.map { "agent \($0)" }
+        lines.append("version \(openCodeVersion ?? "")")
+        lines.append("__HEELER_AGENTS_END_\(nonce)")
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// One `TmuxLaunch` script against the server named in it. With `-N` and no
+    /// server, tmux exits. Without `-N`, only `new-session` starts one. The
+    /// login wrapper is undone first, the way the probe's answer reads its body.
+    private func apply(_ script: String) async -> GitExecResult {
+        let body = Self.commandBody(script)
+        let socket = Self.assigned("s", in: body)
+        let executable = Self.assigned("t", in: body)
+        guard let line = body.split(separator: "\n").first(where: { $0.hasPrefix("exec ") }),
+            let invocation = Self.invocation(of: Self.words(of: String(line)))
+        else { return Self.failed("tmux: The command failed.\n") }
+        let knownExecutable = executables[executable] != nil
+        if servers[socket] == nil || !knownExecutable {
+            guard invocation.subcommand == "new-session", !invocation.hasN, knownExecutable else {
+                return Self.failed("no server running\n")
+            }
+            servers[socket] = Self.instance
+            if panes[socket] == nil { panes[socket] = [] }
+        }
+        var listed = panes[socket] ?? []
+        let result = mutate(&listed, invocation)
+        guard result.exitStatus == 0 else { return result }
+        panes[socket] = listed
+        await printChanges(on: socket)
+        return result
+    }
+
+    private func mutate(
+        _ listed: inout [TmuxInventory.Pane], _ invocation: Invocation
+    ) -> GitExecResult {
+        switch invocation.subcommand {
+        case "new-window":
+            guard let target = invocation.target,
+                let session = listed.first(where: { $0.sessionID == target || $0.sessionName == target })
+            else { return Self.failed("can't find session: \(invocation.target ?? "")\n") }
+            let pane = makePane(
+                sessionID: session.sessionID, sessionName: session.sessionName,
+                windowIndex: (listed.filter { $0.sessionID == session.sessionID }.map(\.windowIndex).max() ?? -1) + 1,
+                directory: invocation.directory, program: invocation.program, in: listed)
+            listed.append(pane)
+            return Self.succeeded("\(pane.paneID) \(pane.windowID)\n")
+        case "new-session":
+            let sessionName = invocation.name.flatMap { $0.isEmpty ? nil : $0 } ?? Self.numberedSessionName(in: listed)
+            let pane = makePane(
+                sessionID: "$\(Self.nextNumber(prefix: "$", in: listed))", sessionName: sessionName,
+                windowIndex: 0, directory: invocation.directory, program: invocation.program, in: listed)
+            listed.append(pane)
+            return Self.succeeded("\(pane.paneID) \(pane.windowID) \(pane.sessionID) \(pane.sessionName)\n")
+        case "rename-session":
+            guard let target = invocation.target, let label = invocation.name, !label.isEmpty else {
+                return Self.failed("tmux: The command failed.\n")
+            }
+            let matchesID = listed.contains { $0.sessionID == target }
+            var renamed = false
+            for index in listed.indices {
+                let matches = matchesID ? listed[index].sessionID == target : listed[index].sessionName == target
+                guard matches else { continue }
+                listed[index].sessionName = label
+                renamed = true
+            }
+            guard renamed else { return Self.failed("can't find session: \(target)\n") }
+            return Self.succeeded("")
+        case "kill-pane":
+            guard let target = invocation.target else { return Self.failed("tmux: The command failed.\n") }
+            let before = listed.count
+            listed.removeAll { $0.paneID == target }
+            guard listed.count < before else { return Self.failed("can't find pane: \(target)\n") }
+            return Self.succeeded("")
+        case "kill-window":
+            guard let target = invocation.target else { return Self.failed("tmux: The command failed.\n") }
+            let before = listed.count
+            listed.removeAll { $0.windowID == target }
+            guard listed.count < before else { return Self.failed("can't find window: \(target)\n") }
+            return Self.succeeded("")
+        default:
+            return Self.failed("unknown command: \(invocation.subcommand)\n")
+        }
+    }
+
+    /// The pane a `new-window` or `new-session` adds. An empty program is the
+    /// user's shell. An agent program drops the four shell-wrapper words, so
+    /// the foreground is the program tmux execs.
+    private func makePane(
+        sessionID: String, sessionName: String, windowIndex: Int, directory: String?, program: [String],
+        in listed: [TmuxInventory.Pane]
+    ) -> TmuxInventory.Pane {
+        let agent = program.isEmpty ? [] : Array(program.dropFirst(min(4, program.count)))
+        let executable = agent.first ?? (program.isEmpty ? shell : program[0])
+        let command = String(executable.split(separator: "/").last ?? Substring(executable))
+        let arguments = program.isEmpty ? [shell] : (agent.isEmpty ? program : agent)
+        nextProcessID += 1
+        return .make(
+            session: Self.number(sessionID) ?? 0, sessionName: sessionName,
+            window: Self.nextNumber(prefix: "@", in: listed), windowIndex: windowIndex,
+            windowName: command, pane: Self.nextNumber(prefix: "%", in: listed),
+            processID: nextProcessID, command: command, path: directory ?? "/", arguments: arguments)
+    }
+
+    private struct Invocation {
+        var hasN = false
+        var subcommand = ""
+        var target: String?
+        var directory: String?
+        var name: String?
+        var program: [String] = []
+    }
+
+    /// The exec line's tmux command. `-N` counts only before the subcommand,
+    /// and a rename's new name is the word after `-t`.
+    private static func invocation(of words: [String]) -> Invocation? {
+        let commands = ["new-window", "new-session", "rename-session", "kill-pane", "kill-window"]
+        guard let index = words.firstIndex(where: { commands.contains($0) }) else { return nil }
+        var parsed = Invocation(hasN: words[..<index].contains("-N"), subcommand: words[index])
+        var cursor = index + 1
+        while cursor < words.count {
+            let word = words[cursor]
+            if word == "--" {
+                parsed.program = Array(words[(cursor + 1)...])
+                break
+            }
+            switch word {
+            case "-t", "-c", "-s":
+                guard cursor + 1 < words.count else { return parsed }
+                let value = words[cursor + 1]
+                switch word {
+                case "-t": parsed.target = value
+                case "-c": parsed.directory = value
+                case "-s": parsed.name = value
+                default: break
+                }
+                cursor += 2
+                if parsed.subcommand == "rename-session", word == "-t", cursor < words.count,
+                    !words[cursor].hasPrefix("-")
+                {
+                    parsed.name = words[cursor]
+                    cursor += 1
+                }
+            default:
+                cursor += 1
+            }
+        }
+        return parsed
+    }
+
+    /// The script tmux runs. A Linux start stores it in `__heeler_tmux_start`
+    /// as one single-quoted word, with each quote written `'\\''`.
+    private static func commandBody(_ script: String) -> String {
+        let marker = "__heeler_tmux_start="
+        guard let start = script.range(of: marker) else { return script }
+        var index = start.upperBound
+        guard index < script.endIndex, script[index] == "'" else { return script }
+        index = script.index(after: index)
+        var value = ""
+        while index < script.endIndex {
+            if script[index] == "'" {
+                let escaped = script.index(index, offsetBy: 4, limitedBy: script.endIndex)
+                if let escaped, script[index..<escaped] == "'\\''" {
+                    value.append("'")
+                    index = escaped
+                    continue
+                }
+                break
+            }
+            value.append(script[index])
+            index = script.index(after: index)
+        }
+        return value
+    }
+
+    private static func nextNumber(prefix: Character, in panes: [TmuxInventory.Pane]) -> Int {
+        let used = Set(panes.compactMap { pane -> Int? in
+            let id: String
+            switch prefix {
+            case "%": id = pane.paneID
+            case "@": id = pane.windowID
+            case "$": id = pane.sessionID
+            default: return nil
+            }
+            guard id.first == prefix else { return nil }
+            return Int(id.dropFirst())
+        })
+        var number = 0
+        while used.contains(number) { number += 1 }
+        return number
+    }
+
+    /// The first free decimal name, starting from how many sessions there are.
+    /// One session already listed is named `1`, and none is named `0`.
+    private static func numberedSessionName(in panes: [TmuxInventory.Pane]) -> String {
+        let used = Set(panes.map(\.sessionName))
+        var number = Set(panes.map(\.sessionID)).count
+        while used.contains(String(number)) { number += 1 }
+        return String(number)
+    }
+
+    private static func number(_ id: String) -> Int? {
+        guard let first = id.first, "$%@".contains(first) else { return nil }
+        return Int(id.dropFirst())
+    }
+
+    private static func failed(_ text: String) -> GitExecResult {
+        GitExecResult(stdout: Data(), stderr: Data(text.utf8), exitStatus: 1)
+    }
+
+    private static func succeeded(_ text: String) -> GitExecResult {
+        GitExecResult(stdout: Data(text.utf8), stderr: Data(), exitStatus: 0)
     }
 
     func runTmuxProbe(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
@@ -625,7 +880,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let socket = assigned("s")
         let name = assigned("n")
         let executable = asked.isEmpty ? loginExecutable : (executables[asked] == nil ? nil : asked)
-        var lines = ["", "\(nonce) tmux begin", "kernel \(kernel)"]
+        var lines = ["", "\(nonce) tmux begin", "kernel \(kernel)", "shell \(shell)"]
         if let executable, let version = executables[executable] {
             lines += ["executable \(executable)", "version \(version)"]
         }

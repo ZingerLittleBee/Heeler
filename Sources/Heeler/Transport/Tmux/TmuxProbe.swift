@@ -29,6 +29,9 @@ enum TmuxProbe {
     struct Report: Equatable, Sendable {
         /// `uname -s`.
         var kernel: String?
+        /// `$SHELL` in the exec that asked, which for a stored-path probe is the
+        /// account's shell. Empty when the environment had none.
+        var shell: String?
         /// The absolute path of an executable named tmux, if there is one.
         var executable: String?
         /// The first line of `tmux -V`.
@@ -79,6 +82,7 @@ enum TmuxProbe {
             n=\(quoted(name))
             printf '\\n%s\\n' \(quoted(beginMarker(nonce)))
             printf 'kernel %s\\n' "$(uname -s 2>/dev/null)"
+            printf 'shell %s\\n' "${SHELL:-}"
             [ -n "$t" ] || t=$(command -v tmux 2>/dev/null)
             case $t in
             /*) [ -f "$t" ] && [ -x "$t" ] || t= ;;
@@ -142,6 +146,8 @@ enum TmuxProbe {
             }
             if let kernel = value("kernel") {
                 report.kernel = kernel
+            } else if let shell = value("shell") {
+                report.shell = shell
             } else if let executable = value("executable") {
                 report.executable = executable
             } else if let version = value("version") {
