@@ -495,7 +495,7 @@ final class BlockedCardStore {
                 return
             }
         }
-        guard var current = await observe() else {
+        guard var current = await observeBeforeActing() else {
             finish(notice: Self.unreadMessage)
             return
         }
@@ -720,7 +720,7 @@ final class BlockedCardStore {
     ) async -> Bool {
         progress = .acting
         notice = nil
-        guard let fresh = await observe() else {
+        guard let fresh = await observeBeforeActing() else {
             finish(notice: Self.unreadMessage)
             return false
         }
@@ -926,6 +926,15 @@ final class BlockedCardStore {
             if clock.now() >= deadline || Task.isCancelled { return (false, last) }
             try? await clock.sleep(timing.pollInterval)
         }
+    }
+
+    /// The read an answer starts from, tried once more when it fails: on a core it is
+    /// an observe attach whose first paint has a send step's 5 s, which a slow link
+    /// can miss. It reads only, and no key has gone yet, so nothing is sent twice.
+    private func observeBeforeActing() async -> DialogObservation? {
+        if let observation = await observe() { return observation }
+        guard !Task.isCancelled else { return nil }
+        return await observe()
     }
 
     /// A fresh read. While an idle Codex or Antigravity CLI, or an agy

@@ -2283,6 +2283,81 @@ struct BlockedCardStoreTests {
         #expect(await pane.reads == 0)
     }
 
+    // MARK: The read an answer starts from
+
+    /// agy's trust prompt Blocked with No, exit focused, its card shown, and the
+    /// screen Enter brings.
+    private static func agyTrustCard(on pane: FakePane) async throws -> BlockedCardStore {
+        await pane.react(to: ["enter"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .blocked)
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected agy's trust card, got \(store.content)")
+            return store
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+        return store
+    }
+
+    /// On a core, the read an answer starts from is an observe attach whose first
+    /// paint can miss its timeout over a slow link, as No, exit's first tap did. That
+    /// read is tried once more, and the answer goes.
+    @Test func anAnswerWhoseFirstReadFailsReadsOnceMore() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-11-trust-prompt-no-selected-62x41"))
+        let store = try await Self.agyTrustCard(on: pane)
+        let reads = await pane.reads
+        await pane.failNextReads(1)
+
+        await store.perform(.choose(ordinal: 2))
+
+        #expect(await pane.keys == [["enter"]])
+        #expect(store.notice == nil)
+        #expect(await pane.reads > reads + 1)
+    }
+
+    /// A second failed read refuses the answer as before, with no key sent.
+    @Test func anAnswerWhoseReadFailsTwiceSendsNothing() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-11-trust-prompt-no-selected-62x41"))
+        let store = try await Self.agyTrustCard(on: pane)
+        let reads = await pane.reads
+        await pane.failNextReads(2)
+
+        await store.perform(.choose(ordinal: 2))
+
+        #expect(await pane.keys.isEmpty)
+        #expect(store.notice == "Heeler couldn't read the Agent's screen, so nothing was sent.")
+        #expect(await pane.reads == reads + 2)
+        #expect(store.progress == .ready)
+        guard case .card = store.content else {
+            Issue.record("Expected the trust card to stay, got \(store.content)")
+            return
+        }
+    }
+
+    /// A form's answers start from the same read.
+    @Test func aFormWhoseFirstReadFailsReadsOnceMore() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-44-ask-question-multi-120x40"))
+        await pane.react(to: ["2"], with: try ScreenFixture.screen("agy-45-ask-question-multi-q2-120x40"))
+        await pane.react(to: ["esc"], with: try ScreenFixture.screen("agy-46-ask-question-multi-after-esc-120x40"))
+        let store = try await Self.agyColorAndSeasonForm(on: pane)
+        await pane.failNextReads(1)
+
+        await store.submit([.option(1), .skipped])
+
+        #expect(await pane.keys == [["2"], ["esc"]])
+        #expect(store.notice == nil)
+
+        let refused = FakePane(try ScreenFixture.screen("agy-44-ask-question-multi-120x40"))
+        let again = try await Self.agyColorAndSeasonForm(on: refused)
+        await refused.failNextReads(2)
+
+        await again.submit([.option(1), .skipped])
+
+        #expect(await refused.keys.isEmpty)
+        #expect(again.notice == "Heeler couldn't read the Agent's screen, so nothing was sent.")
+    }
+
     /// An agy store whose reads show `screen` once `gate`, if any, opens,
     /// with sleeps that wait for `clock` to advance.
     private static func agyReading(
@@ -2616,6 +2691,7 @@ private actor FakePane {
     private(set) var pastes: [String] = []
     private(set) var reads = 0
     private var failsReads = false
+    private var readsLeftToFail = 0
 
     init(_ screen: ANSIScreen) {
         self.screen = screen
@@ -2624,7 +2700,17 @@ private actor FakePane {
     func read() throws -> ANSIScreen {
         reads += 1
         if failsReads { throw TransportError.channelFailed(detail: "timed out") }
+        if readsLeftToFail > 0 {
+            readsLeftToFail -= 1
+            throw TransportError.channelFailed(detail: "timed out")
+        }
         return screen
+    }
+
+    /// The next `count` reads throw, as a core's first paint that missed its
+    /// timeout does.
+    func failNextReads(_ count: Int) {
+        readsLeftToFail = count
     }
 
     /// Every read throws, as a timed-out `agent.read` does, until called
