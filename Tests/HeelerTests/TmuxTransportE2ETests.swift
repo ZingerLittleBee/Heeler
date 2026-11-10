@@ -385,7 +385,7 @@ struct TmuxTransportE2ETests {
 
     /// A Console over the fixture, on a device of its own.
     @MainActor
-    private func console(over fixture: TmuxSSHFixture, on defaults: UserDefaults) throws -> (ConsoleStore, Host) {
+    func console(over fixture: TmuxSSHFixture, on defaults: UserDefaults) throws -> (ConsoleStore, Host) {
         let pace = Duration.milliseconds(200)
         let host = Host(
             address: fixture.configuration.host, port: Int(fixture.configuration.port),

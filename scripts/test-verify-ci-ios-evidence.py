@@ -83,7 +83,7 @@ def records(layout: str = "sharded", package: bool = False) -> list[dict]:
     direct = [method(evidence.DIRECT, index) for index in range(9)]
     weak = [method(evidence.WEAK, index) for index in range(11)]
     core = [method(evidence.CORE, index) for index in range(9)]
-    tmux = [method(evidence.TMUX, index) for index in range(11)]
+    tmux = [method(evidence.TMUX, index) for index in range(15)]
     shared = [method(suite, 0) for suite in sorted(evidence.SHARED)]
     shared += [method("HeelerSSHTransportBehaviorE2ETests", index) for index in range(1, 121)]
     skipped = copy.deepcopy(session + direct + shared + weak + core + tmux)
@@ -149,8 +149,8 @@ class AggregateTests(unittest.TestCase):
     def test_complete_sharded_union_matches_serial_including_parameter_cases(self):
         write_records(self.baseline, records("serial"))
         result = self.check(baseline=True)
-        self.assertEqual(result["passed_methods"], 948)
-        self.assertEqual(result["passed_cases"], 949)
+        self.assertEqual(result["passed_methods"], 952)
+        self.assertEqual(result["passed_cases"], 953)
         self.assertTrue(result["baseline_compared"])
 
     def test_one_missing_parameter_case_fails_despite_identical_method_and_summary_counts(self):
@@ -166,7 +166,7 @@ class AggregateTests(unittest.TestCase):
         self.values[-1]["tests"][0] = copy.deepcopy(parameterized)
         previous[-1]["tests"][0] = copy.deepcopy(parameterized)
         write_records(self.baseline, previous)
-        self.assertEqual(self.check(baseline=True, package=True)["passed_cases"], 1035)
+        self.assertEqual(self.check(baseline=True, package=True)["passed_cases"], 1039)
         self.values[-1]["tests"][0]["cases"].pop()
         with self.assertRaisesRegex(ValueError, "parameterized-case union differs"):
             self.check(baseline=True, package=True)
@@ -177,7 +177,7 @@ class AggregateTests(unittest.TestCase):
         self.values[-1]["tests"][0] = copy.deepcopy(parameterized)
         previous[-1]["tests"][0] = copy.deepcopy(parameterized)
         write_records(self.baseline, previous)
-        self.assertEqual(self.check(baseline=True)["passed_cases"], 950)
+        self.assertEqual(self.check(baseline=True)["passed_cases"], 954)
         self.values[-1]["tests"][0]["cases"].pop()
         with self.assertRaisesRegex(ValueError, "parameterized-case union differs"):
             self.check(baseline=True)
@@ -303,13 +303,13 @@ class AggregateTests(unittest.TestCase):
     def test_new_ordinary_methods_are_included_automatically_without_a_fixed_total(self):
         self.values[-1]["tests"].append(method("NewSuite", 0))
         self.values[-1]["summary"]["total"] += 1
-        self.assertEqual(self.check()["passed_methods"], 949)
+        self.assertEqual(self.check()["passed_methods"], 953)
 
     def test_package_is_required_when_requested_and_retains_its_contract(self):
         with self.assertRaisesRegex(ValueError, "Missing worker"):
             self.check(package=True)
         self.values = records(package=True)
-        self.assertEqual(self.check(package=True)["passed_methods"], 1033)
+        self.assertEqual(self.check(package=True)["passed_methods"], 1037)
 
     def test_package_cannot_drop_back_to_the_old_seventy_method_count(self):
         self.values = records(package=True)
