@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 
@@ -16,6 +17,19 @@ struct TmuxLaunchTests {
         }
         return paths
     }()
+
+    /// Characters a shell would split, expand, or substitute, plus non-ASCII.
+    /// Each one has to survive `/bin/sh` as the same bytes.
+    private static let userText = [
+        "a b",
+        "it's",
+        "say \"hi\"",
+        "$HOME",
+        "`date`",
+        "line\nbreak",
+        "日本語",
+        "😀",
+    ]
 
     private static let paneFormat = "#{pane_id} #{window_id}"
     private static let sessionFormat = "#{pane_id} #{window_id} #{session_id} #{session_name}"
@@ -297,6 +311,75 @@ struct TmuxLaunchTests {
         #expect(text(window) == script("exec \"$t\" -N -S \"$s\" kill-window -t @4"))
     }
 
+    // MARK: Quoting
+
+    @Test(arguments: userText)
+    func anAgentArgumentRoundTrips(_ value: String) throws {
+        let command = try TmuxLaunch.agentWindow(
+            AgentLaunchRequest(
+                kind: "tool", name: "tool", arguments: [value], workspaceID: "$0", cwd: "/work"),
+            on: server())
+        let argv = try Self.posixArgv(of: command)
+        let found = try #require(argv.last)
+        #expect(found == Data(value.utf8))
+    }
+
+    @Test(arguments: userText)
+    func anEnvironmentValueRoundTrips(_ value: String) throws {
+        let command = try TmuxLaunch.agentWindow(
+            AgentLaunchRequest(
+                kind: "tool", name: "tool", workspaceID: "$0", cwd: "/work",
+                environment: ["HEELER_TEST": value]),
+            on: server())
+        let argv = try Self.posixArgv(of: command)
+        #expect(argv.contains(Data("HEELER_TEST=\(value)".utf8)))
+    }
+
+    @Test(arguments: userText)
+    func aWorkspaceNameRoundTrips(_ value: String) throws {
+        let command = try TmuxLaunch.shellSession(
+            NewWorkspaceSpec(directory: "/work", label: value), on: server())
+        let argv = try Self.posixArgv(of: command)
+        #expect(try #require(Self.argument(argv, after: "-s")) == Data(value.utf8))
+    }
+
+    @Test(arguments: userText + ["-x", "--", "-t other"])
+    func aRenameLabelRoundTrips(_ value: String) throws {
+        let command = TmuxLaunch.renameSession(id: "$0", label: value, paths: Self.paths)
+        let argv = try Self.posixArgv(of: command)
+        #expect(try #require(Self.argument(argv, after: "--")) == Data(value.utf8))
+    }
+
+    @Test(arguments: userText + ["docs 日本語"])
+    func aWorkingDirectoryRoundTrips(_ directory: String) throws {
+        let command = try TmuxLaunch.shellWindow(
+            ShellTerminalCreationRequest(workspaceID: "$0", cwd: directory), on: server())
+        let argv = try Self.posixArgv(of: command)
+        #expect(try #require(Self.argument(argv, after: "-c")) == Data(directory.utf8))
+    }
+
+    /// The Linux start stores the whole script in one quoted assignment and
+    /// runs it through `$SHELL -lic`. A stand-in shell skips the login files.
+    @Test func theLoginShellStartRoundTripsUserText() throws {
+        let argument = "it's $HOME `x`\n日本語 😀"
+        let environment = "say \"hi\" $HOME"
+        let name = "work `name`\n日本語"
+        let directory = "docs 日本語"
+        let command = try TmuxLaunch.agentSession(
+            AgentLaunchRequest(
+                kind: "tool", name: "tool", arguments: [argument],
+                environment: ["HEELER_TEST": environment]),
+            workspace: NewWorkspaceSpec(directory: directory, label: name),
+            on: server(kernel: "Linux", running: false))
+        #expect(command.throughLoginShell)
+        let argv = try Self.posixArgv(of: command)
+        #expect(try #require(Self.argument(argv, after: "-s")) == Data(name.utf8))
+        #expect(try #require(Self.argument(argv, after: "-c")) == Data(directory.utf8))
+        #expect(argv.contains(Data("HEELER_TEST=\(environment)".utf8)))
+        #expect(argv.last == Data(argument.utf8))
+        #expect(!argv.contains(Data("-N".utf8)))
+    }
+
     // MARK: What tmux prints
 
     @Test func createdReadsThePrintedIds() {
@@ -307,5 +390,120 @@ struct TmuxLaunchTests {
             TmuxLaunch.created(from: Data("%3 @2 $1 My Work\n".utf8))
                 == TmuxLaunch.Created(paneID: "%3", windowID: "@2", sessionID: "$1", sessionName: "My Work"))
         #expect(TmuxLaunch.created(from: Data("not a pane\n".utf8)) == nil)
+    }
+
+    /// Runs the real script under `/bin/sh` with the tmux executable replaced
+    /// by a printer. Each argument is `printf '%s'`, so a newline stays inside
+    /// one word. A login script gets a `SHELL` that ignores `-lic`.
+    private static func posixArgv(of command: TmuxLaunch.Command) throws -> [Data] {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("heeler-quote-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let out = root.appendingPathComponent("argv", isDirectory: true)
+        try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        let printer = root.appendingPathComponent("printer")
+        guard !printer.path.contains("'"), !printer.path.contains(paths.executable) else {
+            throw ShellRoundTrip.unquotablePath
+        }
+        try Data(
+            """
+            #!/bin/sh
+            if [ -z "$HEELER_ARGV_DIR" ]; then
+              exit 97
+            fi
+            n=0
+            for arg do
+              printf '%s' "$arg" > "$HEELER_ARGV_DIR/$n" || exit 98
+              n=$((n + 1))
+            done
+            """.utf8
+        ).write(to: printer)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: printer.path)
+
+        var environment = ["HEELER_ARGV_DIR": out.path]
+        if command.throughLoginShell {
+            let shell = root.appendingPathComponent("shell")
+            try Data("#!/bin/sh\nshift\nexec /bin/sh -c \"$1\"\n".utf8).write(to: shell)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shell.path)
+            environment["SHELL"] = shell.path
+        }
+
+        let executable = paths.executable
+        var script = String(decoding: command.script, as: UTF8.self)
+        guard script.contains(executable) else { throw ShellRoundTrip.missingExecutable }
+        script = script.replacingOccurrences(of: executable, with: printer.path)
+        guard !script.contains(executable) else { throw ShellRoundTrip.missingExecutable }
+        let scriptFile = root.appendingPathComponent("launch.sh")
+        try Data(script.utf8).write(to: scriptFile)
+
+        let status = try spawn(program: "/bin/sh", arguments: [scriptFile.path], environment: environment)
+        guard status == 0 else { throw ShellRoundTrip.exit(status) }
+
+        let names = try FileManager.default.contentsOfDirectory(at: out, includingPropertiesForKeys: nil)
+        return try names.sorted {
+            (Int($0.lastPathComponent) ?? 0) < (Int($1.lastPathComponent) ?? 0)
+        }.map { try Data(contentsOf: $0) }
+    }
+
+    private static func argument(_ argv: [Data], after flag: String) -> Data? {
+        let marker = Data(flag.utf8)
+        guard let index = argv.firstIndex(of: marker) else { return nil }
+        let next = argv.index(after: index)
+        guard next < argv.endIndex else { return nil }
+        return argv[next]
+    }
+
+    private static func spawn(program: String, arguments: [String], environment: [String: String]) throws -> Int32 {
+        var merged = ProcessInfo.processInfo.environment
+        for (key, value) in environment { merged[key] = value }
+        var pid: pid_t = 0
+        let code = try withCStrings([program] + arguments) { argv in
+            try withCStrings(merged.map { "\($0.key)=\($0.value)" }) { envp in
+                posix_spawn(&pid, program, nil, nil, argv, envp)
+            }
+        }
+        guard code == 0 else { throw ShellRoundTrip.spawn(code) }
+        var raw: Int32 = 0
+        guard waitpid(pid, &raw, 0) == pid else { throw ShellRoundTrip.wait }
+        guard raw & 0x7f == 0 else { throw ShellRoundTrip.exit(raw) }
+        return (raw >> 8) & 0xff
+    }
+
+    private static func withCStrings(
+        _ values: [String], _ body: (UnsafePointer<UnsafeMutablePointer<CChar>?>) throws -> Int32
+    ) throws -> Int32 {
+        let allocated: [UnsafeMutablePointer<CChar>] = try values.map { value in
+            try value.withCString { pointer in
+                guard let copy = strdup(pointer) else { throw ShellRoundTrip.spawn(Int32(ENOMEM)) }
+                return copy
+            }
+        }
+        defer { allocated.forEach { free($0) } }
+        var pointers: [UnsafeMutablePointer<CChar>?] = allocated
+        pointers.append(nil)
+        return try pointers.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { throw ShellRoundTrip.spawn(Int32(EINVAL)) }
+            return try body(base)
+        }
+    }
+
+    private enum ShellRoundTrip: Error, CustomStringConvertible {
+        case spawn(Int32)
+        case wait
+        case exit(Int32)
+        case unquotablePath
+        case missingExecutable
+
+        var description: String {
+            switch self {
+            case .spawn(let code): "posix_spawn failed (\(code))"
+            case .wait: "waitpid failed"
+            case .exit(let code): "shell exited \(code)"
+            case .unquotablePath: "printer path is not a single safe word"
+            case .missingExecutable: "script is missing the tmux executable path"
+            }
+        }
     }
 }
