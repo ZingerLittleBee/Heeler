@@ -420,6 +420,43 @@ struct ChatStopPlanTests {
         #expect(!keys.isRunningQueuedWork)
     }
 
+    /// The follow-through ends in the job it returns in, not once Stop's
+    /// await resumes a job later: a Send in between was held for work
+    /// already over, and its notice ended unseen, so it did nothing visible
+    /// (live, about 30 ms after Stop's last Esc).
+    @Test(arguments: [ComposerRoute.chat, .terminal])
+    func aSendAsTheFollowThroughReturnsGoes(route: ComposerRoute) async throws {
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1", initialStatus: .idle) { params in
+            try await transport.promptAgent(params)
+        }
+        let session = AgentComposerSession(composer: composer)
+        let policy =
+            route == .chat
+            ? ComposerDeliveryPolicy(
+                route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 }, validate: { _ in nil },
+                preflight: { _ in session.heldSend() }, verify: nil)
+            : session.terminalSendPolicy(attach: nil)
+        let order = StopRecorder()
+        var send: Task<AgentComposerStore.SendResult, Never>?
+        composer.replaceDraft(with: "and the tests")
+
+        await session.agentKeys.afterQueued {
+            // Queued now, so it runs once this returns and before Stop's await resumes.
+            send = Task {
+                order.events.append("send")
+                return await composer.send(policy: policy)
+            }
+        }
+        order.events.append("stop resumed")
+        let result = try #require(await send?.value)
+
+        #expect(order.events.first == "send", "the Send should come in the gap")
+        #expect(result == .deliveredViaPrompt)
+        #expect(await transport.agentPromptParams.map(\.text) == ["and the tests"])
+        #expect(composer.notice == nil)
+    }
+
     /// agy is Idle while the follow-through types, so no status change
     /// ended the held send's notice, which stayed after it until the draft
     /// changed (live). It ends with the work; a notice for another reason,

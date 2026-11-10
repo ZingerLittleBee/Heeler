@@ -74,26 +74,34 @@ final class ChatAgentKeysStore {
     /// queued after it until it ends: work that types over several screens,
     /// such as Antigravity CLI's Stop ending a turn's background commands,
     /// where a second Stop's Esc must not land halfway.
+    ///
+    /// The work ends in the main-actor job `work` returns in. The caller
+    /// resumes a job later, and a send in between was held for work already
+    /// over (live, about 30 ms after Stop's last Esc).
     func afterQueued<Result: Sendable>(_ work: @escaping @MainActor () async -> Result) async -> Result {
         queuedWork += 1
-        defer {
-            queuedWork -= 1
-            if queuedWork == 0 {
-                let ended = whenQueuedWorkEnds
-                whenQueuedWorkEnds = []
-                for action in ended { action() }
-            }
-        }
         let previous = tail
-        let task = Task { @MainActor in
+        let task = Task { @MainActor [self] in
             _ = await previous?.value
-            return await work()
+            let result = await work()
+            queuedWorkDidEnd()
+            return result
         }
         tail = Task { @MainActor in
             _ = await task.value
             return .sent
         }
         return await task.value
+    }
+
+    /// One piece of queued work ended; once none is left, what waits for
+    /// that runs.
+    private func queuedWorkDidEnd() {
+        queuedWork -= 1
+        guard queuedWork == 0 else { return }
+        let ended = whenQueuedWorkEnds
+        whenQueuedWorkEnds = []
+        for action in ended { action() }
     }
 
     private func enqueue(
