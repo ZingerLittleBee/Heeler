@@ -6,6 +6,18 @@ import SwiftUI
 struct ChatCandidatePickerView: View {
     static let title = "Choose a Conversation"
 
+    /// Why a list is empty. Antigravity CLI's list never holds its directory's
+    /// conversations, since agy files them by ID (ADR 0034), so it cannot say the
+    /// directory has none.
+    static func emptyListDescription(for program: ChatProgram) -> String {
+        switch program {
+        case .agy:
+            "Antigravity CLI keeps conversations by ID, not by directory, so Chat can offer only one this Agent holds open or names on its command line, and this Agent does neither."
+        case .claude, .codex, .pi, .omp, .grok, .opencode:
+            "This Agent's directory has no recent conversations, and its process holds none open."
+        }
+    }
+
     let chat: AgentChatStore
     let corePin: TerminalCorePin
 
@@ -46,7 +58,7 @@ struct ChatCandidatePickerView: View {
         case .listed(let list) where list.candidates.isEmpty:
             ContentUnavailableView(
                 "No Conversations Found", systemImage: "bubble.left.and.bubble.right",
-                description: Text("This Agent's directory has no recent conversations, and its process holds none open."))
+                description: Text(Self.emptyListDescription(for: chat.program)))
         case .listed(let list):
             List {
                 Section {

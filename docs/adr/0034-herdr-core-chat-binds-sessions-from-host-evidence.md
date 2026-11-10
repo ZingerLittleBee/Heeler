@@ -187,7 +187,8 @@ never show or send into a conversation it has guessed.
   a check does, then the listings it takes: a directory's folder, or for OpenCode
   a read-only query of its roots there, whose store problem replaces the list, and for Codex the heads of its newest
   rollouts, up to 24, since Codex files by day. Antigravity CLI files by id and
-  lists no folder; it takes one stat of each listed conversation's transcript,
+  lists no folder, so its empty list says why rather than that the folder has
+  none (#644); it takes one stat of each listed conversation's transcript,
   for the row's date, and a failed stat leaves that row undated. A process walk
   past its cap lists nothing, because a launcher would pass for the Agent and a daemon under it would
   go unseen. A Status child is listed only when

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Heeler
@@ -493,6 +494,43 @@ struct HerdrCoreProgramChatTests {
             chat.conversation.phase == .unavailable(.noConversationYet(.agy))
         }
         #expect(await chat.confirmSessionBeforeSend() == nil)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// `agy -c` resumed a conversation another agy holds and, past the about 30 s it
+    /// holds that conversation's database, has nothing of it open, and its command line
+    /// names no ID. agy files conversations by ID, so the list is empty however many
+    /// the directory has, and it says why rather than that the directory has none.
+    @Test func anEmptyAntigravityCLIListSaysWhyRatherThanThatTheDirectoryHasNone() async throws {
+        let argv = ["agy", "-c"]
+        let rig = Rig(host: host, record: Self.record(foreground: argv, name: "agy", app: "antigravity"), offering: [.agy])
+        try await rig.start([
+            Self.process(name: "agy", environment: [:], argv: argv, files: ["\(Self.agyRoot)/log/cli-20261110_062102.log"])
+        ])
+        let chat = try rig.chat(.agy)
+        chat.show()
+        try await rig.waitUntil("Chat to say it can't tell") {
+            chat.conversation.phase == .unavailable(.cannotTellSession(.agy))
+        }
+        #expect(chat.offersCandidates)
+        let controller = UIHostingController(
+            rootView: ChatCandidatePickerView(chat: chat, corePin: TerminalCorePin(joined: "c1")))
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try await rig.waitUntil("the empty list") {
+                if case .listed(let list) = chat.candidates { list.candidates.isEmpty } else { false }
+            }
+            try await rig.waitUntil("its reason") {
+                AccessibilityProbe.labels(in: controller.view).contains { $0.contains("by ID, not by directory") }
+            }
+            #expect(
+                !AccessibilityProbe.labels(in: controller.view).contains {
+                    $0.contains("directory has no recent conversations")
+                })
+        }
         chat.end()
         rig.store.setHosts([])
     }
