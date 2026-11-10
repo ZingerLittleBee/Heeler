@@ -94,6 +94,10 @@ struct SSHTransportSettings: Sendable {
     var serverKind: ServerKind = .herdrTUI
     /// Core's session name; its default session is named "default".
     var coreSessionName = "default"
+    /// A tmux Host's socket name, and the paths resolved for it earlier, if any
+    /// (ADR 0042).
+    var tmuxSocketName = TmuxSocketName.defaultName
+    var tmuxPaths: TmuxPaths?
     /// The launcher of the Host's herdr endpoint (Pairing Code v2, ADR 0023).
     /// When set, the session list, plugin list, and plugin config-dir
     /// commands are its builders, and the wake and attach execs run it in

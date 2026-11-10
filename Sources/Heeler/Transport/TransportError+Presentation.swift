@@ -220,6 +220,25 @@ extension TransportError {
                 summary: String(localized: "This session name can't be used"),
                 detail: Self.droppingTrailingPeriods(reason),
                 recoverySuggestion: String(localized: "Edit the Host's session name."))
+        case .tmuxNotInstalled:
+            TransportErrorPresentation(
+                summary: String(localized: "tmux is not installed"),
+                detail: String(localized: "Your login shell on the Host finds no tmux"),
+                recoverySuggestion:
+                    String(localized: "Install tmux \(TmuxVersion.minimum) or newer on the Host, then check again."))
+        case .tmuxUpdateRequired(let version):
+            TransportErrorPresentation(
+                summary: String(localized: "Update required"),
+                detail: String(localized:
+                    "The Host has tmux \(version), and Heeler needs \(TmuxVersion.minimum) or newer"),
+                recoverySuggestion: String(localized: "Update tmux on the Host, then check again."))
+        case .tmuxServerNotRunning(let socketName):
+            TransportErrorPresentation(
+                summary: String(localized: "No tmux server running"),
+                detail: socketName == TmuxSocketName.defaultName
+                    ? String(localized: "No tmux server answers on the default socket")
+                    : String(localized: "No tmux server answers on the socket \"\(socketName)\""),
+                recoverySuggestion: String(localized: "Start tmux on the Host. Heeler keeps checking."))
         case .gitTimedOut:
             TransportErrorPresentation(
                 summary: String(localized: "Reading Changes timed out"),

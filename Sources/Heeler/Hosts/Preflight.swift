@@ -5,6 +5,12 @@ import Foundation
 /// ping exercises the whole chain, so a run fails at exactly one check —
 /// everything before it demonstrably worked, everything after it is unknown.
 enum PreflightCheck: CaseIterable, Sendable {
+    /// The checks a Host of this kind runs, in order. A tmux Host speaks no
+    /// protocol of Heeler's: its version is part of being installed.
+    static func cases(for serverKind: ServerKind) -> [PreflightCheck] {
+        serverKind == .tmux ? allCases.filter { $0 != .protocolCompatible } : allCases
+    }
+
     /// SSH reachable, credentials accepted, host key trusted.
     case connection
     /// The login shell exposes a usable absolute home directory.
@@ -168,6 +174,14 @@ struct PreflightReport: Equatable, Sendable {
             hint = error.presentation.message
         case .herdrCoreUpdateRequired:
             check = .protocolCompatible
+            hint = error.presentation.message
+        case .tmuxNotInstalled, .tmuxUpdateRequired:
+            // The version is read before any server is asked, so a tmux Heeler
+            // cannot use fails where a missing one does.
+            check = .herdrInstalled
+            hint = error.presentation.message
+        case .tmuxServerNotRunning:
+            check = .serverRunning
             hint = error.presentation.message
         case .gitTimedOut:
             // Preflight never reads Changes; keep the closed taxonomy total.

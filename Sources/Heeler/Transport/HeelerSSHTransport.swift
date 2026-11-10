@@ -3779,6 +3779,19 @@ extension HeelerSSHTransport: ServerKindDetectionConnection {
     }
 }
 
+// MARK: - What a tmux Host uses of this connection
+extension HeelerSSHTransport: TmuxHostConnection {
+    /// One bounded exec. A probe through the login shell gets room for its
+    /// startup files; one with stored paths asks tmux alone.
+    func runTmuxProbe(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: String(localized: "tmux Hosts"),
+            deadline: throughLoginShell ? .seconds(26) : .seconds(14),
+            remoteSeconds: throughLoginShell ? 20 : 10,
+            timeoutMarkerPrefix: "__HEELER_TMUX_PROBE_TIMEOUT_", timedOut: .timedOut)
+    }
+}
+
 // MARK: - What the Host Helper uses of this connection
 extension HeelerSSHTransport: HostHelperHost {
     /// One bounded exec, long enough for the Node.js search's login shell.

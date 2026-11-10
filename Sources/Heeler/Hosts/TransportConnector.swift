@@ -10,6 +10,10 @@ protocol TransportConnector: Sendable {
     /// transport, and connecting starts no core (ADR 0031).
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport
 
+    /// Dials a tmux Host. It reaches SSH and the tmux command-line client and
+    /// nothing else, and connecting starts no server (ADR 0042).
+    func connectTmux(settings: SSHTransportSettings) async throws -> any TmuxTransport
+
     /// Dials an unconfirmed Host for the one exec that detects its Server Kind.
     /// It reaches SSH and nothing past it, so no server starts (ADR 0031).
     func connectForDetection(
@@ -27,6 +31,10 @@ extension TransportConnector {
     /// A connector that serves only Herdr TUI Hosts says so.
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "herdr-core Hosts"))
+    }
+
+    func connectTmux(settings: SSHTransportSettings) async throws -> any TmuxTransport {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "tmux Hosts"))
     }
 }
 
@@ -56,6 +64,12 @@ struct SSHTransportConnector: TransportConnector {
         HerdrCoreSSHTransport(
             connection: try await HeelerSSHTransport.connect(settings: settings),
             session: settings.coreSessionName)
+    }
+
+    func connectTmux(settings: SSHTransportSettings) async throws -> any TmuxTransport {
+        TmuxSSHTransport(
+            connection: try await HeelerSSHTransport.connect(settings: settings),
+            socketName: settings.tmuxSocketName, storedPaths: settings.tmuxPaths)
     }
 }
 
@@ -99,6 +113,8 @@ extension SSHTransportSettings {
             socket: host.socketLocation)
         serverKind = host.serverKind
         coreSessionName = HerdrCoreSessionName.normalized(host.sessionName)
+        tmuxSocketName = host.tmuxSocketName
+        tmuxPaths = host.storedTmuxPaths
         // A Pairing Code v2 endpoint (ADR 0023) replaces the `herdr` on the
         // SSH PATH for every herdr exec; `socket` already names its socket.
         if let endpoint = host.herdrEndpoint,

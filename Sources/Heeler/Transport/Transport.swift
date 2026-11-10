@@ -1043,6 +1043,14 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// Terminal and the Host now serves another, whose Terminal has that address.
     /// Unlike `.herdrCoreInventoryStale` no snapshot mends it (ADR 0031).
     case herdrCoreTerminalGone
+    /// The Host's login shell finds no program that says it is tmux (ADR 0042).
+    case tmuxNotInstalled
+    /// The Host's tmux is older than `TmuxVersion.minimum`. `version` is the one
+    /// found. Never retried: the same tmux gives the same answer.
+    case tmuxUpdateRequired(version: String)
+    /// No tmux server answers on the Host's socket. Connecting never starts one,
+    /// and the user starting one is all it takes, so it is retried.
+    case tmuxServerNotRunning(socketName: String)
     /// A Chat transcript operation exceeded its own deadline. Like
     /// `.gitTimedOut` this says nothing about link health: a slow file read
     /// over a weak link must not redial the Host and rebuild its terminals.
@@ -1085,7 +1093,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
         // A rejection is retryable because herdr's error codes are open-ended
         // and most of them describe a target that moved, not a broken setup.
         case .sshUnreachable, .timedOut, .cancelled, .channelFailed,
-            .attachExited, .apiRejected, .herdrCoreNotRunning, .herdrCoreInventoryStale:
+            .attachExited, .apiRejected, .herdrCoreNotRunning, .herdrCoreInventoryStale,
+            .tmuxServerNotRunning:
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,
@@ -1097,6 +1106,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .herdrCoreNotInstalled, .herdrCoreUpdateRequired, .herdrCoreSocketPathTooLong,
             .herdrCoreSessionNameRefused,
             .herdrCoreForwardingRefused, .herdrCoreTerminalGone,
+            .tmuxNotInstalled, .tmuxUpdateRequired,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:
