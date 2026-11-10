@@ -135,6 +135,28 @@ struct ConsoleProjectionInputTests {
         #expect(!replacement.stopped)
         #expect(rig.projection.liveAtStop === replacement)
     }
+
+    @Test func anOfferedChatTypingReplacesThePaneScreen() async throws {
+        let rig = makeRig(offersSend: false, kind: "claude", offersChatTyping: true)
+        defer { rig.store.setHosts([]) }
+        let chat = try #require(rig.store.chatStore(for: rig.agent, program: .claude))
+
+        let screen = try await chat.screenIO.readScreen()
+
+        #expect(screen.rows.first?.text == "offered")
+        #expect(rig.projection.screenReads == 0)
+    }
+
+    @Test func aProjectionWithoutChatTypingReadsThePane() async throws {
+        let rig = makeRig(offersSend: false, kind: "claude")
+        defer { rig.store.setHosts([]) }
+        let chat = try #require(rig.store.chatStore(for: rig.agent, program: .claude))
+
+        let screen = try await chat.screenIO.readScreen()
+
+        #expect(screen.rows.first?.text == "host")
+        #expect(rig.projection.screenReads == 1)
+    }
 }
 
 // MARK: - Rig
@@ -156,10 +178,12 @@ private final class InstalledProjection {
 
 @MainActor
 private func makeRig(
-    offersSend: Bool, kind: String = "shell", stop: ScriptedInputProjection.Stop = .none
+    offersSend: Bool, kind: String = "shell", stop: ScriptedInputProjection.Stop = .none,
+    offersChatTyping: Bool = false
 ) -> InputRig {
     let host = Host.fixture()
-    let projection = ScriptedInputProjection(host: host, offersSend: offersSend, stop: stop)
+    let projection = ScriptedInputProjection(
+        host: host, offersSend: offersSend, stop: stop, offersChatTyping: offersChatTyping)
     let agent = ConsoleAgent(
         hostID: host.id, hostName: host.displayName,
         agent: Agent(.fixture(paneID: "w1:p1", kind: kind)),
@@ -178,8 +202,8 @@ private func makeRig(
         store: store, host: host, agent: agent, projection: projection, installed: installed)
 }
 
-/// A Host projection with no Server Kind of its own. It offers checked Send
-/// and terminal Stop when asked, and records `promptAgent` and Esc otherwise.
+/// A Host projection with no Server Kind of its own. It offers checked Send,
+/// terminal Stop and Chat typing when asked, and records the plain paths.
 @MainActor
 private final class ScriptedInputProjection: ConsoleHostProjection {
     enum Stop {
@@ -191,11 +215,13 @@ private final class ScriptedInputProjection: ConsoleHostProjection {
     var host: Host
     let offersSend: Bool
     let stop: Stop
+    let offersChatTyping: Bool
     var sent: [String] = []
     var prompted: [String] = []
     var liveAtSend: (any ConsoleHostProjection)?
     var stopped = false
     var liveAtStop: (any ConsoleHostProjection)?
+    var screenReads = 0
 
     var status: EventsSessionStatus? = .connected
     var standingFailure: TransportError?
@@ -213,10 +239,11 @@ private final class ScriptedInputProjection: ConsoleHostProjection {
     var sidebarRevision: UInt64 = 0
     var terminalLabelKeys: [String] = []
 
-    init(host: Host, offersSend: Bool, stop: Stop = .none) {
+    init(host: Host, offersSend: Bool, stop: Stop = .none, offersChatTyping: Bool = false) {
         self.host = host
         self.offersSend = offersSend
         self.stop = stop
+        self.offersChatTyping = offersChatTyping
     }
 
     func checkedComposerSend(
@@ -251,6 +278,11 @@ private final class ScriptedInputProjection: ConsoleHostProjection {
                         return .sent
                     }))
         }
+    }
+
+    func checkedChatTyping(at _: String) -> (any CheckedChatTyping)? {
+        guard offersChatTyping else { return nil }
+        return ScriptedChatTyping(text: "offered")
     }
 
     func start(isActive _: Bool) {}
@@ -300,7 +332,10 @@ private final class ScriptedInputProjection: ConsoleHostProjection {
     func renameWorkspace(_: String, label _: String) async throws {}
     func agentInfo(paneID _: String) async throws -> Agent { throw TransportError.cancelled }
     func processInfo(paneID _: String) async throws -> PaneProcessInfo { throw TransportError.cancelled }
-    func readAgentScreen(_: String) async throws -> ANSIScreen { throw TransportError.cancelled }
+    func readAgentScreen(_: String) async throws -> ANSIScreen {
+        screenReads += 1
+        return InputScreen.row("host")
+    }
     func sendAgentKeys(_: [String], to _: String) async throws {}
     func pasteIntoAgent(_: String, paneID _: String) async throws {}
 
@@ -333,6 +368,29 @@ private final class ScriptedInputProjection: ConsoleHostProjection {
         _: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value {
         throw TransportError.cancelled
+    }
+}
+
+private enum InputScreen {
+    static func row(_ text: String) -> ANSIScreen {
+        ANSIScreen(rows: [
+            ScreenRow(
+                index: 0,
+                runs: [ScreenRun(text: text, style: .plain, column: 0, width: text.count)])
+        ])
+    }
+}
+
+@MainActor
+private final class ScriptedChatTyping: CheckedChatTyping {
+    let blockedScreen: BlockedScreenIO
+
+    init(text: String) {
+        let screen = InputScreen.row(text)
+        blockedScreen = BlockedScreenIO(
+            readScreen: { screen },
+            sendKeys: { _ in },
+            paste: { _ in })
     }
 }
 

@@ -1322,6 +1322,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         return .interrupt(interrupt)
     }
 
+    /// Chat's checked typing for this Pane (ADR 0035).
+    func checkedChatTyping(at paneID: String) -> (any CheckedChatTyping)? {
+        chatTyping(at: paneID)
+    }
+
     /// How Chat reads and types in a Terminal (ADR 0035), kept so the screen it
     /// last read is the one its keys are checked against.
     func chatTyping(at address: String) -> HerdrCoreChatTyping {

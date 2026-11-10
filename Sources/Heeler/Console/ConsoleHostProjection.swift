@@ -145,6 +145,10 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
         keepingTo corePin: TerminalCorePin,
         live: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> TerminalStopOffer?
+
+    /// How Chat types into this Pane, or nil to use `readAgentScreen`,
+    /// `sendAgentKeys` and `pasteIntoAgent`.
+    func checkedChatTyping(at paneID: String) -> (any CheckedChatTyping)?
 }
 
 /// What a checked Composer Send came to. The Composer shows each case itself.
@@ -172,6 +176,12 @@ protocol CheckedComposerSend: AnyObject {
 enum TerminalStopOffer {
     case keepSend
     case interrupt(AgentComposerInterrupt)
+}
+
+/// Chat's way into a Pane when the projection checks the typing itself.
+@MainActor
+protocol CheckedChatTyping: AnyObject {
+    var blockedScreen: BlockedScreenIO { get }
 }
 
 extension ConsoleHostProjection {
@@ -213,4 +223,6 @@ extension ConsoleHostProjection {
         keepingTo _: TerminalCorePin,
         live _: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> TerminalStopOffer? { nil }
+
+    func checkedChatTyping(at _: String) -> (any CheckedChatTyping)? { nil }
 }

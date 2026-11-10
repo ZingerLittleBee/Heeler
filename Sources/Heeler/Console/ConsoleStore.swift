@@ -909,8 +909,10 @@ final class ConsoleStore {
                     guard let self else { throw TransportError.cancelled }
                     try await self.pasteIntoAgent(text, paneID: paneID, on: hostID)
                 }))
+        if let typing = projections[hostID]?.checkedChatTyping(at: paneID) {
+            source.screen = typing.blockedScreen
+        }
         if let core {
-            source.screen = core.chatTyping(at: paneID).blockedScreen
             // No record names a session here.
             source.processInfo = nil
             source.coreScope = core.chatCacheScope
