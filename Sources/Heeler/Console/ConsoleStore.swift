@@ -822,10 +822,9 @@ final class ConsoleStore {
         return session
     }
 
-    /// The terminal Composer's Stop, or nil to keep Send. A core Agent has one
-    /// only while it is listed, so while it holds the foreground: a Terminal that
-    /// has ever reported keeps Esc as its interrupt key after its Agent exits, and
-    /// the shell left behind must not get it. `pressEsc` is Stop on any other Host.
+    /// The terminal Composer's Stop, or nil to keep Send. A projection that
+    /// supplies Stop says whether this Pane gets one. One that does not keeps
+    /// Esc, which Grok Build does not take. `pressEsc` is that Esc.
     func terminalInterrupt(
         for agent: ConsoleAgent,
         keepingTo corePin: TerminalCorePin? = nil,
@@ -833,16 +832,15 @@ final class ConsoleStore {
     ) -> AgentComposerInterrupt? {
         guard capabilities(for: agent.hostID).composerStop else { return nil }
         let hostID = agent.hostID
-        guard projections[hostID] is HerdrCoreConsoleProjection else {
-            return .terminal(forAgentKind: agent.agent.kind, pressEsc)
+        let pin = corePin ?? TerminalCorePin()
+        switch projections[hostID]?.checkedTerminalStop(
+            for: agent.agent.paneID, keepingTo: pin,
+            live: { [weak self] in self?.projections[hostID] }
+        ) {
+        case .interrupt(let interrupt): return interrupt
+        case .keepSend: return nil
+        case nil: return .terminal(forAgentKind: agent.agent.kind, pressEsc)
         }
-        guard let listed = agents.first(where: { $0.id == agent.id }) else { return nil }
-        let stop = HerdrCoreComposerStop(
-            address: listed.agent.paneID,
-            projection: { [weak self] in self?.projections[hostID] as? HerdrCoreConsoleProjection },
-            corePin: corePin ?? TerminalCorePin(),
-            clock: coreStopClock)
-        return .coreTerminal(forAgentKind: listed.agent.kind) { await stop.perform() }
     }
 
     func composerStore(for agent: ConsoleAgent) -> AgentComposerStore {
@@ -1447,6 +1445,7 @@ final class ConsoleStore {
                         isNativeWindows: { [weak self] in
                             self?.capabilities(for: host.id).isNativeWindowsCore == true
                         },
+                        stopClock: coreStopClock,
                         onSeenMarksChanged: { [weak self, id = host.id] core, marks in
                             self?.onCoreSeenMarksChanged?(id, core, marks)
                         },

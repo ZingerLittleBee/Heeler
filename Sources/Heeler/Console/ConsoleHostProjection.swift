@@ -136,6 +136,15 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
         keepingTo corePin: TerminalCorePin,
         live: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> (any CheckedComposerSend)?
+
+    /// Terminal Stop for this Pane. Nil means this projection does not supply
+    /// Stop, so the caller uses Esc. `.keepSend` means it does, and this Pane
+    /// gets none. `live` is the Host's projection when Stop runs.
+    func checkedTerminalStop(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> TerminalStopOffer?
 }
 
 /// What a checked Composer Send came to. The Composer shows each case itself.
@@ -156,6 +165,13 @@ protocol CheckedComposerSend: AnyObject {
     func send(
         _ text: String, route: ComposerRoute, attach: AgentAttachStore?
     ) async -> CheckedSendOutcome
+}
+
+/// A projection's terminal Stop for one Pane. `.keepSend` is a Pane that gets
+/// none, which is different from a projection that does not supply Stop at all.
+enum TerminalStopOffer {
+    case keepSend
+    case interrupt(AgentComposerInterrupt)
 }
 
 extension ConsoleHostProjection {
@@ -191,4 +207,10 @@ extension ConsoleHostProjection {
         keepingTo _: TerminalCorePin,
         live _: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> (any CheckedComposerSend)? { nil }
+
+    func checkedTerminalStop(
+        for _: String,
+        keepingTo _: TerminalCorePin,
+        live _: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> TerminalStopOffer? { nil }
 }

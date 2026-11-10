@@ -119,6 +119,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private let chatTypingClock: BlockedCardClock
     /// Whether Send should treat the Host as native Windows, read when a step runs.
     private let isNativeWindows: @MainActor () -> Bool
+    private let stopClock: BlockedCardClock
     private var chatTypings: [String: HerdrCoreChatTyping] = [:]
     /// What the last `herdr-app status` on this link said.
     private var isDesktopAppRunning = false
@@ -137,6 +138,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         herdrAppRename: Bool,
         chatTypingClock: BlockedCardClock = .live,
         isNativeWindows: @escaping @MainActor () -> Bool,
+        stopClock: BlockedCardClock = .live,
         onSeenMarksChanged: @escaping @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void = { _, _ in },
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
@@ -149,6 +151,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         self.herdrAppRename = herdrAppRename
         self.chatTypingClock = chatTypingClock
         self.isNativeWindows = isNativeWindows
+        self.stopClock = stopClock
         self.onSeenMarksChanged = onSeenMarksChanged
         self.onChange = onChange
     }
@@ -1295,6 +1298,28 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             corePin: corePin,
             clock: chatTypingClock,
             isOnWindows: isNativeWindows)
+    }
+
+    /// Terminal Stop while this Agent holds the foreground. An unlisted Pane is
+    /// the shell a Terminal kept after its Agent exited, and that shell must not
+    /// take the Agent's stop key. Grok Build keeps Send: the core's key would be
+    /// Esc, which only shows a toast. `live` follows a projection replaced after
+    /// the Composer was opened.
+    func checkedTerminalStop(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> TerminalStopOffer? {
+        guard let listed = agentsByPane[paneID] else { return .keepSend }
+        let stop = HerdrCoreComposerStop(
+            address: listed.agent.paneID,
+            projection: { live() as? HerdrCoreConsoleProjection },
+            corePin: corePin,
+            clock: stopClock)
+        guard let interrupt = AgentComposerInterrupt.coreTerminal(forAgentKind: listed.agent.kind, {
+            await stop.perform()
+        }) else { return .keepSend }
+        return .interrupt(interrupt)
     }
 
     /// How Chat reads and types in a Terminal (ADR 0035), kept so the screen it

@@ -55,6 +55,86 @@ struct ConsoleProjectionInputTests {
         #expect(replacement.sent.isEmpty)
         #expect(rig.projection.liveAtSend === replacement)
     }
+
+    @Test func anOfferedStopRunsInsteadOfEsc() async {
+        let rig = makeRig(offersSend: false, kind: "grok", stop: .interrupt)
+        defer { rig.store.setHosts([]) }
+        var pressedEsc = false
+        let interrupt = rig.store.terminalInterrupt(for: rig.agent) {
+            pressedEsc = true
+            return .sent
+        }
+
+        let outcome = await interrupt?.perform()
+
+        #expect(interrupt?.accessibilityHint == "Stops through the projection")
+        #expect(interrupt?.wait == .coreInterrupt)
+        #expect(outcome == .sent)
+        #expect(rig.projection.stopped)
+        #expect(!pressedEsc)
+    }
+
+    @Test func aProjectionThatKeepsSendOffersNoInterrupt() {
+        let rig = makeRig(offersSend: false, kind: "claude", stop: .keepSend)
+        defer { rig.store.setHosts([]) }
+        var pressedEsc = false
+        let interrupt = rig.store.terminalInterrupt(for: rig.agent) {
+            pressedEsc = true
+            return .sent
+        }
+
+        #expect(interrupt == nil)
+        #expect(!pressedEsc)
+    }
+
+    @Test func aProjectionWithoutStopPressesEsc() async {
+        let rig = makeRig(offersSend: false, kind: "claude")
+        defer { rig.store.setHosts([]) }
+        var pressedEsc = false
+        let interrupt = rig.store.terminalInterrupt(for: rig.agent) {
+            pressedEsc = true
+            return .sent
+        }
+
+        let outcome = await interrupt?.perform()
+
+        #expect(interrupt?.accessibilityHint == AgentComposerInterrupt.escapeHint)
+        #expect(interrupt?.wait == .escape)
+        #expect(outcome == .sent)
+        #expect(pressedEsc)
+        #expect(!rig.projection.stopped)
+    }
+
+    @Test func aProjectionWithoutStopKeepsSendForGrok() {
+        let rig = makeRig(offersSend: false, kind: "grok")
+        defer { rig.store.setHosts([]) }
+        var pressedEsc = false
+        let interrupt = rig.store.terminalInterrupt(for: rig.agent) {
+            pressedEsc = true
+            return .sent
+        }
+
+        #expect(interrupt == nil)
+        #expect(!pressedEsc)
+    }
+
+    @Test func checkedStopAsksForTheProjectionLive() async {
+        let rig = makeRig(offersSend: false, stop: .interrupt)
+        defer { rig.store.setHosts([]) }
+        let interrupt = rig.store.terminalInterrupt(for: rig.agent) { .sent }
+        let replacement = ScriptedInputProjection(host: rig.host, offersSend: false, stop: .interrupt)
+        rig.installed.current = replacement
+        var edited = rig.host
+        edited.name = "renamed"
+        rig.store.setHosts([edited])
+
+        let outcome = await interrupt?.perform()
+
+        #expect(outcome == .sent)
+        #expect(rig.projection.stopped)
+        #expect(!replacement.stopped)
+        #expect(rig.projection.liveAtStop === replacement)
+    }
 }
 
 // MARK: - Rig
@@ -75,12 +155,14 @@ private final class InstalledProjection {
 }
 
 @MainActor
-private func makeRig(offersSend: Bool) -> InputRig {
+private func makeRig(
+    offersSend: Bool, kind: String = "shell", stop: ScriptedInputProjection.Stop = .none
+) -> InputRig {
     let host = Host.fixture()
-    let projection = ScriptedInputProjection(host: host, offersSend: offersSend)
+    let projection = ScriptedInputProjection(host: host, offersSend: offersSend, stop: stop)
     let agent = ConsoleAgent(
         hostID: host.id, hostName: host.displayName,
-        agent: Agent(.fixture(paneID: "w1:p1", kind: "shell")),
+        agent: Agent(.fixture(paneID: "w1:p1", kind: kind)),
         workspaceLabel: "Proj", repositoryCheckout: nil)
     projection.agentsByPane = [agent.agent.paneID: agent]
     let installed = InstalledProjection(projection)
@@ -97,14 +179,23 @@ private func makeRig(offersSend: Bool) -> InputRig {
 }
 
 /// A Host projection with no Server Kind of its own. It offers checked Send
-/// when asked, and records `promptAgent` for the path that declines it.
+/// and terminal Stop when asked, and records `promptAgent` and Esc otherwise.
 @MainActor
 private final class ScriptedInputProjection: ConsoleHostProjection {
+    enum Stop {
+        case none
+        case keepSend
+        case interrupt
+    }
+
     var host: Host
     let offersSend: Bool
+    let stop: Stop
     var sent: [String] = []
     var prompted: [String] = []
     var liveAtSend: (any ConsoleHostProjection)?
+    var stopped = false
+    var liveAtStop: (any ConsoleHostProjection)?
 
     var status: EventsSessionStatus? = .connected
     var standingFailure: TransportError?
@@ -122,9 +213,10 @@ private final class ScriptedInputProjection: ConsoleHostProjection {
     var sidebarRevision: UInt64 = 0
     var terminalLabelKeys: [String] = []
 
-    init(host: Host, offersSend: Bool) {
+    init(host: Host, offersSend: Bool, stop: Stop = .none) {
         self.host = host
         self.offersSend = offersSend
+        self.stop = stop
     }
 
     func checkedComposerSend(
@@ -137,6 +229,27 @@ private final class ScriptedInputProjection: ConsoleHostProjection {
             guard let self else { return }
             self.sent.append(text)
             self.liveAtSend = live()
+        }
+    }
+
+    func checkedTerminalStop(
+        for _: String,
+        keepingTo _: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> TerminalStopOffer? {
+        switch stop {
+        case .none: return nil
+        case .keepSend: return .keepSend
+        case .interrupt:
+            return .interrupt(
+                AgentComposerInterrupt(
+                    wait: .coreInterrupt, accessibilityHint: "Stops through the projection",
+                    perform: { [weak self] in
+                        guard let self else { return .failed("gone") }
+                        self.stopped = true
+                        self.liveAtStop = live()
+                        return .sent
+                    }))
         }
     }
 
