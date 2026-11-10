@@ -167,6 +167,15 @@ never show or send into a conversation it has guessed.
   `--conversation` and `-c` can open a conversation another agy holds; such an
   agy never takes the lock and, on Linux, holds none of its files about 30 s
   after it starts. Decided on 2026-11-10 (#644), before a live run.
+  The live run that followed showed a state before this one: until the core
+  samples the agy from Heeler's own launch of a bare `agy`, the record has no
+  foreground ([herdr compatibility](../agents/herdr-compatibility.md)), and
+  that read as cannot tell for about 1.5 s. The record's argv is that launch, and the launch's `exec`
+  keeps the Terminal's own process, so a walk from it reads as still starting
+  while that process goes by the launch's shell's name, or is an agy holding no
+  conversation's file, with no other `agy` under it. Chat keeps looking, a Send
+  waits, and the core's sample brings the next check. A launch with arguments
+  and a launcher still read as above (#644).
 - While Chat shows no conversation, the check before a Send refuses whatever it
   finds other than an agy with no conversation yet (above), since a conversation
   it newly binds is not one the user saw. So a Chat that shows none and says it

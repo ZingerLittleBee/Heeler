@@ -541,6 +541,48 @@ struct HerdrCoreMacOSSessionBinderTests {
         #expect(try await atPrompt.check(atPromptRecord) == .unavailable(.noConversationYet(.agy)))
     }
 
+    /// New Agent's `agy` on a Mac before the core samples it: Apple's `/bin/zsh` under
+    /// the launch withholds its environment, so only the walk from the Terminal's own
+    /// process says what runs there. The shell, and the `agy` its `exec` made of it,
+    /// read as still starting; a second `agy` under the shell, or one left out of
+    /// the exact set, can't tell.
+    @Test func heelersLaunchOfAntigravityCLIReadsAsStartingThroughTheMacOSRead() async throws {
+        let launch = ["/bin/zsh", "-ic", "exec \"$@\"", "/bin/zsh", "agy"]
+        let record = try JSONDecoder().decode(
+            HerdrCoreTerminalRecord.self,
+            from: try JSONEncoder().encode(
+                JSONValue.object([
+                    "address": .string("t2"), "cwd": .string("/Users/developer/lab"), "state": .string("live"),
+                    "argv": .array(launch.map(JSONValue.string)), "keep": .bool(true), "title": .string(""),
+                    "cols": .number(80), "rows": .number(24), "name": .null, "reason": .null,
+                    "pid": .number(7101), "labels": .object([:]),
+                ])))
+        func check(
+            _ rows: [ScriptedProcessTable.Process], exact: Set<ChatProgram> = HostCapabilities.macOSExactCoreChatPrograms
+        ) async throws -> ChatSessionEvidence {
+            let table = MacOSProcessTable()
+            for row in rows { await table.add(row) }
+            for row in rows where row.name == "zsh" { await table.withholdEnvironment(of: row.pid) }
+            var binder = HerdrCoreSessionBinder(
+                program: .agy, processes: { try await table.read($0) },
+                files: VirtualHostFiles(home: "/Users/developer").hostFiles(), clearLabels: { _ in })
+            binder.hostSystem = .macOS
+            binder.macOSExactPrograms = exact
+            return try await binder.check(record)
+        }
+        func process(_ name: String, pid: Int = 7101, parent: Int = 7000) -> ScriptedProcessTable.Process {
+            ScriptedProcessTable.Process(
+                pid: pid, parent: parent, name: name, start: "Tue Nov 10 06:30:46 2026",
+                environment: ["HC_SCOPE": "t2-scope", "HOME": "/Users/developer"],
+                openFiles: ["/Users/developer/.gemini/antigravity-cli/log/cli-20261110_063048.log"])
+        }
+
+        #expect(try await check([process("zsh")]) == .launching)
+        #expect(try await check([process("agy")]) == .launching)
+        #expect(try await check([process("zsh"), process("agy", pid: 7102, parent: 7101)]) == Self.cannotTell(.agy))
+        #expect(try await check([process("zsh")], exact: []) == Self.cannotTell(.agy))
+    }
+
     /// Left out of the exact set, it reads as cannot tell and lists what it holds.
     @Test func antigravityLeftUnconfirmedListsWhatItHolds() async throws {
         let (binder, record, _) = try await Self.agyBinder(

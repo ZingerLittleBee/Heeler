@@ -340,7 +340,16 @@ extension HerdrCoreSessionBinder {
     /// the conversation is its child's. The name rules out a shell left in the
     /// foreground after agy exits, which the Agent's rule takes for the Agent when
     /// nothing runs under it (ADR 0034).
+    ///
+    /// Heeler's own launch of a bare `agy` that the core has not sampled yet reads as
+    /// launching, whether its shell still reads its startup files or has just become
+    /// that agy, which would otherwise read the same until the core's first sample.
     func checkAntigravity(_ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses) -> ChatSessionEvidence {
+        let launch = unsampledAntigravityLaunch(record, tree: tree)
+        let isTheOnlyAgy = tree.walkAnswered && !tree.descendants.contains(where: { tree.facts[$0]?.name == "agy" })
+        if let launch, isTheOnlyAgy, tree.facts[tree.root]?.name == HerdrCoreShellLaunch.processName(of: launch) {
+            return .launching
+        }
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid],
             case .value(let files) = process.openFiles
         else { return cannotTell }
@@ -351,12 +360,38 @@ extension HerdrCoreSessionBinder {
             // The root the process really writes under, whatever its `HOME` says.
             return .bound(sessionID: lock.session, transcriptRoot: lock.root, directory: nil)
         }
-        guard process.name == "agy", let foreground = record.foreground,
-            foreground.pid.map(String.init) == pid, foreground.argv.count == 1,
-            !files.contains(where: Self.isAntigravityConversationFile),
-            tree.walkAnswered, !tree.descendants.contains(where: { tree.facts[$0]?.name == "agy" })
+        guard process.name == "agy", !files.contains(where: Self.isAntigravityConversationFile), isTheOnlyAgy
+        else { return cannotTell }
+        // The agy the launch's `exec` made of its shell, under the same pid.
+        if launch != nil, pid == tree.root { return .launching }
+        guard let foreground = record.foreground, foreground.pid.map(String.init) == pid, foreground.argv.count == 1
         else { return cannotTell }
         return .unavailable(.noConversationYet(program))
+    }
+
+    /// The shell of Heeler's own launch of `agy` with nothing after its name
+    /// (`HerdrCoreShellLaunch`), from the Terminal's record. Nil for any other
+    /// Terminal, a launch with arguments included.
+    func antigravityLaunch(in record: HerdrCoreTerminalRecord) -> String? {
+        guard program == .agy, let launch = HerdrCoreShellLaunch.launch(in: record.argv), launch.program == ["agy"]
+        else { return nil }
+        return launch.shell
+    }
+
+    /// That launch's shell while the core has sampled nothing but the launch itself: no
+    /// foreground, as a new Terminal's record starts, or the Terminal's own process
+    /// still running the launch's argv. The walk must start at that process, which
+    /// the `exec` keeps (herdr compatibility). A restarted Terminal runs the core's
+    /// shell under another argv, so a shell left there never reads as a launch.
+    private func unsampledAntigravityLaunch(
+        _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses
+    ) -> String? {
+        guard let shell = antigravityLaunch(in: record), let terminal = record.pid, tree.root == String(terminal)
+        else { return nil }
+        if let foreground = record.foreground, foreground.pid != terminal || foreground.argv != record.argv {
+            return nil
+        }
+        return shell
     }
 
     /// Whether an open file is one conversation's: its lock, anything in its brain

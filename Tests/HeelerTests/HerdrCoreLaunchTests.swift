@@ -239,6 +239,26 @@ struct HerdrCoreLaunchTests {
         #expect(params["keep"] == .bool(true))
     }
 
+    /// A launch's argv alone says which shell the Terminal's own process is until its
+    /// `exec`, and the program that process becomes, which Chat reads while the core
+    /// has sampled nothing else. No other wrapper reads as one.
+    @Test func aLaunchsArgvReadsBackItsShellAndProgram() {
+        for shell in ["/bin/bash", Self.zsh, Self.fish] {
+            let launch = HerdrCoreShellLaunch.launch(
+                in: HerdrCoreShellLaunch.argv(shell: shell, program: ["agy", "--flag"]))
+            #expect(launch?.shell == shell)
+            #expect(launch?.program == ["agy", "--flag"])
+        }
+        #expect(HerdrCoreShellLaunch.processName(of: Self.fish) == "fish")
+        let others = [
+            ["/bin/zsh"], ["/bin/bash", "-ic", Self.posixBody, "/bin/bash"],
+            ["/bin/zsh", "-ic", "\"$@\"; exec \"$0\" -i", "/bin/zsh", "claude"],
+            [Self.fish, "-ic", Self.posixBody, "fish", "codex"],
+            HerdrCoreShellLaunch.argv(shell: HerdrCoreShellLaunch.windowsShell, program: ["claude"]),
+        ]
+        for argv in others { #expect(HerdrCoreShellLaunch.launch(in: argv) == nil, "\(argv)") }
+    }
+
     @Test func noReportedShellStartsNothing() async throws {
         let fixture = try await Fixture(host: host, shell: nil)
         defer { fixture.finish() }

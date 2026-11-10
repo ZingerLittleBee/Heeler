@@ -1241,6 +1241,18 @@ final class AgentChatStore {
         case .pickUnconfirmed(let reason):
             evidenceReason = reason
             awaitSession(reason)
+        case .launching:
+            // As before the first check, it stays looking.
+            let leavesPick = followsPick
+            forgetPick()
+            evidenceReason = nil
+            if leavesPick {
+                leavePickedConversation()
+            } else if resolution != .noSession {
+                adopt(.noSession)
+            } else if !isAwaitingSession {
+                showUnavailable()
+            }
         }
     }
 
@@ -1786,6 +1798,8 @@ final class AgentChatStore {
             return "\(name) hasn't started a conversation here yet, while Chat still shows an earlier one. Send its first message in the terminal."
         case .unavailable, .pickUnconfirmed:
             return Self.cannotTellSessionReason(program)
+        case .launching:
+            return "\(name) is still starting, so Heeler sent nothing. Send again once it's running."
         case .bound, .picked:
             break
         }

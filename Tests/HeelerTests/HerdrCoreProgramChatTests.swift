@@ -95,6 +95,19 @@ struct HerdrCoreProgramChatTests {
         ]))) ?? Data()
     }
 
+    private static func foregroundEvent(sequence: Int, pid: Int = 40, name: String, argv: [String]) -> Data {
+        (try? JSONEncoder().encode(JSONValue.object([
+            "jsonrpc": .string("2.0"), "method": .string("event"),
+            "params": .object([
+                "seq": .number(Double(sequence)), "type": .string("foreground"), "terminal": .string("t1"),
+                "data": .object([
+                    "pid": .number(Double(pid)), "name": .string(name),
+                    "argv": .array(argv.map(JSONValue.string)), "cwd": .string("/work/app"),
+                ]),
+            ]),
+        ]))) ?? Data()
+    }
+
     private static func titleEvent(sequence: Int, title: String) -> Data {
         (try? JSONEncoder().encode(JSONValue.object([
             "jsonrpc": .string("2.0"), "method": .string("event"),
@@ -444,6 +457,42 @@ struct HerdrCoreProgramChatTests {
         try await rig.waitUntil("Chat to follow it") {
             chat.conversation.phase == .following(path: Self.agyTranscript(session))
         }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// New Agent's agy while its shell still reads its startup files, which the core
+    /// lists with no foreground (herdr-core 0.1.18, 2026-11-10): Chat keeps looking
+    /// rather than saying it can't tell, and a Send waits for agy to run. The core's
+    /// sample of the agy the shell became brings Waiting for Conversation.
+    @Test func heelersLaunchOfAntigravityCLILooksUntilTheCoreSamplesIt() async throws {
+        let launch = ["/bin/bash", "-ic", "exec \"$@\"", "/bin/bash", "agy"]
+        guard case .object(var fields) = Self.record(foreground: launch, name: "bash", app: "antigravity", status: nil)
+        else { return }
+        fields["foreground"] = .null
+        let rig = Rig(host: host, record: .object(fields), offering: [.agy])
+        try await rig.start([Self.process(name: "bash", environment: [:], argv: launch)])
+        let agent = try #require(rig.agent)
+        #expect(rig.store.chatProgram(for: agent) == .agy)
+        let chat = try rig.chat(.agy)
+
+        chat.show()
+
+        #expect(
+            await chat.confirmSessionBeforeSend()
+                == "Antigravity CLI is still starting, so Heeler sent nothing. Send again once it's running.")
+        #expect(chat.conversation.phase == .locating)
+        #expect(!chat.offersCandidates)
+
+        await rig.transport.processTable.add(
+            Self.process(
+                name: "agy", environment: [:], argv: ["agy"], files: ["\(Self.agyRoot)/log/cli-20261110_063048.log"]))
+        await rig.transport.deliver(Self.foregroundEvent(sequence: 2, name: "agy", argv: ["agy"]))
+
+        try await rig.waitUntil("Chat to wait for the conversation") {
+            chat.conversation.phase == .unavailable(.noConversationYet(.agy))
+        }
+        #expect(await chat.confirmSessionBeforeSend() == nil)
         chat.end()
         rig.store.setHosts([])
     }

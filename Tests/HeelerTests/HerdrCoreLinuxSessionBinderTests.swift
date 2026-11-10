@@ -224,4 +224,112 @@ struct HerdrCoreLinuxSessionBinderTests {
 
         #expect(try await Self.agyBinder(table, files: VirtualHostFiles(home: Self.home)).check(record) == expected)
     }
+
+    // MARK: Heeler's launch of agy
+
+    /// The Linux run of 2026-11-10 (`coreA-R13-newagent`): New Agent's `agy` on
+    /// herdr-core 0.1.18, first listed with no foreground while bash read its startup
+    /// files, then as `agy` under the same pid once its `exec` ran.
+    private nonisolated static let launch = ["/bin/bash", "-ic", "exec \"$@\"", "/bin/bash", "agy"]
+    private nonisolated static let launchPid = 2_637_998
+    private nonisolated static let agyLog = "\(home)/.gemini/antigravity-cli/log/cli-20261110_063048.log"
+    private nonisolated static let heldLock =
+        "\(home)/.gemini/antigravity-cli/presence/00000000-0000-4000-8000-000000000103.lock"
+
+    /// One process of the Terminal: its own when `parent` is the hold's.
+    private nonisolated static func launchProcess(
+        _ name: String, pid: Int = launchPid, parent: Int = 2_605_333, files: [String] = []
+    ) -> ScriptedProcessTable.Process {
+        ScriptedProcessTable.Process(
+            pid: pid, parent: parent, name: name, start: "8001",
+            environment: ["HC_SCOPE": "t8-scope", "HOME": home], openFiles: files)
+    }
+
+    /// The core's record of the Terminal: `argv` as started, and its foreground as
+    /// sampled, or none yet.
+    private nonisolated static func launchRecord(
+        argv: [String] = launch, foreground: (name: String, argv: [String])?
+    ) throws -> HerdrCoreTerminalRecord {
+        var fields: [String: JSONValue] = [
+            "address": .string("t8"), "cwd": .string("\(home)/heeler-fix/proj-core"), "state": .string("live"),
+            "argv": .array(argv.map(JSONValue.string)), "keep": .bool(true), "title": .string(""),
+            "cols": .number(80), "rows": .number(24), "name": .string("agy-2"), "reason": .null,
+            "pid": .number(Double(launchPid)), "labels": .object([:]),
+        ]
+        if let foreground {
+            fields["foreground"] = .object([
+                "pid": .number(Double(launchPid)), "name": .string(foreground.name),
+                "argv": .array(foreground.argv.map(JSONValue.string)),
+                "cwd": .string("\(home)/heeler-fix/proj-core"),
+            ])
+        }
+        return try JSONDecoder().decode(HerdrCoreTerminalRecord.self, from: JSONEncoder().encode(JSONValue.object(fields)))
+    }
+
+    private nonisolated static func launchCheck(
+        _ processes: [ScriptedProcessTable.Process], record: HerdrCoreTerminalRecord
+    ) async throws -> ChatSessionEvidence {
+        let table = ScriptedProcessTable()
+        for process in processes { await table.add(process) }
+        let files = VirtualHostFiles(home: home)
+        let evidence = try await agyBinder(table, files: files).check(record)
+        #expect(await table.requests.count <= 1)
+        #expect(await files.reads.isEmpty)
+        return evidence
+    }
+
+    /// Until the core samples the program it became, Heeler's launch reads as still
+    /// starting, not as can't tell: the shell reading its startup files, sampled or
+    /// not, and the `agy` its `exec` made of it before the first sample. A lock that
+    /// agy already holds binds as ever.
+    @Test func heelersLaunchOfAntigravityCLIReadsAsStartingUntilTheCoreSamplesIt() async throws {
+        let unsampled = try Self.launchRecord(foreground: nil)
+        let sampledShell = try Self.launchRecord(foreground: ("bash", Self.launch))
+        let shell = Self.launchProcess("bash")
+        #expect(try await Self.launchCheck([shell], record: unsampled) == .launching)
+        #expect(try await Self.launchCheck([shell], record: sampledShell) == .launching)
+        let atPrompt = Self.launchProcess("agy", files: [Self.agyLog])
+        #expect(try await Self.launchCheck([atPrompt], record: unsampled) == .launching)
+        #expect(try await Self.launchCheck([atPrompt], record: sampledShell) == .launching)
+
+        let locked = Self.launchProcess("agy", files: [Self.agyLog, Self.heldLock])
+        #expect(
+            try await Self.launchCheck([locked], record: unsampled)
+                == .bound(
+                    sessionID: "00000000-0000-4000-8000-000000000103",
+                    transcriptRoot: "\(Self.home)/.gemini/antigravity-cli", directory: nil))
+        #expect(
+            try await Self.launchCheck([atPrompt], record: Self.launchRecord(foreground: ("agy", ["agy"])))
+                == .unavailable(.noConversationYet(.agy)))
+    }
+
+    /// What ADR 0034 keeps at can't tell still reads so under Heeler's launch: a
+    /// shell left in the Terminal, as a restart leaves the core's own, a launcher in
+    /// front of agy whatever it goes by, a second `agy` under the launch's shell, a
+    /// launch with arguments, and an agy holding a conversation's database without
+    /// its lock, as a second agy on an open conversation does.
+    @Test func whatCannotTellStillCannotUnderHeelersLaunch() async throws {
+        let shell = Self.launchProcess("bash")
+        let restarted = try Self.launchRecord(argv: ["/bin/bash"], foreground: ("bash", ["/bin/bash"]))
+        #expect(try await Self.launchCheck([shell], record: restarted) == Self.cannotTell(.agy))
+        let shellInFront = try Self.launchRecord(foreground: ("bash", ["/bin/bash"]))
+        #expect(try await Self.launchCheck([shell], record: shellInFront) == Self.cannotTell(.agy))
+
+        let unsampled = try Self.launchRecord(foreground: nil)
+        let child = Self.launchProcess("agy", pid: Self.launchPid + 1, parent: Self.launchPid, files: [Self.agyLog])
+        for front in ["agy", "mise", "bash"] {
+            #expect(
+                try await Self.launchCheck([Self.launchProcess(front), child], record: unsampled)
+                    == Self.cannotTell(.agy), "\(front)")
+        }
+
+        let resumed = Self.launch + ["--conversation", "00000000-0000-4000-8000-000000000102"]
+        #expect(
+            try await Self.launchCheck([shell], record: Self.launchRecord(argv: resumed, foreground: nil))
+                == Self.cannotTell(.agy))
+        let database = "\(Self.home)/.gemini/antigravity-cli/conversations/00000000-0000-4000-8000-000000000102.db"
+        #expect(
+            try await Self.launchCheck([Self.launchProcess("agy", files: [Self.agyLog, database])], record: unsampled)
+                == Self.cannotTell(.agy))
+    }
 }
