@@ -1,24 +1,32 @@
 # Heeler
 
-A native iOS agent console for Herdr TUI and herdr-core. One context: the app. Unqualified "herdr" here means Herdr TUI. Terms owned by either server keep that server's meaning; this glossary pins how we use them client-side.
+A native iOS agent console for Herdr TUI, herdr-core and tmux. One context: the app. Unqualified "herdr" here means Herdr TUI. Terms owned by a server keep that server's meaning; this glossary pins how we use them client-side.
 
 ## Language
 
 **Host**:
-A remote machine reachable over SSH, as added for one Server Kind. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. An SSH target running both servers is two Hosts.
+A remote machine reachable over SSH, as added for one Server Kind. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. An SSH target running more than one server is one Host per Server Kind.
 _Avoid_: server, machine, connection
 
 **Server Kind**:
-Which of two servers a Host's Agents live in: Herdr TUI (the original herdr
-server) or herdr-core (the vendor's headless terminal runtime, `hc`). The two
-share no Agents. A herdr-core Host whose core also serves the Herdr desktop
+Which server a Host's Agents live in: Herdr TUI (the original herdr server),
+herdr-core (the vendor's headless terminal runtime, `hc`), or a tmux server.
+They share no Agents. A herdr-core Host whose core also serves the Herdr desktop
 app is still herdr-core; the app's organization is data the Host carries, not
 another kind. Adding a Host by hand saves it unconfirmed, a stored state no
 connection, Agent or notification reaches. Its Host detail detects the kinds
 and the user confirms one, once; a Pairing Code always adds a confirmed Herdr
-TUI Host. The Host keeps it: neither a connection nor an edit switches a Host
-to the other kind (ADR 0031).
+TUI Host, so a tmux Host is always added by hand. The Host keeps it: neither a
+connection nor an edit switches a Host to another kind (ADR 0031).
 _Avoid_: backend, server type, flavor
+
+**tmux server**:
+The tmux server a tmux Host targets, on macOS or Linux, named by its socket
+name (`default` unless the user names another). Connecting reaches only a
+server that is already running; New Workspace on a Host with none starts one,
+as the user's own login shell would. Never called a session: on tmux a session
+is a Workspace.
+_Avoid_: session, tmux session (for the server), socket (alone)
 
 **Herdr desktop app**:
 The vendor's desktop client that runs on herdr-core. It shows a core's
@@ -110,7 +118,7 @@ The server-side step of Pairing: the forced command appends the Device Key's pub
 _Avoid_: install key, authorization
 
 **Agent**:
-A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path.
+A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path. On tmux it is the foreground program of a Pane while that program is a known agent program; a shell in the foreground ends the Agent.
 _Avoid_: bot, task, session
 
 **Staged Image**:
@@ -133,15 +141,18 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). Blocked means the agent is waiting for human input; Error, herdr-core only, shares Blocked's place in sort order and notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. Blocked means the agent is waiting for human input; Error, herdr-core and tmux only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
 **Program Status**:
-What a program in a herdr-core Terminal reports about itself through OSC 7501:
-idle, working, done, blocked or error, with optional detail. herdr-core never
-infers it from the screen, and a program that never reports has none. The core
-keeps a program's last report after that program exits, for as long as its
-Terminal runs on.
+What a program reports about itself: idle, working, done, blocked or error,
+with optional detail. It is never inferred from the screen, and a program that
+never reports has none. In a herdr-core Terminal it arrives through OSC 7501,
+and the core keeps a program's last report after that program exits, for as
+long as its Terminal runs on. On tmux, Heeler records it on the Pane: a
+program's own OSC 7501 reports, read from its output, or, for Claude Code and
+Pi, which make none inside tmux, their hooks or Heeler's extension, in the same
+words.
 _Avoid_: detected status, agent state
 
 **Status Badge**:
@@ -156,7 +167,8 @@ The unit of terminal real estate in a Tab. A Pane hosts either an Agent or an
 ordinary shell — a workspace's root pane starts as a shell. Used as an address
 (`pane_id`), never as a layout concept in this app. On Herdr TUI it is herdr's
 pane; on herdr-core each Terminal is one Pane, addressed by the Terminal's
-address.
+address; on tmux it is tmux's pane, whose address holds for one run of the tmux
+server: after a restart its Panes are new, even where tmux reuses an id.
 _Avoid_: window, tile
 
 **Tab**:
@@ -164,7 +176,7 @@ An ordered member of a Workspace that holds one or more Panes. On Herdr TUI it
 is herdr's tab. On herdr-core it is a Herdr desktop tab, or, in a derived
 Workspace, one Terminal's own Tab. A Terminal without desktop labels started
 from inside another, such as a subagent, joins that Terminal's Tab as another
-Pane.
+Pane. On tmux it is a tmux window.
 _Avoid_: window, page
 
 **Terminal**:
@@ -201,7 +213,10 @@ herdr-core, and a Tab it adds to a desktop space, carry the desktop app's
 labels, while a Terminal it opens in a derived Workspace carries none (ADR
 0032). On herdr-core only a Workspace the desktop app shows can be renamed, and
 only while that app runs on the Host; a derived Workspace has no name of its
-own. New Agent can start in an existing Workspace, a new Worktree of one, or a
+own. On tmux it is a tmux session, named and ordered as tmux shows it, and
+Heeler keeps no organization of its own there either; a window that grouped
+sessions share shows once, under the group's session with the lowest id. New
+Agent can start in an existing Workspace, a new Worktree of one, or a
 new Workspace opened at a remote directory. The id is an opaque string.
 _Avoid_: project, folder, window, space (the desktop app's word)
 
@@ -215,7 +230,9 @@ only `is_linked_worktree` makes a workspace eligible for linked-Worktree
 removal. On herdr-core Heeler creates it as the Herdr desktop app does, on a
 branch the user names, at `~/.herdr/worktrees/<repository>/<branch>`, and
 opens a new Workspace there; removing it first ends that Workspace's
-Terminals, and the branch survives.
+Terminals, and the branch survives. On tmux Heeler creates it the same way at
+`~/.heeler/worktrees/<repository>/<branch>`, opened as a new Workspace named
+after the branch; removing it first ends that Workspace's Panes.
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Checkout**:
@@ -489,7 +506,9 @@ a tab in the Agent's launch directory only as a fallback or explicit choice.
 On Herdr TUI, existing shells use direct terminal attach without takeover, and
 Take Over is an explicit action when another client owns the terminal.
 herdr-core has no Take Over: any viewer that is not only observing may type,
-and the last one to type, resize or come into focus sets the size. libghostty renders it, and direct keyboard
+and the last one to type, resize or come into focus sets the size. tmux has no
+Take Over either: the device viewing a Pane sets the size of its window until
+it leaves, and tmux then restores the window. libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
 Agent semantics, no notification routing. Where the detail is pushed over the
 list (iPhone, or a compact iPad window), Open Terminal pushes it over Agent
@@ -583,11 +602,12 @@ The developer-hosted, stateless forwarder that holds the APNs credentials and re
 _Avoid_: server, backend, push service
 
 **Host Helper**:
-Heeler's own background service on a macOS or Linux herdr-core Host, standing
-in for the Heeler plugin, which herdr-core cannot run. It follows the core's
-events to deliver Agent Notifications and Live Activity updates through the
-Push Relay while the app is not running, and serves Usage reads. It never
-starts a core. The app installs it from its own bundle over SSH, and replaces
+Heeler's own background service on a macOS or Linux herdr-core or tmux Host,
+standing in for the Heeler plugin, which neither server can run. It follows the
+core's events, or the tmux server's Panes, to deliver Agent Notifications and
+Live Activity updates through the Push Relay while the app is not running, and
+serves Usage reads. It never starts a core or a tmux server. On tmux it also
+reads the Program Status of the programs that report one only in their output. The app installs it from its own bundle over SSH, and replaces
 it only with a newer version or when it is missing or damaged. With it come
 Heeler's extensions for Pi and Oh My Pi, which tell Chat their session, placed
 in those programs' own extension folders and removed with it (ADR 0033).
@@ -598,7 +618,8 @@ The symmetric key generated on device and stored on a Host during Notification R
 _Avoid_: shared secret, push key
 
 **Notification Registration**:
-The act of writing the device's push token and Notification Key to a Host over SSH, as one entry scoped to the herdr session the Host targets. Per host, repeatable, and independent of Pairing; removing it disables Agent Notifications from that Host. Hosts that resolve to the same remote plugin config directory (one SSH user's config home, whatever the address or herdr session) share one registration file: a Host owns only the entry carrying its own Notification Key, and the plugin delivers an entry only to hooks of that entry's session (session names compare exactly). Two Hosts that target the same herdr session share one entry per device, and the one that registered last receives the notifications. On herdr-core the Host Helper keeps the registrations in its own directory, never in the plugin's, one entry per device for the core session the Host targets.
+The act of writing the device's push token and Notification Key to a Host over SSH, as one entry scoped to the herdr session the Host targets. Per host, repeatable, and independent of Pairing; removing it disables Agent Notifications from that Host. Hosts that resolve to the same remote plugin config directory (one SSH user's config home, whatever the address or herdr session) share one registration file: a Host owns only the entry carrying its own Notification Key, and the plugin delivers an entry only to hooks of that entry's session (session names compare exactly). Two Hosts that target the same herdr session share one entry per device, and the one that registered last receives the notifications. On herdr-core the Host Helper keeps the registrations in its own directory, never in the plugin's, one entry per device for the core session the Host targets, and on tmux one
+entry per device for the tmux server the Host targets.
 _Avoid_: subscribe, enable push
 
 **Transport**:
