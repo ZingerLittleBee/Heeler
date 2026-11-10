@@ -113,15 +113,17 @@ struct AgyBackgroundTaskStop {
             // Only a screen that shows no task spares the wait; one that
             // could not be read says nothing of what runs.
             if let screen = try? await io.readScreen(), !AgyScreen(screen).showsRunningTasks { return nil }
-            _ = await transcript.readAgain(timing.transcript) {
+            let placed = await transcript.readAgain(timing.transcript) {
                 guard transcript.isCurrent() else { return false }
                 let turn = transcript.openTurn()
                 return stop(turn) != nil || !turn.isSameTurn(as: tapped)
             }
             // A read begun before the turn's prompt can bring the turn
-            // before, and a stalled link brings none: the screen showed a
-            // task, or could not be read, so one of the turn's may run.
-            guard transcript.isCurrent() else { return Self.unplacedNotice }
+            // before, and a stalled link brings none, which leaves current
+            // a read made in the turn before its command became a task: the
+            // screen showed a task, or could not be read, so one of the
+            // turn's may run.
+            guard placed, transcript.isCurrent() else { return Self.unplacedNotice }
             return await stop(transcript.openTurn())?.run()
         }
     }

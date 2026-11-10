@@ -764,6 +764,20 @@ struct AgyBackgroundTaskStopTests {
         #expect(chat.readsAgain == 1)
     }
 
+    /// The same over a transcript already current at the tap, from a read
+    /// made in the turn before its command became a task: a read again that
+    /// brings nothing, as over a stalled link, leaves that read current, and
+    /// Stop still says a command may run rather than ending silently.
+    @Test(arguments: [Set<Int>(), [1]])
+    func aCurrentTranscriptNoReadAgainReachesEndsWithANotice(failing: Set<Int>) async throws {
+        let chat = ChatReads(Self.turn(1), then: nil)
+        let pane = try Self.corePane(failing: failing)
+
+        #expect(await Self.tap(chat, pane) == .some(AgyBackgroundTaskStop.unplacedNotice))
+        #expect(pane.typed.isEmpty)
+        #expect(chat.readsAgain == 1)
+    }
+
     /// A send of Chat's still waiting for its record: the open turn may be
     /// the one before, so Stop builds nothing, whatever comes later.
     @Test func aSendAwaitingItsRecordBuildsNothing() async throws {
