@@ -81,6 +81,9 @@ struct HostDraft: Equatable, Sendable {
     /// The Pairing Code's herdr endpoint, carried through Edit and Duplicate
     /// unchanged. The form shows it read-only; nil for every other Host.
     var herdrEndpoint: HerdrEndpoint?
+    /// A tmux Host's resolved paths, carried through Edit unchanged. They stop
+    /// counting once the socket name names another socket (ADR 0042).
+    private(set) var tmuxPaths: TmuxPaths?
     /// The Host's routes in order. A new Host starts with none and cannot
     /// be saved until Add Route gives it one; the forwarding properties
     /// below create the first route when set.
@@ -96,6 +99,7 @@ struct HostDraft: Equatable, Sendable {
         serverKind = host.serverKind
         sessionName = host.sessionName
         herdrEndpoint = host.herdrEndpoint
+        tmuxPaths = host.tmuxPaths
         routes = host.routes.map(HostRouteDraft.init(route:))
     }
 
@@ -104,6 +108,8 @@ struct HostDraft: Equatable, Sendable {
     /// copy name among `existingNames` (display names).
     init(duplicating host: Host, password: String?, existingNames: [String]) {
         self.init(host: host)
+        // The copy may be another machine once its routes are edited.
+        tmuxPaths = nil
         name = Self.duplicateName(of: host.displayName, existingNames: existingNames)
         // The copy's routes are its own.
         for index in routes.indices {
@@ -258,6 +264,7 @@ struct HostDraft: Equatable, Sendable {
             serverKind: serverKind,
             sessionName: serverKind.storedSessionName(sessionName),
             herdrEndpoint: herdrEndpoint,
+            tmuxPaths: tmuxPaths,
             routes: routes)
     }
 

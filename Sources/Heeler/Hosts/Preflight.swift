@@ -26,6 +26,8 @@ enum PreflightCheck: CaseIterable, Sendable {
         case (.serverRunning, .herdrTUI), (.serverRunning, .unconfirmed):
             String(localized: "herdr server running")
         case (.serverRunning, .herdrCore): String(localized: "herdr-core running")
+        case (.herdrInstalled, .tmux): String(localized: "tmux installed")
+        case (.serverRunning, .tmux): String(localized: "tmux server running")
         case (.protocolCompatible, _): String(localized: "protocol compatible")
         }
     }

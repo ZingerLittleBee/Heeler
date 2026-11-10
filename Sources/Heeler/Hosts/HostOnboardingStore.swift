@@ -275,6 +275,11 @@ final class HostOnboardingStore {
         case .herdrCore:
             await performCoreChecks(settings: settings, coreReportedRunning: coreReportedRunning)
             return
+        case .tmux:
+            // Nothing reads a tmux Host yet.
+            report = .failure(
+                check: .herdrInstalled, hint: String(localized: "The checks ended before reading this Host."))
+            return
         case .herdrTUI:
             break
         }
