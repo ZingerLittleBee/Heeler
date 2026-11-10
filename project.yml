@@ -317,6 +317,9 @@ targets:
       # Shared seen-mark vectors: Swift writes the format and the Helper reads it.
       - path: plugin/test-vectors/herdr-core-seen-mark-v1.json
         buildPhase: resources
+      # Shared tmux Program Status vectors, read by Swift, the hook script and the Helper.
+      - path: plugin/test-vectors/tmux-heeler-status-v1.json
+        buildPhase: resources
       # Shared usage response produced by Node and decoded by Swift.
       - path: plugin/test-vectors/usage-v1.json
         buildPhase: resources

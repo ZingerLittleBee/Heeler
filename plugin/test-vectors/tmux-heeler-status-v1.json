@@ -1,0 +1,317 @@
+{
+  "description": "A tmux Pane's Program Status (ADR 0044): the pane option `@heeler-status`, which only Heeler's integrations write (the Pi and Oh My Pi extensions, the Claude Code hook script, the Host Helper's readers, and the app for its own Stop and declines), and what it reads as on one device. A value is OSC 7501's words joined by `:` (`state`, `app`, then `kind` and `msg` when the report has them, `msg` in base64 as OSC 7501 carries it) followed by `turn=<n>` and `blocked=<n>`; a cleared status keeps only the counts. The counts belong to the Pane and never go back: every writer reads the value there and continues them. `values` holds how a value reads: a word it does not know is ignored, a count that is missing or not a whole number reads 0, and `state` is null for no report. `writes` holds what a writer writes, each step's `report` applied to the value the step before it left (`start` for the first; null for an unset option): `turn` advances when a report of `done` or `error` follows `working` or `blocked`, or one of `idle` follows `working` from an `app` not in `doneReporters`, and `blocked` advances on each report of `blocked` that does not follow one; a report from another `app` than the value's ends no turn, and enters blocked afresh. A report of the same words writes the same value again. `reads` holds what the app shows: `kind` is the Pane's Agent under the Agent rule, and an `agent` step changes it (null for no Agent). A `sample` step is one look at the option; a report whose `app` names another known program than the Agent's reads as no report. `status` is the Agent Status (null with no Agent) and `done` whether the Agent is Done on this device: it finished a turn after this device's seen mark, so its count is above the mark's, and reads idle or done. With no mark yet, a count above zero is a finished turn. `open` is this device opening the Agent, which marks where it stands (`mark`, its `turn` and status `word`, the word null for no report), and while it stays open each sample at a higher count moves the mark there; `close` ends that. When an Agent leaves the Pane, or another program's Agent takes it, the turns before then are no longer Done here.",
+  "doneReporters": ["claude-code", "codex", "pi", "omp", "grok-build"],
+  "values": [
+    {
+      "name": "a full report with its counts",
+      "value": "state=blocked:app=omp:kind=question:msg=UGljayBhIGZpbGU=:turn=4:blocked=2",
+      "state": "blocked", "app": "omp", "kind": "question", "msg": "UGljayBhIGZpbGU=", "turn": 4, "blocked": 2
+    },
+    {
+      "name": "a cleared status keeps only the counts",
+      "value": "turn=3:blocked=1",
+      "state": null, "app": null, "kind": null, "msg": null, "turn": 3, "blocked": 1
+    },
+    {
+      "name": "an unset option is no report at count zero",
+      "value": "",
+      "state": null, "app": null, "kind": null, "msg": null, "turn": 0, "blocked": 0
+    },
+    {
+      "name": "a message keeps its base64 padding",
+      "value": "state=error:app=pi:msg=cmF0ZSBsaW1pdA==:turn=1:blocked=0",
+      "state": "error", "app": "pi", "kind": null, "msg": "cmF0ZSBsaW1pdA==", "turn": 1, "blocked": 0
+    },
+    {
+      "name": "counts that are not whole numbers read zero",
+      "value": "state=idle:app=pi:turn=x:blocked=-1",
+      "state": "idle", "app": "pi", "kind": null, "msg": null, "turn": 0, "blocked": 0
+    },
+    {
+      "name": "missing counts read zero and unknown words are ignored",
+      "value": "state=working:app=claude-code:extra=1:noequals",
+      "state": "working", "app": "claude-code", "kind": null, "msg": null, "turn": 0, "blocked": 0
+    }
+  ],
+  "writes": [
+    {
+      "name": "a Pi turn from its start: idle, working, done, then idle",
+      "source": "ADR 0044: turn advances when the status leaves working for done",
+      "start": null,
+      "steps": [
+        { "report": { "state": "idle", "app": "pi" }, "value": "state=idle:app=pi:turn=0:blocked=0" },
+        { "report": { "state": "working", "app": "pi" }, "value": "state=working:app=pi:turn=0:blocked=0" },
+        { "report": { "state": "done", "app": "pi" }, "value": "state=done:app=pi:turn=1:blocked=0" },
+        { "report": { "state": "idle", "app": "pi" }, "value": "state=idle:app=pi:turn=1:blocked=0" },
+        { "report": { "state": "working", "app": "pi" }, "value": "state=working:app=pi:turn=1:blocked=0" },
+        { "report": { "state": "done", "app": "pi" }, "value": "state=done:app=pi:turn=2:blocked=0" }
+      ]
+    },
+    {
+      "name": "an error ends a turn, and carries its message",
+      "source": "ADR 0044: turn advances when the status leaves working for error",
+      "start": "state=idle:app=pi:turn=2:blocked=0",
+      "steps": [
+        { "report": { "state": "working", "app": "pi" }, "value": "state=working:app=pi:turn=2:blocked=0" },
+        { "report": { "state": "error", "app": "pi", "msg": "cmF0ZSBsaW1pdA==" }, "value": "state=error:app=pi:msg=cmF0ZSBsaW1pdA==:turn=3:blocked=0" },
+        { "report": { "state": "idle", "app": "pi" }, "value": "state=idle:app=pi:turn=3:blocked=0" }
+      ]
+    },
+    {
+      "name": "each entry into blocked counts, and a second report while blocked does not",
+      "source": "ADR 0044: blocked advances each time the status enters blocked, so two questions between two looks are two",
+      "start": "state=working:app=omp:turn=0:blocked=0",
+      "steps": [
+        { "report": { "state": "blocked", "app": "omp", "kind": "question" }, "value": "state=blocked:app=omp:kind=question:turn=0:blocked=1" },
+        { "report": { "state": "blocked", "app": "omp", "kind": "permission" }, "value": "state=blocked:app=omp:kind=permission:turn=0:blocked=1" },
+        { "report": { "state": "working", "app": "omp" }, "value": "state=working:app=omp:turn=0:blocked=1" },
+        { "report": { "state": "blocked", "app": "omp", "kind": "question" }, "value": "state=blocked:app=omp:kind=question:turn=0:blocked=2" },
+        { "report": { "state": "working", "app": "omp" }, "value": "state=working:app=omp:turn=0:blocked=2" },
+        { "report": { "state": "done", "app": "omp" }, "value": "state=done:app=omp:turn=1:blocked=2" }
+      ]
+    },
+    {
+      "name": "a turn that went to blocked and then straight to done ends at that done",
+      "source": "ADR 0033, a turn's end: a move from Blocked straight to Done ends the turn that went to Blocked",
+      "start": "state=working:app=codex:turn=4:blocked=1",
+      "steps": [
+        { "report": { "state": "blocked", "app": "codex", "kind": "permission" }, "value": "state=blocked:app=codex:kind=permission:turn=4:blocked=2" },
+        { "report": { "state": "done", "app": "codex" }, "value": "state=done:app=codex:turn=5:blocked=2" }
+      ]
+    },
+    {
+      "name": "working to idle ends a turn only for a program not known to report done",
+      "source": "ADR 0044: or for idle with a program not known to report done",
+      "start": "state=working:app=pi:turn=0:blocked=0",
+      "steps": [
+        { "report": { "state": "idle", "app": "pi" }, "value": "state=idle:app=pi:turn=0:blocked=0" },
+        { "report": { "state": "working", "app": "opencode" }, "value": "state=working:app=opencode:turn=0:blocked=0" },
+        { "report": { "state": "idle", "app": "opencode" }, "value": "state=idle:app=opencode:turn=1:blocked=0" }
+      ]
+    },
+    {
+      "name": "a question declined to idle ends no turn",
+      "source": "ADR 0044: a decline from Heeler writes idle; ADR 0033 ends a turn only on leaving Working for Idle",
+      "start": "state=working:app=opencode:turn=0:blocked=0",
+      "steps": [
+        { "report": { "state": "blocked", "app": "opencode", "kind": "permission" }, "value": "state=blocked:app=opencode:kind=permission:turn=0:blocked=1" },
+        { "report": { "state": "idle", "app": "opencode" }, "value": "state=idle:app=opencode:turn=0:blocked=1" }
+      ]
+    },
+    {
+      "name": "another program's counts are continued, and its unfinished turn is not this one's",
+      "source": "ADR 0044: both counts belong to the Pane, and whatever writes next reads them and continues",
+      "start": "state=working:app=claude-code:turn=5:blocked=3",
+      "steps": [
+        { "report": { "state": "done", "app": "pi" }, "value": "state=done:app=pi:turn=5:blocked=3" },
+        { "report": { "state": "working", "app": "pi" }, "value": "state=working:app=pi:turn=5:blocked=3" },
+        { "report": { "state": "done", "app": "pi" }, "value": "state=done:app=pi:turn=6:blocked=3" }
+      ]
+    },
+    {
+      "name": "another program's question is not this one's",
+      "source": "ADR 0044: blocked advances each time the status enters blocked",
+      "start": "state=blocked:app=claude-code:kind=permission:turn=1:blocked=1",
+      "steps": [
+        { "report": { "state": "blocked", "app": "omp", "kind": "question" }, "value": "state=blocked:app=omp:kind=question:turn=1:blocked=2" }
+      ]
+    },
+    {
+      "name": "a cleared status keeps the counts, and the next report continues them",
+      "source": "ADR 0044: SessionEnd clears the status; the counts never go back",
+      "start": "state=idle:app=pi:turn=1:blocked=2",
+      "steps": [
+        { "report": { "state": "clear", "app": "pi" }, "value": "turn=1:blocked=2" },
+        { "report": { "state": "idle", "app": "pi" }, "value": "state=idle:app=pi:turn=1:blocked=2" }
+      ]
+    },
+    {
+      "name": "a clear with no status before it writes the counts at zero",
+      "source": "ADR 0044: SessionEnd clears the status",
+      "start": null,
+      "steps": [
+        { "report": { "state": "clear", "app": "pi" }, "value": "turn=0:blocked=0" }
+      ]
+    },
+    {
+      "name": "the same report again writes the same value",
+      "source": "ADR 0044: a count moves only on leaving working or entering blocked",
+      "start": "state=working:app=pi:turn=2:blocked=0",
+      "steps": [
+        { "report": { "state": "working", "app": "pi" }, "value": "state=working:app=pi:turn=2:blocked=0" },
+        { "report": { "state": "done", "app": "pi" }, "value": "state=done:app=pi:turn=3:blocked=0" },
+        { "report": { "state": "done", "app": "pi" }, "value": "state=done:app=pi:turn=3:blocked=0" }
+      ]
+    },
+    {
+      "name": "a value with unreadable counts is continued from zero",
+      "source": "values: a count that is not a whole number reads 0",
+      "start": "state=working:app=pi:turn=x:blocked=",
+      "steps": [
+        { "report": { "state": "done", "app": "pi" }, "value": "state=done:app=pi:turn=1:blocked=0" }
+      ]
+    }
+  ],
+  "reads": [
+    {
+      "name": "an unseen Pi turn reads Done, through idle, until it works again",
+      "source": "ADR 0044: an Agent is Done for a device when it finished a turn after that device's last seen mark and reads idle or done",
+      "kind": "pi",
+      "steps": [
+        { "event": "sample", "value": "state=idle:app=pi:turn=0:blocked=0", "status": "idle", "done": false },
+        { "event": "sample", "value": "state=working:app=pi:turn=0:blocked=0", "status": "working", "done": false },
+        { "event": "sample", "value": "state=done:app=pi:turn=1:blocked=0", "status": "done", "done": true },
+        { "event": "sample", "value": "state=idle:app=pi:turn=1:blocked=0", "status": "done", "done": true },
+        { "event": "sample", "value": "state=working:app=pi:turn=1:blocked=0", "status": "working", "done": false }
+      ]
+    },
+    {
+      "name": "opening marks the turn that ended, and only a later turn reads Done again",
+      "source": "ADR 0033: the app marks the turn that ended",
+      "kind": "claude",
+      "steps": [
+        { "event": "sample", "value": "state=done:app=claude-code:turn=1:blocked=0", "status": "done", "done": true },
+        { "event": "open", "status": "idle", "done": false, "mark": { "turn": 1, "word": "done" } },
+        { "event": "close", "status": "idle", "done": false },
+        { "event": "sample", "value": "state=idle:app=claude-code:turn=1:blocked=0", "status": "idle", "done": false },
+        { "event": "sample", "value": "state=working:app=claude-code:turn=1:blocked=0", "status": "working", "done": false },
+        { "event": "sample", "value": "state=done:app=claude-code:turn=2:blocked=0", "status": "done", "done": true }
+      ]
+    },
+    {
+      "name": "two turns between two looks still read Done",
+      "source": "ADR 0044: a turn that starts and finishes between two looks still counts",
+      "kind": "claude",
+      "steps": [
+        { "event": "sample", "value": "state=done:app=claude-code:turn=1:blocked=0", "status": "done", "done": true },
+        { "event": "open", "status": "idle", "done": false, "mark": { "turn": 1, "word": "done" } },
+        { "event": "close", "status": "idle", "done": false },
+        { "event": "sample", "value": "state=done:app=claude-code:turn=3:blocked=0", "status": "done", "done": true }
+      ]
+    },
+    {
+      "name": "an Agent open as its turn ends never reads Done for that turn",
+      "source": "ADR 0033: the app marks a turn that ends while it has the Agent open",
+      "kind": "codex",
+      "steps": [
+        { "event": "sample", "value": "state=working:app=codex:turn=2:blocked=0", "status": "working", "done": false },
+        { "event": "open", "status": "working", "done": false, "mark": { "turn": 2, "word": "working" } },
+        { "event": "sample", "value": "state=done:app=codex:turn=3:blocked=0", "status": "idle", "done": false, "mark": { "turn": 3, "word": "done" } },
+        { "event": "close", "status": "idle", "done": false },
+        { "event": "sample", "value": "state=idle:app=codex:turn=3:blocked=0", "status": "idle", "done": false }
+      ]
+    },
+    {
+      "name": "an Agent opened while it works and left before its turn ends reads Done",
+      "source": "ADR 0033: a mark taken in Working does not cover the Done that follows",
+      "kind": "codex",
+      "steps": [
+        { "event": "sample", "value": "state=working:app=codex:turn=0:blocked=0", "status": "working", "done": false },
+        { "event": "open", "status": "working", "done": false, "mark": { "turn": 0, "word": "working" } },
+        { "event": "close", "status": "working", "done": false },
+        { "event": "sample", "value": "state=done:app=codex:turn=1:blocked=0", "status": "done", "done": true }
+      ]
+    },
+    {
+      "name": "an Agent opened while blocked has not seen the Done that follows",
+      "source": "ADR 0033: a mark taken in Blocked does not cover the Done that follows",
+      "kind": "omp",
+      "steps": [
+        { "event": "sample", "value": "state=blocked:app=omp:kind=question:turn=0:blocked=1", "status": "blocked", "done": false },
+        { "event": "open", "status": "blocked", "done": false, "mark": { "turn": 0, "word": "blocked" } },
+        { "event": "close", "status": "blocked", "done": false },
+        { "event": "sample", "value": "state=done:app=omp:turn=1:blocked=1", "status": "done", "done": true }
+      ]
+    },
+    {
+      "name": "Blocked and Working read as they are over an unseen finished turn",
+      "source": "ADR 0044: Done reads idle or done",
+      "kind": "claude",
+      "steps": [
+        { "event": "sample", "value": "state=blocked:app=claude-code:kind=permission:turn=2:blocked=1", "status": "blocked", "done": false },
+        { "event": "sample", "value": "state=working:app=claude-code:turn=2:blocked=1", "status": "working", "done": false },
+        { "event": "sample", "value": "state=idle:app=claude-code:turn=2:blocked=1", "status": "done", "done": true }
+      ]
+    },
+    {
+      "name": "an error reads Error, and the idle after it reads Done unseen",
+      "source": "ADR 0044: turn advances when the status leaves working for error; ADR 0033 errs towards one extra Done",
+      "kind": "claude",
+      "steps": [
+        { "event": "sample", "value": "state=error:app=claude-code:msg=cmF0ZSBsaW1pdA==:turn=1:blocked=0", "status": "error", "done": false },
+        { "event": "sample", "value": "state=idle:app=claude-code:turn=1:blocked=0", "status": "done", "done": true }
+      ]
+    },
+    {
+      "name": "an error this device saw brings no Done when it turns idle",
+      "source": "ADR 0033: the app marks where the Agent stands when it opens it",
+      "kind": "claude",
+      "steps": [
+        { "event": "sample", "value": "state=error:app=claude-code:turn=1:blocked=0", "status": "error", "done": false },
+        { "event": "open", "status": "error", "done": false, "mark": { "turn": 1, "word": "error" } },
+        { "event": "close", "status": "error", "done": false },
+        { "event": "sample", "value": "state=idle:app=claude-code:turn=1:blocked=0", "status": "idle", "done": false }
+      ]
+    },
+    {
+      "name": "first sight of an idle Agent at count zero is not Done, and above zero is",
+      "source": "ADR 0033: a mark that was never made leaves a finished turn counted as Done",
+      "kind": "pi",
+      "steps": [
+        { "event": "sample", "value": "state=idle:app=pi:turn=0:blocked=0", "status": "idle", "done": false },
+        { "event": "sample", "value": "state=idle:app=pi:turn=2:blocked=0", "status": "done", "done": true }
+      ]
+    },
+    {
+      "name": "an unset option and a cleared status read Unknown with no Done",
+      "source": "ADR 0044: SessionEnd clears the status",
+      "kind": "pi",
+      "steps": [
+        { "event": "sample", "value": null, "status": "unknown", "done": false },
+        { "event": "sample", "value": "turn=2:blocked=0", "status": "unknown", "done": false }
+      ]
+    },
+    {
+      "name": "a report from another known program reads Unknown with no Done",
+      "source": "HerdrCoreAgentRule: a known app counts only while it names the foreground",
+      "kind": "claude",
+      "steps": [
+        { "event": "sample", "value": "state=done:app=pi:turn=2:blocked=0", "status": "unknown", "done": false },
+        { "event": "sample", "value": "state=done:app=claude-code:turn=3:blocked=0", "status": "done", "done": true }
+      ]
+    },
+    {
+      "name": "a report with no app, or an app Heeler does not know, reads for the Agent",
+      "source": "HerdrCoreAgentRule: only a known app naming another program is set aside",
+      "kind": "codex",
+      "steps": [
+        { "event": "sample", "value": "state=working:turn=0:blocked=0", "status": "working", "done": false },
+        { "event": "sample", "value": "state=done:app=mytool:turn=1:blocked=0", "status": "done", "done": true }
+      ]
+    },
+    {
+      "name": "a program that left takes its Done with it",
+      "source": "ADR 0033: a program that left takes its Done with it, and its stale report brings none back",
+      "kind": "pi",
+      "steps": [
+        { "event": "sample", "value": "state=done:app=pi:turn=2:blocked=0", "status": "done", "done": true },
+        { "event": "agent", "kind": null },
+        { "event": "sample", "value": "turn=2:blocked=0", "status": null, "done": false },
+        { "event": "agent", "kind": "pi" },
+        { "event": "sample", "value": "state=idle:app=pi:turn=2:blocked=0", "status": "idle", "done": false },
+        { "event": "sample", "value": "state=done:app=pi:turn=3:blocked=0", "status": "done", "done": true }
+      ]
+    },
+    {
+      "name": "another program taking the Pane does not inherit the last one's turns",
+      "source": "ADR 0044: the counts belong to the Pane, not to its program",
+      "kind": "claude",
+      "steps": [
+        { "event": "sample", "value": "state=done:app=claude-code:turn=4:blocked=0", "status": "done", "done": true },
+        { "event": "agent", "kind": "codex" },
+        { "event": "sample", "value": "state=idle:app=codex:turn=4:blocked=0", "status": "idle", "done": false },
+        { "event": "sample", "value": "state=done:app=codex:turn=5:blocked=0", "status": "done", "done": true }
+      ]
+    }
+  ]
+}
