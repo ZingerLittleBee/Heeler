@@ -287,6 +287,15 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   Host by address or name, and [AgentActivityLink+Hosts](../../Sources/Heeler/Notifications/AgentActivityLink+Hosts.swift)
   resolves it against the saved Hosts before `AgentSceneDirectory` routes it.
   Start with [AgentActivityLinkTests](../../Tests/HeelerTests/AgentActivityLinkTests.swift).
+- **Theme and the app's light or dark:** Settings › Appearance's Theme section in
+  [AppearanceSettingsView](../../Sources/Heeler/Settings/AppearanceSettingsView.swift)
+  edits [AppAppearanceSettings](../../Sources/Heeler/Settings/AppAppearanceSettings.swift) (Mode)
+  and [TerminalThemeSettings](../../Sources/Heeler/Settings/TerminalThemeSettings.swift) (one theme per appearance).
+  `appAppearance(_:themes:)` in [ThemeAppearance](../../Sources/Heeler/Settings/ThemeAppearance.swift)
+  publishes `\.themeAppearance` and `\.themeColors` ([ThemeColors](../../Sources/Heeler/Settings/ThemeColors.swift))
+  and draws the window light or dark by the theme ([ADR 0042](../adr/0042-the-app-is-drawn-light-or-dark-by-its-theme.md)).
+  Start with [ThemeColorsTests](../../Tests/HeelerTests/ThemeColorsTests.swift) and
+  [TerminalThemeSettingsTests](../../Tests/HeelerTests/TerminalThemeSettingsTests.swift).
 - **Localization (English, Japanese, Simplified Chinese):** [Localizable.xcstrings](../../Sources/Heeler/Resources/Localizable.xcstrings)
   and [InfoPlist.xcstrings](../../Sources/Heeler/Resources/InfoPlist.xcstrings),
   also compiled into the widget and notification-service extensions. Display
