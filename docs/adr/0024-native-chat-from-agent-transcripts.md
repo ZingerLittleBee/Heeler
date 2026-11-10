@@ -318,7 +318,9 @@ come before Chat knows the command. When it knows none, the follow-through
 reads the screen after the Esc and, unless that read shows no task (its
 row under the box or the footer's task count), wakes the transcript read
 and waits up to 8 s for the tapped turn's commands, never another turn's,
-ending the wait once such a read shows another turn open. A Composer send,
+ending the wait once such a read shows another turn open. When no read in
+that time places the open turn, as over a stalled link, nothing is pressed
+and Chat says a command may still run. A Composer send,
 from Chat or the terminal page in any window, waits while the
 follow-through reads and types, since it would land between two of its
 keys: the keys queue is the Agent's, as the Composer is. Its notice ends

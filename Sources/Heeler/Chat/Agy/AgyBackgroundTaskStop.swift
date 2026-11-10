@@ -85,7 +85,8 @@ struct AgyBackgroundTaskStop {
     /// tap (live). So with none of the open turn's commands read at the tap,
     /// Chat reads again unless the screen after the Esc lists no task, and
     /// the commands that turn then has, if it is still the open one, are
-    /// ended.
+    /// ended. A read that never places the turn presses nothing and says a
+    /// command may still run.
     static func followThrough(
         reading transcript: Transcript, io: BlockedScreenIO, mayContinue: @escaping @MainActor () -> Bool,
         timing: Timing = Timing(), clock: BlockedCardClock = .live
@@ -117,8 +118,10 @@ struct AgyBackgroundTaskStop {
                 let turn = transcript.openTurn()
                 return stop(turn) != nil || !turn.isSameTurn(as: tapped)
             }
-            // A read begun before the turn's prompt can bring the turn before.
-            guard transcript.isCurrent() else { return nil }
+            // A read begun before the turn's prompt can bring the turn
+            // before, and a stalled link brings none: the screen showed a
+            // task, or could not be read, so one of the turn's may run.
+            guard transcript.isCurrent() else { return Self.unplacedNotice }
             return await stop(transcript.openTurn())?.run()
         }
     }
@@ -378,6 +381,12 @@ struct AgyBackgroundTaskStop {
         return "Stop ended the turn, but \(list(commands)) still \(one ? "runs" : "run") in the background. "
             + "Stop \(one ? "it" : "them") in the terminal: /tasks, then k."
     }
+
+    /// What may still run when no command of the turn was known at the tap
+    /// and no transcript read placed the turn by the wait's end.
+    static let unplacedNotice =
+        "Heeler couldn't tell after Stop which background commands the turn started, so one may still run. "
+        + "Check in the terminal: /tasks, then k."
 
     /// What may still run when no screen showed the turn's end.
     static func unreadNotice(for commands: [ChatBackgroundCommand]) -> String {

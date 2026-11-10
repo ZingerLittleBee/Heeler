@@ -738,15 +738,30 @@ struct AgyBackgroundTaskStopTests {
     }
 
     /// A read begun before the running turn's prompt can bring the earlier
-    /// turn's late task: not current, it ends nothing.
+    /// turn's late task: not current, it ends nothing, and Stop says one
+    /// may still run.
     @Test func aLateCommandOfATurnChatCannotPlaceIsLeftRunning() async throws {
         let chat = ChatReads(
             Self.turn(1), then: Self.turn(1, [Self.command("sleep 60", id: 45)]), current: false,
             readMakesCurrent: false)
         let pane = try Self.corePane()
 
-        #expect(await Self.tap(chat, pane) == .some(nil))
+        #expect(await Self.tap(chat, pane) == .some(AgyBackgroundTaskStop.unplacedNotice))
         #expect(pane.typed.isEmpty)
+    }
+
+    /// No command known at the tap, a task under the box after the Esc (or
+    /// a read of it that failed), and a transcript that never becomes
+    /// current, as over a stalled link (live): nothing is pressed, and Stop
+    /// says a command may still run rather than ending silently.
+    @Test(arguments: [Set<Int>(), [1]])
+    func aTranscriptThatNeverBecomesCurrentEndsWithANotice(failing: Set<Int>) async throws {
+        let chat = ChatReads(Self.turn(1), then: nil, current: false, readMakesCurrent: false)
+        let pane = try Self.corePane(failing: failing)
+
+        #expect(await Self.tap(chat, pane) == .some(AgyBackgroundTaskStop.unplacedNotice))
+        #expect(pane.typed.isEmpty)
+        #expect(chat.readsAgain == 1)
     }
 
     /// A send of Chat's still waiting for its record: the open turn may be
