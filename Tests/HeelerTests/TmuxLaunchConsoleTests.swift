@@ -194,7 +194,7 @@ struct TmuxLaunchConsoleTests {
 
         try await waitUntil("the new name") { store.workspacesByHost[host.id]?.map(\.label) == ["renamed"] }
         let script = try #require(await commandScripts(tmux).last)
-        #expect(script.contains("rename-session -t '$0' renamed"))
+        #expect(script.contains("rename-session -t '$0' -- renamed"))
         store.setHosts([])
     }
 

@@ -271,9 +271,26 @@ struct TmuxLaunchTests {
 
     // MARK: Rename and close
 
+    @Test(arguments: ["-x", "--", "-t other"])
+    func aRenameLabelIsNotATmuxFlag(_ label: String) {
+        let plain = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@_-")
+        let word = label.unicodeScalars.allSatisfy(plain.contains) ? label : HerdrCoreLocator.quoted(label)
+        let renamed = TmuxLaunch.renameSession(id: "$0", label: label, paths: Self.paths)
+        #expect(text(renamed).contains("rename-session -t '$0' -- \(word)"))
+    }
+
+    @Test func anAgentArgumentThatLooksLikeAFlagStaysAfterTheSeparator() throws {
+        let command = try TmuxLaunch.agentWindow(
+            AgentLaunchRequest(
+                kind: "tool", name: "tool", arguments: ["-x", "--", "-t other"],
+                workspaceID: "$0", cwd: "/work"),
+            on: server())
+        #expect(text(command).contains("-- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' tool -x -- '-t other'"))
+    }
+
     @Test func renameAndCloseNameTheirTargets() {
         let renamed = TmuxLaunch.renameSession(id: "$0", label: "My Work", paths: Self.paths)
-        #expect(text(renamed) == script("exec \"$t\" -N -S \"$s\" rename-session -t '$0' 'My Work'"))
+        #expect(text(renamed) == script("exec \"$t\" -N -S \"$s\" rename-session -t '$0' -- 'My Work'"))
         let pane = TmuxLaunch.killPane("%7", paths: Self.paths)
         #expect(text(pane) == script("exec \"$t\" -N -S \"$s\" kill-pane -t '%7'"))
         let window = TmuxLaunch.killWindow("@4", paths: Self.paths)

@@ -759,8 +759,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         var program: [String] = []
     }
 
-    /// The exec line's tmux command. `-N` counts only before the subcommand,
-    /// and a rename's new name is the word after `-t`.
+    /// The exec line's tmux command. `-N` counts only before the subcommand.
+    /// A rename's new name is the word after `--` (itself possibly `--`), or,
+    /// in an older script, the word after `-t` when that word is not a flag.
+    /// Anywhere else, `--` starts the program.
     private static func invocation(of words: [String]) -> Invocation? {
         let commands = ["new-window", "new-session", "rename-session", "kill-pane", "kill-window"]
         guard let index = words.firstIndex(where: { commands.contains($0) }) else { return nil }
@@ -769,7 +771,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         while cursor < words.count {
             let word = words[cursor]
             if word == "--" {
-                parsed.program = Array(words[(cursor + 1)...])
+                if parsed.subcommand == "rename-session", cursor + 1 < words.count {
+                    parsed.name = words[cursor + 1]
+                } else {
+                    parsed.program = Array(words[(cursor + 1)...])
+                }
                 break
             }
             switch word {

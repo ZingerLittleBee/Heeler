@@ -87,7 +87,8 @@ enum TmuxLaunch {
     }
 
     static func renameSession(id: String, label: String, paths: TmuxPaths) -> Command {
-        command(["rename-session", "-t", id, label], paths: paths, loginShell: false)
+        // The label is positional. `--` keeps a name like `-x` from being a flag.
+        command(["rename-session", "-t", id, "--", label], paths: paths, loginShell: false)
     }
 
     static func killPane(_ id: String, paths: TmuxPaths) -> Command {
