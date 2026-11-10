@@ -321,11 +321,15 @@ and waits up to 8 s for the tapped turn's commands, never another turn's,
 ending the wait once such a read shows another turn open. When no read in
 that time places the open turn, as over a stalled link, nothing is pressed
 and Chat says a command may still run. A Composer send,
-from Chat or the terminal page in any window, waits while the
+from Chat or the terminal page in any window, is held while the
 follow-through reads and types, since it would land between two of its
-keys: the keys queue is the Agent's, as the Composer is. Its notice ends
-with the follow-through: agy is Idle by then, so no status change would
-end it. agy records a kill only with the next prompt, so the row reads
+keys: the keys queue is the Agent's, as the Composer is. The draft stays
+and nothing resends it. The follow-through ends as its last step returns,
+so a send just after goes. Its hold's notice, if still shown, then gives
+way to one saying Stop has finished and nothing was sent, which ends as
+any notice does: agy is Idle by then, so no status change would end the
+hold's, and ending it with the follow-through hid a send held at its end
+(live). agy records a kill only with the next prompt, so the row reads
 Started until then (1.5.3, live). It writes the kill just after that
 prompt, but Chat shows its notice at the end of the stopped turn, where a
 finish agy held falls (written before the prompt), not at the top of the

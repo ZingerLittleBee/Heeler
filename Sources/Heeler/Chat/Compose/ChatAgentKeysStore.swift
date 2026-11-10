@@ -59,14 +59,17 @@ final class ChatAgentKeysStore {
     @ObservationIgnored private var whenQueuedWorkEnds: [@MainActor () -> Void] = []
 
     /// Holds a Composer send while queued work runs: the refusal saying
-    /// `reason`, or nil when none runs. `composer`'s notice of it ends with
-    /// that work, since nothing else would: Antigravity CLI is Idle by then,
-    /// so no Agent Status change comes, and the notice stayed until the
-    /// draft changed (live). A notice noted for anything else stays.
-    func holdSend(saying reason: String, in composer: AgentComposerStore) -> ComposerRefusal? {
+    /// `reason`, or nil when none runs. Once that work ends, `composer`'s
+    /// notice of it gives way to one saying `ended`, since nothing sends the
+    /// draft and nothing else would change the notice: Antigravity CLI is
+    /// Idle by then, so no Agent Status change comes, and the notice stayed
+    /// until the draft changed (live). Ending it with the work hid a send
+    /// held at the work's end. A notice noted for anything else, or already
+    /// ended, stays as it is.
+    func holdSend(saying reason: String, then ended: String, in composer: AgentComposerStore) -> ComposerRefusal? {
         guard isRunningQueuedWork else { return nil }
         let hold = ComposerRefusal.inputNotReady(reason)
-        whenQueuedWorkEnds.append { [weak composer] in composer?.endNotice(hold) }
+        whenQueuedWorkEnds.append { [weak composer] in composer?.replaceNotice(hold, with: .inputNotReady(ended)) }
         return hold
     }
 

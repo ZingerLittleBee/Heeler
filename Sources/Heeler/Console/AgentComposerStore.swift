@@ -460,10 +460,12 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     /// What `refusal` held the Send for is over, with no Agent Status
-    /// change or edit to say so: its notice ends. Any other notice stays.
-    func endNotice(_ refusal: ComposerRefusal) {
-        guard notice?.refusal == refusal else { return }
-        notice = nil
+    /// change or edit to say so: its notice gives way to `replacement`, for
+    /// the same surface and conversation, which ends as any notice does.
+    /// Any other notice stays.
+    func replaceNotice(_ refusal: ComposerRefusal, with replacement: ComposerRefusal) {
+        guard let notice, notice.refusal == refusal else { return }
+        self.notice = ComposerNotice(refusal: replacement, route: notice.route, conversation: notice.conversation)
     }
 
     /// Removes a failed or unanswered echo and restores all of its text to the

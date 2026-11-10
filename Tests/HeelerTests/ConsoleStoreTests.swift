@@ -249,7 +249,8 @@ struct ConsoleStoreTests {
     /// Antigravity CLI's Stop types `/tasks` and its keys after its Esc, and a
     /// Composer send's paste would land between them. Its keys queue is the
     /// Agent's, as the Composer is, so the terminal page's Send waits for that
-    /// work too, in any window or rebuilt Chat, and goes once it ends.
+    /// work too, in any window or rebuilt Chat. Once it ends the notice says
+    /// to send again, and the next Send goes and ends it.
     @Test func everySurfaceOfAnAgentSharesItsKeysQueue() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
@@ -278,9 +279,12 @@ struct ConsoleStoreTests {
 
         await panel.open()
         await followThrough.value
-        #expect(session.composer.notice == nil)
+        #expect(
+            session.composer.notice
+                == ComposerNotice(refusal: .inputNotReady(AgyBackgroundTaskStop.sendHoldEnded), route: .terminal))
         #expect(await session.composer.send(policy: terminal) == .deliveredViaPrompt)
         #expect(await transport.agentPromptParams.map(\.text) == ["and the tests"])
+        #expect(session.composer.notice == nil)
     }
 
     /// Actions only Herdr TUI can serve are offered by Server Kind, not

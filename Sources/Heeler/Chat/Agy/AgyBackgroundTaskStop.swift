@@ -372,6 +372,10 @@ struct AgyBackgroundTaskStop {
     static let sendHold =
         "Stop is still ending the turn's background commands in Antigravity CLI. Try again in a moment."
 
+    /// What a held send's notice says once this ended: nothing sends the
+    /// draft by itself.
+    static let sendHoldEnded = "Stop has finished in Antigravity CLI, but nothing was sent, so send again."
+
     static let panelLeftOpen =
         "Stop ended the turn and its background commands, but Antigravity CLI's task list may still be open. Close it in the terminal with Esc."
 

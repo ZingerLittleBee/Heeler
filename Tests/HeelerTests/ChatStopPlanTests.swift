@@ -459,18 +459,23 @@ struct ChatStopPlanTests {
 
     /// agy is Idle while the follow-through types, so no status change
     /// ended the held send's notice, which stayed after it until the draft
-    /// changed (live). It ends with the work; a notice for another reason,
-    /// or one noted once the work ended, stays. The terminal page's Send
-    /// waits the same way: the Agent's keys queue is its Composer's.
+    /// changed (live), and ending it with the work hid a send held at its
+    /// end. Once the work ends it says nothing was sent, for the same
+    /// surface and conversation, and ends as any notice does. A notice for
+    /// another reason, one already ended, or one noted once the work ended
+    /// stays as it is. The terminal page's Send waits the same way: the
+    /// Agent's keys queue is its Composer's.
     @Test(arguments: [ComposerRoute.chat, .terminal])
-    func aSendHeldForAFollowThroughSaysSoUntilItEnds(route: ComposerRoute) async {
+    func aSendHeldForAFollowThroughSaysToSendAgainOnceItEnds(route: ComposerRoute) async {
         let composer = AgentComposerStore(target: "w1:p1", initialStatus: .idle) { _ in
             throw TransportError.cancelled
         }
         let session = AgentComposerSession(composer: composer)
         let keys = session.agentKeys
         let hold = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHold)
+        let ended = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHoldEnded)
         let other = ComposerRefusal.inputNotReady("Claude Code is switching a setting. Try again in a moment.")
+        let conversation = route == .chat ? 7 : nil
         /// A Send from `route`'s surface, refused for `refusal` or else as
         /// that surface holds it.
         func send(refusedFor refusal: ComposerRefusal? = nil) async -> AgentComposerStore.SendResult {
@@ -478,7 +483,7 @@ struct ChatStopPlanTests {
                 route == .chat
                 ? ComposerDeliveryPolicy(
                     route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 }, validate: { _ in nil },
-                    preflight: { _ in session.heldSend() }, verify: nil)
+                    preflight: { _ in session.heldSend() }, verify: nil, conversation: { 7 })
                 : session.terminalSendPolicy(attach: nil)
             if let refusal { policy.preflight = { _ in refusal } }
             return await composer.send(policy: policy)
@@ -496,16 +501,24 @@ struct ChatStopPlanTests {
 
         await followThrough {
             #expect(await send() == .refused(hold))
-            #expect(composer.notice == ComposerNotice(refusal: hold, route: route))
+            #expect(composer.notice == ComposerNotice(refusal: hold, route: route, conversation: conversation))
         }
-        #expect(composer.notice == nil)
+        #expect(composer.notice == ComposerNotice(refusal: ended, route: route, conversation: conversation))
         #expect(composer.draft == "and the tests")
+        composer.replaceDraft(with: "and the tests too")
+        #expect(composer.notice == nil, "an edit ends it")
 
         await followThrough {
             _ = await send()
             _ = await send(refusedFor: other)
         }
         #expect(composer.notice?.refusal == other)
+
+        await followThrough {
+            _ = await send()
+            composer.replaceDraft(with: "and the docs")
+        }
+        #expect(composer.notice == nil, "a hold notice an edit ended stays ended")
 
         _ = await send(refusedFor: hold)
         await followThrough {}
@@ -514,7 +527,8 @@ struct ChatStopPlanTests {
 
     /// A Retry tapped while the follow-through types is held as a Send is.
     /// The message keeps the failure it was retried for, so neither the
-    /// Composer's failure row nor Chat's echo says the hold once it ended.
+    /// Composer's failure row nor Chat's echo says the hold once it ended;
+    /// the notice says nothing went, so retry.
     @Test func aRetryHeldForAFollowThroughKeepsItsReason() async throws {
         let composer = AgentComposerStore(target: "w1:p1", initialStatus: .idle) { _ in
             throw TransportError.sshUnreachable(detail: "offline")
@@ -541,7 +555,9 @@ struct ChatStopPlanTests {
         await panel.open()
         await work.value
 
-        #expect(composer.notice == nil)
+        #expect(
+            composer.notice
+                == ComposerNotice(refusal: .inputNotReady(AgyBackgroundTaskStop.sendHoldEnded), route: .chat))
         #expect(composer.messages.map(\.state) == [.failed(reason)])
         #expect(ChatComposerEchoes.pending(composer.messages, statuses: [:]).map(\.state) == [.failed(reason)])
     }

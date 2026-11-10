@@ -50,10 +50,12 @@ final class AgentComposerSession {
     /// Why a Composer send waits, from Chat or the terminal page in any
     /// window: Stop's follow-through types into the Agent's input meanwhile
     /// (Antigravity CLI's `/tasks`), where the send's paste would land
-    /// between its keys. Nil when nothing holds it. Called before any await,
+    /// between its keys. Nil when nothing holds it. Once the follow-through
+    /// ends, the hold's notice says to send again. Called before any await,
     /// so a follow-through that starts later finds the send typing and stops.
     func heldSend() -> ComposerRefusal? {
-        agentKeys.holdSend(saying: AgyBackgroundTaskStop.sendHold, in: composer)
+        agentKeys.holdSend(
+            saying: AgyBackgroundTaskStop.sendHold, then: AgyBackgroundTaskStop.sendHoldEnded, in: composer)
     }
 
     /// The terminal page's Send. `attach` is that window's Attach, which a
