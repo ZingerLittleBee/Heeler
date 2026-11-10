@@ -99,6 +99,17 @@ enum TmuxLaunch {
         command(["kill-window", "-t", id], paths: paths, loginShell: false)
     }
 
+    /// The server's global environment, which a new session inherits.
+    /// `show-environment -g` prints `NAME=value`; the caller keeps names only.
+    static func showEnvironment(paths: TmuxPaths) -> Command {
+        command(["show-environment", "-g"], paths: paths, loginShell: false)
+    }
+
+    /// One session's environment delta, addressed by its id (`$n`), never its name.
+    static func showEnvironment(session: String, paths: TmuxPaths) -> Command {
+        command(["show-environment", "-t", session], paths: paths, loginShell: false)
+    }
+
     /// The last non-empty line. A login shell's startup files may print before it.
     static func created(from stdout: Data) -> Created? {
         let lines = String(decoding: stdout, as: UTF8.self)

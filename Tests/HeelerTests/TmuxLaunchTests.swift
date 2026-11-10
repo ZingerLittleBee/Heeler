@@ -311,6 +311,15 @@ struct TmuxLaunchTests {
         #expect(text(window) == script("exec \"$t\" -N -S \"$s\" kill-window -t @4"))
     }
 
+    @Test func showEnvironmentAsksTheGlobalListAndASessionById() {
+        let global = TmuxLaunch.showEnvironment(paths: Self.paths)
+        #expect(text(global) == script("exec \"$t\" -N -S \"$s\" show-environment -g"))
+        #expect(!global.throughLoginShell)
+        let session = TmuxLaunch.showEnvironment(session: "$0", paths: Self.paths)
+        #expect(text(session) == script("exec \"$t\" -N -S \"$s\" show-environment -t '$0'"))
+        #expect(!session.throughLoginShell)
+    }
+
     // MARK: Quoting
 
     @Test(arguments: userText)
