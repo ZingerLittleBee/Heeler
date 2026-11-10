@@ -174,7 +174,12 @@ struct TmuxSSHFixture: Sendable {
     /// Asks the server on a fixture socket. `-N`: asking never starts one.
     @discardableResult
     func tmux(_ name: String? = nil, _ words: String...) async throws -> String {
-        try await require(tmuxCommand(name, words) + " </dev/null")
+        try await require(tmuxLine(words, on: name))
+    }
+
+    /// The command line of one ask, for words kept in a list.
+    func tmuxLine(_ words: [String], on name: String? = nil) -> String {
+        tmuxCommand(name, words) + " </dev/null"
     }
 
     /// Starts a server with one session, the only way one starts here. It reads

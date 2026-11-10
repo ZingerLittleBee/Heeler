@@ -2408,7 +2408,7 @@ run_tmux_fixture_suite() {
     HEELER_SSH_E2E_CONFIG=$(<"$tmux_fixture_dir/tmux-test-config")
     push_simulator_environment HEELER_SSH_E2E_CONFIG \
         HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
-    run_suite TmuxTransportE2ETests 8 1 0 TmuxTransportE2ETests || return $?
+    run_suite TmuxTransportE2ETests 11 1 0 TmuxTransportE2ETests || return $?
     HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
     push_simulator_environment HEELER_SSH_E2E_CONFIG \
         HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
@@ -2680,6 +2680,10 @@ assert_behavior "Changes field reads: direct and Jump Host" ChangesFieldHostE2ET
 # server would leave one behind for this test to find.
 assert_behavior "tmux Host connects without starting a server" TmuxTransportE2ETests \
     '"connecting and detecting start no server, with a configuration that creates a session on start"'
+# The inventory loop is one long exec that speaks only when something changed
+# (ADR 0043): a loop that printed every second would fail this test's count.
+assert_behavior "tmux inventory loop prints only on change" TmuxTransportE2ETests \
+    '"the inventory loop prints once and then only on change, in one ordinary SSH session"'
 assert_behavior "PTY" HeelerSSHPTYE2ETests \
     '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
 assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \
