@@ -1350,7 +1350,7 @@ struct HerdrCoreTerminalStoreTests {
     func anAgentTerminalReplacedMidHideStillOpensTheOtherAgentsChat(hideIsReported: Bool) async throws {
         let (fixture, screen, departure, other, keyboard) = try await agentTerminalWithKeyboardUp(
             opensAgentsOn: .chat)
-        weak var leavingInput = departure.surface
+        weak let leavingInput = departure.surface
         let chip = try #require(
             Self.views(of: TerminalAgentChip.self, in: screen.window).first { $0.id == other.id })
         chip.sendActions(for: .touchUpInside)
