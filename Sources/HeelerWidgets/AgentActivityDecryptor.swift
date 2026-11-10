@@ -13,16 +13,12 @@ enum AgentActivityPresentation: Equatable, Sendable {
         }
     }
 
-    /// Fallback headline when a row cannot be drawn. Host identity is never
-    /// rendered.
-    var headerTitle: String {
-        switch self {
-        case .detailed:
-            guard let primary = primaryAgent else { return AgentActivityCopy.genericAppName }
-            return primary.displayIdentity
-        case .countsOnly:
-            return AgentActivityCopy.genericAppName
+    func lockScreenHostName(hostID: String, snapshot: LiveActivityHostSnapshot?) -> String? {
+        if let name = snapshot?.name(forHostID: hostID), !name.isEmpty { return name }
+        if case .detailed(let details, _) = self, !details.hostName.isEmpty {
+            return details.hostName
         }
+        return nil
     }
 
     var agents: [AgentActivityDetails.AgentDetail] {
@@ -32,11 +28,6 @@ enum AgentActivityPresentation: Equatable, Sendable {
         case .countsOnly:
             return []
         }
-    }
-
-    /// First Agent in envelope order (pinned eligible first, then status rank).
-    var primaryAgent: AgentActivityDetails.AgentDetail? {
-        agents.first
     }
 
     /// Rows drawn in the expanded Dynamic Island, under its status header:
@@ -65,12 +56,10 @@ enum AgentActivityPresentation: Equatable, Sendable {
         return max(0, counts.total - shown)
     }
 
-    /// Keep configured rows, independent tap targets, padding, and the
-    /// overflow/stale caption within the 160 pt lock-screen budget. The
-    /// estimate mirrors the rendered layout: three three-row cards plus the
-    /// caption fit (about 158 pt), a fourth never does, and four two-row
-    /// cards still fit as before.
-    func lockScreenAgents(isStale: Bool) -> [AgentActivityDetails.AgentDetail] {
+    /// Reserve the Host heading before fitting complete linked Agent entries.
+    func lockScreenAgents(
+        isStale: Bool, hasHeader: Bool = true
+    ) -> [AgentActivityDetails.AgentDetail] {
         let total = counts.total
         guard total > 0 else { return [] }
         let candidates = Array(agents.prefix(min(total, 4)))
@@ -84,7 +73,10 @@ enum AgentActivityPresentation: Equatable, Sendable {
             let captionHeight = isStale || total > shown
                 ? AgentActivityRowMetrics.lockScreenCaptionHeight : 0
             let padding = AgentActivityRowMetrics.lockScreenBannerVerticalPadding * 2
-            if rowHeight + padding + captionHeight <= AgentActivityRowMetrics.lockScreenHeightBudget {
+            let headerHeight = hasHeader ? AgentActivityRowMetrics.lockScreenHeaderHeight : 0
+            if rowHeight + padding + captionHeight + headerHeight
+                <= AgentActivityRowMetrics.lockScreenHeightBudget
+            {
                 return prefix
             }
         }
@@ -92,15 +84,15 @@ enum AgentActivityPresentation: Equatable, Sendable {
     }
 
     /// Inventory beyond the drawn lock-screen rows. Zero in counts-only.
-    func lockScreenOverflowCount(isStale: Bool) -> Int {
-        let shown = lockScreenAgents(isStale: isStale)
+    func lockScreenOverflowCount(isStale: Bool, hasHeader: Bool = true) -> Int {
+        let shown = lockScreenAgents(isStale: isStale, hasHeader: hasHeader)
         guard !shown.isEmpty else { return 0 }
         return max(0, counts.total - shown.count)
     }
 
     /// Trailing caption2 on the lock screen: overflow, stale notice, or both.
-    func lockScreenTrailingCaption(isStale: Bool) -> String? {
-        let overflow = lockScreenOverflowCount(isStale: isStale)
+    func lockScreenTrailingCaption(isStale: Bool, hasHeader: Bool = true) -> String? {
+        let overflow = lockScreenOverflowCount(isStale: isStale, hasHeader: hasHeader)
         switch (isStale, overflow > 0) {
         case (true, true): return String(localized: "+\(overflow) more · May be out of date")
         case (true, false): return String(localized: "May be out of date")
@@ -183,7 +175,6 @@ enum AgentActivityDecryptor {
 }
 
 enum AgentActivityCopy {
-    static let genericAppName = "Heeler"
     // Governs the Dynamic Island expanded rows; the lock screen sizes itself
     // via `lockScreenAgents` instead.
     static let rowLimit = 3
@@ -199,6 +190,27 @@ enum AgentActivityCopy {
         case "idle": String(localized: "\(count) idle")
         default: "\(count) \(status)"
         }
+    }
+
+    static func lockScreenStatus(_ status: String) -> String {
+        switch status {
+        case "blocked":
+            String(localized: "Needs you", comment: "Live Activity Agent status. The Agent is blocked waiting for the user's input; also used for an Agent error.")
+        case "working": String(localized: "Working")
+        case "done": String(localized: "Agent status Done", defaultValue: "Done")
+        default: status
+        }
+    }
+
+    static func lockScreenCounts(_ counts: AgentActivityAttributes.ContentState.Counts) -> String {
+        counts.chipItems.map { item in
+            switch item.status {
+            case "blocked":
+                String(localized: "\(item.count) needs you", comment: "Live Activity count of Agents waiting for the user's input. Singular: 1 needs you; plural: 2 need you.")
+            default:
+                count(item.count, status: item.status)
+            }
+        }.joined(separator: " · ")
     }
 
     /// A row's status as VoiceOver reads it after the row's fields.
