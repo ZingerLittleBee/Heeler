@@ -86,9 +86,9 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
   or one; Home Screen and Lock Screen widgets keep them in view
   ([Read more](https://docs.heeler.bybee.dev/usage)).
 - **Worktrees** — start an Agent on a clean checkout of the workspace's repo.
-- **Appearance** — System, Light, or Dark; 30 terminal themes with separate
-  Light and Dark slots; bundled JetBrains Mono and IBM Plex Mono; pinch to
-  zoom.
+- **Appearance** — System, Light, or Dark; 30 themes with separate Light and
+  Dark slots, worn by terminals, Chat and the app; bundled JetBrains Mono and
+  IBM Plex Mono; pinch to zoom.
 - **Jump Host** — reach unroutable machines through an SSH jump, with keys
   verified at both hops.
 

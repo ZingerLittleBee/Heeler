@@ -1,17 +1,16 @@
 import SwiftUI
 
-/// Settings › Appearance: the app's light or dark theme, then the
-/// terminal's and Chat's own font and text size, each surface in its
-/// section. Pushed from the settings root, which owns the NavigationStack.
+/// Settings › Appearance: the theme, which terminals, Chat and the app all
+/// wear, then the terminal's and Chat's own font and text size, each surface
+/// in its section. Pushed from the settings root, which owns the
+/// NavigationStack.
 struct AppearanceSettingsView: View {
     let terminal: TerminalSettings
     let appearance: AppAppearanceSettings
 
     var body: some View {
         Form {
-            Section {
-                themePicker
-            }
+            ThemeSection(terminal: terminal, appearance: appearance)
             TerminalAppearanceSection(terminal: terminal)
             ChatAppearanceSection()
         }
@@ -19,10 +18,27 @@ struct AppearanceSettingsView: View {
         .navigationTitle("Appearance")
         .navigationBarTitleDisplayMode(.inline)
     }
+}
 
-    /// The app's own light/dark override. A menu picker, not a pushed
-    /// screen: three options do not earn a navigation level.
-    private var themePicker: some View {
+/// Which appearance is in force, and the theme each appearance wears, each
+/// slot opening a picker with its own live preview.
+private struct ThemeSection: View {
+    let terminal: TerminalSettings
+    let appearance: AppAppearanceSettings
+
+    var body: some View {
+        Section {
+            modePicker
+            themePickerLink(for: .light)
+            themePickerLink(for: .dark)
+        } header: {
+            Text("Theme")
+        }
+    }
+
+    /// A menu picker, not a pushed screen: three options do not earn a
+    /// navigation level.
+    private var modePicker: some View {
         Picker(
             selection: Binding(
                 get: { appearance.selection },
@@ -32,13 +48,32 @@ struct AppearanceSettingsView: View {
                 Text(option.title).tag(option)
             }
         } label: {
-            Text("Theme")
+            Text("Mode")
         }
+    }
+
+    private func themePickerLink(for scheme: ColorScheme) -> some View {
+        NavigationLink {
+            TerminalThemePickerView(terminal: terminal, scheme: scheme)
+        } label: {
+            HStack(spacing: 12) {
+                TerminalThemeSwatchCard(
+                    option: terminal.themes.selection(for: scheme),
+                    scheme: scheme, compact: true
+                )
+                .frame(width: 54, height: 38)
+                .accessibilityHidden(true)
+                Text(scheme == .dark ? String(localized: "Dark Mode") : String(localized: "Light Mode"))
+                Spacer(minLength: 12)
+                Text(terminal.themes.selection(for: scheme).title)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityValue(terminal.themes.selection(for: scheme).title)
     }
 }
 
-/// The terminal's font, text size, and per-appearance theme slots, each
-/// slot opening a picker with its own live preview.
+/// The terminal's font and text size.
 private struct TerminalAppearanceSection: View {
     let terminal: TerminalSettings
 
@@ -67,34 +102,11 @@ private struct TerminalAppearanceSection: View {
                 }
             }
             .accessibilityValue("\(Int(terminal.zoom.fontSize)) points")
-            themePickerLink(for: .light)
-            themePickerLink(for: .dark)
         } header: {
             Text("Terminal")
         } footer: {
-            Text(
-                String(localized: "Pinching a terminal to zoom changes its text size too, and it sticks. Each appearance has its own theme, and Heeler is drawn light or dark to match it: a dark theme for Light Mode keeps the app dark under a light system."))
+            Text("Pinching a terminal to zoom changes its text size too, and it sticks.")
         }
-    }
-
-    private func themePickerLink(for scheme: ColorScheme) -> some View {
-        NavigationLink {
-            TerminalThemePickerView(terminal: terminal, scheme: scheme)
-        } label: {
-            HStack(spacing: 12) {
-                TerminalThemeSwatchCard(
-                    option: terminal.themes.selection(for: scheme),
-                    scheme: scheme, compact: true
-                )
-                .frame(width: 54, height: 38)
-                .accessibilityHidden(true)
-                Text(scheme == .dark ? String(localized: "Dark Mode") : String(localized: "Light Mode"))
-                Spacer(minLength: 12)
-                Text(terminal.themes.selection(for: scheme).title)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityValue(terminal.themes.selection(for: scheme).title)
     }
 }
 
@@ -138,7 +150,7 @@ private struct ChatAppearanceSection: View {
             Text("Chat")
         } footer: {
             Text(
-                String(localized: "Chat wears the terminal's theme. Code stays monospaced, and the text size follows the system's from there. A finished turn's steps fold behind one line above its answer; a turn stays open while it runs or while its background work does."))
+                String(localized: "Code stays monospaced, and the text size follows the system's from there. A finished turn's steps fold behind one line above its answer; a turn stays open while it runs or while its background work does."))
         }
     }
 

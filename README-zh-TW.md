@@ -83,8 +83,9 @@ Heeler 是獨立的 **herdr 行動裝置用戶端**，也是在 iPhone 和 iPad 
   主畫面與鎖定畫面小工具讓你隨時一覽
   （[了解更多](https://docs.heeler.bybee.dev/usage)）。
 - **工作樹**——在 Workspace 存放庫的乾淨 checkout 上啟動 Agent。
-- **外觀**——跟隨系統、淺色或深色；30 種終端機佈景主題，淺色與深色
-  可分別指定；內建 JetBrains Mono 與 IBM Plex Mono 字體；可雙指縮放。
+- **外觀**——跟隨系統、淺色或深色；30 種佈景主題，淺色與深色可分別指定，
+  終端機、對話與整個 App 都會套用；內建 JetBrains Mono 與 IBM Plex Mono
+  字體；可雙指縮放。
 - **跳板主機**——透過 SSH 跳板連到無法直接連通的機器，兩段跳轉的
   金鑰都會驗證。
 

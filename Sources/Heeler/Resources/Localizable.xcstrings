@@ -11607,24 +11607,24 @@
         }
       }
     },
-    "Changes apply instantly to current and future Attach terminals without reconnecting." : {
+    "Changes apply instantly to terminals, Chat and the app, without reconnecting." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "変更は再接続なしで、現在および今後の接続（Attach）ターミナルに即座に適用されます。"
+            "value" : "変更は再接続なしで、ターミナル、チャット、アプリに即座に適用されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "更改会立即应用于当前及之后的连接终端，无需重新连接。"
+            "value" : "更改会立即应用于终端、对话和 App，无需重新连接。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "變更會立即套用到目前與之後的 Attach 終端機，不需重新連線。"
+            "value" : "變更會立即套用到終端機、對話與 App，不需重新連線。"
           }
         }
       }
@@ -12256,28 +12256,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "它的主機連線後，對話檢視就會顯示此對話。此裝置尚未儲存其中任何內容。"
-          }
-        }
-      }
-    },
-    "Chat wears the terminal's theme. Code stays monospaced, and the text size follows the system's from there. A finished turn's steps fold behind one line above its answer; a turn stays open while it runs or while its background work does." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "チャットはターミナルのテーマを使います。コードは等幅のままとなり、文字サイズはシステムの設定に追従します。完了したターンの手順はその回答の上 1 行に折りたたまれ、ターンは実行中もバックグラウンド作業の最中も開いたままです。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "对话使用终端的主题。代码保持等宽字体，文字大小在此基础上跟随系统设置。已结束轮次的步骤会折叠在回答上方的一行中；正在运行或仍有后台工作运行的轮次会保持展开。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "對話使用終端機的主題。程式碼維持等寬字型，文字大小則依系統設定。已完成的一輪對話，其步驟會收合在回答上方的一行後面；一輪對話在執行中，或其背景工作仍在執行時，會保持展開。"
           }
         }
       }
@@ -13964,6 +13942,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "關閉窗格失敗：%@"
+          }
+        }
+      }
+    },
+    "Code stays monospaced, and the text size follows the system's from there. A finished turn's steps fold behind one line above its answer; a turn stays open while it runs or while its background work does." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コードは等幅のままとなり、文字サイズはシステムの設定に追従します。完了したターンの手順はその回答の上 1 行に折りたたまれ、ターンは実行中もバックグラウンド作業の最中も開いたままです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代码保持等宽字体，文字大小在此基础上跟随系统设置。已结束轮次的步骤会折叠在回答上方的一行中；正在运行或仍有后台工作运行的轮次会保持展开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "程式碼維持等寬字型，文字大小則依系統設定。已完成的一輪對話，其步驟會收合在回答上方的一行後面；一輪對話在執行中，或其背景工作仍在執行時，會保持展開。"
           }
         }
       }
@@ -31571,6 +31571,28 @@
         }
       }
     },
+    "Mode" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モード"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模式"
+          }
+        }
+      }
+    },
     "Model" : {
       "localizations" : {
         "ja" : {
@@ -39213,24 +39235,24 @@
         }
       }
     },
-    "Pinching a terminal to zoom changes its text size too, and it sticks. Each appearance has its own theme, and Heeler is drawn light or dark to match it: a dark theme for Light Mode keeps the app dark under a light system." : {
+    "Pinching a terminal to zoom changes its text size too, and it sticks." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ターミナルをピンチで拡大すると文字サイズも変更され、そのまま維持されます。外観（ライト/ダーク）ごとにテーマを設定でき、Heeler の明暗はテーマに合わせて変わります: ライトモード用のダークテーマは、アプリ全体をダークのままに保ちます。"
+            "value" : "ターミナルをピンチで拡大すると文字サイズも変更され、そのまま維持されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在终端中双指缩放也会改变文字大小，并保持该设置。浅色和深色外观各有独立的主题，Heeler 会随主题显示为浅色或深色：为浅色模式选择深色主题，可在浅色系统下让整个 App 保持深色。"
+            "value" : "在终端中双指缩放也会改变文字大小，并保持该设置。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在終端機上用兩指縮放時，文字大小也會一併改變，而且會保留下來。每種外觀都有各自的主題：為淺色模式選擇深色主題，即使系統是淺色，終端機也會維持深色。"
+            "value" : "在終端機上用兩指縮放時，文字大小也會一併改變，而且會保留下來。"
           }
         }
       }

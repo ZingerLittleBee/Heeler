@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 extension EnvironmentValues {
-    /// Whose terminal theme is in force: Settings › Appearance › Theme, or
+    /// Whose terminal theme is in force: Settings › Appearance › Mode, or
     /// the system's light or dark. Theme lookups read this, never
     /// `\.colorScheme`, which follows the theme's own background
     /// (`appAppearance(_:themes:)`).
