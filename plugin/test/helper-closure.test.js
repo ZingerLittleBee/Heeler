@@ -109,7 +109,9 @@ suite("Host Helper closure", () => {
     // `executable` is a Usage Limits request's recorded program, or the zstd on the
     // recorded PATH. Naming a new program here is a decision, not a test to update.
     const started = new Set(helperModules().flatMap((path) => programsStarted(readFileSync(path, "utf8"))));
-    // `powerShell` is the session extension's on native Windows, pinned below.
+    // `powerShell` is the session extension's on native Windows, and
+    // `target.tmux` the tmux the app stored, run inside a tmux Pane (ADR 0044);
+    // both are pinned below.
     assert.deepEqual([...started].sort(), [
       '"/bin/ps"',
       '"security"',
@@ -117,6 +119,7 @@ suite("Host Helper closure", () => {
       "powerShell",
       "runtime.claude",
       "runtime.node",
+      "target.tmux",
     ]);
   });
 
@@ -129,8 +132,10 @@ suite("Host Helper closure", () => {
     }
   });
 
+  // The session extension's are PowerShell's and `/bin/ps`'s, and in a tmux
+  // Pane the stored tmux's and `/bin/ps`'s for the Pane's foreground.
   for (const [name, path, calls] of [
-    ["session extension", SESSION_EXTENSION, 2],
+    ["session extension", SESSION_EXTENSION, 4],
     ["OpenCode plugin", OPENCODE_PLUGIN, 1],
   ]) {
     test(`the ${name} starts only what reads its own process start`, () => {
@@ -144,6 +149,14 @@ suite("Host Helper closure", () => {
       assert.match(source, /\bexecFile\(\s*"\/bin\/ps",\s*\["-o", "lstart=", "-p", String\(pid\)\],/);
     });
   }
+
+  test("in a tmux Pane the session extension starts the stored tmux, which never starts a server", () => {
+    const source = readFileSync(SESSION_EXTENSION, "utf8");
+    // Every tmux command goes through the one call, with `-N` and the Pane's server.
+    assert.match(source, /\bexecFile\(target\.tmux, \["-N", "-S", target\.socket, \.\.\.args\]/);
+    assert.equal([...source.matchAll(/\btarget\.tmux\b/g)].length, 1);
+    assert.match(source, /\bexecFile\(\s*"\/bin\/ps",\s*\["-o", "pgid=,tpgid=,tty=", "-p", String\(process\.pid\)\],/);
+  });
 
   test("on Windows the session extension starts PowerShell for that read and nothing else", () => {
     const source = readFileSync(SESSION_EXTENSION, "utf8");
