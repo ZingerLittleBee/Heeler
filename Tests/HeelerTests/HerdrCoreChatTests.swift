@@ -1226,6 +1226,48 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
+    /// A departed Agent has no program left to show a dialog. An Antigravity
+    /// CLI's store keeps reading for its trust prompt once the departure
+    /// clears its status, so it keeps the card it showed, but Chat gives the
+    /// Composer its place back.
+    @Test(arguments: [ChatAgentDeparture.ended, .restarting])
+    func aDepartedAgentsBlockedCardGivesTheComposerBack(_ departure: ChatAgentDeparture) async throws {
+        let record = Self.record(foreground: ["agy"], name: "agy", status: "blocked", app: "antigravity")
+        guard case .object(var fields) = record else { return }
+        fields["keep"] = .bool(departure == .restarting)
+        let rig = Rig(host: host, record: .object(fields))
+        try await rig.start()
+        let agent = try #require(rig.agent)
+        // Chat's store is keyed to the core the first link names.
+        try await rig.waitUntil("the Chat") { rig.store.chatStore(for: agent, program: .agy) != nil }
+        let chat = try #require(rig.store.chatStore(for: agent, program: .agy))
+        let suite = "core-chat-departed-card-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = UIHostingController(
+            rootView: Self.chatDetail(of: agent, console: rig.store, defaults: defaults))
+        let card = "Waiting for Input"
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try await rig.waitUntil("the card") { chat.blocked.content == .unreadable }
+            try await rig.waitUntil("the card on screen") {
+                !AccessibilityProbe.elements(labeled: card, in: controller.view).isEmpty
+            }
+
+            let end = departure == .ended ? ("finished", Self.exitedEnd) : ("lost", Self.lostEnd)
+            await rig.transport.deliver(Self.event(sequence: 2, type: end.0, data: end.1))
+            try await rig.waitUntil("the Agent to leave") { rig.store.chatDeparture(of: agent.id) == departure }
+            #expect(chat.blocked.replacesComposer)
+            try await rig.waitUntil("the card to go") {
+                AccessibilityProbe.elements(labeled: card, in: controller.view).isEmpty
+            }
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     @Test(arguments: [ChatAgentDeparture.restarting, .ended, .shell])
     func aDepartureIsSaidOverAConversation(_ departure: ChatAgentDeparture) {
         var conversation = ChatConversationSnapshot()

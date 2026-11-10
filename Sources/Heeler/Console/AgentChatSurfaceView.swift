@@ -386,7 +386,7 @@ struct AgentChatSurfaceView: View {
             guard let statuses else { return }
             composer.settleUnknownOutcomes(recorded: Set(statuses.filter { $0.value == .recorded }.keys))
         }
-        .onChange(of: chat?.blocked.replacesComposer ?? false) { _, isReplaced in
+        .onChange(of: showsBlockedCard) { _, isReplaced in
             // A Blocked card takes the Composer's place, Voice Input and the
             // tools dock with it. iPad keeps `.tools` without focus, so
             // nothing else would put the dock away.
@@ -1364,10 +1364,19 @@ struct AgentChatSurfaceView: View {
         }
     }
 
+    /// Whether a Blocked card takes the Composer's place
+    /// (`BlockedCardStore.replacesComposer`), unless the Agent has left its
+    /// Terminal (ADR 0032). No program is left there to show a dialog,
+    /// though the store can keep the card it showed, or read an Antigravity
+    /// CLI for its trust prompt as the departure clears its status.
+    private var showsBlockedCard: Bool {
+        chat?.blocked.replacesComposer == true && console.chatDeparture(of: agent.id) == nil
+    }
+
     /// A Blocked Agent's dialog, answered in the Composer's place, or a sign
-    /// that Chat is reading it (`BlockedCardStore.replacesComposer`).
+    /// that Chat is reading it (`showsBlockedCard`).
     private var blockedCard: AnyView? {
-        guard let chat, chat.blocked.replacesComposer else { return nil }
+        guard let chat, showsBlockedCard else { return nil }
         return AnyView(
             BlockedCardView(
                 store: chat.blocked,
@@ -1408,7 +1417,7 @@ struct AgentChatSurfaceView: View {
             isInputFocused: false,
             keyboardPresentation: composerKeyboardPresentation,
             inheritsKeyboard: keyboardHandoff.mode(for: agent.id) != nil,
-            hasInputReplacement: chat?.blocked.replacesComposer ?? false,
+            hasInputReplacement: showsBlockedCard,
             keyboardIsLeaving: keyboardIsLeaving)
     }
 
