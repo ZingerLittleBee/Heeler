@@ -218,6 +218,10 @@ final class TerminalThemeSettings {
     private static let legacyDefaultsKey = "terminal-theme"
     private static let lightDefaultsKey = "terminal-theme-light"
     private static let darkDefaultsKey = "terminal-theme-dark"
+    /// A slot nobody chose shows a theme as light or dark as its appearance,
+    /// so an untouched app is lit as the system is (ADR 0042).
+    static let defaultLightSelection = TerminalThemeOption.followSystem
+    static let defaultDarkSelection = TerminalThemeOption.vesper
 
     private(set) var lightSelection: TerminalThemeOption
     private(set) var darkSelection: TerminalThemeOption
@@ -230,10 +234,10 @@ final class TerminalThemeSettings {
             .flatMap(TerminalThemeOption.init(rawValue:))
         lightSelection =
             defaults.string(forKey: Self.lightDefaultsKey)
-            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? .vesper
+            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? Self.defaultLightSelection
         darkSelection =
             defaults.string(forKey: Self.darkDefaultsKey)
-            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? .vesper
+            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? Self.defaultDarkSelection
     }
 
     /// What a terminal shows: `appearance`'s slot in both halves, so a
