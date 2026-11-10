@@ -1952,6 +1952,43 @@ struct AgentChatStoreTests {
         #expect(fixture.store.sendStatuses[id] == .recorded)
     }
 
+    /// A dialog opening inside a turn, or its answer, is no turn start or
+    /// end: Chat neither asks herdr for the Agent again nor looks for its
+    /// transcript again, which on herdr TUI went out beside the card's own
+    /// screen read, but still reads the transcript for the request. The
+    /// turn's end does both. A look again would follow the undo's sibling.
+    @Test func aDialogInsideATurnNeitherRefreshesTheAgentNorLooksAgain() async throws {
+        let thread = "01a10f87-e025-7fb1-8974-8dd09937767a"
+        let directory = "/home/dev/.codex/sessions/2026/10/06"
+        let base = "\(directory)/rollout-2026-10-06T12-45-25-\(thread).jsonl"
+        let sibling = "\(directory)/rollout-2026-10-06T13-01-00-\(thread)_01a10f9a-0000-7000-8000-000000000001.jsonl"
+        let meta = #"{"type":"session_meta","payload":{"id":"\#(thread)"}}"# + "\n"
+        let fixture = Fixture(session: thread, program: .codex)
+        await fixture.files.write(meta + NumberedChatReducer.lines(0..<2), at: base)
+        await fixture.store.step()
+        fixture.store.agentDidChange(Self.agent(session: thread, status: .working, program: .codex))
+        await fixture.store.step()
+        let asked = await fixture.server.reads
+        await fixture.files.write(meta + NumberedChatReducer.lines(40..<42), at: sibling)
+
+        await fixture.files.append(NumberedChatReducer.lines(2..<3), to: base)
+        fixture.store.agentDidChange(Self.agent(session: thread, status: .blocked, program: .codex))
+        await fixture.store.step()
+        #expect(await fixture.server.reads == asked)
+        #expect(fixture.store.conversation.phase == .following(path: base))
+        #expect(Self.ids(fixture.store).last == "n-2", "the poll still read the transcript")
+
+        fixture.store.agentDidChange(Self.agent(session: thread, status: .working, program: .codex))
+        await fixture.store.step()
+        #expect(await fixture.server.reads == asked)
+        #expect(fixture.store.conversation.phase == .following(path: base))
+
+        fixture.store.agentDidChange(Self.agent(session: thread, status: .idle, program: .codex))
+        await fixture.store.step()
+        #expect(await fixture.server.reads == asked + 1)
+        #expect(fixture.store.conversation.phase == .following(path: sibling))
+    }
+
     @Test func twoIdenticalSendsNeedTwoRecordedCopies() async throws {
         let fixture = Fixture(session: Self.first)
         await fixture.files.write(NumberedChatReducer.lines(0..<1), at: Self.path(Self.first))

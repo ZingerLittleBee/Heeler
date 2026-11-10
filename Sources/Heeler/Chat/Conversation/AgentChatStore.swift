@@ -877,15 +877,25 @@ final class AgentChatStore {
         // Answering a dialog resumes the turn it interrupted.
         if activity == .working, previous != .working, previous != .blocked { turnStartedAt = now() }
         returnChecked = []
+        lastActivity = now()
         // A turn starting or ending is when a session changes (`/clear`,
         // `/resume`), when a missing transcript appears, and when a turn
-        // after an undo writes to the thread's new file.
-        lastActivity = now()
-        needsAgentRefresh = true
-        needsRelocate = true
+        // after an undo writes to the thread's new file. A dialog opening
+        // or answered inside a turn is neither: the poll alone brings its
+        // request, without an `agent.get` and a search going out beside the
+        // card's own screen read (herdr TUI, ADR 0024).
+        if !Self.isWithinTurn(from: previous, to: activity) {
+            needsAgentRefresh = true
+            needsRelocate = true
+        }
         nextOpen = nil
         failedOpens = 0
         wake()
+    }
+
+    /// Working to Blocked or back: a dialog the turn opened, or its answer.
+    private static func isWithinTurn(from previous: ChatAgentActivity, to next: ChatAgentActivity) -> Bool {
+        (previous == .working && next == .blocked) || (previous == .blocked && next == .working)
     }
 
     // MARK: Loop

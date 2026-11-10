@@ -376,7 +376,10 @@ Pi's `/new` and `/resume`, and Grok Build's `/new` and `/clear` typed in the
 terminal move the Agent to another session, and no event says so. Codex
 reports a new thread only with its
 first prompt, when the Agent is working again. Hidden and working Chats
-don't read it on that pace. The
+don't read it on that pace. A turn starting or ending reads the record
+again and looks for a Codex thread's file again, which an undo moves; a
+dialog opening inside a turn, or its answer, does neither, so on Herdr TUI
+only the transcript read goes out beside the card's screen read. The
 list is a `UICollectionView`
 of hosted SwiftUI rows with its own single-column layout: it opens at the
 newest row and keeps the reader's place while rows above it measure, which
