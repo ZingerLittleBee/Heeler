@@ -75,8 +75,9 @@ extension AgentUsageBackgroundRefresh {
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) -> Self {
         Self(read: { host, claudeLimits in
-            // Nothing says what a Host of an unconfirmed Server Kind runs.
-            guard host.serverKind != .unconfirmed else { return nil }
+            // Nothing says what a Host of an unconfirmed Server Kind runs, and
+            // nothing on a tmux Host reports Usage.
+            guard host.serverKind.hasHostIntegrations else { return nil }
             var host = host
             host.routes.removeAll { $0.overlayNetworkID != nil }
             guard !host.routes.isEmpty, let resolved = try? credentials.credentials(for: host) else { return nil }

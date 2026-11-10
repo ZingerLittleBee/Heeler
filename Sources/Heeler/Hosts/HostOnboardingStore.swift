@@ -501,6 +501,12 @@ final class HostOnboardingStore {
         return detectionFailure == nil ? [] : ServerKindDetection.offeredWithoutFindings
     }
 
+    /// A tmux Host's checks found its tmux and no server on its socket.
+    var isWaitingForTmuxServer: Bool {
+        guard host.serverKind == .tmux, case .failed? = report?[.serverRunning] else { return false }
+        return true
+    }
+
     /// The sockets a tmux server answers on, for the confirmation to choose from.
     var tmuxSocketChoices: [String] {
         host.serverKind == .unconfirmed ? detection?.tmuxSockets ?? [] : []

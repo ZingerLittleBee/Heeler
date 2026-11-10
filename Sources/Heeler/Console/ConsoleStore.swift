@@ -134,6 +134,9 @@ final class ConsoleStore {
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let makeCoreSession: @Sendable (Host) -> HerdrCoreHostSession
+    @ObservationIgnored private let makeTmuxSession: @Sendable (Host) -> TmuxHostSession
+    /// Hears the paths a tmux Host's connection resolved again, for the catalog.
+    @ObservationIgnored var onTmuxPathsResolved: (@MainActor (Host.ID, TmuxPaths) -> Void)?
     /// A test supplies each Host's projection. Production leaves the choice to
     /// the Server Kind.
     @ObservationIgnored private let makeProjection: (@MainActor (Host) -> any ConsoleHostProjection)?
@@ -226,6 +229,8 @@ final class ConsoleStore {
         },
         makeCoreSession: @escaping @Sendable (Host) -> HerdrCoreHostSession =
             ConsoleStore.coreSessionFactory(),
+        makeTmuxSession: @escaping @Sendable (Host) -> TmuxHostSession =
+            ConsoleStore.tmuxSessionFactory(),
         makeProjection: (@MainActor (Host) -> any ConsoleHostProjection)? = nil,
         coreStopClock: BlockedCardClock = .live,
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
@@ -246,6 +251,7 @@ final class ConsoleStore {
         self.chatNow = chatNow
         self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
+        self.makeTmuxSession = makeTmuxSession
         self.makeProjection = makeProjection
         self.coreStopClock = coreStopClock
         self.herdrAppRename = herdrAppRename
@@ -286,6 +292,12 @@ final class ConsoleStore {
         let hosts = catalogHosts.filter(\.serverKind.isConfirmed)
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         catalog = hosts
+        // A tmux Host's stored paths are what a connection last resolved (ADR
+        // 0042): they move without making it another Host.
+        for (id, projection) in projections {
+            guard let tmux = projection as? TmuxConsoleProjection, let host = incoming[id] else { continue }
+            tmux.adoptPaths(of: host)
+        }
         if let hostsOutOfSight {
             let retained = hostsOutOfSight.union(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id))
             coreHostMemory.retainHosts(retained)
@@ -1452,7 +1464,14 @@ final class ConsoleStore {
                             self?.onCoreSeenMarksChanged?(id, core, marks)
                         },
                         onChange: onChange)
-                default:
+                case .tmux:
+                    TmuxConsoleProjection(
+                        host: host, session: makeTmuxSession(host),
+                        onPathsResolved: { [weak self, id = host.id] paths in
+                            self?.onTmuxPathsResolved?(id, paths)
+                        },
+                        onChange: onChange)
+                case .herdrTUI, .unconfirmed:
                     HostConsoleProjection(
                         host: host,
                         session: makeSession(host, HostConsoleProjection.subscriptions(paneIDs: [])),
@@ -1829,10 +1848,10 @@ final class ConsoleStore {
     private func publishUsageWidgets() {
         guard let usageWidgets else { return }
         guard isUsageEnabled else {
-            usageWidgets.publishUsageOff(hosts: catalog)
+            usageWidgets.publishUsageOff(hosts: usageCatalog)
             return
         }
-        usageWidgets.publish(catalog.map { host in
+        usageWidgets.publish(usageCatalog.map { host in
             let store = agentUsageStores[host.id]
             let state = store?.state ?? .idle
             return AgentUsageWidgetReading(
@@ -1840,6 +1859,11 @@ final class ConsoleStore {
                 isConnected: usageHasConnection(host, state: state),
                 keepsLastAnswerUntilRead: host.serverKind == .herdrCore)
         })
+    }
+
+    /// The catalog's Hosts that have Usage to read, in its order.
+    private var usageCatalog: [Host] {
+        catalog.filter(\.serverKind.hasHostIntegrations)
     }
 
     /// Whether a read for the widgets can run now. A Herdr TUI Host borrows the
@@ -1854,7 +1878,7 @@ final class ConsoleStore {
     /// Usage. Nothing is read while no Usage widget is installed.
     private func refreshStaleWidgetUsage() {
         guard let usageWidgets, isActive, isUsageEnabled else { return }
-        let hostIDs = catalog.map(\.id).filter { id in
+        let hostIDs = usageCatalog.map(\.id).filter { id in
             canReadUsageForWidgets(id) && widgetUsageRefreshes[id] == nil
                 && agentUsageStores[id]?.isLoading != true
                 && usageWidgets.isStale(id, readAt: agentUsageStores[id]?.readAt)
@@ -2463,6 +2487,12 @@ extension ConsoleStore: NotificationTransportProvider {
         }
     }
 
+    /// The server a tmux Host's socket answers with, while one does. Nil on any
+    /// other Host.
+    func tmuxServer(on hostID: Host.ID) -> TmuxServerStatus? {
+        (projections[hostID] as? TmuxConsoleProjection)?.server
+    }
+
     fileprivate func coreHost(_ hostID: Host.ID) -> Host? {
         catalog.first { $0.id == hostID && $0.serverKind == .herdrCore }
     }
@@ -2544,6 +2574,24 @@ extension ConsoleStore {
                 try await connector.connectCore(
                     settings: consoleSettings(
                         for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays))
+            }
+        }
+    }
+
+    /// The tmux Hosts' equivalent, with the same trust rules. Each connection
+    /// starts from the paths the session holds, which it keeps as they move.
+    static func tmuxSessionFactory(
+        connector: any TransportConnector = SSHTransportConnector(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared
+    ) -> @Sendable (Host) -> TmuxHostSession {
+        { host in
+            TmuxHostSession(storedPaths: host.storedTmuxPaths) { paths in
+                var settings = try await consoleSettings(
+                    for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays)
+                settings.tmuxPaths = paths
+                return try await connector.connectTmux(settings: settings)
             }
         }
     }

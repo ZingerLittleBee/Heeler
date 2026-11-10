@@ -112,9 +112,37 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         connected = false
     }
 
+    /// A new connection to the Host, which closes apart from any other.
     func transport(socketName: String, storedPaths: TmuxPaths?) -> TmuxSSHTransport {
         TmuxSSHTransport(
-            connection: self, socketName: socketName, storedPaths: storedPaths, nonce: { Self.nonce })
+            connection: Dial(host: self), socketName: socketName, storedPaths: storedPaths,
+            nonce: { Self.nonce })
+    }
+
+    private func noteClose() {
+        log.append("close")
+    }
+
+    /// One SSH connection to the Host.
+    private actor Dial: TmuxHostConnection {
+        nonisolated let routeID: UUID? = nil
+        private let host: ScriptedTmuxHost
+        private var connected = true
+
+        init(host: ScriptedTmuxHost) {
+            self.host = host
+        }
+
+        var isConnected: Bool { connected }
+
+        func runTmuxProbe(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
+            try await host.runTmuxProbe(script, throughLoginShell: throughLoginShell)
+        }
+
+        func close() async throws {
+            connected = false
+            await host.noteClose()
+        }
     }
 
     func runTmuxProbe(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {

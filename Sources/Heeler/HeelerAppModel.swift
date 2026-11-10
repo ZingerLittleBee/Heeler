@@ -170,6 +170,11 @@ final class HeelerAppModel {
         // Hosts and begin loading saved Chats before that first render;
         // connections still wait for start() to resume the Console.
         console.setHosts(hostStore.hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
+        // A connection that resolved a tmux Host's paths again has the catalog
+        // keep them (ADR 0042). A catalog that cannot be written asks again.
+        console.onTmuxPathsResolved = { [weak hostStore] id, paths in
+            try? hostStore?.noteTmuxPaths(paths, for: id)
+        }
     }
 
     var terminal: TerminalSettings {
@@ -251,14 +256,14 @@ final class HeelerAppModel {
     func refreshUsageInBackground() async {
         guard await scheduleUsageRefresh(), let publisher = console.usageWidgets else { return }
         await AgentUsageBackgroundRefresh.live().run(
-            hosts: hostStore.consoleHosts, publisher: publisher, isUsageEnabled: { console.isUsageEnabled })
+            hosts: hostStore.integratedHosts, publisher: publisher, isUsageEnabled: { console.isUsageEnabled })
     }
 
     /// Asks for a background Usage read while Usage is on and a widget is installed,
     /// and withdraws the request once none is.
     @discardableResult
     private func scheduleUsageRefresh() async -> Bool {
-        guard console.isUsageEnabled, let publisher = console.usageWidgets, !hostStore.consoleHosts.isEmpty,
+        guard console.isUsageEnabled, let publisher = console.usageWidgets, !hostStore.integratedHosts.isEmpty,
             await publisher.widgetsInstalled()
         else {
             AgentUsageBackgroundRefresh.cancel()

@@ -120,9 +120,10 @@ final class NotificationPreferencesStore {
     }
 
     /// Only unchanged Hosts keep confirmed state and in-flight operations. A
-    /// Host waiting for its Server Kind has no notifications to offer yet.
+    /// Host waiting for its Server Kind has no notifications to offer yet, nor
+    /// has one of a kind without a plugin or a Host Helper.
     func setHosts(_ catalogHosts: [Host]) {
-        let hosts = catalogHosts.filter(\.serverKind.isConfirmed)
+        let hosts = catalogHosts.filter(\.serverKind.hasHostIntegrations)
         let unchanged = Set(hosts.filter { self.hosts.contains($0) }.map(\.id))
         self.hosts = hosts
         states = states.filter { unchanged.contains($0.key) }

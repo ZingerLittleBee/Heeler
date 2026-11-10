@@ -488,7 +488,7 @@ struct ConsoleView: View {
             relaySettings: relaySettings,
             liveActivities: liveActivities,
             console: console,
-            hosts: hosts.consoleHosts,
+            hosts: hosts.integratedHosts,
             onHostAdded: { openHostFromSettings($0) },
             openHostHelper: { openHostFromSettings($0, opensHostHelper: true) },
             onDone: onDone)
@@ -511,7 +511,7 @@ struct ConsoleView: View {
 
     /// Every Host the Usage tab can read, in catalog order.
     private var usageEntries: [AgentUsageHostEntry] {
-        hosts.consoleHosts.map(console.agentUsageEntry(for:))
+        hosts.integratedHosts.map(console.agentUsageEntry(for:))
     }
 
     /// Usage, as a tab; beside an iPad's sidebar, its own split view whose

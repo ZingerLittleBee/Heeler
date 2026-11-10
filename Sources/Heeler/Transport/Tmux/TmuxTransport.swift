@@ -100,7 +100,11 @@ actor TmuxSSHTransport: TmuxTransport {
             }
             storedAnswer = report
         }
-        guard let storedAnswer, resolvedSinceLastAnswer else { return try await resolve() }
+        // A stopped server is polled with the paths in hand. A tmux that is no
+        // longer there, or no longer usable, is looked up again.
+        guard let storedAnswer, resolvedSinceLastAnswer, case .usable = storedAnswer.installation else {
+            return try await resolve()
+        }
         throw Self.failure(in: storedAnswer, socketName: socketName)
     }
 

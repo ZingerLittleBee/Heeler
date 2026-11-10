@@ -97,6 +97,15 @@ extension HostCapabilities {
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
         isLocatingCore: Bool = false
     ) {
+        // A tmux Host lists no inventory yet, so there is nothing to act on.
+        guard serverKind != .tmux else {
+            self.init(
+                startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,
+                worktrees: false, uploads: false, composerSend: false, chat: false, tabNames: false,
+                closeTab: false, syncLayoutFromPlugin: false, takeOver: false, composerStop: false,
+                hostScripts: false)
+            return
+        }
         let offered = serverKind == .herdrTUI
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
         let coreChatPrograms: Set<ChatProgram>? =

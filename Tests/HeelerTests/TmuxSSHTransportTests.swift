@@ -141,6 +141,25 @@ struct TmuxSSHTransportTests {
         #expect(await host.log == ["probe stored", "probe login"])
     }
 
+    @Test func aTmuxThatMovedWhileItsServerWasStoppedIsLookedUpAgain() async throws {
+        let host = ScriptedTmuxHost(sockets: [])
+        let transport = await host.transport(socketName: "default", storedPaths: stored)
+        await #expect(throws: TransportError.tmuxServerNotRunning(socketName: "default")) {
+            try await transport.status()
+        }
+
+        // An upgrade moves the tmux, and the user starts it from there.
+        await host.moveExecutable(to: "/usr/local/bin/tmux")
+        await host.startServer()
+        await host.clearLog()
+
+        let status = try await transport.status()
+
+        #expect(status.paths.executable == "/usr/local/bin/tmux")
+        #expect(await host.log == ["probe stored", "probe login"])
+        #expect(await transport.resolvedPaths() == status.paths)
+    }
+
     @Test func aRestartedServerIsAnotherInstance() async throws {
         let host = ScriptedTmuxHost()
         let transport = await host.transport(socketName: "default", storedPaths: stored)
