@@ -16,13 +16,15 @@ them from any terminal attached to it.
 
 - A tmux Pane's Program Status is recorded in its user option `@heeler-status`,
   in OSC 7501's words (`state=…`, `app=…`, optional `kind=…` and `msg=…`) with
-  two counts. `turn=<n>` advances when the status leaves working for done or
-  error, or, for a program not known to report done, for idle, so a turn that
-  starts and finishes between two looks still counts. `blocked=<n>` advances
-  each time the status enters blocked, so two questions between two looks are
-  two. Both belong to the Pane and never go back: whatever writes next, another
-  program or another integration, reads them and continues. Only Heeler writes
-  the option: its integrations, and the app and the Helper in the cases below.
+  two counts. `turn=<n>` advances when the status leaves working or blocked for
+  done or error, or leaves working, for a program not known to report done, for
+  idle, so a turn that starts and finishes between two looks still counts;
+  blocked to done ends a turn as it does on herdr-core (ADR 0033).
+  `blocked=<n>` advances each time the status enters blocked, so two questions
+  between two looks are two. Both belong to the Pane and never go back:
+  whatever writes next, another program or another integration, reads them and
+  continues. Only Heeler writes the option: its integrations, and the app and
+  the Helper in the cases below.
   A hook or extension writes only for a program that runs on the Pane's own
   terminal and leads its foreground process group, through the server named in
   its `TMUX`, so a program in a herdr pane running inside tmux, or a
