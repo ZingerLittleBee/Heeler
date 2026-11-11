@@ -225,9 +225,23 @@ struct TmuxSSHTransportTests {
         #expect(await transport.isConnected)
 
         try await transport.close()
+        try await transport.close()
 
-        #expect(await host.log == ["close"])
         #expect(await !transport.isConnected)
+        await #expect(throws: TransportError.self) { _ = try await transport.status() }
+        await #expect(throws: TransportError.self) {
+            _ = try await transport.runTmuxScript(Data("true\n".utf8), throughLoginShell: false)
+        }
+        await #expect(throws: TransportError.self) { _ = try await transport.readPaneForeground("%0") }
+        await #expect(throws: TransportError.self) { _ = try await transport.inventory() }
+        await #expect(throws: TransportError.self) {
+            _ = try await transport.attachPane(
+                "%0",
+                request: TerminalAttachRequest(
+                    target: .terminal("%0"), surfaceHasHistory: false, cols: 80, rows: 24))
+        }
+        await #expect(throws: TransportError.self) { _ = try await transport.hostServices.hostHomeDirectory() }
+        #expect(await host.log == ["close"])
     }
 
     // MARK: The inventory loop

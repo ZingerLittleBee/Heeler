@@ -1184,8 +1184,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     }
 
     private var nextDial: UInt64 = 0
-    /// Connections the network dropped.
+    /// Connections the network dropped, and those Heeler closed.
     private var droppedDials: Set<UInt64> = []
+    private var closedDials: Set<UInt64> = []
 
     /// The network drops every connection open now: their execs fail, each
     /// reads closed from then on, and a new connection gets through.
@@ -1198,11 +1199,21 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         }
     }
 
-    fileprivate func isDropped(_ dial: UInt64) -> Bool {
-        droppedDials.contains(dial)
+    fileprivate func isDialOpen(_ dial: UInt64) -> Bool {
+        !droppedDials.contains(dial) && !closedDials.contains(dial)
+    }
+
+    fileprivate func onOpenDial<Value: Sendable>(
+        _ dial: UInt64, _ operation: @Sendable (isolated ScriptedTmuxHost) async throws -> Value
+    ) async throws -> Value {
+        guard isDialOpen(dial) else {
+            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+        }
+        return try await operation(self)
     }
 
     private func noteClose(ofDial dial: UInt64) async {
+        guard closedDials.insert(dial).inserted else { return }
         log.append("close")
         await closeLoops(ofDial: dial)
         await closeControlClients(ofDial: dial)
@@ -1223,7 +1234,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         var isConnected: Bool {
             get async {
                 guard connected else { return false }
-                return await !host.isDropped(id)
+                let open = await host.isDialOpen(id)
+                return connected && open
             }
         }
 
@@ -1232,91 +1244,102 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         }
 
         func runTmuxProbe(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
-            if await host.isDropped(id) { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
-            return try await host.runTmuxProbe(script, throughLoginShell: throughLoginShell)
+            try await requireConnected()
+            return try await host.onOpenDial(id) {
+                try await $0.runTmuxProbe(script, throughLoginShell: throughLoginShell)
+            }
         }
 
         func runTmuxCommand(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
-            if await host.isDropped(id) { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
-            return try await host.runTmuxCommand(script, throughLoginShell: throughLoginShell)
+            try await requireConnected()
+            return try await host.onOpenDial(id) {
+                try await $0.runTmuxCommand(script, throughLoginShell: throughLoginShell)
+            }
         }
 
         func runTmuxForeground(_ script: Data) async throws -> GitExecResult {
-            if await host.isDropped(id) { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
-            return try await host.runTmuxForeground(script)
+            try await requireConnected()
+            return try await host.onOpenDial(id) { try await $0.runTmuxForeground(script) }
         }
 
         func openTmuxInventoryLoop(_ script: Data) async throws -> any WindowsTerminalExecChannel {
             try await requireConnected()
-            return try await host.openLoop(script, dial: id)
+            return try await host.onOpenDial(id) { try await $0.openLoop(script, dial: self.id) }
         }
 
         func openTmuxControlClient(_ script: Data) async throws -> any WindowsTerminalExecChannel {
             try await requireConnected()
-            return try await host.openControlClient(script, dial: id)
+            return try await host.onOpenDial(id) { try await $0.openControlClient(script, dial: self.id) }
         }
 
         func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
             try await requireConnected()
-            return try await host.readHostFileRange(range)
+            return try await host.onOpenDial(id) { try await $0.readHostFileRange(range) }
         }
 
         func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
             try await requireConnected()
-            try await host.replaceHostTextFile(path: path, expected: expected, contents: contents)
+            try await host.onOpenDial(id) {
+                try await $0.replaceHostTextFile(path: path, expected: expected, contents: contents)
+            }
         }
 
         func createHostFolder(path: String) async throws {
             try await requireConnected()
-            try await host.createHostFolder(path: path)
+            try await host.onOpenDial(id) { try await $0.createHostFolder(path: path) }
         }
 
         func removeEmptyHostFolder(path: String) async throws {
             try await requireConnected()
-            try await host.removeEmptyHostFolder(path: path)
+            try await host.onOpenDial(id) { try await $0.removeEmptyHostFolder(path: path) }
         }
 
         func hostHomeDirectory() async throws -> String {
             try await requireConnected()
-            return try await host.hostHomeDirectory()
+            return try await host.onOpenDial(id) { try await $0.hostHomeDirectory() }
         }
 
         func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
             try await requireConnected()
-            return try await host.checkouts(for: directories)
+            return try await host.onOpenDial(id) { try await $0.checkouts(for: directories) }
         }
 
         func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult {
             try await requireConnected()
-            return try await host.runGitCommand(command)
+            return try await host.onOpenDial(id) { try await $0.runGitCommand(command) }
         }
 
         func hostPlatform() async throws -> HostPlatform {
             try await requireConnected()
-            return try await host.hostPlatform()
+            return try await host.onOpenDial(id) { try await $0.hostPlatform() }
         }
 
         func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
             try await requireConnected()
-            return try await host.readProcesses(request)
+            return try await host.onOpenDial(id) { try await $0.readProcesses(request) }
         }
 
         func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
             try await requireConnected()
-            return try await host.runHostHelperScript(script)
+            return try await host.onOpenDial(id) { try await $0.runHostHelperScript(script) }
         }
 
         func readHostHelperFile(at path: String, privateDirectory: String) async throws -> Data? {
             try await requireConnected()
-            return try await host.readHostHelperFile(at: path, privateDirectory: privateDirectory)
+            return try await host.onOpenDial(id) {
+                try await $0.readHostHelperFile(at: path, privateDirectory: privateDirectory)
+            }
         }
 
         func replaceHostHelperFile(_ contents: Data, at path: String, privateDirectory: String?) async throws {
             try await requireConnected()
-            try await host.replaceHostHelperFile(contents, at: path, privateDirectory: privateDirectory)
+            try await host.onOpenDial(id) {
+                try await $0.replaceHostHelperFile(contents, at: path, privateDirectory: privateDirectory)
+            }
         }
 
         func close() async throws {
+            guard connected else { return }
             connected = false
             await host.noteClose(ofDial: id)
         }

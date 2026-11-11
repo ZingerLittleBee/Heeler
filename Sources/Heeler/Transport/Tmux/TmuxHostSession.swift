@@ -375,6 +375,7 @@ actor TmuxHostSession {
 
     private static func ask(_ transport: any TmuxTransport) async -> Result<TmuxServerStatus, TransportError> {
         do {
+            try Task.checkCancellation()
             return .success(try await transport.status())
         } catch {
             return .failure(transportFailure(error))
@@ -490,6 +491,7 @@ actor TmuxHostSession {
     private static func scope(
         _ command: TmuxLaunch.Command, on transport: any TmuxTransport
     ) async -> TmuxEnvironment.Scope? {
+        guard !Task.isCancelled else { return nil }
         let result: GitExecResult
         do { result = try await transport.runTmuxScript(command.script, throughLoginShell: false) } catch { return nil }
         guard result.exitStatus == 0 else { return nil }

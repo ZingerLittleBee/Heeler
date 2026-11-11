@@ -132,6 +132,7 @@ actor TmuxSSHTransport: TmuxTransport {
     /// Asking it again would get the same answer, at the cost of its startup
     /// files on every poll of a Host whose server is simply not running.
     private var resolvedSinceLastAnswer = false
+    private var closed = false
 
     init(
         connection: any TmuxHostConnection,
@@ -152,7 +153,16 @@ actor TmuxSSHTransport: TmuxTransport {
     }
 
     var isConnected: Bool {
-        get async { await connection.isConnected }
+        get async {
+            guard !closed else { return false }
+            return await connection.isConnected
+        }
+    }
+
+    private func requireOpen() throws {
+        guard !closed else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
     }
 
     func resolvedPaths() -> TmuxPaths? {
@@ -164,10 +174,12 @@ actor TmuxSSHTransport: TmuxTransport {
     }
 
     func runTmuxScript(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
-        try await connection.runTmuxCommand(script, throughLoginShell: throughLoginShell)
+        try requireOpen()
+        return try await connection.runTmuxCommand(script, throughLoginShell: throughLoginShell)
     }
 
     func status() async throws -> TmuxServerStatus {
+        try requireOpen()
         var storedAnswer: TmuxProbe.Report?
         if let paths {
             let report = try await probe(.stored(executable: paths.executable, socket: paths.socket))
@@ -224,6 +236,7 @@ actor TmuxSSHTransport: TmuxTransport {
     }
 
     private func probe(_ request: TmuxProbe.Request) async throws -> TmuxProbe.Report {
+        try requireOpen()
         let nonce = nonce()
         let result = try await connection.runTmuxProbe(
             Data(TmuxProbe.script(request, nonce: nonce).utf8),
@@ -246,10 +259,15 @@ actor TmuxSSHTransport: TmuxTransport {
     // MARK: Inventory
 
     func inventory() async throws -> AsyncThrowingStream<TmuxInventory, any Error> {
+        try requireOpen()
         guard let paths else { throw TransportError.tmuxServerNotRunning(socketName: socketName) }
         let nonce = nonce()
         let script = TmuxInventoryLoop.script(executable: paths.executable, socket: paths.socket, nonce: nonce)
         let channel = try await connection.openTmuxInventoryLoop(Data(script.utf8))
+        guard !closed else {
+            try? await channel.close(timeout: Self.closeTimeout)
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
         return Self.inventories(from: channel, nonce: nonce, silenceLimit: loopSilenceLimit)
     }
 
@@ -297,6 +315,7 @@ actor TmuxSSHTransport: TmuxTransport {
     static let pauseAfter = 10
 
     func attachPane(_ pane: String, request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        try requireOpen()
         guard let paths else { throw TransportError.tmuxServerNotRunning(socketName: socketName) }
         let session = TmuxAttachScript.sessionPrefix + String(format: "%08x", UInt32.random(in: .min ... .max))
         guard
@@ -304,11 +323,16 @@ actor TmuxSSHTransport: TmuxTransport {
                 paths: paths, session: session, pane: pane, pauseAfter: Self.pauseAfter)
         else { throw TransportError.tmuxPaneGone }
         let channel = try await connection.openTmuxControlClient(Data(script.utf8))
+        guard !closed else {
+            try? await channel.close(timeout: Self.closeTimeout)
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
         return try await TmuxPaneAttach.open(
             channel: channel, session: session, pane: pane, request: request, startLimit: attachStartLimit)
     }
 
     func readPaneForeground(_ pane: String) async throws -> TmuxPaneForeground {
+        try requireOpen()
         guard let paths else { throw TransportError.tmuxServerNotRunning(socketName: socketName) }
         let nonce = nonce()
         guard
@@ -326,6 +350,8 @@ actor TmuxSSHTransport: TmuxTransport {
     }
 
     func close() async throws {
+        guard !closed else { return }
+        closed = true
         try await connection.close()
     }
 }

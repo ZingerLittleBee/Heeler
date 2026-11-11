@@ -2875,6 +2875,12 @@ actor HeelerSSHTransport: Transport {
             timeoutMarkerPrefix: "__HEELER_GIT_TIMEOUT_", timedOut: .gitTimedOut)
     }
 
+    private func requireConnected() throws {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
+    }
+
     /// One script in one bounded exec, for each feature that reads the Host
     /// through a script. The caller's deadline includes admission. Once
     /// dispatched, exec keeps its lease until the remote watchdog ends the
@@ -2889,6 +2895,7 @@ actor HeelerSSHTransport: Transport {
         timeoutMarkerPrefix: String, timedOut: TransportError, lane: GitExecGate? = nil
     ) async throws -> GitExecResult {
         try await requirePOSIXHost(feature: feature)
+        try requireConnected()
         do {
             try Task.checkCancellation()
             let timeoutMarker = "\(timeoutMarkerPrefix)\(UUID().uuidString)__"
@@ -2901,6 +2908,7 @@ actor HeelerSSHTransport: Transport {
             return try await Self.runInLane(deadline: deadline, lane: lane) {
                 try await self.channelAdmission.withChannel(.ordinarySession) {
                     try Task.checkCancellation()
+                    try await self.requireConnected()
                     // Awaiting an unstructured task does not forward cancellation.
                     // Never cancel this task: its remote bound supplies the exit
                     // that lets libssh2 reclaim the channel without killing SSH.
