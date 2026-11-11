@@ -107,6 +107,7 @@
 		1A160820CAA7EC1D8F987602 /* AgentWindowDrag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 996FEB63446D29BFF498378F /* AgentWindowDrag.swift */; };
 		1A21DFD3B8459A602196C5FE /* OpenCodeScreenReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F323FC15B0188C5A8193093 /* OpenCodeScreenReader.swift */; };
 		1A3963F6E175A9FBD27C3E99 /* CodexToolSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89D97839A5CB30D308FABC45 /* CodexToolSummaryTests.swift */; };
+		1A6D6C8A44FDEDD8A9B6C6B4 /* AmuxOrganizationDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 320C17A9746FEE059C479D2E /* AmuxOrganizationDocument.swift */; };
 		1AD6824BFB55CB50607AD702 /* FakeTransportConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 696C6905D9D6EEFF77A64E2E /* FakeTransportConnector.swift */; };
 		1ADE76974DEBFD636189EE45 /* NotificationRelayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6876069E2B641D09FF1520E6 /* NotificationRelayEndpoint.swift */; };
 		1B43061A7B09A01207C5D14F /* HerdrCoreFrameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00579AE5826A4D7EC6F148A7 /* HerdrCoreFrameTests.swift */; };
@@ -213,6 +214,7 @@
 		31D22FECC0AF4A3F38FDA11A /* herdr-core-agent-rule-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 4D23B2481552DE847CD7FBB1 /* herdr-core-agent-rule-v1.json */; };
 		31E4ADB22D4D655E7CFDB749 /* TerminalInputControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05AD61D4FA60884234EA856C /* TerminalInputControllerTests.swift */; };
 		324171566A8731278E37F3B9 /* ChatBackgroundWorkStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 026E21425C5C32E24C53FCFE /* ChatBackgroundWorkStrip.swift */; };
+		326B9566CEE0054B589F07FC /* amux-organization-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = DA665727F448CC94C7ECF106 /* amux-organization-v1.json */; };
 		3286D6FBB12157F2A19A82CE /* AgentNotificationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB37CBDC9DE0CE539FC476A0 /* AgentNotificationRenderer.swift */; };
 		328DD6ED121B9381C5B872D4 /* OpenCodeStoreQueryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15153C2C4DA4AF6ECD691BC0 /* OpenCodeStoreQueryTests.swift */; };
 		32B5BBA51EDB7334DCB2EB1A /* HerdrCommandLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8812FD48BD249696F36EAAFB /* HerdrCommandLine.swift */; };
@@ -849,6 +851,7 @@
 		C8F6F1860FE723B98351DD12 /* CodexTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 172FEF589F570F44F2B76D06 /* CodexTimeline.swift */; };
 		C9241B10F450B97F215FB28E /* RenameStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D6E7022FBB1A7A39C88ACA9 /* RenameStoreTests.swift */; };
 		C99BC52057BA048DDC4DE046 /* TerminalByteFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = C681336687D32709DA583BCC /* TerminalByteFeed.swift */; };
+		C9B619FFFE9526ADF161EC6A /* AmuxOrganizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08BE72B8F2ACA5642DE959D7 /* AmuxOrganizationView.swift */; };
 		C9E8028C15EC02F3F36B2B26 /* NotificationRegistrationFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67AAFD0BF81441DB59EEF7AA /* NotificationRegistrationFile.swift */; };
 		C9F1C6CFE1F09E58CD9B3948 /* LocalSSHTestEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F172C9E024F73AD2DD96288 /* LocalSSHTestEnvironment.swift */; };
 		CA2808BFA799E5498B719DD0 /* ChatImageLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0526F5EC9996FA887E232ECC /* ChatImageLink.swift */; };
@@ -1174,6 +1177,7 @@
 		086AC9EF34094AD6B995CC24 /* LocalizationBundleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationBundleTests.swift; sourceTree = "<group>"; };
 		0882D4EC9985979DA989F01B /* LicenseNoticeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseNoticeTests.swift; sourceTree = "<group>"; };
 		08B2655F8FDE37EAC2615457 /* AgentRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRouteTests.swift; sourceTree = "<group>"; };
+		08BE72B8F2ACA5642DE959D7 /* AmuxOrganizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmuxOrganizationView.swift; sourceTree = "<group>"; };
 		08F1AEF22557C71005C85CF1 /* FileChatTranscriptCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileChatTranscriptCache.swift; sourceTree = "<group>"; };
 		09C8B33506454D0170CEEC11 /* PiTranscriptLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTranscriptLocator.swift; sourceTree = "<group>"; };
 		0A319930B80D42FB33DC8E42 /* AgentNotificationBannerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerStoreTests.swift; sourceTree = "<group>"; };
@@ -1342,6 +1346,7 @@
 		31B3368D352EFC805C2534F9 /* RealSSHFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealSSHFixture.swift; sourceTree = "<group>"; };
 		31F09325DE68693680E5A3BB /* HerdrSocketLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrSocketLocationTests.swift; sourceTree = "<group>"; };
 		3207EC84A97FAA930CD87CAC /* ChatCachedAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCachedAgent.swift; sourceTree = "<group>"; };
+		320C17A9746FEE059C479D2E /* AmuxOrganizationDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmuxOrganizationDocument.swift; sourceTree = "<group>"; };
 		321E267EE49BFE4A60F3B7CB /* FilePreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreparer.swift; sourceTree = "<group>"; };
 		32413805C1AA874DBEE37547 /* Base64URL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base64URL.swift; sourceTree = "<group>"; };
 		32AE04F29C794799B45E5C68 /* Host.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Host.swift; sourceTree = "<group>"; };
@@ -2047,6 +2052,7 @@
 		DA1ADF8C0B73AD8E16B630DF /* ChangesReferenceMenus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesReferenceMenus.swift; sourceTree = "<group>"; };
 		DA5434768FDE9237B7BD721E /* Snippet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snippet.swift; sourceTree = "<group>"; };
 		DA59306306EAEAA6DA78E337 /* TerminalAgentSwitcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAgentSwitcherTests.swift; sourceTree = "<group>"; };
+		DA665727F448CC94C7ECF106 /* amux-organization-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "amux-organization-v1.json"; sourceTree = "<group>"; };
 		DAAA775A929F4FA4C419DE4A /* TerminalKeyboardHolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyboardHolder.swift; sourceTree = "<group>"; };
 		DAE64E99236F74704520FFC1 /* AgentSceneDirectoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSceneDirectoryTests.swift; sourceTree = "<group>"; };
 		DAEAF21DF91A1BCE4C9F79A3 /* AppAppearanceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAppearanceSettings.swift; sourceTree = "<group>"; };
@@ -3043,6 +3049,7 @@
 				0BEA52CA148F77EBDC7BA41F /* AgentTitleRenameStore.swift */,
 				029887EC83335A8AED8C8ABC /* AgentUsageStrip.swift */,
 				996FEB63446D29BFF498378F /* AgentWindowDrag.swift */,
+				08BE72B8F2ACA5642DE959D7 /* AmuxOrganizationView.swift */,
 				5870640477FDEB252DEE80B7 /* AttachLinkIndex.swift */,
 				FBE2F11B705B68BB1FBE993D /* AttachRestorationTrace.swift */,
 				F07A0F64626D74A8EC9A1FE2 /* AttachTerminalStore.swift */,
@@ -3294,6 +3301,7 @@
 		82CA97AAEAF7E8D41B6C8B7F /* test-vectors */ = {
 			isa = PBXGroup;
 			children = (
+				DA665727F448CC94C7ECF106 /* amux-organization-v1.json */,
 				4D23B2481552DE847CD7FBB1 /* herdr-core-agent-rule-v1.json */,
 				5D6754A072F62FD9FFF3046F /* herdr-core-frames-v1.json */,
 				D7986AEFB2416F8754FE42B3 /* herdr-core-frames-windows-v1.json */,
@@ -3523,6 +3531,7 @@
 		C5EF1A08C1476ABAC82E9434 /* HerdrCore */ = {
 			isa = PBXGroup;
 			children = (
+				320C17A9746FEE059C479D2E /* AmuxOrganizationDocument.swift */,
 				D546B3D8F3F96725D6F0B170 /* CoreMutationDispatch.swift */,
 				FF5F7088D1B393599B6DA1EB /* HerdrAppControl.swift */,
 				84B301A7BB79196E5CF0DFEC /* HerdrCoreAttach.swift */,
@@ -3891,10 +3900,10 @@
 			projectRoot = "";
 			targets = (
 				081A3B29EFF2C7B2FCAA3248 /* Heeler */,
-				4E3ED42B1AF2AE6B521A235A /* HeelerLiveTests */,
 				DFFB82C74B73FA5CBCE6D5D2 /* HeelerNotificationService */,
-				9806EA6C63028F1217417282 /* HeelerTests */,
 				134E6CD1AC1396155DAB93E2 /* HeelerWidgets */,
+				9806EA6C63028F1217417282 /* HeelerTests */,
+				4E3ED42B1AF2AE6B521A235A /* HeelerLiveTests */,
 			);
 		};
 /* End PBXProject section */
@@ -3905,6 +3914,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				32FD10D6802D96EF929E544E /* ChatFixtures in Resources */,
+				326B9566CEE0054B589F07FC /* amux-organization-v1.json in Resources */,
 				31D22FECC0AF4A3F38FDA11A /* herdr-core-agent-rule-v1.json in Resources */,
 				6AD416CB3368D0FC31312F27 /* herdr-core-frames-v1.json in Resources */,
 				1347F0DDEC91CE9EFBD4C963 /* herdr-core-frames-windows-v1.json in Resources */,
@@ -4098,6 +4108,8 @@
 				30EA29136C0C9819C05F71DB /* AgyToolCall.swift in Sources */,
 				1FC4B28A843BD222861D3951 /* AgyTranscriptLocator.swift in Sources */,
 				C5A35948E9981DAB28D10102 /* AgyTranscriptReducer.swift in Sources */,
+				1A6D6C8A44FDEDD8A9B6C6B4 /* AmuxOrganizationDocument.swift in Sources */,
+				C9B619FFFE9526ADF161EC6A /* AmuxOrganizationView.swift in Sources */,
 				54D3A4F4FBF8F3F6C154BACE /* AppActivityCoordinator.swift in Sources */,
 				8D9ED28E1DB5A72B471CBD45 /* AppAppearanceSettings.swift in Sources */,
 				8852391AB553C278DECC94AB /* AppearanceSettingsView.swift in Sources */,

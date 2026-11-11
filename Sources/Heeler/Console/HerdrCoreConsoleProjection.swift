@@ -89,6 +89,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private let gitGate: GitExecGate
     private var document: HerdrCoreDesktopDocument?
     private var documentVersion: Int?
+    private(set) var amuxOrganization: AmuxOrganizationDocument?
+    private var amuxDocumentVersion: Int?
     private var documentRead: Task<Void, Never>?
     private var readsDocumentAgain = false
     /// A directory's Checkout. Its root is itself when it is in no checkout.
@@ -265,6 +267,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             if let known = memory.coreID(for: host.id), known != coreID {
                 pins.removePins(hostID: host.id)
                 chatTypings = [:]
+                documentRead?.cancel()
+                documentRead = nil
+                readsDocumentAgain = false
+                amuxOrganization = nil
+                amuxDocumentVersion = nil
             }
             memory.noteCore(coreID, for: host.id)
             replaceInventory(with: snapshot)
@@ -303,6 +310,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         documentRead?.cancel()
         documentRead = nil
         readsDocumentAgain = false
+        amuxOrganization = nil
+        amuxDocumentVersion = nil
         // What this link did not answer gets one more ask on the next.
         checkoutTask?.cancel()
         checkoutTask = nil
@@ -446,8 +455,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             return
         case .document(let name, let version, let machine):
             // A read can already be newer than the event that follows it.
-            if name == HerdrCoreDesktopDocument.name, machine == nil,
-                version > documentVersion ?? -1
+            let knownVersion = name == AmuxOrganizationDocument.name ? amuxDocumentVersion : documentVersion
+            if machine == nil,
+                name == HerdrCoreDesktopDocument.name || name == AmuxOrganizationDocument.name,
+                version > knownVersion ?? -1
             {
                 readDocument()
             }
@@ -528,7 +539,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let organization = HerdrCoreOrganization.build(
             terminals: records, document: document,
             firstSeenDirectories: memory.firstSeenDirectories(for: host.id),
-            checkouts: checkouts, home: home, doneTerminals: doneTerminals)
+            checkouts: checkouts, home: home, doneTerminals: doneTerminals, amux: amuxOrganization)
         let builder = ConsolePaneRowBuilder(host: host, inventory: organization.snapshot)
         // Every value comes from the rebuilt records: nothing is carried over.
         let agents = builder.agentRows(liveChange: { _ in nil })
@@ -546,7 +557,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 .compactMap { record in
                     HerdrCoreStatusExplanation(record: record).map { (record.address, $0) }
                 })
-        workspaces = builder.workspaceRows()
+        workspaces = builder.workspaceRows().map { workspace in
+            guard let directory = amuxOrganization?.directory(ofWorkspace: workspace.id) else { return workspace }
+            return ConsoleWorkspace(
+                id: workspace.id, label: workspace.label, order: workspace.order, checkoutPath: directory)
+        }
         workspacesByID = builder.workspaceByID
         askForCheckouts(organization.checkoutDirectories)
     }
@@ -605,21 +620,30 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             readsDocumentAgain = true
             return
         }
+        let coreID = inventoryCore
         documentRead = Task { [weak self, session] in
             var read: HerdrCoreDesktopDocumentRead?
-            if let transport = try? await session.withTransport({ $0 }) {
-                read = try? await transport.readDesktopDocument()
+            var amux: (AmuxOrganizationDocument?, Int)?
+            if let transport = try? await session.withTransport(servingCore: coreID, { $0 }) {
+                async let desktopRead = try? transport.readDesktopDocument()
+                if let coreID { amux = try? await transport.readAmuxOrganization(connectedCoreID: coreID) }
+                read = await desktopRead
             }
             guard !Task.isCancelled else { return }
-            self?.finishDocumentRead(read)
+            self?.finishDocumentRead(read, amux: amux)
         }
     }
 
     /// A failed read keeps what was known: labels still place the Terminals,
     /// and the next `doc` event or link reads again.
-    private func finishDocumentRead(_ read: HerdrCoreDesktopDocumentRead?) {
+    private func finishDocumentRead(
+        _ read: HerdrCoreDesktopDocumentRead?, amux: (AmuxOrganizationDocument?, Int)?
+    ) {
         documentRead = nil
         guard !hasEnded else { return }
+        if amuxOrganization != amux?.0 { sidebarRevision &+= 1 }
+        amuxOrganization = amux?.0
+        amuxDocumentVersion = amux?.1
         if let read {
             documentVersion = read.version
             if document != read.document {
@@ -835,11 +859,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private func runTemplate(
         _ request: TemplateLaunchRequest, placement: HerdrCoreLaunch.Placement
     ) async throws -> Agent {
-        let transport = try await session.withTransport { $0 }
+        let transport = try await launchTransport(for: placement)
         let record = try fold(
             runReply: try await transport.runTemplate(
                 params: HerdrCoreLaunch.templateRequest(
-                    template: request.template, name: request.name, placement: placement)))
+                    template: request.template, name: request.name, placement: placement)),
+            onCore: placement.coreID)
         guard record.template == request.template else {
             throw HerdrCoreTemplateError.ranAsProgram(request.template, directory: record.cwd)
         }
@@ -882,6 +907,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         _ workspace: NewWorkspaceSpec,
         start: (HerdrCoreLaunch.Placement) async throws -> Started
     ) async throws -> Started {
+        if let amuxOrganization {
+            return try await start(.init(cwd: workspace.directory, coreID: amuxOrganization.coreID))
+        }
         let name = desktopAppNaming == nil ? nil : workspace.label.flatMap { $0.isEmpty ? nil : $0 }
         let space = HerdrCoreLaunch.Placement.newDesktopSpaceID()
         let started = try await start(.desktopSpace(space, cwd: workspace.directory))
@@ -899,14 +927,15 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             throw TransportError.hostFeatureUnavailable(
                 feature: String(localized: "Starting \(request.kind) on a herdr-core Host"))
         }
-        let transport = try await session.withTransport { $0 }
+        let transport = try await launchTransport(for: placement)
         let shell = try await transport.launchShell()
+        if let coreID = placement.coreID, coreID != inventoryCore { throw TransportError.herdrCoreTerminalGone }
         let record = try fold(
             runReply: try await transport.runTerminal(
                 params: HerdrCoreLaunch.agentRequest(
                     kind: kind, name: request.name, arguments: request.arguments,
                     environment: request.environment, shell: shell,
-                    openCodeVersion: openCodeVersion, placement: placement)))
+                    openCodeVersion: openCodeVersion, placement: placement)), onCore: placement.coreID)
         return agent(at: record, kind: kind.rawValue)
     }
 
@@ -924,10 +953,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private func startShell(
         placement: HerdrCoreLaunch.Placement
     ) async throws -> ShellTerminalIdentity {
-        let transport = try await session.withTransport { $0 }
+        let transport = try await launchTransport(for: placement)
         let record = try fold(
             runReply: try await transport.runTerminal(
-                params: HerdrCoreLaunch.terminalRequest(placement: placement)))
+                params: HerdrCoreLaunch.terminalRequest(placement: placement)), onCore: placement.coreID)
         return ShellTerminalIdentity(
             paneID: record.address,
             tabID: terminalsByPane[record.address]?.tabID ?? "tab-\(record.address)",
@@ -937,7 +966,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// One `terminal.run`'s answer. It shows at once, so the row a caller opens
     /// next exists, and the core's own `created` event then changes nothing. An
     /// answer past reading started something all the same, so it is not a refusal.
-    private func fold(runReply reply: JSONValue) throws -> HerdrCoreTerminalRecord {
+    private func fold(runReply reply: JSONValue, onCore coreID: String? = nil) throws -> HerdrCoreTerminalRecord {
+        if let coreID, coreID != inventoryCore { throw TransportError.coreMutationOutcomeUnknown }
         guard let record = try? HerdrCoreWire.typed(reply) as HerdrCoreTerminalRecord else {
             throw TransportError.coreMutationOutcomeUnknown
         }
@@ -950,6 +980,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// The directory a launch from an Agent would land in, for the form to show.
     /// Only a derived Workspace overrides the Agent's directory, as `placement` does.
     func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String {
+        if let directory = amuxOrganization?.directory(ofWorkspace: workspaceID) { return directory }
         guard HerdrCoreOrganization.desktopSpace(ofWorkspace: workspaceID) == nil,
             let key = HerdrCoreOrganization.keyDirectory(
                 ofWorkspace: workspaceID, terminals: records,
@@ -968,6 +999,14 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let asked = directory.flatMap { $0.isEmpty ? nil : $0 }
         guard let workspaceID else {
             return HerdrCoreLaunch.Placement(cwd: try await directoryOrHome(asked))
+        }
+        if AmuxOrganizationDocument.isWorkspace(workspaceID) {
+            guard hasInventory, let cwd = amuxOrganization?.directory(ofWorkspace: workspaceID) else {
+                throw TransportError.hostFeatureUnavailable(feature: String(localized: "This amux launch directory is no longer available"))
+            }
+            // The selected Host-side path is authoritative. No desktop adoption
+            // labels, document writes or implied membership accompany a launch.
+            return HerdrCoreLaunch.Placement(cwd: cwd, coreID: amuxOrganization?.coreID)
         }
         if let space = HerdrCoreOrganization.desktopSpace(ofWorkspace: workspaceID) {
             let cwd =
@@ -989,6 +1028,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private func directoryOrHome(_ directory: String?) async throws -> String {
         if let directory { return directory }
         return try await remoteHomeDirectory()
+    }
+
+    private func launchTransport(for placement: HerdrCoreLaunch.Placement) async throws -> any HerdrCoreTransport {
+        if let coreID = placement.coreID {
+            return try await session.withTransport(servingCore: coreID) { $0 }
+        }
+        return try await session.withTransport { $0 }
     }
 
     // MARK: Closing
