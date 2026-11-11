@@ -320,6 +320,9 @@ targets:
       # Shared tmux Program Status vectors, read by Swift, the hook script and the Helper.
       - path: plugin/test-vectors/tmux-heeler-status-v1.json
         buildPhase: resources
+      # The tmux input measurements: keys, text and pastes per version and mode.
+      - path: plugin/test-vectors/tmux-input-v1.json
+        buildPhase: resources
       # Shared usage response produced by Node and decoded by Swift.
       - path: plugin/test-vectors/usage-v1.json
         buildPhase: resources

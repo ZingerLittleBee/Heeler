@@ -20,6 +20,20 @@ struct TmuxKey: Equatable, Sendable {
     /// only while the Pane is in an extended keys mode, and otherwise types
     /// its name into the Pane or sends its nearest legacy key.
     let isExtended: Bool
+
+    /// How tmux encodes keys for a Pane: `VT10x`, `Ext 1` or `Ext 2` from tmux
+    /// 3.5 on. Earlier versions have no such format and read it as empty.
+    static let paneKeyModeFormat = "#{pane_key_mode}"
+
+    /// Whether Heeler sends this key to a Pane whose `#{pane_key_mode}` reads
+    /// `paneKeyMode`. A key with no legacy encoding goes only in an extended
+    /// mode, so never before tmux 3.5: tmux would type its name into the Pane,
+    /// or send the nearest legacy key, which can submit a prompt.
+    func isSent(whilePaneKeyModeReads paneKeyMode: String) -> Bool {
+        guard isExtended else { return true }
+        let mode = paneKeyMode.trimmingCharacters(in: .whitespacesAndNewlines)
+        return mode == "Ext 1" || mode == "Ext 2"
+    }
 }
 
 /// Reads the bytes the terminal view writes for Direct Input and the tools
