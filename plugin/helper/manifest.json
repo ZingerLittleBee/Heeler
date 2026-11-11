@@ -3,7 +3,7 @@
   "files": [
     {
       "path": "core/agent-rule.js",
-      "sha256": "5c03c946f08ea473a3a258cf9cfd8e8de068f312fcc18af89627098fa7e229a2"
+      "sha256": "7b47283f6e8e9c5d4cc525f5af9c8d68ebd4c9cae83f296e97a5f2e59fb3f57a"
     },
     {
       "path": "core/client.js",

@@ -92,7 +92,8 @@ const RESERVED_KINDS = new Set([...SUPPORTED_KINDS, "cursor-agent", "kiro-cli", 
 
 const SHELL_PROGRAM = { shell: true };
 const known = (kind) => ({ known: kind });
-const other = (name) => ({ other: name });
+// Only the outer -NoExit PowerShell itself can adopt a known report, never its script or unwrapped child.
+const other = (name, acceptsKnownReport = false) => ({ other: name, acceptsKnownReport });
 
 const strings = (values) => (Array.isArray(values) ? values.filter((value) => typeof value === "string") : []);
 const text = (value) => (typeof value === "string" ? value : "");
@@ -265,15 +266,17 @@ function powerShellWords(line) {
 /** `pwsh -NoExit -Command "& 'prog' 'arg'"`, as the desktop app runs it, and `-Command "& 'prog' 'arg'; exit $LASTEXITCODE"`, as Heeler does. */
 function readPowerShell(args, name, depth) {
   const option = args.findIndex((argument) => ["-command", "-c"].includes(argument.toLowerCase()));
+  const options = args.slice(1, option === -1 ? args.length : option);
+  const hasNoExit = options.some(isNoExitOption);
   if (option === -1) {
-    if (args.slice(1).some(isNoExitOption)) return other(name);
-    return args.slice(1).some((argument) => !argument.startsWith("-")) ? other(name) : SHELL_PROGRAM;
+    if (options.some((argument) => !argument.startsWith("-") && !isNoExitOption(argument))) return other(name);
+    return hasNoExit ? other(name, depth === 0) : SHELL_PROGRAM;
   }
   if (option + 1 >= args.length) return SHELL_PROGRAM;
   const exit = "; exit $LASTEXITCODE";
   const line = args[option + 1].endsWith(exit) ? args[option + 1].slice(0, -exit.length) : args[option + 1];
   const words = powerShellWords(line);
-  return words === null ? other(name) : read(words, depth + 1);
+  return words === null ? other(name, depth === 0 && hasNoExit) : read(words, depth + 1);
 }
 
 /** A wrapper, a line or a script is what the shell runs. A shell with options alone is the prompt, which ends the Agent. */
@@ -378,7 +381,11 @@ function continuesAsShell(args) {
   return args.slice(1).some((argument) => CONTINUING_WRAPPER_BODIES.has(argument) || ["-noexit", "/k"].includes(argument.toLowerCase()));
 }
 
-const readLaunch = (args) => (continuesAsShell(args) ? SHELL_PROGRAM : read(args));
+function readLaunch(args) {
+  if (continuesAsShell(args)) return SHELL_PROGRAM;
+  const program = read(args);
+  return program.acceptsKnownReport ? SHELL_PROGRAM : program;
+}
 
 /** `-NoExit` as PowerShell takes it: any case, `-`, `--` or `/`, and cut short as far as `-NoE`. */
 function isNoExitOption(argument) {
@@ -468,7 +475,7 @@ export function agentIn(record) {
   if (report === null) return null;
   const reported = reportedKind(app.toLowerCase());
   if (reported !== null) {
-    if (!SHELLS.has(baseName(program.other))) return null;
+    if (!program.acceptsKnownReport) return null;
     return { kind: reported, known: true, status: statusWord(report.state) };
   }
   return { kind: genericKind(app, program.other), known: false, status: statusWord(report.state) };
