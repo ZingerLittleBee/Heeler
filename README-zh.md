@@ -78,8 +78,9 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
   30 天的 Token Usage 和估算 API 费用，可汇总所有 Host 或只看一台；主屏和
   锁屏小组件随时可见（[了解更多](https://docs.heeler.bybee.dev/zh/usage)）。
 - **Worktrees** —— 让 Agent 从工作区仓库的干净检出上启动。
-- **外观** —— 跟随系统 / 浅色 / 深色；30 个终端主题，浅色深色各有独立
-  槽位；内置 JetBrains Mono 与 IBM Plex Mono；双指缩放字号。
+- **外观** —— 跟随系统 / 浅色 / 深色；30 个主题，浅色深色各有独立槽位，
+  终端、Chat 和整个 App 都使用它；内置 JetBrains Mono 与 IBM Plex Mono；
+  双指缩放字号。
 - **跳板机** —— 经 SSH 跳板访问不可直连的机器，两跳各自校验密钥。
 
 ## 连接原理

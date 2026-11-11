@@ -543,8 +543,10 @@ controls and a full Terminal keyboard (characters, Ctrl/Alt/Shift, and function
 keys), both sending directly to the pane without changing the Composer draft.
 Paging and key layers always share the measured iOS keyboard height;
 they never resize the dock or the Composer. Skills and Snippets insert into the
-Composer draft or directly into Attach in Direct Input, without adding Enter;
-appearance changes only the terminal rendering. Direct Input shows only the
+Composer draft or directly into Attach in Direct Input, without adding Enter.
+The Appearance tab's font and text size change only the terminal rendering;
+its theme is the app's theme for the mode in force, so Chat and the rest of
+the app change with it (ADR 0042). Direct Input shows only the
 full Terminal keyboard in the controls tab, without the Agent page or pager.
 It reuses the same measured footprint for an optional tools dock, but its
 primary shortcuts persist in an app-content

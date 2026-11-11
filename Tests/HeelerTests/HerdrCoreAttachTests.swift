@@ -131,6 +131,8 @@ struct HerdrCoreAttachTests {
         let harness = try await Harness()
         let (session, _) = try await harness.attach()
         var output = session.output.makeAsyncIterator()
+        try await harness.socket.deliver(HerdrCoreFrame(channel: 2, kind: .data, payload: Data("live".utf8)))
+        #expect(try await output.next() == Data("live".utf8))
         let repaint = Data("\u{1B}[!p\u{1B}[?2004l\u{1B}[=0;1u\u{1B}[H\u{1B}[2Jscreen\u{1B}[?2004h".utf8)
         try await harness.socket.deliver(HerdrCoreFrame(channel: 2, kind: .data, payload: repaint))
         #expect(try await output.next() == repaint)

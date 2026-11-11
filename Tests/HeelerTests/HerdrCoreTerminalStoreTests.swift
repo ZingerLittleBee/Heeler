@@ -102,6 +102,7 @@ struct HerdrCoreTerminalStoreTests {
             readsHostChanges: Bool = false, look: WindowLook = WindowLook()
         ) async throws -> CoreDetailWindow {
             let settings = try Self.makeSettings(look: look)
+            let appearance = HostedThemeAppearance(look.appearance)
             let defaults = try #require(UserDefaults(suiteName: "core-detail-\(UUID().uuidString)"))
             let inputModeSettings = AgentInputModeSettings(defaults: defaults)
             inputModeSettings.select(inputMode)
@@ -141,13 +142,14 @@ struct HerdrCoreTerminalStoreTests {
                 }
                 // The header's fold state is a stored preference; the test
                 // host's own defaults must not decide it.
-                .defaultAppStorage(defaults))
+                .defaultAppStorage(defaults)
+                .modifier(HostedThemeAppearanceRoot(appearance: appearance)))
             controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
             return CoreDetailWindow(
                 selection: selection, changes: changes, activity: activity, themes: settings.themes,
-                window: window)
+                appearance: appearance, window: window)
         }
 
         /// A window showing a core Terminal's screen, built as the Console
@@ -156,6 +158,7 @@ struct HerdrCoreTerminalStoreTests {
             of terminal: ConsoleTerminal, sceneID: UUID, look: WindowLook = WindowLook()
         ) async throws -> CoreDetailWindow {
             let settings = try Self.makeSettings(look: look)
+            let appearance = HostedThemeAppearance(look.appearance)
             let selection = HostedDetailSelection()
             let console = console
             let activity = AppActivityCoordinator()
@@ -177,7 +180,8 @@ struct HerdrCoreTerminalStoreTests {
                 }
                 .environment(\.agentSceneRouting, routing)
                 // As in showDetail: the header's fold state is the fixture's own.
-                .defaultAppStorage(defaults))
+                .defaultAppStorage(defaults)
+                .modifier(HostedThemeAppearanceRoot(appearance: appearance)))
             controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
@@ -186,7 +190,7 @@ struct HerdrCoreTerminalStoreTests {
                 changes: AgentChangesPresentation {
                     ChangesStore(directory: { "/work/app" }) { _ in throw ChangesReadError.unavailable }
                 },
-                activity: activity, themes: settings.themes, window: window)
+                activity: activity, themes: settings.themes, appearance: appearance, window: window)
         }
 
         private static func makeSettings(look: WindowLook) throws -> TerminalSettings {
@@ -1057,6 +1061,78 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    /// A long main-screen session's first paint spans many frames and credit
+    /// windows. Handed over frame by frame, the surface draws its history
+    /// scrolling past for as long as the link takes to carry it; handed over
+    /// whole, it opens on the latest screen. Output after the paint still
+    /// flows as it comes.
+    @Test func aFirstPaintSpanningManyFramesReachesTheSurfaceWhole() async throws {
+        let fixture = try await Fixture()
+        let store = fixture.store()
+        let sink = TakeRecordingSink()
+        store.feed.attach(sink)
+        let attach = try await fixture.opened(store)
+        let paint = Self.longFirstPaint(historyRows: 8_000)
+        #expect(paint.count > 2 * HerdrCoreFrame.initialCredit)
+
+        try await Self.deliverAsTheCoreDoes(paint, on: attach)
+        await attach.socket.waitForCredit(channel: attach.channel, total: paint.count)
+        #expect(sink.takes.count == 1)
+        #expect(sink.takes.first == paint)
+        #expect(store.status == .live)
+
+        try await fixture.deliverOutput("live", on: attach)
+        await attach.socket.waitForCredit(channel: attach.channel, total: paint.count + 4)
+        #expect(sink.takes.last == Data("live".utf8))
+        await store.stop()
+        await fixture.finish()
+    }
+
+    /// Each take apart, so a test can tell what a surface could draw between them.
+    private final class TakeRecordingSink: TerminalByteSink {
+        var takes: [Data] = []
+        func receive(_ data: Data) { takes.append(data) }
+    }
+
+    /// Shaped like what herdr-core 0.1.18 sends a phone-sized viewer of a long
+    /// main-screen session (`viewers.rs` `first_paint`, `ghostty-vt` `paint`):
+    /// CAN, modes off, styled history rows, the newlines that push them into
+    /// scrollback, the screen, then the win32 mode that closes the paint.
+    private static func longFirstPaint(historyRows: Int, rows: Int = 40) -> Data {
+        var paint = Data([0x18])
+        paint.append(Data("\u{1B}[!p\u{1B}[?2026l\u{1B}[?1049l\u{1B}[?1047l\u{1B}[?47l\u{1B}[H\u{1B}[2J".utf8))
+        for row in 0..<historyRows {
+            paint.append(
+                Data(
+                    ("\u{1B}[38;2;\(row % 256);120;200mhistory row \(row)\u{1B}[0m "
+                        + "\u{1B}[38;2;90;\(row % 256);40mof a long main-screen session\u{1B}[0m\r\n").utf8))
+        }
+        paint.append(Data("\u{1B}[0m\r\n".utf8))
+        paint.append(Data(repeating: UInt8(ascii: "\n"), count: rows))
+        paint.append(Data("\u{1B}[H\u{1B}[2J\u{1B}[0m> the latest screen\u{1B}[1;20H".utf8))
+        paint.append(Data("\u{1B}[?9001l".utf8))
+        return paint
+    }
+
+    /// DATA in frames the size a core's writer cuts them, never past the credit
+    /// the client has granted.
+    private static func deliverAsTheCoreDoes(
+        _ bytes: Data, on attach: (channel: UInt32, params: JSONValue, socket: FakeCoreSocket),
+        frameSize: Int = 16 * 1024
+    ) async throws {
+        var sent = 0
+        while sent < bytes.count {
+            let end = min(sent + frameSize, bytes.count)
+            let owed = end - HerdrCoreFrame.initialCredit
+            if owed > 0 { await attach.socket.waitForCredit(channel: attach.channel, total: owed) }
+            let start = bytes.index(bytes.startIndex, offsetBy: sent)
+            let stop = bytes.index(bytes.startIndex, offsetBy: end)
+            try await attach.socket.deliver(
+                HerdrCoreFrame(channel: attach.channel, kind: .data, payload: Data(bytes[start..<stop])))
+            sent = end
+        }
+    }
+
     @Test func aLinkThatDropsReattachesOnTheNextOneAsAResumedViewerOnTheSameConnection() async throws {
         let fixture = try await Fixture()
         let store = fixture.store()
@@ -1397,12 +1473,13 @@ struct HerdrCoreTerminalStoreTests {
     // MARK: Modes
 
     /// What herdr-core 0.1.13 sends a fresh viewer (`ghostty-vt` `paint`): every
-    /// mode off, then the program's own on again.
+    /// mode off, then the program's own on again, then the win32 mode that
+    /// closes every paint.
     private static let firstPaint = Data(
         ("\u{1B}[!p\u{1B}[?2026l\u{1B}[?9l\u{1B}[?1000l\u{1B}[?1001l\u{1B}[?1002l\u{1B}[?1003l\u{1B}[?1004l"
             + "\u{1B}[?1005l\u{1B}[?1006l\u{1B}[?1015l\u{1B}[?1016l\u{1B}[?2004l\u{1B}[?1l\u{1B}[?66l\u{1B}[?2031l"
             + "\u{1B}[?2048l\u{1B}[=0;1u\u{1B}[?1049l\u{1B}[?1047l\u{1B}[?47l\u{1B}[H\u{1B}[2J"
-            + "\u{1B}[?1049h\u{1B}[?2004h\u{1B}[=5;1uscreen").utf8)
+            + "\u{1B}[?1049h\u{1B}[?2004h\u{1B}[=5;1uscreen\u{1B}[?9001l").utf8)
 
     @Test func theFirstPaintLeavesTheModesTheProgramLastSetAndARemountKeepsThem() async throws {
         let fixture = try await Fixture()
@@ -2761,6 +2838,30 @@ struct HerdrCoreTerminalStoreTests {
     }
 }
 
+/// The theme slot a test window's scene root picks (`appAppearance`), from
+/// the appearance the window shows.
+@MainActor
+@Observable
+private final class HostedThemeAppearance {
+    private(set) var scheme: ColorScheme
+
+    init(_ style: UIUserInterfaceStyle) {
+        scheme = style == .dark ? .dark : .light
+    }
+
+    func update(_ style: UIUserInterfaceStyle) {
+        scheme = style == .dark ? .dark : .light
+    }
+}
+
+private struct HostedThemeAppearanceRoot: ViewModifier {
+    let appearance: HostedThemeAppearance
+
+    func body(content: Content) -> some View {
+        content.environment(\.themeAppearance, appearance.scheme)
+    }
+}
+
 /// The theme in each of a test window's two slots and the appearance it shows.
 private struct WindowLook {
     var light = TerminalThemeOption.vesper
@@ -2859,20 +2960,26 @@ private final class CoreDetailWindow {
     let themes: TerminalThemeSettings
     let window: UIWindow
 
+    private let appearance: HostedThemeAppearance
+
     init(
         selection: HostedDetailSelection, changes: AgentChangesPresentation?,
-        activity: AppActivityCoordinator, themes: TerminalThemeSettings, window: UIWindow
+        activity: AppActivityCoordinator, themes: TerminalThemeSettings,
+        appearance: HostedThemeAppearance, window: UIWindow
     ) {
         self.selection = selection
         self.changes = changes
         self.activity = activity
         self.themes = themes
+        self.appearance = appearance
         self.window = window
     }
 
-    /// Changes the appearance this window shows, as the system does.
+    /// Changes the appearance this window shows, as the system does: the
+    /// window's light or dark, and the theme slot its scene root picks.
     func setAppearance(_ appearance: UIUserInterfaceStyle) {
         window.rootViewController?.overrideUserInterfaceStyle = appearance
+        self.appearance.update(appearance)
     }
 
     func layOut() { window.layoutIfNeeded() }

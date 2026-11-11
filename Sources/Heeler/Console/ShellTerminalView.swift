@@ -48,7 +48,7 @@ struct ShellTerminalView: View {
     @State private var keyboardMode: TerminalKeyboardMode = .text
     @State private var keyboardInset = TerminalKeyboardInset()
     @State private var isConfirmingClose = false
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.themeAppearance) private var themeAppearance
     /// The scene root's window, known before this screen first renders.
     @Environment(\.sceneWindow) private var sceneWindow
     @Environment(\.detailCrossfade) private var detailCrossfade
@@ -120,8 +120,8 @@ struct ShellTerminalView: View {
             Self.prepareKeyboardMode(.text, inset: keyboardInset)
             return true
         }
-        screen.theme = terminal.themes.theme
-        screen.displayColors = terminal.themes.colors(for: colorScheme)
+        screen.theme = terminal.themes.terminalTheme(for: themeAppearance)
+        screen.displayColors = terminal.themes.colors(for: themeAppearance)
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
         screen.onFontSizeChanged = { terminal.zoom.setFontSize($0) }
@@ -335,8 +335,8 @@ struct ShellTerminalView: View {
                     controlPlacement: headerControlPlacement)
                 .environment(
                     \.colorScheme,
-                    terminal.themes.selection(for: colorScheme)
-                        .chromeColorScheme(for: colorScheme))
+                    terminal.themes.selection(for: themeAppearance)
+                        .chromeColorScheme(for: themeAppearance))
                 .padding(.horizontal, 12)
                 .padding(.top, backHeaderTop)
                 .onChange(of: isBackHeaderExpanded) { _, expanded in
@@ -363,14 +363,14 @@ struct ShellTerminalView: View {
             }
             // Through every safe-area region, as Agent detail's surface.
             .background {
-                terminal.themes.selection(for: colorScheme)
-                    .surfaceBackground(for: colorScheme)
+                terminal.themes.selection(for: themeAppearance)
+                    .surfaceBackground(for: themeAppearance)
                     .ignoresSafeArea(.all, edges: surfaceEdges)
             }
             .ignoresSafeArea(.container, edges: .top)
             .toolbarColorScheme(
-                terminal.themes.selection(for: colorScheme)
-                    .chromeColorScheme(for: colorScheme),
+                terminal.themes.selection(for: themeAppearance)
+                    .chromeColorScheme(for: themeAppearance),
                 for: .navigationBar
             )
             .navigationBarBackButtonHidden(true)
@@ -605,7 +605,7 @@ struct ShellTerminalView: View {
     }
 
     private var themePalette: TerminalThemePalette {
-        terminal.themes.selection(for: colorScheme).palette(for: colorScheme)
+        terminal.themes.selection(for: themeAppearance).palette(for: themeAppearance)
     }
 
     @ViewBuilder

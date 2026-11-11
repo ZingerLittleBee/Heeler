@@ -11607,24 +11607,24 @@
         }
       }
     },
-    "Changes apply instantly to current and future Attach terminals without reconnecting." : {
+    "Changes apply instantly to terminals, Chat and the app, without reconnecting." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "変更は再接続なしで、現在および今後の接続（Attach）ターミナルに即座に適用されます。"
+            "value" : "変更は再接続なしで、ターミナル、チャット、アプリに即座に適用されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "更改会立即应用于当前及之后的连接终端，无需重新连接。"
+            "value" : "更改会立即应用于终端、对话和 App，无需重新连接。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "變更會立即套用到目前與之後的 Attach 終端機，不需重新連線。"
+            "value" : "變更會立即套用到終端機、對話與 App，不需重新連線。"
           }
         }
       }
@@ -31571,6 +31571,28 @@
         }
       }
     },
+    "Mode" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モード"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模式"
+          }
+        }
+      }
+    },
     "Model" : {
       "localizations" : {
         "ja" : {
@@ -39213,24 +39235,24 @@
         }
       }
     },
-    "Pinching a terminal to zoom changes its text size too, and it sticks. Each appearance has its own theme: a dark theme for Light Mode keeps the terminal dark under a light system." : {
+    "Pinching a terminal to zoom changes its text size too, and it sticks." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ターミナルをピンチで拡大すると文字サイズも変更され、そのまま維持されます。外観（ライト/ダーク）ごとにテーマを設定できます: ライトモード用のダークテーマは、ターミナルをダークのままに保ちます。"
+            "value" : "ターミナルをピンチで拡大すると文字サイズも変更され、そのまま維持されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在终端中双指缩放也会改变文字大小，并保持该设置。浅色和深色外观各有独立的主题：为浅色模式选择深色主题，可在浅色系统下让终端保持深色。"
+            "value" : "在终端中双指缩放也会改变文字大小，并保持该设置。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在終端機上用兩指縮放時，文字大小也會一併改變，而且會保留下來。每種外觀都有各自的主題：為淺色模式選擇深色主題，即使系統是淺色，終端機也會維持深色。"
+            "value" : "在終端機上用兩指縮放時，文字大小也會一併改變，而且會保留下來。"
           }
         }
       }

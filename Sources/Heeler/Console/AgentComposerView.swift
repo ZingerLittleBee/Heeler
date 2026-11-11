@@ -307,6 +307,7 @@ struct AgentComposerView: View {
     /// removing the token arms them again.
     @State private var isSuggestionsDismissed = false
     @State private var isDropTargeted = false
+    @Environment(\.themeColors) private var themeColors
     /// The finger's travel from where it took the grabber.
     @GestureState(resetTransaction: Transaction(animation: .spring(duration: 0.35, bounce: 0.4)))
     private var keyboardPull: CGFloat = 0
@@ -343,10 +344,16 @@ struct AgentComposerView: View {
                         switchKeyboard: keyboardSwitchAction,
                         modeControl: modeControl)
                 }
-                .background(
-                    .regularMaterial,
-                    in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-                )
+                // Opaque in the theme's background, so Chat scrolling under
+                // it stays out of the way, then veiled.
+                .background {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(themeColors.background)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .fill(ThemeVeil.card)
+                        }
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)

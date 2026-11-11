@@ -22,6 +22,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- See Chat, its diffs and the app around it in the terminal theme of the mode in force. Heeler is drawn light or dark as that theme is, so a dark theme for Light Mode darkens the whole app, sheets included; the Composer, its Agent strip and the sidebar's cards become neutral veils over the theme. Settings > Appearance gathers Mode and the Light Mode and Dark Mode themes in a Theme section of their own, and Light Mode now defaults to Default. (PR #679)
 - Lead the Host Helper sheet with its status and a prominent Install, and list what it writes as Helper, LaunchAgent or systemd Unit, and Pi & Oh My Pi with file counts. Each opens one folder at a time, subfolders first, with the folder's path below, instead of every absolute path in one list. (PR #661)
 - Show each Host in Settings > Notifications as one row with its switch and a line saying what is on or what it needs. Done Notifications, Live Activity and their notes move to the Host's own page, which on a herdr-core Host also shows the Host Helper's status and opens its sheet on the Host's page in Hosts. (PR #661)
 - Select terminal text inline with handles and the system edit menu, using libghostty-spm 2.2.2026103001. Chat's Select Text sheet is unchanged. (PR #650)
@@ -30,6 +31,8 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Open a herdr-core Agent or Terminal at its latest screen. A long session that never leaves the main screen, such as Antigravity's, scrolled through its history for seconds before it could be used, because that history was drawn piece by piece as it arrived. It now appears once it has all arrived, with Connecting… shown until then. (PR #684)
+- Start a New Agent, New Terminal or Template in a Herdr desktop space on a herdr-core Host where the space's shell is now, as the desktop app does, rather than in the folder the space was made in. A space made while another was shown had started them in that other space's folder, and a new Worktree had come from that folder's repository. (PR #677)
 - Settle a Chat message whose attached image path stood on a line of its own. Claude Code records the image before the text, and Chat kept showing the message as sent but not yet in the conversation. (PR #674)
 - Find links on an Agent's terminal after a line with a character such as Claude Code's `❯` prompt. The link button stayed hidden for any link printed after it. (PR #672)
 - Center a checkout's icon on its title in the Agents list's By Workspace cards. A pinned Agent's card no longer lifts the icon above the title. (PR #669)

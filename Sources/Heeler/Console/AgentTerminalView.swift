@@ -275,7 +275,7 @@ struct AgentTerminalView: View {
     /// The control that opened Attach Links, which its popover anchors to.
     @State private var attachLinksOrigin: AttachLinksOrigin?
     @State private var closeErrorMessage: String?
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.themeAppearance) private var themeAppearance
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -542,8 +542,8 @@ struct AgentTerminalView: View {
                 cancelKeyboardHandoff(id)
             }
         }
-        screen.theme = terminal.themes.theme
-        screen.displayColors = terminal.themes.colors(for: colorScheme)
+        screen.theme = terminal.themes.terminalTheme(for: themeAppearance)
+        screen.displayColors = terminal.themes.colors(for: themeAppearance)
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
         screen.onFontSizeChanged = { fontSize in terminal.zoom.setFontSize(fontSize) }
@@ -1170,7 +1170,7 @@ struct AgentTerminalView: View {
                 controlPlacement: headerControlPlacement)
             .environment(
                 \.colorScheme,
-                terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
+                terminal.themes.selection(for: themeAppearance).chromeColorScheme(for: themeAppearance))
             .padding(.horizontal, 12)
             .padding(.top, backHeaderTop)
             .onChange(of: isBackHeaderExpanded) { _, expanded in
@@ -1199,14 +1199,14 @@ struct AgentTerminalView: View {
         // can take the home-indicator inset for a keyboard's, and a
         // container-only background then leaves it the app's own color.
         .background {
-            terminal.themes.selection(for: colorScheme)
-                .surfaceBackground(for: colorScheme)
+            terminal.themes.selection(for: themeAppearance)
+                .surfaceBackground(for: themeAppearance)
                 .ignoresSafeArea(.all, edges: surfaceEdges)
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbarColorScheme(
-            terminal.themes.selection(for: colorScheme)
-                .chromeColorScheme(for: colorScheme),
+            terminal.themes.selection(for: themeAppearance)
+                .chromeColorScheme(for: themeAppearance),
             for: .navigationBar)
         .navigationBarBackButtonHidden(true)
         .interactivePopGestureEnabled(showsBackButton)
@@ -1324,8 +1324,8 @@ struct AgentTerminalView: View {
                     status: agent.agent.status,
                     hostTelemetry: hostTelemetry,
                     changes: statusChanges,
-                    chromeColorScheme: terminal.themes.selection(for: colorScheme)
-                        .chromeColorScheme(for: colorScheme),
+                    chromeColorScheme: terminal.themes.selection(for: themeAppearance)
+                        .chromeColorScheme(for: themeAppearance),
                     isKeyboardUp: directSwitcherKeyboardIsUp,
                     isToolsKeyboardPresented: usesDirectToolsKeyboard),
                 interactions: .init(
@@ -1376,8 +1376,8 @@ struct AgentTerminalView: View {
             status: agent.agent.status,
             hostTelemetry: hostTelemetry,
             changes: statusChanges,
-            chromeColorScheme: terminal.themes.selection(for: colorScheme)
-                .chromeColorScheme(for: colorScheme),
+            chromeColorScheme: terminal.themes.selection(for: themeAppearance)
+                .chromeColorScheme(for: themeAppearance),
             switcher: agentSwitcher,
             keyboardHandoff: keyboardHandoff,
             inheritsKeyboardHandoff: inheritsKeyboardHandoff,
@@ -1861,7 +1861,7 @@ struct AgentTerminalView: View {
 
     /// The dialog wears the terminal's theme, not the system's.
     private var themePalette: TerminalThemePalette {
-        terminal.themes.selection(for: colorScheme).palette(for: colorScheme)
+        terminal.themes.selection(for: themeAppearance).palette(for: themeAppearance)
     }
 
     private var messageJumpAvailability: MessageJumpControlAvailability {

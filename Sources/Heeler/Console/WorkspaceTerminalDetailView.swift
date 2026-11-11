@@ -27,7 +27,7 @@ struct WorkspaceTerminalDetailView: View {
     @State private var isCreatingTerminal = false
     @State private var createFailure: String?
     @State private var retryID = 0
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.themeAppearance) private var themeAppearance
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
     /// This window, so a remount of this screen takes its terminal over.
     @Environment(\.agentSceneRouting) private var sceneRouting
@@ -41,7 +41,7 @@ struct WorkspaceTerminalDetailView: View {
     }
 
     private var themePalette: TerminalThemePalette {
-        settings.themes.selection(for: colorScheme).palette(for: colorScheme)
+        settings.themes.selection(for: themeAppearance).palette(for: themeAppearance)
     }
 
     /// The states before and after the terminal draw on its surface too,
@@ -50,7 +50,7 @@ struct WorkspaceTerminalDetailView: View {
     /// would flash under them before every shell.
     private func terminalSurface(@ViewBuilder _ content: () -> some View) -> some View {
         ZStack {
-            settings.themes.selection(for: colorScheme).surfaceBackground(for: colorScheme)
+            settings.themes.selection(for: themeAppearance).surfaceBackground(for: themeAppearance)
                 .ignoresSafeArea(edges: surfaceEdges)
             content()
         }

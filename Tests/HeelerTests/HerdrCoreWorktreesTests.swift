@@ -81,6 +81,7 @@ struct HerdrCoreWorktreesTests {
 
         init(
             terminals: [JSONValue] = HerdrCoreWorktreesTests.worktreeInventory,
+            document: JSONValue? = nil,
             platform: HostPlatform = .posix
         ) async throws {
             let services = ScriptedCoreServices(
@@ -90,6 +91,7 @@ struct HerdrCoreWorktreesTests {
                     .object(["seq": .number(1), "terminals": .array(terminals), "channel": .number(1)])
                 ], services: services)
             await transport.setShell("/usr/bin/zsh")
+            if let document { await transport.setDocument(document, version: 1) }
             await transport.setDiscovery(programs: ["claude"])
             self.services = services
             self.transport = transport
@@ -371,6 +373,27 @@ struct HerdrCoreWorktreesTests {
                 directory: Self.linked, isMutation: true)
         ])
         #expect(await fixture.git("show-ref").map(\.directory) == [Self.main])
+    }
+
+    /// A space's folder records where the space was made, which can be another
+    /// repository; the Worktree comes from the checkout its Terminal is in (#675).
+    @Test func aWorktreeOfADesktopSpaceComesFromItsTerminalsCheckoutNotItsFolder() async throws {
+        let fixture = try await Fixture(
+            terminals: [Self.shell("t2", cwd: Self.main, labels: Self.labels)],
+            document: CoreDesktopJSON.document([
+                CoreDesktopJSON.space(
+                    Self.space, folder: "/work/other",
+                    tabs: [CoreDesktopJSON.tab("tb9", terminals: ["t2"])])
+            ]))
+        defer { fixture.finish() }
+
+        _ = try await fixture.start(branch: "next", from: Self.workspace)
+
+        #expect(await fixture.git("worktree") == [
+            GitCommand(
+                arguments: ["worktree", "add", "-b", "next", "/home/dev/.herdr/worktrees/app/next", "HEAD"],
+                directory: Self.main, isMutation: true)
+        ])
     }
 
     @Test func aHostileBranchReachesGitAsOneWordAndNamesAHarmlessFolder() async throws {
