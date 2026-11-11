@@ -15,11 +15,12 @@ import Foundation
 /// per device: this device's seen marks and each Pane's turns are kept by
 /// server instance, beside it, with no Helper to hold them.
 ///
-/// A Pane opens live, through `terminalRunner`. New Agent, New Terminal, New
-/// Workspace, Rename Workspace and Close run through `TmuxLaunch`. A Worktree
-/// is the same git as a herdr-core Host, under `~/.heeler`, and its session
-/// opens through `TmuxLaunch` too. Nothing can be typed into a Pane yet, an
-/// Agent is not renamed, and a Terminal is not taken over.
+/// A Pane opens live, through `terminalRunner`, and Composer Send types into
+/// its Agent through that Attach's control client in checked steps
+/// (`TmuxComposerSend`). New Agent, New Terminal, New Workspace, Rename
+/// Workspace and Close run through `TmuxLaunch`. A Worktree is the same git as
+/// a herdr-core Host, under `~/.heeler`, and its session opens through
+/// `TmuxLaunch` too. An Agent is not renamed, and a Terminal is not taken over.
 @MainActor
 final class TmuxConsoleProjection: ConsoleHostProjection {
     /// The catalog's Host, with the paths a connection last resolved.
@@ -67,6 +68,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private var hookLocations: HostHelperProbe.Locations?
     /// The Host's one git turn at a time, shared with every other git read.
     private let gitGate: GitExecGate
+    private let sendClock: BlockedCardClock
     /// Checkouts git has named, by the directory that was asked and by the checkout root.
     private var knownCheckouts: [String: HostCheckout] = [:]
     /// A newer inventory supersedes a checkout read still on its way.
@@ -81,6 +83,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         memory: HerdrCoreHostMemory,
         pins: PinnedAgentsStore,
         gitGate: GitExecGate,
+        sendClock: BlockedCardClock = .live,
         onPathsResolved: @escaping @MainActor (TmuxPaths) -> Void,
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
@@ -89,6 +92,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         self.memory = memory
         self.pins = pins
         self.gitGate = gitGate
+        self.sendClock = sendClock
         self.onPathsResolved = onPathsResolved
         self.onChange = onChange
     }
@@ -221,6 +225,22 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     /// Host has the core its addresses mean.
     var inventoryCore: String? {
         memory.coreID(for: host.id)
+    }
+
+    /// Whether what keeps to `pin` still means this inventory's Panes.
+    func admits(_ pin: TerminalCorePin) -> Bool {
+        inventoryCore.map(pin.admits) ?? true
+    }
+
+    /// Whether the last inventory snapshot already shows `paneID` gone or dead.
+    func hasPaneEnded(_ paneID: String) -> Bool {
+        guard !isAwaitingSnapshot else { return false }
+        guard terminalsByPane[paneID] != nil else { return true }
+        return inventory?.panes.first(where: { $0.paneID == paneID })?.isDead == true
+    }
+
+    func readPaneForeground(_ paneID: String) async throws -> TmuxPaneForeground {
+        try await session.withTransport { try await $0.readPaneForeground(paneID) }
     }
 
     /// Another instance is another server, whose pane ids only repeat the last
@@ -816,6 +836,20 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     func readAgentScreen(_ paneID: String) async throws -> ANSIScreen { throw unavailable }
     func sendAgentKeys(_ keys: [String], to paneID: String) async throws { throw unavailable }
     func pasteIntoAgent(_ text: String, paneID: String) async throws { throw unavailable }
+
+    /// Checked Composer Send (ADRs 0035 and 0043). `live` follows a projection
+    /// replaced after the Composer was opened.
+    func checkedComposerSend(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> (any CheckedComposerSend)? {
+        TmuxComposerSend(
+            paneID: paneID,
+            projection: { live() as? TmuxConsoleProjection },
+            corePin: corePin,
+            clock: sendClock)
+    }
 
     /// Each Attach is a control client in a session of Heeler's own (ADR 0043),
     /// on whichever server answers once the connection is up. Another instance

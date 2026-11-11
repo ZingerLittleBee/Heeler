@@ -101,12 +101,13 @@ extension HostCapabilities {
         isLocatingCore: Bool = false
     ) {
         // A tmux Host starts Agents and Terminals, renames a Workspace, closes
-        // a Pane or a Tab, and opens a Worktree. It does not rename an Agent,
-        // take over a Terminal, or name Tabs. Chat, Send and uploads are later tickets.
+        // a Pane or a Tab, opens a Worktree, and offers Composer Send. It does
+        // not rename an Agent, take over a Terminal, or name Tabs. Chat, Stop
+        // and uploads are later tickets.
         guard serverKind != .tmux else {
             self.init(
                 startsAgents: true, startsTerminals: true, renameAgent: false, renamesWorkspaces: true,
-                worktrees: true, uploads: false, composerSend: false, chat: false, tabNames: false,
+                worktrees: true, uploads: false, composerSend: true, chat: false, tabNames: false,
                 closeTab: true, syncLayoutFromPlugin: false, takeOver: false, composerStop: false,
                 hostScripts: false, namesCreatedWorkspaces: true)
             return

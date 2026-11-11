@@ -120,7 +120,7 @@ struct TmuxConsoleTests {
         #expect(!offers.takeOver)
         #expect(!offers.chat)
         #expect(!offers.uploads)
-        #expect(!offers.composerSend)
+        #expect(offers.composerSend)
         #expect(offers.worktrees)
         #expect([host].offeringNewItem(listsTerminals: false, capabilities: { store.capabilities(for: $0.id) }) == [host])
         #expect([host].offeringNewItem(listsTerminals: true, capabilities: { store.capabilities(for: $0.id) }) == [host])

@@ -619,6 +619,19 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         silentControlClients += 1
     }
 
+    /// Breaks open control clients on `name` so their Attaches enter `.ended`.
+    func breakControlClients(
+        _ error: TransportError = .channelFailed(detail: "the control client's channel broke"),
+        on name: String = "default"
+    ) async {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        let matching = controlClients.filter { $0.value.socket == socket }
+        for (id, client) in matching {
+            controlClients[id] = nil
+            await client.channel.fail(error)
+        }
+    }
+
     /// The pane prints `text`, which every client whose session links its window reads.
     func paneOutput(_ text: String, in pane: String, on name: String = "default") async {
         let socket = Self.socketPath(name, in: loginDirectory)

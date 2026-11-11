@@ -528,9 +528,13 @@ enum TmuxSendWriteOutcome: Equatable, Sendable {
 
 /// Checked Send's control-client operations on one tmux Attach (ADR 0043).
 struct TmuxAttachSend: Sendable {
+    typealias Sleep = @Sendable (Duration) async throws -> Void
+
     let bracketedPaste: @Sendable () async -> TmuxPaneFeed.BracketedPaste
-    let paste: @Sendable (String, @escaping @Sendable (Duration) async throws -> Void) async -> TmuxSendWriteOutcome
-    let sendKey: @Sendable (String, @escaping @Sendable (Duration) async throws -> Void) async -> TmuxSendWriteOutcome
+    let paste: @Sendable (String, @escaping Sleep) async -> TmuxSendWriteOutcome
+    let sendKey: @Sendable (String, @escaping Sleep) async -> TmuxSendWriteOutcome
+    let sendHexByte: @Sendable (UInt8, @escaping Sleep) async -> TmuxSendWriteOutcome
+    let settle: @Sendable (@escaping Sleep) async -> TmuxSendWriteOutcome
 }
 
 /// The live PTY's mixed-reliability input queue.

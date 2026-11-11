@@ -98,6 +98,16 @@ actor TmuxPaneAttach {
                 await Self.runOrdered(on: input) {
                     await attach.sendKey(name, sleep: sleep)
                 }
+            },
+            sendHexByte: { byte, sleep in
+                await Self.runOrdered(on: input) {
+                    await attach.sendHexByte(byte, sleep: sleep)
+                }
+            },
+            settle: { sleep in
+                await Self.runOrdered(on: input) {
+                    await attach.settleSend(sleep: sleep)
+                }
             })
         return TerminalAttachSession(
             output: { AsyncThrowingStream { try await attach.read() } },
@@ -577,10 +587,30 @@ actor TmuxPaneAttach {
         _ name: String,
         sleep: @escaping @Sendable (Duration) async throws -> Void
     ) async -> TmuxSendWriteOutcome {
+        await runSendCommand(["send-keys", "-t", pane, name], sleep: sleep)
+    }
+
+    func sendHexByte(
+        _ byte: UInt8,
+        sleep: @escaping @Sendable (Duration) async throws -> Void
+    ) async -> TmuxSendWriteOutcome {
+        await runSendCommand(["send-keys", "-H", "-t", pane, String(format: "%02x", byte)], sleep: sleep)
+    }
+
+    func settleSend(
+        sleep: @escaping @Sendable (Duration) async throws -> Void
+    ) async -> TmuxSendWriteOutcome {
+        await runSendCommand(["display-message", "-p", ""], sleep: sleep)
+    }
+
+    private func runSendCommand(
+        _ words: [String],
+        sleep: @escaping @Sendable (Duration) async throws -> Void
+    ) async -> TmuxSendWriteOutcome {
         guard await client.end == nil else { return .notLeft }
         do {
             let succeeded = try await client.run(
-                TmuxControlCommand(["send-keys", "-t", pane, name]),
+                TmuxControlCommand(words),
                 timeout: Self.answerTimeout,
                 sleep: sleep
             ).succeeded

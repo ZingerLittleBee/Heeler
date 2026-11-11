@@ -107,7 +107,13 @@ enum HerdrCoreAgentRule {
     /// The shell a foreground names, as its program's own word. Read it only of
     /// one the rule reads as `.shell`.
     static func shellName(of foreground: HerdrCoreForeground) -> String {
-        baseName(foreground.argv.first ?? foreground.name)
+        shellName(arguments: foreground.argv, name: foreground.name)
+    }
+
+    /// The shell a foreground's arguments or OS name come to, as its program's
+    /// own word. Read it only of one the rule reads as `.shell`.
+    static func shellName(arguments: [String], name: String) -> String {
+        baseName(arguments.first ?? name)
     }
 
     /// The foreground, or without one what the Terminal launched. A process
