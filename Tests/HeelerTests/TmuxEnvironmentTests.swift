@@ -72,4 +72,31 @@ struct TmuxEnvironmentTests {
             TmuxEnvironment.accountVariables(in: names)
                 == ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME"])
     }
+
+    @Test func aHostNoticeKeepsAGlobalLeakAndASessionsOwn() {
+        let global = TmuxEnvironment.parse(
+            Data(
+                """
+                CLAUDECODE=secret-child
+                CLAUDE_CONFIG_DIR=/secret/claude
+                XDG_CONFIG_HOME=/secret/xdg
+                PATH=/usr/bin
+                """.utf8))
+        let removed = TmuxEnvironment.parse(
+            Data(
+                """
+                CODEX_THREAD_ID=secret-thread
+                CODEX_HOME=/secret/codex
+                -CLAUDE_CONFIG_DIR
+                -CLAUDECODE
+                """.utf8))
+        let plain = TmuxEnvironment.Scope(assigned: [], removed: [])
+
+        let reading = TmuxEnvironment.reading(global: global, sessions: ["$0": removed, "$2": plain])
+
+        #expect(reading.leaked == ["CLAUDECODE", "CODEX_THREAD_ID"])
+        #expect(reading.globalAccountVariables == ["CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME"])
+        #expect(reading.accountVariablesBySession["$0"] == ["CODEX_HOME", "XDG_CONFIG_HOME"])
+        #expect(reading.accountVariablesBySession["$2"] == ["CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME"])
+    }
 }

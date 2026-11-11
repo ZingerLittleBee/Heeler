@@ -13,7 +13,9 @@ import Foundation
 /// the app's reader is the one under test. A `runTmuxCommand` applies
 /// `new-window`, `new-session`, `rename-session`, `kill-pane` and
 /// `kill-window` to those panes, and a discovery script lists
-/// `installedExecutables`.
+/// `installedExecutables`. `show-environment -g` prints the global lines a
+/// test planted, and `show-environment -t` prints a session delta only when
+/// the target is a session id (`$n`).
 actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     static let nonce = "scripted-tmux-host-nonce"
     static let executable = "/opt/homebrew/bin/tmux"
@@ -53,6 +55,12 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// What each server lists, by socket path, in `list-panes -a` order. A
     /// pane's `foregroundArguments` are what the Host would read of it now.
     private var panes: [String: [TmuxInventory.Pane]] = [:]
+    /// Raw `show-environment -g` lines, by socket. A session map is that
+    /// session's delta, keyed by `$n`.
+    private var globalEnvironment: [String: [String]] = [:]
+    private var sessionEnvironment: [String: [String: [String]]] = [:]
+    /// When set, `show-environment` exits with this status and prints nothing.
+    private var showEnvironmentStatus: Int32?
     private var loops: [UInt64: Loop] = [:]
     private var nextLoop: UInt64 = 0
     private var loopFailures: [TransportError] = []
@@ -109,6 +117,25 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         panes[socket] = nil
         await endControlClients(on: socket)
         await printChanges(on: socket)
+    }
+
+    /// Lines `show-environment -g` prints. Values stay in the answer, as tmux
+    /// prints them; the app is what must drop them.
+    func setGlobalEnvironment(_ lines: [String], on name: String = "default") {
+        globalEnvironment[Self.socketPath(name, in: loginDirectory)] = lines
+    }
+
+    /// Lines `show-environment -t` prints for one session id.
+    func setSessionEnvironment(_ lines: [String], session: String, on name: String = "default") {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        var sessions = sessionEnvironment[socket] ?? [:]
+        sessions[session] = lines
+        sessionEnvironment[socket] = sessions
+    }
+
+    /// The next `show-environment` fails, until this is cleared.
+    func failShowEnvironment(_ failed: Bool) {
+        showEnvironmentStatus = failed ? 1 : nil
     }
 
     /// What the server lists from now on, as a second later a loop has seen it.
@@ -671,12 +698,36 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             servers[socket] = Self.instance
             if panes[socket] == nil { panes[socket] = [] }
         }
+        if invocation.subcommand == "show-environment" {
+            return environmentListing(on: socket, invocation: invocation)
+        }
         var listed = panes[socket] ?? []
         let result = mutate(&listed, invocation)
         guard result.exitStatus == 0 else { return result }
         panes[socket] = listed
         await printChanges(on: socket)
         return result
+    }
+
+    /// `show-environment` does not change the panes. `-g` is the global list.
+    /// `-t` answers only for a session id that is listed or planted; a name
+    /// is `can't find session`.
+    private func environmentListing(on socket: String, invocation: Invocation) -> GitExecResult {
+        if let status = showEnvironmentStatus {
+            return GitExecResult(stdout: Data(), stderr: Data("show-environment failed\n".utf8), exitStatus: status)
+        }
+        if invocation.global, invocation.target == nil {
+            return Self.succeeded(Self.lines(globalEnvironment[socket] ?? []))
+        }
+        guard let target = invocation.target, target.hasPrefix("$"),
+            (panes[socket] ?? []).contains(where: { $0.sessionID == target }) || sessionEnvironment[socket]?[target] != nil
+        else { return Self.failed("can't find session: \(invocation.target ?? "")\n") }
+        return Self.succeeded(Self.lines(sessionEnvironment[socket]?[target] ?? []))
+    }
+
+    private static func lines(_ lines: [String]) -> String {
+        guard !lines.isEmpty else { return "" }
+        return lines.joined(separator: "\n") + "\n"
     }
 
     private func mutate(
@@ -752,6 +803,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
 
     private struct Invocation {
         var hasN = false
+        var global = false
         var subcommand = ""
         var target: String?
         var directory: String?
@@ -764,7 +816,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// in an older script, the word after `-t` when that word is not a flag.
     /// Anywhere else, `--` starts the program.
     private static func invocation(of words: [String]) -> Invocation? {
-        let commands = ["new-window", "new-session", "rename-session", "kill-pane", "kill-window"]
+        let commands = [
+            "new-window", "new-session", "rename-session", "kill-pane", "kill-window", "show-environment",
+        ]
         guard let index = words.firstIndex(where: { commands.contains($0) }) else { return nil }
         var parsed = Invocation(hasN: words[..<index].contains("-N"), subcommand: words[index])
         var cursor = index + 1
@@ -779,6 +833,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
                 break
             }
             switch word {
+            case "-g":
+                parsed.global = true
+                cursor += 1
             case "-t", "-c", "-s":
                 guard cursor + 1 < words.count else { return parsed }
                 let value = words[cursor + 1]

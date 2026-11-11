@@ -55,8 +55,10 @@ struct TmuxLaunchConsoleTests {
         return false
     }
 
+    /// The commands the user asked for. An environment read can follow one that
+    /// changes which sessions exist; these tests are about the launch itself.
     private func commandScripts(_ tmux: ScriptedTmuxHost) async -> [String] {
-        await tmux.commands
+        await tmux.commands.filter { !$0.contains("show-environment") }
     }
 
     // MARK: New Agent and New Terminal

@@ -144,9 +144,10 @@ struct TmuxInventoryConsoleTests {
 
         await tmux.changePanes { $0.removeFirst() }
         try await waitUntil("the closed window") { panes(store) == ["%1"] }
-        // One loop followed all of it, on the one connection.
+        // One loop followed all of it, on the one connection. Environment reads
+        // are commands on that connection, not another probe.
         #expect(await tmux.loopLog == ["open"])
-        #expect(await tmux.log.allSatisfy { $0 == "probe stored" })
+        #expect(await tmux.log.filter { $0.hasPrefix("probe") }.allSatisfy { $0 == "probe stored" })
         store.setHosts([])
         try await waitUntil("the loop's end") { await tmux.openLoops == 0 }
     }
@@ -332,7 +333,7 @@ struct TmuxInventoryConsoleTests {
         await tmux.breakLoops(.channelFailed(detail: "killed"))
         for _ in 0..<10 { try await Task.sleep(for: .milliseconds(10)) }
         #expect(await tmux.loopLog == ["open", "close"])
-        #expect(await tmux.log == ["probe stored"])
+        #expect(await tmux.log.filter { $0.hasPrefix("probe") } == ["probe stored"])
         // What it listed stands until the server says otherwise.
         #expect(store.hostStatuses[host.id] == .connected)
         #expect(panes(store) == ["%0"])
@@ -340,7 +341,7 @@ struct TmuxInventoryConsoleTests {
         // A foreground return asks, and the next answer starts another loop.
         await store.reactivate()
         try await waitUntil("another loop") { await tmux.openLoops == 1 }
-        #expect(await tmux.log == ["probe stored", "probe stored"])
+        #expect(await tmux.log.filter { $0.hasPrefix("probe") } == ["probe stored", "probe stored"])
         store.setHosts([])
     }
 

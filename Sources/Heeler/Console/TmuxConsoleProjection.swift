@@ -38,7 +38,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private(set) var isAwaitingSnapshot = true
 
     let syncError: String? = nil
-    let leakedEnvironmentNames: Set<String> = []
+    private(set) var leakedEnvironmentNames: Set<String> = []
+    /// Account-locating names set on this server. Empty until a read succeeds.
+    private(set) var accountEnvironment = TmuxAccountEnvironment.empty
     private(set) var workspaces: [ConsoleWorkspace] = []
     let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
@@ -194,6 +196,11 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         case .inventory(let inventory):
             guard status == .connected, server != nil else { return }
             replaceInventory(with: inventory)
+        case .environment(let reading):
+            guard status == .connected, server != nil else { return }
+            leakedEnvironmentNames = reading.leaked
+            accountEnvironment = TmuxAccountEnvironment(
+                global: reading.globalAccountVariables, bySession: reading.accountVariablesBySession)
         }
         onChange()
     }
@@ -228,6 +235,8 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         workspaces = []
         terminalsByPane = [:]
         agentsByPane = [:]
+        leakedEnvironmentNames = []
+        accountEnvironment = .empty
     }
 
     /// Each snapshot is the whole inventory, so nothing is carried over. Its

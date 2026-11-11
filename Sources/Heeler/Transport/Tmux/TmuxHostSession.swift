@@ -13,6 +13,9 @@ enum TmuxHostSessionUpdate: Sendable, Equatable {
     /// Every pane the server lists: once after each `server`, and again each
     /// time something changed (ADR 0043).
     case inventory(TmuxInventory)
+    /// Names from `show-environment`, after the inventory's user sessions are
+    /// known. A failed read yields nothing, so nothing new is shown.
+    case environment(TmuxEnvironment.Reading)
 }
 
 /// Owns a tmux Host's connection, as `HerdrCoreHostSession` owns a herdr-core
@@ -68,7 +71,15 @@ actor TmuxHostSession {
     private var liveServer: TmuxServerStatus?
     /// The loop following the server's inventory, and which start of it this is.
     private var inventoryTask: Task<Void, Never>?
+    private var inventoryTransport: (any TmuxTransport)?
     private var inventoryRun: UInt64 = 0
+    /// The environment read in flight, and the one that succeeded, so a later
+    /// inventory of the same user sessions does not ask again. A failure leaves
+    /// the success empty, and the next inventory retries.
+    private var environmentTask: Task<Void, Never>?
+    private var environmentToken: UInt64 = 0
+    private var environmentFlight: (server: TmuxServerInstance, sessions: Set<String>)?
+    private var environmentRead: (server: TmuxServerInstance, sessions: Set<String>)?
     private var activationGeneration: UInt64 = 0
     private var runTask: Task<Void, Never>?
     private var waitSleep: Task<Void, any Error>?
@@ -393,6 +404,7 @@ actor TmuxHostSession {
         guard inventoryTask == nil else { return }
         inventoryRun &+= 1
         let run = inventoryRun
+        inventoryTransport = transport
         inventoryTask = Task { [weak self, settledLoopLife] in
             let started = ContinuousClock.now
             var listed = false
@@ -412,7 +424,65 @@ actor TmuxHostSession {
         guard run == inventoryRun, inventoryTask != nil, activationIsCurrent(generation), liveServer != nil
         else { return false }
         updatesContinuation.yield(.inventory(inventory))
+        considerEnvironment(of: inventory, generation: generation)
         return true
+    }
+
+    /// Asks `show-environment` once the user sessions are known, and again when
+    /// that set changes. Heeler's own sessions are not part of it. The ask does
+    /// not block the inventory loop.
+    private func considerEnvironment(of inventory: TmuxInventory, generation: UInt64) {
+        guard let server = liveServer, let transport = inventoryTransport else { return }
+        let sessions = Set(inventory.panes.filter { !$0.isInHeelerSession }.map(\.sessionID))
+        let key = (server: server.instance, sessions: sessions)
+        if environmentRead?.server == key.server, environmentRead?.sessions == key.sessions { return }
+        if environmentFlight?.server == key.server, environmentFlight?.sessions == key.sessions { return }
+        environmentToken &+= 1
+        let token = environmentToken
+        environmentTask?.cancel()
+        environmentFlight = key
+        let paths = server.paths
+        environmentTask = Task { [weak self] in
+            let reading = await Self.loadEnvironment(sessions: sessions, paths: paths, on: transport)
+            await self?.noteEnvironment(
+                reading, token: token, key: key, generation: generation)
+        }
+    }
+
+    private func noteEnvironment(
+        _ reading: TmuxEnvironment.Reading?, token: UInt64,
+        key: (server: TmuxServerInstance, sessions: Set<String>), generation: UInt64
+    ) {
+        guard token == environmentToken, activationIsCurrent(generation), liveServer?.instance == key.server
+        else { return }
+        environmentFlight = nil
+        guard let reading else { return }
+        environmentRead = key
+        updatesContinuation.yield(.environment(reading))
+    }
+
+    /// Nil when an ask failed. The caller retries on a later inventory and shows
+    /// nothing for this one, as an unreadable core environment shows no notice.
+    private static func loadEnvironment(
+        sessions: Set<String>, paths: TmuxPaths, on transport: any TmuxTransport
+    ) async -> TmuxEnvironment.Reading? {
+        guard let global = await scope(TmuxLaunch.showEnvironment(paths: paths), on: transport) else { return nil }
+        var deltas: [String: TmuxEnvironment.Scope] = [:]
+        for id in sessions.sorted() {
+            guard let delta = await scope(TmuxLaunch.showEnvironment(session: id, paths: paths), on: transport)
+            else { return nil }
+            deltas[id] = delta
+        }
+        return TmuxEnvironment.reading(global: global, sessions: deltas)
+    }
+
+    private static func scope(
+        _ command: TmuxLaunch.Command, on transport: any TmuxTransport
+    ) async -> TmuxEnvironment.Scope? {
+        let result: GitExecResult
+        do { result = try await transport.runTmuxScript(command.script, throughLoginShell: false) } catch { return nil }
+        guard result.exitStatus == 0 else { return nil }
+        return TmuxEnvironment.parse(result.stdout)
     }
 
     /// A loop that followed the server and then ended says something happened
@@ -428,6 +498,12 @@ actor TmuxHostSession {
     private func stopInventory() {
         inventoryTask?.cancel()
         inventoryTask = nil
+        inventoryTransport = nil
+        environmentToken &+= 1
+        environmentTask?.cancel()
+        environmentTask = nil
+        environmentFlight = nil
+        environmentRead = nil
     }
 
     /// The pause between two asks of a server that answers, which a

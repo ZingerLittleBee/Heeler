@@ -1100,6 +1100,7 @@
 		FCCFF20AD0CC8DDBAED519A2 /* TmuxOrganization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43DBDC36219EC8CE67638835 /* TmuxOrganization.swift */; };
 		FCD98A152DD66F79CA9E1D91 /* WindowReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D36183A0ED703C88B9D16031 /* WindowReader.swift */; };
 		FCF04AE197F3313D2C526646 /* ChatStandardAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB053AB4EBB371EC7A9E9DFA /* ChatStandardAdapterTests.swift */; };
+		FD6ACDDD977DD45214A578EE /* TmuxEnvironmentConsoleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA402A35EA9DAC56A55C748 /* TmuxEnvironmentConsoleTests.swift */; };
 		FDA8AA91153C39E318FD2BC9 /* ConsoleProjectionInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B42FA5AE191EDAF379835FF /* ConsoleProjectionInputTests.swift */; };
 		FDD9EBF279B938FA1B8ACC63 /* ChatImageThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E795680CC91A4DB3F85DA6A /* ChatImageThumbnails.swift */; };
 		FDF0B8942243A1FC962E36F5 /* TmuxControlCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EBD75939D57B863990C64A2 /* TmuxControlCommand.swift */; };
@@ -1563,6 +1564,7 @@
 		5BA0D80E59E5C49E5F164DB4 /* SSHCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHCredentials.swift; sourceTree = "<group>"; };
 		5BB5AFD4ACED2F245B96C03E /* WindowInteractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowInteractionTests.swift; sourceTree = "<group>"; };
 		5BD3FC2163F1974AD6C789A5 /* HerdrCoreSSHTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreSSHTransportTests.swift; sourceTree = "<group>"; };
+		5CA402A35EA9DAC56A55C748 /* TmuxEnvironmentConsoleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxEnvironmentConsoleTests.swift; sourceTree = "<group>"; };
 		5CB08528C0328AA9AFE358CE /* TerminalFontSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalFontSettings.swift; sourceTree = "<group>"; };
 		5D6754A072F62FD9FFF3046F /* herdr-core-frames-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "herdr-core-frames-v1.json"; sourceTree = "<group>"; };
 		5E84D48903B9E34AE65DEEAD /* ChatRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRow.swift; sourceTree = "<group>"; };
@@ -2705,6 +2707,7 @@
 				D8D97B19DBDD17DC0EC41C1D /* TmuxControlClientTests.swift */,
 				2A83C18E08C786CDACE75EDB /* TmuxControlReaderTests.swift */,
 				DCFFA315D8783A1B5DAEF51C /* TmuxDoneTests.swift */,
+				5CA402A35EA9DAC56A55C748 /* TmuxEnvironmentConsoleTests.swift */,
 				05CF760287A748FED019036E /* TmuxEnvironmentTests.swift */,
 				EAA5C32ED1E388E613273820 /* TmuxHeelerStatusTests.swift */,
 				73BA197846F0A51990AA9C83 /* TmuxHostCatalogTests.swift */,
@@ -5100,6 +5103,7 @@
 				428C1764F652AD2AF38AB3D4 /* TmuxControlClientTests.swift in Sources */,
 				FF2CFCBE032E152BDCBCB5BF /* TmuxControlReaderTests.swift in Sources */,
 				B7AB827521D5CDD468CC9E1D /* TmuxDoneTests.swift in Sources */,
+				FD6ACDDD977DD45214A578EE /* TmuxEnvironmentConsoleTests.swift in Sources */,
 				827D4A9E6A5EF736677AFC8F /* TmuxEnvironmentTests.swift in Sources */,
 				C7F260A5DECFF4E5F3C5C92F /* TmuxHeelerStatusTests.swift in Sources */,
 				699DB2AF6533021E5D8CF802 /* TmuxHostCatalogTests.swift in Sources */,

@@ -96,7 +96,8 @@ struct TmuxConsoleTests {
         #expect(store.workspacesByHost[host.id] == [])
         #expect(store.hostStandingFailures[host.id] == nil)
         // The stored paths answered: no login shell, and nothing for the catalog.
-        #expect(await tmux.log.allSatisfy { $0 == "probe stored" })
+        #expect(await tmux.log.filter { $0.hasPrefix("probe") }.allSatisfy { $0 == "probe stored" })
+        #expect(await tmux.log.contains { $0.hasPrefix("probe") })
         #expect(console.resolved.noted.isEmpty)
         store.setHosts([])
     }
@@ -275,7 +276,7 @@ struct TmuxConsoleTests {
         try await waitUntil("the server's answer") { store.hostStatuses[host.id] == .connected }
 
         #expect(console.dials.value == 1)
-        #expect(await tmux.log.allSatisfy { $0 == "probe stored" })
+        #expect(await tmux.log.filter { $0.hasPrefix("probe") }.allSatisfy { $0 == "probe stored" })
         #expect(console.resolved.noted.isEmpty)
         store.setHosts([])
     }

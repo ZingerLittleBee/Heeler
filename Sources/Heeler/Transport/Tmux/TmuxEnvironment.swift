@@ -54,4 +54,39 @@ enum TmuxEnvironment {
     static func accountVariables(in names: Set<String>) -> Set<String> {
         names.intersection(accountVariables)
     }
+
+    /// One server's names. `sessions` is each user session's delta, keyed by
+    /// `$n`. A leak in the global environment stays even when one session
+    /// removes it, because a new session inherits the global names. A session
+    /// removal drops that name only from that session's account variables.
+    static func reading(global: Scope, sessions: [String: Scope]) -> Reading {
+        var found = leaked(in: global.assigned)
+        var bySession: [String: Set<String>] = [:]
+        for (id, delta) in sessions {
+            let names = inherited(global: global, session: delta)
+            found.formUnion(leaked(in: names))
+            bySession[id] = accountVariables(in: names)
+        }
+        return Reading(
+            leaked: found, globalAccountVariables: accountVariables(in: global.assigned),
+            accountVariablesBySession: bySession)
+    }
+
+    struct Reading: Equatable, Sendable {
+        var leaked: Set<String>
+        var globalAccountVariables: Set<String>
+        var accountVariablesBySession: [String: Set<String>]
+
+        static let empty = Reading(leaked: [], globalAccountVariables: [], accountVariablesBySession: [:])
+    }
+}
+
+/// Account-locating names a tmux Host has set, never their values (ADR 0033).
+struct TmuxAccountEnvironment: Equatable, Sendable {
+    var global: Set<String>
+    var bySession: [String: Set<String>]
+
+    static let empty = TmuxAccountEnvironment(global: [], bySession: [:])
+
+    var isEmpty: Bool { global.isEmpty && bySession.allSatisfy(\.value.isEmpty) }
 }

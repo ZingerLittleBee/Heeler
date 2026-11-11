@@ -44,6 +44,9 @@ final class ConsoleStore {
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
     /// Connected core Hosts whose core inherited variables that break things.
     private(set) var hostCoreEnvironmentNotices: [Host.ID: HerdrCoreEnvironmentNotice] = [:]
+    /// Account-locating names a tmux Host has set, by session id. Values stay
+    /// on the Host. Empty when the last read found none, or the Host is not tmux.
+    private(set) var hostTmuxAccountEnvironments: [Host.ID: TmuxAccountEnvironment] = [:]
     /// Why each core Agent reading Unknown does (ADR 0034). No Herdr TUI Agent is here.
     private(set) var coreStatusExplanations: [ConsoleAgent.ID: HerdrCoreStatusExplanation] = [:]
     /// The harness configuration edits this device applied (ADR 0033).
@@ -1545,6 +1548,10 @@ final class ConsoleStore {
                 HerdrCoreEnvironmentNotice(names: projection.leakedEnvironmentNames)
                     .map { (projection.host.id, $0) }
             })
+        hostTmuxAccountEnvironments = Dictionary(
+            uniqueKeysWithValues: current.lazy.compactMap { $0 as? TmuxConsoleProjection }
+                .filter { !$0.accountEnvironment.isEmpty }
+                .map { ($0.host.id, $0.accountEnvironment) })
         coreStatusExplanations = Dictionary(
             uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
                 .flatMap { projection in
