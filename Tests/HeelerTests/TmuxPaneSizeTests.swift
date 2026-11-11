@@ -23,6 +23,9 @@ struct TmuxPaneSizeTests {
 
     @Test func commandsQuoteEveryWordForControlMode() {
         #expect(
+            ScriptedTmuxHost.words(of: TmuxPaneSize.clientsCommand().line)
+                == ["list-clients", "-F", TmuxPaneSize.clientsFormat])
+        #expect(
             ScriptedTmuxHost.words(of: TmuxPaneSize.readCommand(pane: "%3").line)
                 == ["display-message", "-p", "-t", "%3", TmuxPaneSize.geometryFormat])
         #expect(
@@ -104,32 +107,90 @@ struct TmuxPaneSizeTests {
         #expect(history.last == .init(columns: 179, rows: 24))
     }
 
-    @Test func aDesktopCeilingStopsGrowingThatAxisWhileStillCorrectingTheOther() {
-        // Desktop holds @0 at 100x50. Width wants 80 in a 50/50 split (163 > 100,
-        // capped at 100 -> paneWidth 49); height wants 20 in a 50/50 split (asks 44,
-        // gets 21 > 20, corrects height while keeping width's 163 ceiling).
-        var sizer = TmuxPaneSizer(targetColumns: 80, targetRows: 20)
+    @Test func clientCeilingFindsSmallestQualifyingWindowAreaAndSubtractsStatusLines() {
+        let lines = { (rows: [String]) in rows.map { Data($0.utf8) } }
+
+        #expect(TmuxPaneSize.clientCeiling(from: [], forWindow: "@0") == nil)
+        #expect(
+            TmuxPaneSize.clientCeiling(
+                from: lines([
+                    "1 @0 80  on attached,focused,control-mode",
+                    "1 @0 30 10 on attached,focused,control-mode",
+                    "0 @0 30 10 on attached,focused,ignore-size",
+                    "0 @1 30 10 on attached,focused",
+                ]),
+                forWindow: "@0") == nil)
+
+        #expect(
+            TmuxPaneSize.clientCeiling(
+                from: lines(["0 @0 160 50 on attached,focused"]),
+                forWindow: "@0") == .init(columns: 160, rows: 49))
+        #expect(
+            TmuxPaneSize.clientCeiling(
+                from: lines(["0 @0 160 50 off attached,focused"]),
+                forWindow: "@0") == .init(columns: 160, rows: 50))
+        #expect(
+            TmuxPaneSize.clientCeiling(
+                from: lines(["0 @0 160 50 2 attached,focused"]),
+                forWindow: "@0") == .init(columns: 160, rows: 48))
+        // When client_height <= status lines, tmux sets CLIENT_STATUSOFF so all rows hold the window.
+        #expect(
+            TmuxPaneSize.clientCeiling(
+                from: lines(["0 @0 80 4 5 attached,focused"]),
+                forWindow: "@0") == .init(columns: 80, rows: 4))
+
+        // Multiple qualifying clients on @0 cap each axis to the smallest client showing @0.
+        #expect(
+            TmuxPaneSize.clientCeiling(
+                from: lines([
+                    "0 @0 120 50 on attached,focused",
+                    "0 @0 140 32 2 attached",
+                    "0 @2 20 8 on attached,focused",
+                    "0 @0 25 9 on attached,ignore-size",
+                ]),
+                forWindow: "@0") == .init(columns: 120, rows: 30))
+    }
+
+    @Test func aDesktopCeilingCapsRequestsWhileStillCorrectingTheOtherAxis() {
+        // Desktop holds @0 at 100x50. Width wants 80 in a 50/50 split (uncapped 163,
+        // capped at 100 -> paneWidth 49); height wants 20 in a 50/50 split (asks 42,
+        // gets 21 > 20, steps height down to 40 without ever asking width above 100).
+        let ceiling = TmuxPaneSize.Request(columns: 100, rows: 50)
+        var sizer = TmuxPaneSizer(targetColumns: 80, targetRows: 20, ceiling: ceiling)
         var request: TmuxPaneSize.Request? = sizer.initialRequest(
             from: TmuxPaneGeometry(windowID: "@0", windowWidth: 100, windowHeight: 50, paneWidth: 49, paneHeight: 24))
-        #expect(request == .init(columns: 163, rows: 42))
+        #expect(request == .init(columns: 100, rows: 42))
 
         var rounds = 0
         var lastGeometry: TmuxPaneGeometry?
         var lastRequest: TmuxPaneSize.Request?
         while let current = request {
             rounds += 1
+            #expect(current.columns <= ceiling.columns)
+            #expect(current.rows <= ceiling.rows)
             lastRequest = current
-            let winW = min(100, current.columns)
-            let winH = min(50, current.rows)
-            let paneW = (winW - 1) / 2
-            let paneH = winH / 2
+            let paneW = (current.columns - 1) / 2
+            let paneH = current.rows / 2
             let geometry = TmuxPaneGeometry(
-                windowID: "@0", windowWidth: winW, windowHeight: winH, paneWidth: paneW, paneHeight: paneH)
+                windowID: "@0", windowWidth: current.columns, windowHeight: current.rows,
+                paneWidth: paneW, paneHeight: paneH)
             lastGeometry = geometry
             request = sizer.nextRequest(after: geometry)
         }
         #expect(rounds == 2)
-        #expect(lastRequest == .init(columns: 163, rows: 40))
+        #expect(lastRequest == .init(columns: 100, rows: 40))
         #expect(lastGeometry == TmuxPaneGeometry(windowID: "@0", windowWidth: 100, windowHeight: 40, paneWidth: 49, paneHeight: 20))
+
+        // When a smaller desktop attaches after Heeler already sized @0 to 80x24,
+        // the sizer shrinks @0 to the 36x6 ceiling in one request and stops.
+        var shrinking = TmuxPaneSizer(
+            targetColumns: 80, targetRows: 24, ceiling: .init(columns: 36, rows: 6))
+        let shrinkFirst = shrinking.initialRequest(
+            from: TmuxPaneGeometry(windowID: "@0", windowWidth: 80, windowHeight: 24, paneWidth: 80, paneHeight: 24))
+        #expect(shrinkFirst == .init(columns: 36, rows: 6))
+        #expect(
+            shrinking.nextRequest(
+                after: TmuxPaneGeometry(windowID: "@0", windowWidth: 36, windowHeight: 6, paneWidth: 36, paneHeight: 6))
+                == nil)
     }
 }

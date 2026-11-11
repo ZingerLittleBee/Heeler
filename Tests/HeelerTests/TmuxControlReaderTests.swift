@@ -156,6 +156,9 @@ struct TmuxControlReaderTests {
             %window-close @2
             %unlinked-window-close @3
             %layout-change @2 b25f,80x24,0,0,2 b25f,80x24,0,0,2 *
+            %client-session-changed /dev/ttys004 $1 work
+            %client-detached /dev/ttys004
+            %session-window-changed $1 @4
             %window-renamed @2 cat
             %session-changed $5 heeler-attach-0a1b2c
             %exit
@@ -170,6 +173,9 @@ struct TmuxControlReaderTests {
                 .notification(.windowClosed(window: "@2")),
                 .notification(.unlinkedWindowClosed(window: "@3")),
                 .notification(.layoutChanged(window: "@2")),
+                .notification(.clientSessionChanged),
+                .notification(.clientDetached),
+                .notification(.sessionWindowChanged),
                 .notification(.other(name: "%window-renamed")),
                 .notification(.sessionChanged(session: "$5")),
                 .exit(reason: nil),

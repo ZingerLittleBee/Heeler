@@ -323,9 +323,34 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     struct DesktopClient: Equatable, Sendable {
         var name = "/dev/ttys001"
         var sessionID = "$0"
+        var sessionName = "main"
         var windowID: String
         var width: Int
         var height: Int
+        var status = "on"
+        var ignoringSize = false
+        var controlMode = false
+
+        var statusLineCount: Int {
+            switch status {
+            case "off": 0
+            case "on": 1
+            default: max(0, Int(status) ?? 1)
+            }
+        }
+
+        var windowSize: (width: Int, height: Int) {
+            let lines = statusLineCount
+            let rows = height > lines ? height - lines : height
+            return (width: width, height: rows)
+        }
+
+        var flags: String {
+            var list = ["attached", "focused"]
+            if controlMode { list.append("control-mode") }
+            if ignoringSize { list.append("ignore-size") }
+            return list.joined(separator: ",")
+        }
     }
 
     typealias WindowLayout = @Sendable (_ width: Int, _ height: Int) -> [String: (width: Int, height: Int)]
@@ -396,6 +421,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// The server's paste buffers, by name, and pastes still to fail.
     private(set) var buffers: [String: String] = [:]
     private var failingPastes = 0
+    /// When true, outgoing control-mode replies wait in FIFO order while
+    /// incoming commands still arrive in `controlCommands`.
+    private var holdingControlReplies = false
+    private var heldControlReplies: [(client: UInt64, data: Data, changedWindows: [String], socket: String)] = []
 
     var openControlClients: Int { controlClients.count }
 
@@ -413,7 +442,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         windowSizes[socket, default: [:]][window] = (width, height)
         windowLayouts[socket, default: [:]][window] = layout
         applyWindowSize((width, height), to: window, on: socket)
-        await printChanges(on: socket)
+        await notifyLayoutChanges([window], on: socket)
     }
 
     func setDesktopClients(_ clients: [DesktopClient], on name: String = "default") async {
@@ -425,10 +454,67 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             .union((panes[socket] ?? []).map(\.windowID))
             .union(windowSizes[socket]?.keys.map { $0 } ?? [])
         var changed: [String] = []
-        for window in windows.sorted() where recalculateWindow(window, on: socket) {
+        for window in windows.sorted() where recalculateWindow(window, on: socket, desktopTookLatest: true) {
             changed.append(window)
         }
         await notifyLayoutChanges(changed, on: socket)
+    }
+
+    /// A client attaches or switches session without resizing the window first
+    /// (as under `window-size largest`, where tmux takes Heeler's larger size):
+    /// only `%client-session-changed` tells control clients to re-read clients.
+    func attachDesktopClient(_ client: DesktopClient, on name: String = "default") async {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        var list = desktopClients[socket] ?? []
+        if let index = list.firstIndex(where: { $0.name == client.name }) {
+            list[index] = client
+        } else {
+            list.append(client)
+        }
+        desktopClients[socket] = list
+        for control in controlClients.values where control.socket == socket {
+            await control.channel.send(
+                Data("%client-session-changed \(client.name) \(client.sessionID) \(client.sessionName)\n".utf8))
+        }
+    }
+
+    /// A client detaches; only `%client-detached` notifies control clients.
+    func detachDesktopClient(named clientName: String, on name: String = "default") async {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        desktopClients[socket]?.removeAll { $0.name == clientName }
+        for control in controlClients.values where control.socket == socket {
+            await control.channel.send(Data("%client-detached \(clientName)\n".utf8))
+        }
+    }
+
+    /// A session switches its current window; only `%session-window-changed`
+    /// notifies control clients.
+    func switchDesktopWindow(sessionID: String, to windowID: String, on name: String = "default") async {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        if var list = desktopClients[socket] {
+            for index in list.indices where list[index].sessionID == sessionID {
+                list[index].windowID = windowID
+            }
+            desktopClients[socket] = list
+        }
+        for control in controlClients.values where control.socket == socket {
+            await control.channel.send(Data("%session-window-changed \(sessionID) \(windowID)\n".utf8))
+        }
+    }
+
+    /// Holds or releases FIFO control-mode replies so tests can observe commands
+    /// written while an earlier sizing read is still in flight.
+    func holdControlReplies(_ held: Bool) async {
+        holdingControlReplies = held
+        guard !held else { return }
+        let queued = heldControlReplies
+        heldControlReplies = []
+        for item in queued {
+            if let client = controlClients[item.client] {
+                await client.channel.send(item.data)
+            }
+            await notifyLayoutChanges(item.changedWindows, on: item.socket)
+        }
     }
 
     func windowSize(_ window: String, on name: String = "default") -> (width: Int, height: Int) {
@@ -556,8 +642,14 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             guard let client = controlClients[id] else { return }
             let words = Self.words(of: String(line))
             let (reply, changedWindows) = answer(words, from: client, id: id)
-            await client.channel.send(Data(reply.utf8))
-            await notifyLayoutChanges(changedWindows, on: client.socket)
+            let replyBytes = Data(reply.utf8)
+            if holdingControlReplies {
+                heldControlReplies.append(
+                    (client: id, data: replyBytes, changedWindows: changedWindows, socket: client.socket))
+            } else {
+                await client.channel.send(replyBytes)
+                await notifyLayoutChanges(changedWindows, on: client.socket)
+            }
             if let ended = ending(after: words, from: client) {
                 for other in ended { await endControlClient(other) }
             }
@@ -583,6 +675,17 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             let heeler = controlClients.values.filter { $0.socket == client.socket && $0.window == window }
                 .map { "\($0.sessionID) \(window) 1" }.sorted()
             return (block(users + heeler), [])
+        case "list-clients" where words.contains(TmuxPaneSize.clientsFormat):
+            let desktops = (desktopClients[client.socket] ?? []).map { desktop in
+                "\(desktop.controlMode ? 1 : 0) \(desktop.windowID) \(desktop.width) \(desktop.height) \(desktop.status) \(desktop.flags)"
+            }
+            let controls = controlClients.keys.sorted().compactMap { key -> String? in
+                guard let other = controlClients[key], other.socket == client.socket else { return nil }
+                var flags = ["attached", "focused", "control-mode"]
+                if other.ignoringSize { flags.append("ignore-size") }
+                return "1 \(other.window ?? "@99") 80  on \(flags.joined(separator: ","))"
+            }
+            return (block(desktops + controls), [])
         case "display-message" where words.contains(TmuxKey.paneKeyModeFormat):
             let target = words.firstIndex(of: "-t").map { words[$0 + 1] } ?? pane.paneID
             return (block([keyModes[target] ?? "VT10x"]), [])
@@ -688,9 +791,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         )
     }
 
-    private func recalculateWindow(_ window: String, on socket: String) -> Bool {
+    private func recalculateWindow(
+        _ window: String, on socket: String, desktopTookLatest: Bool = false
+    ) -> Bool {
         let previous = currentWindowSize(of: window, on: socket)
-        let desktops = desktopClients[socket] ?? []
+        let desktops = (desktopClients[socket] ?? []).filter { !$0.controlMode && !$0.ignoringSize }
         let controls = controlClients.values.filter { $0.socket == socket }
         let hasNonIgnoringClient =
             !desktops.isEmpty || controls.contains { !$0.ignoringSize && !$0.windowSizes.isEmpty }
@@ -702,9 +807,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         }
 
         let next: (width: Int, height: Int)
-        if let latestDesktop = desktopsOnWindow.last {
-            var width = latestDesktop.width
-            var height = latestDesktop.height
+        if desktopTookLatest, let latestDesktop = desktopsOnWindow.last {
+            var width = latestDesktop.windowSize.width
+            var height = latestDesktop.windowSize.height
             for requested in activeControls {
                 width = min(width, requested.width)
                 height = min(height, requested.height)
@@ -714,6 +819,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             let width = activeControls.map(\.width).min() ?? previous.width
             let height = activeControls.map(\.height).min() ?? previous.height
             next = (TmuxPaneSize.clamp(width), TmuxPaneSize.clamp(height))
+        } else if let latestDesktop = desktopsOnWindow.last {
+            next = (
+                TmuxPaneSize.clamp(latestDesktop.windowSize.width),
+                TmuxPaneSize.clamp(latestDesktop.windowSize.height)
+            )
         } else {
             next = previous
         }

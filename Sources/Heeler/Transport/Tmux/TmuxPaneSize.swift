@@ -41,6 +41,8 @@ enum TmuxPaneSize {
     static let windowRange = 2...10_000
 
     static let geometryFormat = "#{window_id} #{window_width} #{window_height} #{pane_width} #{pane_height}"
+    static let clientsFormat =
+        "#{client_control_mode} #{window_id} #{client_width} #{client_height} #{status} #{client_flags}"
 
     struct Request: Equatable, Sendable {
         var columns: Int
@@ -49,6 +51,51 @@ enum TmuxPaneSize {
 
     static func clamp(_ side: Int) -> Int {
         min(windowRange.upperBound, max(windowRange.lowerBound, side))
+    }
+
+    static func clientsCommand() -> TmuxControlCommand {
+        TmuxControlCommand(["list-clients", "-F", clientsFormat])
+    }
+
+    /// Smallest window area (`client_width` by `client_height` minus that
+    /// client's status lines) among non-control, non-`ignore-size` clients
+    /// whose session currently shows `window`; nil when none qualify.
+    static func clientCeiling(from lines: [Data], forWindow window: String) -> Request? {
+        var minColumns: Int?
+        var minRows: Int?
+        for line in lines {
+            let fields = String(decoding: line, as: UTF8.self)
+                .split(separator: " ", omittingEmptySubsequences: false)
+                .map(String.init)
+            guard fields.count == 6,
+                fields[0] == "0",
+                fields[1] == window,
+                let width = Int(fields[2]),
+                let height = Int(fields[3]),
+                width > 0, height > 0,
+                let statusLines = statusLineCount(fields[4])
+            else { continue }
+            let flags = fields[5].split(separator: ",")
+            guard !flags.contains("ignore-size"), !flags.contains("control-mode") else { continue }
+            // tmux sets CLIENT_STATUSOFF when tty.sy <= s->statuslines (resize.c).
+            let windowRows = height > statusLines ? height - statusLines : height
+            minColumns = min(minColumns ?? width, width)
+            minRows = min(minRows ?? windowRows, windowRows)
+        }
+        guard let minColumns, let minRows else { return nil }
+        return Request(columns: minColumns, rows: minRows)
+    }
+
+    private static func statusLineCount(_ status: String) -> Int? {
+        switch status {
+        case "off":
+            return 0
+        case "on":
+            return 1
+        default:
+            guard let count = Int(status), count >= 0 else { return nil }
+            return count
+        }
     }
 
     static func readCommand(pane: String) -> TmuxControlCommand {
@@ -91,29 +138,35 @@ struct TmuxPaneSizer: Sendable {
 
     private struct Axis: Sendable {
         let target: Int
+        let maxWindow: Int
         private(set) var lastRequest = 0
         private var bestFitRequest: Int?
         private var smallestTooLarge: Int?
         private(set) var converged = false
 
-        init(target: Int) {
+        init(target: Int, ceiling: Int?) {
             self.target = max(1, target)
+            maxWindow = ceiling.map(TmuxPaneSize.clamp) ?? TmuxPaneSize.windowRange.upperBound
+        }
+
+        private func clamp(_ side: Int) -> Int {
+            min(maxWindow, TmuxPaneSize.clamp(side))
         }
 
         mutating func initialRequest(window: Int, pane: Int) -> Int {
             let scaled = Int((Double(target) * Double(max(1, window)) / Double(max(1, pane))).rounded())
-            let request = TmuxPaneSize.clamp(scaled)
+            let request = clamp(scaled)
             lastRequest = request
             return request
         }
 
         mutating func observe(window: Int, pane: Int, remainingRequests: Int) -> Int {
-            if converged, pane <= target {
+            if converged, pane <= target, window <= maxWindow {
                 return lastRequest
             }
             converged = false
 
-            if pane == target {
+            if pane == target, window <= maxWindow {
                 bestFitRequest = lastRequest
                 converged = true
                 return lastRequest
@@ -128,21 +181,21 @@ struct TmuxPaneSizer: Sendable {
                     return lastRequest
                 }
                 if remainingRequests <= 1 {
-                    lastRequest = bestFitRequest ?? TmuxPaneSize.windowRange.lowerBound
+                    lastRequest = clamp(bestFitRequest ?? TmuxPaneSize.windowRange.lowerBound)
                     converged = true
                     return lastRequest
                 }
                 if let best = bestFitRequest, best >= effectiveWindow - 1 {
-                    lastRequest = best
+                    lastRequest = clamp(best)
                     converged = true
                     return lastRequest
                 }
                 let drop = max(
                     1,
                     Int((Double(pane - target) * Double(max(1, window)) / Double(max(1, pane))).rounded()))
-                var candidate = TmuxPaneSize.clamp(min(effectiveWindow - 1, effectiveWindow - drop))
+                var candidate = clamp(min(effectiveWindow - 1, effectiveWindow - drop))
                 if let best = bestFitRequest, candidate <= best {
-                    candidate = (best + effectiveWindow) / 2
+                    candidate = clamp((best + effectiveWindow) / 2)
                 }
                 lastRequest = candidate
                 return lastRequest
@@ -155,7 +208,7 @@ struct TmuxPaneSizer: Sendable {
                 return lastRequest
             }
             bestFitRequest = max(bestFitRequest ?? TmuxPaneSize.windowRange.lowerBound, lastRequest)
-            if lastRequest >= TmuxPaneSize.windowRange.upperBound || remainingRequests <= 0 {
+            if lastRequest >= maxWindow || remainingRequests <= 0 {
                 converged = true
                 return lastRequest
             }
@@ -166,9 +219,9 @@ struct TmuxPaneSizer: Sendable {
             let gain = max(
                 1,
                 Int((Double(target - pane) * Double(max(1, window)) / Double(max(1, pane))).rounded()))
-            var candidate = TmuxPaneSize.clamp(lastRequest + gain)
+            var candidate = clamp(lastRequest + gain)
             if let upper = smallestTooLarge, candidate >= upper {
-                candidate = (lastRequest + upper) / 2
+                candidate = clamp((lastRequest + upper) / 2)
             }
             lastRequest = candidate
             return lastRequest
@@ -179,9 +232,9 @@ struct TmuxPaneSizer: Sendable {
     private var height: Axis
     private var requestsSent = 0
 
-    init(targetColumns: Int, targetRows: Int) {
-        width = Axis(target: targetColumns)
-        height = Axis(target: targetRows)
+    init(targetColumns: Int, targetRows: Int, ceiling: TmuxPaneSize.Request? = nil) {
+        width = Axis(target: targetColumns, ceiling: ceiling?.columns)
+        height = Axis(target: targetRows, ceiling: ceiling?.rows)
     }
 
     mutating func initialRequest(from geometry: TmuxPaneGeometry) -> TmuxPaneSize.Request {
