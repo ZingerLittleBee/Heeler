@@ -1,0 +1,30 @@
+{
+  "description": "Heeler's Claude Code hook entries (ADR 0044): what Host detail adds to a configuration root's `settings.json` on the user's word, and what an Agent Heeler starts under a root without them gets through `--settings`. Every entry runs one command, which runs Heeler's script (`plugin/claude-code/hook.sh`, kept on the Host at `<data>/heeler/claude-code/hook.sh`) with `/bin/sh` while the script is there and does nothing once it is gone. `commands` holds that command for a script path: the path single-quoted, a quote in it written `'\\''`. `entries` holds, in order, each event Heeler hooks, with its matcher where it has one; each event gets one matcher group holding one `command` handler with `timeout` seconds. An event's line in a settings file is `\"<event>\": [<group>]`, the group written as `group` shows for the first case's script. Undo removes every handler whose command holds `marker`, and nothing else.",
+  "marker": "/heeler/claude-code/hook.sh",
+  "timeout": 5,
+  "commands": [
+    {
+      "name": "a Linux home",
+      "script": "/home/ana/.local/share/heeler/claude-code/hook.sh",
+      "command": "f='/home/ana/.local/share/heeler/claude-code/hook.sh'; [ ! -r \"$f\" ] || exec /bin/sh \"$f\""
+    },
+    {
+      "name": "a Mac home with a space and a quote",
+      "script": "/Users/o'neil/Library/Application Support/heeler/claude-code/hook.sh",
+      "command": "f='/Users/o'\\''neil/Library/Application Support/heeler/claude-code/hook.sh'; [ ! -r \"$f\" ] || exec /bin/sh \"$f\""
+    }
+  ],
+  "entries": [
+    { "event": "SessionStart", "matcher": "startup|resume|clear" },
+    { "event": "UserPromptSubmit" },
+    { "event": "PreToolUse" },
+    { "event": "PermissionRequest" },
+    { "event": "PostToolUse" },
+    { "event": "PostToolUseFailure" },
+    { "event": "Notification", "matcher": "permission_prompt|idle_prompt" },
+    { "event": "Stop" },
+    { "event": "StopFailure" },
+    { "event": "SessionEnd" }
+  ],
+  "group": "{\"matcher\": \"startup|resume|clear\", \"hooks\": [{\"type\": \"command\", \"command\": \"f='/home/ana/.local/share/heeler/claude-code/hook.sh'; [ ! -r \\\"$f\\\" ] || exec /bin/sh \\\"$f\\\"\", \"timeout\": 5}]}"
+}

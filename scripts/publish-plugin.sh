@@ -30,9 +30,10 @@ PLUGIN_DIR="plugin"
 # decision rather than a silent omission or an accidental upload.
 SHIPPED="herdr-plugin.toml package.json package-lock.json README.md src"
 DEV_ONLY="test test-vectors"
-# The Host Helper ships inside the app, never on the plugin branch (ADR 0033),
-# so its files never count as plugin changes. Optional: earlier sources lack it.
-HELPER_ONLY="helper"
+# The Host Helper and Heeler's Claude Code hook script ship inside the app,
+# never on the plugin branch (ADRs 0033 and 0044), so their files never count
+# as plugin changes. Optional: earlier sources lack them.
+HELPER_ONLY="helper claude-code"
 # Repository tools the plugin tests run, placed where they sit on main.
 TEST_TOOLS="scripts/generate-usage-pricing.mjs"
 
