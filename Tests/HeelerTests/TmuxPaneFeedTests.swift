@@ -150,9 +150,9 @@ struct TmuxPaneFeedTests {
         _ = answer(sent(feed.start()), into: &feed)
         let actions = feed.receive(.notification(.paused(pane: pane)))
         #expect(
-            sent(actions).map(\.line)
-                == ["refresh-client -A '%3:continue'"]
-                + TmuxPanePaint.commands(pane: pane, includingHistory: false).map(\.line))
+            sent(actions).map { ScriptedTmuxHost.words(of: $0.line) }
+                == [["refresh-client", "-A", "%3:continue"]]
+                + TmuxPanePaint.commands(pane: pane, includingHistory: false).map { ScriptedTmuxHost.words(of: $0.line) })
         #expect(feed.receive(output("while it continues")).isEmpty)
         let painted = answer(Array(sent(actions).dropFirst()), into: &feed)
         #expect(written(painted) == [try paint()])
@@ -180,8 +180,8 @@ struct TmuxPaneFeedTests {
         var feed = feed()
         _ = answer(sent(feed.start()), into: &feed)
         #expect(
-            sent(feed.receive(.notification(.sessionsChanged))).map(\.line)
-                == ["list-panes -a -F '#{session_id} #{window_id} #{?@heeler-attach,1,0}' -f '#{==:#{pane_id},%3}'"])
+            sent(feed.receive(.notification(.sessionsChanged))).map { ScriptedTmuxHost.words(of: $0.line) }
+                == [["list-panes", "-a", "-F", "#{session_id} #{window_id} #{?@heeler-attach,1,0}", "-f", "#{==:#{pane_id},%3}"]])
     }
 
     @Test func onlyThisWindowsCloseOrLayoutChangeChecksIt() {
@@ -216,7 +216,7 @@ struct TmuxPaneFeedTests {
         _ = answer(sent(feed.start()), into: &feed)
         let check = sent(feed.receive(.notification(.sessionsChanged)))
         let close = sent(feed.receive(.replied(tag: check[0].tag, reply(["$7 @2 1", "$9 @2 1"]))))
-        #expect(close.map(\.line) == ["kill-window -t '@2'"])
+        #expect(close.map { ScriptedTmuxHost.words(of: $0.line) } == [["kill-window", "-t", "@2"]])
         #expect(feed.receive(.replied(tag: close[0].tag, reply())) == [.end(.paneGone)])
     }
 

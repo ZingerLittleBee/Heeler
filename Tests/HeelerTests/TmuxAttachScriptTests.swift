@@ -48,9 +48,11 @@ struct TmuxAttachScriptTests {
 
     @Test func theBarrierListsTheSessionsPanes() {
         #expect(
-            TmuxAttachScript.barrier(session: "heeler-attach-0a1b2c3d").line
-                == "list-panes -s -t '=heeler-attach-0a1b2c3d:' -F '#{pid} #{start_time} #{session_id} #{window_id} #{pane_id}'"
-        )
+            ScriptedTmuxHost.words(of: TmuxAttachScript.barrier(session: "heeler-attach-0a1b2c3d").line)
+                == [
+                    "list-panes", "-s", "-t", "=heeler-attach-0a1b2c3d:",
+                    "-F", "#{pid} #{start_time} #{session_id} #{window_id} #{pane_id}",
+                ])
     }
 
     // MARK: What the barrier says

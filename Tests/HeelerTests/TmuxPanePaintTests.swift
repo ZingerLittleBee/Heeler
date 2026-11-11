@@ -38,16 +38,16 @@ struct TmuxPanePaintTests {
     // MARK: Commands
 
     @Test func aPaintAsksForTheModesThenTheHistoryThenBothScreens() {
-        let commands = TmuxPanePaint.commands(pane: "%3", includingHistory: true).map(\.line)
+        let commands = TmuxPanePaint.commands(pane: "%3", includingHistory: true).map { ScriptedTmuxHost.words(of: $0.line) }
         #expect(
             commands == [
-                "display-message -p -t '%3' '\(TmuxPanePaint.modesFormat)'",
-                "capture-pane -p -e -t '%3' -S -10000 -E -1",
-                "capture-pane -p -e -t '%3'",
-                "capture-pane -p -e -a -q -t '%3'",
+                ["display-message", "-p", "-t", "%3", TmuxPanePaint.modesFormat],
+                ["capture-pane", "-p", "-e", "-t", "%3", "-S", "-10000", "-E", "-1"],
+                ["capture-pane", "-p", "-e", "-t", "%3"],
+                ["capture-pane", "-p", "-e", "-a", "-q", "-t", "%3"],
             ])
         #expect(
-            TmuxPanePaint.commands(pane: "%3", includingHistory: false).map(\.line)
+            TmuxPanePaint.commands(pane: "%3", includingHistory: false).map { ScriptedTmuxHost.words(of: $0.line) }
                 == [commands[0], commands[2], commands[3]])
     }
 
