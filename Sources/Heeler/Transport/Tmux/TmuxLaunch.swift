@@ -138,12 +138,16 @@ enum TmuxLaunch {
             sets.append(paneOption(pane: pane, name: "@heeler-ask", value: ""))
         }
         let format = "#{==:#{@heeler-status},\(expected)}"
-        return command(
-            [
-                "if-shell", "-F", "-t", pane, format, sets.joined(separator: " ; "),
-                ";", "display-message", "-p", "-t", pane, "#{@heeler-status}",
-            ],
-            paths: paths, loginShell: false)
+        let check = shellArguments([
+            "if-shell", "-F", "-t", pane, format, sets.joined(separator: " ; "),
+        ])
+        let show = shellArguments([
+            "display-message", "-p", "-t", pane, "#{@heeler-status}",
+        ])
+        // A quoted `;` is one argv word, so tmux ends if-shell there and runs
+        // display-message next. A user's own `;` still goes through oneShot
+        // and reaches tmux as `\;`, which tmux keeps.
+        return command(shellArguments: check + ["';'"] + show, paths: paths, loginShell: false)
     }
 
     /// One `set-option -p` as tmux parses a command string: the text of the
@@ -264,13 +268,19 @@ enum TmuxLaunch {
     }
 
     private static func command(_ words: [String], paths: TmuxPaths, loginShell: Bool) -> Command {
+        command(shellArguments: shellArguments(words), paths: paths, loginShell: loginShell)
+    }
+
+    /// Each word as `/bin/sh` and then tmux will read it. A trailing `;` is
+    /// escaped, so a word of the user's is not the end of the command.
+    private static func shellArguments(_ words: [String]) -> [String] {
+        words.map { shellWord(TmuxArgument.oneShot($0)) }
+    }
+
+    private static func command(
+        shellArguments arguments: [String], paths: TmuxPaths, loginShell: Bool
+    ) -> Command {
         let flags = loginShell ? ["-S"] : ["-N", "-S"]
-        // tmux would take a word's trailing `;` as the end of the command.
-        // A word that is only `;` is that end, quoted so the shell passes it
-        // through and tmux starts the next command.
-        let arguments = words.map { word in
-            word == ";" ? "';'" : shellWord(TmuxArgument.oneShot(word))
-        }
         let line = (["exec", "\"$t\""] + flags + ["\"$s\""] + arguments).joined(separator: " ")
         let body = """
             t=\(HerdrCoreLocator.quoted(paths.executable))
