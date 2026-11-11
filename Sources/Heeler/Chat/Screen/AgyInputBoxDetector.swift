@@ -37,7 +37,7 @@ enum AgyInputBoxDetector {
             return .disabled(
                 String(
                     localized: "Antigravity CLI is waiting for a second key press (\u{201C}\(press)\u{201D}). Finish it in the terminal first.",
-                    comment: "Why Chat holds a message: the hint Antigravity CLI shows, such as press ctrl+c again to exit"))
+                    comment: "Why Chat holds a message: the hint Antigravity CLI shows, such as press ctrl+b again to send command to background"))
         }
         if agy.showsRunningTurn { return .disabled(working) }
         // A footer Chat doesn't know may change what Enter does, such as

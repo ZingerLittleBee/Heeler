@@ -1086,7 +1086,7 @@ private struct ChatQuestionsView: View {
                             // In the answer's place, plain and secondary,
                             // so it reads as no answer rather than one.
                             Label {
-                                Text("Skipped")
+                                Text("Skipped", comment: "In a question's answer place under a Chat tool row: the question was skipped")
                             } icon: {
                                 Image(systemName: "arrow.turn.down.right")
                             }

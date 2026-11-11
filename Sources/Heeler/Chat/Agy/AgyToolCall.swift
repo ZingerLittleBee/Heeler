@@ -105,18 +105,33 @@ struct AgyToolCall: Sendable {
     /// open, a call without a result follows what herdr reports.
     func outcome(activity: ChatAgentActivity) -> (status: ChatToolActivity.Status, note: String?) {
         if let taskEnd {
-            if taskEnd.wasCanceled { return (.interrupted, String(localized: "Canceled in the background")) }
+            if taskEnd.wasCanceled {
+                return (
+                    .interrupted,
+                    String(
+                        localized: "Canceled in the background",
+                        comment: "Under a Chat tool row: Antigravity CLI canceled the command it sent to the background"))
+            }
             let code = Self.exitCode(in: taskEnd.result)
             return ((code ?? 0) == 0 ? .succeeded : .failed, String(localized: "Finished in the background"))
         }
-        if stoppedByRestart { return (.interrupted, String(localized: "Stopped when Antigravity CLI restarted")) }
+        if stoppedByRestart {
+            return (
+                .interrupted,
+                String(
+                    localized: "Stopped when Antigravity CLI restarted",
+                    comment: "Under a Chat tool row: the background command stopped when Antigravity CLI restarted"))
+        }
         if let result {
             switch result.status {
             case .error:
                 // A declined call ends the turn; agy then shows the turn
                 // interrupted, which the row says.
                 if isDeclined {
-                    return (.declined, turnEnd == .interrupted ? String(localized: "Declining ended the turn") : nil)
+                    let note = String(
+                        localized: "Declining ended the turn",
+                        comment: "Under a Chat tool row the user declined: declining also ended the agent's turn")
+                    return (.declined, turnEnd == .interrupted ? note : nil)
                 }
                 return (.failed, nil)
             case .running:

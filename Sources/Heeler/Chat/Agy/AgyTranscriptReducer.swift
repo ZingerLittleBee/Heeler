@@ -318,7 +318,10 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                     title: String(
                         localized: "\(stopped.count) background tasks stopped",
                         comment: "A Chat notice: how many background tasks Antigravity CLI stopped when it restarted"),
-                    detail: String(localized: "Antigravity CLI restarted.")), step)
+                    detail: String(
+                        localized: "Antigravity CLI restarted.",
+                        comment: "Under a Chat notice that counts the background tasks Antigravity CLI stopped")),
+                step)
         }
 
         /// A background task ended. Its end comes as a system message, and
@@ -340,7 +343,10 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             let notice = ChatNotice(
                 kind: .taskNotification,
                 title: end.wasCanceled
-                    ? String(localized: "Background command canceled") : String(localized: "Background command finished"),
+                    ? String(
+                        localized: "Background command canceled",
+                        comment: "Title of a Chat notice when Antigravity CLI cancels a background command")
+                    : String(localized: "Background command finished"),
                 detail: detail.isEmpty ? nil : detail.joined(separator: " · "))
             // agy holds a task's end until the next prompt and writes a
             // cancel from `/tasks` just after it (1.5.3), though the task

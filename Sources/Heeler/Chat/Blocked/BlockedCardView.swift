@@ -309,7 +309,8 @@ private struct BlockedDialogCard: View {
     private var selectionTitle: String {
         if let button = dialog.options.first(where: { $0.role == .next }) { return button.label }
         return dialog.questionPage.map { $0.index < $0.count } == true
-            ? String(localized: "Next") : String(localized: "Submit")
+            ? String(localized: "Next")
+            : String(localized: "Submit", comment: "Sends the checked answers on a multi-select question's last page")
     }
 
     /// Antigravity CLI's `Write-in...` on a multi-select question. Enter in
