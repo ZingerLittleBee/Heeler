@@ -12,7 +12,7 @@ import Foundation
 /// names changed. The loop speaks the script's own text (`TmuxLoopText`), so
 /// the app's reader is the one under test. A `runTmuxCommand` applies
 /// `new-window`, `new-session`, `rename-session`, `kill-pane`,
-/// `kill-window` and `set-option` to those panes, and a discovery script lists
+/// `kill-window`, `set-option`, `if-shell` and `display-message` to those panes, and a discovery script lists
 /// `installedExecutables`. `show-environment -g` prints the global lines a
 /// test planted, and `show-environment -t` prints a session delta only when
 /// the target is a session id (`$n`). The Helper's `locate` script prints the
@@ -59,6 +59,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// What each server lists, by socket path, in `list-panes -a` order. A
     /// pane's `foregroundArguments` are what the Host would read of it now.
     private var panes: [String: [TmuxInventory.Pane]] = [:]
+    /// A Pane's `@heeler-ask`, beside the inventory, which does not carry it.
+    private var asks: [String: [String: String]] = [:]
     /// Raw `show-environment -g` lines, by socket. A session map is that
     /// session's delta, keyed by `$n`.
     private var globalEnvironment: [String: [String]] = [:]
@@ -129,6 +131,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         if servers[socket] != nil { await endControlClients(on: socket) }
         servers[socket] = instance
         panes[socket] = listed
+        asks[socket] = nil
         windowSizes[socket] = nil
         windowLayouts[socket] = nil
         desktopClients[socket] = nil
@@ -143,6 +146,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let socket = Self.socketPath(name, in: loginDirectory)
         servers[socket] = nil
         panes[socket] = nil
+        asks[socket] = nil
         windowSizes[socket] = nil
         windowLayouts[socket] = nil
         desktopClients[socket] = nil
@@ -177,6 +181,22 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let socket = Self.socketPath(name, in: loginDirectory)
         panes[socket] = listed
         await printChanges(on: socket)
+    }
+
+    /// The Pane's `@heeler-status`, nil when the Pane is not listed.
+    func status(of pane: String, on name: String = "default") -> String? {
+        panes[Self.socketPath(name, in: loginDirectory)]?.first { $0.paneID == pane }?.status
+    }
+
+    /// The Pane's `@heeler-ask`, empty when a write cleared it, nil when unset.
+    func ask(of pane: String, on name: String = "default") -> String? {
+        asks[Self.socketPath(name, in: loginDirectory)]?[pane]
+    }
+
+    /// What `@heeler-ask` reads until a write sets it.
+    func setAsk(_ value: String?, of pane: String, on name: String = "default") {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        asks[socket, default: [:]][pane] = value
     }
 
     /// One change to what the server lists.
@@ -1737,9 +1757,13 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let body = Self.commandBody(script)
         let socket = Self.assigned("s", in: body)
         let executable = Self.assigned("t", in: body)
-        guard let line = body.split(separator: "\n").first(where: { $0.hasPrefix("exec ") }),
-            let invocation = Self.invocation(of: Self.words(of: String(line)))
-        else { return Self.failed("tmux: The command failed.\n") }
+        guard let line = body.split(separator: "\n").first(where: { $0.hasPrefix("exec ") }) else {
+            return Self.failed("tmux: The command failed.\n")
+        }
+        let groups = Self.commandGroups(of: String(line))
+        guard let first = groups.first, let invocation = Self.invocation(of: first) else {
+            return Self.failed("tmux: The command failed.\n")
+        }
         let knownExecutable = executables[executable] != nil
         if servers[socket] == nil || !knownExecutable {
             guard invocation.subcommand == "new-session", !invocation.hasN, knownExecutable else {
@@ -1748,15 +1772,86 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             servers[socket] = Self.instance
             if panes[socket] == nil { panes[socket] = [] }
         }
-        if invocation.subcommand == "show-environment" {
+        if groups.count == 1, invocation.subcommand == "show-environment" {
             return environmentListing(on: socket, invocation: invocation)
         }
         var listed = panes[socket] ?? []
-        let result = mutate(&listed, invocation)
-        guard result.exitStatus == 0 else { return result }
+        var stdout = ""
+        for group in groups {
+            guard let invocation = Self.invocation(of: group) else {
+                return Self.failed("tmux: The command failed.\n")
+            }
+            let result: GitExecResult
+            switch invocation.subcommand {
+            case "display-message":
+                result = displayStatus(in: listed, invocation)
+            case "if-shell":
+                result = applyIfShell(&listed, invocation, socket: socket)
+            default:
+                result = mutate(&listed, invocation, socket: socket)
+            }
+            guard result.exitStatus == 0 else { return result }
+            stdout += String(decoding: result.stdout, as: UTF8.self)
+        }
         panes[socket] = listed
         await printChanges(on: socket)
-        return result
+        return Self.succeeded(stdout)
+    }
+
+    /// `display-message -p #{@heeler-status}`: the option as it is, plus a newline.
+    private func displayStatus(
+        in listed: [TmuxInventory.Pane], _ invocation: Invocation
+    ) -> GitExecResult {
+        guard invocation.arguments == ["#{@heeler-status}"],
+            let target = invocation.target,
+            let pane = listed.first(where: { $0.paneID == target })
+        else { return Self.failed("can't find pane: \(invocation.target ?? "")\n") }
+        return Self.succeeded(pane.status + "\n")
+    }
+
+    /// `if-shell -F` comparing `@heeler-status`. A false compare changes nothing
+    /// and still succeeds, so the display after it shows who won.
+    private func applyIfShell(
+        _ listed: inout [TmuxInventory.Pane], _ invocation: Invocation, socket: String
+    ) -> GitExecResult {
+        guard let target = invocation.target,
+            let index = listed.firstIndex(where: { $0.paneID == target }),
+            invocation.arguments.count >= 2
+        else { return Self.failed("can't find pane: \(invocation.target ?? "")\n") }
+        let format = invocation.arguments[0]
+        let prefix = "#{==:#{@heeler-status},"
+        guard format.hasPrefix(prefix), format.hasSuffix("}") else {
+            return Self.failed("unknown command: if-shell\n")
+        }
+        let expected = String(format.dropFirst(prefix.count).dropLast())
+        guard listed[index].status == expected else { return Self.succeeded("") }
+        for words in Self.commandList(of: invocation.arguments[1]) {
+            guard let inner = Self.invocation(of: words) else {
+                return Self.failed("unknown command: if-shell\n")
+            }
+            let result = mutate(&listed, inner, socket: socket)
+            guard result.exitStatus == 0 else { return result }
+        }
+        return Self.succeeded("")
+    }
+
+    /// The exec line's tmux commands. A quoted `;` stays inside its word; a
+    /// word that is only `;` starts the next command, as tmux's argv does.
+    private static func commandGroups(of line: String) -> [[String]] {
+        var groups: [[String]] = []
+        var current: [String] = []
+        for word in words(of: line) {
+            if word == ";" {
+                if !current.isEmpty {
+                    groups.append(current)
+                    current = []
+                }
+            } else {
+                current.append(word)
+            }
+        }
+        if !current.isEmpty { groups.append(current) }
+        return groups
     }
 
     /// `show-environment` does not change the panes. `-g` is the global list.
@@ -1781,7 +1876,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     }
 
     private func mutate(
-        _ listed: inout [TmuxInventory.Pane], _ invocation: Invocation
+        _ listed: inout [TmuxInventory.Pane], _ invocation: Invocation, socket: String
     ) -> GitExecResult {
         switch invocation.subcommand {
         case "new-window":
@@ -1833,6 +1928,21 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             }
             return Self.succeeded("")
         case "set-option":
+            if invocation.paneOption {
+                guard let target = invocation.target, target.hasPrefix("%"),
+                    invocation.arguments.count >= 2,
+                    let index = listed.firstIndex(where: { $0.paneID == target })
+                else { return Self.failed("can't find pane: \(invocation.target ?? "")\n") }
+                switch invocation.arguments[0] {
+                case "@heeler-status":
+                    listed[index].status = invocation.arguments[1]
+                case "@heeler-ask":
+                    asks[socket, default: [:]][target] = invocation.arguments[1]
+                default:
+                    return Self.failed("unknown command: set-option\n")
+                }
+                return Self.succeeded("")
+            }
             guard let target = invocation.target, target.hasPrefix("$"),
                 invocation.arguments.first == "@heeler-worktree",
                 invocation.arguments.count >= 2
@@ -1878,6 +1988,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private struct Invocation {
         var hasN = false
         var global = false
+        var paneOption = false
         var subcommand = ""
         var target: String?
         var directory: String?
@@ -1893,7 +2004,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private static func invocation(of words: [String]) -> Invocation? {
         let commands = [
             "new-window", "new-session", "rename-session", "kill-pane", "kill-window", "show-environment",
-            "set-option",
+            "set-option", "if-shell", "display-message",
         ]
         guard let index = words.firstIndex(where: { commands.contains($0) }) else { return nil }
         var parsed = Invocation(hasN: words[..<index].contains("-N"), subcommand: words[index])
@@ -1911,6 +2022,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             switch word {
             case "-g":
                 parsed.global = true
+                cursor += 1
+            case "-p":
+                parsed.paneOption = true
                 cursor += 1
             case "-t", "-c", "-s":
                 guard cursor + 1 < words.count else { return parsed }

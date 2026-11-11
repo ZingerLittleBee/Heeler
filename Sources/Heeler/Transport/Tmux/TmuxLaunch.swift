@@ -124,6 +124,34 @@ enum TmuxLaunch {
             paths: paths, loginShell: false)
     }
 
+    /// Sets the Pane's `@heeler-status` to `next` only while it still reads
+    /// `expected`, then prints whatever it reads now. One attempt: a value that
+    /// changed is left to the writer that changed it (ADR 0044). `clearAsk`
+    /// also clears `@heeler-ask`, which a Claude Code Pane's idle or working
+    /// write does. Both sets are inside the compare, so a lost compare clears
+    /// nothing.
+    static func compareAndSetStatus(
+        pane: String, expected: String, next: String, clearAsk: Bool, paths: TmuxPaths
+    ) -> Command {
+        var sets = [paneOption(pane: pane, name: "@heeler-status", value: next)]
+        if clearAsk {
+            sets.append(paneOption(pane: pane, name: "@heeler-ask", value: ""))
+        }
+        let format = "#{==:#{@heeler-status},\(expected)}"
+        return command(
+            [
+                "if-shell", "-F", "-t", pane, format, sets.joined(separator: " ; "),
+                ";", "display-message", "-p", "-t", pane, "#{@heeler-status}",
+            ],
+            paths: paths, loginShell: false)
+    }
+
+    /// One `set-option -p` as tmux parses a command string: the text of the
+    /// option, not a shell word.
+    private static func paneOption(pane: String, name: String, value: String) -> String {
+        ["set-option", "-p", "-t", pane, name, value].map(TmuxControlCommand.quoted).joined(separator: " ")
+    }
+
     /// The server's global environment, which a new session inherits.
     /// `show-environment -g` prints `NAME=value`; the caller keeps names only.
     static func showEnvironment(paths: TmuxPaths) -> Command {
@@ -238,7 +266,11 @@ enum TmuxLaunch {
     private static func command(_ words: [String], paths: TmuxPaths, loginShell: Bool) -> Command {
         let flags = loginShell ? ["-S"] : ["-N", "-S"]
         // tmux would take a word's trailing `;` as the end of the command.
-        let arguments = words.map { shellWord(TmuxArgument.oneShot($0)) }
+        // A word that is only `;` is that end, quoted so the shell passes it
+        // through and tmux starts the next command.
+        let arguments = words.map { word in
+            word == ";" ? "';'" : shellWord(TmuxArgument.oneShot(word))
+        }
         let line = (["exec", "\"$t\""] + flags + ["\"$s\""] + arguments).joined(separator: " ")
         let body = """
             t=\(HerdrCoreLocator.quoted(paths.executable))
