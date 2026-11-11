@@ -26,6 +26,8 @@ struct TerminalListView: View {
     @State private var createFailure: String?
     @State private var pendingClose: ConsoleTerminal?
     @State private var closeFailure: String?
+    @State private var amuxHost: Host?
+    @State private var amuxCoreID = ""
 
     /// Between Workspace cards; the header's own 44-point row already
     /// separates collapsed ones.
@@ -68,6 +70,39 @@ struct TerminalListView: View {
         } message: {
             Text(createFailure ?? "")
         }
+        .sheet(item: $amuxHost) { host in
+            AmuxOrganizationView(host: host, coreID: amuxCoreID, console: console) { terminal in
+                amuxHost = nil
+                if terminal.isAgent {
+                    selection = .agent(.init(hostID: terminal.hostID, paneID: terminal.paneID))
+                } else {
+                    onOpen(terminal)
+                }
+            }
+        }
+    }
+
+    private var amuxHosts: [Host] {
+        hosts.filter {
+            console.amuxOrganizations[$0.id] != nil
+                && (filteredHostIDs.isEmpty || filteredHostIDs.contains($0.id))
+        }
+    }
+
+    @ViewBuilder
+    private var amuxBrowsers: some View {
+        if !amuxHosts.isEmpty, searchQuery.isEmpty {
+            Section {
+                ForEach(amuxHosts) { host in
+                    Button {
+                        amuxCoreID = console.amuxOrganizations[host.id]?.coreID ?? ""
+                        amuxHost = host
+                    } label: {
+                        Label("amux Spaces · \(host.displayName)", systemImage: "folder")
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -78,10 +113,11 @@ struct TerminalListView: View {
         let issues =
             searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? projection.issues(filteredHostIDs: filteredHostIDs) : []
-        if workspaces.isEmpty && issues.isEmpty {
+        if workspaces.isEmpty && issues.isEmpty && amuxHosts.isEmpty {
             emptyState
         } else {
             List(selection: $selection) {
+                amuxBrowsers
                 if !issues.isEmpty {
                     Section {
                         // Off the cards, on the page: out to the cards'
@@ -111,13 +147,14 @@ struct TerminalListView: View {
     private var byHost: some View {
         let groups = projection.hostGroups(
             filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
-        if groups.allSatisfy({ $0.workspaces.isEmpty && $0.issue == nil }) {
+        if groups.allSatisfy({ $0.workspaces.isEmpty && $0.issue == nil }) && amuxHosts.isEmpty {
             emptyState
         } else {
             // A plain list, as in the Agents tab, so each Host's header pins
             // while its Workspaces scroll under it. Workspaces are rows of the
             // Host's section, drawn as cards by `TerminalCardRow`.
             List(selection: $selection) {
+                amuxBrowsers
                 ForEach(groups) { @Sendable group in
                     MainActorContent {
                         Section {

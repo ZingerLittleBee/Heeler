@@ -192,6 +192,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private var documentValue: JSONValue = .null
     private var documentVersion = 0
     private var documentGate: ScriptedTransportCallGate?
+    private var namedDocuments: [String: JSONValue] = [:]
 
     /// How many times the core was asked for its Terminals.
     private(set) var subscribeCount = 0
@@ -413,9 +414,11 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
             await killObserver?(terminal)
             return try (killAnswers[terminal] ?? .success(Self.killReply(address: terminal))).get()
         case "doc.get":
-            documentReads.append(params["name"]?.stringValue ?? "")
-            let answer: JSONValue = .object([
-                "value": documentValue, "version": .number(Double(documentVersion)),
+            let name = params["name"]?.stringValue ?? ""
+            documentReads.append(name)
+            let answer: JSONValue = namedDocuments[name] ?? .object([
+                "value": name == "herdr-app" ? documentValue : .null,
+                "version": .number(Double(name == "herdr-app" ? documentVersion : 0)),
             ])
             if let documentGate { await documentGate.waitUntilOpen() }
             return answer
@@ -697,6 +700,10 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     func setDocument(_ value: JSONValue, version: Int) {
         documentValue = value
         documentVersion = version
+    }
+
+    func setDocument(_ value: JSONValue, version: Int, name: String) {
+        namedDocuments[name] = .object(["value": value, "version": .number(Double(version))])
     }
 
     /// Holds each document read, with what it read already decided, until

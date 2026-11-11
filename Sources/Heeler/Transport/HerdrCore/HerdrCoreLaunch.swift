@@ -10,6 +10,8 @@ enum HerdrCoreLaunch {
     struct Placement: Equatable, Sendable {
         let cwd: String
         var labels: [String: String] = [:]
+        /// amux targets keep the core whose document supplied their directory.
+        var coreID: String? = nil
 
         /// A Tab the desktop app's document does not list yet, which the app
         /// adopts. Its ids read the same way.

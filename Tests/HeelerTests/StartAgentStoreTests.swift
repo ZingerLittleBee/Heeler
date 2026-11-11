@@ -1235,6 +1235,15 @@ struct StartAgentStoreTests {
         #expect(recorder.destinations == [.existingWorkspace])
     }
 
+    @Test func tuiWorkspaceIDsStayOpaqueEvenWhenTheyResembleAmuxIDs() {
+        let host = Host.fixture()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "amux-worktree-opaque-tui-id", label: "TUI")] },
+            recorder: StartRecorder())
+        #expect(store.offersWorktree)
+    }
+
     @Test func worktreeSubmitForwardsTheTrimmedSpec() async {
         let host = Host.fixture()
         let recorder = StartRecorder()

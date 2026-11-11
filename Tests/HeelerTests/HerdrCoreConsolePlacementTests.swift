@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -143,6 +145,238 @@ struct HerdrCoreConsolePlacementTests {
 
     // MARK: The document
 
+    private final class AmuxFixtureBundle {}
+
+    private func amuxFixture() throws -> JSONValue {
+        let url = try #require(Bundle(for: AmuxFixtureBundle.self).url(
+            forResource: "amux-organization-v1", withExtension: "json"))
+        return try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
+    }
+
+    @Test func amuxMembershipAndEmptyWorktreesAreBrowsableWithoutAdoptingCwdOrParentHints() async throws {
+        let fixture = try amuxFixture()
+        let transport = ScriptedCoreTransport(coreID: "core-a", subscribeResults: [
+            Self.subscribeResult([
+                Self.record("t9", cwd: "/elsewhere"),
+                Self.record("t8", cwd: "/srv/service-fix", parent: "t3"),
+                Self.record("t3", cwd: "/also-elsewhere"),
+            ])
+        ])
+        await transport.setDocument(try #require(fixture["value"]), version: 7, name: "amux-organization")
+        let store = try await started(transport)
+        #expect(cards(store) == ["Service / main: ", "Service / Fix reconnect: t3 t9", "service-fix: t8"])
+        #expect(row(store, "t3")?.tabLabel == "Review")
+        #expect(row(store, "t9")?.tabID == row(store, "t3")?.tabID)
+        #expect(row(store, "t8")?.workspaceID != row(store, "t3")?.workspaceID)
+        await store.suspend()
+    }
+
+    @Test func amuxLaunchUsesTheSelectedHostPathAndLeavesShellAndAgentUnassigned() async throws {
+        let fixture = try amuxFixture()
+        let transport = ScriptedCoreTransport(coreID: "core-a", subscribeResults: [Self.subscribeResult([])])
+        await transport.setDocument(try #require(fixture["value"]), version: 7, name: "amux-organization")
+        await transport.setShell("/bin/zsh")
+        let store = try await started(transport)
+        defer { store.setHosts([]) }
+        let main = try #require(store.workspaces(for: host.id).first { $0.label == "Service / main" })
+        let fix = try #require(store.workspaces(for: host.id).first { $0.label == "Service / Fix reconnect" })
+        let shell = try await store.createShellTerminal(
+            ShellTerminalCreationRequest(workspaceID: main.id, cwd: "/wrong-phone-directory"), on: host.id)
+        let agent = try await store.startAgent(
+            AgentLaunchRequest(kind: "pi", name: "phone-pi", workspaceID: fix.id, cwd: "/wrong-agent-directory"),
+            on: host.id)
+        #expect(row(store, shell.paneID)?.cwd == "/srv/service")
+        #expect(row(store, agent.paneID)?.cwd == "/srv/service-fix")
+        #expect(row(store, shell.paneID)?.workspaceID != main.id)
+        #expect(row(store, agent.paneID)?.workspaceID != fix.id)
+        let runs = await transport.runs
+        #expect(runs.map { $0["cwd"] } == [.string("/srv/service"), .string("/srv/service-fix")])
+        #expect(runs.first?["labels"] == nil)
+        #expect(runs.last?["labels"]?["herdr.space"] == nil)
+        #expect(runs.last?["labels"]?["herdr.tab"] == nil)
+
+        // An independent writer can later place the shell; cwd alone did not.
+        let json = String(decoding: try JSONEncoder().encode(try #require(fixture["value"])), as: UTF8.self)
+        let members = String(decoding: try JSONEncoder().encode([shell.paneID]), as: UTF8.self)
+        let placed = json.replacingOccurrences(
+            of: "\"tabs\":[]", with: "\"tabs\":[{\"id\":\"tab-phone\",\"name\":\"Phone\",\"terminals\":\(members)}]")
+        await transport.setDocument(
+            try JSONDecoder().decode(JSONValue.self, from: Data(placed.utf8)), version: 8, name: "amux-organization")
+        await transport.deliver(Self.documentEvent(sequence: 2, name: "amux-organization", version: 8))
+        try await waitUntil("explicit placement from another client") { row(store, shell.paneID)?.workspaceID == main.id }
+        #expect(row(store, shell.paneID)?.tabLabel == "Phone")
+        #expect(row(store, agent.paneID)?.workspaceID != fix.id)
+        #expect(await transport.documentWrites.isEmpty)
+        #expect(await transport.labelWrites.isEmpty)
+        #expect(await transport.desktopAppRenames.isEmpty)
+    }
+
+    @Test(arguments: ["/srv/a project's/代码", "C:\\dev\\service"])
+    func amuxSpaceLaunchPreservesAbsoluteHostPathsAndIgnoresUnknownFields(_ path: String) async throws {
+        let value = JSONValue.object([
+            "schemaVersion": .number(1), "coreID": .string("core-a"), "future": .object(["retain": .bool(true)]),
+            "spaces": .array([.object([
+                "id": .string("space-a"), "name": .string("Empty repository"), "path": .string(path),
+                "worktrees": .array([]),
+            ])]),
+        ])
+        let transport = ScriptedCoreTransport(coreID: "core-a", subscribeResults: [Self.subscribeResult([])])
+        await transport.setDocument(value, version: 42, name: "amux-organization")
+        let store = try await started(transport)
+        defer { store.setHosts([]) }
+        let organization = try #require(store.amuxOrganizations[host.id])
+        let space = try #require(organization.spaces.first)
+        let shell = try await store.createShellTerminal(
+            ShellTerminalCreationRequest(workspaceID: space.workspaceID(coreID: "core-a"), cwd: "/wrong"), on: host.id)
+        #expect(row(store, shell.paneID)?.cwd == path)
+        #expect(await transport.runs.first?["cwd"] == .string(path))
+        #expect(await transport.runs.first?["labels"] == nil)
+        #expect(await transport.documentWrites.isEmpty)
+    }
+
+    @Test(arguments: [
+        "schema", "core", "relative", "duplicate-space", "duplicate-worktree", "duplicate-tab",
+        "duplicate-terminal", "relayed", "empty-id", "non-string-name", "oversized", "missing", "null",
+    ])
+    func invalidAmuxMetadataNeverBlocksOrdinaryDiscovery(_ fault: String) async throws {
+        let fixture = try amuxFixture()
+        let value = try #require(fixture["value"])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let json = String(decoding: try encoder.encode(value), as: UTF8.self)
+        let changed: String
+        switch fault {
+        case "schema": changed = json.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":2")
+        case "core": changed = json.replacingOccurrences(of: "core-a", with: "core-b")
+        case "relative": changed = json.replacingOccurrences(of: "/srv/service", with: "srv/service")
+        case "duplicate-space": changed = json.replacingOccurrences(
+            of: "\"spaces\":[", with: "\"spaces\":[{\"id\":\"space-1\",\"name\":\"Other\",\"path\":\"/other\",\"worktrees\":[]},")
+        case "duplicate-worktree": changed = json.replacingOccurrences(of: "worktree-fix", with: "worktree-main")
+        case "duplicate-tab": changed = json.replacingOccurrences(
+            of: "\"tabs\":[]", with: "\"tabs\":[{\"id\":\"tab-review\",\"name\":\"First\",\"terminals\":[]}]")
+        case "duplicate-terminal": changed = json.replacingOccurrences(of: "\"t9\"", with: "\"t3\"")
+        case "relayed": changed = json.replacingOccurrences(of: "\"t9\"", with: "\"remote/t9\"")
+        case "empty-id": changed = json.replacingOccurrences(of: "\"space-1\"", with: "\"\"")
+        case "non-string-name": changed = json.replacingOccurrences(of: "\"name\":\"Service\"", with: "\"name\":7")
+        case "oversized": changed = json.replacingOccurrences(
+            of: "\"schemaVersion\":1", with: "\"schemaVersion\":1,\"padding\":\"\(String(repeating: "x", count: 1_048_577))\"")
+        case "missing": changed = json.replacingOccurrences(of: "\"worktrees\":", with: "\"unrecognized\":")
+        default: changed = "null"
+        }
+        #expect(changed != json)
+        let invalid = try JSONDecoder().decode(JSONValue.self, from: Data(changed.utf8))
+        let transport = ScriptedCoreTransport(coreID: "core-a", subscribeResults: [
+            Self.subscribeResult([Self.record("t3", labels: Self.desktop("s1", "tb1")), Self.record("t8")])
+        ])
+        await transport.setDocument(Self.twoSpaces, version: 3)
+        await transport.setDocument(invalid, version: 7, name: "amux-organization")
+        let store = try await started(transport)
+        defer { store.setHosts([]) }
+        #expect(store.amuxOrganizations[host.id] == nil)
+        #expect(cards(store) == ["Alpha: t3", "app: t8"])
+        #expect(await transport.documentWrites.isEmpty)
+    }
+
+    @Test func amuxEventsRefreshMembershipAndDeletionAndCoreReplacementRetireLaunchTargets() async throws {
+        let fixture = try amuxFixture()
+        let value = try #require(fixture["value"])
+        let transport = ScriptedCoreTransport(coreID: "core-a", subscribeResults: [
+            Self.subscribeResult([Self.record("t3"), Self.record("t9")])
+        ])
+        await transport.setDocument(value, version: 7, name: "amux-organization")
+        let store = try await started(transport)
+        defer { store.setHosts([]) }
+        let target = try #require(store.workspaces(for: host.id).first { $0.label == "Service / main" })
+        let json = String(decoding: try JSONEncoder().encode(value), as: UTF8.self)
+        let renamed = try JSONDecoder().decode(JSONValue.self, from: Data(json.replacingOccurrences(of: "Review", with: "Renamed").utf8))
+        await transport.setDocument(renamed, version: 8, name: "amux-organization")
+        await transport.deliver(Self.documentEvent(sequence: 2, name: "amux-organization", version: 8))
+        try await waitUntil("the amux rename") { row(store, "t3")?.tabLabel == "Renamed" }
+        await transport.setDocument(.null, version: 9, name: "amux-organization")
+        await transport.deliver(Self.documentEvent(sequence: 3, name: "amux-organization", version: 9))
+        try await waitUntil("the document deletion") { store.amuxOrganizations[host.id] == nil }
+        await #expect(throws: TransportError.self) {
+            try await store.createShellTerminal(ShellTerminalCreationRequest(workspaceID: target.id, cwd: "/srv/service"), on: host.id)
+        }
+        await transport.setDocument(value, version: 1, name: "amux-organization")
+        await transport.setCoreID("core-b")
+        await transport.endLink()
+        try await waitUntil("the replacement core") { store.hostCores[host.id] == "core-b" && !store.hostsAwaitingSnapshot.contains(host.id) }
+        #expect(store.amuxOrganizations[host.id] == nil)
+        #expect(Set(store.terminals.map(\.paneID)) == ["t3", "t9"])
+        await #expect(throws: TransportError.self) {
+            try await store.createShellTerminal(ShellTerminalCreationRequest(workspaceID: target.id, cwd: "/srv/service"), on: host.id)
+        }
+        #expect(await transport.runs.isEmpty)
+    }
+
+    @Test func anEmptyAmuxHostHasAWorkingBrowserEntryInConsole() async throws {
+        let fixture = try amuxFixture()
+        let transport = ScriptedCoreTransport(coreID: "core-a", subscribeResults: [Self.subscribeResult([])])
+        await transport.setDocument(try #require(fixture["value"]), version: 7, name: "amux-organization")
+        let store = try await started(transport)
+        defer { store.setHosts([]) }
+        let presentation = TerminalListPresentationStore(defaults: try #require(UserDefaults(suiteName: "amux-ui-\(UUID())")))
+        let controller = UIHostingController(rootView: NavigationStack {
+            TerminalListView(
+                hosts: [host], console: store, presentation: presentation, filteredHostIDs: [],
+                selection: .constant(nil), onOpen: { _ in }, onOpenHost: { _ in },
+                onShowHostIssues: {}, onNewTerminal: {})
+        })
+        try await withTestWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844), rootViewController: controller) { window in
+            let label = "amux Spaces · \(host.displayName)"
+            try await waitUntil("the Console browser entry") { accessibleElement(labeled: label, in: window) != nil }
+            let image = UIGraphicsImageRenderer(bounds: controller.view.bounds).image { _ in
+                controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
+            }
+            Attachment.record(image, named: "amux-console-empty", as: .png)
+            let entry = try #require(accessibleElement(labeled: label, in: window))
+            _ = entry.accessibilityActivate()
+            try await waitUntil("the browser sheet") { accessibleElement(labeled: "Start in main", in: window) != nil }
+            #expect(await transport.runs.isEmpty)
+        }
+    }
+
+    @Test func amuxBrowserOffersReadOnlyMembershipAndLaunchesFromTheEmptyMainCheckout() async throws {
+        let fixture = try amuxFixture()
+        let transport = ScriptedCoreTransport(coreID: "core-a", subscribeResults: [
+            Self.subscribeResult([Self.record("t3", cwd: "/srv/service-fix"), Self.record("t8", cwd: "/outside")])
+        ])
+        await transport.setDocument(try #require(fixture["value"]), version: 7, name: "amux-organization")
+        let store = try await started(transport)
+        defer { store.setHosts([]) }
+        var selected: ConsoleTerminal?
+        let controller = UIHostingController(rootView:
+            AmuxOrganizationView(host: host, coreID: "core-a", console: store) { selected = $0 })
+        try await withTestWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844), rootViewController: controller) { window in
+            try await waitUntil("the amux launch menu") { accessibleElement(labeled: "Start in main", in: window) != nil }
+            #expect(accessibleElements(in: window).contains { $0.accessibilityLabel?.contains("Review") == true })
+            #expect(accessibleElements(in: window).contains { $0.accessibilityLabel?.contains("t9") == true })
+            func capture(_ name: String) {
+                let image = UIGraphicsImageRenderer(bounds: controller.view.bounds).image { _ in
+                    controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
+                }
+                Attachment.record(image, named: name, as: .png)
+            }
+            capture("amux-browser-default")
+            let items = try await HostedMenu.items(labeled: "Start in main", in: window)
+            #expect(items == [["New Terminal", "New Agent"]])
+            try await HostedMenu.select("New Terminal", labeled: "Start in main", in: window)
+            try await waitUntil("the launched shell") { selected != nil }
+            #expect(selected?.cwd == "/srv/service")
+            #expect(selected?.workspaceLabel == "service")
+            capture("amux-browser-after-launch")
+            await transport.setDocument(.null, version: 8, name: "amux-organization")
+            await transport.deliver(Self.documentEvent(sequence: 2, name: "amux-organization", version: 8))
+            try await waitUntil("the unavailable organization") {
+                accessibleElement(labeled: "Organization Unavailable", in: window) != nil
+            }
+            capture("amux-browser-unavailable")
+            #expect(await transport.documentWrites.isEmpty)
+            #expect(await transport.labelWrites.isEmpty)
+        }
+    }
+
     @Test func aSnapshotPlacesLabeledTerminalsByTheDocument() async throws {
         let transport = ScriptedCoreTransport(subscribeResults: [
             Self.subscribeResult([
@@ -157,7 +391,7 @@ struct HerdrCoreConsolePlacementTests {
 
         #expect(cards(store) == ["Zeta: t2", "Alpha: t1", "headless: t3"])
         #expect(row(store, "t1")?.displayTabTitle == "Tab \u{201C}main\u{201D}")
-        #expect(await transport.documentReads == ["herdr-app"])
+        #expect(await transport.documentReads.sorted() == ["amux-organization", "herdr-app"])
         #expect(await transport.documentWrites.isEmpty)
     }
 
@@ -333,7 +567,7 @@ struct HerdrCoreConsolePlacementTests {
         await transport.deliver(Self.labelsEvent(sequence: 5, "t2", Self.desktop("s2", "tb2")))
         try await waitUntil("t2 moved") { cards(store) == ["Zeta: t2", "Alpha: t1"] }
 
-        #expect(await transport.documentReads == ["herdr-app"])
+        #expect(await transport.documentReads.sorted() == ["amux-organization", "herdr-app"])
     }
 
     @Test func aBurstOfDocEventsCostsOneMoreRead() async throws {
@@ -367,7 +601,7 @@ struct HerdrCoreConsolePlacementTests {
         await gate.open()
 
         try await waitUntil("the last name") { cards(store) == ["Six: t1 t2"] }
-        #expect(await transport.documentReads.count == 3)
+        #expect(await transport.documentReads.filter { $0 == "herdr-app" }.count == 3)
     }
 
     // MARK: Labels
@@ -392,7 +626,7 @@ struct HerdrCoreConsolePlacementTests {
         try await waitUntil("t1 back") { cards(store) == ["Alpha: t2", "headless: t1"] }
 
         #expect(await transport.subscribeCount == 1)
-        #expect(await transport.documentReads.count == 1)
+        #expect(await transport.documentReads.sorted() == ["amux-organization", "herdr-app"])
     }
 
     @Test func aChildStartedLaterJoinsItsParentsTabAsAnotherPane() async throws {
@@ -432,7 +666,7 @@ struct HerdrCoreConsolePlacementTests {
         let tabs = Dictionary(store.terminals.map { ($0.paneID, $0.tabID) }) { first, _ in first }
 
         await transport.deliver(Self.line("missed", Self.subscribeResult(sequence: 40, inventory)))
-        try await waitUntil("the second read") { await transport.documentReads.count == 2 }
+        try await waitUntil("the second read") { await transport.documentReads.filter { $0 == "herdr-app" }.count == 2 }
         try await waitUntil("the placement") { cards(store) == placed }
 
         #expect(Dictionary(store.terminals.map { ($0.paneID, $0.tabID) }) { first, _ in first } == tabs)

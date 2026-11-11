@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Browse an amux Core Host's shared Spaces, Worktrees and Tabs in Console, including empty checkouts and unassigned terminals. Start an Agent or Terminal in a selected Host directory without changing amux organization; new terminals remain unassigned until placed from amux. Missing or incompatible organization keeps ordinary Core discovery available. (zinger-labs/amux#161)
 - Open an image you sent to Claude Code or Codex by tapping its `[Image #N]` in your message, or with Preview Image in the message's menu, when it was pasted from a file, as Heeler's attached images are. (PR #674)
 - Read Heeler in Traditional Chinese (Taiwan). On a Traditional Chinese device, or with Traditional Chinese chosen as Heeler's language, everything Japanese and Simplified Chinese cover presents in Traditional Chinese, permission prompts included. (PR #668)
 - Read Heeler in Simplified Chinese. On a Simplified Chinese device, or with Simplified Chinese chosen as Heeler's language, everything Japanese covers presents in Chinese, permission prompts included. (PR #662)

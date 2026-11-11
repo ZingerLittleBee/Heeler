@@ -34,6 +34,7 @@ enum HerdrCoreOrganization {
         let label: String
         var folder = ""
         var isDesktopSpace = false
+        var isAmuxWorktree = false
         /// The directory a derived Workspace is keyed by.
         var keyDirectory = ""
         var tabs: [PlannedTab] = []
@@ -49,16 +50,31 @@ enum HerdrCoreOrganization {
         firstSeenDirectories: [String: String],
         checkouts: [String: HostCheckout],
         home: String?,
-        doneTerminals: Set<String> = []
+        doneTerminals: Set<String> = [],
+        amux: AmuxOrganizationDocument? = nil
     ) -> Result {
         let shown = terminals.filter { !$0.hasFinished }
         let shownByAddress = Dictionary(shown.map { ($0.address, $0) }) { first, _ in first }
 
-        let spaces = plannedSpaces(shown: shown, document: document)
+        let amuxWorktrees = (amux?.spaces ?? []).flatMap { space in
+            space.worktrees.map { worktree in
+                PlannedWorkspace(
+                    id: worktree.workspaceID(coreID: amux?.coreID ?? ""), label: "\(space.name) / \(worktree.name)",
+                    isAmuxWorktree: true, keyDirectory: worktree.path,
+                    tabs: worktree.tabs.map { tab in
+                        PlannedTab(
+                            id: tab.tabID, label: tab.name, treeOrder: tab.terminals,
+                            panes: tab.terminals.compactMap { shownByAddress[$0] })
+                    })
+            }
+        }
+        let assigned = Set(amuxWorktrees.flatMap { $0.tabs.flatMap { $0.panes.map(\.address) } })
+        let unassigned = shown.filter { !assigned.contains($0.address) }
+        let spaces = plannedSpaces(shown: unassigned, document: document)
         var derived: [PlannedWorkspace] = []
         var children: [String: [HerdrCoreTerminalRecord]] = [:]
-        for record in shown where desktopLabel("herdr.space", of: record) == nil {
-            let host = placementHost(of: record, shown: shownByAddress)
+        for record in unassigned where desktopLabel("herdr.space", of: record) == nil {
+            let host = amux == nil ? placementHost(of: record, shown: shownByAddress) : record
             if host.address != record.address {
                 children[host.address, default: []].append(record)
             } else {
@@ -74,8 +90,8 @@ enum HerdrCoreOrganization {
         var panes: [PaneInfo] = []
         var agents: [AgentInfo] = []
         var checkoutDirectories: [String] = []
-        let listed = (spaces + derived).filter { workspace in
-            workspace.tabs.contains { !$0.panes.isEmpty }
+        let listed = (amuxWorktrees + spaces + derived).filter { workspace in
+            workspace.isAmuxWorktree || workspace.tabs.contains { !$0.panes.isEmpty }
         }
         for (position, workspace) in listed.enumerated() {
             let members = workspace.tabs.map { tab in
@@ -117,7 +133,8 @@ enum HerdrCoreOrganization {
                     agentStatus: .unknown, focused: false, label: label,
                     number: position + 1, paneCount: members.joined().count,
                     tabCount: members.filter { !$0.isEmpty }.count,
-                    workspaceID: workspace.id, worktree: checkout.flatMap(worktreeInfo)))
+                    workspaceID: workspace.id,
+                    worktree: workspace.isAmuxWorktree ? nil : checkout.flatMap(worktreeInfo)))
         }
         return Result(
             snapshot: SessionSnapshot(

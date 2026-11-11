@@ -61,6 +61,8 @@ final class ConsoleStore {
     /// than a projection lookup so an open New Agent picker refreshes when a
     /// snapshot arrives or a workspace membership event resyncs the Host.
     private(set) var workspacesByHost: [Host.ID: [ConsoleWorkspace]] = [:]
+    /// Valid read-only amux metadata from each connected core's latest read.
+    private(set) var amuxOrganizations: [Host.ID: AmuxOrganizationDocument] = [:]
     /// Successful or snapshot-reconciled removals keyed by the exact Agents
     /// that belonged to the validated worktree. This survives their rows
     /// disappearing so Agent detail can show a stable result.
@@ -1532,6 +1534,10 @@ final class ConsoleStore {
             uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
                 .compactMap { projection in projection.inventoryCore.map { (projection.host.id, $0) } })
         if hostCores != nextCores { hostCores = nextCores }
+        let nextAmuxOrganizations = Dictionary(
+            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
+                .compactMap { projection in projection.amuxOrganization.map { (projection.host.id, $0) } })
+        if amuxOrganizations != nextAmuxOrganizations { amuxOrganizations = nextAmuxOrganizations }
         hostConnectionGenerations = Dictionary(
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.transportGeneration)

@@ -205,6 +205,17 @@ own. New Agent can start in an existing Workspace, a new Worktree of one, or a
 new Workspace opened at a remote directory. The id is an opaque string.
 _Avoid_: project, folder, window, space (the desktop app's word)
 
+**amux organization**:
+The ordered Spaces, Worktrees and Tabs amux shares on a herdr-core Host.
+A Space names a repository and its main checkout; each Worktree names a
+checkout, including the main one, and contains Tabs with explicit Terminal
+membership. Heeler browses this organization read-only. A Workspace card
+represents an amux Worktree without creating or owning it. A Terminal launched
+from a Space or Worktree uses its Host-side directory but remains unassigned
+until placed from amux. Neither a shared directory nor a parent Terminal
+implies membership. Missing organization never hides the Host's Terminals.
+_Avoid_: desktop layout, Panel mirroring, automatic adoption
+
 **Worktree**:
 A fresh git checkout of a workspace's repository, opened as its own workspace
 so a new Agent starts on a clean copy of the code. On Herdr TUI herdr creates

@@ -1,0 +1,25 @@
+{
+  "name": "amux-organization",
+  "version": 7,
+  "value": {
+    "schemaVersion": 1,
+    "coreID": "core-a",
+    "spaces": [
+      {
+        "id": "space-1",
+        "name": "Service",
+        "path": "/srv/service",
+        "worktrees": [
+          {"id": "worktree-main", "name": "main", "path": "/srv/service", "tabs": []},
+          {
+            "id": "worktree-fix",
+            "name": "Fix reconnect",
+            "path": "/srv/service-fix",
+            "tabs": [{"id": "tab-review", "name": "Review", "terminals": ["t3", "t9"]}]
+          }
+        ]
+      }
+    ]
+  },
+  "inventory": ["t3", "t8", "t9"]
+}

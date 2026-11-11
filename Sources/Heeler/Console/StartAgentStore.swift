@@ -356,6 +356,8 @@ final class StartAgentStore {
     /// source Workspace to branch from.
     var offersWorktree: Bool {
         origin == nil && launchTarget == .existingWorkspace
+            && !(selectedHost?.serverKind == .herdrCore
+                && AmuxOrganizationDocument.isWorkspace(selectedWorkspaceID ?? ""))
             && (selectedHost?.capabilities.worktrees != false
                 || selectedHostID.map(offersConnectedWorktrees) == true)
     }
