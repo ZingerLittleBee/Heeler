@@ -83,6 +83,34 @@ struct TmuxHostSessionAttachTests {
         #expect(await tmux.log.filter { $0 == "probe stored" }.count == 2)
         await session.end()
     }
+
+    /// A server that took the socket between two asks is already known to the
+    /// inventory loop before `status()` runs again; Attaches opened from that
+    /// inventory must receive the new server's instance at once.
+    @Test func aServerReplacedBetweenTwoAsksHandsItsInstanceToAttachesOnceItLists() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([.make(command: "claude", arguments: ["claude"])])
+        let session = session(over: tmux, keepalive: nil)
+        let next = TmuxServerInstance(
+            pid: ScriptedTmuxHost.instance.pid + 1, startTime: ScriptedTmuxHost.instance.startTime + 60)
+        let sawNextInventory = AsyncStream.makeStream(of: Void.self)
+        let updates = Task {
+            for await update in session.updates {
+                if case .inventory(let inventory) = update, inventory.instance == next {
+                    sawNextInventory.continuation.yield()
+                    return
+                }
+            }
+        }
+        await session.resume()
+        #expect(try await session.withAttachTransport { $0.server.instance } == ScriptedTmuxHost.instance)
+
+        await tmux.startServer(instance: next, panes: [.make(command: "codex", arguments: ["codex"])])
+        for await _ in sawNextInventory.stream { break }
+        await updates.value
+        #expect(try await session.withAttachTransport { $0.server.instance } == next)
+        await session.end()
+    }
 }
 
 /// A tmux Pane's screen from the store down: the real Console, Host session

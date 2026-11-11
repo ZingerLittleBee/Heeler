@@ -421,8 +421,19 @@ actor TmuxHostSession {
     }
 
     private func noteInventory(_ inventory: TmuxInventory, run: UInt64, generation: UInt64) -> Bool {
-        guard run == inventoryRun, inventoryTask != nil, activationIsCurrent(generation), liveServer != nil
+        guard run == inventoryRun, inventoryTask != nil, activationIsCurrent(generation),
+            let current = liveServer
         else { return false }
+        if let instance = inventory.instance, instance != current.instance {
+            let replaced = TmuxServerStatus(instance: instance, version: current.version, paths: current.paths)
+            liveServer = replaced
+            environmentToken &+= 1
+            environmentTask?.cancel()
+            environmentTask = nil
+            environmentFlight = nil
+            environmentRead = nil
+            updatesContinuation.yield(.server(replaced))
+        }
         updatesContinuation.yield(.inventory(inventory))
         considerEnvironment(of: inventory, generation: generation)
         return true
