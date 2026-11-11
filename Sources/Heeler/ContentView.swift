@@ -64,6 +64,10 @@ struct ContentView: View {
                 .accessibilityHidden(true)
         }
         .onAppear {
+            notificationRouter.coreIdentity = { [weak console = app.console] hostID in
+                guard let console, console.hostStatuses[hostID] == .connected else { return nil }
+                return console.coreSeenMarks(on: hostID)?.core
+            }
             // Restored first, so a notification tap that launched the app
             // and is waiting for a window lands on top of it when the window
             // registers. A dragged row's Agent needs the registration to

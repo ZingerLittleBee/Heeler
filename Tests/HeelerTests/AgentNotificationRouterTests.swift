@@ -14,6 +14,30 @@ import Testing
 @MainActor
 @Suite("Agent notification router")
 struct AgentNotificationRouterTests {
+    @Test func corePinnedPushWaitsForLiveIdentityAndRejectsReplacement() {
+        let router = AgentNotificationRouter()
+        let hostID = UUID()
+        var core: String?
+        router.coreIdentity = { _ in core }
+        let agent = consoleAgent(hostID: hostID, paneID: "t3")
+        let target = AgentNotificationTarget(hostID: hostID, paneID: "t3", coreID: "core-a")
+        router.agentsDidChange([agent])
+        router.open(target)
+        #expect(router.path.isEmpty && router.pendingTarget == target)
+        core = "core-a"
+        router.agentsDidChange([agent])
+        #expect(router.path == [agent.id] && router.pendingTarget == nil)
+
+        core = "core-b"
+        router.open(target)
+        #expect(router.path.isEmpty && router.pendingTarget == nil, "the same t3 in a replacement Core is not the old target")
+        core = nil
+        router.open(target)
+        core = "core-b"
+        router.agentsDidChange([agent])
+        #expect(router.path.isEmpty && router.pendingTarget == nil, "a cold-start action is fenced when the new Core arrives")
+    }
+
     private func consoleAgent(hostID: UUID, paneID: String) -> ConsoleAgent {
         ConsoleAgent(
             hostID: hostID, hostName: "mac-studio",
