@@ -166,6 +166,9 @@ struct ConsoleView: View {
     @Environment(\.sceneWindow) private var sceneWindow
     @State private var detailCrossfade = DetailCrossfade()
     @State private var tabBarRequest = ConsoleTabBarBridge.Request()
+    /// Which pass of `body` built the rows and the detail now showing; see
+    /// `KeyedContent`.
+    @State private var contentPass = ConsoleContentPass()
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     /// The window-aware entry into navigation; nil outside a scene root.
@@ -173,6 +176,7 @@ struct ConsoleView: View {
 
     var body: some View {
         let _ = PerfTrace.count("ConsoleView.body")
+        let _ = contentPass.advance()
         tabs.modifier(ConsoleDetailCoresRetention(cores: detailCores, held: heldDetails))
     }
 
@@ -204,10 +208,14 @@ struct ConsoleView: View {
                 }
             }
             Tab(ConsoleTab.hosts.title, systemImage: "server.rack", value: ConsoleTab.hosts) {
-                hostList(
-                    origin: hostsTabRequest?.origin.map { origin in
-                        HostListOrigin(title: origin.title) { selectedTab.wrappedValue = origin }
-                    })
+                // In a body of its own: the Hosts list reads every Host's
+                // status and latency, which change while another tab shows.
+                MainActorContent {
+                    hostList(
+                        origin: hostsTabRequest?.origin.map { origin in
+                            HostListOrigin(title: origin.title) { selectedTab.wrappedValue = origin }
+                        })
+                }
                 .id(hostsTabGeneration)
             }
             Tab(value: ConsoleTab.settings) {
@@ -866,7 +874,9 @@ struct ConsoleView: View {
                     // An explicit stack, so a detail can push its own screens
                     // (Changes over an Agent) with the system's Back and swipe.
                     NavigationStack {
-                        detail(in: tab)
+                        // In a body of its own, as the list is: the detail
+                        // looks its Agent up among all of them.
+                        MainActorContent { detail(in: tab) }
                             .readsVerticalToolbar()
                             .environment(
                                 \.detailTopChromeInset,
@@ -1005,7 +1015,10 @@ struct ConsoleView: View {
     private func sidebar(for tab: ConsoleTab) -> some View {
         switch tab {
         case .agents:
-            content
+            // In a body of its own: the list reads every Agent, and read in
+            // the split view's it would rebuild both columns with each
+            // status change.
+            MainActorContent { content }
                 .modifier(ConsoleListSearch(
                     text: $agentSearchText, isPresented: $isAgentSearchPresented,
                     focus: $focusedSearch, tab: .agents,
@@ -1495,7 +1508,9 @@ struct ConsoleView: View {
         guard let id = notificationRouter.path.last, agentShowingChanges != id,
             agentShowingChat != id
         else { return nil }
-        let showsTerminalSurface = console.agents.contains(where: { $0.id == id })
+        // Which Agents are listed, not what they are doing: this is read in
+        // `body`, which a status change must not re-evaluate.
+        let showsTerminalSurface = console.listedAgentIDs.contains(id)
             || console.departedAgents.contains(where: { $0.id == id })
         let showsTerminalSyncSurface = !showsTerminalSurface
             && MissingAgentPresentation(agentID: id, console: console, hosts: hosts)
@@ -1514,53 +1529,66 @@ struct ConsoleView: View {
             if let receipt = matchingRemovedWorktreeReceipt(for: id) {
                 removedWorktreeSurface(receipt)
             } else if let agent = console.detailAgent(for: id) {
-                AgentDetailView(
-                    agent: agent,
-                    console: console,
-                    terminal: terminal,
-                    inputMode: inputMode,
-                    detailSurface: detailSurface,
-                    hosts: hosts.consoleHosts,
-                    activity: activity,
-                    keyboardHandoff: keyboardHandoff,
-                    keyboardInset: keyboardInset,
-                    stage: AgentDetailStage(
-                        // The router's truth, not SwiftUI's appear/disappear:
-                        // only the screen still selected may rebuild its
-                        // terminal on a spurious reappearance.
-                        isVisible: { [notificationRouter] in
-                            notificationRouter.path.last == id
-                                && console.detailAgent(for: id) != nil
-                                && currentTab == tab
-                        },
-                        hostID: id.hostID,
+                let consoleHosts = hosts.consoleHosts
+                let repeatLandings = notificationRouter.repeatLandings
+                let session = detailCores.session(for: agent, console: console)
+                // Built again only for a change to what it is handed: every
+                // Agent's status change comes through here, and the detail's
+                // initializer makes its stores.
+                KeyedContent(
+                    key: ConsoleAgentDetailKey(
+                        pass: contentPass.number, tab: tab, agent: agent, hosts: consoleHosts,
+                        repeatLandings: repeatLandings, session: ObjectIdentifier(session),
+                        opening: detailOpening)
+                ) {
+                    AgentDetailView(
+                        agent: agent,
                         console: console,
-                        sceneRouting: sceneRouting),
-                    onSwitch: { selectAgent($0) },
-                    onClosed: { clearSelection() },
-                    onSelectTerminal: { selectTerminal($0) },
-                    onShowsChanges: { shows in
-                        if shows {
-                            agentShowingChanges = id
-                        } else if agentShowingChanges == id {
-                            agentShowingChanges = nil
-                        }
-                    },
-                    onShowsChat: { shows in
-                        if shows {
-                            agentShowingChat = id
-                        } else if agentShowingChat == id {
-                            agentShowingChat = nil
-                        }
-                    },
-                    repeatLandings: notificationRouter.repeatLandings,
-                    shellRoute: shellRoute(over: id),
-                    composerSession: detailCores.session(for: agent, console: console)
-                )
-                // Selecting another Agent must tear down the previous terminal
-                // pipeline; without the explicit identity the detail column
-                // would reuse the old view's state.
-                .id(ConsoleDetailIdentity(shown: .agent(id), opening: detailOpening))
+                        terminal: terminal,
+                        inputMode: inputMode,
+                        detailSurface: detailSurface,
+                        hosts: consoleHosts,
+                        activity: activity,
+                        keyboardHandoff: keyboardHandoff,
+                        keyboardInset: keyboardInset,
+                        stage: AgentDetailStage(
+                            // The router's truth, not SwiftUI's appear/disappear:
+                            // only the screen still selected may rebuild its
+                            // terminal on a spurious reappearance.
+                            isVisible: { [notificationRouter] in
+                                notificationRouter.path.last == id
+                                    && console.detailAgent(for: id) != nil
+                                    && currentTab == tab
+                            },
+                            hostID: id.hostID,
+                            console: console,
+                            sceneRouting: sceneRouting),
+                        onSwitch: { selectAgent($0) },
+                        onClosed: { clearSelection() },
+                        onSelectTerminal: { selectTerminal($0) },
+                        onShowsChanges: { shows in
+                            if shows {
+                                agentShowingChanges = id
+                            } else if agentShowingChanges == id {
+                                agentShowingChanges = nil
+                            }
+                        },
+                        onShowsChat: { shows in
+                            if shows {
+                                agentShowingChat = id
+                            } else if agentShowingChat == id {
+                                agentShowingChat = nil
+                            }
+                        },
+                        repeatLandings: repeatLandings,
+                        shellRoute: shellRoute(over: id),
+                        composerSession: session
+                    )
+                    // Selecting another Agent must tear down the previous terminal
+                    // pipeline; without the explicit identity the detail column
+                    // would reuse the old view's state.
+                    .id(ConsoleDetailIdentity(shown: .agent(id), opening: detailOpening))
+                }
             } else {
                 // The Agent is gone from the list, but not necessarily
                 // because its pane went: a failed Host empties the list the
@@ -1762,8 +1790,14 @@ struct ConsoleView: View {
         agentHostIssueRows
         let qualifiers = agentTitleQualifiers
         let saved = console.savedChatEntries
+        let pass = contentPass.number
         ForEach(filteredAgents) { @Sendable agent in
-            MainActorContent { agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id]) }
+            KeyedContent(
+                key: ConsoleAgentRowKey(
+                    pass: pass, agent: agent, qualifier: qualifiers[agent.id], saved: saved[agent.id])
+            ) {
+                agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id])
+            }
         }
     }
 
@@ -1782,11 +1816,15 @@ struct ConsoleView: View {
         }
         let qualifiers = agentTitleQualifiers
         let saved = console.savedChatEntries
+        let pass = contentPass.number
         ForEach(workspaceCards) { @Sendable card in
             MainActorContent {
                 Section {
                     ForEach(card.rows) { @Sendable placed in
-                        MainActorContent {
+                        KeyedContent(
+                            key: ConsoleWorkspaceRowKey(
+                                pass: pass, placed: placed, card: card, qualifiers: qualifiers, saved: saved)
+                        ) {
                             workspaceCardRow(placed, in: card, qualifiers: qualifiers, saved: saved)
                         }
                     }
@@ -1980,6 +2018,7 @@ struct ConsoleView: View {
     private var groupedAgentListRows: some View {
         let qualifiers = agentTitleQualifiers
         let saved = console.savedChatEntries
+        let pass = contentPass.number
         ForEach(hostSections) { @Sendable section in
             MainActorContent {
                 let opensDetail = connectionDetail(for: section.hostID) != nil
@@ -1992,7 +2031,13 @@ struct ConsoleView: View {
                                 .listRowSeparator(.hidden)
                         }
                         ForEach(section.agents) { @Sendable agent in
-                            MainActorContent { agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id]) }
+                            KeyedContent(
+                                key: ConsoleAgentRowKey(
+                                    pass: pass, agent: agent, qualifier: qualifiers[agent.id],
+                                    saved: saved[agent.id])
+                            ) {
+                                agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id])
+                            }
                         }
                     }
                 } header: {
@@ -3265,6 +3310,51 @@ private struct ConsoleAgentListStyle: ViewModifier {
                 .background(isSidebarColumn ? Color.clear : Color(uiColor: .systemBackground))
         } else {
             content.listStyle(.plain)
+        }
+    }
+}
+
+/// What the Agents list hands an Agent row's builder; see `KeyedContent`.
+private struct ConsoleAgentRowKey: Equatable, Sendable {
+    let pass: Int
+    let agent: ConsoleAgent
+    let qualifier: String?
+    let saved: HostReadiness?
+}
+
+/// What the detail column hands an Agent's detail.
+private struct ConsoleAgentDetailKey: Equatable, Sendable {
+    let pass: Int
+    let tab: ConsoleTab
+    let agent: ConsoleAgent
+    let hosts: [Host]
+    let repeatLandings: Int
+    let session: ObjectIdentifier
+    let opening: Int
+}
+
+/// What By Workspace hands a card row's builder. A row reads its card, so
+/// it follows every change to the card's Agents.
+private struct ConsoleWorkspaceRowKey: Equatable, Sendable {
+    let pass: Int
+    let placed: ConsoleWorkspaceCard.Placed
+    let card: ConsoleWorkspaceCard
+    let qualifier: String?
+    let saved: HostReadiness?
+
+    init(
+        pass: Int, placed: ConsoleWorkspaceCard.Placed, card: ConsoleWorkspaceCard,
+        qualifiers: [ConsoleAgent.ID: String], saved: [ConsoleAgent.ID: HostReadiness]
+    ) {
+        self.pass = pass
+        self.placed = placed
+        self.card = card
+        if case .agent(let agent, _, _) = placed.row {
+            qualifier = qualifiers[agent.id]
+            self.saved = saved[agent.id]
+        } else {
+            qualifier = nil
+            self.saved = nil
         }
     }
 }

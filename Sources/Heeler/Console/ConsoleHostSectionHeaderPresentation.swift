@@ -4,7 +4,7 @@ import Foundation
 /// glyph (`HostStatusGlyph`). VoiceOver reads the text; the Agents list's
 /// header also shows it while the Host is not connected, as do the saved
 /// Chat entry points listed under it.
-struct HostReadiness: Equatable {
+struct HostReadiness: Equatable, Sendable {
     let text: String
     let tone: HostConnectionTone
 

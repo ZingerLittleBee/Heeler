@@ -23,6 +23,9 @@ final class ConsoleStore {
     }
 
     private(set) var agents: [ConsoleAgent] = []
+    /// Who `agents` lists. A view that only asks whether an Agent is there
+    /// reads this, and is left alone by every change to what an Agent is doing.
+    private(set) var listedAgentIDs: Set<ConsoleAgent.ID> = []
     /// Agents off the list whose program was lost or ended. Only a detail
     /// already open on one reads them, through `detailAgent(for:)`.
     private(set) var departedAgents: [ConsoleAgent] = []
@@ -1906,6 +1909,8 @@ final class ConsoleStore {
                 .map { (agent.id, $0) }
         })
         agents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
+        let listed = Set(unsorted.map(\.id))
+        if listedAgentIDs != listed { listedAgentIDs = listed }
     }
 
     /// What a detail column shows for this selection: an Agent on the list, the
