@@ -101,15 +101,22 @@ extension HostCapabilities {
         isLocatingCore: Bool = false
     ) {
         // A tmux Host starts Agents and Terminals, renames a Workspace, closes
-        // a Pane or a Tab, opens a Worktree, and offers Composer Send and Stop.
+        // a Pane or a Tab, opens a Worktree, and offers Composer Send, Stop, and
+        // Chat for confirmed POSIX programs once a probe has named Linux or macOS.
         // It does not rename an Agent, take over a Terminal, or name Tabs.
-        // Chat and uploads are later tickets.
         guard serverKind != .tmux else {
+            let tmuxChatPrograms: Set<ChatProgram>? =
+                switch coreKernel {
+                case HerdrCoreLocator.linuxKernel: coreLinuxChatPrograms
+                case HerdrCoreLocator.macOSKernel: coreMacOSChatPrograms
+                default: nil
+                }
             self.init(
                 startsAgents: true, startsTerminals: true, renameAgent: false, renamesWorkspaces: true,
-                worktrees: true, uploads: false, composerSend: true, chat: false, tabNames: false,
-                closeTab: true, syncLayoutFromPlugin: false, takeOver: false, composerStop: true,
-                hostScripts: false, namesCreatedWorkspaces: true)
+                worktrees: true, uploads: false, composerSend: true, chat: tmuxChatPrograms != nil,
+                tabNames: false, closeTab: true, syncLayoutFromPlugin: false, takeOver: false,
+                composerStop: true, chatPrograms: tmuxChatPrograms, hostScripts: false,
+                namesCreatedWorkspaces: true)
             return
         }
         let offered = serverKind == .herdrTUI

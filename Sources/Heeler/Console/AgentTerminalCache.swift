@@ -242,12 +242,13 @@ final class AgentTerminalCache {
     }
 
     func reconcile(
-        hostID: Host.ID, agents: [ConsoleAgent],
+        hostID: Host.ID, agents: [ConsoleAgent], inventoryCore: String? = nil,
         isCurrent: @escaping @MainActor () -> Bool = { true }
     ) async {
         for entry in entries.values.filter({ $0.agentID.hostID == hostID }) {
             guard isCurrent() else { return }
-            if !agents.contains(where: {
+            let leftCore = !entry.lifetime.visible && inventoryCore.map { !entry.corePin.admits($0) } == true
+            if leftCore || !agents.contains(where: {
                 $0.id == entry.agentID && $0.agent.terminalID == entry.terminalID
             }) {
                 await evict(entry).value

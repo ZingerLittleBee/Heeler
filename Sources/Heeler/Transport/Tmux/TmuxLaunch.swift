@@ -150,6 +150,34 @@ enum TmuxLaunch {
         return command(shellArguments: check + ["';'"] + show, paths: paths, loginShell: false)
     }
 
+    /// Sets Pane options only while the server answering on `paths` is still
+    /// `instance`, then prints that server's `pid:start_time`. An option value
+    /// that holds JSON braces or commas never enters the format condition.
+    static func setPaneOptions(
+        pane: String,
+        instance: TmuxServerInstance,
+        options: [(name: String, value: String)],
+        paths: TmuxPaths
+    ) -> Command {
+        let sets = options.map { paneOption(pane: pane, name: $0.name, value: $0.value) }
+        let format = "#{==:#{pid}:#{start_time},\(instance.pid):\(instance.startTime)}"
+        let check = shellArguments([
+            "if-shell", "-F", "-t", pane, format, sets.joined(separator: " ; "),
+        ])
+        let show = shellArguments([
+            "display-message", "-p", "-t", pane, "#{pid}:#{start_time}",
+        ])
+        return command(shellArguments: check + ["';'"] + show, paths: paths, loginShell: false)
+    }
+
+    static func serverInstanceMatches(_ instance: TmuxServerInstance, stdout: Data) -> Bool {
+        let line = String(decoding: stdout, as: UTF8.self)
+            .split(whereSeparator: \.isNewline)
+            .last?
+            .trimmingCharacters(in: .whitespaces)
+        return line == "\(instance.pid):\(instance.startTime)"
+    }
+
     /// One `set-option -p` as tmux parses a command string: the text of the
     /// option, not a shell word.
     private static func paneOption(pane: String, name: String, value: String) -> String {

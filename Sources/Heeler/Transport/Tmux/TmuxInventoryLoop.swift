@@ -49,6 +49,7 @@ enum TmuxInventoryLoop {
     private static let textFields = [
         "session_name", "window_name", "pane_current_command", "pane_current_path",
         "@heeler-status", "@heeler-session", "@heeler-pipe", "@heeler-attach", "@heeler-worktree",
+        "@heeler-chat",
     ]
     fileprivate static var fieldCount: Int { fixedFields.count + textFields.count }
     fileprivate static var lengthFieldStart: Int { fixedFields.count + 1 }
@@ -489,7 +490,7 @@ enum TmuxInventoryLoop {
                 paneIndex: paneIndex, processID: processID, command: fields[2], path: fields[3],
                 width: width, height: height, isDead: isDead, hasPipe: hasPipe,
                 status: fields[4], agentSession: fields[5], pipeMark: fields[6], attachMark: fields[7],
-                worktree: fields[8])
+                worktree: fields[8], chatPick: fields[9])
         }
 
         static func positiveNumber(_ field: Data.SubSequence) -> Int? {

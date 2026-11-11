@@ -63,14 +63,14 @@ struct TmuxInventoryLoopTests {
             "pid", "start_time", "session_id", "session_name", "window_id", "window_index", "window_name",
             "pane_id", "pane_index", "pane_pid", "pane_width", "pane_height", "pane_dead", "pane_pipe",
             "pane_current_command", "pane_current_path", "@heeler-status", "@heeler-session", "@heeler-pipe",
-            "@heeler-attach", "@heeler-worktree",
+            "@heeler-attach", "@heeler-worktree", "@heeler-chat",
         ]
         #expect(Set(names) == allowed)
         for word in ["title", "cursor", "activity", "history", "client", "_active", "last"] {
             #expect(!format.contains(word))
         }
         // Each text is measured once on the row's first line and written once after it.
-        #expect(names.count == 12 + 9 + 9)
+        #expect(names.count == 12 + 10 + 10)
     }
 
     // MARK: Reading

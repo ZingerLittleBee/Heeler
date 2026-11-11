@@ -42,6 +42,8 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     let syncError: String? = nil
     private(set) var leakedEnvironmentNames: Set<String> = []
+    private(set) var kernel: String?
+    let usesProcessBoundChat = true
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
@@ -76,6 +78,13 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     /// A newer inventory supersedes a checkout read still on its way.
     private var checkoutRefresh = 0
     private var worktreesBeingRemoved: Set<WorktreeIdentity> = []
+    /// Per-instance Chat binding revisions and dropped candidate picks (ADRs 0034 and 0042).
+    private var inventoryReplacements: UInt64 = 0
+    private var leakAnswers: UInt64 = 0
+    private var sessionEventCounts: [String: UInt64] = [:]
+    private var droppedPicks: [String: Set<String>] = [:]
+    private var pickLabelsBetweenSnapshots: [String: String] = [:]
+    private(set) var pickRemoval: Task<Void, Never>?
 
     /// `onPathsResolved` hears the paths a connection resolved again, after
     /// `host` already carries them.
@@ -99,6 +108,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         self.onPathsResolved = onPathsResolved
         self.onSeenMarksChanged = onSeenMarksChanged
         self.onChange = onChange
+        kernel = memory.kernel(for: host.id)
     }
 
     // MARK: Lifecycle
@@ -157,8 +167,10 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         hasEnded = true
         consumeTask?.cancel()
         latencyTask?.cancel()
+        pickRemoval?.cancel()
         consumeTask = nil
         latencyTask = nil
+        pickRemoval = nil
         Task { [session] in await session.end() }
     }
 
@@ -188,6 +200,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         switch update {
         case .status(let status):
             self.status = status
+            adoptKernel()
             latency = session.currentLatency
             routeID = session.currentRouteID
             transportGeneration = session.currentConnectionGeneration
@@ -204,6 +217,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
                 invalidateInventory()
             }
         case .server(let server):
+            adoptKernel()
             let coreBefore = memory.coreID(for: host.id)
             let marksBefore = seenMarks
             // What was listed came from the server that answered before.
@@ -223,9 +237,18 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             replaceInventory(with: inventory)
         case .environment(let names):
             guard status == .connected, server != nil else { return }
-            leakedEnvironmentNames = names
+            if names != leakedEnvironmentNames {
+                leakedEnvironmentNames = names
+                leakAnswers &+= 1
+            }
         }
         onChange()
+    }
+
+    private func adoptKernel() {
+        guard let next = session.currentKernel, next != kernel else { return }
+        kernel = next
+        memory.noteKernel(next, for: host.id)
     }
 
     // MARK: Inventory
@@ -243,7 +266,8 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     /// The listed Pane, for a check that must see the process still there.
     func inventoryPane(_ paneID: String) -> TmuxInventory.Pane? {
-        inventory?.panes.first { $0.paneID == paneID }
+        inventory?.panes.first(where: { $0.paneID == paneID && !$0.isInHeelerSession })
+            ?? inventory?.panes.first(where: { $0.paneID == paneID })
     }
 
     /// Tools-keyboard Esc declines only while Claude Code is asking something.
@@ -304,14 +328,26 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private func noteInstance(_ instance: TmuxServerInstance) {
         if let known = memory.coreID(for: host.id), known != instance.id {
             pins.removePins(hostID: host.id)
+            pickRemoval?.cancel()
+            pickRemoval = nil
             lastKnownAgentsByPane = [:]
             shownAgents = []
+            sessionEventCounts = [:]
+            droppedPicks = [:]
+            pickLabelsBetweenSnapshots = [:]
             inventory = nil
         }
         memory.noteCore(instance.id, for: host.id)
     }
 
     private func invalidateInventory() {
+        if let inventory {
+            var picks: [String: String] = [:]
+            for pane in inventory.panes where !pane.chatPick.isEmpty && picks[pane.paneID] == nil {
+                picks[pane.paneID] = pane.chatPick
+            }
+            pickLabelsBetweenSnapshots = picks
+        }
         isAwaitingSnapshot = true
         inventory = nil
         workspaces = []
@@ -327,9 +363,11 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let coreBefore = memory.coreID(for: host.id)
         let marksBefore = seenMarks
         if let instance = inventory.instance { noteInstance(instance) }
+        let previousInventory = self.inventory
         let listed = Set(inventory.panes.map(\.paneID))
         pins.retainPins(hostID: host.id, paneIDs: listed)
         memory.retainTmuxPanes(listed, for: host.id)
+        noteSessionEvidence(in: inventory, previous: previousInventory)
         noteTurns(in: inventory)
         let coreAfter = memory.coreID(for: host.id)
         let marksAfter = seenMarks
@@ -339,6 +377,61 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         self.inventory = inventory
         rebuildRows()
         refreshMissingCheckouts(in: inventory)
+    }
+
+    private struct PaneSessionSignature: Equatable {
+        let processID: Int
+        let command: String
+        let path: String
+        let isDead: Bool
+        let status: String
+        let agentSession: String
+        let chatPick: String
+        let foregroundArguments: [String]?
+
+        init(_ pane: TmuxInventory.Pane) {
+            processID = pane.processID
+            command = pane.command
+            path = pane.path
+            isDead = pane.isDead
+            status = pane.status
+            agentSession = pane.agentSession
+            chatPick = pane.chatPick
+            foregroundArguments = pane.foregroundArguments
+        }
+    }
+
+    private static func representativePanes(in inventory: TmuxInventory) -> [String: TmuxInventory.Pane] {
+        var chosen: [String: TmuxInventory.Pane] = [:]
+        for pane in inventory.panes {
+            if let existing = chosen[pane.paneID] {
+                if existing.isInHeelerSession, !pane.isInHeelerSession {
+                    chosen[pane.paneID] = pane
+                }
+            } else {
+                chosen[pane.paneID] = pane
+            }
+        }
+        return chosen
+    }
+
+    private func noteSessionEvidence(in inventory: TmuxInventory, previous: TmuxInventory?) {
+        pickLabelsBetweenSnapshots = [:]
+        let current = Self.representativePanes(in: inventory)
+        for (paneID, pane) in current {
+            forgetDroppedPicks(at: paneID, except: pane.chatPick.isEmpty ? nil : pane.chatPick)
+        }
+        guard let previous else {
+            inventoryReplacements &+= 1
+            return
+        }
+        let prior = Self.representativePanes(in: previous)
+        sessionEventCounts = sessionEventCounts.filter { current[$0.key] != nil }
+        for (paneID, pane) in current {
+            if prior[paneID].map(PaneSessionSignature.init) != PaneSessionSignature(pane) {
+                sessionEventCounts[paneID, default: 0] &+= 1
+            }
+        }
     }
 
     /// One look at each Pane's `@heeler-status`. A Pane with no Agent is
@@ -986,6 +1079,204 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         { _ in nil }
     }
 
+    // MARK: Process-bound Chat (ADRs 0034, 0042 and 0044)
+
+    var chatCacheScope: String? {
+        memory.coreID(for: host.id).map {
+            ChatCacheKey.tmuxScope(socketName: host.tmuxSocketName, instanceID: $0)
+        }
+    }
+
+    func sessionEventRevision(of paneID: String) -> UInt64 {
+        inventoryReplacements &+ leakAnswers &+ (sessionEventCounts[paneID] ?? 0)
+    }
+
+    func chatCannotTell(_ program: ChatProgram) -> ChatUnavailableReason {
+        HerdrCoreHostSystem(kernel: kernel).cannotTellSession(program)
+    }
+
+    func checkChatSession(paneID: String, program: ChatProgram) async throws -> ChatSessionEvidence {
+        guard !isAwaitingSnapshot, inventory != nil else { throw TransportError.cancelled }
+        guard let pane = inventoryPane(paneID), !pane.isDead, let activeServer = server else {
+            return .unavailable(chatCannotTell(program))
+        }
+        return try await chatBinder(paneID: paneID, program: program, server: activeServer)
+            .check(HerdrCoreTerminalRecord(tmuxPane: pane), coreCarries: leakedEnvironmentNames)
+    }
+
+    func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch? {
+        guard !isAwaitingSnapshot, let pane = inventoryPane(paneID), !pane.isDead,
+            let activeServer = server
+        else { return nil }
+        let core = activeServer.instance.id
+        let record = HerdrCoreTerminalRecord(tmuxPane: pane)
+        let binder = chatBinder(paneID: paneID, program: .claude, server: activeServer)
+        let ask = HerdrCoreSessionBinder.ProcessAsk(
+            namesOf: [ChatTranscriptOffVariable.childSession.rawValue],
+            arguments: ClaudePermissionMode.argumentWords, preservesArgumentOrder: true)
+        guard let tree = try await binder.readTerminalProcesses(of: record, ask: ask),
+            let pid = binder.agentProcess(in: tree), let facts = tree.facts[pid], inventoryCore == core
+        else { return nil }
+        return ClaudePermissionMode.Launch(pid: pid, facts: facts)
+    }
+
+    func chatCandidates(paneID: String, program: ChatProgram) async throws -> ChatCandidatesAnswer {
+        guard !isAwaitingSnapshot, inventory != nil else { throw TransportError.cancelled }
+        guard let pane = inventoryPane(paneID), !pane.isDead, let activeServer = server else {
+            return .noProcess
+        }
+        let answer = try await chatBinder(paneID: paneID, program: program, server: activeServer)
+            .candidates(of: HerdrCoreTerminalRecord(tmuxPane: pane))
+        guard case .listed(var list) = answer else { return answer }
+        list.core = activeServer.instance.id
+        return .listed(list)
+    }
+
+    func writeChatPick(
+        _ candidate: ChatSessionCandidate, of list: ChatSessionCandidates, paneID: String
+    ) async throws {
+        guard
+            let value = HerdrCoreSessionHint.pickLabelValue(
+                session: candidate.sessionID, file: candidate.file, pid: list.pid, start: list.start)
+        else { throw TransportError.cancelled }
+        guard let activeServer = server, list.core == nil || activeServer.instance.id == list.core else {
+            throw TransportError.tmuxServerGone
+        }
+        droppedPicks[paneID]?.remove(value)
+        try await writePaneOptions([("@heeler-chat", value)], at: paneID, on: activeServer)
+        setLocalPaneOption("@heeler-chat", value: value, at: paneID, on: activeServer.instance)
+    }
+
+    func settleChatPick(paneID: String, program: ChatProgram) {
+        guard let pane = inventoryPane(paneID), !pane.chatPick.isEmpty else { return }
+        Task { [weak self] in
+            _ = try? await self?.checkChatSession(paneID: paneID, program: program)
+        }
+    }
+
+    func dropChatPick(paneID: String, scope: String?, program: ChatProgram) {
+        guard chatCacheScope == scope else { return }
+        let currentPick = inventoryPane(paneID).flatMap { $0.chatPick.isEmpty ? nil : $0.chatPick }
+            ?? pickLabelsBetweenSnapshots[paneID]
+        guard let value = currentPick, let activeServer = server else { return }
+        droppedPicks[paneID, default: []].insert(value)
+        pickRemoval = Task { [weak self] in
+            guard let self else { return }
+            guard (try? await self.clearStaleLabels(
+                [HerdrCoreSessionHint.pickLabel: value], at: paneID, on: activeServer)) != nil
+            else { return }
+            if self.droppedPicks[paneID]?.contains(value) == true,
+                self.paneLabels(at: paneID, on: activeServer.instance)?[HerdrCoreSessionHint.pickLabel] == value
+            {
+                self.setLocalPaneOption("@heeler-chat", value: "", at: paneID, on: activeServer.instance)
+            }
+        }
+    }
+
+    private func chatBinder(
+        paneID: String, program: ChatProgram, server activeServer: TmuxServerStatus
+    ) -> HerdrCoreSessionBinder {
+        let session = session
+        return HerdrCoreSessionBinder(
+            program: program,
+            processes: { request in
+                try await session.withTransport { try await $0.hostServices.readProcesses(request) }
+            },
+            files: chatHostFiles(),
+            clearLabels: { stale in
+                try await self.clearStaleLabels(stale, at: paneID, on: activeServer)
+            },
+            currentLabels: {
+                await self.paneLabels(at: paneID, on: activeServer.instance)
+            },
+            isDroppedPick: { value in
+                await self.droppedPicks[paneID]?.contains(value) == true
+            },
+            hostSystem: HerdrCoreHostSystem(kernel: kernel),
+            processScope: .tmux(
+                paneID: paneID,
+                socketPath: activeServer.paths.socket,
+                serverPID: activeServer.instance.pid))
+    }
+
+    private func paneLabels(at paneID: String, on instance: TmuxServerInstance) -> [String: String]? {
+        guard inventoryCore == instance.id, let pane = inventoryPane(paneID) else { return nil }
+        return HerdrCoreTerminalRecord(tmuxPane: pane).labels
+    }
+
+    private func forgetDroppedPicks(at paneID: String, except held: String?) {
+        guard let dropped = droppedPicks[paneID] else { return }
+        let kept = dropped.filter { $0 == held }
+        droppedPicks[paneID] = kept.isEmpty ? nil : kept
+    }
+
+    private func setLocalPaneOption(
+        _ option: String, value: String, at paneID: String, on instance: TmuxServerInstance
+    ) {
+        guard !hasEnded, inventoryCore == instance.id, var current = inventory else { return }
+        var changed = false
+        for index in current.panes.indices where current.panes[index].paneID == paneID {
+            switch option {
+            case "@heeler-chat":
+                if current.panes[index].chatPick != value {
+                    current.panes[index].chatPick = value
+                    changed = true
+                }
+            case "@heeler-session":
+                if current.panes[index].agentSession != value {
+                    current.panes[index].agentSession = value
+                    changed = true
+                }
+            default:
+                break
+            }
+        }
+        guard changed else { return }
+        inventory = current
+        sessionEventCounts[paneID, default: 0] &+= 1
+        onChange()
+    }
+
+    private func clearStaleLabels(
+        _ stale: [String: String], at paneID: String, on activeServer: TmuxServerStatus
+    ) async throws {
+        guard let current = paneLabels(at: paneID, on: activeServer.instance) else { return }
+        var options: [(name: String, value: String)] = []
+        for (label, expected) in stale where current[label] == expected {
+            switch label {
+            case HerdrCoreSessionHint.sessionLabel:
+                options.append(("@heeler-session", ""))
+            case HerdrCoreSessionHint.pickLabel:
+                options.append(("@heeler-chat", ""))
+            default:
+                break
+            }
+        }
+        guard !options.isEmpty else { return }
+        options.sort { $0.name < $1.name }
+        try await writePaneOptions(options, at: paneID, on: activeServer)
+    }
+
+    private func writePaneOptions(
+        _ options: [(name: String, value: String)], at paneID: String, on activeServer: TmuxServerStatus
+    ) async throws {
+        let command = TmuxLaunch.setPaneOptions(
+            pane: paneID, instance: activeServer.instance, options: options, paths: activeServer.paths)
+        let result = try await session.withTransport { transport in
+            try await transport.runTmuxScript(command.script, throughLoginShell: command.throughLoginShell)
+        }
+        guard result.exitStatus == 0 else {
+            let detail = String(decoding: result.stderr, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            if detail.contains("can't find pane") { throw TransportError.tmuxPaneGone }
+            if detail.contains("no server running") { throw TransportError.tmuxServerGone }
+            throw TransportError.malformedResponse(
+                detail.isEmpty ? String(localized: "tmux: The command failed.") : detail)
+        }
+        guard TmuxLaunch.serverInstanceMatches(activeServer.instance, stdout: result.stdout) else {
+            throw TransportError.tmuxServerGone
+        }
+    }
+
     // MARK: The Host's files, on the same SSH connection
 
     func sessionFileReader() -> SessionFileReader {
@@ -997,6 +1288,8 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     func chatHostFiles() -> ChatHostFiles {
         let session = session
+        let socketName = host.tmuxSocketName
+        let tmuxPaths = server?.paths ?? host.tmuxPaths
         return ChatHostFiles(
             status: { path in
                 try await session.withTransport { $0.hostServices }.fileStatus(atPath: path)
@@ -1009,6 +1302,16 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             },
             home: {
                 try await session.withTransport { $0.hostServices }.hostHomeDirectory()
+            },
+            queryOpenCode: { query in
+                try await session.withTransport { $0.hostServices }.queryOpenCode(query)
+            },
+            accountDirectories: { kind in
+                let helperHost = try await session.withTransport { $0.hostHelperHost }
+                let data = try await HostHelperFiles(
+                    host: helperHost, tmuxSocket: socketName, tmuxPaths: tmuxPaths
+                ).readUsageAccountFile()
+                return try UsageAccountFile.decode(data).directories(for: kind)
             })
     }
 

@@ -181,6 +181,52 @@ struct HerdrCoreTerminalRecord: Decodable, Equatable, Sendable {
         pasteGapMilliseconds = try fields.decodeIfPresent(Int.self, forKey: .pasteGapMilliseconds)
         foreground = try fields.decodeIfPresent(HerdrCoreForeground.self, forKey: .foreground)
     }
+
+    init(tmuxPane pane: TmuxInventory.Pane) {
+        var labels: [String: String] = [:]
+        if !pane.agentSession.isEmpty {
+            labels[HerdrCoreSessionHint.sessionLabel] = pane.agentSession
+        }
+        if !pane.chatPick.isEmpty {
+            labels[HerdrCoreSessionHint.pickLabel] = pane.chatPick
+        }
+        let pid = pane.processID > 0 ? pane.processID : nil
+        let argv = pane.foregroundArguments ?? []
+        address = pane.paneID
+        name = nil
+        self.labels = labels
+        self.argv = argv
+        cwd = pane.path
+        keep = false
+        state = pane.isDead ? "finished" : "live"
+        self.pid = pid
+        exitCode = nil
+        signal = nil
+        reason = nil
+        createdMilliseconds = nil
+        finishedMilliseconds = nil
+        screen = nil
+        columns = pane.width
+        rows = pane.height
+        identity = nil
+        status = nil
+        statusMilliseconds = nil
+        records = [:]
+        turn = 0
+        reported = false
+        title = ""
+        parent = nil
+        notify = false
+        dieWithParent = false
+        removeOnExit = false
+        template = nil
+        submit = nil
+        stop = nil
+        pasteGapMilliseconds = nil
+        foreground = !pane.isDead && pid != nil
+            ? HerdrCoreForeground(pid: pid, name: pane.command, argv: argv, cwd: pane.path)
+            : nil
+    }
 }
 
 /// The terminals a subscription starts from, or that a `missed` replaces them

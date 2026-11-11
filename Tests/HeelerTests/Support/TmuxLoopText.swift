@@ -22,7 +22,7 @@ enum TmuxLoopText {
     static func row(_ pane: TmuxInventory.Pane, instance: TmuxServerInstance) -> Data {
         let texts = [
             pane.sessionName, pane.windowName, pane.command, pane.path, pane.status, pane.agentSession,
-            pane.pipeMark, pane.attachMark, pane.worktree,
+            pane.pipeMark, pane.attachMark, pane.worktree, pane.chatPick,
         ]
         let fixed: [String] = [
             String(instance.pid), String(instance.startTime), pane.sessionID, pane.windowID,
@@ -78,7 +78,7 @@ extension TmuxInventory.Pane {
         windowName: String = "first", pane: Int = 0, paneIndex: Int = 0, processID: Int = 4000,
         command: String = "zsh", path: String = "/home/dev", width: Int = 80, height: Int = 24,
         isDead: Bool = false, hasPipe: Bool = false, status: String = "", agentSession: String = "",
-        pipeMark: String = "", attachMark: String = "", worktree: String = "",
+        pipeMark: String = "", attachMark: String = "", worktree: String = "", chatPick: String = "",
         arguments: [String]? = nil
     ) -> TmuxInventory.Pane {
         var made = TmuxInventory.Pane(
@@ -86,7 +86,7 @@ extension TmuxInventory.Pane {
             windowName: windowName, paneID: "%\(pane)", paneIndex: paneIndex, processID: processID,
             command: command, path: path, width: width, height: height, isDead: isDead, hasPipe: hasPipe,
             status: status, agentSession: agentSession, pipeMark: pipeMark, attachMark: attachMark,
-            worktree: worktree)
+            worktree: worktree, chatPick: chatPick)
         made.foregroundArguments = arguments
         return made
     }

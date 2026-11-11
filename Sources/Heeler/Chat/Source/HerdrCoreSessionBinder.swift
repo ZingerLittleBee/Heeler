@@ -551,12 +551,13 @@ struct HerdrCoreTerminalProcesses: Sendable {
         isTool: (HostProcessReader.Facts?) -> Bool = { _ in false },
         skips: (HostProcessReader.Facts?) -> Bool = { _ in false }
     ) -> String? {
-        guard sharesScope(root) else { return nil }
+        let rootInScope = sharesScope(root)
+        guard rootInScope || scopeIsUnavailable(root) else { return nil }
         var children: [String: [String]] = [:]
         for pid in descendants where sharesScope(pid) && !skips(facts[pid]) {
             if let parent = facts[pid]?.parent { children[parent, default: []].append(pid) }
         }
-        var level = [root]
+        var level = rootInScope ? [root] : (children[root] ?? [])
         while !level.isEmpty {
             let named = level.filter { isAgent(facts[$0]) }
             if named.count > 1 { return nil }
@@ -574,6 +575,6 @@ struct HerdrCoreTerminalProcesses: Sendable {
             level = level.flatMap { children[$0] ?? [] }
         }
         let isOutOfSight = descendants.contains { scopeIsUnavailable($0) }
-        return (children[root] ?? []).isEmpty && !isOutOfSight ? root : nil
+        return rootInScope && (children[root] ?? []).isEmpty && !isOutOfSight ? root : nil
     }
 }

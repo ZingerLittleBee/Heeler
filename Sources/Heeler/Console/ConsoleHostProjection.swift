@@ -158,6 +158,20 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// How Chat types into this Pane, or nil to use `readAgentScreen`,
     /// `sendAgentKeys` and `pasteIntoAgent`.
     func checkedChatTyping(at paneID: String) -> (any CheckedChatTyping)?
+
+    // MARK: Process-bound Chat (ADR 0034)
+
+    var kernel: String? { get }
+    var usesProcessBoundChat: Bool { get }
+    var chatCacheScope: String? { get }
+    func sessionEventRevision(of paneID: String) -> UInt64
+    func checkChatSession(paneID: String, program: ChatProgram) async throws -> ChatSessionEvidence
+    func chatCannotTell(_ program: ChatProgram) -> ChatUnavailableReason
+    func chatCandidates(paneID: String, program: ChatProgram) async throws -> ChatCandidatesAnswer
+    func writeChatPick(_ candidate: ChatSessionCandidate, of list: ChatSessionCandidates, paneID: String) async throws
+    func dropChatPick(paneID: String, scope: String?, program: ChatProgram)
+    func settleChatPick(paneID: String, program: ChatProgram)
+    func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch?
 }
 
 /// What a checked Composer Send came to. The Composer shows each case itself.
@@ -240,4 +254,36 @@ extension ConsoleHostProjection {
     ) -> TerminalStopOffer? { nil }
 
     func checkedChatTyping(at _: String) -> (any CheckedChatTyping)? { nil }
+
+    var kernel: String? { nil }
+
+    var usesProcessBoundChat: Bool { false }
+
+    var chatCacheScope: String? { nil }
+
+    func sessionEventRevision(of _: String) -> UInt64 { 0 }
+
+    func checkChatSession(paneID _: String, program _: ChatProgram) async throws -> ChatSessionEvidence {
+        throw TransportError.cancelled
+    }
+
+    func chatCannotTell(_ program: ChatProgram) -> ChatUnavailableReason {
+        .cannotTellSession(program)
+    }
+
+    func chatCandidates(paneID _: String, program _: ChatProgram) async throws -> ChatCandidatesAnswer {
+        throw TransportError.cancelled
+    }
+
+    func writeChatPick(
+        _: ChatSessionCandidate, of _: ChatSessionCandidates, paneID _: String
+    ) async throws {
+        throw TransportError.cancelled
+    }
+
+    func dropChatPick(paneID _: String, scope _: String?, program _: ChatProgram) {}
+
+    func settleChatPick(paneID _: String, program _: ChatProgram) {}
+
+    func claudePermissionLaunch(paneID _: String) async throws -> ClaudePermissionMode.Launch? { nil }
 }

@@ -494,6 +494,10 @@ final class ConsoleStore {
         projections[hostID] as? HerdrCoreConsoleProjection
     }
 
+    func tmuxProjection(on hostID: Host.ID) -> TmuxConsoleProjection? {
+        projections[hostID] as? TmuxConsoleProjection
+    }
+
     /// Whether an address on this Host can come to mean another Terminal: a
     /// herdr-core Host's under another core, a tmux Host's under another server
     /// instance. A detail there keeps to the one it opened on.
@@ -808,7 +812,7 @@ final class ConsoleStore {
     /// Nothing left Heeler, which a core Host's Chat tells from a key that may have gone.
     private func requireReadyForInput(_ hostID: Host.ID) throws {
         guard isHostReadyForInput(hostID) else {
-            if coreProjection(on: hostID) != nil {
+            if projections[hostID]?.usesProcessBoundChat == true {
                 throw HerdrCoreChatTyping.Refusal(message: String(localized: "The Host is not ready."))
             }
             throw TransportError.sshUnreachable(detail: String(localized: "The Host is not ready."))
@@ -905,9 +909,9 @@ final class ConsoleStore {
         for agent: ConsoleAgent, corePin: TerminalCorePin
     ) async throws -> ClaudePermissionMode.Launch? {
         let projection = try projection(for: agent.hostID)
-        if let core = projection as? HerdrCoreConsoleProjection {
+        if projection.usesProcessBoundChat {
             guard !hasLeftCore(corePin, on: agent.hostID) else { return nil }
-            return try await core.claudePermissionLaunch(paneID: agent.agent.paneID)
+            return try await projection.claudePermissionLaunch(paneID: agent.agent.paneID)
         }
         let info = try await projection.processInfo(paneID: agent.agent.paneID)
         guard let pid = ClaudePermissionMode.processID(in: info) else { return nil }
@@ -925,11 +929,12 @@ final class ConsoleStore {
     func chatStore(for agent: ConsoleAgent, program: ChatProgram) -> AgentChatStore? {
         guard capabilities(for: agent.hostID).offersChat(for: program) else { return nil }
         if let existing = chatStores[agent.id], existing.program == program { return existing }
-        guard let host = projections[agent.hostID]?.host, let adapter = chatAdapter(program) else {
+        guard let hostProjection = projections[agent.hostID], let adapter = chatAdapter(program) else {
             return nil
         }
-        let core = projections[agent.hostID] as? HerdrCoreConsoleProjection
-        if let core, core.chatCacheScope == nil { return nil }
+        let host = hostProjection.host
+        let processBound = hostProjection.usesProcessBoundChat ? hostProjection : nil
+        if let processBound, processBound.chatCacheScope == nil { return nil }
         chatStores[agent.id]?.end()
         let hostID = agent.hostID
         let paneID = agent.agent.paneID
@@ -962,20 +967,20 @@ final class ConsoleStore {
                     guard let self else { throw TransportError.cancelled }
                     try await self.pasteIntoAgent(text, paneID: paneID, on: hostID)
                 }))
-        if let typing = projections[hostID]?.checkedChatTyping(at: paneID) {
+        if let typing = hostProjection.checkedChatTyping(at: paneID) {
             source.screen = typing.blockedScreen
         }
-        if let core {
+        if let processBound {
             // No record names a session here.
             source.processInfo = nil
-            source.coreScope = core.chatCacheScope
+            source.coreScope = processBound.chatCacheScope
             source.sessionEvidence = { [weak self] in
                 guard let self else { throw TransportError.cancelled }
                 return try await self.checkChatSession(paneID: paneID, program: program, on: hostID)
             }
-            source.picks = chatPicks(paneID: paneID, program: program, on: hostID, scope: core.chatCacheScope)
+            source.picks = chatPicks(paneID: paneID, program: program, on: hostID, scope: processBound.chatCacheScope)
             // Only events after this store exists are news to it.
-            chatSessionEventRevisions[agent.id] = core.sessionEventRevision(of: paneID)
+            chatSessionEventRevisions[agent.id] = processBound.sessionEventRevision(of: paneID)
         }
         let store = AgentChatStore(
             agentID: agent.id, agent: agent.agent, program: program, source: source, timing: chatTiming, now: chatNow)
@@ -999,34 +1004,38 @@ final class ConsoleStore {
     private func chatPicks(paneID: String, program: ChatProgram, on hostID: Host.ID, scope: String?) -> ChatPickIO {
         ChatPickIO(
             list: { [weak self] pin in
-                guard let self, let core = self.projections[hostID] as? HerdrCoreConsoleProjection else {
+                guard let self, let projection = self.projections[hostID], projection.usesProcessBoundChat else {
                     throw TransportError.cancelled
                 }
                 guard !self.hasLeftCore(pin, on: hostID) else { throw self.leftCoreError(on: hostID) }
-                return try await core.chatCandidates(paneID: paneID, program: program)
+                return try await projection.chatCandidates(paneID: paneID, program: program)
             },
             confirm: { [weak self] candidate, list, pin in
-                guard let self, let core = self.projections[hostID] as? HerdrCoreConsoleProjection else {
+                guard let self, let projection = self.projections[hostID], projection.usesProcessBoundChat else {
                     throw TransportError.cancelled
                 }
                 guard !self.hasLeftCore(pin, on: hostID) else { throw self.leftCoreError(on: hostID) }
-                try await core.writeChatPick(candidate, of: list, paneID: paneID)
+                try await projection.writeChatPick(candidate, of: list, paneID: paneID)
             },
             drop: { [weak self] in
-                guard let core = self?.projections[hostID] as? HerdrCoreConsoleProjection else { return }
-                core.dropChatPick(paneID: paneID, scope: scope, program: program)
+                guard let projection = self?.projections[hostID], projection.usesProcessBoundChat else { return }
+                projection.dropChatPick(paneID: paneID, scope: scope, program: program)
             },
             cannotTell: { [weak self] in
-                let core = self?.projections[hostID] as? HerdrCoreConsoleProjection
-                return core?.chatCannotTell(program) ?? .cannotTellSession(program)
+                guard let projection = self?.projections[hostID], projection.usesProcessBoundChat else {
+                    return .cannotTellSession(program)
+                }
+                return projection.chatCannotTell(program)
             })
     }
 
     private func checkChatSession(
         paneID: String, program: ChatProgram, on hostID: Host.ID
     ) async throws -> ChatSessionEvidence {
-        guard let core = projections[hostID] as? HerdrCoreConsoleProjection else { throw TransportError.cancelled }
-        return try await core.checkChatSession(paneID: paneID, program: program)
+        guard let projection = projections[hostID], projection.usesProcessBoundChat else {
+            throw TransportError.cancelled
+        }
+        return try await projection.checkChatSession(paneID: paneID, program: program)
     }
 
     /// Chat's transcript reads and store queries on the Host's live
@@ -1532,6 +1541,16 @@ final class ConsoleStore {
 
     private func rebuild() {
         let current = Array(projections.values)
+        let nextCoreKernels = Dictionary(
+            uniqueKeysWithValues: current.compactMap { projection in
+                projection.kernel.map { (projection.host.id, $0) }
+            })
+        if hostCoreKernels != nextCoreKernels { hostCoreKernels = nextCoreKernels }
+        let nextCores = Dictionary(
+            uniqueKeysWithValues: current.compactMap { projection in
+                projection.inventoryCore.map { (projection.host.id, $0) }
+            })
+        if hostCores != nextCores { hostCores = nextCores }
         reconcileTerminalConnections(current)
         requestHostPlatforms(current)
         // A configured Host without a session update is awaiting its first
@@ -1588,15 +1607,6 @@ final class ConsoleStore {
         if hostDesktopAppNaming != nextDesktopAppNaming {
             hostDesktopAppNaming = nextDesktopAppNaming
         }
-        let nextCoreKernels = Dictionary(
-            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
-                .compactMap { projection in projection.kernel.map { (projection.host.id, $0) } })
-        if hostCoreKernels != nextCoreKernels { hostCoreKernels = nextCoreKernels }
-        let nextCores = Dictionary(
-            uniqueKeysWithValues: current.compactMap { projection in
-                projection.inventoryCore.map { (projection.host.id, $0) }
-            })
-        if hostCores != nextCores { hostCores = nextCores }
         hostConnectionGenerations = Dictionary(
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.transportGeneration)
@@ -1698,6 +1708,7 @@ final class ConsoleStore {
                         paneID: $0.paneID, tabID: $0.tabID, terminalID: $0.terminalID)
                 })
             let revision = projection.sidebarRevision
+            let inventoryCore = projection.inventoryCore
             // A detail stays on a departed Agent, and so does its terminal.
             let agents = Array(projection.agentsByPane.values)
                 + Array(projection.departedAgentsByPane.values)
@@ -1708,8 +1719,9 @@ final class ConsoleStore {
             }
             Task {
                 await terminalConnections.reconcile(
-                    hostID: hostID, identities: identities, isCurrent: isCurrent)
-                await agentTerminals.reconcile(hostID: hostID, agents: agents, isCurrent: isCurrent)
+                    hostID: hostID, identities: identities, inventoryCore: inventoryCore, isCurrent: isCurrent)
+                await agentTerminals.reconcile(
+                    hostID: hostID, agents: agents, inventoryCore: inventoryCore, isCurrent: isCurrent)
             }
         }
     }
@@ -1733,7 +1745,7 @@ final class ConsoleStore {
     }
 
     private func mayOfferChat(on projection: any ConsoleHostProjection) -> Bool {
-        projection.host.capabilities.chat
+        (projection.host.capabilities.chat || capabilities(for: projection.host.id).chat)
             && projection.agentsByPane.values.contains(where: {
                 AgentChatAvailability.mayOfferChat(for: $0.agent, hasAdapter: { chatAdapter($0) != nil })
             })
@@ -2351,7 +2363,9 @@ final class ConsoleStore {
         if let program = ChatProgram(rawValue: agent.agent.kind), !capabilities.offersChat(for: program) {
             return nil
         }
-        let platform = hostPlatforms[agent.hostID]
+        let platform =
+            hostPlatforms[agent.hostID]
+            ?? (catalog.first(where: { $0.id == agent.hostID })?.serverKind == .tmux ? .posix : nil)
         if let platform {
             return AgentChatAvailability.program(
                 for: agent.agent, platform: platform, isNativeWindowsCore: capabilities.isNativeWindowsCore,
@@ -2455,10 +2469,10 @@ final class ConsoleStore {
         guard !chatStores.isEmpty else { return }
         let current = Dictionary(agents.map { ($0.id, $0.agent) }) { first, _ in first }
         for (id, store) in chatStores {
-            let core = projections[id.hostID] as? HerdrCoreConsoleProjection
-            // Another core's Agents are other Agents: its Transcripts are keyed
-            // apart, and this store is keyed to the last one.
-            if let core, store.coreScope != core.chatCacheScope {
+            let processBound = projections[id.hostID].flatMap { $0.usesProcessBoundChat ? $0 : nil }
+            // Another core's or server instance's Agents are other Agents: its
+            // Transcripts are keyed apart, and this store is keyed to the last one.
+            if let processBound, store.coreScope != processBound.chatCacheScope {
                 let viewers = store.viewerTokens
                 store.end()
                 chatStores[id] = nil
@@ -2472,8 +2486,8 @@ final class ConsoleStore {
                 }
                 continue
             }
-            if let core {
-                let revision = core.sessionEventRevision(of: id.paneID)
+            if let processBound {
+                let revision = processBound.sessionEventRevision(of: id.paneID)
                 if chatSessionEventRevisions.updateValue(revision, forKey: id) != revision {
                     store.sessionEvidenceMayHaveChanged()
                 }
@@ -2486,7 +2500,7 @@ final class ConsoleStore {
                 store.end()
                 chatStores[id] = nil
                 chatSessionEventRevisions[id] = nil
-                core?.settleChatPick(paneID: id.paneID, program: store.program)
+                processBound?.settleChatPick(paneID: id.paneID, program: store.program)
             }
         }
     }

@@ -33,14 +33,15 @@ struct TmuxInventory: Equatable, Sendable {
         var isDead: Bool
         /// A `pipe-pane` is attached, Heeler's or the user's.
         var hasPipe: Bool
-        /// The pane's `@heeler-status`, `@heeler-session` and `@heeler-pipe`, as
-        /// they are set. Empty when unset.
+        /// The pane's `@heeler-status`, `@heeler-session`, `@heeler-pipe` and
+        /// `@heeler-chat`, as they are set. Empty when unset.
         var status = ""
         var agentSession = ""
         var pipeMark = ""
         /// The session's `@heeler-attach` and `@heeler-worktree`.
         var attachMark = ""
         var worktree = ""
+        var chatPick = ""
         /// The arguments of the process leading the pane's foreground process
         /// group, as last read: the loop reads them again only when `command` or
         /// the program `status` names changed. Nil when they could not be read.

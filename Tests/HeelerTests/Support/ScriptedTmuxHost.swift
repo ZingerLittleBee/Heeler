@@ -83,16 +83,21 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private var connected = true
     /// The Host Helper seam on the same scripted file tree, rooted at `Self.home`.
     nonisolated let helper: ScriptedHelperHost
+    nonisolated let virtualFiles: VirtualHostFiles?
     private var refusesHookFiles = false
     private struct SeededProcess {
         var variables: [String: String?]
         var name: String?
         var parent: Int?
+        var start: String = "1"
+        var argv: [String] = []
+        var openFiles: [String] = []
     }
     private var seededProcesses: [Int: SeededProcess] = [:]
     private var unavailableProcesses: Set<Int> = []
     private var allProcessesUnavailable = false
     private(set) var processVariableReads: [String] = []
+    private(set) var processReadRequests: [HostProcessReader.Request] = []
 
     /// Everything that happened, in order.
     private(set) var log: [String] = []
@@ -102,10 +107,12 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     init(
         executable: String? = ScriptedTmuxHost.executable, version: String = "tmux 3.7b",
         directory: String = ScriptedTmuxHost.directory, sockets: [String] = ["default"],
-        kernel: String = "Darwin", shell: String = "/bin/zsh"
+        kernel: String = "Darwin", shell: String = "/bin/zsh",
+        virtualFiles: VirtualHostFiles? = nil
     ) {
         self.kernel = kernel
         self.shell = shell
+        self.virtualFiles = virtualFiles
         helper = ScriptedHelperHost(home: Self.home, kernel: kernel)
         executables = executable.map { [$0: version] } ?? [:]
         loginExecutable = executable
@@ -181,6 +188,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let socket = Self.socketPath(name, in: loginDirectory)
         panes[socket] = listed
         await printChanges(on: socket)
+    }
+
+    func listedPanes(on name: String = "default") -> [TmuxInventory.Pane] {
+        panes[Self.socketPath(name, in: loginDirectory)] ?? []
     }
 
     /// The Pane's `@heeler-status`, nil when the Pane is not listed.
@@ -263,6 +274,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         scripts = []
         commands = []
         foregroundScripts = []
+        processReadRequests = []
     }
 
     /// What discovery reports, and the OpenCode version a later launch may name.
@@ -1345,6 +1357,16 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             return try await host.onOpenDial(id) { try await $0.readHostFileRange(range) }
         }
 
+        func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+            try await requireConnected()
+            return try await host.onOpenDial(id) { try await $0.fileStatus(atPath: path) }
+        }
+
+        func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+            try await requireConnected()
+            return try await host.onOpenDial(id) { try await $0.listFiles(request) }
+        }
+
         func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
             try await requireConnected()
             try await host.onOpenDial(id) {
@@ -1493,7 +1515,19 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     }
 
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
-        await helper.readHostFile(range)
+        if let virtualFiles {
+            let slice = try await virtualFiles.readRange(range)
+            if slice.length != nil { return slice }
+        }
+        return await helper.readHostFile(range)
+    }
+
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+        try await virtualFiles?.fileStatus(atPath: path)
+    }
+
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+        try await virtualFiles?.listFiles(request)
     }
 
     func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
@@ -1653,11 +1687,18 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         try await helper.hostPlatform()
     }
 
-    /// Seeds one process's environment, name and parent for `readProcesses`.
+    /// Seeds one process's environment, name, parent, start, argv and open files for `readProcesses`.
     func setProcessEnvironment(
-        _ variables: [String: String?], forProcess pid: Int, name: String? = nil, parent: Int? = nil
+        _ variables: [String: String?],
+        forProcess pid: Int,
+        name: String? = nil,
+        parent: Int? = nil,
+        start: String = "1",
+        argv: [String] = [],
+        openFiles: [String] = []
     ) {
-        seededProcesses[pid] = SeededProcess(variables: variables, name: name, parent: parent)
+        seededProcesses[pid] = SeededProcess(
+            variables: variables, name: name, parent: parent, start: start, argv: argv, openFiles: openFiles)
         unavailableProcesses.remove(pid)
     }
 
@@ -1671,6 +1712,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     }
 
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
+        processReadRequests.append(request)
         processVariableReads.append(contentsOf: request.valuesOf)
         guard !allProcessesUnavailable else { return [:] }
 
@@ -1687,7 +1729,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
 
         var walkedPIDs: [Int] = []
         if let root = request.descendantsOf {
-            guard let rootPID = Int(root), exists(rootPID), !unavailableProcesses.contains(rootPID) else {
+            guard let rootPID = Int(root), exists(rootPID) else {
                 return [:]
             }
             var queue = [rootPID]
@@ -1714,15 +1756,17 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             var fact = HostProcessReader.Facts()
             let seeded = seededProcesses[pid]
             let pane = listedPane(for: pid)
-            if request.descendantsOf != nil {
-                fact.parent = String(seeded?.parent ?? 1)
-                let fallback = pane?.command.isEmpty == false ? pane?.command : nil
-                fact.name = seeded?.name ?? fallback ?? "grok"
-                if request.descendantsOf == key {
-                    fact.descendants = .value(walkedPIDs.map(String.init))
-                }
+            let fallback = pane?.command.isEmpty == false ? pane?.command : nil
+            let processName = seeded?.name ?? fallback ?? "grok"
+            fact.name = processName
+            fact.parent = String(seeded?.parent ?? 1)
+            if request.descendantsOf == key {
+                fact.descendants = .value(walkedPIDs.map(String.init))
             }
             let readable = !unavailableProcesses.contains(pid)
+            if request.readsStart {
+                fact.start = .value(seeded?.start ?? "1")
+            }
             for variable in request.valuesOf {
                 if !readable {
                     fact.variables[variable] = .unavailable
@@ -1730,6 +1774,32 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
                     fact.variables[variable] = entry.map(HostProcessReader.Variable.value) ?? .unset
                 } else {
                     fact.variables[variable] = .unset
+                }
+            }
+            if !request.namesOf.isEmpty {
+                if !readable {
+                    fact.nonEmptyNames = .unavailable
+                } else {
+                    let names = Set(request.namesOf.filter { seeded?.variables[$0]??.isEmpty == false })
+                    fact.nonEmptyNames = .value(names)
+                }
+            }
+            if request.readsOpenFiles {
+                fact.openFiles = readable ? .value(seeded?.openFiles ?? []) : .unavailable
+            }
+            if request.readsArguments {
+                let argv = (seeded?.argv.isEmpty == false ? seeded?.argv : nil)
+                    ?? pane?.foregroundArguments
+                    ?? [processName]
+                fact.arguments = readable
+                    ? .value(Set(request.argumentsAmong).intersection(argv))
+                    : .unavailable
+                if request.preservesArgumentOrder, !argv.isEmpty {
+                    fact.argumentVector = readable
+                        ? .value(argv.map {
+                            request.argumentsAmong.contains($0) ? $0 : $0.hasPrefix("-") ? "-" : ""
+                        })
+                        : .unavailable
                 }
             }
             result[key] = fact
@@ -1832,7 +1902,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             let result: GitExecResult
             switch invocation.subcommand {
             case "display-message":
-                result = displayStatus(in: listed, invocation)
+                result = displayStatus(in: listed, invocation, socket: socket)
             case "if-shell":
                 result = applyIfShell(&listed, invocation, socket: socket)
             default:
@@ -1846,19 +1916,26 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         return Self.succeeded(stdout)
     }
 
-    /// `display-message -p #{@heeler-status}`: the option as it is, plus a newline.
+    /// `display-message -p`: `#{@heeler-status}` or `#{pid}:#{start_time}`, plus a newline.
     private func displayStatus(
-        in listed: [TmuxInventory.Pane], _ invocation: Invocation
+        in listed: [TmuxInventory.Pane], _ invocation: Invocation, socket: String
     ) -> GitExecResult {
-        guard invocation.arguments == ["#{@heeler-status}"],
-            let target = invocation.target,
+        guard let target = invocation.target,
             let pane = listed.first(where: { $0.paneID == target })
         else { return Self.failed("can't find pane: \(invocation.target ?? "")\n") }
-        return Self.succeeded(pane.status + "\n")
+        switch invocation.arguments {
+        case ["#{@heeler-status}"]:
+            return Self.succeeded(pane.status + "\n")
+        case ["#{pid}:#{start_time}"]:
+            guard let instance = servers[socket] else { return Self.failed("no server running\n") }
+            return Self.succeeded("\(instance.pid):\(instance.startTime)\n")
+        default:
+            return Self.failed("unknown command: display-message\n")
+        }
     }
 
-    /// `if-shell -F` comparing `@heeler-status`. A false compare changes nothing
-    /// and still succeeds, so the display after it shows who won.
+    /// `if-shell -F` comparing `@heeler-status` or `#{pid}:#{start_time}`. A false compare
+    /// changes nothing and still succeeds, so the display after it shows who won.
     private func applyIfShell(
         _ listed: inout [TmuxInventory.Pane], _ invocation: Invocation, socket: String
     ) -> GitExecResult {
@@ -1867,12 +1944,20 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             invocation.arguments.count >= 2
         else { return Self.failed("can't find pane: \(invocation.target ?? "")\n") }
         let format = invocation.arguments[0]
-        let prefix = "#{==:#{@heeler-status},"
-        guard format.hasPrefix(prefix), format.hasSuffix("}") else {
+        let statusPrefix = "#{==:#{@heeler-status},"
+        let instancePrefix = "#{==:#{pid}:#{start_time},"
+        let matches: Bool
+        if format.hasPrefix(statusPrefix), format.hasSuffix("}") {
+            let expected = String(format.dropFirst(statusPrefix.count).dropLast())
+            matches = listed[index].status == expected
+        } else if format.hasPrefix(instancePrefix), format.hasSuffix("}") {
+            let expected = String(format.dropFirst(instancePrefix.count).dropLast())
+            let actual = servers[socket].map { "\($0.pid):\($0.startTime)" } ?? ""
+            matches = actual == expected
+        } else {
             return Self.failed("unknown command: if-shell\n")
         }
-        let expected = String(format.dropFirst(prefix.count).dropLast())
-        guard listed[index].status == expected else { return Self.succeeded("") }
+        guard matches else { return Self.succeeded("") }
         for words in Self.commandList(of: invocation.arguments[1]) {
             guard let inner = Self.invocation(of: words) else {
                 return Self.failed("unknown command: if-shell\n")
@@ -1986,6 +2071,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
                     listed[index].status = invocation.arguments[1]
                 case "@heeler-ask":
                     asks[socket, default: [:]][target] = invocation.arguments[1]
+                case "@heeler-session":
+                    listed[index].agentSession = invocation.arguments[1]
+                case "@heeler-chat":
+                    listed[index].chatPick = invocation.arguments[1]
                 default:
                     return Self.failed("unknown command: set-option\n")
                 }

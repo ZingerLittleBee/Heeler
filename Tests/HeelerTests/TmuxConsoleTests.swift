@@ -118,7 +118,7 @@ struct TmuxConsoleTests {
         #expect(!offers.tabNames)
         #expect(!offers.renameAgent)
         #expect(!offers.takeOver)
-        #expect(!offers.chat)
+        #expect(offers.chat)
         #expect(!offers.uploads)
         #expect(offers.composerSend)
         #expect(offers.composerStop)

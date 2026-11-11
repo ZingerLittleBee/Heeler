@@ -44,6 +44,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// As `HerdrCoreLocator.Location.kernel`: what a locator last found, this connection's once
     /// it has run. What a Host offers does not wait for a core to answer.
     private(set) var kernel: String?
+    let usesProcessBoundChat = true
     /// Why each Agent reading Unknown does, by Terminal address.
     private(set) var statusExplanations: [String: HerdrCoreStatusExplanation] = [:]
     private(set) var transportGeneration: UInt64 = 0

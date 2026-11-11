@@ -52,6 +52,9 @@ actor TmuxHostSession {
     /// Advances with each new SSH connection.
     nonisolated var currentConnectionGeneration: UInt64 { generationBox.withLock { $0 } }
     private nonisolated let generationBox = Mutex<UInt64>(0)
+    /// `uname -s` from the latest probe, written before the status or server update that publishes it.
+    nonisolated var currentKernel: String? { kernelBox.withLock { $0 } }
+    private nonisolated let kernelBox = Mutex<String?>(nil)
 
     private let connect: @Sendable (TmuxPaths?) async throws -> any TmuxTransport
     private let reconnectPolicy: ReconnectPolicy
@@ -337,6 +340,9 @@ actor TmuxHostSession {
                 let transport = try await ensureTransport(for: generation)
                 let started = ContinuousClock.now
                 let asked = await Self.ask(transport)
+                if let kernel = await transport.hostFacts().kernel {
+                    kernelBox.withLock { $0 = kernel }
+                }
                 let resolved = await transport.resolvedPaths()
                 guard activationIsCurrent(generation) else { break }
                 // A tmux that moved is where the next connection must look,

@@ -63,6 +63,7 @@ case "parse":
                         "width": pane.width, "height": pane.height, "isDead": pane.isDead,
                         "hasPipe": pane.hasPipe, "status": pane.status, "agentSession": pane.agentSession,
                         "pipeMark": pane.pipeMark, "attachMark": pane.attachMark, "worktree": pane.worktree,
+                        "chatPick": pane.chatPick,
                         "arguments": pane.foregroundArguments as Any? ?? NSNull(),
                     ]
                 },
@@ -329,6 +330,7 @@ class RowTests(LoopTestCase):
         self.tmux("set-option", "-p", "-t", "main:0.0", "@heeler-status", "state=working:app=claude-code")
         self.tmux("set-option", "-p", "-t", "main:0.0", "@heeler-session", "abc")
         self.tmux("set-option", "-p", "-t", "main:0.0", "@heeler-pipe", "1")
+        self.tmux("set-option", "-p", "-t", "main:0.0", "@heeler-chat", '{"session":"picked"}')
         self.tmux("set-option", "-t", "other", "@heeler-attach", "1")
         self.tmux("set-option", "-t", "other", "@heeler-worktree", "/tmp/checkout")
         panes = self.loop().wait_for(1)[0]["panes"]
@@ -338,10 +340,11 @@ class RowTests(LoopTestCase):
             [f"{p['sessionID']} {p['windowID']} {p['paneID']} {p['paneIndex']} {p['processID']}" for p in panes], ids)
         first, second, other = panes
         self.assertEqual((first["sessionName"], first["windowName"], first["windowIndex"]), ("main", "first", 0))
-        self.assertEqual((first["status"], first["agentSession"], first["pipeMark"]),
-                         ("state=working:app=claude-code", "abc", "1"))
+        self.assertEqual((first["status"], first["agentSession"], first["pipeMark"], first["chatPick"]),
+                         ("state=working:app=claude-code", "abc", "1", '{"session":"picked"}'))
         self.assertEqual((first["attachMark"], first["worktree"]), ("", ""))
-        self.assertEqual((second["status"], second["agentSession"], second["pipeMark"]), ("", "", ""))
+        self.assertEqual((second["status"], second["agentSession"], second["pipeMark"], second["chatPick"]),
+                         ("", "", "", ""))
         self.assertEqual(first["width"] + second["width"] + 1, 80)
         self.assertEqual(
             (other["sessionName"], other["windowName"], other["width"], other["height"]),
@@ -359,7 +362,7 @@ class RowTests(LoopTestCase):
         self.tmux("new-window", "-d", "-t", "main:", "-n", "odd", "-c", str(directory), "exec /bin/sleep 600")
         # What a row, a marker and the end of a snapshot look like, inside one option.
         forged = (f"state=idle\n{NONCE} argv\n{NONCE} end\n{NONCE} begin\n"
-                  "1\t2\t$9\t@9\t0\t%9\t0\t1\t80\t24\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n.\n\n")
+                  "1\t2\t$9\t@9\t0\t%9\t0\t1\t80\t24\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n.\n\n")
         self.tmux("set-option", "-p", "-t", "main:1.0", "@heeler-status", forged)
         loop = self.loop()
         found = loop.wait_for(1)

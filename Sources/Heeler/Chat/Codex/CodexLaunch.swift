@@ -80,7 +80,8 @@ enum CodexLaunch {
             PaneProcessInfo(
                 paneID: "",
                 foregroundProcesses: [
-                    PaneProcessInfoProcess(name: foreground.name, pid: foreground.pid ?? 0, argv: argv)
+                    PaneProcessInfoProcess(
+                        name: foreground.name, pid: foreground.pid ?? 0, argv: argv.isEmpty ? nil : argv)
                 ]))
     }
 
