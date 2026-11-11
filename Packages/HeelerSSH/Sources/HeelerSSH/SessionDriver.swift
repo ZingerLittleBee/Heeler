@@ -225,6 +225,7 @@ actor SessionDriver {
     private var nextOwnedDrainHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextChannelOpenSlotHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextChannelTeardownHoldForTesting: (@Sendable () async -> Void)?
+    private var nextChannelCloseSentHoldForTesting: (@Sendable () async -> Void)?
     private var nextResumedChannelOpenWaiterErrorForTesting: SSHError?
     private var nextChannelOpenWaiterRegistrationHoldForTesting: (@Sendable () async -> Void)?
     private var ownerSamplesForTesting: [TransportSendOwnerSample]?
@@ -3030,6 +3031,18 @@ actor SessionDriver {
         nextChannelTeardownHoldForTesting = hold
     }
 
+    /// Holds the next channel teardown right after libssh2's close returned
+    /// with the channel's CLOSE on the wire and the server's CLOSE read, before
+    /// the teardown takes its next step. sshd frees the channel as soon as it
+    /// has both, so whatever the client sends for it after this point names a
+    /// channel the server no longer has. Cancelling the owning task here
+    /// reproduces an interruption that reaches a teardown that late.
+    func holdNextChannelCloseSentForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) {
+        nextChannelCloseSentHoldForTesting = hold
+    }
+
     func failNextResumedChannelOpenWaiterForTesting(_ error: SSHError) {
         nextResumedChannelOpenWaiterErrorForTesting = error
     }
@@ -4768,6 +4781,9 @@ actor SessionDriver {
         guard closeResult == 0 || closeResult == LIBSSH2_ERROR_CHANNEL_CLOSED else {
             throw SSHError.channelFailed
         }
+        #if DEBUG
+        await holdChannelCloseSentForTestingIfNeeded()
+        #endif
         diagnosticStep = "wait closed"
         let waitResult = try await repeatUntilCompleteYielding(
             deadline: deadline,
@@ -4817,6 +4833,9 @@ actor SessionDriver {
         guard closeResult == 0 || closeResult == LIBSSH2_ERROR_CHANNEL_CLOSED else {
             throw SSHError.channelFailed
         }
+        #if DEBUG
+        await holdChannelCloseSentForTestingIfNeeded()
+        #endif
 
         diagnosticStep = "channel free"
         let freeResult = try await repeatUntilCompleteYielding(
@@ -5296,6 +5315,12 @@ actor SessionDriver {
         releaseOperation()
         await hold()
         await acquireOperation()
+    }
+
+    private func holdChannelCloseSentForTestingIfNeeded() async {
+        guard let hold = nextChannelCloseSentHoldForTesting else { return }
+        nextChannelCloseSentHoldForTesting = nil
+        await hold()
     }
 
     private func holdExecChannelAllocationForTestingIfNeeded() async throws {
