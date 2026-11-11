@@ -548,7 +548,9 @@ extension TmuxTransportE2ETests {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    @Test("a shown Pane scales its window to fit the device, stops at a smaller desktop client's ceiling, and leaves the rest of the view blank")
+    @Test(
+        "a shown Pane scales its window to fit the device, stops at a smaller desktop client's ceiling, and leaves the rest of the view blank",
+        .timeLimit(.minutes(2)))
     func aShownPaneFitsTheDeviceAndRespectsADesktopCeiling() async throws {
         try await TmuxSSHFixture.with { fixture in
             try await fixture.startServer()
@@ -600,22 +602,131 @@ extension TmuxTransportE2ETests {
                 throw error
             }
 
-            // A smaller desktop client on the same window caps the window's
-            // size, and the smaller Pane renders inside its own rows and
-            // columns while the rest of the 80x24 terminal view stays blank.
-            let (cappedPane, cappedFile) = try await followingPane(
-                ["new-window", "-t", "main:", "-n", "capped"], on: fixture)
-            let smallDesktop = try await attachDesktopClient(
-                to: "main", windowColumns: 36, windowRows: 6, on: fixture)
-            do {
-                try await fixture.eventually { try await windowDimensions(cappedPane, on: fixture) == "36x6" }
-                try await append((1...10).map { "row \($0)\\n" }.joined(), to: cappedFile, on: fixture)
-                try await waitUntilShown("row 10", in: cappedPane, on: fixture)
-                try await openCappedPaneInTheTerminalView(cappedPane, file: cappedFile, on: fixture)
-                await smallDesktop.stop()
-            } catch {
-                await smallDesktop.stop()
-                throw error
+            // An already-attached idle desktop client smaller than the device
+            // caps the window across every window-size mode (never typing after
+            // Heeler attaches), and in the terminal view the smaller Pane stays
+            // inside its own rows and columns while the rest of the 80x24 view
+            // stays blank.
+            let ceilingModes: [(mode: String, aggressive: Bool)] = [
+                ("latest", false),
+                ("latest", true),
+                ("smallest", false),
+                ("largest", false),
+            ]
+            for scenario in ceilingModes {
+                try await fixture.reset()
+                try await fixture.startServer()
+                try await fixture.tmux(nil, "set-option", "-gw", "window-size", scenario.mode)
+                try await fixture.tmux(nil, "set-option", "-gw", "aggressive-resize", scenario.aggressive ? "on" : "off")
+
+                let (cappedPane, cappedFile) = try await followingPane(
+                    ["new-window", "-t", "main:", "-n", "capped"], on: fixture)
+                let smallDesktop = try await attachDesktopClient(
+                    to: "main", windowColumns: 36, windowRows: 6, on: fixture)
+                let label = Comment(rawValue: "\(scenario.mode) aggressive=\(scenario.aggressive)")
+                do {
+                    try await fixture.eventually { try await windowDimensions(cappedPane, on: fixture) == "36x6" }
+                    try await append((1...10).map { "row \($0)\\n" }.joined(), to: cappedFile, on: fixture)
+                    try await waitUntilShown("row 10", in: cappedPane, on: fixture)
+
+                    let transport = try await fixture.connectTmux(storedPaths: try fixture.paths())
+                    do {
+                        var req = TerminalAttachRequest(
+                            target: .terminal(cappedPane), surfaceHasHistory: false, cols: 80, rows: 24)
+                        req.coreID = try await fixture.serverInstance().id
+                        let session = try await transport.attachPane(cappedPane, request: req)
+                        var output = session.output.makeAsyncIterator()
+                        _ = try await read(until: "row 10", from: &output)
+
+                        let initial = try await placement(of: cappedPane, on: fixture)
+                        #expect(initial.windowWidth <= 36 && initial.windowHeight <= 6, label)
+                        #expect(
+                            initial
+                                == PanePlacement(
+                                    paneWidth: 36, paneHeight: 6, windowWidth: 36, windowHeight: 6, zoomed: false),
+                            label)
+
+                        session.resize(cols: 30, rows: 5)
+                        try await fixture.eventually {
+                            try await windowDimensions(cappedPane, on: fixture) == "30x5"
+                        }
+                        session.resize(cols: 100, rows: 30)
+                        try await fixture.eventually {
+                            try await windowDimensions(cappedPane, on: fixture) == "36x6"
+                        }
+                        try await append("live 11\\n", to: cappedFile, on: fixture)
+                        _ = try await read(until: "live 11", from: &output)
+                        let afterResize = try await placement(of: cappedPane, on: fixture)
+                        #expect(afterResize.windowWidth <= 36 && afterResize.windowHeight <= 6, label)
+                        #expect(
+                            afterResize
+                                == PanePlacement(
+                                    paneWidth: 36, paneHeight: 6, windowWidth: 36, windowHeight: 6, zoomed: false),
+                            label)
+
+                        await session.end()
+                        try await fixture.eventually { try await attachSessions(on: fixture).isEmpty }
+                        try await transport.close()
+                    } catch {
+                        try? await transport.close()
+                        throw error
+                    }
+
+                    if scenario.mode == "largest" {
+                        try await openCappedPaneInTheTerminalView(cappedPane, file: cappedFile, on: fixture)
+                    }
+                    await smallDesktop.stop()
+                } catch {
+                    await smallDesktop.stop()
+                    throw error
+                }
+            }
+
+            // A smaller desktop client that attaches after Heeler already sized
+            // the window drops the window to that desktop's size.
+            for mode in ["latest", "largest"] {
+                try await fixture.reset()
+                try await fixture.startServer()
+                try await fixture.tmux(nil, "set-option", "-gw", "window-size", mode)
+                let (latePane, lateFile) = try await followingPane(
+                    ["new-window", "-t", "main:", "-n", "late"], on: fixture)
+                try await append("late ready\\n", to: lateFile, on: fixture)
+                try await waitUntilShown("late ready", in: latePane, on: fixture)
+
+                let transport = try await fixture.connectTmux(storedPaths: try fixture.paths())
+                var lateDesktop: DesktopClient?
+                do {
+                    var req = TerminalAttachRequest(
+                        target: .terminal(latePane), surfaceHasHistory: false, cols: 80, rows: 24)
+                    req.coreID = try await fixture.serverInstance().id
+                    let session = try await transport.attachPane(latePane, request: req)
+                    var output = session.output.makeAsyncIterator()
+                    _ = try await read(until: "late ready", from: &output)
+                    #expect(try await windowDimensions(latePane, on: fixture) == "80x24", Comment(rawValue: mode))
+
+                    let attached = try await attachDesktopClient(
+                        to: "main", windowColumns: 40, windowRows: 8, on: fixture)
+                    lateDesktop = attached
+                    try await fixture.eventually {
+                        try await placement(of: latePane, on: fixture)
+                            == PanePlacement(
+                                paneWidth: 40, paneHeight: 8, windowWidth: 40, windowHeight: 8, zoomed: false)
+                    }
+
+                    await attached.stop()
+                    lateDesktop = nil
+                    try await fixture.eventually {
+                        try await windowDimensions(latePane, on: fixture) == "80x24"
+                    }
+
+                    await session.end()
+                    try await fixture.eventually { try await attachSessions(on: fixture).isEmpty }
+                    try await transport.close()
+                } catch {
+                    await lateDesktop?.stop()
+                    try? await transport.close()
+                    throw error
+                }
             }
         }
     }
